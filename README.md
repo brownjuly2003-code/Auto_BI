@@ -7,7 +7,7 @@
 
 ## Статус
 
-Фаза: **docs-only** — архитектура, план и стратегия зафиксированы 2026-06-11, код не начат. Следующий шаг: Phase 0.
+Фаза: **Phase 0, код готов** (2026-06-11, ветка `phase-0/vertical-slice`) — scaffold, docker-стенд (CH+Superset), интроспектор, GraceKelly-клиент, минимальный IR+валидация, SQL_GEN+guard, Superset-адаптер, CLI `auto_bi build`. Exit criteria фазы не проверены: ждёт прогона стенда на Mac (см. статус в `CLAUDE.md`).
 
 ## Документация
 

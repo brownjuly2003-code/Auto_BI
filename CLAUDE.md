@@ -4,7 +4,13 @@
 
 ## Статус
 
-**Phase 0 не начата** (docs-only с 2026-06-11; стратегия зафиксирована в тот же день). Перед работой свериться с PLAN.md и обновить этот блок по завершении фазы/вехи.
+**Phase 0: код 0.1–0.8 написан** (2026-06-11, ветка `phase-0/vertical-slice`, 55 unit-тестов зелёные). **Exit criteria НЕ проверены** — фаза не закрыта: нужен прогон на Mac-стенде (Docker только на Mac, на Windows не запускать):
+1. `docker compose up -d` (Superset 4.1.2 + ClickHouse 24.8, демо-DM генерится при первом старте; `DEMO_FACT_ROWS` для облегчённого стенда).
+2. `uv run auto_bi introspect` → `semantic/model.yaml` (черновик закоммитить после ручной правки).
+3. `uv run pytest -m integration tests/test_superset_contract.py` — реверс form_data «create → GET → assert» (риск фазы; фейл после 3 вариантов шаблона = стоппер S5).
+4. `uv run auto_bi build "<описание>"` при запущенном GraceKelly — e2e exit criteria.
+
+Перед работой свериться с PLAN.md и обновить этот блок по завершении фазы/вехи.
 
 ## Скоуп (решение 2026-06-11)
 
