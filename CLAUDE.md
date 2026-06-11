@@ -29,7 +29,7 @@ RU-рынок. **v1 = ClickHouse (DM) + Superset (BI)**; v2 = Greengage/Greenplu
 
 ## LLM
 
-GraceKelly (локальный сервис, должен быть запущен): `POST http://127.0.0.1:8011/orchestrate`
+GraceKelly (локальный сервис, должен быть запущен): `POST http://127.0.0.1:8011/api/v1/orchestrate`
 `{"prompt": ..., "model": "claude-sonnet-4-6", "reasoning": true, "decompose": false, "session_id": ..., "metadata": {"app": "auto_bi"}}`
 - `prompt` ≤ 40 000 символов → context selection обязателен на больших DM.
 - Text-in/text-out: структурированный вывод через JSON-блок → pydantic → repair loop.

@@ -3,7 +3,7 @@
 Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом или drag&drop-раскладкой полей витрин**, уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
 
 **Скоуп v1 (RU-рынок):** ClickHouse (DM) + Apache Superset (BI). v2: Greengage/Greenplum + Yandex DataLens (Public API). Универсальность — в швах (IR, адаптеры), не в имплементации.
-**LLM:** Sonnet 4.6 thinking через GraceKelly API (`http://127.0.0.1:8011/orchestrate`).
+**LLM:** Sonnet 4.6 thinking через GraceKelly API (`http://127.0.0.1:8011/api/v1/orchestrate`).
 
 ## Статус
 

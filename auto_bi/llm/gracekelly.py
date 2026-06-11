@@ -118,7 +118,7 @@ class GraceKellyClient:
         started = time.monotonic()
         status = "transport_error"
         try:
-            response = self._http.post("/orchestrate", json=payload)
+            response = self._http.post("/api/v1/orchestrate", json=payload)
             response.raise_for_status()
             data = response.json()
             status = data.get("status", "unknown")
