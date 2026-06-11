@@ -4,13 +4,11 @@
 
 ## Статус
 
-**Phase 0: код 0.1–0.8 написан** (2026-06-11, ветка `phase-0/vertical-slice`, 55 unit-тестов зелёные). **Exit criteria НЕ проверены** — фаза не закрыта: нужен прогон на Mac-стенде (Docker только на Mac, на Windows не запускать):
-1. `docker compose up -d` (Superset 4.1.2 + ClickHouse 24.8, демо-DM генерится при первом старте; `DEMO_FACT_ROWS` для облегчённого стенда).
-2. `uv run auto_bi introspect` → `semantic/model.yaml` (черновик закоммитить после ручной правки).
-3. `uv run pytest -m integration tests/test_superset_contract.py` — реверс form_data «create → GET → assert» (риск фазы; фейл после 3 вариантов шаблона = стоппер S5).
-4. `uv run auto_bi build "<описание>"` при запущенном GraceKelly — e2e exit criteria.
+**Phase 0 ЗАВЕРШЕНА и верифицирована** (2026-06-11, ветка `phase-0/vertical-slice`). Exit criteria проверены реальными прогонами: стенд на Mac (`~/auto_bi_stand`, compose: Superset 4.1.2 + CH 24.8, демо-DM 20M строк), интроспекция → `semantic/model.yaml` закоммичен, 4 contract-теста form_data прошли против живого Superset, e2e `auto_bi build "Обзор продаж: …"` собрал дашборд из 3 чартов (`/superset/dashboard/1/`), GraceKelly-вызовы в `logs/llm_calls.jsonl`. Доступ к стенду с Windows — SSH-туннель `ssh -N -L 8123:localhost:8123 -L 8088:localhost:8088 deproject-mac`; Docker ТОЛЬКО на Mac.
 
-Перед работой свериться с PLAN.md и обновить этот блок по завершении фазы/вехи.
+Известное ограничение Phase 0 (by design): джойнов в IR нет — запросы с полями из смежных таблиц («топ городов» при city в dm.stores) отклоняются валидацией; промпт предупреждает LLM. Снимается в Phase 1/2 по PLAN.
+
+**Следующий шаг: Phase 1 (S6 — не начинать без ревью; предложен `/cxkm` перед стартом).** Перед работой свериться с PLAN.md и обновить этот блок по завершении фазы/вехи.
 
 ## Скоуп (решение 2026-06-11)
 

@@ -7,7 +7,7 @@
 
 ## Статус
 
-Фаза: **Phase 0, код готов** (2026-06-11, ветка `phase-0/vertical-slice`) — scaffold, docker-стенд (CH+Superset), интроспектор, GraceKelly-клиент, минимальный IR+валидация, SQL_GEN+guard, Superset-адаптер, CLI `auto_bi build`. Exit criteria фазы не проверены: ждёт прогона стенда на Mac (см. статус в `CLAUDE.md`).
+Фаза: **Phase 0 завершена** (2026-06-11, ветка `phase-0/vertical-slice`) — вертикальный срез «текст → дашборд в Superset» работает end-to-end на демо-DM (ClickHouse, 20M строк): интроспекция → model.yaml → PROPOSE_SPEC (GraceKelly/Sonnet 4.6) → валидация spec и SQL → сборка в Superset по API. Exit criteria проверены реальными прогонами (см. `CLAUDE.md`). Следующий шаг: Phase 1 (MVP + Advisor v1).
 
 ## Документация
 
