@@ -38,6 +38,8 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+# Russian text in prompts/fixtures is by design, not a homoglyph typo
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.black]
 target-version = ["py312"]
