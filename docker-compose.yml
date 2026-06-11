@@ -9,8 +9,8 @@ services:
     image: clickhouse/clickhouse-server:24.8
     container_name: auto_bi_clickhouse
     ports:
-      - "8123:8123"   # HTTP (clickhouse-connect)
-      - "9000:9000"   # native
+      - "8123:8123"   # HTTP (clickhouse-connect); native 9000 is not published —
+                      # it clashes with other stacks (MinIO) and nothing external needs it
     environment:
       CLICKHOUSE_DB: dm
       CLICKHOUSE_USER: admin

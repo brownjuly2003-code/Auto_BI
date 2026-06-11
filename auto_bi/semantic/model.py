@@ -90,5 +90,6 @@ class SemanticModel(BaseModel):
         # required fields (name/type/role/engine) survive exclude_defaults; optional
         # empties (description="", fk=None, ...) are dropped to keep the yaml hand-editable
         data = self.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, width=120)
