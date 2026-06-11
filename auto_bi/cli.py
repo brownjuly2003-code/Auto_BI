@@ -19,11 +19,50 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "build":
-        # Wired up in task 0.8 once IR/SQL_GEN/Superset adapter exist.
-        print("auto_bi build: pipeline not implemented yet (Phase 0 in progress)")
-        return 1
+        return _build(args.description, args.model_path)
     if args.command == "introspect":
         return _introspect(args.database, args.output)
+    return 0
+
+
+def _build(description: str, model_path: str) -> int:
+    from pathlib import Path
+
+    from auto_bi.adapters.base import DWHConfig
+    from auto_bi.adapters.superset.adapter import SupersetAdapter
+    from auto_bi.adapters.superset.client import SupersetClient
+    from auto_bi.agent.pipeline import build_dashboard
+    from auto_bi.agent.sql_guard import LiveSQLValidator
+    from auto_bi.config import get_settings
+    from auto_bi.introspect.clickhouse import make_run_query
+    from auto_bi.llm.gracekelly import GraceKellyClient
+    from auto_bi.semantic.model import SemanticModel
+
+    if not Path(model_path).exists():
+        print(f"Semantic model not found: {model_path}")
+        print("Generate the draft first: auto_bi introspect --output semantic/model.yaml")
+        return 2
+
+    settings = get_settings()
+    model = SemanticModel.load(model_path)
+    adapter = SupersetAdapter(
+        SupersetClient(settings.superset_url, settings.superset_user, settings.superset_password),
+        DWHConfig(
+            host=settings.ch_host,
+            port=settings.ch_port,
+            database=settings.ch_database,
+            user=settings.ch_user,
+            password=settings.ch_password,
+        ),
+    )
+    ref = build_dashboard(
+        description,
+        model,
+        llm=GraceKellyClient(settings),
+        sql_validator=LiveSQLValidator(make_run_query(settings)),
+        adapter=adapter,
+    )
+    print(f"\nДашборд готов: {settings.superset_url.rstrip('/')}{ref.url}")
     return 0
 
 

@@ -16,5 +16,6 @@ def test_settings_defaults() -> None:
     assert settings.send_samples is True
 
 
-def test_cli_build_not_implemented_yet() -> None:
-    assert main(["build", "test dashboard"]) == 1
+def test_cli_build_requires_semantic_model(tmp_path) -> None:
+    missing = str(tmp_path / "nope" / "model.yaml")
+    assert main(["build", "test dashboard", "--model-path", missing]) == 2
