@@ -59,8 +59,8 @@ def adapter() -> SupersetAdapter:
         settings.superset_url, settings.superset_user, settings.superset_password
     )
     dwh = DWHConfig(
-        host=settings.ch_host,
-        port=settings.ch_port,
+        host=settings.ch_host_from_bi or settings.ch_host,
+        port=settings.ch_port_from_bi or settings.ch_port,
         database=settings.ch_database,
         user=settings.ch_user,
         password=settings.ch_password,

@@ -48,8 +48,8 @@ def _build(description: str, model_path: str) -> int:
     adapter = SupersetAdapter(
         SupersetClient(settings.superset_url, settings.superset_user, settings.superset_password),
         DWHConfig(
-            host=settings.ch_host,
-            port=settings.ch_port,
+            host=settings.ch_host_from_bi or settings.ch_host,
+            port=settings.ch_port_from_bi or settings.ch_port,
             database=settings.ch_database,
             user=settings.ch_user,
             password=settings.ch_password,

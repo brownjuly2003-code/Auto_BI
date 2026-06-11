@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     ch_user: str = "auto_bi_ro"
     ch_password: str = ""
     ch_database: str = "dm"
+    # ClickHouse host:port as seen FROM the BI server (e.g. "clickhouse:8123" inside
+    # the compose network) when it differs from ch_host (e.g. SSH tunnel from the CLI side)
+    ch_host_from_bi: str = ""
+    ch_port_from_bi: int = 0
 
     # Superset
     superset_url: str = "http://localhost:8088"
