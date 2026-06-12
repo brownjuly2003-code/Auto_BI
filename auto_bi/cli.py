@@ -38,6 +38,18 @@ def main(argv: list[str] | None = None) -> int:
     ev.add_argument("--suite", choices=["advisor", "golden", "all"], default="all")
     ev.add_argument("--cases", default="", help="Comma-separated case ids to run (subset)")
 
+    dbt = sub.add_parser(
+        "dbt-import",
+        help="Enrich model.yaml from dbt artifacts (descriptions, relationships); "
+        "fills EMPTY values only — hand edits always win",
+    )
+    dbt.add_argument("--manifest", required=True, help="Path to dbt manifest.json")
+    dbt.add_argument("--catalog", default="", help="Path to dbt catalog.json (optional)")
+    dbt.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
+    dbt.add_argument(
+        "--dry-run", action="store_true", help="Report what would change without writing"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "build":
@@ -52,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
         return _gaps(args.model_path, args.output, args.offline)
     if args.command == "eval":
         return _eval(args.model_path, args.suite, args.cases)
+    if args.command == "dbt-import":
+        return _dbt_import(args.manifest, args.catalog, args.model_path, args.dry_run)
     return 0
 
 
@@ -414,6 +428,54 @@ def _gaps(model_path: str, output: str, offline: bool) -> int:
         print(f"Gaps report written to {output}: {len(report.findings)} findings")
     else:
         print(markdown)
+    return 0
+
+
+def _dbt_import(manifest_path: str, catalog_path: str, model_path: str, dry_run: bool) -> int:
+    from pathlib import Path
+
+    from auto_bi.semantic.dbt_import import dbt_enrich, load_artifact
+    from auto_bi.semantic.model import SemanticModel
+
+    if not Path(model_path).exists():
+        print(f"Semantic model not found: {model_path}")
+        print("Generate it first: auto_bi introspect --output " + model_path)
+        return 2
+    if not Path(manifest_path).exists():
+        print(f"dbt manifest not found: {manifest_path}")
+        return 2
+
+    model = SemanticModel.load(model_path)
+    catalog = load_artifact(catalog_path) if catalog_path else None
+    report = dbt_enrich(model, load_artifact(manifest_path), catalog)
+
+    for label, items in (
+        ("описания таблиц", report.table_descriptions),
+        ("описания колонок", report.column_descriptions),
+        ("joins из relationships", report.joins_added),
+        ("fk проставлены", report.fks_set),
+    ):
+        if items:
+            print(f"{label} ({len(items)}):")
+            for item in items:
+                print(f"  + {item}")
+    if report.kept_existing:
+        print(f"не тронуто (ручные значения выигрывают): {len(report.kept_existing)}")
+    for label, items in (
+        ("dbt-модели без таблицы в model.yaml", report.unmatched_models),
+        ("dbt-колонки без колонки в model.yaml", report.unmatched_columns),
+    ):
+        if items:
+            print(f"{label} ({len(items)}): {', '.join(items)}")
+
+    if report.changed == 0:
+        print("Изменений нет — модель уже согласована с dbt-артефактами.")
+        return 0
+    if dry_run:
+        print(f"dry-run: {report.changed} изменений НЕ записано в {model_path}")
+        return 0
+    model.dump(model_path)
+    print(f"{model_path} обновлён: {report.changed} изменений")
     return 0
 
 
