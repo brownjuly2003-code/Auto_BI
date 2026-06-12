@@ -112,9 +112,11 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
     from auto_bi.advisor.core import Advisor
     from auto_bi.agent.machine import AgentPhase, AgentSession
     from auto_bi.agent.pipeline import compile_and_build
+    from auto_bi.agent.propose import SpecValidationError
     from auto_bi.agent.sql_guard import LiveSQLValidator
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
+    from auto_bi.llm.base import LLMError
     from auto_bi.llm.gracekelly import GraceKellyClient
     from auto_bi.semantic.model import SemanticModel
     from auto_bi.store import Store
@@ -146,6 +148,7 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
             title="auto_bi chat",
         )
     )
+    llm = GraceKellyClient(settings, store=store)  # one client (and HTTP pool) per REPL
     while True:
         request = console.input("\n[bold cyan]Вы:[/bold cyan] ").strip()
         if not request:
@@ -154,7 +157,6 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
             return 0
 
         session_id = store.create_session(request)
-        llm = GraceKellyClient(settings, store=store)
         agent = AgentSession(
             model,
             llm,
@@ -197,7 +199,15 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
                         url = settings.superset_url.rstrip("/") + ref.url
                         console.print(f"\n[bold green]Дашборд готов:[/bold green] {url}")
                         break
-                    turn = agent.reply(answer)
+                    try:
+                        turn = agent.reply(answer)
+                    except (SpecValidationError, LLMError) as exc:
+                        # failed word edit must not lose the session: the machine keeps
+                        # the previous valid spec and stays in APPROVE
+                        console.print(
+                            f"[red]Правка не применена: {exc}[/red] "
+                            "[dim]Текущий дашборд без изменений.[/dim]"
+                        )
                     continue
                 break
         except Exception as exc:  # session must not kill the REPL
