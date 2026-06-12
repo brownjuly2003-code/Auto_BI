@@ -19,6 +19,11 @@ def main(argv: list[str] | None = None) -> int:
     intro.add_argument("--database", default=None, help="Database/schema (default: settings)")
     intro.add_argument("--output", default="semantic/model.yaml", help="Where to write the draft")
 
+    ev = sub.add_parser("eval", help="Run the eval suites (advisor: offline; golden: live LLM)")
+    ev.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
+    ev.add_argument("--suite", choices=["advisor", "golden", "all"], default="all")
+    ev.add_argument("--cases", default="", help="Comma-separated case ids to run (subset)")
+
     args = parser.parse_args(argv)
 
     if args.command == "build":
@@ -27,6 +32,8 @@ def main(argv: list[str] | None = None) -> int:
         return _chat(args.model_path)
     if args.command == "introspect":
         return _introspect(args.database, args.output)
+    if args.command == "eval":
+        return _eval(args.model_path, args.suite, args.cases)
     return 0
 
 
@@ -206,6 +213,74 @@ def _render_turn(console, turn) -> None:  # pragma: no cover — presentation on
                 border_style=color,
             )
         )
+
+
+def _eval(model_path: str, suite: str, cases_csv: str) -> int:
+    from pathlib import Path
+
+    from rich.console import Console
+    from rich.table import Table as RichTable
+
+    from auto_bi.config import get_settings
+    from auto_bi.eval.cases import ADVISOR_CASES, GOLDEN_CASES
+    from auto_bi.eval.runner import (
+        advisor_suite_ok,
+        golden_suite_ok,
+        run_advisor_suite,
+        run_golden_suite,
+    )
+    from auto_bi.semantic.model import SemanticModel
+
+    console = Console()
+    if not Path(model_path).exists():
+        console.print(f"[red]Semantic model not found: {model_path}[/red]")
+        return 2
+    model = SemanticModel.load(model_path)
+    wanted = {c.strip() for c in cases_csv.split(",") if c.strip()}
+
+    def _render(title: str, report) -> None:
+        table = RichTable(title=title)
+        table.add_column("case")
+        table.add_column("kind")
+        table.add_column("result")
+        table.add_column("detail", overflow="fold")
+        for r in report.results:
+            mark = "[green]PASS[/green]" if r.passed else "[red]FAIL[/red]"
+            table.add_row(r.case_id, r.kind, mark, r.detail)
+        console.print(table)
+        console.print(f"{report.passed}/{report.total} passed\n")
+
+    ok = True
+    if suite in ("advisor", "all"):
+        cases = [c for c in ADVISOR_CASES if not wanted or c.id in wanted]
+        report = run_advisor_suite(model, cases)
+        _render("Advisor anti-pattern suite (deterministic)", report)
+        ok &= advisor_suite_ok(report)
+
+    if suite in ("golden", "all"):
+        from auto_bi.llm.gracekelly import GraceKellyClient
+
+        settings = get_settings()
+        llm = GraceKellyClient(settings)
+        cases = [c for c in GOLDEN_CASES if not wanted or c.id in wanted]
+        console.print(
+            f"[dim]golden: {len(cases)} cases через GraceKelly "
+            f"({settings.gracekelly_url}, {settings.gracekelly_model})…[/dim]"
+        )
+        report = run_golden_suite(
+            model,
+            llm,
+            cases=cases,
+            progress=lambda r: console.print(
+                f"  [dim]{r.case_id}[/dim] "
+                + ("[green]PASS[/green]" if r.passed else f"[red]FAIL[/red] {r.detail}")
+            ),
+        )
+        _render("Golden dialogue suite (live LLM)", report)
+        if not wanted:  # thresholds only make sense on the full set
+            ok &= golden_suite_ok(report)
+
+    return 0 if ok else 1
 
 
 def _introspect(database: str | None, output: str) -> int:
