@@ -19,6 +19,7 @@ VIZ_TYPE = {
 }
 
 ROW_HEIGHT_UNITS = 12  # layout_hint.h (1..12) -> superset grid height units
+GRID_WIDTH = 12  # superset dashboard grid is 12 columns wide
 
 
 def _adhoc_metric(measure: Measure, chart_id: str, index: int, agg: str = "SUM") -> dict:
@@ -66,23 +67,49 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
     }
 
 
+def _pack_rows(
+    placed: list[tuple[ChartSpec, int]],
+) -> list[list[tuple[ChartSpec, int]]]:
+    """Pack charts into physical rows of at most 12 columns.
+
+    layout_hint.row is an ordering/grouping hint (a new hint-row starts a new physical
+    row); within a hint-row, charts wrap to a new physical row once their widths would
+    exceed the 12-column grid, so wide charts never overflow. (layout_hint.w is already
+    validated to 1..12 by the IR, so no clamping is needed here.)
+    """
+    ordered = sorted(enumerate(placed), key=lambda item: (item[1][0].layout_hint.row, item[0]))
+    rows: list[list[tuple[ChartSpec, int]]] = []
+    current: list[tuple[ChartSpec, int]] = []
+    used = 0
+    last_hint_row: int | None = None
+    for _, (chart, slice_id) in ordered:
+        width = chart.layout_hint.w
+        hint_row = chart.layout_hint.row
+        starts_group = last_hint_row is not None and hint_row != last_hint_row
+        if current and (starts_group or used + width > GRID_WIDTH):
+            rows.append(current)
+            current, used = [], 0
+        current.append((chart, slice_id))
+        used += width
+        last_hint_row = hint_row
+    if current:
+        rows.append(current)
+    return rows
+
+
 def build_position_json(spec: DashboardSpec, placed: list[tuple[ChartSpec, int]]) -> dict:
-    """12-column grid from layout_hints: charts grouped into ROWs by layout_hint.row."""
+    """12-column grid from layout_hints: charts packed into ROWs (overflow wraps)."""
     position: dict = {
         "DASHBOARD_VERSION_KEY": "v2",
         "ROOT_ID": {"type": "ROOT", "id": "ROOT_ID", "children": ["GRID_ID"]},
         "HEADER_ID": {"type": "HEADER", "id": "HEADER_ID", "meta": {"text": spec.title}},
         "GRID_ID": {"type": "GRID", "id": "GRID_ID", "children": [], "parents": ["ROOT_ID"]},
     }
-    by_row: dict[int, list[tuple[ChartSpec, int]]] = {}
-    for chart, slice_id in placed:
-        by_row.setdefault(chart.layout_hint.row, []).append((chart, slice_id))
-
-    for row_no in sorted(by_row):
-        row_key = f"ROW-auto_bi_{row_no}"
+    for row_index, row_charts in enumerate(_pack_rows(placed)):
+        row_key = f"ROW-auto_bi_{row_index}"
         position["GRID_ID"]["children"].append(row_key)
         row_children: list[str] = []
-        for chart, slice_id in by_row[row_no]:
+        for chart, slice_id in row_charts:
             chart_key = f"CHART-auto_bi_{chart.id}"
             row_children.append(chart_key)
             position[chart_key] = {

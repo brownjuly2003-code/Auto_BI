@@ -172,6 +172,39 @@ def test_position_json_grid() -> None:
     assert kpi["id"] in position["ROW-auto_bi_0"]["children"]
 
 
+def _bar(cid: str, w: int, row: int) -> ChartSpec:
+    return ChartSpec(
+        id=cid,
+        title=cid,
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["store_id"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        ),
+        layout_hint=LayoutHint(w=w, h=4, row=row),
+    )
+
+
+def test_position_json_wraps_on_overflow() -> None:
+    # three 6-wide charts in one hint-row: 6+6=12 fit, the third wraps to a new row
+    charts = [_bar("a", 6, 0), _bar("b", 6, 0), _bar("c", 6, 0)]
+    pos = build_position_json(make_spec(), [(c, 200 + i) for i, c in enumerate(charts)])
+    rows = pos["GRID_ID"]["children"]
+    assert rows == ["ROW-auto_bi_0", "ROW-auto_bi_1"]
+    assert pos["ROW-auto_bi_0"]["children"] == ["CHART-auto_bi_a", "CHART-auto_bi_b"]
+    assert pos["ROW-auto_bi_1"]["children"] == ["CHART-auto_bi_c"]
+
+
+def test_position_json_distinct_hint_rows_split() -> None:
+    # different layout_hint.row values always start a new physical row, even when narrow
+    charts = [_bar("a", 4, 0), _bar("b", 4, 2)]
+    pos = build_position_json(make_spec(), [(c, 300 + i) for i, c in enumerate(charts)])
+    assert pos["GRID_ID"]["children"] == ["ROW-auto_bi_0", "ROW-auto_bi_1"]
+    assert pos["ROW-auto_bi_0"]["children"] == ["CHART-auto_bi_a"]
+    assert pos["ROW-auto_bi_1"]["children"] == ["CHART-auto_bi_b"]
+
+
 # --- adapter flow ------------------------------------------------------------
 
 
