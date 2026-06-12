@@ -28,6 +28,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Skip live time-grain profiling (no DWH connection)",
     )
 
+    serve = sub.add_parser("serve", help="HTTP API for the web UI (FastAPI + uvicorn)")
+    serve.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8200)
+
     ev = sub.add_parser("eval", help="Run the eval suites (advisor: offline; golden: live LLM)")
     ev.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
     ev.add_argument("--suite", choices=["advisor", "golden", "all"], default="all")
@@ -39,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         return _build(args.description, args.model_path)
     if args.command == "chat":
         return _chat(args.model_path)
+    if args.command == "serve":
+        return _serve(args.model_path, args.host, args.port)
     if args.command == "introspect":
         return _introspect(args.database, args.output)
     if args.command == "gaps":
@@ -213,6 +220,67 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
         except Exception as exc:  # session must not kill the REPL
             console.print(f"[red]Ошибка: {exc}[/red]")
             store.set_session_status(session_id, "failed")
+
+
+def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover — wiring only
+    from pathlib import Path
+
+    import uvicorn
+
+    from auto_bi.adapters.base import DWHConfig
+    from auto_bi.adapters.superset.adapter import SupersetAdapter
+    from auto_bi.adapters.superset.client import SupersetClient
+    from auto_bi.advisor.core import Advisor
+    from auto_bi.agent.pipeline import compile_and_build
+    from auto_bi.agent.sql_guard import LiveSQLValidator
+    from auto_bi.api import create_app
+    from auto_bi.config import get_settings
+    from auto_bi.introspect.clickhouse import make_run_query
+    from auto_bi.llm.gracekelly import GraceKellyClient
+    from auto_bi.semantic.model import SemanticModel
+    from auto_bi.store import Store
+
+    if not Path(model_path).exists():
+        print(f"Semantic model not found: {model_path}")
+        print("Generate the draft first: auto_bi introspect --output " + model_path)
+        return 2
+
+    settings = get_settings()
+    model = SemanticModel.load(model_path)
+    run_query = make_run_query(settings)
+    store = Store(settings.store_path)
+    adapter = SupersetAdapter(
+        SupersetClient(settings.superset_url, settings.superset_user, settings.superset_password),
+        DWHConfig(
+            host=settings.ch_host_from_bi or settings.ch_host,
+            port=settings.ch_port_from_bi or settings.ch_port,
+            database=settings.ch_database,
+            user=settings.ch_user,
+            password=settings.ch_password,
+        ),
+    )
+
+    def builder(spec, log, session_id):
+        return compile_and_build(
+            spec,
+            model,
+            LiveSQLValidator(run_query),
+            adapter,
+            log,
+            store=store,
+            session_id=session_id,
+        )
+
+    app = create_app(
+        model=model,
+        llm=GraceKellyClient(settings, store=store),
+        advisor=Advisor(model, run_query),
+        store=store,
+        builder=builder,
+        include_samples=settings.send_samples,
+    )
+    uvicorn.run(app, host=host, port=port)
+    return 0
 
 
 def _render_turn(console, turn) -> None:  # pragma: no cover — presentation only
