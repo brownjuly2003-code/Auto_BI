@@ -2,7 +2,7 @@
 
 Таблиц в модели: 3 — marts.branch_pnl, marts.customer_360, marts.returns_velocity
 
-Findings: 1 critical / 8 warn / 3 info
+Findings: 1 critical / 14 warn / 3 info
 
 ## critical
 - **no_relationships**: ни одной связи между таблицами не обнаружено
@@ -15,6 +15,18 @@ Findings: 1 critical / 8 warn / 3 info
   - Поле есть в схеме, но данных нет: фильтры и разрезы по нему пусты.
 - **column_all_null**: `marts.customer_360.pii_source` — колонка целиком NULL — источник не наполняет её
   - Поле есть в схеме, но данных нет: фильтры и разрезы по нему пусты.
+- **column_constant**: `marts.customer_360.branch` — колонка содержит единственное значение
+  - Разрез/фильтр по ней вырожден; в чартах поле выглядит пустым или бессмысленным.
+- **column_constant**: `marts.customer_360.email` — колонка содержит единственное значение
+  - Разрез/фильтр по ней вырожден; в чартах поле выглядит пустым или бессмысленным.
+- **column_constant**: `marts.customer_360.first_name` — колонка содержит единственное значение
+  - Разрез/фильтр по ней вырожден; в чартах поле выглядит пустым или бессмысленным.
+- **column_constant**: `marts.customer_360.last_name` — колонка содержит единственное значение
+  - Разрез/фильтр по ней вырожден; в чартах поле выглядит пустым или бессмысленным.
+- **column_constant**: `marts.customer_360.loyalty_segment` — колонка содержит единственное значение
+  - Разрез/фильтр по ней вырожден; в чартах поле выглядит пустым или бессмысленным.
+- **column_constant**: `marts.returns_velocity.channel` — колонка содержит единственное значение
+  - Разрез/фильтр по ней вырожден; в чартах поле выглядит пустым или бессмысленным.
 - **preaggregated_time_grain**: `marts.branch_pnl.month` — временная колонка агрегирована до «month»
   - Дневная динамика и нестандартные периоды по этой таблице невозможны.
 - **preaggregated_time_grain**: `marts.returns_velocity.week` — временная колонка агрегирована до «week»
@@ -36,3 +48,9 @@ Findings: 1 critical / 8 warn / 3 info
 - `marts.customer_360.last_visit_at` (column_all_null): колонка целиком NULL — источник не наполняет её
 - `marts.customer_360.loyalty_source` (column_all_null): колонка целиком NULL — источник не наполняет её
 - `marts.customer_360.pii_source` (column_all_null): колонка целиком NULL — источник не наполняет её
+- `marts.customer_360.branch` (column_constant): колонка содержит единственное значение
+- `marts.customer_360.email` (column_constant): колонка содержит единственное значение
+- `marts.customer_360.first_name` (column_constant): колонка содержит единственное значение
+- `marts.customer_360.last_name` (column_constant): колонка содержит единственное значение
+- `marts.customer_360.loyalty_segment` (column_constant): колонка содержит единственное значение
+- `marts.returns_velocity.channel` (column_constant): колонка содержит единственное значение

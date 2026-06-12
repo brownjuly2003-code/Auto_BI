@@ -159,7 +159,8 @@ def _check_degenerate_columns(model: SemanticModel, findings: list[GapFinding]) 
         if table.physical is None or table.physical.rows == 0:
             continue
         for col in table.columns:
-            if table.physical.cardinality.get(col.name) == 0:
+            uniq = table.physical.cardinality.get(col.name)
+            if uniq == 0:
                 findings.append(
                     GapFinding(
                         code="column_all_null",
@@ -168,6 +169,21 @@ def _check_degenerate_columns(model: SemanticModel, findings: list[GapFinding]) 
                         column=col.name,
                         title="колонка целиком NULL — источник не наполняет её",
                         detail="Поле есть в схеме, но данных нет: фильтры и разрезы по нему пусты.",
+                        dm_change_request=True,
+                    )
+                )
+            elif uniq == 1 and table.physical.rows > 1:
+                findings.append(
+                    GapFinding(
+                        code="column_constant",
+                        severity=GapSeverity.WARN,
+                        table=table.name,
+                        column=col.name,
+                        title="колонка содержит единственное значение",
+                        detail=(
+                            "Разрез/фильтр по ней вырожден; в чартах поле выглядит "
+                            "пустым или бессмысленным."
+                        ),
                         dm_change_request=True,
                     )
                 )

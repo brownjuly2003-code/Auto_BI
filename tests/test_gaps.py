@@ -163,12 +163,12 @@ def test_all_null_time_column_is_reported_not_misclassified() -> None:
     assert "no_fine_time_grain" not in {f.code for f in report.findings}  # first_order_dt is fine
 
 
-def test_zero_cardinality_dimension_is_reported() -> None:
+def test_zero_and_single_cardinality_dimensions_are_reported() -> None:
     physical = Physical(
         engine="clickhouse",
         table_engine="MergeTree",
         rows=1000,
-        cardinality={"pii_source": 0, "branch": 5},
+        cardinality={"pii_source": 0, "first_name": 1, "branch": 5},
     )
     model = SemanticModel(
         tables=[
@@ -178,6 +178,7 @@ def test_zero_cardinality_dimension_is_reported() -> None:
                 columns=[
                     _column("branch", ColumnRole.DIMENSION),
                     _column("pii_source", ColumnRole.DIMENSION),
+                    _column("first_name", ColumnRole.DIMENSION),
                 ],
                 physical=physical,
             )
@@ -185,7 +186,9 @@ def test_zero_cardinality_dimension_is_reported() -> None:
     )
     report = find_gaps(model, run_query=None)
     null_cols = [f.column for f in report.findings if f.code == "column_all_null"]
+    constant_cols = [f.column for f in report.findings if f.code == "column_constant"]
     assert null_cols == ["pii_source"]
+    assert constant_cols == ["first_name"]  # branch (uniq=5) is healthy
 
 
 def test_severity_ordering_and_counts() -> None:

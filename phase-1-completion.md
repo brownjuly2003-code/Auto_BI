@@ -13,7 +13,7 @@
 - [x] 1.12 Reasoning-политика — `77e3149`; `llm/policy.py`, unit-тесты флагов
 - [x] 1.11 Eval-сьют — `9669e56`; advisor 9/9 (6 подсаженных анти-паттернов + 3 clean), 15 golden, `auto_bi eval`
 - [x] Exit criteria PLAN.md: advisor 9/9 ✓; golden — clear 9/9 (0 лишних вопросов), ambiguous 3/3, infeasible 3/3 (фейлы прогонов = инфра-флейки GraceKelly, PASS на ретрае) ✓; диалоговый кейс на демо-DM: анти-паттерн → вердикт → правка → чистый spec → дашборд `/superset/dashboard/2/` ✓ (скриншот)
-- [ ] 1.10 Реальный DWH — РАЗБЛОКИРОВАНО (2026-06-12): DWH = DV2/X5 из DE_project, решения приняты (срез 10–15M; DM «как есть» → gaps → достройка). Полный runbook: `docs/plans/2026-06-12-1.10-real-dwh-x5-runbook.md`. С ним закрывается «реальный кейс по своему DM» и объявляется S6
+- [x] 1.10 Реальный DWH — ЗАКРЫТО (2026-06-12, Fable): срез X5 15.05M line items / 2.6M заказов загружен в CH стенда (БД `rv` 60 таблиц + BV-материализация + 3 марта DE_project в `marts`), auto_bi_ro получил GRANT; интроспекция `marts` → `semantic/model_x5.yaml` (по пути исправлены 2 бага интроспектора на Nullable(Nothing)); `auto_bi gaps` (новая команда) → `docs/gaps_report_marts_x5.md` (18 findings, 10 кандидатов в dm_change_request); живой кейс: «Обзор бизнеса по филиалам» → 0 лишних вопросов → 4 advisor-вердикта с реальным EXPLAIN-evidence → дашборд `/superset/dashboard/3/` собран и проверен скриншотом. Демо-`dm` не тронута (контрольные counts сошлись). Runbook исполнен: `docs/plans/2026-06-12-1.10-real-dwh-x5-runbook.md`
 
 ## Done When
 - pytest зелёный, ruff/black clean, контракт-тесты против живого Superset на 9 viz.
