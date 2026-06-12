@@ -4,7 +4,15 @@
 
 ## Статус
 
-**Phase 0 не начата** (docs-only с 2026-06-11; стратегия зафиксирована в тот же день). Перед работой свериться с PLAN.md и обновить этот блок по завершении фазы/вехи.
+**Phase 0 ЗАВЕРШЕНА и верифицирована** (2026-06-11, ветка `phase-0/vertical-slice`). Exit criteria проверены реальными прогонами: стенд на Mac (`~/auto_bi_stand`, compose: Superset 4.1.2 + CH 24.8, демо-DM 20M строк), интроспекция → `semantic/model.yaml` закоммичен, 4 contract-теста form_data прошли против живого Superset, e2e `auto_bi build "Обзор продаж: …"` собрал дашборд из 3 чартов (`/superset/dashboard/1/`), GraceKelly-вызовы в `logs/llm_calls.jsonl`. Доступ к стенду с Windows — SSH-туннель `ssh -N -L 8123:localhost:8123 -L 8088:localhost:8088 deproject-mac`; Docker ТОЛЬКО на Mac.
+
+Известное ограничение Phase 0 (by design): джойнов в IR нет — запросы с полями из смежных таблиц («топ городов» при city в dm.stores) отклоняются валидацией; промпт предупреждает LLM. Снимается в Phase 1/2 по PLAN.
+
+**S6 ЗАКРЫТ** (2026-06-12, решение пользователя): внешнее ревью заменено аудитом Fable (`fable_audit.md`), все 8 findings исправлены и верифицированы (см. ниже). **Следующий шаг: Phase 1** — свериться с PLAN.md. Внимание: задачи 1.4–1.7 (GROUNDING/CLARIFY/PROPOSE_SPEC, eval) — промпт-инжиниринг → стоппер **S2**: не начинать на Opus в `/auto`, нужен Fable или ручная сессия. Push ветки невозможен — у репозитория нет remote (локальный-only).
+
+> 2026-06-12: `/cxkm` по диффу `main...HEAD` запущен — оба внешних ревьюера недоступны (CX `codex app-server exited unexpectedly`; KM/mco kimi `LLM not set` — провайдер не сконфигурирован). Postflight локально зелёный: `ruff` clean, `pytest` 55 passed / 4 deselected (live-тесты гейтятся стендом). S6-ревью НЕ пройдено → Phase 1 не начинать. Re-run: `codex-prompt-phase0-review.md` (root, untracked) + готовые `.tmp/diff.patch`, `.tmp/km-prompt.md`. Hygiene: `.gitignore` теперь покрывает `.env.*` (коммит `5836695`).
+
+> 2026-06-12: внешнее ревью Phase 0 проведено локальной моделью (Fable) → 8 findings в `fable_audit.md` (3×P2 + 5×P3). **Все закрыты в коде той же сессией** (по явному запросу пользователя): F1 SQL-инъекция через `measure.label` в form_data (экранирование), F2 `order_by` по мере → невалидный CH-SQL (маппинг на алиас + `measure_alias` в `ir/spec.py`), F3 мёртвый `AUTO_BI_SEND_SAMPLES` (проброшен в `render_model`, ARCHITECTURE §4 уточнён), + P3: пустой `IN`, connect-retries клиентов, ранний выход repair-петель, уникальность имени dataset, defensive `validate_spec` в pipeline. `ruff`/`black` clean, `pytest` **65 passed / 4 deselected**. Закоммичено в ветку: `f7a6780`. **Live-смоук P2 против работающего CH 24.8 стенда (Mac) пройден**: F2-fixed `ORDER BY "sum_revenue"` → 5 строк rc=0; F2-buggy контроль `ORDER BY "revenue"` → `Code 215 NOT_AN_AGGREGATE` (баг подтверждён, фикс снимает); F1 escaped-label → SUM факта (236e9), не `system.numbers` (инъекции нет). **S6 по-прежнему открыт** — внешнее CX/KM-ревью не пройдено; Phase 1 не начинать.
 
 ## Скоуп (решение 2026-06-11)
 
@@ -23,7 +31,7 @@ RU-рынок. **v1 = ClickHouse (DM) + Superset (BI)**; v2 = Greengage/Greenplu
 
 ## LLM
 
-GraceKelly (локальный сервис, должен быть запущен): `POST http://127.0.0.1:8011/orchestrate`
+GraceKelly (локальный сервис, должен быть запущен): `POST http://127.0.0.1:8011/api/v1/orchestrate`
 `{"prompt": ..., "model": "claude-sonnet-4-6", "reasoning": true, "decompose": false, "session_id": ..., "metadata": {"app": "auto_bi"}}`
 - `prompt` ≤ 40 000 символов → context selection обязателен на больших DM.
 - Text-in/text-out: структурированный вывод через JSON-блок → pydantic → repair loop.

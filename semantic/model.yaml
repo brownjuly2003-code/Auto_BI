@@ -1,0 +1,208 @@
+tables:
+- name: dm.products
+  description: Справочник товаров
+  grain:
+  - id
+  columns:
+  - name: id
+    type: UInt32
+    role: dimension
+    description: ID товара
+  - name: name
+    type: String
+    role: dimension
+    description: Название товара
+  - name: category
+    type: LowCardinality(String)
+    role: dimension
+    description: Категория товара
+    top_values:
+    - Заморозка
+    - Алкоголь
+    - Кондитерские изделия
+    - Мясо и птица
+    - Молочные продукты
+    - Хлеб и выпечка
+    - Рыба
+    - Детские товары
+    - Бытовая химия
+    - Бакалея
+    - Овощи и фрукты
+    - Напитки
+  - name: brand
+    type: LowCardinality(String)
+    role: dimension
+    description: Бренд
+    top_values:
+    - Бренд 39
+    - Бренд 13
+    - Бренд 28
+    - Бренд 22
+    - Бренд 26
+    - Бренд 30
+    - Бренд 1
+    - Бренд 31
+    - Бренд 9
+    - Бренд 23
+    - Бренд 40
+    - Бренд 12
+    - Бренд 4
+    - Бренд 2
+    - Бренд 37
+    - Бренд 15
+    - Бренд 33
+    - Бренд 21
+    - Бренд 32
+    - Бренд 35
+  - name: price
+    type: Decimal(18, 2)
+    role: measure
+    description: Базовая цена, руб
+    agg: sum
+  physical:
+    engine: clickhouse
+    table_engine: MergeTree
+    sorting_key:
+    - id
+    rows: 2000
+    bytes: 29446
+    cardinality:
+      id: 2000
+      name: 2000
+      category: 12
+      brand: 40
+- name: dm.sales_daily
+  description: 'Дневные продажи по магазинам и товарам (грейн: date, store_id, product_id)'
+  grain:
+  - date
+  - store_id
+  - product_id
+  columns:
+  - name: date
+    type: Date
+    role: time
+    description: День продажи
+  - name: store_id
+    type: UInt32
+    role: dimension
+    description: ID магазина (dm.stores.id)
+    fk: dm.stores.id
+  - name: product_id
+    type: UInt32
+    role: dimension
+    description: ID товара (dm.products.id)
+    fk: dm.products.id
+  - name: manager_id
+    type: UInt32
+    role: dimension
+    description: ID менеджера смены (высокая кардинальность, НЕ в ключе сортировки — анти-паттерн-кейс для advisor)
+  - name: revenue
+    type: Decimal(18, 2)
+    role: measure
+    description: Выручка, руб
+    agg: sum
+  - name: orders
+    type: UInt32
+    role: measure
+    description: Число заказов
+    agg: sum
+  - name: items
+    type: UInt32
+    role: measure
+    description: Число позиций
+    agg: sum
+  physical:
+    engine: clickhouse
+    table_engine: MergeTree
+    sorting_key:
+    - date
+    - store_id
+    - product_id
+    partition_key: toYYYYMM(date)
+    rows: 20000000
+    bytes: 324194715
+    cardinality:
+      store_id: 4200
+      product_id: 2000
+      manager_id: 16825
+- name: dm.stores
+  description: Справочник магазинов
+  grain:
+  - id
+  columns:
+  - name: id
+    type: UInt32
+    role: dimension
+    description: ID магазина
+  - name: name
+    type: String
+    role: dimension
+    description: Название магазина
+  - name: city
+    type: LowCardinality(String)
+    role: dimension
+    description: Город
+    top_values:
+    - Самара
+    - Пермь
+    - Ижевск
+    - Омск
+    - Нижний Новгород
+    - Саратов
+    - Уфа
+    - Краснодар
+    - Волгоград
+    - Москва
+    - Челябинск
+    - Новосибирск
+    - Тольятти
+    - Красноярск
+    - Воронеж
+    - Ростов-на-Дону
+    - Тюмень
+    - Казань
+    - Санкт-Петербург
+    - Екатеринбург
+  - name: region
+    type: LowCardinality(String)
+    role: dimension
+    description: Регион (федеральный округ)
+    top_values:
+    - ДФО
+    - СЗФО
+    - ПФО
+    - УФО
+    - ЮФО
+    - СФО
+    - ЦФО
+    - СКФО
+  - name: format
+    type: LowCardinality(String)
+    role: dimension
+    description: 'Формат: гипермаркет / супермаркет / магазин у дома'
+    top_values:
+    - магазин у дома
+    - супермаркет
+    - гипермаркет
+  - name: opened_date
+    type: Date
+    role: time
+    description: Дата открытия
+  physical:
+    engine: clickhouse
+    table_engine: MergeTree
+    sorting_key:
+    - id
+    rows: 4200
+    bytes: 58206
+    cardinality:
+      id: 4200
+      name: 4203
+      city: 20
+      region: 8
+      format: 3
+joins:
+- left: dm.sales_daily.store_id
+  right: dm.stores.id
+- left: dm.sales_daily.product_id
+  right: dm.products.id

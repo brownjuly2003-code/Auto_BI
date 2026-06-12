@@ -1,0 +1,56 @@
+# Local stand: Superset (pinned) + ClickHouse with synthetic demo-DM.
+# Runs on the Mac (deproject-mac) — do NOT start docker on the Windows machine.
+#   docker compose up -d
+# First start generates the demo data (~100M fact rows by default; override
+# DEMO_FACT_ROWS for a lighter stand, e.g. DEMO_FACT_ROWS=10000000).
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: auto_bi_clickhouse
+    ports:
+      - "8123:8123"   # HTTP (clickhouse-connect); native 9000 is not published —
+                      # it clashes with other stacks (MinIO) and nothing external needs it
+    environment:
+      CLICKHOUSE_DB: dm
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: ${CH_ADMIN_PASSWORD:-admin_local_only}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      DEMO_FACT_ROWS: ${DEMO_FACT_ROWS:-100000000}
+      AUTO_BI_RO_PASSWORD: ${AUTO_BI_CH_PASSWORD:-change_me}
+    volumes:
+      - ./docker/clickhouse/initdb:/docker-entrypoint-initdb.d:ro
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "admin", "--password", "${CH_ADMIN_PASSWORD:-admin_local_only}", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  superset:
+    build: ./docker/superset
+    container_name: auto_bi_superset
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-dev_secret_local_only}
+      ADMIN_USERNAME: ${AUTO_BI_SUPERSET_USER:-admin}
+      ADMIN_PASSWORD: ${AUTO_BI_SUPERSET_PASSWORD:-change_me}
+    volumes:
+      - superset_home:/app/superset_home
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+volumes:
+  clickhouse_data:
+  superset_home:
