@@ -81,6 +81,7 @@ class GraceKellyClient:
         self._http = http or httpx.Client(
             base_url=settings.gracekelly_url,
             timeout=httpx.Timeout(300.0, connect=10.0),
+            transport=httpx.HTTPTransport(retries=2),  # transient connect failures only
         )
         self._log_path = Path(log_path)
 
@@ -94,6 +95,7 @@ class GraceKellyClient:
     ) -> T:
         current = prompt
         last_error = ""
+        previous_answer: str | None = None
         for attempt in range(1 + MAX_REPAIRS):
             answer = self._call(current, reasoning=reasoning, session_id=session_id)
             try:
@@ -101,6 +103,10 @@ class GraceKellyClient:
             except (ValueError, ValidationError) as exc:
                 last_error = str(exc)
                 logger.warning("structured output invalid (attempt %d): %s", attempt + 1, exc)
+                if answer == previous_answer:  # repair produced the same broken output
+                    logger.warning("structured output unchanged after repair; aborting early")
+                    break
+                previous_answer = answer
                 current = REPAIR_PROMPT.format(error=last_error, previous=answer[:8000])
         raise LLMError(f"structured output failed after {MAX_REPAIRS} repairs: {last_error}")
 

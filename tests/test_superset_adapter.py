@@ -107,6 +107,23 @@ def test_form_data_big_number() -> None:
     assert "metrics" not in fd
 
 
+def test_form_data_escapes_malicious_label() -> None:
+    # an LLM-controlled label must not break out of SUM("...") and inject SQL (F1)
+    evil = Measure(column="revenue", agg=Aggregation.SUM, label='x") FROM system.numbers --')
+    chart = ChartSpec(
+        id="evil",
+        title="bad",
+        viz=Viz.BIG_NUMBER,
+        query=ChartQuery(table="dm.sales_daily", measures=[evil]),
+    )
+    fd = build_form_data(chart, dataset_id=1)
+    expr = fd["metric"]["sqlExpression"]
+    # the inner quote is doubled (escaped), so the whole label stays one quoted identifier
+    assert expr == 'MAX("x"") FROM system.numbers --")'
+    # display label keeps the raw text; only the SQL identifier is escaped
+    assert fd["metric"]["label"] == 'x") FROM system.numbers --'
+
+
 def test_form_data_bar_extra_dims_go_to_groupby() -> None:
     chart = ChartSpec(
         id="b",
@@ -180,6 +197,16 @@ def test_build_full_flow() -> None:
     assert {b["dashboards"][0] for _, b in link_puts} == {dashboard.id}
     assert chart_ids == {int(p.rsplit("/", 1)[1]) for p, _ in link_puts}
     assert dashboard.url == f"/superset/dashboard/{dashboard.id}/"
+
+
+def test_dataset_names_unique_even_when_slugs_collide() -> None:
+    from auto_bi.adapters.superset.adapter import _dataset_name, _slug
+
+    # two chart ids that slugify to the same string still get distinct dataset names (F7)
+    a = _dataset_name("Обзор", "chart-a")
+    b = _dataset_name("Обзор", "chart!a")  # same slug "chart_a", different raw id
+    assert _slug("chart-a") == _slug("chart!a")
+    assert a != b
 
 
 def test_assemble_rejects_ref_mismatch() -> None:

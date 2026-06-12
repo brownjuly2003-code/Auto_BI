@@ -80,11 +80,27 @@ def test_complete_repair_loop(tmp_path) -> None:
 
 
 def test_complete_gives_up_after_repairs(tmp_path) -> None:
+    calls = []
+
     def responder(request: httpx.Request) -> httpx.Response:
-        return gk_response("это вообще не JSON")
+        calls.append(1)
+        return gk_response(f"это вообще не JSON {len(calls)}")  # distinct each time
 
     with pytest.raises(LLMError, match="after 3 repairs"):
         make_client(responder, tmp_path).complete("сделай", Answer)
+    assert len(calls) == 4  # first try + 3 repairs
+
+
+def test_complete_aborts_on_identical_answer(tmp_path) -> None:
+    calls = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return gk_response("это вообще не JSON")  # same broken answer every time
+
+    with pytest.raises(LLMError, match="after 3 repairs"):
+        make_client(responder, tmp_path).complete("сделай", Answer)
+    assert len(calls) == 2  # stop repairing once the answer repeats (F7)
 
 
 def test_failed_task_raises(tmp_path) -> None:

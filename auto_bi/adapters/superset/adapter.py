@@ -8,6 +8,7 @@ assemble_dashboard (position_json grid + chart linkage).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -32,6 +33,13 @@ DATABASE_NAME = "Auto_BI ClickHouse"
 
 def _slug(text: str, max_len: int = 40) -> str:
     return re.sub(r"\W+", "_", text.lower()).strip("_")[:max_len] or "dataset"
+
+
+def _dataset_name(title: str, chart_id: str) -> str:
+    """Readable, collision-free dataset name: slugs can truncate-collide, so a short
+    hash of the full chart_id (unique per spec) keeps two charts on distinct datasets."""
+    suffix = hashlib.sha1(chart_id.encode()).hexdigest()[:8]
+    return f"auto_bi__{_slug(title)}__{_slug(chart_id)}__{suffix}"
 
 
 class SupersetAdapter:
@@ -140,8 +148,6 @@ class SupersetAdapter:
         self.ensure_database()
         refs: list[ChartRef] = []
         for chart in spec.charts:
-            ds = self.ensure_dataset(
-                chart.query, name=f"auto_bi__{_slug(spec.title)}__{_slug(chart.id)}"
-            )
+            ds = self.ensure_dataset(chart.query, name=_dataset_name(spec.title, chart.id))
             refs.append(self.create_chart(chart, ds))
         return self.assemble_dashboard(spec, refs)

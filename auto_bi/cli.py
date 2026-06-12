@@ -61,6 +61,7 @@ def _build(description: str, model_path: str) -> int:
         llm=GraceKellyClient(settings),
         sql_validator=LiveSQLValidator(make_run_query(settings)),
         adapter=adapter,
+        include_samples=settings.send_samples,
     )
     print(f"\nДашборд готов: {settings.superset_url.rstrip('/')}{ref.url}")
     return 0

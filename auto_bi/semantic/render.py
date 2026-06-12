@@ -3,8 +3,8 @@
 from auto_bi.semantic.model import SemanticModel, Table
 
 
-def render_model(model: SemanticModel) -> str:
-    parts = [render_table(t) for t in model.tables]
+def render_model(model: SemanticModel, *, include_samples: bool = True) -> str:
+    parts = [render_table(t, include_samples=include_samples) for t in model.tables]
     if model.joins:
         joins = "\n".join(f"  {j.left} -> {j.right} ({j.type})" for j in model.joins)
         parts.append(f"Джойны:\n{joins}")
@@ -17,7 +17,7 @@ def render_model(model: SemanticModel) -> str:
     return "\n\n".join(parts)
 
 
-def render_table(table: Table) -> str:
+def render_table(table: Table, *, include_samples: bool = True) -> str:
     header = f"Таблица {table.name}"
     if table.description:
         header += f" — {table.description}"
@@ -35,7 +35,7 @@ def render_table(table: Table) -> str:
             col += f": {c.description}"
         if c.fk:
             col += f" [fk: {c.fk}]"
-        if c.top_values:
+        if c.top_values and include_samples:  # gated by AUTO_BI_SEND_SAMPLES (sensitive DMs)
             col += f" [значения: {', '.join(c.top_values[:10])}]"
         lines.append(col)
     return "\n".join(lines)

@@ -65,6 +65,23 @@ def test_order_by_measure_label_ok(demo_model) -> None:
     assert validate_spec(spec(ok), demo_model) == []
 
 
+def test_order_by_computed_alias_ok(demo_model) -> None:
+    # measure without a label: ordering by its computed alias <agg>_<col> is valid
+    ok = chart(
+        measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        order_by=[OrderBy(by="sum_revenue", dir="desc")],
+    )
+    assert validate_spec(spec(ok), demo_model) == []
+
+
+def test_empty_in_filter_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import FilterOp, QueryFilter
+
+    bad = chart(filters=[QueryFilter(column="store_id", op=FilterOp.IN, value=[])])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("empty value list" in e for e in errors)
+
+
 def test_big_number_shape(demo_model) -> None:
     bad = chart(viz=Viz.BIG_NUMBER)  # has a dimension
     errors = validate_spec(spec(bad), demo_model)

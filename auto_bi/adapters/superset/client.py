@@ -34,7 +34,11 @@ class SupersetClient:
     ) -> None:
         self._username = username
         self._password = password
-        self._http = http or httpx.Client(base_url=base_url, timeout=60.0)
+        self._http = http or httpx.Client(
+            base_url=base_url,
+            timeout=60.0,
+            transport=httpx.HTTPTransport(retries=2),  # transient connect failures only
+        )
         self._access_token: str | None = None
         self._csrf_token: str | None = None
 

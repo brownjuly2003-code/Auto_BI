@@ -4,7 +4,7 @@ Runs BEFORE any BI/SQL work. Unknown table/column -> error list for the repair l
 no silent fixes ever. Returns human-readable errors the LLM can act on.
 """
 
-from auto_bi.ir.spec import ChartSpec, DashboardSpec, Viz
+from auto_bi.ir.spec import ChartSpec, DashboardSpec, FilterOp, Viz, measure_alias
 from auto_bi.semantic.model import ColumnRole, SemanticModel, Table
 
 
@@ -48,10 +48,13 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
     for qf in chart.query.filters:
         if table.column(qf.column) is None:
             errors.append(f"{prefix}: filter references unknown column {qf.column!r}")
+        if qf.op == FilterOp.IN and isinstance(qf.value, list) and not qf.value:
+            errors.append(f"{prefix}: filter on {qf.column!r} uses IN with an empty value list")
 
     orderable = set(chart.query.dimensions)
     for m in chart.query.measures:
         orderable.add(m.column)
+        orderable.add(measure_alias(m))  # the SELECT alias SQL_GEN actually orders by
         if m.label:
             orderable.add(m.label)
     for ob in chart.query.order_by:

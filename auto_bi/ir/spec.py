@@ -44,6 +44,15 @@ class Measure(BaseModel):
     label: str = ""
 
 
+def measure_alias(measure: Measure) -> str:
+    """Canonical SELECT alias of a measure (label if set, else `<agg>_<column>`).
+
+    Single source of truth shared by SQL_GEN, the adapters, and validation so the
+    alias a chart is ordered/aggregated by always matches the column SQL_GEN emits.
+    """
+    return measure.label or f"{measure.agg.value}_{measure.column}"
+
+
 class OrderBy(BaseModel):
     by: str  # dimension column or measure label/column
     dir: str = Field(default="asc", pattern="^(asc|desc)$")

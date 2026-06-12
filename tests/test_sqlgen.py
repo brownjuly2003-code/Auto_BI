@@ -59,6 +59,38 @@ def test_filters_all_ops() -> None:
     assert "\"city\" <> 'Москва'" in sql
 
 
+def test_order_by_raw_measure_column_uses_alias() -> None:
+    # measure without a label: ordering by the raw column must resolve to the SELECT
+    # alias, never the bare column (which is not in GROUP BY -> ClickHouse error 215)
+    sql = generate_chart_sql(
+        make_query(
+            dimensions=["store_id"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],  # no label
+            order_by=[OrderBy(by="revenue", dir="desc")],
+        )
+    )
+    assert 'ORDER BY "sum_revenue" DESC' in sql
+    assert 'ORDER BY "revenue"' not in sql
+
+
+def test_order_by_computed_alias() -> None:
+    sql = generate_chart_sql(
+        make_query(
+            dimensions=["store_id"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            order_by=[OrderBy(by="sum_revenue", dir="desc")],
+        )
+    )
+    assert 'ORDER BY "sum_revenue" DESC' in sql
+
+
+def test_empty_in_filter_raises() -> None:
+    with pytest.raises(ValueError, match="no values"):
+        generate_chart_sql(
+            make_query(filters=[QueryFilter(column="store_id", op=FilterOp.IN, value=[])])
+        )
+
+
 def test_count_distinct() -> None:
     sql = generate_chart_sql(
         make_query(measures=[Measure(column="store_id", agg=Aggregation.COUNT_DISTINCT)])

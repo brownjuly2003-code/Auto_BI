@@ -12,6 +12,8 @@
 
 > 2026-06-12: `/cxkm` по диффу `main...HEAD` запущен — оба внешних ревьюера недоступны (CX `codex app-server exited unexpectedly`; KM/mco kimi `LLM not set` — провайдер не сконфигурирован). Postflight локально зелёный: `ruff` clean, `pytest` 55 passed / 4 deselected (live-тесты гейтятся стендом). S6-ревью НЕ пройдено → Phase 1 не начинать. Re-run: `codex-prompt-phase0-review.md` (root, untracked) + готовые `.tmp/diff.patch`, `.tmp/km-prompt.md`. Hygiene: `.gitignore` теперь покрывает `.env.*` (коммит `5836695`).
 
+> 2026-06-12: внешнее ревью Phase 0 проведено локальной моделью (Fable) → 8 findings в `fable_audit.md` (3×P2 + 5×P3). **Все закрыты в коде той же сессией** (по явному запросу пользователя): F1 SQL-инъекция через `measure.label` в form_data (экранирование), F2 `order_by` по мере → невалидный CH-SQL (маппинг на алиас + `measure_alias` в `ir/spec.py`), F3 мёртвый `AUTO_BI_SEND_SAMPLES` (проброшен в `render_model`, ARCHITECTURE §4 уточнён), + P3: пустой `IN`, connect-retries клиентов, ранний выход repair-петель, уникальность имени dataset, defensive `validate_spec` в pipeline. `ruff`/`black` clean, `pytest` **65 passed / 4 deselected**. Изменения только в ветке, не закоммичены (ждут решения пользователя). **S6 по-прежнему открыт** — внешнее ревью (CX/KM) не пройдено; Phase 1 не начинать.
+
 ## Скоуп (решение 2026-06-11)
 
 RU-рынок. **v1 = ClickHouse (DM) + Superset (BI)**; v2 = Greengage/Greenplum + DataLens (Public API). Power BI / Tableau / Metabase — вне скоупа. Универсальность держим в швах (IR, `BIAdapter`, rule pack per engine), имплементируем один путь. Демо-DM — на ClickHouse (docker).

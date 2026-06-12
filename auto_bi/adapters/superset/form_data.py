@@ -10,8 +10,7 @@ grouped rows: SUM over one row per group is the identity, MAX for big_number's
 single row likewise.
 """
 
-from auto_bi.agent.sqlgen import measure_alias
-from auto_bi.ir.spec import ChartSpec, DashboardSpec, Measure, Viz
+from auto_bi.ir.spec import ChartSpec, DashboardSpec, Measure, Viz, measure_alias
 
 VIZ_TYPE = {
     Viz.BIG_NUMBER: "big_number_total",
@@ -24,9 +23,13 @@ ROW_HEIGHT_UNITS = 12  # layout_hint.h (1..12) -> superset grid height units
 
 def _adhoc_metric(measure: Measure, chart_id: str, index: int, agg: str = "SUM") -> dict:
     alias = measure_alias(measure)
+    # alias is LLM-controlled (measure.label) -> escape it as a quoted identifier the
+    # same way SQL_GEN does (double the quote), so it cannot break out of SUM("...")
+    # and inject SQL. form_data is the second, un-guarded SQL path Superset executes.
+    quoted_alias = alias.replace('"', '""')
     return {
         "expressionType": "SQL",
-        "sqlExpression": f'{agg}("{alias}")',
+        "sqlExpression": f'{agg}("{quoted_alias}")',
         "label": alias,
         "optionName": f"metric_auto_bi_{chart_id}_{index}",
     }
