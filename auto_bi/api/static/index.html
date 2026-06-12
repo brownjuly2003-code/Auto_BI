@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auto_BI — агент дашбордов</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-name">Auto_BI</span>
+    <span class="brand-sub">текст → дашборд поверх DM</span>
+  </div>
+  <div class="topbar-right">
+    <label class="bi-select">Целевая BI
+      <select id="bi-target">
+        <option value="superset" selected>Superset</option>
+      </select>
+    </label>
+    <span id="session-chip" class="chip chip-idle">нет сессии</span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="chat-pane" aria-label="Диалог">
+    <div id="chat" class="chat"></div>
+    <form id="chat-form" class="chat-input">
+      <textarea id="chat-text" rows="2" required
+        placeholder="Опишите дашборд: «Обзор продаж: выручка по дням, топ магазинов…»"></textarea>
+      <button type="submit" class="btn btn-secondary" id="send-btn">Отправить</button>
+    </form>
+  </section>
+
+  <aside class="spec-pane" aria-label="Спецификация и сборка">
+    <h2 class="pane-title">Спецификация</h2>
+    <div id="spec-empty" class="empty">
+      Здесь появится превью дашборда: чарты, поля и вердикты advisor — до сборки.
+    </div>
+    <div id="spec" class="spec" hidden>
+      <div class="spec-head">
+        <span id="spec-title" class="spec-title"></span>
+        <span id="spec-count" class="spec-count"></span>
+      </div>
+      <div id="spec-filters" class="spec-filters" hidden></div>
+      <div id="charts" class="charts"></div>
+      <div id="verdicts" class="verdicts"></div>
+      <button id="approve-btn" class="btn btn-primary" type="button">Собрать дашборд</button>
+    </div>
+
+    <div id="build" class="build" hidden>
+      <h2 class="pane-title">Сборка</h2>
+      <ol id="build-log" class="build-log"></ol>
+      <p id="build-result" class="build-result" hidden></p>
+    </div>
+
+    <details id="dcr" class="dcr" hidden>
+      <summary>Заявки на изменение DM (<span id="dcr-count">0</span>)</summary>
+      <ul id="dcr-list" class="dcr-list"></ul>
+    </details>
+  </aside>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
