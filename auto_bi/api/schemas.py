@@ -32,6 +32,10 @@ class SessionState(BaseModel):
     dashboard_url: str = ""
 
 
+class DCRStatusUpdate(BaseModel):
+    status: str  # validated against dmcr.DCR_STATUSES in the handler
+
+
 class BuildEvent(BaseModel):
     kind: str  # log | done | error
     text: str = ""

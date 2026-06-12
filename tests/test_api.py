@@ -161,3 +161,40 @@ def test_approve_without_builder_is_503(demo_model) -> None:
     client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model, builder=None)
     sid = start(client)["session_id"]
     assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 503
+
+
+def test_dm_change_requests_lifecycle_over_http(demo_model, tmp_path) -> None:
+    store = Store(tmp_path / "dcr.sqlite")
+    sid = store.create_session("обзор продаж по дням")
+    req_id = store.add_dm_change_request(
+        sid,
+        table_name="dm.sales_daily",
+        rule="no_filter_on_large_fact",
+        severity="critical",
+        narrative="Запрос сканирует 100% таблицы — витрина не рассчитана на такой срез.",
+    )
+    client = make_client(ScriptedLLM([]), demo_model, store=store)
+
+    (row,) = client.get("/api/v1/dm-change-requests", params={"status": "open"}).json()
+    assert row["id"] == req_id
+    assert row["table_name"] == "dm.sales_daily"
+
+    detail = client.get(f"/api/v1/dm-change-requests/{req_id}").json()
+    assert "Заявка на изменение витрины: `dm.sales_daily`" in detail["markdown"]
+    assert "обзор продаж по дням" in detail["markdown"]  # session context joined in
+    assert "сканирует 100%" in detail["markdown"]
+
+    updated = client.patch(f"/api/v1/dm-change-requests/{req_id}", json={"status": "submitted"})
+    assert updated.json() == {"id": req_id, "status": "submitted"}
+    assert client.get("/api/v1/dm-change-requests", params={"status": "open"}).json() == []
+
+    # protocol errors
+    assert client.get("/api/v1/dm-change-requests/999").status_code == 404
+    bad = client.patch(f"/api/v1/dm-change-requests/{req_id}", json={"status": "wat"})
+    assert bad.status_code == 422
+    store.close()
+
+
+def test_dm_change_requests_without_store_is_503(demo_model) -> None:
+    client = make_client(ScriptedLLM([]), demo_model, store=None)
+    assert client.get("/api/v1/dm-change-requests").status_code == 503

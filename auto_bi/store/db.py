@@ -217,6 +217,15 @@ class Store:
             return self._rows("SELECT * FROM dm_change_requests ORDER BY id")
         return self._rows("SELECT * FROM dm_change_requests WHERE status = ? ORDER BY id", status)
 
+    def dm_change_request(self, request_id: int) -> dict[str, Any] | None:
+        """One DCR with its session context (what the user was trying to build)."""
+        rows = self._rows(
+            "SELECT r.*, s.request AS session_request FROM dm_change_requests r"
+            " LEFT JOIN sessions s ON s.id = r.session_id WHERE r.id = ?",
+            request_id,
+        )
+        return rows[0] if rows else None
+
     def set_dm_change_request_status(self, request_id: int, status: str) -> None:
         with self._lock, self._db:
             self._db.execute(

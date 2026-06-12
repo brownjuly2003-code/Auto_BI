@@ -28,12 +28,14 @@ from auto_bi.agent.machine import AgentPhase, AgentTurn
 from auto_bi.agent.propose import SpecValidationError
 from auto_bi.api.schemas import (
     BuildEvent,
+    DCRStatusUpdate,
     ReplyRequest,
     SessionState,
     StartSessionRequest,
     TurnResponse,
 )
 from auto_bi.api.sessions import ManagedSession, SessionManager, UnknownSession
+from auto_bi.dmcr import DCR_STATUSES, render_dm_change_request
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.llm.base import LLMClient, LLMError
 from auto_bi.semantic.model import SemanticModel
@@ -142,6 +144,34 @@ def create_app(
             build_status=managed.build_status,
             dashboard_url=managed.dashboard_url,
         )
+
+    def _store() -> Store:
+        if store is None:
+            raise HTTPException(status_code=503, detail="store is not configured")
+        return store
+
+    @app.get("/api/v1/dm-change-requests")
+    def list_dm_change_requests(status: str | None = None) -> list[dict]:
+        return _store().dm_change_requests(status)
+
+    @app.get("/api/v1/dm-change-requests/{request_id}")
+    def dm_change_request(request_id: int) -> dict:
+        row = _store().dm_change_request(request_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"unknown dm_change_request {request_id}")
+        return {**row, "markdown": render_dm_change_request(row)}
+
+    @app.patch("/api/v1/dm-change-requests/{request_id}")
+    def update_dm_change_request(request_id: int, body: DCRStatusUpdate) -> dict:
+        if body.status not in DCR_STATUSES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"status must be one of {DCR_STATUSES}, got {body.status!r}",
+            )
+        if _store().dm_change_request(request_id) is None:
+            raise HTTPException(status_code=404, detail=f"unknown dm_change_request {request_id}")
+        store.set_dm_change_request_status(request_id, body.status)
+        return {"id": request_id, "status": body.status}
 
     @app.get("/api/v1/sessions/{session_id}/events")
     def build_events(session_id: str) -> StreamingResponse:
