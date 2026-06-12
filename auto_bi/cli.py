@@ -205,7 +205,23 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
                         )
                         url = settings.superset_url.rstrip("/") + ref.url
                         console.print(f"\n[bold green]Дашборд готов:[/bold green] {url}")
-                        break
+                        # iterations (2.4): keep the session — a further edit patches the
+                        # built spec and re-enters APPROVE for a rebuild
+                        more = console.input(
+                            "\n[bold cyan]Вы[/bold cyan] [dim](правка словами = доработать / "
+                            "Enter = закончить)[/dim]: "
+                        ).strip()
+                        if not more or more.lower() in QUIT_WORDS:
+                            break
+                        try:
+                            turn = agent.reply(more)
+                        except (SpecValidationError, LLMError) as exc:
+                            console.print(
+                                f"[red]Правка не применена: {exc}[/red] "
+                                "[dim]Дашборд остаётся прежним.[/dim]"
+                            )
+                            break
+                        continue
                     try:
                         turn = agent.reply(answer)
                     except (SpecValidationError, LLMError) as exc:

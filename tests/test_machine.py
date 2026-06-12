@@ -303,3 +303,26 @@ def test_dm_change_request_not_duplicated_by_word_edits(demo_model, tmp_path) ->
     # the word edit re-ran the advisor, but the same (table, rule) is stored once
     assert len(store.dm_change_requests("open")) == 1
     store.close()
+
+
+def test_iteration_edit_after_build_reenters_approve(demo_model, tmp_path) -> None:
+    # task 2.4: APPROVED is not terminal — a word edit patches the built spec,
+    # the session returns to APPROVE and can be approved (rebuilt) again
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка")
+    llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, PATCHED_SPEC])
+    agent = AgentSession(demo_model, llm, store=store, session_id=sid)
+    agent.start("выручка по дням")
+    agent.approve()
+    assert agent.phase == AgentPhase.APPROVED
+
+    turn = agent.reply("переименуй дашборд")
+    assert turn.phase == AgentPhase.APPROVE
+    assert turn.spec.title == "Продажи (обновлено)"
+
+    spec = agent.approve()
+    assert spec.title == "Продажи (обновлено)"
+    # spec history is append-only: v1 approved, v2 proposed -> approved
+    statuses = [s["status"] for s in store.specs(sid)]
+    assert statuses == ["approved", "approved"]
+    store.close()

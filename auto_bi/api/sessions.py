@@ -42,15 +42,24 @@ class ManagedSession:
             self._events.append(event)
             self._events_cond.notify_all()
 
+    def reset_events(self) -> None:
+        """New build (iteration re-approve) = fresh buffer; the previous build's
+        stream already ended on its terminal event, late readers of the old list
+        keep their own reference."""
+        with self._events_cond:
+            self._events = []
+
     def stream_events(self, poll_seconds: float = 1.0) -> Iterator[BuildEvent]:
         """Replay buffered events, then follow live until a terminal event."""
+        with self._events_cond:
+            events = self._events  # pin THIS build's buffer: reset swaps the list object
         index = 0
         while True:
             with self._events_cond:
-                while index >= len(self._events):
+                while index >= len(events):
                     self._events_cond.wait(poll_seconds)
-                batch = self._events[index:]
-                index = len(self._events)
+                batch = events[index:]
+                index = len(events)
             for event in batch:
                 yield event
                 if event.kind in TERMINAL_EVENTS:

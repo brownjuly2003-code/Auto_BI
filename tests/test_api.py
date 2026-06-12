@@ -151,10 +151,9 @@ def test_protocol_errors(demo_model) -> None:
     # events before approve: nothing to stream
     assert client.get(f"/api/v1/sessions/{sid}/events").status_code == 409
     assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 202
-    # approve twice -> the machine has nothing to approve
+    # approve twice without an edit -> the machine has nothing to approve
+    # (reply after approve is NOT an error anymore — iterations, task 2.4)
     assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 409
-    # reply after approve -> no user turn expected
-    assert client.post(f"/api/v1/sessions/{sid}/reply", json={"text": "x"}).status_code == 409
 
 
 def test_approve_without_builder_is_503(demo_model) -> None:
@@ -198,3 +197,23 @@ def test_dm_change_requests_lifecycle_over_http(demo_model, tmp_path) -> None:
 def test_dm_change_requests_without_store_is_503(demo_model) -> None:
     client = make_client(ScriptedLLM([]), demo_model, store=None)
     assert client.get("/api/v1/dm-change-requests").status_code == 503
+
+
+def test_iteration_rebuild_over_http(demo_model) -> None:
+    # 2.4 over HTTP: build -> edit -> re-approve -> a FRESH event stream for build #2
+    client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, PATCHED_SPEC]), demo_model)
+    sid = start(client)["session_id"]
+
+    assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 202
+    first = collect_events(client, sid)
+    assert first[-1]["kind"] == "done"
+
+    turn = client.post(f"/api/v1/sessions/{sid}/reply", json={"text": "переименуй"}).json()
+    assert turn["phase"] == "approve"
+    assert turn["spec"]["title"] == "Продажи (обновлено)"
+
+    assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 202
+    second = collect_events(client, sid)
+    # the stream belongs to build #2 only: no replay of build #1's terminal event
+    assert [e["kind"] for e in second] == ["log", "log", "done"]
+    assert client.get(f"/api/v1/sessions/{sid}").json()["build_status"] == "built"

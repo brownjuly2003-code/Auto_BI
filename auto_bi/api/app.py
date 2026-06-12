@@ -114,6 +114,7 @@ def create_app(
                 spec = managed.agent.approve()
             except RuntimeError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from None
+            managed.reset_events()  # iteration re-approve: fresh stream for this build
             managed.build_status = "building"
 
         def _build() -> None:

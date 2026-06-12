@@ -100,12 +100,18 @@ class AgentSession:
         return self._ground_then_propose()
 
     def reply(self, text: str) -> AgentTurn:
-        """User's free-text turn: clarify answers in CLARIFY, word edits in APPROVE."""
+        """User's free-text turn: clarify answers in CLARIFY, word edits in APPROVE.
+
+        APPROVED also accepts edits (task 2.4, iterations): «добавь фильтр» after a
+        build patches the approved spec and returns the session to APPROVE — the
+        caller rebuilds on the next approve. Spec history stays in the store (a new
+        `proposed` row per edit), so iterating never rewrites what was built.
+        """
         self._record("user", text)
         if self.phase == AgentPhase.CLARIFY:
             self._clarifications.append(text)
             return self._ground_then_propose()
-        if self.phase == AgentPhase.APPROVE:
+        if self.phase in (AgentPhase.APPROVE, AgentPhase.APPROVED):
             assert self.spec is not None
             self.spec = patch_spec(
                 self._llm,
