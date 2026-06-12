@@ -44,6 +44,23 @@ class DCRStatusUpdate(BaseModel):
     status: str  # validated against dmcr.DCR_STATUSES in the handler
 
 
+class TableUpdate(BaseModel):
+    """Enrichment (task 2.7): table-level edits; only description is editable."""
+
+    description: str
+
+
+class ColumnUpdate(BaseModel):
+    """Enrichment (task 2.7): column edits; None = leave as is.
+
+    role/agg are validated against the model enums in the handler (422 on
+    unknown values; agg is only meaningful on measures — mirror of F9)."""
+
+    description: str | None = None
+    role: str | None = None
+    agg: str | None = None
+
+
 class BuildEvent(BaseModel):
     kind: str  # log | done | error
     text: str = ""

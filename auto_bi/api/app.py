@@ -31,17 +31,20 @@ from auto_bi.agent.propose import SpecValidationError
 from auto_bi.agent.seed import validate_seed
 from auto_bi.api.schemas import (
     BuildEvent,
+    ColumnUpdate,
     DCRStatusUpdate,
     ReplyRequest,
     SessionState,
     StartSessionRequest,
+    TableUpdate,
     TurnResponse,
 )
 from auto_bi.api.sessions import ManagedSession, SessionManager, UnknownSession
 from auto_bi.dmcr import DCR_STATUSES, render_dm_change_request
+from auto_bi.introspect.gaps import find_gaps
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.llm.base import LLMClient, LLMError
-from auto_bi.semantic.model import SemanticModel
+from auto_bi.semantic.model import Aggregation, ColumnRole, SemanticModel
 from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,7 @@ def create_app(
     store: Store | None = None,
     builder: Builder | None = None,
     include_samples: bool = True,
+    model_path: str | Path | None = None,  # enables enrichment writes (task 2.7)
 ) -> FastAPI:
     manager = SessionManager(
         model=model,
@@ -91,6 +95,85 @@ def create_app(
                 raise HTTPException(status_code=422, detail="; ".join(errors))
         managed, turn = manager.start(body.request, seed=body.seed)
         return _turn(managed, turn)
+
+    # --- enrichment (task 2.7): gaps -> inline edits -> commit model.yaml ----------
+    # one lock serializes model mutation + dump; agent sessions read the same object,
+    # so an enrichment edit becomes visible to the NEXT grounding call — by design
+    model_write_lock = threading.Lock()
+
+    @app.get("/api/v1/model/gaps")
+    def model_gaps() -> dict:
+        # offline checks only: live time-grain probes stay in `auto_bi gaps` (CLI)
+        return find_gaps(model, None).model_dump(mode="json")
+
+    def _model_path() -> Path:
+        if model_path is None:
+            raise HTTPException(
+                status_code=503, detail="model editing is not wired (no model_path)"
+            )
+        return Path(model_path)
+
+    def _get_table(table_name: str):
+        table = model.table(table_name)
+        if table is None:
+            raise HTTPException(status_code=404, detail=f"unknown table {table_name!r}")
+        return table
+
+    @app.patch("/api/v1/model/tables/{table_name}")
+    def update_table(table_name: str, body: TableUpdate) -> dict:
+        path = _model_path()
+        with model_write_lock:
+            table = _get_table(table_name)
+            table.description = body.description.strip()
+            model.dump(path)
+        return {"table": table_name, "description": table.description}
+
+    @app.patch("/api/v1/model/tables/{table_name}/columns/{column_name}")
+    def update_column(table_name: str, column_name: str, body: ColumnUpdate) -> dict:
+        path = _model_path()
+        with model_write_lock:
+            table = _get_table(table_name)
+            column = table.column(column_name)
+            if column is None:
+                raise HTTPException(
+                    status_code=404, detail=f"unknown column {table_name}.{column_name}"
+                )
+            role = column.role
+            if body.role is not None:
+                try:
+                    role = ColumnRole(body.role)
+                except ValueError:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"role must be one of {[r.value for r in ColumnRole]}",
+                    ) from None
+            agg = column.agg
+            if body.agg is not None:
+                try:
+                    agg = Aggregation(body.agg) if body.agg else None
+                except ValueError:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"agg must be one of {[a.value for a in Aggregation]} or empty",
+                    ) from None
+            if role != ColumnRole.MEASURE:
+                if body.agg:  # explicit agg on a non-measure is a contradiction (F9)
+                    raise HTTPException(
+                        status_code=422, detail="agg is only valid for role=measure"
+                    )
+                agg = None  # leaving the measure role drops the default aggregation
+            column.role = role
+            column.agg = agg
+            if body.description is not None:
+                column.description = body.description.strip()
+            model.dump(path)
+        return {
+            "table": table_name,
+            "column": column_name,
+            "description": column.description,
+            "role": column.role.value,
+            "agg": column.agg.value if column.agg else None,
+        }
 
     @app.get("/api/v1/model/fields")
     def model_fields() -> list[dict]:

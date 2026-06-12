@@ -32,8 +32,10 @@ def fake_builder(spec, log, session_id):
     return DashboardRef(id=7, title=spec.title, url="/superset/dashboard/7/")
 
 
-def make_client(llm, demo_model, *, store=None, builder=fake_builder) -> TestClient:
-    app = create_app(model=demo_model, llm=llm, store=store, builder=builder)
+def make_client(
+    llm, demo_model, *, store=None, builder=fake_builder, model_path=None
+) -> TestClient:
+    app = create_app(model=demo_model, llm=llm, store=store, builder=builder, model_path=model_path)
     return TestClient(app)
 
 
@@ -249,6 +251,96 @@ def test_fields_first_protocol_errors(demo_model) -> None:
 def test_dm_change_requests_without_store_is_503(demo_model) -> None:
     client = make_client(ScriptedLLM([]), demo_model, store=None)
     assert client.get("/api/v1/dm-change-requests").status_code == 503
+
+
+# --- enrichment (task 2.7) ----------------------------------------------------------
+
+
+def test_gaps_then_enrich_description_over_http(demo_model, tmp_path) -> None:
+    from auto_bi.semantic.model import SemanticModel
+
+    model_path = tmp_path / "model.yaml"
+    client = make_client(ScriptedLLM([]), demo_model, model_path=model_path)
+
+    gaps = client.get("/api/v1/model/gaps").json()
+    sales_gap = next(
+        f
+        for f in gaps["findings"]
+        if f["code"] == "columns_no_description" and f["table"] == "dm.sales_daily"
+    )
+    assert "date" in sales_gap["detail"]
+
+    updated = client.patch(
+        "/api/v1/model/tables/dm.sales_daily/columns/date",
+        json={"description": "День продажи"},
+    )
+    assert updated.status_code == 200, updated.text
+    # the gap shrinks AND the edit is committed to model.yaml on disk
+    gaps = client.get("/api/v1/model/gaps").json()
+    sales_gap = next(
+        f
+        for f in gaps["findings"]
+        if f["code"] == "columns_no_description" and f["table"] == "dm.sales_daily"
+    )
+    assert "date" not in sales_gap["detail"].split(", ")
+    reloaded = SemanticModel.load(model_path)
+    assert reloaded.table("dm.sales_daily").column("date").description == "День продажи"
+
+
+def test_enrich_table_description(demo_model, tmp_path) -> None:
+    from auto_bi.semantic.model import SemanticModel
+
+    model_path = tmp_path / "model.yaml"
+    client = make_client(ScriptedLLM([]), demo_model, model_path=model_path)
+    response = client.patch(
+        "/api/v1/model/tables/dm.stores", json={"description": "Справочник магазинов сети"}
+    )
+    assert response.status_code == 200
+    assert (
+        SemanticModel.load(model_path).table("dm.stores").description == "Справочник магазинов сети"
+    )
+
+
+def test_enrich_role_rules(demo_model, tmp_path) -> None:
+    model_path = tmp_path / "model.yaml"
+    client = make_client(ScriptedLLM([]), demo_model, model_path=model_path)
+    url = "/api/v1/model/tables/dm.sales_daily/columns/store_id"
+
+    # role -> measure with agg: ok
+    ok = client.patch(url, json={"role": "measure", "agg": "count_distinct"})
+    assert ok.status_code == 200
+    assert ok.json()["agg"] == "count_distinct"
+    # back to dimension: agg dropped automatically
+    back = client.patch(url, json={"role": "dimension"})
+    assert back.status_code == 200
+    assert back.json()["agg"] is None
+    # explicit agg on a non-measure is a contradiction (F9)
+    assert client.patch(url, json={"agg": "sum"}).status_code == 422
+    # unknown role / agg values
+    assert client.patch(url, json={"role": "wat"}).status_code == 422
+    assert client.patch(url, json={"role": "measure", "agg": "median"}).status_code == 422
+
+
+def test_enrich_protocol_errors(demo_model, tmp_path) -> None:
+    model_path = tmp_path / "model.yaml"
+    client = make_client(ScriptedLLM([]), demo_model, model_path=model_path)
+    assert (
+        client.patch("/api/v1/model/tables/dm.nope", json={"description": "x"}).status_code == 404
+    )
+    assert (
+        client.patch(
+            "/api/v1/model/tables/dm.stores/columns/nope", json={"description": "x"}
+        ).status_code
+        == 404
+    )
+
+
+def test_enrich_without_model_path_is_503(demo_model) -> None:
+    client = make_client(ScriptedLLM([]), demo_model)
+    assert client.get("/api/v1/model/gaps").status_code == 200  # read-only works
+    assert (
+        client.patch("/api/v1/model/tables/dm.stores", json={"description": "x"}).status_code == 503
+    )
 
 
 def test_iteration_rebuild_over_http(demo_model) -> None:

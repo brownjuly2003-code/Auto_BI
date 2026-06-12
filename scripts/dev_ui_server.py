@@ -173,12 +173,16 @@ def dev_builder(spec, log, session_id):
 
 
 if __name__ == "__main__":
-    store = Store(Path(__file__).parent.parent / ".tmp" / "dev_ui.sqlite")
+    tmp = Path(__file__).parent.parent / ".tmp"
+    store = Store(tmp / "dev_ui.sqlite")
+    model_path = tmp / "dev_model.yaml"  # enrichment-правки пишутся сюда, не в repo-модель
+    MODEL.dump(model_path)
     app = create_app(
         model=MODEL,
         llm=DevLLM(),
         advisor=DevAdvisor(),
         store=store,
         builder=dev_builder,
+        model_path=model_path,
     )
     uvicorn.run(app, host="127.0.0.1", port=8201)

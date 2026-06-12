@@ -306,6 +306,153 @@ async function refreshDcr() {
   }
 }
 
+/* ---------- model quality (gaps) + enrichment, task 2.7 ---------- */
+
+const ROLES = ["time", "dimension", "measure"];
+const AGGS = ["", "sum", "avg", "min", "max", "count", "count_distinct"];
+let fieldMeta = null; // table -> column -> {role, agg, description}; null = надо перезагрузить
+
+async function loadFieldMeta() {
+  if (fieldMeta) return fieldMeta;
+  const tables = await api("/api/v1/model/fields");
+  fieldMeta = {};
+  for (const t of tables) {
+    fieldMeta[t.table] = {};
+    for (const c of t.columns) fieldMeta[t.table][c.name] = c;
+  }
+  return fieldMeta;
+}
+
+function makeSaveButton(onSave) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "gap-save";
+  btn.textContent = "Сохранить";
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      await onSave();
+      fieldMeta = null; // панель полей и meta устарели после правки модели
+      $("field-tables").replaceChildren();
+      await refreshGaps();
+    } catch (err) {
+      addMessage("error", `Правка модели не сохранена: ${err.message || err}`, "ошибка");
+      btn.disabled = false;
+    }
+  });
+  return btn;
+}
+
+function tableEditor(tableName) {
+  const row = document.createElement("div");
+  row.className = "gap-edit";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Описание таблицы…";
+  row.append(
+    input,
+    makeSaveButton(() =>
+      api(`/api/v1/model/tables/${tableName}`, {
+        method: "PATCH",
+        body: JSON.stringify({ description: input.value.trim() }),
+      })
+    )
+  );
+  return row;
+}
+
+function columnEditor(tableName, columnName, meta) {
+  const row = document.createElement("div");
+  row.className = "gap-edit";
+
+  const name = document.createElement("code");
+  name.textContent = columnName;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Описание…";
+  input.value = (meta && meta.description) || "";
+
+  const role = document.createElement("select");
+  for (const r of ROLES) role.append(new Option(r, r, false, meta && meta.role === r));
+  const agg = document.createElement("select");
+  for (const a of AGGS) agg.append(new Option(a || "— agg —", a, false, meta && meta.agg === a));
+  const syncAgg = () => {
+    agg.disabled = role.value !== "measure";
+    if (agg.disabled) agg.value = "";
+  };
+  role.addEventListener("change", syncAgg);
+  syncAgg();
+
+  row.append(
+    name,
+    input,
+    role,
+    agg,
+    makeSaveButton(() =>
+      api(`/api/v1/model/tables/${tableName}/columns/${columnName}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          description: input.value.trim(),
+          role: role.value,
+          agg: agg.value || null,
+        }),
+      })
+    )
+  );
+  return row;
+}
+
+async function refreshGaps() {
+  let data;
+  try {
+    data = await api("/api/v1/model/gaps");
+  } catch {
+    $("gaps").hidden = true;
+    return;
+  }
+  let meta = {};
+  try {
+    meta = await loadFieldMeta();
+  } catch {
+    meta = {};
+  }
+  $("gaps").hidden = false;
+  $("gaps-count").textContent = data.findings.length;
+  const list = $("gaps-list");
+  list.replaceChildren();
+  for (const f of data.findings) {
+    const li = document.createElement("li");
+    li.className = "gap-item";
+
+    const head = document.createElement("div");
+    const sev = document.createElement("span");
+    sev.className = `dcr-sev sev-${f.severity}`;
+    sev.textContent = f.severity;
+    const where = document.createElement("code");
+    where.textContent = f.table ? ` ${f.table}${f.column ? "." + f.column : ""} ` : " ";
+    const title = document.createElement("span");
+    title.className = "gap-title";
+    title.textContent = `— ${f.title}`;
+    head.append(sev, where, title);
+    li.appendChild(head);
+
+    if (f.code === "table_no_description") {
+      li.appendChild(tableEditor(f.table));
+    } else if (f.code === "columns_no_description") {
+      for (const columnName of f.detail.split(", ").filter(Boolean)) {
+        li.appendChild(columnEditor(f.table, columnName, (meta[f.table] || {})[columnName]));
+      }
+    } else if (f.detail) {
+      const detail = document.createElement("div");
+      detail.className = "gap-detail";
+      detail.textContent = f.detail;
+      li.appendChild(detail);
+    }
+    list.appendChild(li);
+  }
+}
+
 /* ---------- fields-first builder ---------- */
 
 const ROLE_SHORT = { time: "T", dimension: "D", measure: "M" };
@@ -534,3 +681,4 @@ $("add-group").addEventListener("click", () => {
 $("seed-submit").addEventListener("click", submitSeed);
 
 refreshDcr();
+refreshGaps();

@@ -308,6 +308,7 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
         store=store,
         builder=builder,
         include_samples=settings.send_samples,
+        model_path=model_path,  # enrichment UI пишет правки обратно в model.yaml
     )
     uvicorn.run(app, host=host, port=port)
     return 0

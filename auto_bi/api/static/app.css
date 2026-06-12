@@ -438,6 +438,67 @@ body { display: flex; flex-direction: column; }
 }
 .dcr-item .dcr-table { font-family: ui-monospace, Consolas, monospace; }
 .dcr-item .dcr-rule { color: var(--text-2); }
-.dcr-item .dcr-sev { font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
-.dcr-item .sev-critical { color: var(--critical); }
-.dcr-item .sev-warn { color: var(--warn); }
+.dcr-sev { font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
+.sev-critical { color: var(--critical); }
+.sev-warn { color: var(--warn); }
+.sev-info { color: var(--info); }
+
+/* ---------- model quality (gaps) + enrichment ---------- */
+
+.gaps summary { cursor: pointer; font-size: 13px; color: var(--text-2); }
+.gaps-hint { margin: 6px 0 0; font-size: 12px; color: var(--text-3); }
+.gaps-hint code { font-size: 11px; }
+.gaps-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gap-item {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.gap-item code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.gap-title { color: var(--text-2); }
+.gap-detail { margin-top: 4px; color: var(--text-3); font-size: 12px; }
+
+.gap-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.gap-edit input[type="text"] {
+  flex: 1;
+  min-width: 140px;
+  padding: 5px 9px;
+  border: none;
+  border-radius: 6px;
+  background: var(--surface-dim);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.gap-edit input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+.gap-edit select {
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: var(--surface-dim);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.gap-edit select:disabled { opacity: 0.45; }
+.gap-save {
+  border: none;
+  border-radius: 6px;
+  background: var(--surface-dim);
+  color: var(--accent);
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gap-save:hover:not(:disabled) { background: #e7efee; }
+.gap-save:disabled { opacity: 0.45; cursor: default; }
