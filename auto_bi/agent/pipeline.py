@@ -41,6 +41,30 @@ def build_dashboard(
     if store is not None and session_id is not None:
         spec_id = store.save_spec(session_id, spec.model_dump(mode="json"))
 
+    return compile_and_build(
+        spec,
+        model,
+        sql_validator,
+        adapter,
+        log,
+        store=store,
+        session_id=session_id,
+        spec_id=spec_id,
+    )
+
+
+def compile_and_build(
+    spec,
+    model: SemanticModel,
+    sql_validator: LiveSQLValidator,
+    adapter: SupersetAdapter,
+    log: Callable[[str], None] = print,
+    *,
+    store: Store | None = None,
+    session_id: str | None = None,
+    spec_id: int | None = None,
+) -> DashboardRef:
+    """SQL_GEN -> VALIDATE -> BUILD for an already-produced spec (chat APPROVE path)."""
     # invariant 2 at the BI boundary: never let an unvalidated spec reach the adapter,
     # regardless of how `spec` was produced (defense-in-depth; no-op on the happy path).
     errors = validate_spec(spec, model)
