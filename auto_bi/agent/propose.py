@@ -13,10 +13,12 @@ from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.semantic.render import render_model
+from auto_bi.semantic.select import PROMPT_CHAR_BUDGET, select_context
 
 logger = logging.getLogger(__name__)
 
 MAX_VALIDATION_ROUNDS = 3
+FEEDBACK_MARGIN = 2_000  # validation-feedback rounds add error lines to the prompt
 
 PROPOSE_SPEC_PROMPT = """Ты — аналитик, который проектирует BI-дашборды по витринам данных.
 
@@ -75,9 +77,25 @@ class SpecValidationError(Exception):
         super().__init__("; ".join(errors))
 
 
+def _select_for_prompt(
+    request: str, model: SemanticModel, *, include_samples: bool
+) -> SemanticModel:
+    """Context selection (task 1.5): fit the model into the 40k prompt limit.
+
+    The budget is whatever the fixed prompt parts (template, request, JSON Schema)
+    leave, minus a margin for validation-feedback rounds. Idempotent: a sub-model
+    that already fits comes back unchanged.
+    """
+    schema = json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False)
+    fixed = len(PROPOSE_SPEC_PROMPT.format(model_text="", request=request, schema=schema))
+    budget = PROMPT_CHAR_BUDGET - fixed - FEEDBACK_MARGIN
+    return select_context(model, request, budget_chars=budget, include_samples=include_samples)
+
+
 def build_propose_prompt(
     request: str, model: SemanticModel, *, include_samples: bool = True
 ) -> str:
+    model = _select_for_prompt(request, model, include_samples=include_samples)
     return PROPOSE_SPEC_PROMPT.format(
         model_text=render_model(model, include_samples=include_samples),
         request=request,
@@ -93,6 +111,9 @@ def propose_spec(
     session_id: str | None = None,
     include_samples: bool = True,
 ) -> DashboardSpec:
+    # select once and use the SAME sub-model for prompting, validation and repair:
+    # the LLM may only reference what it was actually shown
+    model = _select_for_prompt(request, model, include_samples=include_samples)
     prompt = build_propose_prompt(request, model, include_samples=include_samples)
     previous_spec: DashboardSpec | None = None
     for round_no in range(1 + MAX_VALIDATION_ROUNDS):
