@@ -63,7 +63,7 @@ auto_bi/
 - Подключение к DWH **строго read-only ролью**.
 - **ClickHouse — референсная реализация (v1)**: `system.tables` / `system.columns` — движок таблицы, `sorting_key`, `partition_key`, комментарии, `total_rows`/`total_bytes`; приблизительные кардинальности низкокардинальных колонок (`uniq()` по сэмплу), top-N значений, min/max дат.
 - Greengage/Greenplum (v2): PG-катологи + distribution key, партиции; частично переиспользует PG-путь.
-- Опциональный импорт dbt `manifest.json` / `catalog.json` → descriptions, relationships, тесты.
+- Опциональный импорт dbt `manifest.json` / `catalog.json` → descriptions, relationships, тесты. _Реализовано (задача 2.6): `auto_bi dbt-import` / `semantic/dbt_import.py`. Политика: dbt — источник ОБОГАЩЕНИЯ, не схемы (схемой владеет интроспектор): заполняются только ПУСТЫЕ описания/fk (ручные правки выигрывают), relationships-тесты → joins (дедуп) + fk, dbt-модели/колонки без пары в model.yaml репортятся, но не добавляются; повторный прогон идемпотентен; `--dry-run` для превью._
 - Интерфейс `Introspector` — диалекты добавляются как плагины.
 - Выход: черновик `semantic/model.yaml` + **gaps report** (что без описаний/ролей).
 
