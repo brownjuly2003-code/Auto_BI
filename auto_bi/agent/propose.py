@@ -105,7 +105,10 @@ VALIDATION_FEEDBACK_PROMPT = """Твой DashboardSpec не прошёл вал�
 
 Исходный запрос пользователя: {request}
 
-Верни ИСПРАВЛЕННЫЙ DashboardSpec. Только JSON в блоке ```json```, без пояснений."""
+Верни ИСПРАВЛЕННЫЙ DashboardSpec. Только JSON в блоке ```json```, без пояснений.
+
+JSON Schema ответа:
+{schema}"""
 
 
 class SpecValidationError(Exception):
@@ -115,18 +118,32 @@ class SpecValidationError(Exception):
 
 
 def _select_for_prompt(
-    request: str, model: SemanticModel, *, include_samples: bool
+    request: str,
+    model: SemanticModel,
+    *,
+    include_samples: bool,
+    fixed_chars: int | None = None,
+    scoring_text: str | None = None,
+    pinned: set[str] | None = None,
 ) -> SemanticModel:
     """Context selection (task 1.5): fit the model into the 40k prompt limit.
 
-    The budget is whatever the fixed prompt parts (template, request, JSON Schema)
-    leave, minus a margin for validation-feedback rounds. Idempotent: a sub-model
-    that already fits comes back unchanged.
+    The budget is whatever the fixed prompt parts (template, request, JSON Schema —
+    and for patch_spec the current spec JSON) leave, minus a margin for
+    validation-feedback rounds. Idempotent: a sub-model that already fits comes back
+    unchanged.
     """
-    schema = json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False)
-    fixed = len(PROPOSE_SPEC_PROMPT.format(model_text="", request=request, schema=schema))
-    budget = PROMPT_CHAR_BUDGET - fixed - FEEDBACK_MARGIN
-    return select_context(model, request, budget_chars=budget, include_samples=include_samples)
+    if fixed_chars is None:
+        schema = json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False)
+        fixed_chars = len(PROPOSE_SPEC_PROMPT.format(model_text="", request=request, schema=schema))
+    budget = PROMPT_CHAR_BUDGET - fixed_chars - FEEDBACK_MARGIN
+    return select_context(
+        model,
+        scoring_text or request,
+        budget_chars=budget,
+        include_samples=include_samples,
+        pinned=pinned or (),
+    )
 
 
 def build_propose_prompt(
@@ -172,13 +189,32 @@ def patch_spec(
     session_id: str | None = None,
     include_samples: bool = True,
 ) -> DashboardSpec:
-    """Word edits in APPROVE (task 1.4): current spec + правка -> new validated spec."""
-    model = _select_for_prompt(edit_request, model, include_samples=include_samples)
+    """Word edits in APPROVE (task 1.4): current spec + правка -> new validated spec.
+
+    Selection must not lose the tables/columns the current spec is built on: a short
+    edit ("переименуй дашборд") carries no lexical signal about untouched charts, so
+    the spec's tables are pinned and its fields join the scoring text — otherwise on
+    a big DM validation would reject a previously valid spec and the repair loop
+    would push the LLM to re-seat charts onto other tables.
+    """
+    spec_json = spec.model_dump_json()
+    schema = json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False)
+    fixed = len(
+        PATCH_SPEC_PROMPT.format(model_text="", spec=spec_json, request=edit_request, schema=schema)
+    )
+    model = _select_for_prompt(
+        edit_request,
+        model,
+        include_samples=include_samples,
+        fixed_chars=fixed,
+        scoring_text=f"{edit_request} {_spec_terms(spec)}",
+        pinned={chart.query.table for chart in spec.charts},
+    )
     prompt = PATCH_SPEC_PROMPT.format(
         model_text=render_model(model, include_samples=include_samples),
-        spec=spec.model_dump_json(),
+        spec=spec_json,
         request=edit_request,
-        schema=json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False),
+        schema=schema,
     )
     return _complete_validated(
         llm,
@@ -189,6 +225,20 @@ def patch_spec(
         session_id=session_id,
         include_samples=include_samples,
     )
+
+
+def _spec_terms(spec: DashboardSpec) -> str:
+    """Everything the spec references, as scoring text for context selection."""
+    terms: list[str] = [spec.title]
+    for f in spec.filters:
+        terms.append(f.column)
+    for chart in spec.charts:
+        q = chart.query
+        terms.extend((chart.title, q.table))
+        terms.extend(q.group_columns())
+        terms.extend(m.column for m in q.measures)
+        terms.extend(qf.column for qf in q.filters)
+    return " ".join(terms)
 
 
 def _complete_validated(
@@ -218,5 +268,6 @@ def _complete_validated(
             errors="\n".join(f"- {e}" for e in errors),
             model_text=render_model(model, include_samples=include_samples),
             request=request,
+            schema=json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False),
         )
     raise SpecValidationError(errors)

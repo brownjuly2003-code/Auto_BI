@@ -1,8 +1,8 @@
 """Context selection (task 1.5): deterministic table picking under the prompt budget."""
 
 from auto_bi.agent.propose import build_propose_prompt
-from auto_bi.semantic.model import Column, ColumnRole, Join, SemanticModel, Table
-from auto_bi.semantic.render import render_model
+from auto_bi.semantic.model import Column, ColumnRole, Join, Metric, SemanticModel, Table
+from auto_bi.semantic.render import render_model, render_table
 from auto_bi.semantic.select import PROMPT_CHAR_BUDGET, select_context
 
 
@@ -91,7 +91,9 @@ def test_joins_survive_only_with_both_endpoints() -> None:
     join_kept = Join(left="dm.sales_daily.store_id", right="dm.stores.id")
     join_dropped = Join(left="dm.sales_daily.manager_id", right="hr.salaries.employee_id")
     model = SemanticModel(tables=[SALES, STORES, HR], joins=[join_kept, join_dropped])
-    budget = len(render_model(SemanticModel(tables=[SALES, STORES]))) + 40
+    # joins are charged against the budget up front (upper bound: all of them)
+    joins_overhead = len(render_model(SemanticModel(joins=[join_kept, join_dropped]))) + 2
+    budget = len(render_model(SemanticModel(tables=[SALES, STORES]))) + joins_overhead + 40
     out = select_context(model, "выручка магазинов по городам", budget_chars=budget)
     assert out.joins == [join_kept]
 
@@ -110,6 +112,51 @@ def test_samples_dropped_before_table_dropped() -> None:
 def test_top_table_always_included_even_over_budget() -> None:
     out = select_context(SemanticModel(tables=[SALES]), "выручка", budget_chars=10)
     assert [t.name for t in out.tables] == ["dm.sales_daily"]
+
+
+def test_pinned_table_survives_zero_lexical_score() -> None:
+    # patch_spec pins the tables of the current spec: a rename-only edit has no
+    # overlap with HR, yet HR must stay in the sub-model
+    filler = [_table(f"dm.filler_{i}", "переименование заголовков", n_cols=15) for i in range(5)]
+    model = SemanticModel(tables=[*filler, HR])
+    budget = len(render_model(SemanticModel(tables=[HR]))) + 40
+    out = select_context(model, "переименуй дашборд", budget_chars=budget, pinned={"hr.salaries"})
+    assert "hr.salaries" in [t.name for t in out.tables]
+
+
+def test_budget_accounts_for_joins_and_metrics() -> None:
+    huge = SemanticModel(
+        tables=[
+            _table(f"dm.wide_{i}", f"Витрина номер {i} про показатели", n_cols=40, top_values=True)
+            for i in range(120)
+        ],
+        joins=[Join(left=f"dm.wide_{i}.col_0", right=f"dm.wide_{i + 1}.col_0") for i in range(119)],
+        metrics=[
+            Metric(
+                name=f"metric_{i}",
+                sql=f"sumIf(amount_{i}, status = 'closed') / nullIf(count(), 0)",
+                description=f"Доля показателя номер {i} по закрытым заказам",
+            )
+            for i in range(40)
+        ],
+    )
+    prompt = build_propose_prompt("выручка по магазинам", huge)
+    assert len(prompt) <= PROMPT_CHAR_BUDGET
+
+
+def test_mandatory_table_over_budget_trims_least_relevant_columns() -> None:
+    fat = _table("dm.fat", "продажи", n_cols=30)
+    fat.columns.append(
+        Column(name="revenue", type="Decimal", role=ColumnRole.MEASURE, description="Выручка")
+    )
+    full_cost = len(render_table(fat)) + 2
+    out = select_context(SemanticModel(tables=[fat]), "выручка", budget_chars=full_cost // 2)
+    (table,) = out.tables
+    # trimmed to fit instead of busting the GraceKelly hard limit with LLMError…
+    assert len(render_table(table)) + 2 <= full_cost // 2
+    assert 0 < len(table.columns) < len(fat.columns)
+    # …and the request-relevant column is the one that survives
+    assert table.column("revenue") is not None
 
 
 def test_propose_prompt_fits_global_budget_on_huge_model() -> None:

@@ -8,9 +8,11 @@ from auto_bi.agent.propose import (
     MAX_VALIDATION_ROUNDS,
     SpecValidationError,
     build_propose_prompt,
+    patch_spec,
     propose_spec,
 )
 from auto_bi.ir.spec import DashboardSpec
+from auto_bi.semantic.model import Column, ColumnRole, SemanticModel, Table
 
 GOOD_SPEC = {
     "title": "Продажи",
@@ -80,6 +82,7 @@ def test_repair_loop_feeds_errors_back(demo_model) -> None:
     assert len(llm.prompts) == 2
     assert "вымышленная_колонка" in llm.prompts[1]  # errors quoted verbatim
     assert "не прошёл валидацию" in llm.prompts[1]
+    assert "JSON Schema" in llm.prompts[1]  # repair sees the schema, not just errors
 
 
 def _bad_spec_variant(col: str) -> dict:
@@ -104,6 +107,36 @@ def test_aborts_when_spec_unchanged(demo_model) -> None:
     with pytest.raises(SpecValidationError):
         propose_spec(llm, demo_model, "выручка по дням")
     assert len(llm.prompts) == 2  # first try + one repair that came back identical
+
+
+def test_patch_keeps_spec_tables_on_huge_model(demo_model) -> None:
+    # a short edit ("переименуй") has zero lexical overlap with dm.sales_daily: on a
+    # DM that does not fit the budget, selection must still keep the spec's tables,
+    # or the previously valid spec fails validation against the sub-model
+    noise_tables = [
+        Table(
+            name=f"dm.noise_{i}",
+            description=f"Переименованные витрины раздела {i} про дашборды и заголовки",
+            columns=[
+                Column(
+                    name=f"col_{j}",
+                    type="String",
+                    role=ColumnRole.DIMENSION,
+                    description=f"Колонка про переименование и заголовок номер {j}",
+                    top_values=[f"переименование_{j}_{k}" for k in range(10)],
+                )
+                for j in range(40)
+            ],
+        )
+        for i in range(120)
+    ]
+    huge = SemanticModel(tables=[*demo_model.tables, *noise_tables], joins=demo_model.joins)
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    llm = FakeLLM([{**GOOD_SPEC, "title": "Продажи (новое имя)"}])
+    patched = patch_spec(llm, huge, spec, "переименуй дашборд")
+    assert patched.title == "Продажи (новое имя)"
+    assert len(llm.prompts) == 1  # no repair round: the spec's table was in the sub-model
+    assert "dm.sales_daily" in llm.prompts[0]
 
 
 def test_send_samples_false_strips_values(demo_model) -> None:
