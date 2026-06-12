@@ -1,0 +1,212 @@
+tables:
+- name: marts.branch_pnl
+  grain:
+  - branch
+  - month
+  columns:
+  - name: branch
+    type: String
+    role: dimension
+    top_values:
+    - dxb
+    - ala
+    - spb
+    - msk
+    - ekb
+  - name: month
+    type: Date
+    role: time
+  - name: orders
+    type: UInt64
+    role: measure
+    agg: sum
+  - name: gross_revenue
+    type: Float64
+    role: measure
+    agg: sum
+  - name: tax_collected
+    type: Float64
+    role: measure
+    agg: sum
+  - name: net_revenue
+    type: Float64
+    role: measure
+    agg: sum
+  - name: discounts
+    type: Float64
+    role: measure
+    agg: sum
+  - name: shipping
+    type: Float64
+    role: measure
+    agg: sum
+  - name: returned_orders
+    type: UInt64
+    role: measure
+    agg: sum
+  - name: returned_value
+    type: Float64
+    role: measure
+    agg: sum
+  - name: effective_tax_rate
+    type: Nullable(Float64)
+    role: measure
+    agg: sum
+  physical:
+    engine: clickhouse
+    table_engine: MergeTree
+    sorting_key:
+    - branch
+    - month
+    rows: 10
+    bytes: 1575
+    cardinality:
+      branch: 5
+- name: marts.customer_360
+  grain:
+  - branch
+  - customer_hk
+  columns:
+  - name: customer_hk
+    type: FixedString(16)
+    role: dimension
+  - name: customer_bk
+    type: String
+    role: dimension
+  - name: branch
+    type: String
+    role: dimension
+    top_values:
+    - msk
+  - name: first_name
+    type: String
+    role: dimension
+    top_values:
+    - ''
+  - name: last_name
+    type: String
+    role: dimension
+    top_values:
+    - ''
+  - name: email
+    type: String
+    role: dimension
+    top_values:
+    - ''
+  - name: loyalty_segment
+    type: Nullable(String)
+    role: dimension
+    top_values:
+    - ''
+  - name: loyalty_points
+    type: Nullable(Decimal(18, 2))
+    role: measure
+    agg: sum
+  - name: last_visit_at
+    type: Nullable(DateTime64(3))
+    role: time
+  - name: pii_source
+    type: Nullable(String)
+    role: dimension
+  - name: loyalty_source
+    type: Nullable(String)
+    role: dimension
+  - name: order_count
+    type: UInt64
+    role: measure
+    agg: sum
+  - name: lifetime_value
+    type: Float64
+    role: measure
+    agg: sum
+  - name: first_order_dt
+    type: DateTime64(3)
+    role: time
+  - name: last_order_dt
+    type: DateTime64(3)
+    role: time
+  - name: returned_orders
+    type: UInt64
+    role: measure
+    agg: sum
+  - name: returned_value
+    type: Float64
+    role: measure
+    agg: sum
+  - name: return_rate
+    type: Float64
+    role: measure
+    agg: sum
+  physical:
+    engine: clickhouse
+    table_engine: MergeTree
+    sorting_key:
+    - branch
+    - customer_hk
+    rows: 400162
+    bytes: 16374130
+    cardinality:
+      customer_hk: 400440
+      customer_bk: 401836
+      branch: 1
+      first_name: 1
+      last_name: 1
+      email: 1
+      loyalty_segment: 1
+      pii_source: 0
+      loyalty_source: 0
+- name: marts.returns_velocity
+  grain:
+  - branch
+  - channel
+  - week
+  columns:
+  - name: branch
+    type: String
+    role: dimension
+    top_values:
+    - dxb
+    - ala
+    - spb
+    - msk
+    - ekb
+  - name: channel
+    type: String
+    role: dimension
+    top_values:
+    - retail
+  - name: week
+    type: Date
+    role: time
+  - name: orders
+    type: UInt64
+    role: measure
+    agg: sum
+  - name: returned_orders
+    type: UInt64
+    role: measure
+    agg: sum
+  - name: return_rate
+    type: Float64
+    role: measure
+    agg: sum
+  - name: returned_value
+    type: Float64
+    role: measure
+    agg: sum
+  - name: returned_tax_unrecovered
+    type: Float64
+    role: measure
+    agg: sum
+  physical:
+    engine: clickhouse
+    table_engine: MergeTree
+    sorting_key:
+    - branch
+    - channel
+    - week
+    rows: 30
+    bytes: 1217
+    cardinality:
+      branch: 5
+      channel: 1

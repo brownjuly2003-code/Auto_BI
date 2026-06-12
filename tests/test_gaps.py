@@ -52,7 +52,7 @@ def aggregated_marts_model() -> SemanticModel:
 
 def fake_run_query_preaggregated(sql: str) -> list[dict]:
     if "toDayOfMonth" in sql and "branch_pnl" in sql:
-        return [{"off": 0}]  # month column holds month starts only
+        return [{"off": 0, "non_null": 1000}]  # month column holds month starts only
     raise AssertionError(f"unexpected query: {sql}")
 
 
@@ -109,7 +109,8 @@ def test_documented_joined_daily_model_is_clean() -> None:
 
     def run_query(sql: str) -> list[dict]:
         if "toDayOfMonth" in sql or "toStartOfWeek" in sql:
-            return [{"off": 17}]  # genuinely daily values fail both pre-agg probes
+            # genuinely daily values fail both pre-agg probes
+            return [{"off": 17, "non_null": 1_000_000}]
         raise AssertionError(f"unexpected query: {sql}")
 
     report = find_gaps(model, run_query)
@@ -130,6 +131,61 @@ def test_markdown_lists_dm_change_request_candidates() -> None:
     assert "## critical" in markdown
     assert "Кандидаты в dm_change_request" in markdown
     assert "store_hk" in markdown
+
+
+def test_all_null_time_column_is_reported_not_misclassified() -> None:
+    model = SemanticModel(
+        tables=[
+            Table(
+                name="marts.customer_360",
+                grain=["customer_hk"],
+                columns=[
+                    _column("customer_hk", ColumnRole.DIMENSION),
+                    _column("last_visit_at", ColumnRole.TIME),
+                    _column("first_order_dt", ColumnRole.TIME),
+                ],
+                physical=_physical(),
+            )
+        ]
+    )
+
+    def run_query(sql: str) -> list[dict]:
+        if "last_visit_at" in sql and "toDayOfMonth" in sql:
+            return [{"off": 0, "non_null": 0}]  # all-NULL: off==0 must NOT mean "month"
+        if "first_order_dt" in sql:
+            return [{"off": 5, "non_null": 900}]
+        raise AssertionError(f"unexpected query: {sql}")
+
+    report = find_gaps(model, run_query)
+    codes = {(f.code, f.column) for f in report.findings}
+    assert ("column_all_null", "last_visit_at") in codes
+    assert ("preaggregated_time_grain", "last_visit_at") not in codes
+    assert "no_fine_time_grain" not in {f.code for f in report.findings}  # first_order_dt is fine
+
+
+def test_zero_cardinality_dimension_is_reported() -> None:
+    physical = Physical(
+        engine="clickhouse",
+        table_engine="MergeTree",
+        rows=1000,
+        cardinality={"pii_source": 0, "branch": 5},
+    )
+    model = SemanticModel(
+        tables=[
+            Table(
+                name="marts.customer_360",
+                grain=["customer_hk"],
+                columns=[
+                    _column("branch", ColumnRole.DIMENSION),
+                    _column("pii_source", ColumnRole.DIMENSION),
+                ],
+                physical=physical,
+            )
+        ]
+    )
+    report = find_gaps(model, run_query=None)
+    null_cols = [f.column for f in report.findings if f.code == "column_all_null"]
+    assert null_cols == ["pii_source"]
 
 
 def test_severity_ordering_and_counts() -> None:
