@@ -5,7 +5,14 @@ rows, cardinality) and/or the measured EXPLAIN evidence, and decides a verdict. 
 LLM never invents these performance facts — it only narrates the findings (task 1.7).
 
 Phase 1 has no joins, so `join_large_large` is intentionally absent (it arrives with
-join support). Rules stay silent on clean queries — warning fatigue is the enemy.
+join support); `point_lookup_pattern` from PLAN 1.6 is deferred for the same reason —
+no real case to tune it against yet. Rules stay silent on clean queries — warning
+fatigue is the enemy.
+
+Filter rules read only chart-level `query.filters`: dashboard-level `spec.filters`
+are not compiled by the Superset adapter yet (see spec_summary warning), so charts
+genuinely run unfiltered. When native dashboard filters land (Phase 2), these rules
+must start counting applicable dashboard filters too, or they will false-positive.
 """
 
 from __future__ import annotations

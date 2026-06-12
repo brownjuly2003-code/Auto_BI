@@ -115,8 +115,10 @@ class SupersetAdapter:
 
     def assemble_dashboard(self, spec: DashboardSpec, charts: list[ChartRef]) -> DashboardRef:
         if spec.filters:
+            # known degradation, surfaced to the user in spec_summary at approval time;
+            # compiling native filters needs live contract tests (Phase 2)
             logger.warning(
-                "dashboard filters are not wired in Phase 0, skipped: %s",
+                "dashboard filters are not compiled into Superset yet, skipped: %s",
                 [f.column for f in spec.filters],
             )
         if len(charts) != len(spec.charts):

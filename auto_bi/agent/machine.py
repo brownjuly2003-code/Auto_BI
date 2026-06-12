@@ -49,6 +49,16 @@ def spec_summary(spec: DashboardSpec) -> str:
         dims = ", ".join(q.group_columns()) or "—"
         measures = ", ".join(m.label or m.column for m in q.measures)
         lines.append(f"  • [{chart.viz.value}] {chart.title} ({q.table}: {dims} × {measures})")
+    if spec.filters:
+        # the Superset adapter does not compile dashboard filters yet: say so HERE,
+        # at approval time — the built dashboard must not silently differ from the preview
+        described = ", ".join(
+            f.column + (f" = {f.default}" if f.default else "") for f in spec.filters
+        )
+        lines.append(
+            f"  ⚠ фильтры дашборда ({described}) пока не переносятся в Superset — "
+            "задайте период фильтром чарта или примите дашборд без них"
+        )
     return "\n".join(lines)
 
 
@@ -78,6 +88,7 @@ class AgentSession:
         self._clarifications: list[str] = []
         self._clarify_rounds = 0
         self._spec_row_id: int | None = None
+        self._dcr_logged: set[tuple[str, str]] = set()  # (table, rules) already stored
 
     # --- steps -----------------------------------------------------------------
 
@@ -168,10 +179,14 @@ class AgentSession:
             for v in self.verdicts:
                 if v.verdict_class.value == "dm_change_request":
                     chart = next((c for c in self.spec.charts if c.id == v.chart_id), None)
+                    key = (chart.query.table if chart else "", ", ".join(v.rules))
+                    if key in self._dcr_logged:
+                        continue  # word edits re-run the advisor: one request per finding
+                    self._dcr_logged.add(key)
                     self._store.add_dm_change_request(
                         self._session_id,
-                        table_name=chart.query.table if chart else "",
-                        rule=", ".join(v.rules),
+                        table_name=key[0],
+                        rule=key[1],
                         severity=v.severity.value,
                         narrative=v.text,
                     )

@@ -7,7 +7,7 @@ from auto_bi.advisor.core import Advisor
 from auto_bi.advisor.findings import Finding, Severity, VerdictClass
 from auto_bi.advisor.narrate import narrate_findings, worst_verdicts
 from auto_bi.agent.grounding import GroundingReport, clarify_questions, ground
-from auto_bi.agent.machine import MAX_CLARIFY_ROUNDS, AgentPhase, AgentSession
+from auto_bi.agent.machine import MAX_CLARIFY_ROUNDS, AgentPhase, AgentSession, spec_summary
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.llm.base import LLMError
 from auto_bi.store import Store
@@ -213,6 +213,26 @@ def test_narrate_silent_on_clean_spec(demo_model) -> None:
     assert narrate_findings(NoCallLLM(), spec, []) == []
 
 
+def test_spec_summary_warns_about_uncompiled_dashboard_filters() -> None:
+    spec = DashboardSpec.model_validate(
+        {
+            **GOOD_SPEC,
+            "filters": [
+                {"column": "dm.sales_daily.date", "type": "time_range", "default": "last 90 days"}
+            ],
+        }
+    )
+    summary = spec_summary(spec)
+    # the approved preview must say the filter will NOT reach Superset (no silent drop)
+    assert "dm.sales_daily.date = last 90 days" in summary
+    assert "не переносятся" in summary
+    assert "⚠" in summary
+
+
+def test_spec_summary_silent_without_filters() -> None:
+    assert "фильтры" not in spec_summary(DashboardSpec.model_validate(GOOD_SPEC))
+
+
 # --- store linkage -------------------------------------------------------------
 
 
@@ -254,4 +274,32 @@ def test_session_records_messages_specs_and_dm_change_requests(demo_model, tmp_p
     agent.approve()
     (spec_row,) = store.specs(sid)
     assert spec_row["status"] == "approved"
+    store.close()
+
+
+def test_dm_change_request_not_duplicated_by_word_edits(demo_model, tmp_path) -> None:
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка")
+
+    critical = _finding(
+        severity=Severity.CRITICAL,
+        vc=VerdictClass.DM_CHANGE_REQUEST,
+        rule="no_filter_on_large_fact",
+        title="запрос не предусмотрен витриной",
+    )
+
+    class OneFindingAdvisor(Advisor):
+        def __init__(self) -> None:
+            pass
+
+        def review(self, spec):
+            return [critical]
+
+    narration = {"verdicts": [{"chart_id": "c1", "text": "Нужна другая витрина."}]}
+    llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, narration, PATCHED_SPEC, narration])
+    agent = AgentSession(demo_model, llm, OneFindingAdvisor(), store=store, session_id=sid)
+    agent.start("выручка по дням")
+    agent.reply("переименуй дашборд")  # finding is still alive after the edit
+    # the word edit re-ran the advisor, but the same (table, rule) is stored once
+    assert len(store.dm_change_requests("open")) == 1
     store.close()
