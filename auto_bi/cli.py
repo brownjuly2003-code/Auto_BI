@@ -37,6 +37,7 @@ def _build(description: str, model_path: str) -> int:
     from auto_bi.introspect.clickhouse import make_run_query
     from auto_bi.llm.gracekelly import GraceKellyClient
     from auto_bi.semantic.model import SemanticModel
+    from auto_bi.store import Store
 
     if not Path(model_path).exists():
         print(f"Semantic model not found: {model_path}")
@@ -55,13 +56,18 @@ def _build(description: str, model_path: str) -> int:
             password=settings.ch_password,
         ),
     )
+    store = Store(settings.store_path)
+    session_id = store.create_session(description)
+    store.add_message(session_id, "user", description)
     ref = build_dashboard(
         description,
         model,
-        llm=GraceKellyClient(settings),
+        llm=GraceKellyClient(settings, store=store),
         sql_validator=LiveSQLValidator(make_run_query(settings)),
         adapter=adapter,
         include_samples=settings.send_samples,
+        store=store,
+        session_id=session_id,
     )
     print(f"\nДашборд готов: {settings.superset_url.rstrip('/')}{ref.url}")
     return 0

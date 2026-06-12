@@ -14,6 +14,7 @@ from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
+from auto_bi.store import Store
 
 
 def build_dashboard(
@@ -25,12 +26,20 @@ def build_dashboard(
     log: Callable[[str], None] = print,
     *,
     include_samples: bool = True,
+    store: Store | None = None,
+    session_id: str | None = None,
 ) -> DashboardRef:
     log(f"PROPOSE_SPEC: «{description}»")
-    spec = propose_spec(llm, model, description, include_samples=include_samples)
+    spec = propose_spec(
+        llm, model, description, session_id=session_id, include_samples=include_samples
+    )
     log(f"spec ok: «{spec.title}», {len(spec.charts)} чартов")
     for chart in spec.charts:
         log(f"  - [{chart.viz.value}] {chart.title}")
+
+    spec_id: int | None = None
+    if store is not None and session_id is not None:
+        spec_id = store.save_spec(session_id, spec.model_dump(mode="json"))
 
     # invariant 2 at the BI boundary: never let an unvalidated spec reach the adapter,
     # regardless of how `spec` was produced (defense-in-depth; no-op on the happy path).
@@ -47,6 +56,15 @@ def build_dashboard(
     if not health.ok:
         raise RuntimeError(f"Superset healthcheck failed: {health.message}")
 
-    ref = adapter.build(spec)
+    try:
+        ref = adapter.build(spec)
+    except Exception as exc:
+        if store is not None and session_id is not None:
+            store.save_build(session_id, spec_id, status="failed", error=str(exc))
+            store.set_session_status(session_id, "failed")
+        raise
     log(f"BUILD done: {ref.title} -> {ref.url}")
+    if store is not None and session_id is not None:
+        store.save_build(session_id, spec_id, dashboard_id=ref.id, url=ref.url, status="ok")
+        store.set_session_status(session_id, "built")
     return ref

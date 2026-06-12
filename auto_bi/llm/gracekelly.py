@@ -15,13 +15,16 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
 from auto_bi.config import Settings
 from auto_bi.llm.base import LLMError
+
+if TYPE_CHECKING:
+    from auto_bi.store import Store
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -76,6 +79,7 @@ class GraceKellyClient:
         settings: Settings,
         http: httpx.Client | None = None,
         log_path: str | Path = "logs/llm_calls.jsonl",
+        store: Store | None = None,
     ) -> None:
         self._settings = settings
         self._http = http or httpx.Client(
@@ -84,6 +88,7 @@ class GraceKellyClient:
             transport=httpx.HTTPTransport(retries=2),  # transient connect failures only
         )
         self._log_path = Path(log_path)
+        self._store = store
 
     def complete(
         self,
@@ -137,9 +142,16 @@ class GraceKellyClient:
         except httpx.HTTPError as exc:
             raise LLMError(f"GraceKelly transport error: {exc}") from exc
         finally:
-            self._log(prompt, reasoning, status, time.monotonic() - started)
+            self._log(prompt, reasoning, status, time.monotonic() - started, session_id)
 
-    def _log(self, prompt: str, reasoning: bool, status: str, latency_s: float) -> None:
+    def _log(
+        self,
+        prompt: str,
+        reasoning: bool,
+        status: str,
+        latency_s: float,
+        session_id: str | None = None,
+    ) -> None:
         record = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "model": self._settings.gracekelly_model,
@@ -155,3 +167,16 @@ class GraceKellyClient:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except OSError:  # logging must never kill the pipeline
             logger.exception("failed to write llm call log")
+        if self._store is not None:
+            try:
+                self._store.log_llm_call(
+                    session_id=session_id,
+                    model=record["model"],
+                    prompt_sha256=record["prompt_sha256"],
+                    prompt_chars=record["prompt_chars"],
+                    reasoning=reasoning,
+                    status=status,
+                    latency_ms=record["latency_ms"],
+                )
+            except Exception:  # logging must never kill the pipeline
+                logger.exception("failed to write llm call to the store")
