@@ -14,7 +14,9 @@
 
 **2.6 dbt-импорт реализовано** (2026-06-13, Fable): `semantic/dbt_import.py` + CLI `auto_bi dbt-import --manifest … [--catalog …] [--dry-run]`. dbt = enrichment, НЕ источник схемы: fill-empty-only (ручные правки выигрывают), relationships→joins+fk с дедупом, unmatched репортятся без добавления, идемпотентно. Деталь: ARCHITECTURE §3.1.
 
-Live-смоук `serve`+UI против реального GraceKelly/стенда не делался — сделать при первом доступе к стенду. Остаток фазы: **2.7 enrichment UI**, **2.8 eval до 25** (golden уже 17, вкл. 2 fields-first; кейсы итераций и добор до 25 — нужен живой прогон полного сьюта).
+**2.7 enrichment UI реализовано** (2026-06-13, Fable): `GET /api/v1/model/gaps` (offline find_gaps) + `PATCH /api/v1/model/tables/{t}[/columns/{c}]` (описания, role/agg с валидацией F9-зеркала; запись в model.yaml включается `create_app(model_path=…)`, без него 503) + секция «Качество модели» в web UI с инлайн-редакторами в findings. Проверено Playwright'ом на dev-стенде: правка убирает finding live, yaml на диске обновляется, консоль чистая. pytest **193 passed**. Деталь: ARCHITECTURE §3.7.
+
+Live-смоук `serve`+UI против реального GraceKelly/стенда не делался — сделать при первом доступе к стенду. Остаток фазы: **2.8 eval до 25** (golden уже 17, вкл. 2 fields-first; кейсы итераций и добор до 25 — нужен живой прогон полного сьюта).
 
 **Phase 0 ЗАВЕРШЕНА и верифицирована** (2026-06-11, ветка `phase-0/vertical-slice`). Exit criteria проверены реальными прогонами: стенд на Mac (`~/auto_bi_stand`, compose: Superset 4.1.2 + CH 24.8, демо-DM 20M строк), интроспекция → `semantic/model.yaml` закоммичен, 4 contract-теста form_data прошли против живого Superset, e2e `auto_bi build "Обзор продаж: …"` собрал дашборд из 3 чартов (`/superset/dashboard/1/`), GraceKelly-вызовы в `logs/llm_calls.jsonl`. Доступ к стенду с Windows — SSH-туннель `ssh -N -L 8123:localhost:8123 -L 8088:localhost:8088 deproject-mac`; Docker ТОЛЬКО на Mac.
 
