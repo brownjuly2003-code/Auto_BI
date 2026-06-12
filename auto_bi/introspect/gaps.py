@@ -189,22 +189,30 @@ def _check_degenerate_columns(model: SemanticModel, findings: list[GapFinding]) 
                 )
 
 
+def _bt(identifier: str) -> str:
+    """Backtick-quoted ClickHouse identifier; names come from model.yaml (hand-editable)."""
+    return "`" + identifier.replace("\\", "\\\\").replace("`", "\\`") + "`"
+
+
 def _time_grain(table: Table, column: str, run_query: RunQuery) -> str:
     """Coarsest grain the values actually have: empty | month | week | fine."""
     db, _, tbl = table.name.partition(".")
-    target = f"`{db}`.`{tbl}`"
+    target = f"{_bt(db)}.{_bt(tbl)}"
+    col = _bt(column)
     monthly = run_query(
-        f"SELECT countIf(toDayOfMonth(`{column}`) != 1) AS off, "
-        f"count(`{column}`) AS non_null FROM {target}"
+        f"SELECT countIf(toDayOfMonth({col}) != 1) AS off, "
+        f"count({col}) AS non_null FROM {target}"
     )
     if monthly and int(monthly[0]["non_null"]) == 0:
         return "empty"  # all-NULL column: no grain to speak of (reported separately)
     if monthly and int(monthly[0]["off"]) == 0:
         return "month"
+    # both week conventions: mode 0 = Sunday-start, mode 1 = Monday-start (ISO)
     weekly = run_query(
-        f"SELECT countIf(toDate(`{column}`) != toStartOfWeek(`{column}`)) AS off FROM {target}"
+        f"SELECT countIf(toDate({col}) != toStartOfWeek({col})) AS off_sun, "
+        f"countIf(toDate({col}) != toStartOfWeek({col}, 1)) AS off_mon FROM {target}"
     )
-    if weekly and int(weekly[0]["off"]) == 0:
+    if weekly and (int(weekly[0]["off_sun"]) == 0 or int(weekly[0]["off_mon"]) == 0):
         return "week"
     return "fine"
 
@@ -221,21 +229,43 @@ def _check_time_grain(
         grains = []
         for col in time_cols:
             if run_query is not None and (table.physical is None or table.physical.rows > 0):
-                grain = _time_grain(table, col.name, run_query)
+                try:
+                    grain = _time_grain(table, col.name, run_query)
+                except Exception as exc:  # one broken probe must not kill the whole report
+                    findings.append(
+                        GapFinding(
+                            code="time_grain_check_failed",
+                            severity=GapSeverity.INFO,
+                            table=table.name,
+                            column=col.name,
+                            title="живая проверка грануляции не выполнилась — колонка пропущена",
+                            detail=str(exc),
+                        )
+                    )
+                    continue
             else:  # offline fallback: name heuristics only
                 grain = col.name if col.name in ("month", "week") else "fine"
             if grain == "empty":
-                findings.append(
-                    GapFinding(
-                        code="column_all_null",
-                        severity=GapSeverity.WARN,
-                        table=table.name,
-                        column=col.name,
-                        title="колонка целиком NULL — источник не наполняет её",
-                        detail="Поле есть в схеме, но данных нет: фильтры и разрезы по нему пусты.",
-                        dm_change_request=True,
-                    )
+                already_reported = (
+                    table.physical is not None
+                    and table.physical.rows > 0
+                    and table.physical.cardinality.get(col.name) == 0
                 )
+                if not already_reported:  # else _check_degenerate_columns has it
+                    findings.append(
+                        GapFinding(
+                            code="column_all_null",
+                            severity=GapSeverity.WARN,
+                            table=table.name,
+                            column=col.name,
+                            title="колонка целиком NULL — источник не наполняет её",
+                            detail=(
+                                "Поле есть в схеме, но данных нет: фильтры и разрезы "
+                                "по нему пусты."
+                            ),
+                            dm_change_request=True,
+                        )
+                    )
                 continue  # no usable grain; excluded from the finest-grain verdict
             grains.append(grain)
             if grain != "fine":

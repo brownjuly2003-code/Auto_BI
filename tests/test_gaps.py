@@ -108,8 +108,10 @@ def test_documented_joined_daily_model_is_clean() -> None:
     )
 
     def run_query(sql: str) -> list[dict]:
-        if "toDayOfMonth" in sql or "toStartOfWeek" in sql:
-            # genuinely daily values fail both pre-agg probes
+        # genuinely daily values fail both pre-agg probes
+        if "toStartOfWeek" in sql:
+            return [{"off_sun": 17, "off_mon": 17}]
+        if "toDayOfMonth" in sql:
             return [{"off": 17, "non_null": 1_000_000}]
         raise AssertionError(f"unexpected query: {sql}")
 
@@ -152,6 +154,8 @@ def test_all_null_time_column_is_reported_not_misclassified() -> None:
     def run_query(sql: str) -> list[dict]:
         if "last_visit_at" in sql and "toDayOfMonth" in sql:
             return [{"off": 0, "non_null": 0}]  # all-NULL: off==0 must NOT mean "month"
+        if "first_order_dt" in sql and "toStartOfWeek" in sql:
+            return [{"off_sun": 5, "off_mon": 5}]
         if "first_order_dt" in sql:
             return [{"off": 5, "non_null": 900}]
         raise AssertionError(f"unexpected query: {sql}")
@@ -189,6 +193,98 @@ def test_zero_and_single_cardinality_dimensions_are_reported() -> None:
     constant_cols = [f.column for f in report.findings if f.code == "column_constant"]
     assert null_cols == ["pii_source"]
     assert constant_cols == ["first_name"]  # branch (uniq=5) is healthy
+
+
+def test_week_grain_detected_for_monday_convention() -> None:
+    # Monday-aggregated DM: Sunday-mode probe misses, Monday-mode (ISO) must catch
+    model = SemanticModel(
+        tables=[
+            Table(
+                name="marts.weekly_sales",
+                description="Недельные продажи",
+                grain=["week"],
+                columns=[_column("week", ColumnRole.TIME, description="Неделя")],
+                physical=_physical(),
+            )
+        ]
+    )
+
+    def run_query(sql: str) -> list[dict]:
+        if "toStartOfWeek" in sql:
+            return [{"off_sun": 42, "off_mon": 0}]
+        if "toDayOfMonth" in sql:
+            return [{"off": 3, "non_null": 1000}]
+        raise AssertionError(f"unexpected query: {sql}")
+
+    report = find_gaps(model, run_query)
+    grain_findings = [f for f in report.findings if f.code == "preaggregated_time_grain"]
+    assert [(f.table, f.column) for f in grain_findings] == [("marts.weekly_sales", "week")]
+    assert "«week»" in grain_findings[0].title
+
+
+def test_backticks_in_identifiers_are_escaped() -> None:
+    model = SemanticModel(
+        tables=[
+            Table(
+                name="marts.we`ird",
+                description="x",
+                columns=[_column("col`umn", ColumnRole.TIME, description="x")],
+                physical=_physical(),
+            )
+        ]
+    )
+    seen: list[str] = []
+
+    def run_query(sql: str) -> list[dict]:
+        seen.append(sql)
+        return [{"off": 3, "non_null": 10, "off_sun": 3, "off_mon": 3}]
+
+    find_gaps(model, run_query)
+    assert seen, "live probe must run"
+    assert all("`we\\`ird`" in sql and "`col\\`umn`" in sql for sql in seen)
+
+
+def test_broken_probe_degrades_to_finding_not_crash() -> None:
+    def run_query(sql: str) -> list[dict]:
+        raise RuntimeError("Code 43: illegal type String for toDayOfMonth")
+
+    report = find_gaps(aggregated_marts_model(), run_query)
+    failed = [f for f in report.findings if f.code == "time_grain_check_failed"]
+    assert [(f.table, f.column) for f in failed] == [("marts.branch_pnl", "month")]
+    assert failed[0].severity == GapSeverity.INFO
+    assert "Code 43" in failed[0].detail
+    # the rest of the report survived the broken probe
+    assert "no_relationships" in {f.code for f in report.findings}
+
+
+def test_all_null_time_column_not_duplicated_with_cardinality() -> None:
+    # cardinality says 0 -> _check_degenerate_columns reports it; the time-grain
+    # probe must not add a second column_all_null for the same column
+    model = SemanticModel(
+        tables=[
+            Table(
+                name="marts.customer_360",
+                grain=["customer_hk"],
+                columns=[
+                    _column("customer_hk", ColumnRole.DIMENSION),
+                    _column("last_visit_at", ColumnRole.TIME),
+                ],
+                physical=Physical(
+                    engine="clickhouse",
+                    table_engine="MergeTree",
+                    rows=1000,
+                    cardinality={"last_visit_at": 0},
+                ),
+            )
+        ]
+    )
+
+    def run_query(sql: str) -> list[dict]:
+        return [{"off": 0, "non_null": 0}]
+
+    report = find_gaps(model, run_query)
+    null_findings = [f for f in report.findings if f.code == "column_all_null"]
+    assert [(f.table, f.column) for f in null_findings] == [("marts.customer_360", "last_visit_at")]
 
 
 def test_severity_ordering_and_counts() -> None:
