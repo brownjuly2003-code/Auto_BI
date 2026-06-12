@@ -13,7 +13,7 @@
 - [x] 1.12 Reasoning-политика — `77e3149`; `llm/policy.py`, unit-тесты флагов
 - [x] 1.11 Eval-сьют — `9669e56`; advisor 9/9 (6 подсаженных анти-паттернов + 3 clean), 15 golden, `auto_bi eval`
 - [x] Exit criteria PLAN.md: advisor 9/9 ✓; golden — clear 9/9 (0 лишних вопросов), ambiguous 3/3, infeasible 3/3 (фейлы прогонов = инфра-флейки GraceKelly, PASS на ретрае) ✓; диалоговый кейс на демо-DM: анти-паттерн → вердикт → правка → чистый spec → дашборд `/superset/dashboard/2/` ✓ (скриншот)
-- [ ] 1.10 Реальный DWH — заблокировано: нужны read-only доступы от пользователя; с ним закрывается «реальный кейс по своему DM» и объявляется S6
+- [ ] 1.10 Реальный DWH — РАЗБЛОКИРОВАНО (2026-06-12): DWH = DV2/X5 из DE_project, решения приняты (срез 10–15M; DM «как есть» → gaps → достройка). Полный runbook: `docs/plans/2026-06-12-1.10-real-dwh-x5-runbook.md`. С ним закрывается «реальный кейс по своему DM» и объявляется S6
 
 ## Done When
 - pytest зелёный, ruff/black clean, контракт-тесты против живого Superset на 9 viz.
