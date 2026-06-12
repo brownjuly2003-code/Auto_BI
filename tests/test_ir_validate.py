@@ -54,6 +54,19 @@ def test_time_column_as_measure_rejected(demo_model) -> None:
     assert any("cannot be a measure" in e for e in errors)
 
 
+def test_numeric_agg_over_dimension_rejected(demo_model) -> None:
+    # sum(store_id) validates structurally but dies late on EXPLAIN: reject early
+    # with an actionable error for the repair loop
+    bad = chart(measures=[Measure(column="store_id", agg=Aggregation.SUM)])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("sum over dimension" in e and "store_id" in e for e in errors)
+
+
+def test_count_over_dimension_allowed(demo_model) -> None:
+    ok = chart(measures=[Measure(column="store_id", agg=Aggregation.COUNT_DISTINCT)])
+    assert validate_spec(spec(ok), demo_model) == []
+
+
 def test_order_by_must_reference_chart_fields(demo_model) -> None:
     bad = chart(order_by=[OrderBy(by="что-то левое", dir="desc")])
     errors = validate_spec(spec(bad), demo_model)

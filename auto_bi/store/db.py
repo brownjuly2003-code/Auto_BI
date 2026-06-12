@@ -14,6 +14,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+_SCHEMA_VERSION = 1  # bump together with a migration when the schema changes
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
     id          TEXT PRIMARY KEY,
@@ -76,7 +78,10 @@ class Store:
             self._path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(self._path)
         self._db.row_factory = sqlite3.Row
+        self._db.execute("PRAGMA foreign_keys = ON")  # per-connection; off by default
         self._db.executescript(_SCHEMA)
+        if self._db.execute("PRAGMA user_version").fetchone()[0] == 0:
+            self._db.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
         self._db.commit()
 
     def close(self) -> None:

@@ -5,7 +5,12 @@ no silent fixes ever. Returns human-readable errors the LLM can act on.
 """
 
 from auto_bi.ir.spec import ChartSpec, DashboardSpec, FilterOp, Viz, measure_alias
-from auto_bi.semantic.model import ColumnRole, SemanticModel, Table
+from auto_bi.semantic.model import Aggregation, ColumnRole, SemanticModel, Table
+
+# numeric aggregations make no sense over dimension columns; count/count_distinct
+# are legal over anything. Rejecting here keeps the error actionable for the repair
+# loop instead of a late EXPLAIN failure in compile_and_build.
+_NUMERIC_AGGS = frozenset({Aggregation.SUM, Aggregation.AVG, Aggregation.MIN, Aggregation.MAX})
 
 
 def validate_spec(spec: DashboardSpec, model: SemanticModel) -> list[str]:
@@ -62,6 +67,11 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
             errors.append(_unknown(measure.column, "measure column"))
         elif col.role == ColumnRole.TIME:
             errors.append(f"{prefix}: time column {measure.column!r} cannot be a measure")
+        elif measure.agg in _NUMERIC_AGGS and col.role != ColumnRole.MEASURE:
+            errors.append(
+                f"{prefix}: {measure.agg.value} over {col.role.value} column "
+                f"{measure.column!r} — для неё допустимы только count/count_distinct"
+            )
 
     for qf in chart.query.filters:
         if table.column(qf.column) is None:

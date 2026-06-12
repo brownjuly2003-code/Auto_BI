@@ -94,3 +94,15 @@ def test_session_status(store: Store) -> None:
     rows = store2._rows("SELECT status FROM sessions WHERE id = ?", sid)
     assert rows == [{"status": "built"}]
     store2.close()
+
+
+def test_foreign_keys_enforced(store: Store) -> None:
+    import sqlite3
+
+    with pytest.raises(sqlite3.IntegrityError):
+        store.add_message("no-such-session", "user", "x")
+
+
+def test_schema_version_stamped(store: Store) -> None:
+    version = store._db.execute("PRAGMA user_version").fetchone()[0]
+    assert version == 1
