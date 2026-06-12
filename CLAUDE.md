@@ -4,6 +4,8 @@
 
 ## Статус
 
+**ТЕКУЩЕЕ (2026-06-13): Phase 2 РЕАЛИЗОВАНА ЦЕЛИКОМ (2.1–2.8)** в ветке `phase-2/web-ui` (HEAD=`aaacc55`, pytest 194, ruff/black clean, golden-eval 25 кейсов живым прогоном — пороги выполнены). **S6 НЕ объявлен и merge в main не делать**: exit criteria фазы требуют live-смоук `auto_bi serve`+web UI (оба режима) против реального GraceKelly/Superset-стенда на Mac — недоступен с этой машины. Next: при доступе к стенду — live-смоук + вопрос native filters (deferred F3) → S6 → ревью фазы. Детали по задачам — ниже.
+
 **Phase 2 НАЧАТА** (2026-06-12, Fable, по «продолжи» после закрытия S6): Phase 1 влита в `main` (merge `a6f2755`), работа в ветке `phase-2/web-ui`. **2.1 HTTP API реализовано**: `auto_bi/api/` (create_app c DI, SessionManager c per-session lock и буфером событий), endpoints `/api/v1/sessions[…]` + SSE `/events`, `auto_bi serve` (uvicorn-wiring), Store потокобезопасен (lock + check_same_thread=False), контракт «правка не теряет сессию» перенесён в HTTP (200+error). **2.5 dm_change_request реализовано**: `auto_bi/dmcr.py` (детерминированный markdown-рендер заявки владельцу DM из store-строки + контекст сессии через JOIN), API `GET/PATCH /api/v1/dm-change-requests[...]` (список по статусу, заявка с markdown, lifecycle open→submitted/accepted/rejected).
 
 **2.4 итерации реализованы**: APPROVED не терминальна — правка словами после сборки патчит spec и возвращает в APPROVE, следующий approve пересобирает; история spec'ов в store append-only; API re-approve сбрасывает SSE-буфер (стрим = одна сборка); CLI-чат после сборки предлагает доработку. In-place обновление существующего дашборда (вместо нового) отложено до живого стенда (нужен update-путь адаптера + contract-тесты).
