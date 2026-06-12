@@ -4,6 +4,8 @@
 
 ## Статус
 
+**Phase 2 НАЧАТА** (2026-06-12, Fable, по «продолжи» после закрытия S6): Phase 1 влита в `main` (merge `a6f2755`), работа в ветке `phase-2/web-ui`. **2.1 HTTP API реализовано**: `auto_bi/api/` (create_app c DI, SessionManager c per-session lock и буфером событий), endpoints `/api/v1/sessions[…]` + SSE `/events`, `auto_bi serve` (uvicorn-wiring), Store потокобезопасен (lock + check_same_thread=False), контракт «правка не теряет сессию» перенесён в HTTP (200+error). pytest **164 passed** (9 новых API-тестов на ScriptedLLM/fake builder), ruff/black clean. Деталь: ARCHITECTURE §3.7. Live-смоук `serve` против стенда не делался (стенд недоступен) — сделать при первом доступе. Дальше по фазе: 2.2 web UI (фронт; перед версткой — design-скиллы), 2.4 итерации поверх API, 2.5 dm_change_request-заявки, 2.3 fields-first.
+
 **Phase 0 ЗАВЕРШЕНА и верифицирована** (2026-06-11, ветка `phase-0/vertical-slice`). Exit criteria проверены реальными прогонами: стенд на Mac (`~/auto_bi_stand`, compose: Superset 4.1.2 + CH 24.8, демо-DM 20M строк), интроспекция → `semantic/model.yaml` закоммичен, 4 contract-теста form_data прошли против живого Superset, e2e `auto_bi build "Обзор продаж: …"` собрал дашборд из 3 чартов (`/superset/dashboard/1/`), GraceKelly-вызовы в `logs/llm_calls.jsonl`. Доступ к стенду с Windows — SSH-туннель `ssh -N -L 8123:localhost:8123 -L 8088:localhost:8088 deproject-mac`; Docker ТОЛЬКО на Mac.
 
 Известное ограничение Phase 0 (by design): джойнов в IR нет — запросы с полями из смежных таблиц («топ городов» при city в dm.stores) отклоняются валидацией; промпт предупреждает LLM. Снимается в Phase 1/2 по PLAN.

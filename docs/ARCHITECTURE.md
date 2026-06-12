@@ -232,6 +232,8 @@ POST http://127.0.0.1:8011/orchestrate
 - **v0 (Phase 0–1)**: CLI-чат `auto_bi chat` (rich), только text-first — быстрые итерации без фронта.
 - **v1 (Phase 2)**: web — FastAPI + лёгкий фронт: чат, панель полей с drag&drop, превью spec карточками ДО сборки (с вердиктами advisor'а), селектор целевого BI, лог сборки, ссылка на результат. Спокойный белый layout, минимум акцентов, плотная читаемая информация.
 
+**HTTP API (задача 2.1, реализовано)** — `auto_bi/api/`, тонкий слой над agent core (ядро HTTP не знает); запуск `auto_bi serve`. Все коллабораторы (model/llm/advisor/store/builder) инжектируются в `create_app` — тесты идут на скриптованном LLM и фейковом builder'е. Endpoints (`/api/v1`): `POST /sessions` (start → TurnResponse: phase/questions/spec/verdicts), `POST /sessions/{id}/reply` (ответы clarify и правки словами), `POST /sessions/{id}/approve` (202; сборка в фоне), `GET /sessions/{id}/events` (SSE: `log`-шаги compile_and_build, терминальные `done`/`error`; события буферизуются — поздний подписчик получает replay), `GET /sessions/{id}` (фаза + статус сборки). Контракт ошибок: неудачная правка = 200 с `error` и прежним spec (сессия живёт, зеркало F6); 404/409 — только протокольные ошибки (unknown session / wrong phase); 503 — builder не сконфигурирован. Store потокобезопасен (одно соединение + lock): пишут threadpool-хендлеры и build-поток.
+
 ### 3.8 Store
 
 SQLite (одна машина, один пользователь — достаточно до Phase 4): `sessions`, `messages`, `specs` (версии), `builds` (статус, лог, URL), `llm_calls`, `dm_change_requests`. Миграция на Postgres только если появится мульти-юзер.
