@@ -19,6 +19,15 @@ def main(argv: list[str] | None = None) -> int:
     intro.add_argument("--database", default=None, help="Database/schema (default: settings)")
     intro.add_argument("--output", default="semantic/model.yaml", help="Where to write the draft")
 
+    gaps = sub.add_parser("gaps", help="Deterministic gaps report over an introspected model")
+    gaps.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
+    gaps.add_argument("--output", default="", help="Write markdown here (default: stdout)")
+    gaps.add_argument(
+        "--offline",
+        action="store_true",
+        help="Skip live time-grain profiling (no DWH connection)",
+    )
+
     ev = sub.add_parser("eval", help="Run the eval suites (advisor: offline; golden: live LLM)")
     ev.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
     ev.add_argument("--suite", choices=["advisor", "golden", "all"], default="all")
@@ -32,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
         return _chat(args.model_path)
     if args.command == "introspect":
         return _introspect(args.database, args.output)
+    if args.command == "gaps":
+        return _gaps(args.model_path, args.output, args.offline)
     if args.command == "eval":
         return _eval(args.model_path, args.suite, args.cases)
     return 0
@@ -281,6 +292,35 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
             ok &= golden_suite_ok(report)
 
     return 0 if ok else 1
+
+
+def _gaps(model_path: str, output: str, offline: bool) -> int:
+    from pathlib import Path
+
+    from auto_bi.introspect.gaps import find_gaps
+    from auto_bi.semantic.model import SemanticModel
+
+    if not Path(model_path).exists():
+        print(f"Semantic model not found: {model_path}")
+        print("Generate it first: auto_bi introspect --output " + model_path)
+        return 2
+
+    run_query = None
+    if not offline:
+        from auto_bi.config import get_settings
+        from auto_bi.introspect.clickhouse import make_run_query
+
+        run_query = make_run_query(get_settings())
+
+    report = find_gaps(SemanticModel.load(model_path), run_query)
+    markdown = report.to_markdown()
+    if output:
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text(markdown, encoding="utf-8")
+        print(f"Gaps report written to {output}: {len(report.findings)} findings")
+    else:
+        print(markdown)
+    return 0
 
 
 def _introspect(database: str | None, output: str) -> int:
