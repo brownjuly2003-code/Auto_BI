@@ -126,7 +126,7 @@ def run_golden_case(
 ) -> CaseResult:
     agent = AgentSession(model, llm, advisor, session_id=session_id)
     try:
-        turn = agent.start(case.request)
+        turn = agent.start(case.request, seed=case.seed)
     except Exception as exc:  # an eval run must survive a single broken case
         return CaseResult(case_id=case.id, kind=case.kind.value, passed=False, detail=str(exc))
 

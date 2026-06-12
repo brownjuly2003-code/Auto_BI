@@ -13,6 +13,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from auto_bi.agent.seed import FieldsSeed, SeedGroup
 from auto_bi.ir.spec import ChartQuery, ChartSpec, FilterOp, Measure, QueryFilter, Viz
 from auto_bi.semantic.model import Aggregation, SemanticModel
 
@@ -25,7 +26,8 @@ class CaseKind(StrEnum):
 
 class GoldenCase(BaseModel):
     id: str
-    request: str
+    request: str = ""
+    seed: FieldsSeed | None = None  # fields-first entry (task 2.3); request may be empty
     kind: CaseKind
     table: str = ""  # clear: every chart must use this table
     expect_columns: set[str] = Field(default_factory=set)  # clear: must appear in the spec
@@ -109,6 +111,36 @@ GOLDEN_CASES: list[GoldenCase] = [
         table="dm.stores",
         expect_columns={"city"},
         expect_viz={Viz.PIE, Viz.BAR},
+    ),
+    # --- fields-first (task 2.3): the seed is the request, same checks as clear -----
+    GoldenCase(
+        id="f1_fields_revenue_trend",
+        seed=FieldsSeed(
+            groups=[
+                SeedGroup(
+                    label="Тренд выручки",
+                    fields=["dm.sales_daily.date", "dm.sales_daily.revenue"],
+                )
+            ],
+            comment="июнь 2026",
+        ),
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_viz={Viz.LINE, Viz.AREA},
+    ),
+    GoldenCase(
+        id="f2_fields_two_groups",
+        seed=FieldsSeed(
+            groups=[
+                SeedGroup(fields=["dm.sales_daily.date", "dm.sales_daily.revenue"]),
+                SeedGroup(fields=["dm.sales_daily.store_id", "dm.sales_daily.orders"]),
+            ],
+            comment="июнь 2026",
+        ),
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue", "store_id", "orders"},
     ),
     # --- ambiguous: the request has >=2 real readings -> a question is required ----
     GoldenCase(

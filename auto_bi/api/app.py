@@ -28,6 +28,7 @@ from auto_bi.adapters.base import DashboardRef
 from auto_bi.advisor.core import Advisor
 from auto_bi.agent.machine import AgentPhase, AgentTurn
 from auto_bi.agent.propose import SpecValidationError
+from auto_bi.agent.seed import validate_seed
 from auto_bi.api.schemas import (
     BuildEvent,
     DCRStatusUpdate,
@@ -82,8 +83,35 @@ def create_app(
 
     @app.post("/api/v1/sessions", response_model=TurnResponse, response_model_exclude_none=True)
     def start_session(body: StartSessionRequest) -> TurnResponse:
-        managed, turn = manager.start(body.request)
+        if body.seed is not None:
+            # the UI builds its field panel from GET /model/fields, so an unknown
+            # field is protocol misuse (422), not an ambiguity for CLARIFY
+            errors = validate_seed(body.seed, model)
+            if errors:
+                raise HTTPException(status_code=422, detail="; ".join(errors))
+        managed, turn = manager.start(body.request, seed=body.seed)
         return _turn(managed, turn)
+
+    @app.get("/api/v1/model/fields")
+    def model_fields() -> list[dict]:
+        """Field panel for the fields-first mode: the semantic model as the UI sees it."""
+        return [
+            {
+                "table": t.name,
+                "description": t.description,
+                "columns": [
+                    {
+                        "name": c.name,
+                        "role": c.role.value,
+                        "type": c.type,
+                        "description": c.description,
+                        "agg": c.agg.value if c.agg else None,
+                    }
+                    for c in t.columns
+                ],
+            }
+            for t in model.tables
+        ]
 
     @app.post(
         "/api/v1/sessions/{session_id}/reply",

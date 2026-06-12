@@ -8,6 +8,7 @@ so a clean report mechanically guarantees zero questions.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 
 from pydantic import BaseModel, Field
 
@@ -75,12 +76,20 @@ JSON Schema ответа:
 
 
 def build_grounding_prompt(
-    request: str, model: SemanticModel, *, include_samples: bool = True
+    request: str,
+    model: SemanticModel,
+    *,
+    include_samples: bool = True,
+    pinned: Iterable[str] = (),
 ) -> str:
     schema = json.dumps(GroundingReport.model_json_schema(), ensure_ascii=False)
     fixed = len(GROUNDING_PROMPT.format(model_text="", request=request, schema=schema))
     sub = select_context(
-        model, request, budget_chars=PROMPT_CHAR_BUDGET - fixed, include_samples=include_samples
+        model,
+        request,
+        budget_chars=PROMPT_CHAR_BUDGET - fixed,
+        include_samples=include_samples,
+        pinned=pinned,
     )
     return GROUNDING_PROMPT.format(
         model_text=render_model(sub, include_samples=include_samples),
@@ -96,8 +105,9 @@ def ground(
     *,
     session_id: str | None = None,
     include_samples: bool = True,
+    pinned: Iterable[str] = (),
 ) -> GroundingReport:
-    prompt = build_grounding_prompt(request, model, include_samples=include_samples)
+    prompt = build_grounding_prompt(request, model, include_samples=include_samples, pinned=pinned)
     report = llm.complete(
         prompt, GroundingReport, reasoning=reasoning_for("grounding"), session_id=session_id
     )

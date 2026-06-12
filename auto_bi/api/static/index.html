@@ -25,7 +25,31 @@
 
 <main class="layout">
   <section class="chat-pane" aria-label="Диалог">
+    <div id="mode-tabs" class="mode-tabs" role="tablist" aria-label="Режим запроса">
+      <button type="button" class="mode-tab active" data-mode="text" role="tab" aria-selected="true">Текстом</button>
+      <button type="button" class="mode-tab" data-mode="fields" role="tab" aria-selected="false">Полями</button>
+    </div>
     <div id="chat" class="chat"></div>
+
+    <div id="builder" class="builder" hidden aria-label="Раскладка полей">
+      <div class="builder-cols">
+        <div class="field-panel">
+          <div class="builder-title">Поля витрин</div>
+          <div id="field-tables" class="field-tables"></div>
+        </div>
+        <div class="groups-panel">
+          <div class="builder-title">Черновые группы чартов</div>
+          <p class="builder-hint">Перетащите поля в группы — каждая группа станет черновиком
+            одного чарта. Тип визуализации подберёт агент.</p>
+          <div id="groups" class="groups"></div>
+          <button type="button" id="add-group" class="add-group">+ группа</button>
+          <input id="seed-comment" class="seed-comment" type="text"
+            placeholder="Комментарий: период, ограничения… (необязательно)">
+          <button type="button" id="seed-submit" class="btn btn-primary">Предложить дашборд</button>
+        </div>
+      </div>
+    </div>
+
     <form id="chat-form" class="chat-input">
       <textarea id="chat-text" rows="2" required
         placeholder="Опишите дашборд: «Обзор продаж: выручка по дням, топ магазинов…»"></textarea>
@@ -45,6 +69,7 @@
       </div>
       <div id="spec-filters" class="spec-filters" hidden></div>
       <div id="charts" class="charts"></div>
+      <div id="spec-notes" class="spec-notes" hidden></div>
       <div id="verdicts" class="verdicts"></div>
       <button id="approve-btn" class="btn btn-primary" type="button">Собрать дашборд</button>
     </div>

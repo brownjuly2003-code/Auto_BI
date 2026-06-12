@@ -15,12 +15,14 @@ REPO_MODEL = SemanticModel.load("semantic/model.yaml")
 
 
 def test_case_inventory_matches_plan() -> None:
-    # PLAN 1.11: 15 golden (clear/ambiguous/infeasible) + >=5 seeded anti-patterns
-    assert len(GOLDEN_CASES) == 15
+    # PLAN 1.11: 15 golden (clear/ambiguous/infeasible) + >=5 seeded anti-patterns;
+    # task 2.3 adds fields-first cases (PLAN 2.8 grows the suite towards 25)
+    assert len(GOLDEN_CASES) == 17
     kinds = {k: sum(c.kind == k for c in GOLDEN_CASES) for k in CaseKind}
     assert kinds[CaseKind.CLEAR] >= 8
     assert kinds[CaseKind.AMBIGUOUS] >= 3
     assert kinds[CaseKind.INFEASIBLE] >= 3
+    assert sum(c.seed is not None for c in GOLDEN_CASES) >= 2  # fields-first entries
     seeded = [c for c in ADVISOR_CASES if not c.expect_clean]
     clean = [c for c in ADVISOR_CASES if c.expect_clean]
     assert len(seeded) >= 5

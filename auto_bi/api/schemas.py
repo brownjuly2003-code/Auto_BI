@@ -7,13 +7,21 @@ word edit that must NOT lose the session (F6 contract, now over HTTP).
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from auto_bi.agent.machine import AgentTurn
+from auto_bi.agent.seed import FieldsSeed
 
 
 class StartSessionRequest(BaseModel):
-    request: str
+    request: str = ""
+    seed: FieldsSeed | None = None  # fields-first entry (task 2.3)
+
+    @model_validator(mode="after")
+    def _at_least_one_input(self) -> StartSessionRequest:
+        if not self.request.strip() and self.seed is None:
+            raise ValueError("either request text or a fields seed is required")
+        return self
 
 
 class ReplyRequest(BaseModel):

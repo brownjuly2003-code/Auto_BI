@@ -15,6 +15,7 @@ from collections.abc import Iterator
 
 from auto_bi.advisor.core import Advisor
 from auto_bi.agent.machine import AgentSession, AgentTurn
+from auto_bi.agent.seed import FieldsSeed
 from auto_bi.api.schemas import BuildEvent
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
@@ -84,9 +85,16 @@ class SessionManager:
         self._sessions: dict[str, ManagedSession] = {}
         self._registry_lock = threading.Lock()
 
-    def start(self, request: str) -> tuple[ManagedSession, AgentTurn]:
+    def start(
+        self, request: str, seed: FieldsSeed | None = None
+    ) -> tuple[ManagedSession, AgentTurn]:
         if self._store is not None:
-            session_id = self._store.create_session(request)
+            # the durable per-message record gets the full rendered seed; the session
+            # row keeps a short human label so the list view stays scannable
+            label = request
+            if not label and seed is not None:
+                label = f"[fields-first] групп: {len(seed.groups)}"
+            session_id = self._store.create_session(label)
         else:
             session_id = uuid.uuid4().hex
         agent = AgentSession(
@@ -100,7 +108,7 @@ class SessionManager:
         managed = ManagedSession(session_id, agent)
         with self._registry_lock:
             self._sessions[session_id] = managed
-        turn = agent.start(request)
+        turn = agent.start(request, seed=seed)
         return managed, turn
 
     def get(self, session_id: str) -> ManagedSession:

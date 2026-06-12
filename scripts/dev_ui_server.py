@@ -3,7 +3,9 @@
 Запуск:  .venv/Scripts/python.exe scripts/dev_ui_server.py  ->  http://127.0.0.1:8201/
 Сценарий зашит: первый запрос -> 2 уточняющих вопроса, ответ -> spec из 3 чартов
 с двумя вердиктами advisor; approve -> "сборка" с лог-шагами; правка словами ->
-spec с новым заголовком. Нужен ТОЛЬКО для ручной/браузерной проверки фронта —
+spec с новым заголовком. Fields-first: режим «Полями» строит панель из MODEL
+(две таблицы); поля dm.stores в spec не входят -> в превью виден детерминированный
+«анализ раскладки». Нужен ТОЛЬКО для ручной/браузерной проверки фронта —
 никакой бизнес-логики здесь нет.
 """
 
@@ -32,7 +34,15 @@ MODEL = SemanticModel(
                 Column(name="revenue", type="Decimal(18,2)", role=ColumnRole.MEASURE),
                 Column(name="orders", type="UInt32", role=ColumnRole.MEASURE),
             ],
-        )
+        ),
+        Table(
+            name="dm.stores",
+            description="Справочник магазинов",
+            columns=[
+                Column(name="name", type="String", role=ColumnRole.DIMENSION),
+                Column(name="city", type="LowCardinality(String)", role=ColumnRole.DIMENSION),
+            ],
+        ),
     ]
 )
 

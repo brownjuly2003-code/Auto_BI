@@ -18,6 +18,7 @@ from auto_bi.advisor.core import Advisor
 from auto_bi.advisor.narrate import ChartVerdict, narrate_findings
 from auto_bi.agent.grounding import GroundingReport, clarify_questions, ground
 from auto_bi.agent.propose import patch_spec, propose_spec
+from auto_bi.agent.seed import FieldsSeed, render_seed_request, seed_analysis, seed_tables
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
@@ -40,6 +41,8 @@ class AgentTurn(BaseModel):
     questions: list[str] = Field(default_factory=list)
     spec: DashboardSpec | None = None
     verdicts: list[ChartVerdict] = Field(default_factory=list)
+    # fields-first: детерминированный анализ раскладки (seed vs spec)
+    notes: list[str] = Field(default_factory=list)
 
 
 def spec_summary(spec: DashboardSpec) -> str:
@@ -85,6 +88,8 @@ class AgentSession:
         self.spec: DashboardSpec | None = None
         self.verdicts: list[ChartVerdict] = []
         self._request = ""
+        self._seed: FieldsSeed | None = None
+        self._pinned: set[str] = set()
         self._clarifications: list[str] = []
         self._clarify_rounds = 0
         self._spec_row_id: int | None = None
@@ -92,11 +97,27 @@ class AgentSession:
 
     # --- steps -----------------------------------------------------------------
 
-    def start(self, request: str) -> AgentTurn:
+    def start(self, request: str = "", *, seed: FieldsSeed | None = None) -> AgentTurn:
+        """Text-first (request) or fields-first (seed) entry — same pipeline (invariant 6).
+
+        The seed renders into a textual request GROUNDING consumes unchanged; its
+        tables are pinned in context selection (the layout IS the request, dropping
+        its tables would invalidate it). Seed validation against the model is the
+        caller's job (API/UI built the panel from the model) — by this point an
+        unknown field is a bug, not a clarification.
+        """
         if self.phase != AgentPhase.INTAKE:
             raise RuntimeError(f"session already started (phase={self.phase})")
-        self._request = request
-        self._record("user", request)
+        if seed is None and not request.strip():
+            raise ValueError("either request text or a fields seed is required")
+        if seed is not None:
+            self._seed = seed
+            self._pinned = seed_tables(seed)
+            rendered = render_seed_request(seed, self._model)
+            self._request = f"{rendered}\n\n{request}" if request.strip() else rendered
+        else:
+            self._request = request
+        self._record("user", self._request)
         return self._ground_then_propose()
 
     def reply(self, text: str) -> AgentTurn:
@@ -147,6 +168,7 @@ class AgentSession:
             self._full_request(),
             session_id=self._session_id,
             include_samples=self._include_samples,
+            pinned=self._pinned,
         )
         questions = clarify_questions(self.report)
         if questions and self._clarify_rounds < MAX_CLARIFY_ROUNDS:
@@ -164,10 +186,14 @@ class AgentSession:
             self._full_request(),
             session_id=self._session_id,
             include_samples=self._include_samples,
+            pinned=self._pinned or None,
         )
-        return self._propose_turn()
+        # layout analysis only on the initial proposal: word edits deliberately
+        # diverge from the seed, re-reporting the diff would flag the user's own edits
+        notes = seed_analysis(self._seed, self.spec) if self._seed is not None else []
+        return self._propose_turn(notes=notes)
 
-    def _propose_turn(self) -> AgentTurn:
+    def _propose_turn(self, notes: list[str] | None = None) -> AgentTurn:
         assert self.spec is not None
         self.verdicts = []
         if self._advisor is not None:
@@ -177,6 +203,8 @@ class AgentSession:
             )
         self.phase = AgentPhase.APPROVE
         message = spec_summary(self.spec)
+        if notes:
+            message += "\n" + "\n".join(f"  ◦ анализ раскладки: {n}" for n in notes)
         self._record("agent", message)
         if self._store is not None and self._session_id is not None:
             self._spec_row_id = self._store.save_spec(
@@ -196,7 +224,13 @@ class AgentSession:
                         severity=v.severity.value,
                         narrative=v.text,
                     )
-        return AgentTurn(phase=self.phase, message=message, spec=self.spec, verdicts=self.verdicts)
+        return AgentTurn(
+            phase=self.phase,
+            message=message,
+            spec=self.spec,
+            verdicts=self.verdicts,
+            notes=notes or [],
+        )
 
     def _record(self, role: str, content: str) -> None:
         if self._store is not None and self._session_id is not None:

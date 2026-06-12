@@ -194,6 +194,58 @@ def test_dm_change_requests_lifecycle_over_http(demo_model, tmp_path) -> None:
     store.close()
 
 
+def test_model_fields_panel(demo_model) -> None:
+    client = make_client(ScriptedLLM([]), demo_model)
+    panel = client.get("/api/v1/model/fields").json()
+    assert [t["table"] for t in panel] == ["dm.sales_daily", "dm.stores"]
+    revenue = next(c for c in panel[0]["columns"] if c["name"] == "revenue")
+    assert revenue == {
+        "name": "revenue",
+        "role": "measure",
+        "type": "Decimal(18, 2)",
+        "description": "Выручка, руб",
+        "agg": "sum",
+    }
+
+
+def test_fields_first_session_over_http(demo_model, tmp_path) -> None:
+    store = Store(tmp_path / "seed.sqlite")
+    client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model, store=store)
+    seed = {
+        "groups": [
+            {"label": "Тренд", "fields": ["dm.sales_daily.date", "dm.sales_daily.revenue"]},
+            {"fields": ["dm.stores.city"]},
+        ],
+        "comment": "за последний квартал",
+    }
+    response = client.post("/api/v1/sessions", json={"seed": seed})
+    assert response.status_code == 200, response.text
+    turn = response.json()
+    assert turn["phase"] == "approve"
+    assert turn["spec"]["title"] == "Продажи"
+    assert "анализ раскладки" in turn["message"]  # dm.stores.city did not survive
+    assert any("dm.stores.city" in n for n in turn["notes"])  # the web UI renders these
+    # durable record: the rendered seed is the user message, the session label is short
+    messages = store.messages(turn["session_id"])
+    assert "Группа 1 «Тренд»" in messages[0]["content"]
+    store.close()
+
+
+def test_fields_first_protocol_errors(demo_model) -> None:
+    client = make_client(ScriptedLLM([]), demo_model)
+    # unknown field: the panel comes from the model, so this is protocol misuse
+    bad = client.post(
+        "/api/v1/sessions",
+        json={"seed": {"groups": [{"fields": ["dm.sales_daily.margin"]}]}},
+    )
+    assert bad.status_code == 422
+    assert "dm.sales_daily.margin" in bad.json()["detail"]
+    # neither text nor seed
+    assert client.post("/api/v1/sessions", json={"request": "  "}).status_code == 422
+    # empty groups fail pydantic validation
+    assert client.post("/api/v1/sessions", json={"seed": {"groups": []}}).status_code == 422
+
+
 def test_dm_change_requests_without_store_is_503(demo_model) -> None:
     client = make_client(ScriptedLLM([]), demo_model, store=None)
     assert client.get("/api/v1/dm-change-requests").status_code == 503
