@@ -34,9 +34,16 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
 
     errors: list[str] = []
 
-    for dim in chart.query.dimensions:
-        if table.column(dim) is None:
-            errors.append(f"{prefix}: unknown dimension column {dim!r} in {table.name}")
+    role_fields = (
+        ("dimension", chart.query.dimensions),
+        ("series", chart.query.series),
+        ("pivot row", chart.query.rows),
+        ("pivot column", chart.query.columns),
+    )
+    for role, cols in role_fields:
+        for col in cols:
+            if table.column(col) is None:
+                errors.append(f"{prefix}: unknown {role} column {col!r} in {table.name}")
 
     for measure in chart.query.measures:
         col = table.column(measure.column)
@@ -51,7 +58,7 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
         if qf.op == FilterOp.IN and isinstance(qf.value, list) and not qf.value:
             errors.append(f"{prefix}: filter on {qf.column!r} uses IN with an empty value list")
 
-    orderable = set(chart.query.dimensions)
+    orderable = set(chart.query.group_columns())  # any selected dimension-like column
     for m in chart.query.measures:
         orderable.add(m.column)
         orderable.add(measure_alias(m))  # the SELECT alias SQL_GEN actually orders by
@@ -68,16 +75,54 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
 
 
 def _validate_viz_shape(chart: ChartSpec, prefix: str) -> list[str]:
-    """Compile-level shape rules so adapters never meet impossible charts."""
+    """Compile-level shape rules so adapters never meet impossible charts.
+
+    Each viz declares which dimension-like roles it uses; roles it does not use must
+    be empty so the LLM cannot smuggle structure an adapter would silently ignore.
+    """
     q = chart.query
+    errors: list[str] = []
+
+    def forbid(*roles: tuple[str, list[str]]) -> None:
+        for name, cols in roles:
+            if cols:
+                errors.append(f"{prefix}: {chart.viz.value} must not set {name} (got {cols})")
+
+    dims, series = ("dimensions", q.dimensions), ("series", q.series)
+    rows, cols = ("rows", q.rows), ("columns", q.columns)
+
     if chart.viz == Viz.BIG_NUMBER:
-        if q.dimensions:
-            return [f"{prefix}: big_number must not have dimensions (got {q.dimensions})"]
+        forbid(dims, series, rows, cols)
         if len(q.measures) != 1:
-            return [f"{prefix}: big_number needs exactly one measure (got {len(q.measures)})"]
-    if chart.viz in (Viz.LINE, Viz.BAR) and not q.dimensions:
-        return [f"{prefix}: {chart.viz} needs at least one dimension"]
-    return []
+            errors.append(f"{prefix}: big_number needs exactly one measure (got {len(q.measures)})")
+    elif chart.viz in (Viz.LINE, Viz.AREA, Viz.BAR, Viz.STACKED_BAR):
+        if not q.dimensions:
+            errors.append(f"{prefix}: {chart.viz.value} needs at least one dimension (x-axis)")
+        forbid(rows, cols)
+    elif chart.viz == Viz.PIE:
+        if len(q.dimensions) != 1:
+            errors.append(f"{prefix}: pie needs exactly one dimension (got {len(q.dimensions)})")
+        if len(q.measures) != 1:
+            errors.append(f"{prefix}: pie needs exactly one measure (got {len(q.measures)})")
+        forbid(series, rows, cols)
+    elif chart.viz == Viz.TABLE:
+        if not q.dimensions and not q.measures:
+            errors.append(f"{prefix}: table needs at least one dimension or measure")
+        forbid(series, rows, cols)
+    elif chart.viz == Viz.PIVOT:
+        if not q.rows:
+            errors.append(f"{prefix}: pivot needs at least one row dimension")
+        forbid(dims, series)
+    elif chart.viz == Viz.HEATMAP:
+        if len(q.dimensions) != 2:
+            errors.append(
+                f"{prefix}: heatmap needs exactly two dimensions x,y (got {len(q.dimensions)})"
+            )
+        if len(q.measures) != 1:
+            errors.append(f"{prefix}: heatmap needs exactly one measure (got {len(q.measures)})")
+        forbid(series, rows, cols)
+
+    return errors
 
 
 def _resolve_qualified_column(qualified: str, model: SemanticModel) -> Table | None:

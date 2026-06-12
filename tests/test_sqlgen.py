@@ -91,6 +91,35 @@ def test_empty_in_filter_raises() -> None:
         )
 
 
+def test_pivot_groups_by_rows_and_columns() -> None:
+    sql = generate_chart_sql(
+        ChartQuery(
+            table="dm.sales_daily",
+            rows=["store_id"],
+            columns=["date"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM, label="Выручка")],
+        )
+    )
+    assert '"store_id"' in sql and '"date"' in sql
+    assert 'GROUP BY "store_id", "date"' in sql
+
+
+def test_heatmap_groups_by_both_axes() -> None:
+    sql = generate_chart_sql(
+        ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["store_id", "date"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        )
+    )
+    assert 'GROUP BY "store_id", "date"' in sql
+
+
+def test_series_dimension_enters_group_by() -> None:
+    sql = generate_chart_sql(make_query(dimensions=["date"], series=["store_id"]))
+    assert 'GROUP BY "date", "store_id"' in sql
+
+
 def test_count_distinct() -> None:
     sql = generate_chart_sql(
         make_query(measures=[Measure(column="store_id", agg=Aggregation.COUNT_DISTINCT)])

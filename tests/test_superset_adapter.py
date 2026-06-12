@@ -124,6 +124,23 @@ def test_form_data_escapes_malicious_label() -> None:
     assert fd["metric"]["label"] == 'x") FROM system.numbers --'
 
 
+def test_form_data_unimplemented_viz_raises() -> None:
+    # IR accepts all 9 viz (1.1); the 6 new form_data templates land in 1.2 — until
+    # then build_form_data must fail loudly, not produce a broken chart
+    chart = ChartSpec(
+        id="p",
+        title="pie",
+        viz=Viz.PIE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["store_id"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        ),
+    )
+    with pytest.raises(NotImplementedError, match=r"task 1\.2"):
+        build_form_data(chart, dataset_id=1)
+
+
 def test_form_data_bar_extra_dims_go_to_groupby() -> None:
     chart = ChartSpec(
         id="b",

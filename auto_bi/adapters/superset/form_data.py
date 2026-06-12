@@ -37,6 +37,12 @@ def _adhoc_metric(measure: Measure, chart_id: str, index: int, agg: str = "SUM")
 
 def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
     """Superset chart params for the pinned 4.1, on top of a virtual dataset."""
+    if chart.viz not in VIZ_TYPE:
+        # IR (task 1.1) already accepts all 9 viz types; the remaining form_data
+        # templates are reverse-engineered against the live stand in task 1.2.
+        raise NotImplementedError(
+            f"form_data template for viz {chart.viz.value!r} is not wired yet (task 1.2)"
+        )
     datasource = f"{dataset_id}__table"
     metrics = [_adhoc_metric(m, chart.id, i) for i, m in enumerate(chart.query.measures)]
     base = {
