@@ -8,7 +8,9 @@
 
 Известное ограничение Phase 0 (by design): джойнов в IR нет — запросы с полями из смежных таблиц («топ городов» при city в dm.stores) отклоняются валидацией; промпт предупреждает LLM. Снимается в Phase 1/2 по PLAN.
 
-**S6 ЗАКРЫТ** (2026-06-12, решение пользователя): внешнее ревью заменено аудитом Fable (`fable_audit.md`), все 8 findings исправлены и верифицированы (см. ниже). **Следующий шаг: Phase 1** — свериться с PLAN.md. Внимание: задачи 1.4–1.7 (GROUNDING/CLARIFY/PROPOSE_SPEC, eval) — промпт-инжиниринг → стоппер **S2**: не начинать на Opus в `/auto`, нужен Fable или ручная сессия. Push ветки невозможен — у репозитория нет remote (локальный-only).
+**S6 ЗАКРЫТ** (2026-06-12, решение пользователя): внешнее ревью заменено аудитом Fable (`fable_audit.md`), все 8 findings исправлены и верифицированы. Phase 0 смержена в `main` (`3f99f35`).
+
+**Phase 1 НАЧАТА** (ветка `phase-1/mvp-superset-advisor` от main). Готово: **1.1** полный IR (9 viz + ролевые поля series/rows/columns, `ad1999d`), **1.3** layout-упаковщик 12-колоночной сетки (`d8ada46`), **1.6** Feasibility Advisor v1 (CH rule pack + EXPLAIN-evidence, advisory-only, `3dad971`). pytest **89 passed / 4 deselected**. Осталось: **1.2** form_data на 6 новых viz (нужен реверс против живого Superset — гейт live-стенда), **1.5** context selection, **1.9** SQLite store, **1.10** реальный DWH; **1.4/1.7/1.11/1.12** — промпт-инжиниринг/eval → стоппер **S2** (Fable/ручная, не Opus в /auto). Push невозможен — у репо нет remote.
 
 > 2026-06-12: `/cxkm` по диффу `main...HEAD` запущен — оба внешних ревьюера недоступны (CX `codex app-server exited unexpectedly`; KM/mco kimi `LLM not set` — провайдер не сконфигурирован). Postflight локально зелёный: `ruff` clean, `pytest` 55 passed / 4 deselected (live-тесты гейтятся стендом). S6-ревью НЕ пройдено → Phase 1 не начинать. Re-run: `codex-prompt-phase0-review.md` (root, untracked) + готовые `.tmp/diff.patch`, `.tmp/km-prompt.md`. Hygiene: `.gitignore` теперь покрывает `.env.*` (коммит `5836695`).
 
