@@ -16,6 +16,12 @@ VIZ_TYPE = {
     Viz.BIG_NUMBER: "big_number_total",
     Viz.LINE: "echarts_timeseries_line",
     Viz.BAR: "echarts_timeseries_bar",
+    Viz.STACKED_BAR: "echarts_timeseries_bar",
+    Viz.AREA: "echarts_area",
+    Viz.PIE: "pie",
+    Viz.TABLE: "table",
+    Viz.PIVOT: "pivot_table_v2",
+    Viz.HEATMAP: "heatmap_v2",
 }
 
 ROW_HEIGHT_UNITS = 12  # layout_hint.h (1..12) -> superset grid height units
@@ -38,33 +44,77 @@ def _adhoc_metric(measure: Measure, chart_id: str, index: int, agg: str = "SUM")
 
 def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
     """Superset chart params for the pinned 4.1, on top of a virtual dataset."""
-    if chart.viz not in VIZ_TYPE:
-        # IR (task 1.1) already accepts all 9 viz types; the remaining form_data
-        # templates are reverse-engineered against the live stand in task 1.2.
-        raise NotImplementedError(
-            f"form_data template for viz {chart.viz.value!r} is not wired yet (task 1.2)"
-        )
-    datasource = f"{dataset_id}__table"
-    metrics = [_adhoc_metric(m, chart.id, i) for i, m in enumerate(chart.query.measures)]
+    q = chart.query
+    metrics = [_adhoc_metric(m, chart.id, i) for i, m in enumerate(q.measures)]
     base = {
-        "datasource": datasource,
+        "datasource": f"{dataset_id}__table",
         "viz_type": VIZ_TYPE[chart.viz],
-        "row_limit": chart.query.limit,
+        "row_limit": q.limit,
     }
 
     if chart.viz == Viz.BIG_NUMBER:
         # the dataset is a single already-aggregated row -> MAX is the identity
-        metric = _adhoc_metric(chart.query.measures[0], chart.id, 0, agg="MAX")
+        metric = _adhoc_metric(q.measures[0], chart.id, 0, agg="MAX")
         return {**base, "metric": metric, "subheader": ""}
 
-    x_axis, *rest_dims = chart.query.dimensions
-    return {
+    if chart.viz == Viz.PIE:
+        # shape-validated to exactly one dimension + one measure
+        return {
+            **base,
+            "groupby": q.dimensions,
+            "metric": metrics[0],
+            "sort_by_metric": True,
+        }
+
+    if chart.viz == Viz.TABLE:
+        return {
+            **base,
+            "query_mode": "aggregate",
+            "groupby": q.group_columns(),
+            "metrics": metrics,
+        }
+
+    if chart.viz == Viz.PIVOT:
+        # cells re-aggregate with Sum: the dataset grain is exactly rows x columns,
+        # so each cell holds one source row and Sum is the identity
+        return {
+            **base,
+            "groupbyRows": q.rows,
+            "groupbyColumns": q.columns,
+            "metrics": metrics,
+            "metricsLayout": "COLUMNS",
+            "aggregateFunction": "Sum",
+            "rowOrder": "key_a_to_z",
+        }
+
+    if chart.viz == Viz.HEATMAP:
+        x_axis, y_axis = q.dimensions  # shape-validated to exactly two
+        return {
+            **base,
+            "x_axis": x_axis,
+            "groupby": y_axis,
+            "metric": metrics[0],
+            "sort_x_axis": "alpha_asc",
+            "sort_y_axis": "alpha_asc",
+            "normalize_across": "heatmap",
+            "legend_type": "continuous",
+        }
+
+    # echarts timeseries family: line, bar, stacked_bar, area
+    x_axis, *rest_dims = q.dimensions
+    breakdown: dict[str, None] = {}  # series + extra dimensions, deduped, order kept
+    for col in (*q.series, *rest_dims):
+        breakdown.setdefault(col, None)
+    form_data = {
         **base,
         "x_axis": x_axis,
         "x_axis_sort_asc": True,
         "metrics": metrics,
-        "groupby": rest_dims,
+        "groupby": list(breakdown),
     }
+    if chart.viz == Viz.STACKED_BAR or (chart.viz == Viz.AREA and q.series):
+        form_data["stack"] = "Stack"  # echarts "Stacked Style" select: None/Stack/Stream
+    return form_data
 
 
 def _pack_rows(

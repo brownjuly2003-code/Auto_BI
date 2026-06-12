@@ -124,21 +124,69 @@ def test_form_data_escapes_malicious_label() -> None:
     assert fd["metric"]["label"] == 'x") FROM system.numbers --'
 
 
-def test_form_data_unimplemented_viz_raises() -> None:
-    # IR accepts all 9 viz (1.1); the 6 new form_data templates land in 1.2 — until
-    # then build_form_data must fail loudly, not produce a broken chart
-    chart = ChartSpec(
-        id="p",
-        title="pie",
-        viz=Viz.PIE,
-        query=ChartQuery(
-            table="dm.sales_daily",
-            dimensions=["store_id"],
-            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
-        ),
+def _chart(viz: Viz, **query_kwargs) -> ChartSpec:
+    query_kwargs.setdefault("measures", [Measure(column="revenue", agg=Aggregation.SUM)])
+    return ChartSpec(
+        id="c", title="c", viz=viz, query=ChartQuery(table="dm.sales_daily", **query_kwargs)
     )
-    with pytest.raises(NotImplementedError, match=r"task 1\.2"):
-        build_form_data(chart, dataset_id=1)
+
+
+def test_form_data_pie() -> None:
+    fd = build_form_data(_chart(Viz.PIE, dimensions=["store_id"]), dataset_id=1)
+    assert fd["viz_type"] == "pie"
+    assert fd["groupby"] == ["store_id"]
+    assert fd["metric"]["sqlExpression"] == 'SUM("sum_revenue")'
+    assert "metrics" not in fd
+
+
+def test_form_data_table_groups_all_roles() -> None:
+    fd = build_form_data(_chart(Viz.TABLE, dimensions=["date", "store_id"]), dataset_id=1)
+    assert fd["viz_type"] == "table"
+    assert fd["query_mode"] == "aggregate"
+    assert fd["groupby"] == ["date", "store_id"]
+
+
+def test_form_data_pivot() -> None:
+    fd = build_form_data(_chart(Viz.PIVOT, rows=["store_id"], columns=["manager_id"]), dataset_id=1)
+    assert fd["viz_type"] == "pivot_table_v2"
+    assert fd["groupbyRows"] == ["store_id"]
+    assert fd["groupbyColumns"] == ["manager_id"]
+    assert fd["aggregateFunction"] == "Sum"
+
+
+def test_form_data_heatmap() -> None:
+    fd = build_form_data(_chart(Viz.HEATMAP, dimensions=["date", "store_id"]), dataset_id=1)
+    assert fd["viz_type"] == "heatmap_v2"
+    assert fd["x_axis"] == "date"
+    assert fd["groupby"] == "store_id"
+    assert fd["metric"]["sqlExpression"] == 'SUM("sum_revenue")'
+
+
+def test_form_data_stacked_bar_sets_stack_and_series() -> None:
+    fd = build_form_data(
+        _chart(Viz.STACKED_BAR, dimensions=["date"], series=["store_id"]), dataset_id=1
+    )
+    assert fd["viz_type"] == "echarts_timeseries_bar"
+    assert fd["stack"] == "Stack"
+    assert fd["groupby"] == ["store_id"]
+
+
+def test_form_data_area_stacks_only_with_series() -> None:
+    plain = build_form_data(_chart(Viz.AREA, dimensions=["date"]), dataset_id=1)
+    assert plain["viz_type"] == "echarts_area"
+    assert "stack" not in plain
+    stacked = build_form_data(
+        _chart(Viz.AREA, dimensions=["date"], series=["store_id"]), dataset_id=1
+    )
+    assert stacked["stack"] == "Stack"
+
+
+def test_form_data_line_merges_series_and_extra_dims_deduped() -> None:
+    fd = build_form_data(
+        _chart(Viz.LINE, dimensions=["date", "city"], series=["city", "format"]), dataset_id=1
+    )
+    assert fd["x_axis"] == "date"
+    assert fd["groupby"] == ["city", "format"]
 
 
 def test_form_data_bar_extra_dims_go_to_groupby() -> None:
