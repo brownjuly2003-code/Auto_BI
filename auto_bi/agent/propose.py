@@ -38,6 +38,9 @@ SPEC_RULES = """Правила:
    - heatmap — ровно два dimensions (x,y) и одна мера.
 3. measures — только колонки с ролью measure; dimensions/series/rows/columns — колонки с ролью
    dimension или time. Не клади одну и ту же колонку в несколько ролей.
+   Имена колонок везде — БЕЗ префикса таблицы: "revenue", НЕ "dm.sales_daily.revenue"
+   (полное имя только в query.table; исключение — dashboard-фильтры верхнего уровня,
+   там колонка полная: "dm.sales_daily.date").
 4. Для line/area первым в dimensions ставь колонку с ролью time.
 5. Для bar/stacked_bar/pie/table ограничивай выдачу: order_by по мере desc + разумный limit (10–50).
 6. layout_hint: сетка 12 колонок; big_number — w=4 h=2; остальные — w=6..12 h=4; row нумеруй с 0.

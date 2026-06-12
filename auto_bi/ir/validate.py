@@ -17,7 +17,10 @@ def validate_spec(spec: DashboardSpec, model: SemanticModel) -> list[str]:
 
     for f in spec.filters:
         if _resolve_qualified_column(f.column, model) is None:
-            errors.append(f"dashboard filter references unknown column: {f.column!r}")
+            # common LLM slip: a bare column where the dashboard filter needs "schema.table.column"
+            owners = [t.name for t in model.tables if t.column(f.column) is not None]
+            hint = f" — укажи полное имя: {owners[0] + '.' + f.column!r}" if owners else ""
+            errors.append(f"dashboard filter references unknown column: {f.column!r}{hint}")
 
     for chart in spec.charts:
         errors.extend(_validate_chart(chart, model))
@@ -34,6 +37,14 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
 
     errors: list[str] = []
 
+    def _unknown(col: str, where: str) -> str:
+        # the most common LLM slip: a table-qualified name where a bare one is required;
+        # still rejected (no silent fixes), but the error says exactly how to fix it
+        hint = ""
+        if col.startswith(f"{table.name}.") and table.column(col.removeprefix(f"{table.name}.")):
+            hint = f" — укажи имя без префикса таблицы: {col.removeprefix(f'{table.name}.')!r}"
+        return f"{prefix}: unknown {where} {col!r} in {table.name}{hint}"
+
     role_fields = (
         ("dimension", chart.query.dimensions),
         ("series", chart.query.series),
@@ -43,18 +54,18 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
     for role, cols in role_fields:
         for col in cols:
             if table.column(col) is None:
-                errors.append(f"{prefix}: unknown {role} column {col!r} in {table.name}")
+                errors.append(_unknown(col, f"{role} column"))
 
     for measure in chart.query.measures:
         col = table.column(measure.column)
         if col is None:
-            errors.append(f"{prefix}: unknown measure column {measure.column!r} in {table.name}")
+            errors.append(_unknown(measure.column, "measure column"))
         elif col.role == ColumnRole.TIME:
             errors.append(f"{prefix}: time column {measure.column!r} cannot be a measure")
 
     for qf in chart.query.filters:
         if table.column(qf.column) is None:
-            errors.append(f"{prefix}: filter references unknown column {qf.column!r}")
+            errors.append(_unknown(qf.column, "filter column"))
         if qf.op == FilterOp.IN and isinstance(qf.value, list) and not qf.value:
             errors.append(f"{prefix}: filter on {qf.column!r} uses IN with an empty value list")
 
