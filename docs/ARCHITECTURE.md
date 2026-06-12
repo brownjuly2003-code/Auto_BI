@@ -163,6 +163,7 @@ Pydantic v2 + экспорт JSON Schema (она же вставляется в 
 ```
 
 - `viz` enum v1: `big_number, line, bar, stacked_bar, area, pie, table, pivot, heatmap`.
+- **Роли измерений в `query`** (rich roles, Phase 1.1): `dimensions` — основная группировка (x-ось line/bar/area, доли pie, две оси heatmap, колонки table); `series` — разбивка/стек для `stacked_bar`/`area`; `rows`/`columns` — строки и колонки `pivot`. SQL_GEN группирует по объединению всех четырёх; адаптер читает каждую роль для раскладки чарта. Каждый viz объявляет используемые роли — неиспользуемые роли должны быть пустыми (валидация по форме).
 - `target_bi` enum v1–v2: `superset | datalens`.
 - **Capability matrix** viz → BI: что таргет не умеет — деградация по явному правилу, с пометкой в build log.
 - `query` — декларативный (таблица/измерения/меры/фильтры), не сырой SQL: SQL генерируется отдельным шагом и валидируется. Эскейп-хэтч `raw_sql` допускается, но помечается и проходит sqlglot-guard.

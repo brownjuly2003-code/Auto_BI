@@ -54,6 +54,19 @@ def test_time_column_as_measure_rejected(demo_model) -> None:
     assert any("cannot be a measure" in e for e in errors)
 
 
+def test_numeric_agg_over_dimension_rejected(demo_model) -> None:
+    # sum(store_id) validates structurally but dies late on EXPLAIN: reject early
+    # with an actionable error for the repair loop
+    bad = chart(measures=[Measure(column="store_id", agg=Aggregation.SUM)])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("sum over dimension" in e and "store_id" in e for e in errors)
+
+
+def test_count_over_dimension_allowed(demo_model) -> None:
+    ok = chart(measures=[Measure(column="store_id", agg=Aggregation.COUNT_DISTINCT)])
+    assert validate_spec(spec(ok), demo_model) == []
+
+
 def test_order_by_must_reference_chart_fields(demo_model) -> None:
     bad = chart(order_by=[OrderBy(by="что-то левое", dir="desc")])
     errors = validate_spec(spec(bad), demo_model)
@@ -80,6 +93,44 @@ def test_empty_in_filter_rejected(demo_model) -> None:
     bad = chart(filters=[QueryFilter(column="store_id", op=FilterOp.IN, value=[])])
     errors = validate_spec(spec(bad), demo_model)
     assert any("empty value list" in e for e in errors)
+
+
+def test_pivot_shape_ok(demo_model) -> None:
+    ok = chart(viz=Viz.PIVOT, dimensions=[], rows=["store_id"], columns=["date"])
+    assert validate_spec(spec(ok), demo_model) == []
+
+
+def test_pivot_requires_rows_and_forbids_dimensions(demo_model) -> None:
+    no_rows = chart(viz=Viz.PIVOT, dimensions=[], rows=[])
+    assert any("needs at least one row" in e for e in validate_spec(spec(no_rows), demo_model))
+    with_dims = chart(viz=Viz.PIVOT, dimensions=["date"], rows=["store_id"])
+    assert any("must not set dimensions" in e for e in validate_spec(spec(with_dims), demo_model))
+
+
+def test_heatmap_needs_two_dimensions(demo_model) -> None:
+    bad = chart(viz=Viz.HEATMAP, dimensions=["date"])
+    assert any("exactly two dimensions" in e for e in validate_spec(spec(bad), demo_model))
+    ok = chart(viz=Viz.HEATMAP, dimensions=["store_id", "date"])
+    assert validate_spec(spec(ok), demo_model) == []
+
+
+def test_pie_needs_one_dim_one_measure(demo_model) -> None:
+    ok = chart(viz=Viz.PIE, dimensions=["store_id"])
+    assert validate_spec(spec(ok), demo_model) == []
+    bad = chart(viz=Viz.PIE, dimensions=["store_id", "product_id"])
+    assert any("pie needs exactly one dimension" in e for e in validate_spec(spec(bad), demo_model))
+
+
+def test_stacked_bar_series_ok_but_line_forbids_pivot_roles(demo_model) -> None:
+    ok = chart(viz=Viz.STACKED_BAR, dimensions=["date"], series=["store_id"])
+    assert validate_spec(spec(ok), demo_model) == []
+    bad = chart(viz=Viz.LINE, dimensions=["date"], rows=["store_id"])
+    assert any("must not set rows" in e for e in validate_spec(spec(bad), demo_model))
+
+
+def test_unknown_series_column_rejected(demo_model) -> None:
+    bad = chart(viz=Viz.STACKED_BAR, dimensions=["date"], series=["nope_col"])
+    assert any("unknown series column" in e for e in validate_spec(spec(bad), demo_model))
 
 
 def test_big_number_shape(demo_model) -> None:

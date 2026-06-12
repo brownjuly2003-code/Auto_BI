@@ -96,3 +96,41 @@ def test_yaml_roundtrip(tmp_path) -> None:
     model.dump(path)
     loaded = SemanticModel.load(path)
     assert loaded == model
+
+
+def test_cardinality_profile_tolerates_null_uniq() -> None:
+    """uniqCombined returns NULL on Nullable(Nothing) columns (NULL literal in a CTAS)."""
+
+    def run(sql: str) -> list[dict]:
+        if "system.tables" in sql:
+            return [
+                {
+                    "name": "degenerate",
+                    "engine": "MergeTree",
+                    "sorting_key": "id",
+                    "partition_key": "",
+                    "total_rows": 10,
+                    "total_bytes": 100,
+                    "comment": "",
+                }
+            ]
+        if "system.columns" in sql:
+            return [
+                {"table": "degenerate", "name": "id", "type": "UInt32", "comment": ""},
+                {
+                    "table": "degenerate",
+                    "name": "pii_source",
+                    "type": "Nullable(Nothing)",
+                    "comment": "",
+                },
+            ]
+        if "uniqCombined" in sql:
+            return [{"id": 10, "pii_source": None}]
+        if "GROUP BY" in sql:
+            return [{"v": "x", "cnt": 1}]
+        raise AssertionError(f"unexpected query: {sql}")
+
+    model = ClickHouseIntrospector(run).introspect("dm")
+    table = model.table("dm.degenerate")
+    assert table is not None
+    assert table.physical.cardinality["pii_source"] == 0

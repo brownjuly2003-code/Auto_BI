@@ -46,6 +46,30 @@ def test_build_dashboard_stops_on_sql_failure() -> None:
     assert not any(m == "POST" and "chart" in p for m, p, _ in fake_superset.requests)
 
 
+def test_build_dashboard_records_spec_and_build_in_store(tmp_path) -> None:
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням")
+    ref = build_dashboard(
+        "выручка по дням",
+        demo_model_fixtureless(),
+        llm=FakeLLM([GOOD_SPEC]),
+        sql_validator=LiveSQLValidator(stub_run_query),
+        adapter=make_adapter(FakeSuperset()),
+        log=lambda s: None,
+        store=store,
+        session_id=sid,
+    )
+    (spec_row,) = store.specs(sid)
+    assert spec_row["spec_json"]["title"] == GOOD_SPEC["title"]
+    (build_row,) = store.builds(sid)
+    assert build_row["spec_id"] == spec_row["id"]
+    assert build_row["url"] == ref.url
+    assert build_row["status"] == "ok"
+    store.close()
+
+
 def demo_model_fixtureless():
     """conftest's demo_model as a plain call (this test composes fixtures manually)."""
     from tests.conftest import demo_model

@@ -58,7 +58,8 @@ def _filter_expr(qf: QueryFilter) -> exp.Expression:
 
 
 def generate_chart_sql(query: ChartQuery) -> str:
-    dims = [exp.column(d) for d in query.dimensions]
+    group_cols = query.group_columns()  # dimensions + series + rows + columns, deduped
+    dims = [exp.column(c) for c in group_cols]
     select = exp.select(*dims, *[_measure_expr(m) for m in query.measures]).from_(
         exp.to_table(query.table)
     )

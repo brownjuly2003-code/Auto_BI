@@ -124,6 +124,71 @@ def test_form_data_escapes_malicious_label() -> None:
     assert fd["metric"]["label"] == 'x") FROM system.numbers --'
 
 
+def _chart(viz: Viz, **query_kwargs) -> ChartSpec:
+    query_kwargs.setdefault("measures", [Measure(column="revenue", agg=Aggregation.SUM)])
+    return ChartSpec(
+        id="c", title="c", viz=viz, query=ChartQuery(table="dm.sales_daily", **query_kwargs)
+    )
+
+
+def test_form_data_pie() -> None:
+    fd = build_form_data(_chart(Viz.PIE, dimensions=["store_id"]), dataset_id=1)
+    assert fd["viz_type"] == "pie"
+    assert fd["groupby"] == ["store_id"]
+    assert fd["metric"]["sqlExpression"] == 'SUM("sum_revenue")'
+    assert "metrics" not in fd
+
+
+def test_form_data_table_groups_all_roles() -> None:
+    fd = build_form_data(_chart(Viz.TABLE, dimensions=["date", "store_id"]), dataset_id=1)
+    assert fd["viz_type"] == "table"
+    assert fd["query_mode"] == "aggregate"
+    assert fd["groupby"] == ["date", "store_id"]
+
+
+def test_form_data_pivot() -> None:
+    fd = build_form_data(_chart(Viz.PIVOT, rows=["store_id"], columns=["manager_id"]), dataset_id=1)
+    assert fd["viz_type"] == "pivot_table_v2"
+    assert fd["groupbyRows"] == ["store_id"]
+    assert fd["groupbyColumns"] == ["manager_id"]
+    assert fd["aggregateFunction"] == "Sum"
+
+
+def test_form_data_heatmap() -> None:
+    fd = build_form_data(_chart(Viz.HEATMAP, dimensions=["date", "store_id"]), dataset_id=1)
+    assert fd["viz_type"] == "heatmap_v2"
+    assert fd["x_axis"] == "date"
+    assert fd["groupby"] == "store_id"
+    assert fd["metric"]["sqlExpression"] == 'SUM("sum_revenue")'
+
+
+def test_form_data_stacked_bar_sets_stack_and_series() -> None:
+    fd = build_form_data(
+        _chart(Viz.STACKED_BAR, dimensions=["date"], series=["store_id"]), dataset_id=1
+    )
+    assert fd["viz_type"] == "echarts_timeseries_bar"
+    assert fd["stack"] == "Stack"
+    assert fd["groupby"] == ["store_id"]
+
+
+def test_form_data_area_stacks_only_with_series() -> None:
+    plain = build_form_data(_chart(Viz.AREA, dimensions=["date"]), dataset_id=1)
+    assert plain["viz_type"] == "echarts_area"
+    assert "stack" not in plain
+    stacked = build_form_data(
+        _chart(Viz.AREA, dimensions=["date"], series=["store_id"]), dataset_id=1
+    )
+    assert stacked["stack"] == "Stack"
+
+
+def test_form_data_line_merges_series_and_extra_dims_deduped() -> None:
+    fd = build_form_data(
+        _chart(Viz.LINE, dimensions=["date", "city"], series=["city", "format"]), dataset_id=1
+    )
+    assert fd["x_axis"] == "date"
+    assert fd["groupby"] == ["city", "format"]
+
+
 def test_form_data_bar_extra_dims_go_to_groupby() -> None:
     chart = ChartSpec(
         id="b",
@@ -153,6 +218,39 @@ def test_position_json_grid() -> None:
     assert kpi["meta"]["width"] == 4
     assert kpi["meta"]["height"] == 2 * 12
     assert kpi["id"] in position["ROW-auto_bi_0"]["children"]
+
+
+def _bar(cid: str, w: int, row: int) -> ChartSpec:
+    return ChartSpec(
+        id=cid,
+        title=cid,
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["store_id"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        ),
+        layout_hint=LayoutHint(w=w, h=4, row=row),
+    )
+
+
+def test_position_json_wraps_on_overflow() -> None:
+    # three 6-wide charts in one hint-row: 6+6=12 fit, the third wraps to a new row
+    charts = [_bar("a", 6, 0), _bar("b", 6, 0), _bar("c", 6, 0)]
+    pos = build_position_json(make_spec(), [(c, 200 + i) for i, c in enumerate(charts)])
+    rows = pos["GRID_ID"]["children"]
+    assert rows == ["ROW-auto_bi_0", "ROW-auto_bi_1"]
+    assert pos["ROW-auto_bi_0"]["children"] == ["CHART-auto_bi_a", "CHART-auto_bi_b"]
+    assert pos["ROW-auto_bi_1"]["children"] == ["CHART-auto_bi_c"]
+
+
+def test_position_json_distinct_hint_rows_split() -> None:
+    # different layout_hint.row values always start a new physical row, even when narrow
+    charts = [_bar("a", 4, 0), _bar("b", 4, 2)]
+    pos = build_position_json(make_spec(), [(c, 300 + i) for i, c in enumerate(charts)])
+    assert pos["GRID_ID"]["children"] == ["ROW-auto_bi_0", "ROW-auto_bi_1"]
+    assert pos["ROW-auto_bi_0"]["children"] == ["CHART-auto_bi_a"]
+    assert pos["ROW-auto_bi_1"]["children"] == ["CHART-auto_bi_b"]
 
 
 # --- adapter flow ------------------------------------------------------------

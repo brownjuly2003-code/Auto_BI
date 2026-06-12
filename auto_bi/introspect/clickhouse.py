@@ -154,7 +154,11 @@ class ClickHouseIntrospector:
             return {}
         exprs = ", ".join(f"uniqCombined({_ident(d)}) AS {_ident(d)}" for d in dims)
         result = self._run(f"SELECT {exprs} FROM {self._source(db, table, rows)}")
-        return {name: int(value) for name, value in result[0].items()} if result else {}
+        if not result:
+            return {}
+        # uniqCombined yields NULL on degenerate columns (e.g. Nullable(Nothing)
+        # born from a NULL literal in a CTAS) — count those as cardinality 0
+        return {name: int(value or 0) for name, value in result[0].items()}
 
     def _fill_top_values(
         self, db: str, table: str, columns: list[Column], cardinality: dict[str, int], rows: int
@@ -163,14 +167,14 @@ class ClickHouseIntrospector:
             if col.role != ColumnRole.DIMENSION or col.name.endswith("_id") or col.name == "id":
                 continue
             uniq = cardinality.get(col.name, TOP_VALUES_MAX_CARDINALITY + 1)
-            if uniq > TOP_VALUES_MAX_CARDINALITY:
-                continue
+            if uniq == 0 or uniq > TOP_VALUES_MAX_CARDINALITY:
+                continue  # all-NULL/degenerate columns have nothing to sample
             result = self._run(
                 f"SELECT toString({_ident(col.name)}) AS v, count() AS cnt "
                 f"FROM {self._source(db, table, rows)} "
                 f"GROUP BY v ORDER BY cnt DESC LIMIT {TOP_VALUES_LIMIT}"
             )
-            col.top_values = [r["v"] for r in result]
+            col.top_values = [r["v"] for r in result if r["v"] is not None]
 
 
 def make_run_query(settings: Settings) -> RunQuery:

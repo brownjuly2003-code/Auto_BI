@@ -1,8 +1,14 @@
-"""DashboardSpec — BI-agnostic IR (ARCHITECTURE §3.4), Phase 0 subset.
+"""DashboardSpec — BI-agnostic IR (ARCHITECTURE §3.4).
 
 The LLM generates ONLY this spec (invariant 1); native BI formats are produced by
-deterministic adapters. Phase 0 viz subset: big_number, line, bar — the enum grows
-to 9 types in Phase 1.
+deterministic adapters. Phase 1 viz set: the full 9 types from ARCHITECTURE §3.4.
+
+Dimension-like roles (ARCHITECTURE §3.4, "rich roles"):
+- `dimensions` — primary grouping (x-axis for line/bar/area, slices for pie, the two
+  axes for heatmap, listed columns for table);
+- `series`   — breakdown/stack dimension(s) for stacked_bar / area;
+- `rows` / `columns` — pivot row- and column-dimensions.
+SQL_GEN groups by the union of all four; adapters read each role to lay out the chart.
 """
 
 from __future__ import annotations
@@ -22,6 +28,12 @@ class Viz(StrEnum):
     BIG_NUMBER = "big_number"
     LINE = "line"
     BAR = "bar"
+    STACKED_BAR = "stacked_bar"
+    AREA = "area"
+    PIE = "pie"
+    TABLE = "table"
+    PIVOT = "pivot"
+    HEATMAP = "heatmap"
 
 
 class FilterOp(StrEnum):
@@ -61,10 +73,20 @@ class OrderBy(BaseModel):
 class ChartQuery(BaseModel):
     table: str  # fully qualified: "dm.sales_daily"
     dimensions: list[str] = Field(default_factory=list)
+    series: list[str] = Field(default_factory=list)  # stack/breakdown for stacked_bar, area
+    rows: list[str] = Field(default_factory=list)  # pivot row dimensions
+    columns: list[str] = Field(default_factory=list)  # pivot column dimensions
     measures: list[Measure] = Field(min_length=1)
     filters: list[QueryFilter] = Field(default_factory=list)
     order_by: list[OrderBy] = Field(default_factory=list)
     limit: int = Field(default=5000, ge=1, le=50000)
+
+    def group_columns(self) -> list[str]:
+        """All dimension-like columns to GROUP BY, deduped, order preserved."""
+        seen: dict[str, None] = {}
+        for col in (*self.dimensions, *self.series, *self.rows, *self.columns):
+            seen.setdefault(col, None)
+        return list(seen)
 
 
 class LayoutHint(BaseModel):

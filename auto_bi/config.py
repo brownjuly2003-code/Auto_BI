@@ -30,6 +30,9 @@ class Settings(BaseSettings):
 
     send_samples: bool = True
 
+    # SQLite store (sessions, specs, builds, llm_calls, dm_change_requests)
+    store_path: str = "data/auto_bi.sqlite"
+
 
 @lru_cache
 def get_settings() -> Settings:

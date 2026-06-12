@@ -17,12 +17,15 @@ from auto_bi.adapters.superset.adapter import SupersetAdapter
 from auto_bi.adapters.superset.client import SupersetClient
 from auto_bi.adapters.superset.form_data import VIZ_TYPE
 from auto_bi.config import get_settings
-from auto_bi.ir.spec import ChartQuery, ChartSpec, Measure, OrderBy, Viz
+from auto_bi.ir.spec import ChartQuery, ChartSpec, FilterOp, Measure, OrderBy, QueryFilter, Viz
 from auto_bi.semantic.model import Aggregation
 
 pytestmark = pytest.mark.integration
 
 REVENUE = Measure(column="revenue", agg=Aggregation.SUM, label="Выручка")
+ORDERS = Measure(column="orders", agg=Aggregation.SUM, label="Заказы")
+FEW_STORES = QueryFilter(column="store_id", op=FilterOp.IN, value=[1, 2, 3, 4])
+JUNE = QueryFilter(column="date", op=FilterOp.GTE, value="2026-06-01")
 
 CHARTS = [
     ChartSpec(
@@ -47,6 +50,76 @@ CHARTS = [
             measures=[REVENUE],
             order_by=[OrderBy(by="Выручка", dir="desc")],
             limit=10,
+        ),
+    ),
+    ChartSpec(
+        id="contract_stacked_bar",
+        title="[contract] stacked_bar",
+        viz=Viz.STACKED_BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date"],
+            series=["store_id"],
+            measures=[REVENUE],
+            filters=[FEW_STORES, JUNE],
+        ),
+    ),
+    ChartSpec(
+        id="contract_area",
+        title="[contract] area",
+        viz=Viz.AREA,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date"],
+            series=["store_id"],
+            measures=[REVENUE],
+            filters=[FEW_STORES, JUNE],
+        ),
+    ),
+    ChartSpec(
+        id="contract_pie",
+        title="[contract] pie",
+        viz=Viz.PIE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["store_id"],
+            measures=[REVENUE],
+            filters=[FEW_STORES],
+        ),
+    ),
+    ChartSpec(
+        id="contract_table",
+        title="[contract] table",
+        viz=Viz.TABLE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date", "store_id"],
+            measures=[REVENUE, ORDERS],
+            filters=[FEW_STORES, JUNE],
+            limit=100,
+        ),
+    ),
+    ChartSpec(
+        id="contract_pivot",
+        title="[contract] pivot",
+        viz=Viz.PIVOT,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            rows=["store_id"],
+            columns=["manager_id"],
+            measures=[REVENUE],
+            filters=[FEW_STORES, JUNE],
+        ),
+    ),
+    ChartSpec(
+        id="contract_heatmap",
+        title="[contract] heatmap",
+        viz=Viz.HEATMAP,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date", "store_id"],
+            measures=[REVENUE],
+            filters=[FEW_STORES, JUNE],
         ),
     ),
 ]
@@ -83,13 +156,15 @@ def test_create_get_assert(adapter: SupersetAdapter, chart: ChartSpec) -> None:
     assert params["datasource"] == f"{ds.id}__table"
 
 
-def test_chart_data_endpoint(adapter: SupersetAdapter) -> None:
-    """v1 chart data: the saved form_data must execute against ClickHouse."""
-    chart = CHARTS[1]
+@pytest.mark.parametrize("chart", CHARTS, ids=lambda c: c.id)
+def test_chart_data_endpoint(adapter: SupersetAdapter, chart: ChartSpec) -> None:
+    """v1 chart data: the saved form_data metrics must execute against ClickHouse
+    through the virtual dataset, for every viz template."""
     ds = adapter.ensure_dataset(chart.query, name=f"auto_bi__{chart.id}")
     ref = adapter.create_chart(chart, ds)
     fetched = adapter._client.get(f"/api/v1/chart/{ref.id}")["result"]
     form_data = json.loads(fetched["params"])
+    metrics = form_data.get("metrics") or [form_data["metric"]]
     result = adapter._client.post(
         "/api/v1/chart/data",
         json={
@@ -97,8 +172,8 @@ def test_chart_data_endpoint(adapter: SupersetAdapter) -> None:
             "force": True,
             "queries": [
                 {
-                    "columns": [form_data["x_axis"]],
-                    "metrics": form_data["metrics"],
+                    "columns": chart.query.group_columns(),
+                    "metrics": metrics,
                     "row_limit": form_data["row_limit"],
                 }
             ],

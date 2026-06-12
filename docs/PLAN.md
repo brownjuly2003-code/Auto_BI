@@ -49,7 +49,7 @@
 | 1.3 | Layout generator (12-колоночная сетка, ряды по layout_hint) |
 | 1.4 | Agent state machine целиком: GROUNDING → CLARIFY (≤3 вопросов, только из grounding report) → PROPOSE_SPEC → правки словами → APPROVE |
 | 1.5 | Context selection под 40k-лимит: отбор релевантных таблиц модели под запрос |
-| 1.6 | **Advisor v1 — ClickHouse rule pack** (~8–12 правил-механизмов: фильтр мимо префикса sorting_key, фильтр мимо партиций, large-large join, high-cardinality GROUP BY, point lookup, FINAL…) + универсальный EXPLAIN-слой (`EXPLAIN indexes=1`, `ESTIMATE`) как evidence |
+| 1.6 | **Advisor v1 — ClickHouse rule pack** (~8–12 правил-механизмов: фильтр мимо префикса sorting_key, фильтр мимо партиций, large-large join, high-cardinality GROUP BY, point lookup, FINAL…) + универсальный EXPLAIN-слой (`EXPLAIN indexes=1`, `ESTIMATE`) как evidence. _Факт Phase 1: 6 правил; `join_large_large` и `point_lookup_pattern` отложены до поддержки джойнов (docstring advisor/clickhouse.py)_ |
 | 1.7 | Advisor в диалоге: findings с severity → LLM-нарратив вердиктов (прямой тон, классы `ok/spec_adjustment/dm_change_request`) в PROPOSE_SPEC |
 | 1.8 | CLI-чат `auto_bi chat` (rich): диалог, превью spec текстом, вердикты advisor'а, подтверждение, лог сборки |
 | 1.9 | Store (SQLite): sessions, messages, specs, builds, llm_calls, dm_change_requests |

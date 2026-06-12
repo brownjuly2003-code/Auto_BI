@@ -15,13 +15,16 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
 from auto_bi.config import Settings
 from auto_bi.llm.base import LLMError
+
+if TYPE_CHECKING:
+    from auto_bi.store import Store
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -39,7 +42,11 @@ REPAIR_PROMPT = """Твой предыдущий ответ не прошёл в
 Предыдущий ответ:
 {previous}
 
-Верни ИСПРАВЛЕННЫЙ JSON-объект по той же схеме. Только JSON в блоке ```json```, без пояснений."""
+JSON Schema, которой должен соответствовать ответ:
+{schema}
+
+Верни ИСПРАВЛЕННЫЙ JSON-объект строго по этой схеме (все обязательные поля, без \
+переименований). Только JSON в блоке ```json```, без пояснений."""
 
 
 def extract_json(text: str) -> str:
@@ -76,6 +83,7 @@ class GraceKellyClient:
         settings: Settings,
         http: httpx.Client | None = None,
         log_path: str | Path = "logs/llm_calls.jsonl",
+        store: Store | None = None,
     ) -> None:
         self._settings = settings
         self._http = http or httpx.Client(
@@ -84,6 +92,7 @@ class GraceKellyClient:
             transport=httpx.HTTPTransport(retries=2),  # transient connect failures only
         )
         self._log_path = Path(log_path)
+        self._store = store
 
     def complete(
         self,
@@ -107,7 +116,11 @@ class GraceKellyClient:
                     logger.warning("structured output unchanged after repair; aborting early")
                     break
                 previous_answer = answer
-                current = REPAIR_PROMPT.format(error=last_error, previous=answer[:8000])
+                current = REPAIR_PROMPT.format(
+                    error=last_error,
+                    previous=answer[:8000],
+                    schema=json.dumps(schema.model_json_schema(), ensure_ascii=False),
+                )
         raise LLMError(f"structured output failed after {MAX_REPAIRS} repairs: {last_error}")
 
     def _call(self, prompt: str, *, reasoning: bool, session_id: str | None) -> str:
@@ -137,9 +150,16 @@ class GraceKellyClient:
         except httpx.HTTPError as exc:
             raise LLMError(f"GraceKelly transport error: {exc}") from exc
         finally:
-            self._log(prompt, reasoning, status, time.monotonic() - started)
+            self._log(prompt, reasoning, status, time.monotonic() - started, session_id)
 
-    def _log(self, prompt: str, reasoning: bool, status: str, latency_s: float) -> None:
+    def _log(
+        self,
+        prompt: str,
+        reasoning: bool,
+        status: str,
+        latency_s: float,
+        session_id: str | None = None,
+    ) -> None:
         record = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "model": self._settings.gracekelly_model,
@@ -155,3 +175,16 @@ class GraceKellyClient:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except OSError:  # logging must never kill the pipeline
             logger.exception("failed to write llm call log")
+        if self._store is not None:
+            try:
+                self._store.log_llm_call(
+                    session_id=session_id,
+                    model=record["model"],
+                    prompt_sha256=record["prompt_sha256"],
+                    prompt_chars=record["prompt_chars"],
+                    reasoning=reasoning,
+                    status=status,
+                    latency_ms=record["latency_ms"],
+                )
+            except Exception:  # logging must never kill the pipeline
+                logger.exception("failed to write llm call to the store")
