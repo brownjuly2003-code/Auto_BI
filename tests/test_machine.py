@@ -102,6 +102,20 @@ def test_word_edit_patches_spec(demo_model) -> None:
     assert reasoning is True  # patch_spec designs -> thinking on
 
 
+def test_word_edit_returning_same_spec_is_reported_as_noop(demo_model) -> None:
+    # the patch contract forces a full spec back: an edit the IR cannot express
+    # (e.g. a joined-table field) comes back unchanged and must not be announced
+    # as a new proposal
+    llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, GOOD_SPEC])
+    agent = AgentSession(demo_model, llm)
+    agent.start("выручка по дням")
+    turn = agent.reply("замени магазины на города из смежной таблицы")
+    assert turn.noop is True
+    assert turn.phase == AgentPhase.APPROVE
+    assert "не изменила" in turn.message
+    assert turn.spec is not None  # current spec stays addressable for approve
+
+
 def test_approve_returns_spec_and_finishes(demo_model) -> None:
     llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC])
     agent = AgentSession(demo_model, llm)

@@ -175,6 +175,10 @@ function handleTurn(turn) {
     setChip("уточнение", "active");
     return;
   }
+  if (turn.noop) {
+    addMessage("agent", turn.message, "агент");
+    return;
+  }
   if (turn.phase === "approve") {
     addMessage("agent", "Предлагаю вариант — превью справа. «Собрать дашборд» или правка словами.", "агент");
     renderSpec(turn.spec, turn.verdicts, turn.notes);

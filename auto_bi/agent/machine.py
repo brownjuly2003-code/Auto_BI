@@ -43,6 +43,8 @@ class AgentTurn(BaseModel):
     verdicts: list[ChartVerdict] = Field(default_factory=list)
     # fields-first: детерминированный анализ раскладки (seed vs spec)
     notes: list[str] = Field(default_factory=list)
+    # word edit came back as the same spec — surfaced instead of pretending it applied
+    noop: bool = False
 
 
 def spec_summary(spec: DashboardSpec) -> str:
@@ -134,7 +136,7 @@ class AgentSession:
             return self._ground_then_propose()
         if self.phase in (AgentPhase.APPROVE, AgentPhase.APPROVED):
             assert self.spec is not None
-            self.spec = patch_spec(
+            patched = patch_spec(
                 self._llm,
                 self._model,
                 self.spec,
@@ -142,6 +144,25 @@ class AgentSession:
                 session_id=self._session_id,
                 include_samples=self._include_samples,
             )
+            if patched.model_dump(mode="json") == self.spec.model_dump(mode="json"):
+                # the patch contract forces a full spec back, so an edit the IR cannot
+                # express (e.g. a field from a joined table) returns unchanged — say so
+                # instead of announcing a "new" proposal; phase/spec/history keep as is
+                message = (
+                    "Правка не изменила спецификацию: похоже, её нельзя выразить "
+                    "текущей моделью (например, поле из смежной таблицы — джойны "
+                    "в чартах пока не поддерживаются). Сформулируйте иначе или "
+                    "соберите как есть."
+                )
+                self._record("agent", message)
+                return AgentTurn(
+                    phase=self.phase,
+                    message=message,
+                    spec=self.spec,
+                    verdicts=self.verdicts,
+                    noop=True,
+                )
+            self.spec = patched
             return self._propose_turn()
         raise RuntimeError(f"no user turn expected in phase {self.phase}")
 

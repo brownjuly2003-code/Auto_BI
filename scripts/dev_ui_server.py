@@ -3,7 +3,8 @@
 Запуск:  .venv/Scripts/python.exe scripts/dev_ui_server.py  ->  http://127.0.0.1:8201/
 Сценарий зашит: первый запрос -> 2 уточняющих вопроса, ответ -> spec из 3 чартов
 с двумя вердиктами advisor; approve -> "сборка" с лог-шагами; правка словами ->
-spec с новым заголовком. Fields-first: режим «Полями» строит панель из MODEL
+spec с новым заголовком (v2); вторая правка возвращает тот же spec -> noop-ветка.
+Fields-first: режим «Полями» строит панель из MODEL
 (две таблицы); поля dm.stores в spec не входят -> в превью виден детерминированный
 «анализ раскладки». Нужен ТОЛЬКО для ручной/браузерной проверки фронта —
 никакой бизнес-логики здесь нет.
@@ -117,7 +118,9 @@ class DevLLM:
             self.spec_calls += 1
             spec = dict(SPEC)
             if self.spec_calls > 1:
-                spec = {**SPEC, "title": f"Обзор продаж · v{self.spec_calls}"}
+                # title капится на v2: вторая и последующие правки возвращают тот же
+                # spec — браузерная проверка noop-ветки («правка не изменила спецификацию»)
+                spec = {**SPEC, "title": f"Обзор продаж · v{min(self.spec_calls, 2)}"}
             return schema.model_validate(spec)
         # _Narrative (вердикты advisor)
         return schema.model_validate(
