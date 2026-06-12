@@ -42,7 +42,11 @@ REPAIR_PROMPT = """Твой предыдущий ответ не прошёл в
 Предыдущий ответ:
 {previous}
 
-Верни ИСПРАВЛЕННЫЙ JSON-объект по той же схеме. Только JSON в блоке ```json```, без пояснений."""
+JSON Schema, которой должен соответствовать ответ:
+{schema}
+
+Верни ИСПРАВЛЕННЫЙ JSON-объект строго по этой схеме (все обязательные поля, без \
+переименований). Только JSON в блоке ```json```, без пояснений."""
 
 
 def extract_json(text: str) -> str:
@@ -112,7 +116,11 @@ class GraceKellyClient:
                     logger.warning("structured output unchanged after repair; aborting early")
                     break
                 previous_answer = answer
-                current = REPAIR_PROMPT.format(error=last_error, previous=answer[:8000])
+                current = REPAIR_PROMPT.format(
+                    error=last_error,
+                    previous=answer[:8000],
+                    schema=json.dumps(schema.model_json_schema(), ensure_ascii=False),
+                )
         raise LLMError(f"structured output failed after {MAX_REPAIRS} repairs: {last_error}")
 
     def _call(self, prompt: str, *, reasoning: bool, session_id: str | None) -> str:
