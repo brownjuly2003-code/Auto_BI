@@ -342,7 +342,7 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
     from rich.table import Table as RichTable
 
     from auto_bi.config import get_settings
-    from auto_bi.eval.cases import ADVISOR_CASES, GOLDEN_CASES
+    from auto_bi.eval.cases import advisor_cases_for_engine, golden_cases_for_engine
     from auto_bi.eval.runner import (
         advisor_suite_ok,
         golden_suite_ok,
@@ -357,6 +357,9 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
         return 2
     model = SemanticModel.load(model_path)
     wanted = {c.strip() for c in cases_csv.split(",") if c.strip()}
+    # one engine per model -> pick the matching case sets (CH demo vs GP demo)
+    engine = next((t.physical.engine for t in model.tables if t.physical), "clickhouse")
+    console.print(f"[dim]model engine: {engine}[/dim]")
 
     def _render(title: str, report) -> None:
         table = RichTable(title=title)
@@ -372,17 +375,23 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
 
     ok = True
     if suite in ("advisor", "all"):
-        cases = [c for c in ADVISOR_CASES if not wanted or c.id in wanted]
+        cases = [c for c in advisor_cases_for_engine(engine) if not wanted or c.id in wanted]
         report = run_advisor_suite(model, cases)
-        _render("Advisor anti-pattern suite (deterministic)", report)
+        _render(f"Advisor anti-pattern suite — {engine} (deterministic)", report)
         ok &= advisor_suite_ok(report)
 
-    if suite in ("golden", "all"):
+    golden_cases = golden_cases_for_engine(engine)
+    if suite in ("golden", "all") and not golden_cases:
+        console.print(
+            f"[yellow]no golden dialogue cases for engine {engine!r} — golden-case design "
+            f"is a separate (S2) task; the advisor suite covers the {engine} rule pack.[/yellow]"
+        )
+    elif suite in ("golden", "all"):
         from auto_bi.llm.gracekelly import GraceKellyClient
 
         settings = get_settings()
         llm = GraceKellyClient(settings)
-        cases = [c for c in GOLDEN_CASES if not wanted or c.id in wanted]
+        cases = [c for c in golden_cases if not wanted or c.id in wanted]
         console.print(
             f"[dim]golden: {len(cases)} cases через GraceKelly "
             f"({settings.gracekelly_url}, {settings.gracekelly_model})…[/dim]"

@@ -96,7 +96,7 @@
 | 3.2 | DataLens-адаптер: компиляция IR (capability matrix + деградации), workbook «Auto_BI» |
 | 3.3 | **Greengage/Greenplum**: интроспектор (PG-каталоги + distribution key, партиции; стенд в docker), диалект SQL_GEN — _✅ demo-level 2026-06-13: live GP 6.25, `introspect/greenplum.py` + dialect seam (`engine.py`), `model_gp.yaml`; **скейл ≥10M live-валидирован** (`stand_scale_gp_dm.sql`, интроспектор читает reltuples=10.3M); **multi-level/list-партиции** — интроспектор читает все уровни (`partition_key='date, region'`, live+unit); остаток — сам Greengage (runbook)_ |
 | 3.4 | Advisor: Greengage rule pack (distribution skew, broadcast motion, partition pruning) + EXPLAIN-слой — _✅ demo-level 2026-06-13: `advisor/greenplum.py` + per-engine dispatch, live motion/partition findings; **`distribution_skew` + `no_filter_on_large_fact` live на 10.3M** (`gp_scale_validate.py`: no-filter → оба, date-filter → только skew)_ |
-| 3.5 | Eval-кейсы на GP-демо и DataLens-сборку |
+| 3.5 | Eval-кейсы на GP-демо и DataLens-сборку — _частично 2026-06-13: GP advisor-сьют (`GP_ADVISOR_CASES`, детерминированно, 6/6 offline) + engine-dispatch в `auto_bi eval`; GP golden dialogue-кейсы = S2-стоппер → Fable-handoff `docs/plans/2026-06-13-phase3.5-gp-golden-cases-handoff.md`; DataLens-сборка — блок (нет кредов)_ |
 
 **Exit criteria:** один и тот же spec собирается в Superset и DataLens; advisor выдаёт осмысленные вердикты на GP-витрине. No-go спайка DataLens → Visiology/Luxms по спросу или остаёмся Superset-only до спроса.
 
