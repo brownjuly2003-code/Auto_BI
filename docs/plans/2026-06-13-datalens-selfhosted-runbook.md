@@ -42,8 +42,10 @@ cd ~/datalens_dl && HC=1 /usr/local/bin/docker compose up -d temporal meta-manag
 ## Доступ
 
 - UI: `http://localhost:8080` на Mac, логин **admin / admin**. HC включён.
-- С Windows: туннель `ssh -N -L 8090:localhost:8080 deproject-mac` → `http://127.0.0.1:8090`
-  (проверено: HTTP 200, `<title>DataLens</title>`).
+- С Windows: туннель `ssh -N -L 8090:localhost:8080 deproject-mac` → `http://127.0.0.1:8090`.
+  **Логин admin/admin проверен через Playwright** → редирект на `/collections`, аутентифицированное
+  приложение («Yandex DataLens open source», меню Create/Settings/Account) usable. Скриншот:
+  `D:\.playwright-mcp\datalens_authenticated_collections.png`. Доступ рабочий end-to-end.
 - Порт 8080 на Mac был свободен (8123=CH, 8088=Superset, 8011=GraceKelly на Windows).
 
 ## Ресурсы / сосуществование со стендом
