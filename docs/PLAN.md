@@ -94,8 +94,8 @@
 |---|---|
 | 3.1 | **Спайк DataLens Public API (2–3 дня, go/no-go)**: `api.datalens.tech` (Preview), IAM-auth, createDataset → Wizard-чарты → createDashboard руками-программно |
 | 3.2 | DataLens-адаптер: компиляция IR (capability matrix + деградации), workbook «Auto_BI» |
-| 3.3 | **Greengage/Greenplum**: интроспектор (PG-каталоги + distribution key, партиции; стенд в docker), диалект SQL_GEN |
-| 3.4 | Advisor: Greengage rule pack (distribution skew, broadcast motion, partition pruning) + EXPLAIN-слой |
+| 3.3 | **Greengage/Greenplum**: интроспектор (PG-каталоги + distribution key, партиции; стенд в docker), диалект SQL_GEN — _✅ demo-level 2026-06-13: live GP 6.25, `introspect/greenplum.py` + dialect seam (`engine.py`), `model_gp.yaml`; остаток — скейл ≥10M, сам Greengage, multi-level партиции (runbook)_ |
+| 3.4 | Advisor: Greengage rule pack (distribution skew, broadcast motion, partition pruning) + EXPLAIN-слой — _✅ demo-level 2026-06-13: `advisor/greenplum.py` + per-engine dispatch, live motion/partition findings; skew unit-tested (demo < 10M)_ |
 | 3.5 | Eval-кейсы на GP-демо и DataLens-сборку |
 
 **Exit criteria:** один и тот же spec собирается в Superset и DataLens; advisor выдаёт осмысленные вердикты на GP-витрине. No-go спайка DataLens → Visiology/Luxms по спросу или остаёмся Superset-only до спроса.
