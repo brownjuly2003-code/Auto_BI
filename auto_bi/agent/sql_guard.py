@@ -18,10 +18,10 @@ class SQLGuardError(Exception):
     pass
 
 
-def guard_sql(sql: str) -> None:
+def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
     """Raise unless sql is exactly one plain SELECT (CTEs allowed, writes/DDL never)."""
     try:
-        statements = sqlglot.parse(sql, read=DIALECT)
+        statements = sqlglot.parse(sql, read=dialect)
     except sqlglot.errors.ParseError as e:
         raise SQLGuardError(f"SQL does not parse: {e}") from e
 
@@ -42,23 +42,37 @@ def guard_sql(sql: str) -> None:
             raise SQLGuardError(f"forbidden construct in SQL: {type(node).__name__}")
 
 
+def _trial_statements(sql: str, dialect: str) -> list[str]:
+    """Per-engine LIMIT-ed trial run with a timeout. ClickHouse takes a query-level
+    SETTINGS clause; Postgres/Greenplum need a session GUC set first (the RunQuery seam
+    keeps one connection, so the SET persists for the following SELECT) and a subquery alias."""
+    if dialect == "clickhouse":
+        return [
+            f"SELECT * FROM ({sql}) LIMIT {TRIAL_LIMIT} "
+            f"SETTINGS max_execution_time = {TRIAL_TIMEOUT_S}"
+        ]
+    return [
+        f"SET statement_timeout = '{TRIAL_TIMEOUT_S}s'",
+        f"SELECT * FROM ({sql}) AS _auto_bi_trial LIMIT {TRIAL_LIMIT}",
+    ]
+
+
 class LiveSQLValidator:
     """EXPLAIN + trial run with LIMIT/timeout via the read-only RunQuery seam."""
 
-    def __init__(self, run_query: RunQuery) -> None:
+    def __init__(self, run_query: RunQuery, *, dialect: str = DIALECT) -> None:
         self._run = run_query
+        self._dialect = dialect
 
     def validate(self, sql: str) -> None:
         """guard -> EXPLAIN -> LIMIT-ed execution; raises SQLGuardError with context."""
-        guard_sql(sql)
+        guard_sql(sql, dialect=self._dialect)
         try:
             self._run(f"EXPLAIN {sql}")
         except Exception as e:
             raise SQLGuardError(f"EXPLAIN failed: {e}") from e
         try:
-            self._run(
-                f"SELECT * FROM ({sql}) LIMIT {TRIAL_LIMIT} "
-                f"SETTINGS max_execution_time = {TRIAL_TIMEOUT_S}"
-            )
+            for stmt in _trial_statements(sql, self._dialect):
+                self._run(stmt)
         except Exception as e:
             raise SQLGuardError(f"trial run failed: {e}") from e

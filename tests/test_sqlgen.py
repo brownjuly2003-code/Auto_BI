@@ -210,6 +210,34 @@ def test_join_query_qualifies_aliases_and_left_joins() -> None:
     assert 'ORDER BY "Выручка" DESC' in sql
 
 
+# --- dialect seam (Phase 3: Greenplum/Greengage = postgres) ------------------
+
+
+def test_postgres_dialect_generates_valid_select() -> None:
+    # same AST, postgres output: still one guarded SELECT, parses under postgres
+    sql = generate_chart_sql(make_query(dimensions=["store_id"], limit=10), dialect="postgres")
+    assert sql.startswith('SELECT "store_id", SUM("revenue") AS "Выручка"')
+    assert 'FROM "dm"."sales_daily"' in sql
+    assert sql.endswith("LIMIT 10")
+    guard_sql(sql, dialect="postgres")  # accepted by the guard under postgres too
+
+
+def test_live_validator_postgres_trial_uses_statement_timeout() -> None:
+    seen: list[str] = []
+
+    def run(sql: str) -> list[dict]:
+        seen.append(sql)
+        return [{"QUERY PLAN": "Gather Motion"}]
+
+    LiveSQLValidator(run, dialect="postgres").validate(
+        generate_chart_sql(make_query(), dialect="postgres")
+    )
+    assert seen[0].startswith("EXPLAIN ")
+    assert seen[1] == "SET statement_timeout = '30s'"  # session GUC, not a SETTINGS clause
+    assert "max_execution_time" not in seen[2]
+    assert "_auto_bi_trial" in seen[2] and "LIMIT 10" in seen[2]
+
+
 def test_join_order_by_joined_dimension_uses_alias() -> None:
     from auto_bi.ir.spec import JoinSpec
 
