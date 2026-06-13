@@ -19,6 +19,7 @@ from auto_bi.ir.spec import (
     DashboardSpec,
     LayoutHint,
     Measure,
+    OrderBy,
     Viz,
 )
 from auto_bi.semantic.model import Aggregation
@@ -169,6 +170,42 @@ def test_form_data_stacked_bar_sets_stack_and_series() -> None:
     assert fd["viz_type"] == "echarts_timeseries_bar"
     assert fd["stack"] == "Stack"
     assert fd["groupby"] == ["store_id"]
+
+
+def test_form_data_bar_forces_categorical_axis() -> None:
+    # a numeric x (store_id) otherwise renders on a continuous value axis:
+    # thin bars at numeric positions — the dashboard-6 "фигня" bug
+    fd = build_form_data(_chart(Viz.BAR, dimensions=["store_id"]), dataset_id=1)
+    assert fd["xAxisForceCategorical"] is True
+    line = build_form_data(_chart(Viz.LINE, dimensions=["date"]), dataset_id=1)
+    assert "xAxisForceCategorical" not in line  # lines keep the time/value axis
+
+
+def test_form_data_bar_top_n_sorts_by_the_ordering_measure() -> None:
+    top = _chart(
+        Viz.BAR,
+        dimensions=["store_id"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM, label="Выручка")],
+        order_by=[OrderBy(by="Выручка", dir="desc")],
+        limit=10,
+    )
+    fd = build_form_data(top, dataset_id=1)
+    assert fd["x_axis_sort"] == "Выручка"
+    assert fd["x_axis_sort_asc"] is False
+    # ordered by the dimension (bar over dates) -> chronology stays, no metric sort
+    by_x = _chart(Viz.BAR, dimensions=["date"], order_by=[OrderBy(by="date", dir="asc")])
+    fd = build_form_data(by_x, dataset_id=1)
+    assert "x_axis_sort" not in fd
+    assert fd["x_axis_sort_asc"] is True
+    # series breakdown -> superset has no sort control there, keep the default
+    split = _chart(
+        Viz.BAR,
+        dimensions=["store_id"],
+        series=["format"],
+        order_by=[OrderBy(by="sum_revenue", dir="desc")],
+    )
+    fd = build_form_data(split, dataset_id=1)
+    assert "x_axis_sort" not in fd
 
 
 def test_form_data_area_stacks_only_with_series() -> None:

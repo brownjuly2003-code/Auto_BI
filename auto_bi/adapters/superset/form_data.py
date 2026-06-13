@@ -112,9 +112,35 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
         "metrics": metrics,
         "groupby": list(breakdown),
     }
+    if chart.viz in (Viz.BAR, Viz.STACKED_BAR):
+        # a numeric dimension (store_id) otherwise lands on a continuous value
+        # axis: thin bars at their numeric positions instead of categories
+        form_data["xAxisForceCategorical"] = True
+        ordering_measure = _ordering_measure(q.measures, q.order_by)
+        if ordering_measure is not None and len(metrics) == 1 and not breakdown:
+            # the spec asked for top-N by this measure; superset honors the sort
+            # control only for single-metric charts without a series breakdown
+            form_data["x_axis_sort"] = measure_alias(ordering_measure[0])
+            form_data["x_axis_sort_asc"] = ordering_measure[1] == "asc"
     if chart.viz == Viz.STACKED_BAR or (chart.viz == Viz.AREA and q.series):
         form_data["stack"] = "Stack"  # echarts "Stacked Style" select: None/Stack/Stream
     return form_data
+
+
+def _ordering_measure(measures: list[Measure], order_by: list) -> tuple[Measure, str] | None:
+    """The measure the spec's first ORDER BY refers to (by column or alias), if any.
+
+    Sorting categories by the measure is only correct when the spec itself orders
+    by it (top-N intent); ordering by the x dimension (e.g. dates) must keep the
+    ascending x sort, or a bar-over-time chart would shuffle its chronology.
+    """
+    if not order_by:
+        return None
+    head = order_by[0]
+    for m in measures:
+        if head.by in (m.column, measure_alias(m)):
+            return m, head.dir
+    return None
 
 
 def _pack_rows(
