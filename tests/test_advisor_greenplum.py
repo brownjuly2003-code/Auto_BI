@@ -186,3 +186,32 @@ def test_advisor_selects_pack_by_engine() -> None:
     assert Advisor(_model("greenplum"))._rules is GP_RULES
     assert Advisor(_model("clickhouse"))._rules is CH_RULES
     assert Advisor(_model("greenplum"))._dialect == "postgres"
+
+
+# --- GP eval suite (deterministic, Phase 3.5) --------------------------------
+
+
+def test_gp_advisor_suite_passes_on_committed_gp_model() -> None:
+    """The GP anti-pattern cases fire (and clean cases stay silent) against the real
+    committed demo model_gp.yaml — locks the GP rule pack in the user-facing eval gate.
+    At-scale cases seed rows>=10M themselves; the model ships at 300k."""
+    from pathlib import Path
+
+    from auto_bi.eval.cases import (
+        GP_ADVISOR_CASES,
+        advisor_cases_for_engine,
+        golden_cases_for_engine,
+    )
+    from auto_bi.eval.runner import run_advisor_suite
+    from auto_bi.semantic.model import SemanticModel
+
+    model = SemanticModel.load(str(Path(__file__).parents[1] / "semantic" / "model_gp.yaml"))
+    report = run_advisor_suite(model, GP_ADVISOR_CASES)
+    failed = [(r.case_id, r.detail) for r in report.results if not r.passed]
+    assert not failed, failed
+    assert report.total == len(GP_ADVISOR_CASES)
+
+    # engine dispatch picks the GP set for a GP model, CH set otherwise
+    assert advisor_cases_for_engine("greenplum") is GP_ADVISOR_CASES
+    assert golden_cases_for_engine("greenplum") == []  # GP golden = S2 handoff
+    assert advisor_cases_for_engine("clickhouse") is not GP_ADVISOR_CASES

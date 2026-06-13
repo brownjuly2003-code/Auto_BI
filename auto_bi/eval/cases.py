@@ -14,7 +14,8 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from auto_bi.agent.seed import FieldsSeed, SeedGroup
-from auto_bi.ir.spec import ChartQuery, ChartSpec, FilterOp, Measure, QueryFilter, Viz
+from auto_bi.engine import GREENPLUM
+from auto_bi.ir.spec import ChartQuery, ChartSpec, FilterOp, JoinSpec, Measure, QueryFilter, Viz
 from auto_bi.semantic.model import Aggregation, SemanticModel
 
 
@@ -392,3 +393,113 @@ ADVISOR_CASES: list[AdvisorCase] = [
         expect_clean=True,
     ),
 ]
+
+
+# --- Greenplum advisor anti-pattern cases (Phase 3.5) ------------------------------
+# Deterministic, like the ClickHouse pack above: metadata-driven rules, no LLM. GP
+# reasons about the distribution key / partition column instead of the sorting key,
+# so the cases seed the GP demo model (dm.sales: DISTRIBUTED BY store_id, RANGE(date)).
+# The two at-scale rules gate on rows >= 10M, so those cases seed a large fact (the
+# committed model_gp.yaml is the 300k demo) exactly as the CH cases seed cardinality.
+# `partition_not_pruned` is EXPLAIN-measured (live-only) and has no offline case here.
+
+
+def _seed_gp_large_fact(model: SemanticModel) -> None:
+    """A real GP fact crosses the 10M threshold; the demo model ships at 300k."""
+    model.table("dm.sales").physical.rows = 20_000_000
+
+
+def _seed_gp_high_cardinality(model: SemanticModel) -> None:
+    """A real product dimension is far larger than the demo's 50 rows."""
+    model.table("dm.sales").physical.cardinality["product_id"] = 150_000
+
+
+def _gp_chart(cid: str, viz: Viz, **query) -> ChartSpec:
+    query.setdefault("table", "dm.sales")
+    query.setdefault("measures", [REVENUE])
+    return ChartSpec(id=cid, title=cid, viz=viz, query=ChartQuery(**query))
+
+
+GP_JUNE = QueryFilter(column="date", op=FilterOp.GTE, value="2026-06-01")
+
+GP_ADVISOR_CASES: list[AdvisorCase] = [
+    AdvisorCase(
+        id="gp_ap1_no_filter_large_fact",
+        description="bar по 20M GP-факту без фильтров (full scan на каждом обновлении)",
+        chart=_gp_chart("gp_ap1", Viz.BAR, dimensions=["store_id"]),
+        expect_rules={"no_filter_on_large_fact"},
+        seed=_seed_gp_large_fact,
+    ),
+    AdvisorCase(
+        id="gp_ap2_distribution_skew",
+        description="dist key store_id (~20 значений) на 20M-факте -> перекос по сегментам",
+        chart=_gp_chart("gp_ap2", Viz.BAR, dimensions=["store_id"], filters=[GP_JUNE]),
+        expect_rules={"distribution_skew"},
+        seed=_seed_gp_large_fact,
+    ),
+    AdvisorCase(
+        id="gp_ap3_non_colocated_join",
+        description="join sales x products по product_id мимо dist key store_id -> motion",
+        chart=_gp_chart(
+            "gp_ap3",
+            Viz.BAR,
+            dimensions=["dm.products.category"],
+            filters=[GP_JUNE],
+            joins=[
+                JoinSpec(
+                    table="dm.products",
+                    on_left="dm.sales.product_id",
+                    on_right="dm.products.product_id",
+                )
+            ],
+        ),
+        expect_rules={"non_colocated_join"},
+    ),
+    AdvisorCase(
+        id="gp_ap4_high_cardinality_groupby",
+        description="GROUP BY product_id при подсаженной кардинальности 150k",
+        chart=_gp_chart("gp_ap4", Viz.TABLE, dimensions=["product_id"], filters=[GP_JUNE]),
+        expect_rules={"group_by_high_cardinality"},
+        seed=_seed_gp_high_cardinality,
+    ),
+    # --- clean cases: the GP pack must stay SILENT (0 false positives) --------------
+    AdvisorCase(
+        id="gp_clean1_dated_colocated_join",
+        description="date-фильтр + co-located join по store_id (dist key) на 300k -> чисто",
+        chart=_gp_chart(
+            "gp_c1",
+            Viz.BAR,
+            dimensions=["dm.stores.city"],
+            filters=[GP_JUNE],
+            joins=[
+                JoinSpec(
+                    table="dm.stores",
+                    on_left="dm.sales.store_id",
+                    on_right="dm.stores.store_id",
+                )
+            ],
+        ),
+        expect_clean=True,
+    ),
+    AdvisorCase(
+        id="gp_clean2_dated_kpi",
+        description="big_number с фильтром по date на 300k-факте -> чисто",
+        chart=_gp_chart("gp_c2", Viz.BIG_NUMBER, filters=[GP_JUNE]),
+        expect_clean=True,
+    ),
+]
+
+
+# GP golden dialogue cases require designing prompts/expectations against the GP demo
+# schema and a live GraceKelly run — that is eval-design (stopper S2), handed off to a
+# Fable/manual session (see docs/plans/2026-06-13-phase3.5-gp-golden-cases-handoff.md).
+GP_GOLDEN_CASES: list[GoldenCase] = []
+
+
+def advisor_cases_for_engine(engine: str) -> list[AdvisorCase]:
+    """Pick the advisor anti-pattern set by DM engine (CH sorting-key vs GP distribution)."""
+    return GP_ADVISOR_CASES if engine == GREENPLUM else ADVISOR_CASES
+
+
+def golden_cases_for_engine(engine: str) -> list[GoldenCase]:
+    return GP_GOLDEN_CASES if engine == GREENPLUM else GOLDEN_CASES
