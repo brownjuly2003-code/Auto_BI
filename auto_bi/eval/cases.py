@@ -420,20 +420,19 @@ def _gp_chart(cid: str, viz: Viz, **query) -> ChartSpec:
     return ChartSpec(id=cid, title=cid, viz=viz, query=ChartQuery(**query))
 
 
-GP_JUNE = QueryFilter(column="date", op=FilterOp.GTE, value="2026-06-01")
-
 GP_ADVISOR_CASES: list[AdvisorCase] = [
     AdvisorCase(
         id="gp_ap1_no_filter_large_fact",
-        description="bar по 20M GP-факту без фильтров (full scan на каждом обновлении)",
+        description="bar по 20M GP-факту без фильтров: full scan + low-card dist key",
         chart=_gp_chart("gp_ap1", Viz.BAR, dimensions=["store_id"]),
-        expect_rules={"no_filter_on_large_fact"},
+        # both deterministic at 20M: no filters -> full scan, store_id(~20) -> skew
+        expect_rules={"no_filter_on_large_fact", "distribution_skew"},
         seed=_seed_gp_large_fact,
     ),
     AdvisorCase(
         id="gp_ap2_distribution_skew",
         description="dist key store_id (~20 значений) на 20M-факте -> перекос по сегментам",
-        chart=_gp_chart("gp_ap2", Viz.BAR, dimensions=["store_id"], filters=[GP_JUNE]),
+        chart=_gp_chart("gp_ap2", Viz.BAR, dimensions=["store_id"], filters=[JUNE]),
         expect_rules={"distribution_skew"},
         seed=_seed_gp_large_fact,
     ),
@@ -444,7 +443,7 @@ GP_ADVISOR_CASES: list[AdvisorCase] = [
             "gp_ap3",
             Viz.BAR,
             dimensions=["dm.products.category"],
-            filters=[GP_JUNE],
+            filters=[JUNE],
             joins=[
                 JoinSpec(
                     table="dm.products",
@@ -458,7 +457,7 @@ GP_ADVISOR_CASES: list[AdvisorCase] = [
     AdvisorCase(
         id="gp_ap4_high_cardinality_groupby",
         description="GROUP BY product_id при подсаженной кардинальности 150k",
-        chart=_gp_chart("gp_ap4", Viz.TABLE, dimensions=["product_id"], filters=[GP_JUNE]),
+        chart=_gp_chart("gp_ap4", Viz.TABLE, dimensions=["product_id"], filters=[JUNE]),
         expect_rules={"group_by_high_cardinality"},
         seed=_seed_gp_high_cardinality,
     ),
@@ -470,7 +469,7 @@ GP_ADVISOR_CASES: list[AdvisorCase] = [
             "gp_c1",
             Viz.BAR,
             dimensions=["dm.stores.city"],
-            filters=[GP_JUNE],
+            filters=[JUNE],
             joins=[
                 JoinSpec(
                     table="dm.stores",
@@ -484,7 +483,7 @@ GP_ADVISOR_CASES: list[AdvisorCase] = [
     AdvisorCase(
         id="gp_clean2_dated_kpi",
         description="big_number с фильтром по date на 300k-факте -> чисто",
-        chart=_gp_chart("gp_c2", Viz.BIG_NUMBER, filters=[GP_JUNE]),
+        chart=_gp_chart("gp_c2", Viz.BIG_NUMBER, filters=[JUNE]),
         expect_clean=True,
     ),
 ]
