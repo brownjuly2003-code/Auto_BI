@@ -94,16 +94,45 @@ def _check_clear(case: GoldenCase, phase: AgentPhase, spec: DashboardSpec | None
         tables = {c.query.table for c in spec.charts}
         if tables != {case.table}:
             return f"unexpected tables: {sorted(tables)}"
-    spec_columns: set[str] = set()
-    for chart in spec.charts:
-        spec_columns.update(chart.query.group_columns())
-        spec_columns.update(m.column for m in chart.query.measures)
-        spec_columns.update(f.column for f in chart.query.filters)
-    missing = case.expect_columns - spec_columns
+    missing = case.expect_columns - _spec_columns(spec)
     if missing:
         return f"expected columns missing from the spec: {sorted(missing)}"
     if case.expect_viz and not ({c.viz for c in spec.charts} & case.expect_viz):
         return f"no chart of expected viz {sorted(v.value for v in case.expect_viz)}"
+    return ""
+
+
+def _spec_columns(spec: DashboardSpec) -> set[str]:
+    columns: set[str] = set()
+    for chart in spec.charts:
+        columns.update(chart.query.group_columns())
+        columns.update(m.column for m in chart.query.measures)
+        columns.update(f.column for f in chart.query.filters)
+    return columns
+
+
+def _check_edit(case: GoldenCase, agent: AgentSession) -> str:
+    """Iteration check (task 2.8): word edit after APPROVE -> patched spec.
+
+    Mirrors the 2.4 contract: the edit returns the session to APPROVE with a new
+    valid spec; expectations are checked on the PATCHED spec only — the initial
+    spec already passed the clear checks."""
+    try:
+        turn = agent.reply(case.edit)
+    except Exception as exc:
+        return f"edit failed: {exc}"
+    if turn.phase != AgentPhase.APPROVE or turn.spec is None:
+        return f"edit did not return to APPROVE (phase={turn.phase})"
+    columns = _spec_columns(turn.spec)
+    missing = case.edit_expect_columns - columns
+    if missing:
+        return f"edit did not add expected columns: {sorted(missing)}"
+    still_there = case.edit_expect_gone & columns
+    if still_there:
+        return f"edit did not remove columns: {sorted(still_there)}"
+    if case.edit_expect_viz and not ({c.viz for c in turn.spec.charts} & case.edit_expect_viz):
+        wanted = sorted(v.value for v in case.edit_expect_viz)
+        return f"no chart of expected viz {wanted} after edit"
     return ""
 
 
@@ -126,12 +155,14 @@ def run_golden_case(
 ) -> CaseResult:
     agent = AgentSession(model, llm, advisor, session_id=session_id)
     try:
-        turn = agent.start(case.request)
+        turn = agent.start(case.request, seed=case.seed)
     except Exception as exc:  # an eval run must survive a single broken case
         return CaseResult(case_id=case.id, kind=case.kind.value, passed=False, detail=str(exc))
 
     if case.kind == CaseKind.CLEAR:
         detail = _check_clear(case, turn.phase, turn.spec)
+        if not detail and case.edit:
+            detail = _check_edit(case, agent)
     else:  # ambiguous and infeasible both require the agent to flag, not hallucinate
         detail = _check_flagged(case, turn.phase, turn.questions)
     return CaseResult(case_id=case.id, kind=case.kind.value, passed=not detail, detail=detail)

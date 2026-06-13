@@ -147,9 +147,13 @@ def _select_for_prompt(
 
 
 def build_propose_prompt(
-    request: str, model: SemanticModel, *, include_samples: bool = True
+    request: str,
+    model: SemanticModel,
+    *,
+    include_samples: bool = True,
+    pinned: set[str] | None = None,
 ) -> str:
-    model = _select_for_prompt(request, model, include_samples=include_samples)
+    model = _select_for_prompt(request, model, include_samples=include_samples, pinned=pinned)
     return PROPOSE_SPEC_PROMPT.format(
         model_text=render_model(model, include_samples=include_samples),
         request=request,
@@ -164,11 +168,12 @@ def propose_spec(
     *,
     session_id: str | None = None,
     include_samples: bool = True,
+    pinned: set[str] | None = None,
 ) -> DashboardSpec:
     # select once and use the SAME sub-model for prompting, validation and repair:
     # the LLM may only reference what it was actually shown
-    model = _select_for_prompt(request, model, include_samples=include_samples)
-    prompt = build_propose_prompt(request, model, include_samples=include_samples)
+    model = _select_for_prompt(request, model, include_samples=include_samples, pinned=pinned)
+    prompt = build_propose_prompt(request, model, include_samples=include_samples, pinned=pinned)
     return _complete_validated(
         llm,
         model,

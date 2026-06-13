@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -76,7 +77,11 @@ class Store:
         self._path = Path(path)
         if self._path.name != ":memory:":
             self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(self._path)
+        # one connection shared across threads (HTTP API: threadpool handlers + the
+        # build thread); our own lock serializes transactions, so the sqlite3
+        # same-thread guard is unnecessary
+        self._db = sqlite3.connect(self._path, check_same_thread=False)
+        self._lock = threading.Lock()
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")  # per-connection; off by default
         self._db.executescript(_SCHEMA)
@@ -91,18 +96,18 @@ class Store:
 
     def create_session(self, request: str) -> str:
         session_id = uuid.uuid4().hex
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "INSERT INTO sessions (id, request) VALUES (?, ?)", (session_id, request)
             )
         return session_id
 
     def set_session_status(self, session_id: str, status: str) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute("UPDATE sessions SET status = ? WHERE id = ?", (status, session_id))
 
     def add_message(self, session_id: str, role: str, content: str) -> int:
-        with self._db:
+        with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)",
                 (session_id, role, content),
@@ -115,7 +120,7 @@ class Store:
     # --- specs / builds ---------------------------------------------------------
 
     def save_spec(self, session_id: str, spec_json: dict, status: str = "proposed") -> int:
-        with self._db:
+        with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO specs (session_id, spec_json, status) VALUES (?, ?, ?)",
                 (session_id, json.dumps(spec_json, ensure_ascii=False), status),
@@ -123,7 +128,7 @@ class Store:
         return cur.lastrowid
 
     def set_spec_status(self, spec_id: int, status: str) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute("UPDATE specs SET status = ? WHERE id = ?", (status, spec_id))
 
     def specs(self, session_id: str) -> list[dict[str, Any]]:
@@ -142,7 +147,7 @@ class Store:
         status: str = "ok",
         error: str = "",
     ) -> int:
-        with self._db:
+        with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO builds (session_id, spec_id, dashboard_id, url, status, error)"
                 " VALUES (?, ?, ?, ?, ?, ?)",
@@ -166,7 +171,7 @@ class Store:
         status: str,
         latency_ms: int,
     ) -> int:
-        with self._db:
+        with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO llm_calls"
                 " (session_id, model, prompt_sha256, prompt_chars, reasoning, status, latency_ms)"
@@ -199,7 +204,7 @@ class Store:
         severity: str,
         narrative: str = "",
     ) -> int:
-        with self._db:
+        with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO dm_change_requests (session_id, table_name, rule, severity,"
                 " narrative) VALUES (?, ?, ?, ?, ?)",
@@ -212,8 +217,17 @@ class Store:
             return self._rows("SELECT * FROM dm_change_requests ORDER BY id")
         return self._rows("SELECT * FROM dm_change_requests WHERE status = ? ORDER BY id", status)
 
+    def dm_change_request(self, request_id: int) -> dict[str, Any] | None:
+        """One DCR with its session context (what the user was trying to build)."""
+        rows = self._rows(
+            "SELECT r.*, s.request AS session_request FROM dm_change_requests r"
+            " LEFT JOIN sessions s ON s.id = r.session_id WHERE r.id = ?",
+            request_id,
+        )
+        return rows[0] if rows else None
+
     def set_dm_change_request_status(self, request_id: int, status: str) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "UPDATE dm_change_requests SET status = ? WHERE id = ?", (status, request_id)
             )
@@ -221,4 +235,5 @@ class Store:
     # --- helpers ------------------------------------------------------------------
 
     def _rows(self, sql: str, *params: Any) -> list[dict[str, Any]]:
-        return [dict(r) for r in self._db.execute(sql, params).fetchall()]
+        with self._lock:
+            return [dict(r) for r in self._db.execute(sql, params).fetchall()]

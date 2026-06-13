@@ -28,10 +28,27 @@ def main(argv: list[str] | None = None) -> int:
         help="Skip live time-grain profiling (no DWH connection)",
     )
 
+    serve = sub.add_parser("serve", help="HTTP API for the web UI (FastAPI + uvicorn)")
+    serve.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8200)
+
     ev = sub.add_parser("eval", help="Run the eval suites (advisor: offline; golden: live LLM)")
     ev.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
     ev.add_argument("--suite", choices=["advisor", "golden", "all"], default="all")
     ev.add_argument("--cases", default="", help="Comma-separated case ids to run (subset)")
+
+    dbt = sub.add_parser(
+        "dbt-import",
+        help="Enrich model.yaml from dbt artifacts (descriptions, relationships); "
+        "fills EMPTY values only — hand edits always win",
+    )
+    dbt.add_argument("--manifest", required=True, help="Path to dbt manifest.json")
+    dbt.add_argument("--catalog", default="", help="Path to dbt catalog.json (optional)")
+    dbt.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
+    dbt.add_argument(
+        "--dry-run", action="store_true", help="Report what would change without writing"
+    )
 
     args = parser.parse_args(argv)
 
@@ -39,12 +56,16 @@ def main(argv: list[str] | None = None) -> int:
         return _build(args.description, args.model_path)
     if args.command == "chat":
         return _chat(args.model_path)
+    if args.command == "serve":
+        return _serve(args.model_path, args.host, args.port)
     if args.command == "introspect":
         return _introspect(args.database, args.output)
     if args.command == "gaps":
         return _gaps(args.model_path, args.output, args.offline)
     if args.command == "eval":
         return _eval(args.model_path, args.suite, args.cases)
+    if args.command == "dbt-import":
+        return _dbt_import(args.manifest, args.catalog, args.model_path, args.dry_run)
     return 0
 
 
@@ -198,7 +219,23 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
                         )
                         url = settings.superset_url.rstrip("/") + ref.url
                         console.print(f"\n[bold green]Дашборд готов:[/bold green] {url}")
-                        break
+                        # iterations (2.4): keep the session — a further edit patches the
+                        # built spec and re-enters APPROVE for a rebuild
+                        more = console.input(
+                            "\n[bold cyan]Вы[/bold cyan] [dim](правка словами = доработать / "
+                            "Enter = закончить)[/dim]: "
+                        ).strip()
+                        if not more or more.lower() in QUIT_WORDS:
+                            break
+                        try:
+                            turn = agent.reply(more)
+                        except (SpecValidationError, LLMError) as exc:
+                            console.print(
+                                f"[red]Правка не применена: {exc}[/red] "
+                                "[dim]Дашборд остаётся прежним.[/dim]"
+                            )
+                            break
+                        continue
                     try:
                         turn = agent.reply(answer)
                     except (SpecValidationError, LLMError) as exc:
@@ -213,6 +250,68 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
         except Exception as exc:  # session must not kill the REPL
             console.print(f"[red]Ошибка: {exc}[/red]")
             store.set_session_status(session_id, "failed")
+
+
+def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover — wiring only
+    from pathlib import Path
+
+    import uvicorn
+
+    from auto_bi.adapters.base import DWHConfig
+    from auto_bi.adapters.superset.adapter import SupersetAdapter
+    from auto_bi.adapters.superset.client import SupersetClient
+    from auto_bi.advisor.core import Advisor
+    from auto_bi.agent.pipeline import compile_and_build
+    from auto_bi.agent.sql_guard import LiveSQLValidator
+    from auto_bi.api import create_app
+    from auto_bi.config import get_settings
+    from auto_bi.introspect.clickhouse import make_run_query
+    from auto_bi.llm.gracekelly import GraceKellyClient
+    from auto_bi.semantic.model import SemanticModel
+    from auto_bi.store import Store
+
+    if not Path(model_path).exists():
+        print(f"Semantic model not found: {model_path}")
+        print("Generate the draft first: auto_bi introspect --output " + model_path)
+        return 2
+
+    settings = get_settings()
+    model = SemanticModel.load(model_path)
+    run_query = make_run_query(settings)
+    store = Store(settings.store_path)
+    adapter = SupersetAdapter(
+        SupersetClient(settings.superset_url, settings.superset_user, settings.superset_password),
+        DWHConfig(
+            host=settings.ch_host_from_bi or settings.ch_host,
+            port=settings.ch_port_from_bi or settings.ch_port,
+            database=settings.ch_database,
+            user=settings.ch_user,
+            password=settings.ch_password,
+        ),
+    )
+
+    def builder(spec, log, session_id):
+        return compile_and_build(
+            spec,
+            model,
+            LiveSQLValidator(run_query),
+            adapter,
+            log,
+            store=store,
+            session_id=session_id,
+        )
+
+    app = create_app(
+        model=model,
+        llm=GraceKellyClient(settings, store=store),
+        advisor=Advisor(model, run_query),
+        store=store,
+        builder=builder,
+        include_samples=settings.send_samples,
+        model_path=model_path,  # enrichment UI пишет правки обратно в model.yaml
+    )
+    uvicorn.run(app, host=host, port=port)
+    return 0
 
 
 def _render_turn(console, turn) -> None:  # pragma: no cover — presentation only
@@ -330,6 +429,54 @@ def _gaps(model_path: str, output: str, offline: bool) -> int:
         print(f"Gaps report written to {output}: {len(report.findings)} findings")
     else:
         print(markdown)
+    return 0
+
+
+def _dbt_import(manifest_path: str, catalog_path: str, model_path: str, dry_run: bool) -> int:
+    from pathlib import Path
+
+    from auto_bi.semantic.dbt_import import dbt_enrich, load_artifact
+    from auto_bi.semantic.model import SemanticModel
+
+    if not Path(model_path).exists():
+        print(f"Semantic model not found: {model_path}")
+        print("Generate it first: auto_bi introspect --output " + model_path)
+        return 2
+    if not Path(manifest_path).exists():
+        print(f"dbt manifest not found: {manifest_path}")
+        return 2
+
+    model = SemanticModel.load(model_path)
+    catalog = load_artifact(catalog_path) if catalog_path else None
+    report = dbt_enrich(model, load_artifact(manifest_path), catalog)
+
+    for label, items in (
+        ("описания таблиц", report.table_descriptions),
+        ("описания колонок", report.column_descriptions),
+        ("joins из relationships", report.joins_added),
+        ("fk проставлены", report.fks_set),
+    ):
+        if items:
+            print(f"{label} ({len(items)}):")
+            for item in items:
+                print(f"  + {item}")
+    if report.kept_existing:
+        print(f"не тронуто (ручные значения выигрывают): {len(report.kept_existing)}")
+    for label, items in (
+        ("dbt-модели без таблицы в model.yaml", report.unmatched_models),
+        ("dbt-колонки без колонки в model.yaml", report.unmatched_columns),
+    ):
+        if items:
+            print(f"{label} ({len(items)}): {', '.join(items)}")
+
+    if report.changed == 0:
+        print("Изменений нет — модель уже согласована с dbt-артефактами.")
+        return 0
+    if dry_run:
+        print(f"dry-run: {report.changed} изменений НЕ записано в {model_path}")
+        return 0
+    model.dump(model_path)
+    print(f"{model_path} обновлён: {report.changed} изменений")
     return 0
 
 

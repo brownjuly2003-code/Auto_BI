@@ -16,6 +16,7 @@ __pycache__/
 *.sqlite
 *.sqlite3
 logs/
+.tmp/
 
 # docker volumes / local data
 data/

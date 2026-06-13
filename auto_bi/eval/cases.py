@@ -13,6 +13,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from auto_bi.agent.seed import FieldsSeed, SeedGroup
 from auto_bi.ir.spec import ChartQuery, ChartSpec, FilterOp, Measure, QueryFilter, Viz
 from auto_bi.semantic.model import Aggregation, SemanticModel
 
@@ -25,12 +26,19 @@ class CaseKind(StrEnum):
 
 class GoldenCase(BaseModel):
     id: str
-    request: str
+    request: str = ""
+    seed: FieldsSeed | None = None  # fields-first entry (task 2.3); request may be empty
     kind: CaseKind
     table: str = ""  # clear: every chart must use this table
     expect_columns: set[str] = Field(default_factory=set)  # clear: must appear in the spec
     expect_viz: set[Viz] = Field(default_factory=set)  # clear: at least one chart of these
     expect_phrase: str = ""  # ambiguous/infeasible: a question must mention this
+    # iteration (task 2.8): a word edit applied AFTER the clear checks pass; the
+    # patched spec is then checked against the edit_* expectations below
+    edit: str = ""
+    edit_expect_columns: set[str] = Field(default_factory=set)  # must appear after the edit
+    edit_expect_gone: set[str] = Field(default_factory=set)  # must DISAPPEAR after the edit
+    edit_expect_viz: set[Viz] = Field(default_factory=set)  # at least one chart of these
 
 
 GOLDEN_CASES: list[GoldenCase] = [
@@ -110,6 +118,95 @@ GOLDEN_CASES: list[GoldenCase] = [
         expect_columns={"city"},
         expect_viz={Viz.PIE, Viz.BAR},
     ),
+    GoldenCase(
+        id="g10_avg_price_by_category",
+        request="Средняя цена товаров по категориям",
+        kind=CaseKind.CLEAR,
+        table="dm.products",
+        expect_columns={"category", "price"},
+        expect_viz={Viz.BAR, Viz.TABLE},
+    ),
+    GoldenCase(
+        id="g11_items_by_day",
+        request="Число позиций (items) по дням за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "items"},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    # --- iterations (task 2.8 / 2.4): clear request -> word edit -> patched spec ----
+    GoldenCase(
+        id="it1_add_orders",
+        request="Выручка по дням за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        edit="Добавь на дашборд число заказов по дням",
+        edit_expect_columns={"orders"},
+    ),
+    GoldenCase(
+        id="it2_remove_chart",
+        request="Выручка по дням и топ-10 магазинов по выручке за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue", "store_id"},
+        # «чарт» в ед. числе ловился на спеке с ДВУМЯ топами магазинов (bar+table):
+        # LLM честно убирал один — scope правки должен быть явным
+        edit="Убери все чарты с разбивкой по магазинам",
+        edit_expect_gone={"store_id"},
+    ),
+    GoldenCase(
+        id="it3_change_viz",
+        request="Выручка по дням за июнь 2026 линией",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_viz={Viz.LINE},
+        edit="Замени линию на area (с заливкой)",
+        edit_expect_viz={Viz.AREA},
+    ),
+    # --- fields-first (task 2.3): the seed is the request, same checks as clear -----
+    GoldenCase(
+        id="f1_fields_revenue_trend",
+        seed=FieldsSeed(
+            groups=[
+                SeedGroup(
+                    label="Тренд выручки",
+                    fields=["dm.sales_daily.date", "dm.sales_daily.revenue"],
+                )
+            ],
+            comment="июнь 2026",
+        ),
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_viz={Viz.LINE, Viz.AREA},
+    ),
+    GoldenCase(
+        id="f2_fields_two_groups",
+        seed=FieldsSeed(
+            groups=[
+                SeedGroup(fields=["dm.sales_daily.date", "dm.sales_daily.revenue"]),
+                SeedGroup(fields=["dm.sales_daily.store_id", "dm.sales_daily.orders"]),
+            ],
+            comment="июнь 2026",
+        ),
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue", "store_id", "orders"},
+    ),
+    GoldenCase(
+        id="f3_fields_then_edit",
+        seed=FieldsSeed(
+            groups=[SeedGroup(fields=["dm.sales_daily.date", "dm.sales_daily.revenue"])],
+            comment="июнь 2026",
+        ),
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        edit="Добавь чарт: число заказов по дням",
+        edit_expect_columns={"orders"},
+    ),
     # --- ambiguous: the request has >=2 real readings -> a question is required ----
     GoldenCase(
         id="a1_quantity",
@@ -129,6 +226,12 @@ GOLDEN_CASES: list[GoldenCase] = [
         kind=CaseKind.AMBIGUOUS,
         expect_phrase="чек",
     ),
+    GoldenCase(
+        id="a4_quantity_dynamics",
+        request="Динамика количества за июнь 2026",
+        kind=CaseKind.AMBIGUOUS,
+        expect_phrase="количеств",
+    ),
     # --- infeasible: not in the DM at all -> flagged with an explanation -----------
     GoldenCase(
         id="i1_salaries",
@@ -147,6 +250,12 @@ GOLDEN_CASES: list[GoldenCase] = [
         request="Конверсия сайта по неделям за июнь 2026",
         kind=CaseKind.INFEASIBLE,
         expect_phrase="конверси",
+    ),
+    GoldenCase(
+        id="i4_weather",
+        request="Прогноз погоды по дням за июнь 2026",
+        kind=CaseKind.INFEASIBLE,
+        expect_phrase="погод",
     ),
 ]
 

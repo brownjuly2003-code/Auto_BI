@@ -15,12 +15,15 @@ REPO_MODEL = SemanticModel.load("semantic/model.yaml")
 
 
 def test_case_inventory_matches_plan() -> None:
-    # PLAN 1.11: 15 golden (clear/ambiguous/infeasible) + >=5 seeded anti-patterns
-    assert len(GOLDEN_CASES) == 15
+    # PLAN 2.8: 25 golden cases including fields-first and iterations
+    # (PLAN 1.11 base: clear/ambiguous/infeasible + >=5 seeded anti-patterns)
+    assert len(GOLDEN_CASES) == 25
     kinds = {k: sum(c.kind == k for c in GOLDEN_CASES) for k in CaseKind}
     assert kinds[CaseKind.CLEAR] >= 8
-    assert kinds[CaseKind.AMBIGUOUS] >= 3
-    assert kinds[CaseKind.INFEASIBLE] >= 3
+    assert kinds[CaseKind.AMBIGUOUS] >= 4
+    assert kinds[CaseKind.INFEASIBLE] >= 4
+    assert sum(c.seed is not None for c in GOLDEN_CASES) >= 3  # fields-first entries
+    assert sum(bool(c.edit) for c in GOLDEN_CASES) >= 4  # iteration entries
     seeded = [c for c in ADVISOR_CASES if not c.expect_clean]
     clean = [c for c in ADVISOR_CASES if c.expect_clean]
     assert len(seeded) >= 5
@@ -88,6 +91,39 @@ def test_golden_suite_thresholds(demo_model) -> None:
     assert golden_suite_ok(report)  # 8/10 clear = 80%
     report.results.append(CaseResult(case_id="i1", kind="infeasible", passed=False))
     assert not golden_suite_ok(report)
+
+
+def test_golden_iteration_case_checks_patched_spec(demo_model) -> None:
+    case = next(c for c in GOLDEN_CASES if c.id == "it1_add_orders")
+    patched = {
+        **GOOD_SPEC,
+        "charts": GOOD_SPEC["charts"]
+        + [
+            {
+                "id": "c2",
+                "title": "Заказы по дням",
+                "viz": "line",
+                "query": {
+                    "table": "dm.sales_daily",
+                    "dimensions": ["date"],
+                    "measures": [{"column": "orders", "agg": "sum"}],
+                },
+            }
+        ],
+    }
+    llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, patched])
+    report = run_golden_suite(demo_model, llm, cases=[case])
+    (result,) = report.results
+    assert result.passed, result.detail
+    # the edit prompt actually went to the LLM
+    assert "Добавь на дашборд" in llm.calls[-1][1]
+
+    # an edit that does NOT add the expected column -> fail with the reason
+    llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, GOOD_SPEC])
+    report = run_golden_suite(demo_model, llm, cases=[case])
+    (result,) = report.results
+    assert not result.passed
+    assert "did not add" in result.detail
 
 
 def test_eval_survives_broken_case(demo_model) -> None:

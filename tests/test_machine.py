@@ -102,6 +102,20 @@ def test_word_edit_patches_spec(demo_model) -> None:
     assert reasoning is True  # patch_spec designs -> thinking on
 
 
+def test_word_edit_returning_same_spec_is_reported_as_noop(demo_model) -> None:
+    # the patch contract forces a full spec back: an edit the IR cannot express
+    # (e.g. a joined-table field) comes back unchanged and must not be announced
+    # as a new proposal
+    llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, GOOD_SPEC])
+    agent = AgentSession(demo_model, llm)
+    agent.start("выручка по дням")
+    turn = agent.reply("замени магазины на города из смежной таблицы")
+    assert turn.noop is True
+    assert turn.phase == AgentPhase.APPROVE
+    assert "не изменила" in turn.message
+    assert turn.spec is not None  # current spec stays addressable for approve
+
+
 def test_approve_returns_spec_and_finishes(demo_model) -> None:
     llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC])
     agent = AgentSession(demo_model, llm)
@@ -302,4 +316,27 @@ def test_dm_change_request_not_duplicated_by_word_edits(demo_model, tmp_path) ->
     agent.reply("переименуй дашборд")  # finding is still alive after the edit
     # the word edit re-ran the advisor, but the same (table, rule) is stored once
     assert len(store.dm_change_requests("open")) == 1
+    store.close()
+
+
+def test_iteration_edit_after_build_reenters_approve(demo_model, tmp_path) -> None:
+    # task 2.4: APPROVED is not terminal — a word edit patches the built spec,
+    # the session returns to APPROVE and can be approved (rebuilt) again
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка")
+    llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, PATCHED_SPEC])
+    agent = AgentSession(demo_model, llm, store=store, session_id=sid)
+    agent.start("выручка по дням")
+    agent.approve()
+    assert agent.phase == AgentPhase.APPROVED
+
+    turn = agent.reply("переименуй дашборд")
+    assert turn.phase == AgentPhase.APPROVE
+    assert turn.spec.title == "Продажи (обновлено)"
+
+    spec = agent.approve()
+    assert spec.title == "Продажи (обновлено)"
+    # spec history is append-only: v1 approved, v2 proposed -> approved
+    statuses = [s["status"] for s in store.specs(sid)]
+    assert statuses == ["approved", "approved"]
     store.close()
