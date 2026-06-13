@@ -92,7 +92,7 @@
 
 | # | Задача |
 |---|---|
-| 3.1 | **Спайк DataLens Public API (2–3 дня, go/no-go)**: `api.datalens.tech` (Preview), IAM-auth, createDataset → Wizard-чарты → createDashboard руками-программно |
+| 3.1 | **Спайк DataLens Public API (2–3 дня, go/no-go)**: `api.datalens.tech` (Preview), IAM-auth, createDataset → Wizard-чарты → createDashboard руками-программно — _2026-06-13: Yandex Cloud недоступен (нет аккаунта/кредов) → поднят **self-hosted open-source DataLens** на Mac (`HC=1`, UI :8080 admin/admin, туннель :8090, логин проверен); тот же формат чартов. Реверс API (createConnection/Dataset/EditorChart-HC/Dashboard) — следующий шаг. Runbook `2026-06-13-datalens-selfhosted-runbook.md`_ |
 | 3.2 | DataLens-адаптер: компиляция IR (capability matrix + деградации), workbook «Auto_BI» |
 | 3.3 | **Greengage/Greenplum**: интроспектор (PG-каталоги + distribution key, партиции; стенд в docker), диалект SQL_GEN — _✅ demo-level 2026-06-13: live GP 6.25, `introspect/greenplum.py` + dialect seam (`engine.py`), `model_gp.yaml`; **скейл ≥10M live-валидирован** (`stand_scale_gp_dm.sql`, интроспектор читает reltuples=10.3M); **multi-level/list-партиции** — интроспектор читает все уровни (`partition_key='date, region'`, live+unit); остаток — сам Greengage (runbook)_ |
 | 3.4 | Advisor: Greengage rule pack (distribution skew, broadcast motion, partition pruning) + EXPLAIN-слой — _✅ demo-level 2026-06-13: `advisor/greenplum.py` + per-engine dispatch, live motion/partition findings; **`distribution_skew` + `no_filter_on_large_fact` live на 10.3M** (`gp_scale_validate.py`: no-filter → оба, date-filter → только skew)_ |
