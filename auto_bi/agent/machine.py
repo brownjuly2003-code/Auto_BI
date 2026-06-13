@@ -145,14 +145,13 @@ class AgentSession:
                 include_samples=self._include_samples,
             )
             if patched.model_dump(mode="json") == self.spec.model_dump(mode="json"):
-                # the patch contract forces a full spec back, so an edit the IR cannot
-                # express (e.g. a field from a joined table) returns unchanged — say so
-                # instead of announcing a "new" proposal; phase/spec/history keep as is
+                # the patch contract forces a full spec back, so an edit the model cannot
+                # express returns unchanged — say so instead of announcing a "new"
+                # proposal; phase/spec/history keep as is
                 message = (
                     "Правка не изменила спецификацию: похоже, её нельзя выразить "
-                    "текущей моделью (например, поле из смежной таблицы — джойны "
-                    "в чартах пока не поддерживаются). Сформулируйте иначе или "
-                    "соберите как есть."
+                    "текущей моделью данных (нет нужного поля или связи между "
+                    "таблицами). Сформулируйте иначе или соберите как есть."
                 )
                 self._record("agent", message)
                 return AgentTurn(

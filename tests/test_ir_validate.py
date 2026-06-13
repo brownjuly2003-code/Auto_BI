@@ -159,3 +159,76 @@ def test_dashboard_filter_resolution(demo_model) -> None:
 def test_duplicate_chart_ids(demo_model) -> None:
     errors = validate_spec(spec(chart(), chart()), demo_model)
     assert any("not unique" in e for e in errors)
+
+
+# --- joins (cross-table dimensions) ------------------------------------------------
+
+
+def _join_chart(**query_overrides):
+    from auto_bi.ir.spec import ChartQuery, ChartSpec, JoinSpec, Measure, Viz
+
+    defaults = dict(
+        table="dm.sales_daily",
+        dimensions=["dm.stores.city"],
+        measures=[Measure(column="revenue", agg="sum", label="Выручка")],
+        joins=[
+            JoinSpec(
+                table="dm.stores",
+                on_left="dm.sales_daily.store_id",
+                on_right="dm.stores.id",
+            )
+        ],
+    )
+    defaults.update(query_overrides)
+    return ChartSpec(id="j", title="j", viz=Viz.BAR, query=ChartQuery(**defaults))
+
+
+def _spec_of(chart):
+    from auto_bi.ir.spec import DashboardSpec
+
+    return DashboardSpec(title="t", charts=[chart])
+
+
+def test_join_matching_model_edge_is_valid(demo_model) -> None:
+    assert validate_spec(_spec_of(_join_chart()), demo_model) == []
+
+
+def test_join_not_in_model_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import JoinSpec
+
+    chart = _join_chart(
+        joins=[
+            JoinSpec(
+                table="dm.stores",
+                on_left="dm.sales_daily.orders",  # invented condition
+                on_right="dm.stores.id",
+            )
+        ]
+    )
+    errors = validate_spec(_spec_of(chart), demo_model)
+    assert any("not an edge of the semantic model" in e for e in errors)
+
+
+def test_joined_dimension_without_join_is_rejected_with_hint(demo_model) -> None:
+    chart = _join_chart(joins=[])
+    errors = validate_spec(_spec_of(chart), demo_model)
+    assert any("without a matching entry in query.joins" in e for e in errors)
+
+
+def test_bare_foreign_column_hints_qualification(demo_model) -> None:
+    chart = _join_chart(dimensions=["city"], joins=[])
+    errors = validate_spec(_spec_of(chart), demo_model)
+    assert any("dm.stores.city" in e and "JOIN" in e for e in errors)
+
+
+def test_unused_join_is_rejected(demo_model) -> None:
+    chart = _join_chart(dimensions=["store_id"])
+    errors = validate_spec(_spec_of(chart), demo_model)
+    assert any("declared but no column of it is used" in e for e in errors)
+
+
+def test_alias_collision_between_tables_is_rejected(demo_model) -> None:
+    # dm.sales_daily has no "name", so collide via two refs with the same bare name
+    chart = _join_chart(dimensions=["dm.stores.name", "name"])
+    errors = validate_spec(_spec_of(chart), demo_model)
+    assert errors  # bare "name" is unknown in the base table AND would collide

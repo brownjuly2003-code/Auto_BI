@@ -179,3 +179,52 @@ def test_live_validator_wraps_engine_error() -> None:
 
     with pytest.raises(SQLGuardError, match="EXPLAIN failed"):
         LiveSQLValidator(run).validate(generate_chart_sql(make_query()))
+
+
+def test_join_query_qualifies_aliases_and_left_joins() -> None:
+    from auto_bi.ir.spec import JoinSpec
+
+    q = ChartQuery(
+        table="dm.sales_daily",
+        dimensions=["dm.stores.city"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM, label="Выручка")],
+        joins=[
+            JoinSpec(
+                table="dm.stores",
+                on_left="dm.sales_daily.store_id",
+                on_right="dm.stores.id",
+            )
+        ],
+        filters=[QueryFilter(column="date", op=FilterOp.GTE, value="2026-06-01")],
+        order_by=[OrderBy(by="Выручка", dir="desc")],
+        limit=10,
+    )
+    sql = generate_chart_sql(q)
+    assert 'LEFT JOIN "dm"."stores"' in sql
+    assert '"dm"."sales_daily"."store_id" = "dm"."stores"."id"' in sql
+    assert '"dm"."stores"."city" AS "city"' in sql  # bare alias for the dataset
+    assert 'GROUP BY "dm"."stores"."city"' in sql
+    # base-table references are qualified too: joined tables may share column names
+    assert '"dm"."sales_daily"."date" >= ' in sql
+    assert 'SUM("dm"."sales_daily"."revenue") AS "Выручка"' in sql
+    assert 'ORDER BY "Выручка" DESC' in sql
+
+
+def test_join_order_by_joined_dimension_uses_alias() -> None:
+    from auto_bi.ir.spec import JoinSpec
+
+    q = ChartQuery(
+        table="dm.sales_daily",
+        dimensions=["dm.stores.city"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        joins=[
+            JoinSpec(
+                table="dm.stores",
+                on_left="dm.sales_daily.store_id",
+                on_right="dm.stores.id",
+            )
+        ],
+        order_by=[OrderBy(by="dm.stores.city", dir="asc")],
+    )
+    sql = generate_chart_sql(q)
+    assert 'ORDER BY "city"' in sql  # the SELECT alias, not a dotted identifier

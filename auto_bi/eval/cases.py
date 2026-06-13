@@ -31,6 +31,10 @@ class GoldenCase(BaseModel):
     kind: CaseKind
     table: str = ""  # clear: every chart must use this table
     expect_columns: set[str] = Field(default_factory=set)  # clear: must appear in the spec
+    # clear: per-group alternatives — at least ONE column of each group must appear
+    # (a dimension may legitimately resolve to the fk id OR the joined human-readable
+    # column, e.g. "магазин" -> store_id | dm.stores.name)
+    expect_columns_any: list[set[str]] = Field(default_factory=list)
     expect_viz: set[Viz] = Field(default_factory=set)  # clear: at least one chart of these
     expect_phrase: str = ""  # ambiguous/infeasible: a question must mention this
     # iteration (task 2.8): a word edit applied AFTER the clear checks pass; the
@@ -50,6 +54,15 @@ GOLDEN_CASES: list[GoldenCase] = [
         table="dm.sales_daily",
         expect_columns={"date", "revenue"},
         expect_viz={Viz.LINE, Viz.AREA},
+    ),
+    GoldenCase(
+        # cross-table dimension via an explicit join (city lives in dm.stores)
+        id="g12_revenue_by_city_join",
+        request="Топ-10 городов по выручке за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"dm.stores.city", "revenue"},
+        expect_viz={Viz.BAR, Viz.TABLE},
     ),
     GoldenCase(
         id="g2_total_revenue_kpi",
@@ -98,7 +111,9 @@ GOLDEN_CASES: list[GoldenCase] = [
         request="Таблица: дата, магазин, выручка и заказы за 20-27 июня 2026",
         kind=CaseKind.CLEAR,
         table="dm.sales_daily",
-        expect_columns={"date", "store_id", "revenue", "orders"},
+        expect_columns={"date", "revenue", "orders"},
+        # «магазин»: с joins LLM законно выбирает читаемое имя вместо id
+        expect_columns_any=[{"store_id", "dm.stores.name"}],
         expect_viz={Viz.TABLE},
     ),
     GoldenCase(
@@ -149,11 +164,13 @@ GOLDEN_CASES: list[GoldenCase] = [
         request="Выручка по дням и топ-10 магазинов по выручке за июнь 2026",
         kind=CaseKind.CLEAR,
         table="dm.sales_daily",
-        expect_columns={"date", "revenue", "store_id"},
+        expect_columns={"date", "revenue"},
+        # «магазин»: с joins LLM законно выбирает читаемое имя вместо id
+        expect_columns_any=[{"store_id", "dm.stores.name"}],
         # «чарт» в ед. числе ловился на спеке с ДВУМЯ топами магазинов (bar+table):
         # LLM честно убирал один — scope правки должен быть явным
         edit="Убери все чарты с разбивкой по магазинам",
-        edit_expect_gone={"store_id"},
+        edit_expect_gone={"store_id", "dm.stores.name"},
     ),
     GoldenCase(
         id="it3_change_viz",

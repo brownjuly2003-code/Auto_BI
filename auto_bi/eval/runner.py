@@ -94,9 +94,13 @@ def _check_clear(case: GoldenCase, phase: AgentPhase, spec: DashboardSpec | None
         tables = {c.query.table for c in spec.charts}
         if tables != {case.table}:
             return f"unexpected tables: {sorted(tables)}"
-    missing = case.expect_columns - _spec_columns(spec)
+    columns = _spec_columns(spec)
+    missing = case.expect_columns - columns
     if missing:
         return f"expected columns missing from the spec: {sorted(missing)}"
+    for group in case.expect_columns_any:
+        if not group & columns:
+            return f"none of the alternative columns present: {sorted(group)}"
     if case.expect_viz and not ({c.viz for c in spec.charts} & case.expect_viz):
         return f"no chart of expected viz {sorted(v.value for v in case.expect_viz)}"
     return ""

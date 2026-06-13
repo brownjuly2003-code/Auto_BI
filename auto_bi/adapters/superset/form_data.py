@@ -10,7 +10,7 @@ grouped rows: SUM over one row per group is the identity, MAX for big_number's
 single row likewise.
 """
 
-from auto_bi.ir.spec import ChartSpec, DashboardSpec, Measure, Viz, measure_alias
+from auto_bi.ir.spec import ChartSpec, DashboardSpec, Measure, Viz, column_alias, measure_alias
 
 VIZ_TYPE = {
     Viz.BIG_NUMBER: "big_number_total",
@@ -61,7 +61,7 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
         # shape-validated to exactly one dimension + one measure
         return {
             **base,
-            "groupby": q.dimensions,
+            "groupby": [column_alias(c) for c in q.dimensions],
             "metric": metrics[0],
             "sort_by_metric": True,
         }
@@ -70,7 +70,7 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
         return {
             **base,
             "query_mode": "aggregate",
-            "groupby": q.group_columns(),
+            "groupby": [column_alias(c) for c in q.group_columns()],
             "metrics": metrics,
         }
 
@@ -79,8 +79,8 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
         # so each cell holds one source row and Sum is the identity
         return {
             **base,
-            "groupbyRows": q.rows,
-            "groupbyColumns": q.columns,
+            "groupbyRows": [column_alias(c) for c in q.rows],
+            "groupbyColumns": [column_alias(c) for c in q.columns],
             "metrics": metrics,
             "metricsLayout": "COLUMNS",
             "aggregateFunction": "Sum",
@@ -91,8 +91,8 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
         x_axis, y_axis = q.dimensions  # shape-validated to exactly two
         return {
             **base,
-            "x_axis": x_axis,
-            "groupby": y_axis,
+            "x_axis": column_alias(x_axis),
+            "groupby": column_alias(y_axis),
             "metric": metrics[0],
             "sort_x_axis": "alpha_asc",
             "sort_y_axis": "alpha_asc",
@@ -107,10 +107,10 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
         breakdown.setdefault(col, None)
     form_data = {
         **base,
-        "x_axis": x_axis,
+        "x_axis": column_alias(x_axis),
         "x_axis_sort_asc": True,
         "metrics": metrics,
-        "groupby": list(breakdown),
+        "groupby": [column_alias(c) for c in breakdown],
     }
     if chart.viz in (Viz.BAR, Viz.STACKED_BAR):
         # a numeric dimension (store_id) otherwise lands on a continuous value
