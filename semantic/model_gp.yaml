@@ -1,0 +1,154 @@
+tables:
+- name: dm.products
+  description: Справочник товаров
+  columns:
+  - name: product_id
+    type: integer
+    role: dimension
+  - name: category
+    type: text
+    role: dimension
+    top_values:
+    - cat_1
+    - cat_2
+    - cat_7
+    - cat_6
+    - cat_5
+    - cat_3
+    - cat_4
+    - cat_0
+  - name: name
+    type: text
+    role: dimension
+    top_values:
+    - product_45
+    - product_5
+    - product_14
+    - product_10
+    - product_12
+    - product_2
+    - product_43
+    - product_40
+    - product_36
+    - product_18
+    - product_39
+    - product_34
+    - product_1
+    - product_50
+    - product_21
+    - product_35
+    - product_44
+    - product_7
+    - product_24
+    - product_4
+  physical:
+    engine: greenplum
+    distribution_key:
+    - product_id
+    rows: 50
+    cardinality:
+      product_id: 50
+      category: 8
+      name: 50
+- name: dm.sales
+  description: Продажи по дням, магазинам и товарам
+  columns:
+  - name: date
+    type: date
+    role: time
+  - name: store_id
+    type: integer
+    role: dimension
+    fk: dm.stores.store_id
+  - name: product_id
+    type: integer
+    role: dimension
+    fk: dm.products.product_id
+  - name: revenue
+    type: numeric(12,2)
+    role: measure
+    description: Выручка, руб
+    agg: sum
+  - name: qty
+    type: integer
+    role: measure
+    agg: sum
+  - name: orders
+    type: integer
+    role: measure
+    agg: sum
+  physical:
+    engine: greenplum
+    distribution_key:
+    - store_id
+    partition_key: date
+    rows: 300000
+    cardinality:
+      date: 182
+      store_id: 20
+      product_id: 50
+      revenue: 90276
+      qty: 11
+      orders: 1
+- name: dm.stores
+  description: Магазины сети
+  columns:
+  - name: store_id
+    type: integer
+    role: dimension
+  - name: city
+    type: text
+    role: dimension
+    description: Город магазина
+    top_values:
+    - city_18
+    - city_8
+    - city_5
+    - city_0
+    - city_1
+    - city_3
+    - city_14
+    - city_2
+    - city_7
+    - city_17
+    - city_9
+    - city_13
+    - city_10
+    - city_16
+    - city_12
+    - city_11
+    - city_6
+    - city_4
+    - city_15
+    - city_19
+  - name: format
+    type: text
+    role: dimension
+    top_values:
+    - convenience
+    - super
+    - hyper
+  - name: region
+    type: text
+    role: dimension
+    top_values:
+    - region_2
+    - region_3
+    - region_4
+    - region_0
+    - region_1
+  physical:
+    engine: greenplum
+    distribution_key:
+    - store_id
+    rows: 20
+    cardinality:
+      store_id: 20
+      city: 20
+      format: 3
+      region: 5
+joins:
+- left: dm.sales.store_id
+  right: dm.stores.store_id
+- left: dm.sales.product_id
+  right: dm.products.product_id

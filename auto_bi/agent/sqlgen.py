@@ -75,8 +75,14 @@ def _filter_expr(qf: QueryFilter) -> exp.Expression:
     raise ValueError(f"unsupported filter operator: {qf.op}")
 
 
-def generate_chart_sql(query: ChartQuery, *, apply_limit: bool = True) -> str:
+def generate_chart_sql(
+    query: ChartQuery, *, dialect: str = DIALECT, apply_limit: bool = True
+) -> str:
     """Deterministic SELECT for a chart's virtual dataset.
+
+    The AST is dialect-agnostic; `dialect` (a sqlglot dialect, e.g. "clickhouse" v1 or
+    "postgres" for Greenplum/Greengage v2 — see auto_bi.engine.sqlglot_dialect) only
+    changes identifier quoting and function rendering on output.
 
     `apply_limit=False` drops the trailing top-N LIMIT: used for charts in a native
     dashboard filter's scope, where the limit moves to form_data so re-ranking happens
@@ -134,4 +140,4 @@ def generate_chart_sql(query: ChartQuery, *, apply_limit: bool = True) -> str:
         )
     if apply_limit:
         select = select.limit(query.limit)
-    return select.sql(dialect=DIALECT, identify=True)
+    return select.sql(dialect=dialect, identify=True)

@@ -43,7 +43,8 @@ class Physical(BaseModel):
 
     engine: str  # required: never dropped from yaml by exclude_defaults
     table_engine: str = ""
-    sorting_key: list[str] = Field(default_factory=list)
+    sorting_key: list[str] = Field(default_factory=list)  # ClickHouse ORDER BY key
+    distribution_key: list[str] = Field(default_factory=list)  # Greenplum/Greengage DISTRIBUTED BY
     partition_key: str = ""
     rows: int = 0
     bytes: int = 0
