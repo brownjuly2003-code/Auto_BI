@@ -80,7 +80,7 @@ def _user_type(native_type: str) -> str:
     while (m := re.match(r"^(?:nullable|lowcardinality)\((.*)\)$", t)) is not None:
         t = m.group(1).strip()
     if "datetime" in t or "timestamp" in t:
-        return "datetime"
+        return "genericdatetime"  # DataLens DATASET_FIELD_TYPES enum (NOT "datetime")
     if "date" in t:
         return "date"
     if "bool" in t:
@@ -224,7 +224,11 @@ def build_dataset_payload(
     ]
 
     return {
-        "workbookId": workbook_id,
+        # snake_case: control-api reads the workbook from `workbook_id` in the body — a
+        # camelCase `workbookId` is silently ignored and the dataset is created orphaned
+        # (workbook_id NULL), which then makes data-api 403 ACCESS_DENIED at render time
+        # (live-verified 2026-06-14).
+        "workbook_id": workbook_id,
         "name": name,
         "dataset": {
             "sources": [
