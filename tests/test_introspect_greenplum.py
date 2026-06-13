@@ -45,6 +45,21 @@ def test_guess_fk_skips_self_reference() -> None:
     assert _guess_fk("revenue", "dm", cols, "dm.sales") is None  # not an _id column
 
 
+def test_partition_key_multi_level_ordered_by_level() -> None:
+    """RANGE(date) SUBPARTITION BY LIST(region) -> 'date, region' (top level first);
+    single-level -> one column; non-partitioned -> ''. Live-verified on the GP stand."""
+    # one non-template pg_partition row per level, returned level-ordered by the SQL
+    ml = GreenplumIntrospector(
+        lambda sql: [{"attname": "date"}, {"attname": "region"}]
+    )._partition_key("dm", "sales_ml")
+    assert ml == "date, region"
+
+    single = GreenplumIntrospector(lambda sql: [{"attname": "date"}])._partition_key("dm", "sales")
+    assert single == "date"
+
+    assert GreenplumIntrospector(lambda sql: [])._partition_key("dm", "stores") == ""
+
+
 # --- full flow on a stub -----------------------------------------------------
 
 _TABLES = [
@@ -91,7 +106,7 @@ def fake_run(sql: str) -> list[dict]:
     table = _which_table(sql)
     if "format_type" in sql:
         return _COLUMNS[table]
-    if "unnest(paratts" in sql:
+    if "p.paratts" in sql:
         return [{"attname": "date"}] if table == "sales" else []
     if "c.reltuples::bigint AS n FROM pg_class c WHERE c.oid" in sql:
         return [{"n": {"sales": 0, "stores": 20, "products": 50}[table]}]
