@@ -1,21 +1,20 @@
 """Thin DataLens client: signin (cookie session) + UI-gateway JSON RPC.
 
-Transport is the one verified live on the self-hosted OSS stand (reversal doc
-`docs/plans/2026-06-13-phase3.2-datalens-adapter-reversal.md` §1-2): the adapter
-talks to the **UI gateway** at ``POST {base}/gateway/root/<service>/<method>`` with a
-**cookie session** named ``auth`` (a JWE the gateway decrypts itself before forwarding
-``Authorization: Bearer <JWS>`` to the internal backends). In a self-hosted deploy the
-UI is the only public surface; control-api/us/auth/data-api are internal.
+Transport is verified live on the self-hosted OSS stand (reversal doc
+`docs/plans/2026-06-13-phase3.2-datalens-adapter-reversal.md` §1-2): the adapter talks to
+the **UI gateway** with a **cookie session** named ``auth``. Two route shapes:
+- signin: ``POST {base}/gateway/auth/auth/signin`` (scope literally ``auth``, served by a
+  dedicated route with AuthPolicy.disabled so it works unauthenticated) — `{login,
+  password}` -> 200 `{"done":true}` + Set-Cookie ``auth``;
+- RPC: ``POST {base}/gateway/root/<service>/<method>`` (scope ``root``) for the
+  authenticated calls (bi/*, us/*), carrying the ``auth`` cookie.
+The gateway decrypts the cookie itself before forwarding to the internal backends
+(control-api/us/auth/data-api); in a self-hosted deploy the UI is the only public surface.
 
 `bi/createConnection` and `bi/createDataset` were both confirmed to forward their body
 correctly through the gateway; only `bi/validateDataset` drops the body (415), which is
 why the dataset schema is built deterministically from the IR (see dataset.py) instead
 of via validate.
-
-OPEN (reversal §5.1): the exact public signin route is not yet pinned — `/signin` lives
-on the internal auth:8080; through the public gateway the tried paths returned 404/401.
-`login()` posts to ``signin_path`` (overridable); the live contract test pins it. The
-cookie-jar + gateway transport below is what was verified, not this default path.
 """
 
 from __future__ import annotations
@@ -27,8 +26,10 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# best-known candidate; pinned by the live contract test (reversal §5.1)
-DEFAULT_SIGNIN_PATH = "/gateway/root/auth/signin"
+# Live-verified on the stand (2026-06-14): scope is literally `auth`, not `root` — the
+# auth gateway is a dedicated route `POST /gateway/:scope(auth)/:service/:action` with
+# AuthPolicy.disabled. `/gateway/root/auth/signin` returns 401 (root scope is auth-gated).
+DEFAULT_SIGNIN_PATH = "/gateway/auth/auth/signin"
 
 
 class DataLensAPIError(Exception):
