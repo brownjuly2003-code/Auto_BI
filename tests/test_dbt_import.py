@@ -147,3 +147,25 @@ def test_cli_dry_run_then_write(demo_model, tmp_path, capsys) -> None:
 
 def test_cli_missing_files(tmp_path) -> None:
     assert main(["dbt-import", "--manifest", str(tmp_path / "no.json")]) == 2
+
+
+def test_source_identifier_wins_over_name(demo_model) -> None:
+    # F7 (phase-2 audit): a source whose physical table differs from its dbt name
+    # must match the semantic-model table via `identifier`, not land in unmatched
+    manifest = {
+        "nodes": {},
+        "sources": {
+            "source.shop.dm.stores_src": {
+                "resource_type": "source",
+                "schema": "dm",
+                "name": "stores_src",
+                "identifier": "stores",
+                "description": "Справочник магазинов (dbt source)",
+                "columns": {"city": {"description": "Город (dbt)"}},
+            }
+        },
+    }
+    report = dbt_enrich(demo_model, manifest, None)
+    stores = demo_model.table("dm.stores")
+    assert stores.column("city").description == "Город (dbt)"
+    assert "dm.stores_src" not in report.unmatched_models

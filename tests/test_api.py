@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from auto_bi.adapters.base import DashboardRef
 from auto_bi.api import create_app
+from auto_bi.api.schemas import BuildEvent
 from auto_bi.llm.base import LLMError
 from auto_bi.store import Store
 from tests.test_machine import AMBIGUOUS_REPORT, CLEAR_REPORT, PATCHED_SPEC, ScriptedLLM
@@ -388,3 +389,77 @@ def test_iteration_rebuild_over_http(demo_model) -> None:
     # the stream belongs to build #2 only: no replay of build #1's terminal event
     assert [e["kind"] for e in second] == ["log", "log", "done"]
     assert client.get(f"/api/v1/sessions/{sid}").json()["build_status"] == "built"
+
+
+# --- phase-2 audit P3 fixes ------------------------------------------------------
+
+
+def test_failed_start_returns_502_without_zombie_session(demo_model) -> None:
+    # F2: LLMError during grounding must not register a half-born session
+    client = make_client(FlakyLLM([LLMError("GraceKelly down")]), demo_model)
+    response = client.post("/api/v1/sessions", json={"request": "выручка"})
+    assert response.status_code == 502
+    assert "GraceKelly down" in response.json()["detail"]
+
+
+def test_delete_session_frees_registry_keeps_store(demo_model, tmp_path) -> None:
+    store = Store(tmp_path / "api.sqlite")
+    client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model, store=store)
+    sid = start(client)["session_id"]
+    assert client.delete(f"/api/v1/sessions/{sid}").status_code == 204
+    assert client.get(f"/api/v1/sessions/{sid}").status_code == 404
+    assert store.messages(sid)  # durable record survives the registry
+    store.close()
+
+
+def test_registry_caps_idle_sessions(demo_model, monkeypatch) -> None:
+    # F3: oldest idle session is evicted once the cap is reached
+    monkeypatch.setattr("auto_bi.api.sessions.MAX_SESSIONS", 2)
+    responses = [CLEAR_REPORT, GOOD_SPEC] * 3
+    client = make_client(ScriptedLLM(responses), demo_model)
+    first = start(client)["session_id"]
+    second = start(client)["session_id"]
+    third = start(client)["session_id"]
+    assert client.get(f"/api/v1/sessions/{first}").status_code == 404
+    assert client.get(f"/api/v1/sessions/{second}").status_code == 200
+    assert client.get(f"/api/v1/sessions/{third}").status_code == 200
+
+
+def test_cross_origin_mutation_rejected(demo_model) -> None:
+    # F5: a browser on another site cannot CSRF the unauthenticated local API
+    client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model)
+    response = client.post(
+        "/api/v1/sessions",
+        json={"request": "выручка"},
+        headers={"origin": "http://evil.example"},
+    )
+    assert response.status_code == 403
+    same_origin = client.post(
+        "/api/v1/sessions",
+        json={"request": "выручка"},
+        headers={"origin": "http://testserver"},
+    )
+    assert same_origin.status_code == 200
+
+
+def test_approve_revalidates_spec_against_live_model(demo_model) -> None:
+    # F6: an enrichment edit between propose and approve must fail loudly at
+    # approve, not minutes later inside the build thread
+    client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model)
+    sid = start(client)["session_id"]
+    table = demo_model.tables[0]
+    table.columns = [c for c in table.columns if c.name != "revenue"]
+    response = client.post(f"/api/v1/sessions/{sid}/approve")
+    assert response.status_code == 409
+    assert "no longer valid" in response.json()["detail"]
+
+
+def test_event_stream_heartbeats_while_idle(demo_model) -> None:
+    # F4: an idle stream yields None heartbeats so the HTTP layer keeps writing
+    from auto_bi.api.sessions import ManagedSession
+
+    managed = ManagedSession("s", agent=None)
+    stream = managed.stream_events(poll_seconds=0.01)
+    assert next(stream) is None  # no events yet -> heartbeat, not a hang
+    managed.add_event(BuildEvent(kind="done", text="ok"))
+    assert next(stream).kind == "done"

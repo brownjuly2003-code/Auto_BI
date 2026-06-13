@@ -22,6 +22,7 @@ from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import Store
 
 TERMINAL_EVENTS = ("done", "error")
+MAX_SESSIONS = 200  # registry cap: oldest idle sessions are evicted past this (F3)
 
 
 class UnknownSession(KeyError):
@@ -50,17 +51,26 @@ class ManagedSession:
         with self._events_cond:
             self._events = []
 
-    def stream_events(self, poll_seconds: float = 1.0) -> Iterator[BuildEvent]:
-        """Replay buffered events, then follow live until a terminal event."""
+    def stream_events(self, poll_seconds: float = 15.0) -> Iterator[BuildEvent | None]:
+        """Replay buffered events, then follow live until a terminal event.
+
+        Yields None as an idle heartbeat every poll_seconds: the HTTP layer turns
+        it into an SSE comment, so a vanished client fails the next write and the
+        worker thread serving the stream is released instead of waiting forever
+        (F4, phase-2 audit).
+        """
         with self._events_cond:
             events = self._events  # pin THIS build's buffer: reset swaps the list object
         index = 0
         while True:
             with self._events_cond:
-                while index >= len(events):
+                if index >= len(events):
                     self._events_cond.wait(poll_seconds)
                 batch = events[index:]
                 index = len(events)
+            if not batch:
+                yield None
+                continue
             for event in batch:
                 yield event
                 if event.kind in TERMINAL_EVENTS:
@@ -106,10 +116,35 @@ class SessionManager:
             include_samples=self._include_samples,
         )
         managed = ManagedSession(session_id, agent)
+        # start BEFORE registering (F2): a failed LLM call must not leave a zombie
+        # in the registry, and nobody can race a reply while grounding still runs —
+        # the session id simply does not resolve yet
+        with managed.lock:
+            turn = agent.start(request, seed=seed)
         with self._registry_lock:
+            self._evict_idle_locked()
             self._sessions[session_id] = managed
-        turn = agent.start(request, seed=seed)
         return managed, turn
+
+    def _evict_idle_locked(self) -> None:
+        """Drop oldest idle sessions past MAX_SESSIONS (dict keeps insertion order).
+
+        Building or locked sessions are never evicted; if everything is busy the
+        registry temporarily grows over the cap rather than killing live work.
+        The durable record stays in Store either way.
+        """
+        while len(self._sessions) >= MAX_SESSIONS:
+            victim = next(
+                (
+                    sid
+                    for sid, m in self._sessions.items()
+                    if m.build_status != "building" and not m.lock.locked()
+                ),
+                None,
+            )
+            if victim is None:
+                return
+            del self._sessions[victim]
 
     def get(self, session_id: str) -> ManagedSession:
         with self._registry_lock:
@@ -117,3 +152,7 @@ class SessionManager:
                 return self._sessions[session_id]
             except KeyError:
                 raise UnknownSession(session_id) from None
+
+    def remove(self, session_id: str) -> bool:
+        with self._registry_lock:
+            return self._sessions.pop(session_id, None) is not None

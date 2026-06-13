@@ -50,8 +50,14 @@ def load_artifact(path: str | Path) -> dict:
 
 
 def _node_table(node: dict) -> str:
-    """dbt node -> fully qualified semantic-model table name ("dm.sales_daily")."""
-    return f"{node.get('schema', '')}.{node.get('alias') or node.get('name', '')}"
+    """dbt node -> fully qualified semantic-model table name ("dm.sales_daily").
+
+    Models materialize under `alias` (defaults to name); sources point at the
+    physical table via `identifier` — ignoring it mismatches every source whose
+    identifier differs from its name (F7, phase-2 audit).
+    """
+    relation = node.get("alias") or node.get("identifier") or node.get("name", "")
+    return f"{node.get('schema', '')}.{relation}"
 
 
 def _model_nodes(manifest: dict) -> dict[str, dict]:

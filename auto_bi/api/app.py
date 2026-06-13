@@ -19,9 +19,10 @@ import logging
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from auto_bi.adapters.base import DashboardRef
@@ -43,6 +44,7 @@ from auto_bi.api.sessions import ManagedSession, SessionManager, UnknownSession
 from auto_bi.dmcr import DCR_STATUSES, render_dm_change_request
 from auto_bi.introspect.gaps import find_gaps
 from auto_bi.ir.spec import DashboardSpec
+from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient, LLMError
 from auto_bi.semantic.model import Aggregation, ColumnRole, SemanticModel
 from auto_bi.store import Store
@@ -72,6 +74,19 @@ def create_app(
     )
     app = FastAPI(title="Auto_BI API", version="0.1.0")
 
+    @app.middleware("http")
+    async def reject_cross_origin_mutations(request, call_next):
+        # the API is unauthenticated by design (localhost, single user — §2.1);
+        # this only stops drive-by CSRF from other sites: browsers attach Origin
+        # to mutating requests, curl/CLI/SSE GETs carry none and pass (F5)
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            origin = request.headers.get("origin")
+            if origin and urlparse(origin).netloc != request.headers.get("host", ""):
+                return JSONResponse(
+                    status_code=403, content={"detail": "cross-origin mutation rejected"}
+                )
+        return await call_next(request)
+
     def _turn(managed: ManagedSession, turn: AgentTurn, error: str = "") -> TurnResponse:
         return TurnResponse(session_id=managed.session_id, error=error, **turn.model_dump())
 
@@ -93,8 +108,19 @@ def create_app(
             errors = validate_seed(body.seed, model)
             if errors:
                 raise HTTPException(status_code=422, detail="; ".join(errors))
-        managed, turn = manager.start(body.request, seed=body.seed)
+        try:
+            managed, turn = manager.start(body.request, seed=body.seed)
+        except LLMError as exc:
+            # nothing was registered (F2): tell the client plainly instead of a bare 500
+            raise HTTPException(status_code=502, detail=f"LLM failed to start: {exc}") from None
         return _turn(managed, turn)
+
+    @app.delete("/api/v1/sessions/{session_id}", status_code=204)
+    def delete_session(session_id: str) -> None:
+        managed = _get(session_id)
+        if managed.build_status == "building":
+            raise HTTPException(status_code=409, detail="build is running")
+        manager.remove(session_id)  # the durable record stays in Store
 
     # --- enrichment (task 2.7): gaps -> inline edits -> commit model.yaml ----------
     # one lock serializes model mutation + dump; agent sessions read the same object,
@@ -223,6 +249,18 @@ def create_app(
         with managed.lock:
             if managed.build_status == "building":
                 raise HTTPException(status_code=409, detail="build already running")
+            current = managed.agent.spec
+            if current is not None:
+                # the model is shared and mutable (enrichment PATCH, task 2.7): a role
+                # edit can invalidate a spec proposed earlier — fail HERE with a clear
+                # message, not minutes later inside the build thread (F6)
+                problems = validate_spec(current, model)
+                if problems:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="spec no longer valid against the model "
+                        f"(edited since the proposal?): {'; '.join(problems)}",
+                    )
             if managed.build_status == "failed" and managed.agent.phase == AgentPhase.APPROVED:
                 # a failed build leaves the machine in APPROVED with no pending edit:
                 # retry must rebuild the same approved spec, not dead-end on 409
@@ -299,7 +337,9 @@ def create_app(
         if managed.agent.phase != AgentPhase.APPROVED and managed.build_status == "idle":
             raise HTTPException(status_code=409, detail="no build to stream: approve first")
         return StreamingResponse(
-            (event.sse() for event in managed.stream_events()),
+            # None = idle heartbeat: an SSE comment clients ignore, but writing it
+            # surfaces a dropped connection and frees the worker thread (F4)
+            (": ping\n\n" if event is None else event.sse() for event in managed.stream_events()),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
