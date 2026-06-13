@@ -55,8 +55,8 @@ def test_user_type_clickhouse_spellings() -> None:
     assert _user_type("Float64") == "float"
     assert _user_type("Decimal(18, 2)") == "float"
     assert _user_type("Date") == "date"
-    assert _user_type("DateTime") == "datetime"
-    assert _user_type("DateTime64(3)") == "datetime"
+    assert _user_type("DateTime") == "genericdatetime"  # DataLens enum, not "datetime"
+    assert _user_type("DateTime64(3)") == "genericdatetime"
     assert _user_type("Bool") == "boolean"
 
 
@@ -68,7 +68,7 @@ def test_user_type_postgres_spellings() -> None:
     assert _user_type("text") == "string"
     assert _user_type("character varying") == "string"
     assert _user_type("date") == "date"
-    assert _user_type("timestamp without time zone") == "datetime"
+    assert _user_type("timestamp without time zone") == "genericdatetime"
     assert _user_type("boolean") == "boolean"
 
 
@@ -113,7 +113,7 @@ def test_dataset_payload_shape_and_subselect(demo_model: SemanticModel) -> None:
     body = build_dataset_payload(
         query, demo_model, workbook_id="wb1", connection_id="conn1", name="auto_bi__ds"
     )
-    assert body["workbookId"] == "wb1"
+    assert body["workbook_id"] == "wb1"  # snake_case — camelCase is silently ignored
     assert body["name"] == "auto_bi__ds"
     ds = body["dataset"]
     assert ds["avatar_relations"] == []

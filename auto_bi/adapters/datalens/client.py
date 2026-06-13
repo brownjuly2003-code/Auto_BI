@@ -88,6 +88,19 @@ class DataLensClient:
             )
         return response.json() if response.content else {}
 
+    def post(self, path: str, body: dict) -> dict[str, Any]:
+        """POST to a non-gateway endpoint (e.g. the charts engine `/api/charts/v1/charts`
+        or `/api/run`), carrying the `auth` cookie. Logs in first if needed."""
+        if not self._logged_in:
+            self.login()
+        response = self._http.post(path, json=body)
+        if response.status_code == 401:
+            self.login()
+            response = self._http.post(path, json=body)
+        if response.status_code >= 400:
+            raise DataLensAPIError(f"POST {path} -> {response.status_code}: {response.text[:500]}")
+        return response.json() if response.content else {}
+
     def health(self, path: str = "/ping") -> bool:
         try:
             return self._http.get(path).status_code == 200
