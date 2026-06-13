@@ -81,7 +81,7 @@ def compile_and_build(
         raise RuntimeError(f"Superset healthcheck failed: {health.message}")
 
     try:
-        ref = adapter.build(spec)
+        ref = adapter.build(spec, model)
     except Exception as exc:
         if store is not None and session_id is not None:
             store.save_build(session_id, spec_id, status="failed", error=str(exc))

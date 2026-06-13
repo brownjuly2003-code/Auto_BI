@@ -75,7 +75,16 @@ def _filter_expr(qf: QueryFilter) -> exp.Expression:
     raise ValueError(f"unsupported filter operator: {qf.op}")
 
 
-def generate_chart_sql(query: ChartQuery) -> str:
+def generate_chart_sql(query: ChartQuery, *, apply_limit: bool = True) -> str:
+    """Deterministic SELECT for a chart's virtual dataset.
+
+    `apply_limit=False` drops the trailing top-N LIMIT: used for charts in a native
+    dashboard filter's scope, where the limit moves to form_data so re-ranking happens
+    AFTER the viewer's filter (a pre-truncated top-N would filter the wrong rows, and a
+    select filter's options would be capped to that pre-filter top-N). The dataset is
+    already aggregated, so the row count stays small regardless.
+    """
+
     def resolve(ref: str) -> str:
         # with joins in play every bare reference is qualified with the base table:
         # joined tables can share column names (stores.name vs products.name) and an
@@ -123,5 +132,6 @@ def generate_chart_sql(query: ChartQuery) -> str:
         select = select.order_by(
             exp.Ordered(this=exp.column(target, quoted=True), desc=ob.dir == "desc")
         )
-    select = select.limit(query.limit)
+    if apply_limit:
+        select = select.limit(query.limit)
     return select.sql(dialect=DIALECT, identify=True)

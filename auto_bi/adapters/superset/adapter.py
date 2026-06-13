@@ -23,8 +23,13 @@ from auto_bi.adapters.base import (
 )
 from auto_bi.adapters.superset.client import SupersetClient, rison_eq_filter
 from auto_bi.adapters.superset.form_data import VIZ_TYPE, build_form_data, build_position_json
+from auto_bi.adapters.superset.native_filters import (
+    build_native_filter_configuration,
+    participating_chart_ids,
+)
 from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.ir.spec import ChartQuery, ChartSpec, DashboardSpec
+from auto_bi.semantic.model import SemanticModel
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +78,12 @@ class SupersetAdapter:
         logger.info("database created in superset: id=%s", created["id"])
         return self._database
 
-    def ensure_dataset(self, query: ChartQuery, name: str | None = None) -> DatasetRef:
+    def ensure_dataset(
+        self, query: ChartQuery, name: str | None = None, *, apply_limit: bool = True
+    ) -> DatasetRef:
         if self._database is None:
             self.ensure_database()
-        sql = generate_chart_sql(query)
+        sql = generate_chart_sql(query, apply_limit=apply_limit)
         table_name = name or f"auto_bi__{_slug(query.table)}"
 
         existing = self._client.get(
@@ -113,25 +120,57 @@ class SupersetAdapter:
         logger.info("chart %r created: id=%s", chart.title, created["id"])
         return ChartRef(id=created["id"], name=chart.title)
 
-    def assemble_dashboard(self, spec: DashboardSpec, charts: list[ChartRef]) -> DashboardRef:
-        if spec.filters:
-            # known degradation, surfaced to the user in spec_summary at approval time;
-            # compiling native filters needs live contract tests (Phase 2)
-            logger.warning(
-                "dashboard filters are not compiled into Superset yet, skipped: %s",
-                [f.column for f in spec.filters],
-            )
+    def assemble_dashboard(
+        self,
+        spec: DashboardSpec,
+        charts: list[ChartRef],
+        datasets: list[DatasetRef] | None = None,
+        model: SemanticModel | None = None,
+    ) -> DashboardRef:
         if len(charts) != len(spec.charts):
             raise ValueError(f"got {len(charts)} chart refs for {len(spec.charts)} spec charts")
 
+        native_filters: list[dict] = []
+        if spec.filters:
+            if datasets is not None and model is not None:
+                placements = [
+                    (chart, ref.id, ds.id)
+                    for chart, ref, ds in zip(spec.charts, charts, datasets, strict=True)
+                ]
+                native_filters, applied = build_native_filter_configuration(spec, placements, model)
+                for f, in_scope, excluded in applied:
+                    logger.info(
+                        "native filter %s wired: scope=%s excluded=%s",
+                        f.column,
+                        in_scope,
+                        excluded,
+                    )
+                wired = {f.column for f, _, _ in applied}
+                for f in spec.filters:
+                    if f.column not in wired:
+                        # no chart exposes the column in its grain -> can't be a native
+                        # filter; the baked query.filters still constrain the data
+                        logger.warning(
+                            "dashboard filter %s not applicable to any chart's grain, skipped",
+                            f.column,
+                        )
+            else:  # build() always supplies datasets+model; this is the bare-protocol path
+                logger.warning(
+                    "dashboard filters skipped (no model/datasets passed to assemble): %s",
+                    [f.column for f in spec.filters],
+                )
+
         placed = list(zip(spec.charts, [c.id for c in charts], strict=True))
         position = build_position_json(spec, placed)
+        json_metadata: dict = {"chart_configuration": {}}
+        if native_filters:
+            json_metadata["native_filter_configuration"] = native_filters
         created = self._client.post(
             "/api/v1/dashboard/",
             json={
                 "dashboard_title": spec.title,
                 "position_json": json.dumps(position, ensure_ascii=False),
-                "json_metadata": json.dumps({"chart_configuration": {}}),
+                "json_metadata": json.dumps(json_metadata, ensure_ascii=False),
                 "published": True,
             },
         )
@@ -145,11 +184,24 @@ class SupersetAdapter:
 
     # --- happy path ----------------------------------------------------------
 
-    def build(self, spec: DashboardSpec) -> DashboardRef:
-        """Full compile: database -> per-chart datasets -> charts -> dashboard."""
+    def build(self, spec: DashboardSpec, model: SemanticModel | None = None) -> DashboardRef:
+        """Full compile: database -> per-chart datasets -> charts -> dashboard.
+
+        `model` lets the dashboard wire native filters (scope by column role/grain);
+        without it the filters degrade to the documented "skipped" warning.
+        """
         self.ensure_database()
+        # charts in a dashboard filter's scope drop the SQL top-N LIMIT (it moves to
+        # form_data) so the filter re-ranks after filtering — computable from the spec
+        in_filter_scope = participating_chart_ids(spec, model) if model is not None else set()
         refs: list[ChartRef] = []
+        datasets: list[DatasetRef] = []
         for chart in spec.charts:
-            ds = self.ensure_dataset(chart.query, name=_dataset_name(spec.title, chart.id))
+            ds = self.ensure_dataset(
+                chart.query,
+                name=_dataset_name(spec.title, chart.id),
+                apply_limit=chart.id not in in_filter_scope,
+            )
+            datasets.append(ds)
             refs.append(self.create_chart(chart, ds))
-        return self.assemble_dashboard(spec, refs)
+        return self.assemble_dashboard(spec, refs, datasets=datasets, model=model)

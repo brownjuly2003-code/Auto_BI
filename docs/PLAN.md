@@ -84,7 +84,7 @@
 ### Межфазное (после Phase 2, до Phase 3)
 
 - [x] **Joins в IR** (2026-06-13, снимает ограничение Phase 0): qualified-измерения из смежных таблиц + явный `query.joins`, валидация по рёбрам semantic model, LEFT JOIN в SQL_GEN. Меры — только базовая таблица; multi-hop нет. Деталь: ARCHITECTURE §3.4.
-- [ ] **Native dashboard filters (Superset)** — снимает предупреждение «фильтры не переносятся» и advisor-F3. Требует дизайна: фильтруемая колонка должна попасть в grain виртуального датасета каждого чарта (иначе WHERE по ней невозможен после агрегации), а top-N LIMIT переехать из SQL датасета в series_limit form_data — меняется семантика limit. Делать первой задачей Phase 3 отдельным дизайн-степом, с contract-тестами `native_filter_configuration` на живом стенде.
+- [x] **Native dashboard filters (Superset)** (2026-06-13, снимает предупреждение «фильтры не переносятся» и advisor-F3): **scope-to-applicable** — фильтр выводится только на чарты, чей grain содержит колонку (KPI без колонки остаётся в `scope.excluded`); `filterType` по роли колонки (time→`filter_time`, иначе `filter_select`); top-N `LIMIT` для чартов в scope уезжает из SQL в form_data `row_limit` (иначе ре-ранжирование/опции считались бы по пре-обрезанному топ-N). Формат реверснут с живого стенда; contract-тест round-trip + браузерная проверка (city-фильтр реально фильтрует, KPI цел, опции = все значения). Деталь: ARCHITECTURE §3.5.
 
 ---
 

@@ -20,6 +20,8 @@ from auto_bi.config import get_settings
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
+    DashboardFilter,
+    DashboardSpec,
     FilterOp,
     JoinSpec,
     Measure,
@@ -28,7 +30,7 @@ from auto_bi.ir.spec import (
     Viz,
     column_alias,
 )
-from auto_bi.semantic.model import Aggregation
+from auto_bi.semantic.model import Aggregation, SemanticModel
 
 pytestmark = pytest.mark.integration
 
@@ -214,3 +216,84 @@ def test_chart_data_endpoint(adapter: SupersetAdapter, chart: ChartSpec) -> None
     first = result["result"][0]
     assert first["status"] in ("success", "Success")
     assert first["rowcount"] > 0
+
+
+# --- native dashboard filters (scope-to-applicable) ---------------------------------
+
+NF_SPEC = DashboardSpec(
+    title="[contract] native filters",
+    filters=[
+        DashboardFilter(column="dm.stores.city", type="value"),
+        DashboardFilter(column="dm.sales_daily.date", type="time_range"),
+    ],
+    charts=[
+        ChartSpec(
+            id="contract_nf_kpi",
+            title="[contract-nf] KPI",
+            viz=Viz.BIG_NUMBER,
+            query=ChartQuery(table="dm.sales_daily", measures=[REVENUE], filters=[JUNE]),
+        ),
+        ChartSpec(
+            id="contract_nf_city",
+            title="[contract-nf] city",
+            viz=Viz.BAR,
+            query=ChartQuery(
+                table="dm.sales_daily",
+                dimensions=["dm.stores.city"],
+                measures=[REVENUE],
+                joins=[
+                    JoinSpec(
+                        table="dm.stores",
+                        on_left="dm.sales_daily.store_id",
+                        on_right="dm.stores.id",
+                    )
+                ],
+                filters=[JUNE],
+                order_by=[OrderBy(by="Выручка", dir="desc")],
+                limit=10,
+            ),
+        ),
+        ChartSpec(
+            id="contract_nf_day",
+            title="[contract-nf] day",
+            viz=Viz.LINE,
+            query=ChartQuery(table="dm.sales_daily", dimensions=["date"], measures=[REVENUE]),
+        ),
+    ],
+)
+
+
+def test_native_filter_configuration_roundtrip(adapter: SupersetAdapter) -> None:
+    """build() wires spec.filters into native_filter_configuration, scoped only to the
+    charts whose grain exposes the column; the city filter must leave the KPI + day
+    charts out, and the participating chart's dataset must drop its SQL top-N LIMIT."""
+    model = SemanticModel.load("semantic/model.yaml")
+    ref = adapter.build(NF_SPEC, model)
+
+    dash = adapter._client.get(f"/api/v1/dashboard/{ref.id}")["result"]
+    pos = json.loads(dash["position_json"])
+    slice_of = {  # spec chart id -> superset slice id
+        v["meta"]["sliceName"]: v["meta"]["chartId"]
+        for v in pos.values()
+        if isinstance(v, dict) and v.get("type") == "CHART"
+    }
+    nfc = json.loads(dash["json_metadata"])["native_filter_configuration"]
+    by_col = {f["targets"][0].get("column", {}).get("name", f["filterType"]): f for f in nfc}
+
+    city = by_col["city"]
+    assert city["filterType"] == "filter_select"
+    assert slice_of["[contract-nf] city"] in city["chartsInScope"]
+    assert slice_of["[contract-nf] KPI"] in city["scope"]["excluded"]
+    assert slice_of["[contract-nf] day"] in city["scope"]["excluded"]
+
+    time_filter = by_col["filter_time"]  # empty target -> keyed by filterType above
+    assert time_filter["filterType"] == "filter_time"
+    assert slice_of["[contract-nf] day"] in time_filter["chartsInScope"]
+
+    # the city chart is in a filter's scope -> its virtual dataset must have no LIMIT
+    # (the top-N moved to form_data so the filter re-ranks after filtering)
+    city_slice = slice_of["[contract-nf] city"]
+    chart = adapter._client.get(f"/api/v1/chart/{city_slice}")["result"]
+    dataset_id = json.loads(chart["params"])["datasource"].split("__")[0]
+    ds_full = adapter._client.get(f"/api/v1/dataset/{dataset_id}")["result"]
+    assert "LIMIT" not in ds_full["sql"].upper()
