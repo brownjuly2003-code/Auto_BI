@@ -52,6 +52,15 @@ GOLDEN_CASES: list[GoldenCase] = [
         expect_viz={Viz.LINE, Viz.AREA},
     ),
     GoldenCase(
+        # cross-table dimension via an explicit join (city lives in dm.stores)
+        id="g12_revenue_by_city_join",
+        request="Топ-10 городов по выручке за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"dm.stores.city", "revenue"},
+        expect_viz={Viz.BAR, Viz.TABLE},
+    ),
+    GoldenCase(
         id="g2_total_revenue_kpi",
         request="Общая выручка одним числом за июнь 2026",
         kind=CaseKind.CLEAR,

@@ -4,7 +4,7 @@ Runs BEFORE any BI/SQL work. Unknown table/column -> error list for the repair l
 no silent fixes ever. Returns human-readable errors the LLM can act on.
 """
 
-from auto_bi.ir.spec import ChartSpec, DashboardSpec, FilterOp, Viz, measure_alias
+from auto_bi.ir.spec import ChartSpec, DashboardSpec, FilterOp, Viz, column_alias, measure_alias
 from auto_bi.semantic.model import Aggregation, ColumnRole, SemanticModel, Table
 
 # numeric aggregations make no sense over dimension columns; count/count_distinct
@@ -42,13 +42,64 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
 
     errors: list[str] = []
 
+    # --- joins (explicit, must mirror a semantic-model edge — invariant 2) -----
+    model_edges = {frozenset((j.left, j.right)) for j in model.joins}
+    joined: dict[str, Table] = {}
+    for j in chart.query.joins:
+        join_table = model.table(j.table)
+        if join_table is None:
+            errors.append(f"{prefix}: join references unknown table {j.table!r}")
+            continue
+        left_table, _, left_col = j.on_left.rpartition(".")
+        right_table, _, right_col = j.on_right.rpartition(".")
+        if left_table != table.name or table.column(left_col) is None:
+            errors.append(
+                f"{prefix}: join on_left {j.on_left!r} must be a column of the chart's "
+                f"table {table.name}"
+            )
+        elif right_table != j.table or join_table.column(right_col) is None:
+            errors.append(f"{prefix}: join on_right {j.on_right!r} must be a column of {j.table}")
+        elif frozenset((j.on_left, j.on_right)) not in model_edges:
+            known = "; ".join(f"{e.left} = {e.right}" for e in model.joins) or "нет"
+            errors.append(
+                f"{prefix}: join {j.on_left} = {j.on_right} is not an edge of the semantic "
+                f"model (допустимые джойны: {known})"
+            )
+        else:
+            joined[j.table] = join_table
+
     def _unknown(col: str, where: str) -> str:
-        # the most common LLM slip: a table-qualified name where a bare one is required;
-        # still rejected (no silent fixes), but the error says exactly how to fix it
+        # common LLM slips, still rejected (no silent fixes) but with an exact hint:
+        # a base-table-qualified name where a bare one is required, or a bare name
+        # that actually lives in a joinable table and needs qualification + a join
         hint = ""
         if col.startswith(f"{table.name}.") and table.column(col.removeprefix(f"{table.name}.")):
             hint = f" — укажи имя без префикса таблицы: {col.removeprefix(f'{table.name}.')!r}"
+        elif "." not in col:
+            owners = [
+                t.name for t in model.tables if t.name != table.name and t.column(col) is not None
+            ]
+            if owners:
+                hint = (
+                    f" — колонка есть в {owners[0]}: укажи {owners[0] + '.' + col!r} "
+                    "и добавь соответствующий JOIN в query.joins"
+                )
         return f"{prefix}: unknown {where} {col!r} in {table.name}{hint}"
+
+    def _dim_ok(col: str, where: str) -> None:
+        if "." in col:
+            ref_table, _, ref_col = col.rpartition(".")
+            if ref_table == table.name:
+                errors.append(_unknown(col, where))  # base columns are written bare
+            elif ref_table not in joined:
+                errors.append(
+                    f"{prefix}: {where} {col!r} references table {ref_table!r} without a "
+                    "matching entry in query.joins"
+                )
+            elif joined[ref_table].column(ref_col) is None:
+                errors.append(f"{prefix}: unknown {where} {col!r} in {ref_table}")
+        elif table.column(col) is None:
+            errors.append(_unknown(col, where))
 
     role_fields = (
         ("dimension", chart.query.dimensions),
@@ -58,8 +109,23 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
     )
     for role, cols in role_fields:
         for col in cols:
-            if table.column(col) is None:
-                errors.append(_unknown(col, f"{role} column"))
+            _dim_ok(col, f"{role} column")
+
+    group_cols = chart.query.group_columns()
+    aliases = [column_alias(c) for c in group_cols]
+    if len(aliases) != len(set(aliases)):
+        dupes = sorted({a for a in aliases if aliases.count(a) > 1})
+        errors.append(
+            f"{prefix}: dimension columns collide by bare name {dupes} — "
+            "одинаковые имена из разных таблиц в одном чарте не поддерживаются"
+        )
+    used_tables = {c.rpartition(".")[0] for c in group_cols if "." in c}
+    used_tables.update(
+        qf.column.rpartition(".")[0] for qf in chart.query.filters if "." in qf.column
+    )
+    for j in chart.query.joins:
+        if j.table in joined and j.table not in used_tables:
+            errors.append(f"{prefix}: join to {j.table} is declared but no column of it is used")
 
     for measure in chart.query.measures:
         col = table.column(measure.column)
@@ -74,12 +140,12 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
             )
 
     for qf in chart.query.filters:
-        if table.column(qf.column) is None:
-            errors.append(_unknown(qf.column, "filter column"))
+        _dim_ok(qf.column, "filter column")
         if qf.op == FilterOp.IN and isinstance(qf.value, list) and not qf.value:
             errors.append(f"{prefix}: filter on {qf.column!r} uses IN with an empty value list")
 
-    orderable = set(chart.query.group_columns())  # any selected dimension-like column
+    orderable = set(group_cols)  # any selected dimension-like column
+    orderable.update(aliases)  # joined dims are addressable by their bare SELECT alias
     for m in chart.query.measures:
         orderable.add(m.column)
         orderable.add(measure_alias(m))  # the SELECT alias SQL_GEN actually orders by

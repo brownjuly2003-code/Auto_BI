@@ -17,7 +17,17 @@ from auto_bi.adapters.superset.adapter import SupersetAdapter
 from auto_bi.adapters.superset.client import SupersetClient
 from auto_bi.adapters.superset.form_data import VIZ_TYPE
 from auto_bi.config import get_settings
-from auto_bi.ir.spec import ChartQuery, ChartSpec, FilterOp, Measure, OrderBy, QueryFilter, Viz
+from auto_bi.ir.spec import (
+    ChartQuery,
+    ChartSpec,
+    FilterOp,
+    JoinSpec,
+    Measure,
+    OrderBy,
+    QueryFilter,
+    Viz,
+    column_alias,
+)
 from auto_bi.semantic.model import Aggregation
 
 pytestmark = pytest.mark.integration
@@ -74,6 +84,26 @@ CHARTS = [
             series=["store_id"],
             measures=[REVENUE],
             filters=[FEW_STORES, JUNE],
+        ),
+    ),
+    ChartSpec(
+        id="contract_join_bar",
+        title="[contract] join bar",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["dm.stores.city"],
+            measures=[REVENUE],
+            joins=[
+                JoinSpec(
+                    table="dm.stores",
+                    on_left="dm.sales_daily.store_id",
+                    on_right="dm.stores.id",
+                )
+            ],
+            filters=[JUNE],
+            order_by=[OrderBy(by="Выручка", dir="desc")],
+            limit=10,
         ),
     ),
     ChartSpec(
@@ -172,7 +202,7 @@ def test_chart_data_endpoint(adapter: SupersetAdapter, chart: ChartSpec) -> None
             "force": True,
             "queries": [
                 {
-                    "columns": chart.query.group_columns(),
+                    "columns": [column_alias(c) for c in chart.query.group_columns()],
                     "metrics": metrics,
                     "row_limit": form_data["row_limit"],
                 }

@@ -70,6 +70,29 @@ class OrderBy(BaseModel):
     dir: str = Field(default="asc", pattern="^(asc|desc)$")
 
 
+class JoinSpec(BaseModel):
+    """One LEFT JOIN of the chart's base table to a related dimension table.
+
+    The LLM declares the join explicitly, but validation only accepts pairs that
+    exist as edges in the semantic model (invariant 2) — join conditions cannot
+    be invented. Measures stay on the base table; joined tables contribute
+    dimension-like columns referenced by their fully qualified names.
+    """
+
+    table: str  # joined table, fully qualified: "dm.stores"
+    on_left: str  # column on the chart's base table: "dm.sales_daily.store_id"
+    on_right: str  # column on the joined table: "dm.stores.id"
+
+
+def column_alias(col: str) -> str:
+    """Bare SELECT alias of a dimension-like reference ('dm.stores.city' -> 'city').
+
+    SQL_GEN aliases joined columns to their bare names, so adapters and form_data
+    always address dataset columns the same way regardless of the source table.
+    """
+    return col.rpartition(".")[2]
+
+
 class ChartQuery(BaseModel):
     table: str  # fully qualified: "dm.sales_daily"
     dimensions: list[str] = Field(default_factory=list)
@@ -78,11 +101,17 @@ class ChartQuery(BaseModel):
     columns: list[str] = Field(default_factory=list)  # pivot column dimensions
     measures: list[Measure] = Field(min_length=1)
     filters: list[QueryFilter] = Field(default_factory=list)
+    joins: list[JoinSpec] = Field(default_factory=list)
     order_by: list[OrderBy] = Field(default_factory=list)
     limit: int = Field(default=5000, ge=1, le=50000)
 
     def group_columns(self) -> list[str]:
-        """All dimension-like columns to GROUP BY, deduped, order preserved."""
+        """All dimension-like columns to GROUP BY, deduped, order preserved.
+
+        Joined columns keep their fully qualified form here (validation and
+        SQL_GEN need the table part); adapters use `column_alias` for the bare
+        dataset-facing name.
+        """
         seen: dict[str, None] = {}
         for col in (*self.dimensions, *self.series, *self.rows, *self.columns):
             seen.setdefault(col, None)
