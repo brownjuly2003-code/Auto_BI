@@ -47,12 +47,21 @@ def test_guess_fk_skips_self_reference() -> None:
 
 def test_partition_key_multi_level_ordered_by_level() -> None:
     """RANGE(date) SUBPARTITION BY LIST(region) -> 'date, region' (top level first);
-    single-level -> one column; non-partitioned -> ''. Live-verified on the GP stand."""
+    single-level -> one column; non-partitioned -> ''. Live-verified on the GP stand.
+
+    Also locks the catalog query shape (level ordering + template-row exclusion) so an
+    accidental drop of either clause is caught here, not only at the live fixture."""
     # one non-template pg_partition row per level, returned level-ordered by the SQL
-    ml = GreenplumIntrospector(
-        lambda sql: [{"attname": "date"}, {"attname": "region"}]
-    )._partition_key("dm", "sales_ml")
+    captured: dict[str, str] = {}
+
+    def cap(sql: str) -> list[dict]:
+        captured["sql"] = sql
+        return [{"attname": "date"}, {"attname": "region"}]
+
+    ml = GreenplumIntrospector(cap)._partition_key("dm", "sales_ml")
     assert ml == "date, region"
+    assert "ORDER BY p.parlevel" in captured["sql"]  # all levels, top first
+    assert "paristemplate = false" in captured["sql"]  # exclude SUBPARTITION TEMPLATE row
 
     single = GreenplumIntrospector(lambda sql: [{"attname": "date"}])._partition_key("dm", "sales")
     assert single == "date"
