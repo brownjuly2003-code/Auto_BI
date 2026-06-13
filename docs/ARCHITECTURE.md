@@ -182,6 +182,8 @@ class BIAdapter(Protocol):
     def assemble_dashboard(self, spec: DashboardSpec, charts: list[ChartRef]) -> DashboardRef
 ```
 
+`SupersetAdapter.build(spec, model)` оркеструет шаги (не в Protocol); `model` нужен для нативных фильтров (роль колонки + grain). `assemble_dashboard` принимает доп. `datasets`/`model` (аддитивно к Protocol) — без них фильтры деградируют в задокументированное предупреждение.
+
 | Адаптер | Фаза | Механика | Главная боль |
 |---|---|---|---|
 | Superset | 0–1 | REST `/api/v1/{database,dataset,chart,dashboard}`; auth `/security/login` → JWT + CSRF | `form_data` чартов недокументирован → библиотека шаблонов на viz_type (реверс через GET вручную созданных чартов), `position_json` — свой генератор 12-колоночной сетки |
@@ -191,6 +193,8 @@ class BIAdapter(Protocol):
 Power BI / Tableau / Metabase — вне скоупа (см. §1.1); интерфейс позволяет вернуть.
 
 Правила стабильности Superset-адаптера: версия Superset зафиксирована в `docker-compose.yml`; contract-тесты «create → GET → assert» на каждый viz_type; обновление версии — отдельная задача с прогоном контрактов.
+
+**Native dashboard filters (2026-06-13, снимает предупреждение «фильтры не переносятся» и advisor-F3)** — `adapters/superset/native_filters.py` компилирует `spec.filters` в `json_metadata.native_filter_configuration` (формат реверснут с живого стенда: create в UI → GET). Каждый чарт = свой пре-агрегированный виртуальный датасет, поэтому **scope-to-applicable**: фильтр (WHERE по «голому» алиасу колонки) выводится только на чарты, чей grain (`group_columns`) содержит эту колонку — остальные в `scope.excluded` (Superset показывает фильтр, но они его игнорируют). Это сохраняет интент чарта: KPI «общая выручка» остаётся одним числом под city-фильтром. `filterType` берётся из РОЛИ колонки (`time` → `filter_time` с пустым target; иначе `filter_select` с `targets:[{datasetId, column:{name}}]`), не из `DashboardFilter.type` (его дефолт «time_range» LLM не переопределяет надёжно). **Семантика limit**: чарт в scope фильтра теряет top-N `LIMIT` в SQL датасета (`generate_chart_sql(apply_limit=False)`) — лимит уезжает в form_data `row_limit`, иначе фильтр ре-ранжировал бы пре-обрезанный топ-N, а опции select-фильтра были бы сами обрезаны до него. Контракт-тест `native_filter_configuration` round-trip на живом стенде; scope/типы — юнит-тесты. Фильтр, чью колонку не раскрывает ни один чарт, не виснет молча: пропускается, а зашитые `query.filters` всё равно ограничивают данные.
 
 ### 3.6 LLM Layer — GraceKelly
 
@@ -233,7 +237,7 @@ POST http://127.0.0.1:8011/orchestrate
 - **v0 (Phase 0–1)**: CLI-чат `auto_bi chat` (rich), только text-first — быстрые итерации без фронта.
 - **v1 (Phase 2)**: web — FastAPI + лёгкий фронт: чат, панель полей с drag&drop, превью spec карточками ДО сборки (с вердиктами advisor'а), селектор целевого BI, лог сборки, ссылка на результат. Спокойный белый layout, минимум акцентов, плотная читаемая информация.
 
-**Web UI v1 (задача 2.2, реализовано, text-first)** — `auto_bi/api/static/`: vanilla HTML/CSS/JS без node-цепочки, статика отдаётся самим FastAPI (`/`). Чат + spec-превью карточками (вердикты advisor, предупреждение о фильтрах) + SSE-лог сборки + ссылка + список dm_change_requests; итерации через правки словами (задача 2.4: APPROVED → правка → APPROVE → пересборка, SSE-буфер сбрасывается на новую сборку). Ручная проверка фронта без LLM/стенда: `scripts/dev_ui_server.py`.
+**Web UI v1 (задача 2.2, реализовано, text-first)** — `auto_bi/api/static/`: vanilla HTML/CSS/JS без node-цепочки, статика отдаётся самим FastAPI (`/`). Чат + spec-превью карточками (вердикты advisor, scope нативных фильтров — какие чарты затронет) + SSE-лог сборки + ссылка + список dm_change_requests; итерации через правки словами (задача 2.4: APPROVED → правка → APPROVE → пересборка, SSE-буфер сбрасывается на новую сборку). Ручная проверка фронта без LLM/стенда: `scripts/dev_ui_server.py`.
 
 **Fields-first (задача 2.3, реализовано)** — второй вход в тот же `POST /sessions` (D8 соблюдён, отдельного пайплайна нет): `auto_bi/agent/seed.py` (`FieldsSeed` = черновые группы полей + комментарий; детерминированная валидация по модели ДО LLM — панель строится из `GET /api/v1/model/fields`, неизвестное поле = 422, не clarify) → `render_seed_request` рендерит seed в текстовый запрос с ролями полей и advisory-инструкцией («группа = черновик одного чарта, viz выбирает LLM»), GROUNDING/PROPOSE потребляют его без изменения шаблонов промптов; таблицы seed пинятся в context selection (раскладка и есть запрос). UI: вкладка «Полями», панель полей по таблицам (role-бейджи T/D/M), HTML5 drag&drop в группы + клик-фоллбек, после старта сессии оба режима продолжаются одним чатом (clarify/правки/итерации). **Отклонение от исходного §3.7 (решение 2026-06-13):** вместо «вариантов дашборда» — один spec (как text-first) + **детерминированный анализ раскладки** (`seed_analysis`, зеркало D5: код сравнивает seed и spec — какие поля групп не вошли, сколько групп дало сколько чартов; строки идут в `AgentTurn.notes`, web UI рендерит их в превью, CLI — в message). Live-гейт: fields-first golden-кейсы f1/f2 в eval-сьюте, прогнаны через живой GraceKelly (PASS) вместе со спот-чеком текстовых.
 

@@ -19,7 +19,7 @@ from auto_bi.advisor.narrate import ChartVerdict, narrate_findings
 from auto_bi.agent.grounding import GroundingReport, clarify_questions, ground
 from auto_bi.agent.propose import patch_spec, propose_spec
 from auto_bi.agent.seed import FieldsSeed, render_seed_request, seed_analysis, seed_tables
-from auto_bi.ir.spec import DashboardSpec
+from auto_bi.ir.spec import DashboardSpec, column_alias
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import Store
@@ -54,16 +54,27 @@ def spec_summary(spec: DashboardSpec) -> str:
         dims = ", ".join(q.group_columns()) or "—"
         measures = ", ".join(m.label or m.column for m in q.measures)
         lines.append(f"  • [{chart.viz.value}] {chart.title} ({q.table}: {dims} × {measures})")
-    if spec.filters:
-        # the Superset adapter does not compile dashboard filters yet: say so HERE,
-        # at approval time — the built dashboard must not silently differ from the preview
-        described = ", ".join(
-            f.column + (f" = {f.default}" if f.default else "") for f in spec.filters
-        )
-        lines.append(
-            f"  ⚠ фильтры дашборда ({described}) пока не переносятся в Superset — "
-            "задайте период фильтром чарта или примите дашборд без них"
-        )
+    for f in spec.filters:
+        # native filters are scope-to-applicable: a filter only reaches charts whose
+        # grain exposes its column (the dataset is pre-aggregated). Say exactly which
+        # charts HERE so the built dashboard never silently differs from the preview.
+        alias = column_alias(f.column)
+        applies = [
+            c.title
+            for c in spec.charts
+            if alias in {column_alias(g) for g in c.query.group_columns()}
+        ]
+        skips = [c.title for c in spec.charts if c.title not in applies]
+        if applies:
+            line = f"  ⛃ фильтр дашборда «{f.column}» → применяется к: {', '.join(applies)}"
+            if skips:
+                line += f"; не затрагивает (нет колонки в разрезе): {', '.join(skips)}"
+            lines.append(line)
+        else:
+            lines.append(
+                f"  ⚠ фильтр дашборда «{f.column}» не применим ни к одному чарту "
+                "(нет колонки в их разрезе) — задайте период фильтром чарта"
+            )
     return "\n".join(lines)
 
 

@@ -227,7 +227,9 @@ def test_narrate_silent_on_clean_spec(demo_model) -> None:
     assert narrate_findings(NoCallLLM(), spec, []) == []
 
 
-def test_spec_summary_warns_about_uncompiled_dashboard_filters() -> None:
+def test_spec_summary_names_charts_a_filter_applies_to() -> None:
+    # the date column IS in the line chart's grain -> the native filter reaches it;
+    # the preview must name the chart so the built dashboard matches the preview
     spec = DashboardSpec.model_validate(
         {
             **GOOD_SPEC,
@@ -237,9 +239,20 @@ def test_spec_summary_warns_about_uncompiled_dashboard_filters() -> None:
         }
     )
     summary = spec_summary(spec)
-    # the approved preview must say the filter will NOT reach Superset (no silent drop)
-    assert "dm.sales_daily.date = last 90 days" in summary
-    assert "не переносятся" in summary
+    assert "dm.sales_daily.date" in summary
+    assert "применяется к" in summary
+    assert "Выручка по дням" in summary
+    assert "не применим" not in summary
+
+
+def test_spec_summary_warns_when_filter_reaches_no_chart() -> None:
+    # store_id is in no chart's grain (charts group by date only) -> the filter cannot
+    # be wired; the preview must say so instead of implying it works
+    spec = DashboardSpec.model_validate(
+        {**GOOD_SPEC, "filters": [{"column": "dm.sales_daily.store_id", "type": "value"}]}
+    )
+    summary = spec_summary(spec)
+    assert "не применим ни к одному чарту" in summary
     assert "⚠" in summary
 
 
