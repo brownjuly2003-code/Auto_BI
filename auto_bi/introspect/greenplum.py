@@ -164,13 +164,19 @@ class GreenplumIntrospector:
         )
 
     def _partition_key(self, schema: str, table: str) -> str:
-        """Range/list partition column(s) of the root table, comma-joined ('' if none)."""
+        """Partition column(s) across ALL partition levels, top level first.
+
+        Multi-level GP tables (RANGE(date) SUBPARTITION BY LIST(region)) carry one
+        non-template pg_partition row per level; ordering by parlevel yields the
+        column at each level ('date, region'). Single-level tables -> one column;
+        non-partitioned -> ''. Template rows (paristemplate) describe the subpartition
+        blueprint, not an actual level, so they are excluded."""
         rows = self._run(
-            "SELECT a.attname FROM pg_attribute a "
-            f"WHERE a.attrelid = '{schema}.{_ident(table)}'::regclass AND a.attnum IN ("
-            "SELECT unnest(paratts::int2[]) FROM pg_partition "
-            f"WHERE parrelid = '{schema}.{_ident(table)}'::regclass "
-            "AND parlevel = 0 AND paristemplate = false)"
+            "SELECT a.attname FROM pg_partition p "
+            "JOIN pg_attribute a ON a.attrelid = p.parrelid "
+            "AND a.attnum = ANY(p.paratts::int2[]) "
+            f"WHERE p.parrelid = '{schema}.{_ident(table)}'::regclass "
+            "AND p.paristemplate = false ORDER BY p.parlevel, a.attnum"
         )
         return ", ".join(r["attname"] for r in rows)
 

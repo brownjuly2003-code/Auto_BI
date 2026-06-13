@@ -65,6 +65,29 @@ AUTO_BI_GP_HOST=127.0.0.1 AUTO_BI_GP_PORT=15433 AUTO_BI_GP_USER=auto_bi_ro \
 
 Откат к 300k: повторно прогнать `stand_create_gp_dm.sql` (DROP SCHEMA CASCADE + rebuild).
 
+## Multi-level / list-партиции (интроспектор)
+
+`introspect/greenplum.py::_partition_key` читает партиц-колонки со ВСЕХ уровней
+(`pg_partition`, фильтр `paristemplate=false`, ORDER BY `parlevel`), не только `parlevel=0`.
+Двухуровневая таблица RANGE(date)→LIST(region) даёт `partition_key='date, region'`;
+одноуровневая — `'date'` (обратная совместимость); непартиционированная — `''`.
+Реверс структуры каталога — с живого GP: `pg_partition` несёт по одной non-template
+строке на уровень (`paratts` = int2vector колонок уровня) + template-строку на
+SUBPARTITION TEMPLATE (её исключаем). Live-фикстура (после прогона дропнута со стенда):
+
+```sql
+CREATE TABLE dm.sales_ml ("date" date NOT NULL, region text, store_id int, revenue numeric(12,2))
+DISTRIBUTED BY (store_id)
+PARTITION BY RANGE ("date") SUBPARTITION BY LIST (region)
+  SUBPARTITION TEMPLATE ( SUBPARTITION r_msk VALUES ('msk'),
+                          SUBPARTITION r_spb VALUES ('spb'),
+                          SUBPARTITION r_other VALUES ('other') )
+( START (date '2026-01-01') INCLUSIVE END (date '2026-04-01') EXCLUSIVE EVERY (interval '1 month') );
+```
+
+Live-результат (2026-06-13): `dm.sales_ml → partition_key='date, region'`, `dm.sales → 'date'`.
+Юнит-тест `test_partition_key_multi_level_ordered_by_level` фиксирует логику.
+
 ## Не сделано / остаток (только по явному «go»)
 
 - ~~**Масштаб**: `distribution_skew`/`no_filter_on_large_fact` на demo не срабатывали (< 10M).~~
@@ -73,4 +96,6 @@ AUTO_BI_GP_HOST=127.0.0.1 AUTO_BI_GP_PORT=15433 AUTO_BI_GP_USER=auto_bi_ro \
 - **Greengage-специфика**: проверено на Greenplum 6.25 (форк-совместимо); прогон на самом Greengage не делался.
 - **eval (3.5)**: golden-кейсы на GP-демо не добавлялись (инвариант 8 — нужен live GraceKelly; делать отдельно).
 - **DataLens (3.1/3.2)**: блокировано (нужен IAM/workbook+HC) — см. `2026-06-13-phase3-prep.md`.
-- **multi-level/list-партиции, REPLICATED dims на скейле, motion на large-large join** — не покрыты на demo.
+- ~~**multi-level/list-партиции**~~ ✅ 2026-06-13: интроспектор читает все уровни (`partition_key='date, region'`),
+  live-валидировано + unit-тест (см. секцию выше).
+- **REPLICATED dims на скейле, motion на large-large join** — не покрыты на demo.
