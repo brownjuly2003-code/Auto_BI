@@ -11,7 +11,7 @@ from auto_bi.advisor.clickhouse import RULES, RuleContext
 from auto_bi.advisor.explain import estimate_scan
 from auto_bi.advisor.findings import Finding
 from auto_bi.agent.sqlgen import generate_chart_sql
-from auto_bi.introspect.clickhouse import RunQuery
+from auto_bi.introspect.base import RunQuery
 from auto_bi.ir.spec import ChartSpec, DashboardSpec
 from auto_bi.semantic.model import SemanticModel
 

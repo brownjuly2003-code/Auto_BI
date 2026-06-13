@@ -9,14 +9,12 @@ candidates for the DM owner.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from auto_bi.introspect.base import RunQuery
 from auto_bi.semantic.model import ColumnRole, SemanticModel, Table
-
-RunQuery = Callable[[str], list[dict]]
 
 _ENTITY_SUFFIXES = ("_id", "_hk", "_bk")
 

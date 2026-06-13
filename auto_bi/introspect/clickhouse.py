@@ -9,9 +9,9 @@ The draft is meant to be hand-edited and committed as semantic/model.yaml.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 
 from auto_bi.config import Settings
+from auto_bi.introspect.base import RunQuery
 from auto_bi.semantic.model import (
     Aggregation,
     Column,
@@ -21,9 +21,6 @@ from auto_bi.semantic.model import (
     SemanticModel,
     Table,
 )
-
-# run_query(sql) -> rows as dicts; the only seam to the real client (stubbed in tests)
-RunQuery = Callable[[str], list[dict]]
 
 _IDENT_RE = re.compile(r"^\w+$")
 _NUMERIC_PREFIXES = ("Int", "UInt", "Float", "Decimal")

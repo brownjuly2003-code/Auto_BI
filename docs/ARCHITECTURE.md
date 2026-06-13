@@ -184,6 +184,8 @@ class BIAdapter(Protocol):
 
 `SupersetAdapter.build(spec, model)` оркеструет шаги (не в Protocol); `model` нужен для нативных фильтров (роль колонки + grain). `assemble_dashboard` принимает доп. `datasets`/`model` (аддитивно к Protocol) — без них фильтры деградируют в задокументированное предупреждение.
 
+Ref-id'ы (`DatabaseRef.id`, `DatasetRef.id`, `ChartRef.id`, `DashboardRef.id`) типизированы **`int | str`** — BI-нативный идентификатор: Superset отдаёт целые id, DataLens — строковые entry id. Ref'ы потребляются только внутри своего адаптера (в общий код не текут), поэтому тип не дискриминируется нигде, а Superset-путь продолжает оперировать int без изменений (решение S4-2, 2026-06-13). `TargetBI` enum — `superset | datalens` (§3.4).
+
 | Адаптер | Фаза | Механика | Главная боль |
 |---|---|---|---|
 | Superset | 0–1 | REST `/api/v1/{database,dataset,chart,dashboard}`; auth `/security/login` → JWT + CSRF | `form_data` чартов недокументирован → библиотека шаблонов на viz_type (реверс через GET вручную созданных чартов), `position_json` — свой генератор 12-колоночной сетки |
