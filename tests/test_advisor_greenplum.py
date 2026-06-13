@@ -213,5 +213,5 @@ def test_gp_advisor_suite_passes_on_committed_gp_model() -> None:
 
     # engine dispatch picks the GP set for a GP model, CH set otherwise
     assert advisor_cases_for_engine("greenplum") is GP_ADVISOR_CASES
-    assert golden_cases_for_engine("greenplum") == []  # GP golden = S2 handoff
+    assert len(golden_cases_for_engine("greenplum")) == 14  # GP golden authored in Phase 3.5
     assert advisor_cases_for_engine("clickhouse") is not GP_ADVISOR_CASES

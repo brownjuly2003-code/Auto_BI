@@ -489,10 +489,125 @@ GP_ADVISOR_CASES: list[AdvisorCase] = [
 ]
 
 
-# GP golden dialogue cases require designing prompts/expectations against the GP demo
-# schema and a live GraceKelly run — that is eval-design (stopper S2), handed off to a
-# Fable/manual session (see docs/plans/2026-06-13-phase3.5-gp-golden-cases-handoff.md).
-GP_GOLDEN_CASES: list[GoldenCase] = []
+# GP golden dialogue cases (Phase 3.5) — authored and validated against live GraceKelly.
+# Schema: dm.sales (date, store_id, product_id, revenue, qty, orders) + dm.stores (city,
+# format, region) + dm.products (category, name). NO manager_id/items/price.
+GP_GOLDEN_CASES: list[GoldenCase] = [
+    # --- clear: zero questions expected, spec checked mechanically -----------------
+    GoldenCase(
+        id="gp_g1_revenue_by_day",
+        request="Выручка по дням за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"date", "revenue"},
+        expect_viz={Viz.LINE, Viz.AREA},
+    ),
+    GoldenCase(
+        id="gp_g2_total_revenue_kpi",
+        request="Общая выручка одним числом за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"revenue"},
+        expect_viz={Viz.BIG_NUMBER},
+    ),
+    GoldenCase(
+        # store_id is the fk; LLM may also pull dm.stores.city or use store_id — allow both
+        id="gp_g3_top_stores",
+        request="Топ-10 магазинов по выручке за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"revenue"},
+        expect_columns_any=[{"store_id", "dm.stores.city"}],
+        expect_viz={Viz.BAR, Viz.TABLE},
+    ),
+    GoldenCase(
+        # cross-table dimension via join: city lives in dm.stores
+        id="gp_g4_revenue_by_city",
+        request="Топ городов по выручке за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"dm.stores.city", "revenue"},
+        expect_viz={Viz.BAR, Viz.TABLE},
+    ),
+    GoldenCase(
+        id="gp_g5_orders_by_day",
+        request="Число заказов по дням за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"date", "orders"},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        # cross-table dimension via join: category lives in dm.products
+        id="gp_g6_revenue_by_category",
+        request="Выручка по категориям товаров за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"dm.products.category", "revenue"},
+        expect_viz={Viz.BAR, Viz.TABLE},
+    ),
+    GoldenCase(
+        id="gp_g7_qty_by_day",
+        request="Динамика количества товаров (qty) по дням за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"date", "qty"},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="gp_g8_store_format_share",
+        request="Доля магазинов по формату",
+        kind=CaseKind.CLEAR,
+        table="dm.stores",
+        expect_columns={"format"},
+        expect_viz={Viz.PIE, Viz.BAR},
+    ),
+    # --- iteration: clear request -> word edit -> patched spec -------------------
+    GoldenCase(
+        id="gp_it1_add_orders",
+        request="Выручка по дням за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"date", "revenue"},
+        edit="Добавь на дашборд число заказов по дням",
+        edit_expect_columns={"orders"},
+    ),
+    # --- ambiguous: a clarifying question is REQUIRED ----------------------------
+    GoldenCase(
+        # «количество» is ambiguous: qty (units shipped) vs orders (count of orders)
+        id="gp_a1_quantity_ambiguous",
+        request="Количество по магазинам за июнь 2026",
+        kind=CaseKind.AMBIGUOUS,
+        expect_phrase="количеств",
+    ),
+    GoldenCase(
+        # «средний» metric is not directly available in the DM (no average measure)
+        # and is ambiguous: average revenue per order? per day? — agent should ask
+        id="gp_a2_avg_ticket",
+        request="Средний чек по дням за июнь 2026",
+        kind=CaseKind.AMBIGUOUS,
+        expect_phrase="чек",
+    ),
+    # --- infeasible: not in the DM at all -> flagged ----------------------------
+    GoldenCase(
+        id="gp_i1_salaries",
+        request="Зарплата сотрудников по месяцам за 2026 год",
+        kind=CaseKind.INFEASIBLE,
+        expect_phrase="зарплат",
+    ),
+    GoldenCase(
+        id="gp_i2_returns",
+        request="Динамика возвратов товаров по дням за июнь 2026",
+        kind=CaseKind.INFEASIBLE,
+        expect_phrase="возврат",
+    ),
+    GoldenCase(
+        id="gp_i3_weather",
+        request="Прогноз погоды по дням за июнь 2026",
+        kind=CaseKind.INFEASIBLE,
+        expect_phrase="погод",
+    ),
+]
 
 
 def advisor_cases_for_engine(engine: str) -> list[AdvisorCase]:

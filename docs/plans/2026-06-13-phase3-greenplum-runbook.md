@@ -94,10 +94,12 @@ Live-результат (2026-06-13): `dm.sales_ml → partition_key='date, regi
   ✅ 2026-06-13: live-валидировано на 10.3M (см. секцию выше); `scripts/stand_scale_gp_dm.sql`
   + `scripts/gp_scale_validate.py`. Канонический демо остаётся 300k (скейл opt-in).
 - **Greengage-специфика**: проверено на Greenplum 6.25 (форк-совместимо); прогон на самом Greengage не делался.
-- **eval (3.5)**: ✅ 2026-06-13 advisor-сьют покрыт для GP — `GP_ADVISOR_CASES` (детерминированно,
-  offline; `auto_bi eval --model-path semantic/model_gp.yaml --suite advisor` → 6/6) + engine-dispatch
-  по `physical.engine`. ⏳ golden-кейсы (dialogue, нужен GraceKelly) = **S2-стоппер** → Fable-handoff
-  `docs/plans/2026-06-13-phase3.5-gp-golden-cases-handoff.md` (БД GP не нужна, только GraceKelly + model_gp.yaml).
+- **eval (3.5)**: ✅ 2026-06-13 GP-часть закрыта полностью. advisor-сьют — `GP_ADVISOR_CASES`
+  (детерм., offline; `--suite advisor` → 6/6) + engine-dispatch по `physical.engine`. **golden —
+  `GP_GOLDEN_CASES` (14 кейсов: 8 clear + 1 iteration + 2 ambiguous + 3 infeasible), live 14/14
+  через GraceKelly/Sonnet** (`--model-path semantic/model_gp.yaml --suite golden`; 2 GK-флейка
+  `unknown_error Browser execution` прошли на ретрае — инфра, не дефект). Авторил субагент
+  (Fable отключён). DataLens-сборка остаётся блоком (нет кредов).
 - **DataLens (3.1/3.2)**: блокировано (нужен IAM/workbook+HC) — см. `2026-06-13-phase3-prep.md`.
 - ~~**multi-level/list-партиции**~~ ✅ 2026-06-13: интроспектор читает все уровни (`partition_key='date, region'`),
   live-валидировано + unit-тест (см. секцию выше).
