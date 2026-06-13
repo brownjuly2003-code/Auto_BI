@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     ch_host_from_bi: str = ""
     ch_port_from_bi: int = 0
 
+    # Greenplum / Greengage DWH (v2 engine, read-only role)
+    gp_host: str = "localhost"
+    gp_port: int = 5432
+    gp_user: str = "auto_bi_ro"
+    gp_password: str = ""
+    gp_database: str = "postgres"
+    gp_schema: str = "dm"
+
     # Superset
     superset_url: str = "http://localhost:8088"
     superset_user: str = "admin"
