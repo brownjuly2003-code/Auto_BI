@@ -40,10 +40,36 @@ AUTO_BI_GP_HOST=127.0.0.1 AUTO_BI_GP_PORT=15433 AUTO_BI_GP_USER=auto_bi_ro AUTO_
   m.dump('semantic/model_gp.yaml'); print([t.name for t in m.tables])"
 ```
 
+## Воспроизвести live-валидацию НА СКЕЙЛЕ (≥10M) — at-scale advisor-правила
+
+Два правила гейтятся `physical.rows >= 10M` и на 300k-демо не срабатывают:
+`no_filter_on_large_fact` (CRITICAL) и `distribution_skew` (WARN, DCR). Скейл — opt-in
+(канонический демо остаётся 300k для быстрых ребилдов; `semantic/model_gp.yaml` коммитится из 300k).
+
+```bash
+# 1) долить факт до ~10.1M (после stand_create_gp_dm.sql). На 8GB Mac — батчами по 2M
+#    через stdin (heredoc), память реклеймится; один INSERT 9.8M тоже ок (стрим, диск-spill).
+cat scripts/stand_scale_gp_dm.sql | \
+  ssh deproject-mac "/usr/local/bin/docker exec -i -u gpadmin auto_bi_greenplum \
+    bash -lc 'psql -p 5432 -d postgres -v ON_ERROR_STOP=1'"
+# 2) tunnel up, затем live-интроспекция + прогон advisor (dump в .tmp/, демо-yaml не трогается):
+AUTO_BI_GP_HOST=127.0.0.1 AUTO_BI_GP_PORT=15433 AUTO_BI_GP_USER=auto_bi_ro \
+  AUTO_BI_GP_PASSWORD=ro_pw uv run python scripts/gp_scale_validate.py
+```
+
+Результат (live, 2026-06-13, dm.sales = 10 300 000 строк, store_id n_distinct=20 из pg_stats):
+- интроспектор просуммировал reltuples партиц-детей → `rows: 10300000` (`>= 10M`), `distribution_key=['store_id']`;
+- **chart A (без фильтра)** → `distribution_skew` (WARN/dm_change_request: «~20 combinations → uneven spread … on 10300000 rows»)
+  **+** `no_filter_on_large_fact` (CRITICAL/spec_adjustment: «dm.sales has 10300000 rows and the query has no filters»);
+- **chart B (date-фильтр ≥ 2026-04-01)** → только `distribution_skew` (фильтр снял `no_filter_on_large_fact`).
+
+Откат к 300k: повторно прогнать `stand_create_gp_dm.sql` (DROP SCHEMA CASCADE + rebuild).
+
 ## Не сделано / остаток (только по явному «go»)
 
-- **Масштаб**: demo-факт 300k (< 10M порогов) — `distribution_skew`/`no_filter_on_large_fact`
-  unit-тестируются, но live-демо на demo не срабатывает (нужен факт ≥10M на GP).
+- ~~**Масштаб**: `distribution_skew`/`no_filter_on_large_fact` на demo не срабатывали (< 10M).~~
+  ✅ 2026-06-13: live-валидировано на 10.3M (см. секцию выше); `scripts/stand_scale_gp_dm.sql`
+  + `scripts/gp_scale_validate.py`. Канонический демо остаётся 300k (скейл opt-in).
 - **Greengage-специфика**: проверено на Greenplum 6.25 (форк-совместимо); прогон на самом Greengage не делался.
 - **eval (3.5)**: golden-кейсы на GP-демо не добавлялись (инвариант 8 — нужен live GraceKelly; делать отдельно).
 - **DataLens (3.1/3.2)**: блокировано (нужен IAM/workbook+HC) — см. `2026-06-13-phase3-prep.md`.
