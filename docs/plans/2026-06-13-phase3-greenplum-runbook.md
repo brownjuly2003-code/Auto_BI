@@ -93,7 +93,14 @@ Live-результат (2026-06-13): `dm.sales_ml → partition_key='date, regi
 - ~~**Масштаб**: `distribution_skew`/`no_filter_on_large_fact` на demo не срабатывали (< 10M).~~
   ✅ 2026-06-13: live-валидировано на 10.3M (см. секцию выше); `scripts/stand_scale_gp_dm.sql`
   + `scripts/gp_scale_validate.py`. Канонический демо остаётся 300k (скейл opt-in).
-- **Greengage-специфика**: проверено на Greenplum 6.25 (форк-совместимо); прогон на самом Greengage не делался.
+- **Greengage-специфика**: проверено на Greenplum 6.25.3 (`andruche/greenplum:6`) — Greengage 6 это
+  продолжение Greenplum 6 от Arenadata с теми же каталогами (`gp_distribution_policy`, `pg_partition`),
+  один code path. Прогон на самом Greengage НЕ делался: **готового публичного Docker-образа Greengage
+  нет** (2026-06-13: ни `greengagedb/*`, ни `arenadata/greengage*`, ни `woblerr/greengage*` не
+  существуют на Docker Hub; офиц. docs предлагают собирать `greengagedb6` из исходников на Ubuntu 22.04
+  — тяжело, или community `github.com/woblerr/docker-greenplum`). На 8GB Mac (≈300M свободно при живом
+  CH+Superset+GP) source-build/2-й контейнер — плохой risk/value: catalog-идентичный предок уже покрыт.
+  Делать только при реальной потребности (отдельный стенд/больше RAM).
 - **eval (3.5)**: ✅ 2026-06-13 GP-часть закрыта полностью. advisor-сьют — `GP_ADVISOR_CASES`
   (детерм., offline; `--suite advisor` → 6/6) + engine-dispatch по `physical.engine`. **golden —
   `GP_GOLDEN_CASES` (14 кейсов: 8 clear + 1 iteration + 2 ambiguous + 3 infeasible), live 14/14
