@@ -144,6 +144,33 @@ def test_failed_build_reports_error_event(demo_model) -> None:
         assert time.monotonic() < deadline
 
 
+def test_failed_build_can_be_retried(demo_model) -> None:
+    # F1 (phase-2 audit): a failed build left the session in APPROVED and every
+    # retry hit 409 — re-approve after failure must rebuild the same approved spec
+    attempts = []
+
+    def flaky_builder(spec, log, session_id):
+        attempts.append(session_id)
+        if len(attempts) == 1:
+            raise RuntimeError("Superset healthcheck failed")
+        return DashboardRef(id=7, title=spec.title, url="/superset/dashboard/7/")
+
+    client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model, builder=flaky_builder)
+    sid = start(client)["session_id"]
+    assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 202
+    assert collect_events(client, sid)[-1]["kind"] == "error"
+    deadline = time.monotonic() + 5
+    while client.get(f"/api/v1/sessions/{sid}").json()["build_status"] != "failed":
+        assert time.monotonic() < deadline
+
+    assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 202
+    assert collect_events(client, sid)[-1]["kind"] == "done"
+    state = client.get(f"/api/v1/sessions/{sid}").json()
+    assert state["build_status"] == "built"
+    assert state["dashboard_url"] == "/superset/dashboard/7/"
+    assert len(attempts) == 2
+
+
 def test_protocol_errors(demo_model) -> None:
     client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model)
     assert client.get("/api/v1/sessions/nope").status_code == 404

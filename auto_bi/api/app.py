@@ -223,10 +223,16 @@ def create_app(
         with managed.lock:
             if managed.build_status == "building":
                 raise HTTPException(status_code=409, detail="build already running")
-            try:
-                spec = managed.agent.approve()
-            except RuntimeError as exc:
-                raise HTTPException(status_code=409, detail=str(exc)) from None
+            if managed.build_status == "failed" and managed.agent.phase == AgentPhase.APPROVED:
+                # a failed build leaves the machine in APPROVED with no pending edit:
+                # retry must rebuild the same approved spec, not dead-end on 409
+                spec = managed.agent.spec
+                assert spec is not None
+            else:
+                try:
+                    spec = managed.agent.approve()
+                except RuntimeError as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from None
             managed.reset_events()  # iteration re-approve: fresh stream for this build
             managed.build_status = "building"
 
