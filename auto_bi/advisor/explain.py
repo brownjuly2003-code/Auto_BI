@@ -8,7 +8,7 @@ through the same RunQuery seam as introspection and the SQL guard.
 
 from __future__ import annotations
 
-from auto_bi.introspect.clickhouse import RunQuery
+from auto_bi.introspect.base import RunQuery
 
 
 def estimate_scan(run_query: RunQuery, sql: str) -> dict | None:

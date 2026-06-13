@@ -7,7 +7,7 @@ escape hatch later. Plus live validation: EXPLAIN + LIMIT-ed trial run on the DW
 import sqlglot
 from sqlglot import expressions as exp
 
-from auto_bi.introspect.clickhouse import RunQuery
+from auto_bi.introspect.base import RunQuery
 
 DIALECT = "clickhouse"
 TRIAL_LIMIT = 10

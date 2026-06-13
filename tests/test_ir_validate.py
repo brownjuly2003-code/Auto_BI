@@ -7,6 +7,7 @@ from auto_bi.ir.spec import (
     DashboardSpec,
     Measure,
     OrderBy,
+    TargetBI,
     Viz,
 )
 from auto_bi.ir.validate import validate_spec
@@ -29,6 +30,13 @@ def spec(*charts: ChartSpec, **kwargs) -> DashboardSpec:
 
 def test_valid_spec_no_errors(demo_model) -> None:
     assert validate_spec(spec(chart()), demo_model) == []
+
+
+def test_target_bi_supports_datalens(demo_model) -> None:
+    # S4-1 (2026-06-13): the IR can target the second BI; validation is BI-agnostic,
+    # so a datalens-targeted spec validates against the model exactly like superset
+    assert TargetBI.DATALENS == "datalens"
+    assert validate_spec(spec(chart(), target_bi=TargetBI.DATALENS), demo_model) == []
 
 
 def test_unknown_table(demo_model) -> None:

@@ -22,6 +22,7 @@ from auto_bi.semantic.model import Aggregation
 
 class TargetBI(StrEnum):
     SUPERSET = "superset"
+    DATALENS = "datalens"
 
 
 class Viz(StrEnum):
