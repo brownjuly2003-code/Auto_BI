@@ -62,6 +62,17 @@ def connection_name(engine: str) -> str:
     return f"Auto_BI {_CONNECTION_ENGINE_LABEL.get(engine, engine)}"
 
 
+# Atomic-rebuild temp-name suffix (F2): a fully-built entry lives under <canonical>__wip
+# until the whole build succeeds, then is renamed to its canonical name. `_` is allowed
+# anywhere in a DataLens entry name (charset, see safe_entry_name), so appending it keeps a
+# sanitized canonical name valid.
+_WIP_SUFFIX = "__wip"
+
+
+def _wip_name(canonical: str) -> str:
+    return f"{canonical}{_WIP_SUFFIX}"
+
+
 # Grid (24 cols): selectors in a top row (6 wide, 2 tall), charts below in 2 columns.
 _GRID_W = 12
 _GRID_H = 4
@@ -348,22 +359,19 @@ class DataLensAdapter:
         invisible — datasets and charts are internal, and the dashboard URL already changes
         per build (as in Superset). Live-verified 2026-06-14 (dataset + widget delete).
 
-        NOT atomic (Phase 4 F2): the old entry is deleted BEFORE its replacement is created,
-        so a build that fails after this point (e.g. a transient charts-engine 5xx) leaves
-        the old entry gone and the dashboard inconsistent until a successful retry rebuilds
-        it. The blast radius is bounded to the dedicated Auto_BI workbook (F3), so no foreign
-        entry is ever at risk — only the agent's own previous version, which the next build
-        restores. A fully atomic rebuild would create under a temp name, then on success
-        delete the old canonical entry and rename the temp one to it (US exposes
-        `POST /v1/entries/:entryId/rename` — confirmed available, reversal §5.6); deferred as
-        it reworks the live-verified build path for a self-healing issue.
+        Used two ways: (1) the standalone idempotent create path of the public methods
+        (ensure_dataset/create_chart/assemble_dashboard called directly, e.g. contract tests)
+        — there delete precedes create on the canonical name, NOT atomic; (2) the
+        `_promote_to_canonical` reconcile of `build`, which deletes the stale canonical entry
+        right before renaming the freshly-built temp entry onto it. `build` itself IS atomic
+        on rebuild (F2): it creates under temp names first and never deletes a canonical entry
+        until the whole build has succeeded — see `build`/`_promote_to_canonical`.
         """
         existing = self._find_entry_id(scope, name)
         if existing is not None:
             self._client.gateway("mix", "deleteEntry", {"entryId": existing, "scope": scope})
-            logger.warning(
-                "datalens %s entry replaced (old deleted before re-create — rebuild is not "
-                "atomic, F2): id=%s name=%s",
+            logger.info(
+                "datalens %s stale entry deleted (replaced): id=%s name=%s",
                 scope,
                 existing,
                 name,
@@ -393,12 +401,16 @@ class DataLensAdapter:
         logger.info("datalens dataset created: id=%s name=%s", ds_id, ds_name)
         return DatasetRef(id=ds_id, name=ds_name)
 
-    def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef:
+    def create_chart(
+        self, chart: ChartSpec, ds: DatasetRef, *, name: str | None = None
+    ) -> ChartRef:
         ds_name, fields = self._datasets[str(ds.id)]
         shared = build_chart_shared(chart, str(ds.id), ds_name, fields)
         if chart.viz in DEGRADED:
             logger.warning("chart %r: %s", chart.title, DEGRADED[chart.viz])
-        name = safe_entry_name(chart.title)  # charts-engine validates the entry-name charset
+        # charts-engine validates the entry-name charset. `name` (a pre-sanitized temp name)
+        # is passed by the atomic build path; standalone callers create under the canonical.
+        name = name if name is not None else safe_entry_name(chart.title)
         self._delete_if_exists("widget", name)  # idempotency: rebuild replaces in place
         created = self._client.post(
             "/api/charts/v1/charts",
@@ -418,6 +430,8 @@ class DataLensAdapter:
         spec: DashboardSpec,
         charts: list[ChartRef],
         placements: list[Placement] | None = None,
+        *,
+        name: str | None = None,
     ) -> DashboardRef:
         # Mirror SupersetAdapter.assemble_dashboard: fail early and clearly on a chart/spec
         # mismatch (F5). build_dashboard_data also guards this, but only for widget_ids; a
@@ -449,7 +463,9 @@ class DataLensAdapter:
                     excluded,
                 )
         data = build_dashboard_data(spec, [str(c.id) for c in charts], controls, alias_groups)
-        name = safe_entry_name(spec.title)  # US validates the dashboard entry-name charset
+        # US validates the dashboard entry-name charset. `name` (pre-sanitized temp name) is
+        # passed by the atomic build path; standalone callers create under the canonical.
+        name = name if name is not None else safe_entry_name(spec.title)
         self._delete_if_exists("dash", name)  # idempotency: rebuild replaces in place
         created = self._client.gateway(
             "mix",
@@ -469,6 +485,26 @@ class DataLensAdapter:
         logger.info("datalens dashboard created: id=%s url=%s charts=%d", dash_id, url, len(charts))
         return DashboardRef(id=dash_id, title=spec.title, url=url)
 
+    def _promote_to_canonical(self, entries: list[tuple[str, str, str]]) -> None:
+        """Atomic-rebuild reconcile (F2): the whole build already succeeded under temp names,
+        so the previous working entries are still intact. Promote each freshly-built temp
+        entry to its canonical name — delete the stale canonical entry (the old working
+        version) and rename the temp one onto it via `us/renameEntry {entryId, name}`
+        (live-verified 2026-06-14; the direct `/v1/entries/:id/rename` REST route is not
+        exposed through the UI gateway, the `us` gateway action is).
+
+        The entryId is unchanged by a rename, so the dashboard's chart links (by entryId) and
+        its URL (`/{entryId}`, already returned by build) stay valid. Per entry this is
+        delete-then-rename — two quick US calls, never the charts-engine — so the residual
+        non-canonical window is tiny compared to a full rebuild, and a crash between the two
+        self-heals on the next build (the missing canonical is simply re-created)."""
+        for scope, canonical, temp_id in entries:
+            self._delete_if_exists(scope, canonical)
+            self._client.gateway("us", "renameEntry", {"entryId": temp_id, "name": canonical})
+            logger.info(
+                "datalens %s promoted to canonical: name=%s id=%s", scope, canonical, temp_id
+            )
+
     # --- happy path ----------------------------------------------------------
 
     def build(self, spec: DashboardSpec) -> DashboardRef:
@@ -478,22 +514,40 @@ class DataLensAdapter:
         Charts in a dashboard selector's scope drop their SQL top-N LIMIT so the selector
         re-ranks after filtering (computable from the spec via participating_chart_ids).
 
-        Not atomic on rebuild: each entry is replaced delete-then-create (see
-        `_delete_if_exists`), so a mid-build failure leaves the dashboard inconsistent until
-        a retry. The exception propagates (the session is marked failed, then retried) — the
-        build never returns a half-built dashboard. Writes only to the dedicated Auto_BI
-        workbook (F3), so only the agent's own previous build is ever at risk."""
+        Atomic on rebuild (F2): every entry is first created under a temp `__wip` name, so the
+        existing canonical entries (the last working dashboard) are never touched until the
+        whole build has succeeded. Only then does `_promote_to_canonical` delete each stale
+        canonical entry and rename its temp replacement onto it. A mid-build failure (e.g. a
+        transient charts-engine 5xx) therefore propagates with the previous working version
+        fully intact — the exception bubbles up (the session is marked failed, then retried),
+        and build never returns or leaves a half-built dashboard. Writes only to the dedicated
+        Auto_BI workbook (F3). A re-build's leftover temp entries (from a prior failure) are
+        cleaned by the temp-name delete-then-create on the next build."""
         self.ensure_database()
         in_filter_scope = participating_chart_ids(spec, self._model)
         placements: list[Placement] = []
         refs: list[ChartRef] = []
+        # (scope, canonical_name, temp_entry_id) promoted only after a fully successful build
+        to_promote: list[tuple[str, str, str]] = []
         for chart in spec.charts:
+            ds_canonical = dataset_name(spec.title, chart.id)
             ds = self.ensure_dataset(
                 chart.query,
-                name=dataset_name(spec.title, chart.id),
+                name=_wip_name(ds_canonical),
                 apply_limit=chart.id not in in_filter_scope,
             )
-            ref = self.create_chart(chart, ds)
+            to_promote.append(("dataset", ds_canonical, str(ds.id)))
+            chart_canonical = safe_entry_name(chart.title)
+            ref = self.create_chart(chart, ds, name=_wip_name(chart_canonical))
+            to_promote.append(("widget", chart_canonical, str(ref.id)))
             refs.append(ref)
             placements.append((chart, str(ref.id), str(ds.id)))
-        return self.assemble_dashboard(spec, refs, placements=placements)
+        dash_canonical = safe_entry_name(spec.title)
+        dash = self.assemble_dashboard(
+            spec, refs, placements=placements, name=_wip_name(dash_canonical)
+        )
+        to_promote.append(("dash", dash_canonical, str(dash.id)))
+        # Build fully succeeded under temp names -> promote them to canonical (delete stale +
+        # rename). Reached only on success, so the old version survives any earlier failure.
+        self._promote_to_canonical(to_promote)
+        return dash
