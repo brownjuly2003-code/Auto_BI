@@ -494,10 +494,18 @@ class DataLensAdapter:
         exposed through the UI gateway, the `us` gateway action is).
 
         The entryId is unchanged by a rename, so the dashboard's chart links (by entryId) and
-        its URL (`/{entryId}`, already returned by build) stay valid. Per entry this is
-        delete-then-rename — two quick US calls, never the charts-engine — so the residual
-        non-canonical window is tiny compared to a full rebuild, and a crash between the two
-        self-heals on the next build (the missing canonical is simply re-created)."""
+        its URL (`/{entryId}`, already returned by build) stay valid.
+
+        NOT atomic *across* the entries (only across the build-vs-promote boundary): this is a
+        sequential per-entry `delete(stale canonical) -> rename(temp -> canonical)` loop. A
+        crash mid-loop — between an entry's delete and its rename, or after promoting some
+        entries but not the rest — leaves a partially-promoted state: the old dashboard may
+        then reference an already-deleted dataset id. The window is far smaller than a full
+        rebuild (two quick US calls per entry, never the charts-engine) and self-heals on the
+        next build (the missing canonical is re-created, the leftover `__wip` swept by the
+        temp-name delete-then-create), but it is not zero. Phase-4 F2 audit P3: a fully atomic
+        promote would need either a server-side multi-entry transaction (US has none) or an
+        all-or-nothing rename ordering — backlogged."""
         for scope, canonical, temp_id in entries:
             self._delete_if_exists(scope, canonical)
             self._client.gateway("us", "renameEntry", {"entryId": temp_id, "name": canonical})
@@ -514,15 +522,20 @@ class DataLensAdapter:
         Charts in a dashboard selector's scope drop their SQL top-N LIMIT so the selector
         re-ranks after filtering (computable from the spec via participating_chart_ids).
 
-        Atomic on rebuild (F2): every entry is first created under a temp `__wip` name, so the
-        existing canonical entries (the last working dashboard) are never touched until the
-        whole build has succeeded. Only then does `_promote_to_canonical` delete each stale
-        canonical entry and rename its temp replacement onto it. A mid-build failure (e.g. a
-        transient charts-engine 5xx) therefore propagates with the previous working version
-        fully intact — the exception bubbles up (the session is marked failed, then retried),
-        and build never returns or leaves a half-built dashboard. Writes only to the dedicated
-        Auto_BI workbook (F3). A re-build's leftover temp entries (from a prior failure) are
-        cleaned by the temp-name delete-then-create on the next build."""
+        Atomic at the build/promote boundary (F2): every entry is first created under a temp
+        `__wip` name, so the existing canonical entries (the last working dashboard) are never
+        touched until the whole build has succeeded. Only then does `_promote_to_canonical`
+        delete each stale canonical entry and rename its temp replacement onto it. So a
+        mid-build failure (e.g. a transient charts-engine 5xx) propagates with the previous
+        working version fully intact — the exception bubbles up (the session is marked failed,
+        then retried), and build never returns or leaves a half-built dashboard. The promote
+        loop itself is NOT atomic across the three entries (see `_promote_to_canonical`): a
+        crash inside it leaves a narrowed inconsistency window that self-heals on the next
+        build. Writes only to the dedicated Auto_BI workbook (F3). A re-build's leftover temp
+        entries from a prior failure are cleaned by the temp-name delete-then-create on the
+        next build *when the spec's entry names match*; if the title/chart set changed between
+        attempts, stale `__wip` entries can linger in the workbook (harmless extra entries,
+        Phase-4 F2 audit P3)."""
         self.ensure_database()
         in_filter_scope = participating_chart_ids(spec, self._model)
         placements: list[Placement] = []

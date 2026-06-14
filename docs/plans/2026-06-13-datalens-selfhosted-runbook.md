@@ -29,6 +29,7 @@
 | dash zod `dataSchema` `schemeVersion` | `8` | инжектится server-side `mix/createDashboardV1`; блоб его НЕ шлёт (`build_dashboard_data`) |
 | chart `shared` `version` | `"4"` | `chart_config.build_chart_shared` (закреплён unit-тестом F10) |
 | Highcharts | `HC=1` | Editor-чарты на Highcharts + нативный heatmap (иначе деградация в pivot) |
+| gateway-экшен `us/renameEntry` | `{entryId, name}` → 200, entryId стабилен | атомарный rebuild `_promote_to_canonical` (Phase 4 F2); прямой REST `/v1/entries/:id/rename` через UI-gateway = 404 (не проксируется) |
 | Источник образов | `ghcr.io/datalens-tech/*` | клон `datalens-tech/datalens` depth=1 |
 
 **Гэп (то, что ещё не запинено намертво):** стенд — это depth-1 клон `main`, образы тянутся по

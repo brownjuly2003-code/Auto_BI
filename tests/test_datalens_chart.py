@@ -345,10 +345,12 @@ def test_healthcheck_makes_authorized_call_after_ping() -> None:
     assert [m for _, m, _ in fake.gateway_calls] == ["getWorkbookEntries"]
     assert fake.gateway_calls[0][2] == {"workbookId": "wb1", "scope": "connection"}
 
-    # ping ok but the authorized call 401s -> unhealthy with a clear message
+    # ping ok but the authorized probe (getWorkbookEntries) 401s -> unhealthy, clear message
     class AuthFailClient(FakeClient):
         def gateway(self, service: str, method: str, body: dict) -> dict:
-            raise DataLensAPIError("us/getWorkbookEntries -> 401: session expired")
+            if method == "getWorkbookEntries":
+                raise DataLensAPIError("us/getWorkbookEntries -> 401: session expired")
+            return super().gateway(service, method, body)
 
     bad = _adapter(AuthFailClient()).healthcheck()
     assert not bad.ok and "authorized check failed" in bad.message
@@ -470,6 +472,57 @@ def test_build_is_atomic_old_version_survives_mid_build_failure() -> None:
     # dashboard, its chart and dataset all survive the failed rebuild.
     assert fake.deletes == []
     assert fake.renames == []
+
+
+def test_promote_partial_failure_window_is_narrowed_not_atomic() -> None:
+    """The promote loop is NOT atomic across entries (Phase 4 F2 audit P3): a `us/renameEntry`
+    failure partway through leaves a partially-promoted state. This pins the documented
+    narrowed window — once the build has fully succeeded under temp names, promote walks
+    (dataset, widget, dash) deleting each stale canonical then renaming its temp onto it; a
+    rename failure on the widget propagates AFTER the widget's stale canonical was deleted but
+    BEFORE its temp is renamed, so the old dashboard (dash, not yet promoted) transiently
+    references a deleted entry until the next build re-creates the missing canonical."""
+
+    from auto_bi.adapters.datalens.dataset import dataset_name
+
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="t",
+                title="trend",
+                viz=Viz.LINE,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    dimensions=["date"],
+                    measures=[Measure(column="revenue", agg=Aggregation.SUM, label="rev")],
+                ),
+            )
+        ],
+    )
+    ds_canon = dataset_name(spec.title, "t")
+
+    class FailWidgetRenameClient(FakeClient):
+        def gateway(self, service: str, method: str, body: dict) -> dict:
+            if method == "renameEntry" and body["name"] == "trend":  # widget = 2nd promote step
+                raise DataLensAPIError("us/renameEntry -> 500")
+            return super().gateway(service, method, body)
+
+    fake = FailWidgetRenameClient(
+        wb_entries={
+            "connection": [{"entryId": "conn-old", "key": "1/Auto_BI ClickHouse"}],
+            "dataset": [{"entryId": "ds-old", "key": f"2/{ds_canon}"}],
+            "widget": [{"entryId": "w-old", "key": "3/trend"}],
+            "dash": [{"entryId": "b-old", "key": "4/dash"}],
+        }
+    )
+    with pytest.raises(DataLensAPIError, match="renameEntry"):
+        _adapter(fake).build(spec)
+    # dataset fully promoted (old deleted + temp renamed); widget's stale canonical deleted but
+    # its rename failed; the dashboard is never reached (not deleted, not renamed).
+    assert fake.deletes == [("ds-old", "dataset"), ("w-old", "widget")]
+    assert ("b-old", "dash") not in fake.deletes
+    assert [name for _, name in fake.renames] == [ds_canon]  # only the dataset got renamed
 
 
 def test_build_dashboard_data_grid() -> None:
