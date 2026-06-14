@@ -36,8 +36,12 @@ class Settings(BaseSettings):
     datalens_url: str = "http://localhost:8090"
     datalens_user: str = "admin"
     datalens_password: str = "admin"
-    # the OpenSource Demo workbook on the self-hosted stand (stable id; not a secret)
-    datalens_workbook_id: str = "z4wtz6tg5194o"
+    # Dedicated "Auto_BI" workbook on the self-hosted stand (Phase 4 F3): the agent's
+    # delete-then-create idempotency only touches entries it owns, so writing to an
+    # ISOLATED workbook keeps it from ever clobbering foreign entries (the OpenSource Demo
+    # workbook z4wtz6tg5194o holds 84 demo charts). Stand-specific id, not a secret;
+    # created via US POST /private/v2/workbooks. ARCHITECTURE §3.5.
+    datalens_workbook_id: str = "ra7f79yirtumb"
     # ClickHouse host as the DataLens connection reaches it (host.docker.internal on the
     # self-hosted compose stand); port reuses ch_port.
     ch_host_from_datalens: str = "host.docker.internal"

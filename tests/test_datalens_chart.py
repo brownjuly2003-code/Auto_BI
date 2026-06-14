@@ -6,6 +6,8 @@ stand, 2026-06-14); these pin the IR->shared mapping and the adapter call sequen
 
 from __future__ import annotations
 
+import pytest
+
 from auto_bi.adapters.base import DWHConfig
 from auto_bi.adapters.datalens.adapter import (
     DataLensAdapter,
@@ -311,6 +313,51 @@ def test_build_replaces_existing_dataset_chart_dashboard() -> None:
     methods = [m for _, m, _ in fake.gateway_calls]
     assert "createConnection" not in methods
     assert fake.deletes == [("ds-old", "dataset"), ("w-old", "widget"), ("b-old", "dash")]
+
+
+def test_build_propagates_mid_build_failure_and_is_not_atomic() -> None:
+    """A chart-create failure mid-build propagates (the session is marked failed and the
+    user retries — build never returns a half-built dashboard). It also pins the documented
+    non-atomicity (F2): the old dataset+widget were already deleted before the failing
+    create, while the old dashboard is left untouched (its delete happens later, in
+    assemble). The dedicated Auto_BI workbook (F3) bounds the blast radius to the agent's
+    own previous build."""
+
+    from auto_bi.adapters.datalens.dataset import dataset_name
+
+    class FailingChartClient(FakeClient):
+        def post(self, path: str, body: dict) -> dict:  # charts-engine create fails
+            raise RuntimeError("charts-engine 503")
+
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="t",
+                title="trend",
+                viz=Viz.LINE,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    dimensions=["date"],
+                    measures=[Measure(column="revenue", agg=Aggregation.SUM, label="rev")],
+                ),
+            )
+        ],
+    )
+    fake = FailingChartClient(
+        wb_entries={
+            "connection": [{"entryId": "conn-old", "key": "1/Auto_BI ClickHouse"}],
+            "dataset": [{"entryId": "ds-old", "key": f"2/{dataset_name(spec.title, 't')}"}],
+            "widget": [{"entryId": "w-old", "key": "3/trend"}],
+            "dash": [{"entryId": "b-old", "key": "4/dash"}],
+        }
+    )
+    with pytest.raises(RuntimeError, match="charts-engine 503"):
+        _adapter(fake).build(spec)
+    # old dataset + widget were deleted before the failure; the old dashboard was NOT (its
+    # delete lives in assemble, never reached) -> the non-atomic window the docstring warns of
+    assert fake.deletes == [("ds-old", "dataset"), ("w-old", "widget")]
+    assert ("b-old", "dash") not in fake.deletes
 
 
 def test_build_dashboard_data_grid() -> None:

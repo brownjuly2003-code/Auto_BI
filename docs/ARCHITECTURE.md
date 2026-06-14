@@ -189,6 +189,8 @@ class BIAdapter(Protocol):
 
 Ref-id'ы (`DatabaseRef.id`, `DatasetRef.id`, `ChartRef.id`, `DashboardRef.id`) типизированы **`int | str`** — BI-нативный идентификатор: Superset отдаёт целые id, DataLens — строковые entry id. Ref'ы потребляются только внутри своего адаптера (в общий код не текут), поэтому тип не дискриминируется нигде, а Superset-путь продолжает оперировать int без изменений (решение S4-2, 2026-06-13). `TargetBI` enum — `superset | datalens` (§3.4).
 
+**DataLens-таргет — выделенный workbook (Phase 4 F3).** Адаптер пишет в **отдельный workbook «Auto_BI»** (`datalens_workbook_id`, дефолт `ra7f79yirtumb` на self-hosted стенде), НЕ в общий demo-workbook. Идемпотентность через delete-then-create (`_delete_if_exists`, реверс §5.5) удаляет entry по совпадению имени — изолированный workbook гарантирует, что удаляются только entry самого агента, чужие данные не под угрозой. **Rebuild НЕ атомарен (F2):** старый entry удаляется до создания замены, поэтому сбой посреди build оставляет дашборд неконсистентным до успешного ретрая (build пробрасывает ошибку — сессия помечается failed и пересобирается, полу-собранный дашборд не возвращается). Blast radius ограничен Auto_BI-workbook'ом. Полностью атомарный ребилд (temp-name → on success delete+rename через `POST /v1/entries/:id/rename`, реверс §5.6) — отложенный таск.
+
 | Адаптер | Фаза | Механика | Главная боль |
 |---|---|---|---|
 | Superset | 0–1 | REST `/api/v1/{database,dataset,chart,dashboard}`; auth `/security/login` → JWT + CSRF | `form_data` чартов недокументирован → библиотека шаблонов на viz_type (реверс через GET вручную созданных чартов), `position_json` — свой генератор 12-колоночной сетки |
