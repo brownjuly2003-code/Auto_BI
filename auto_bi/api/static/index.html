@@ -14,9 +14,10 @@
     <span class="brand-sub">текст → дашборд поверх DM</span>
   </div>
   <div class="topbar-right">
-    <label class="bi-select" title="v1 собирает только в Superset; DataLens — Phase 3">Целевая BI
-      <select id="bi-target" disabled>
+    <label class="bi-select" title="Целевая BI для сборки — фиксируется началом сессии">Целевая BI
+      <select id="bi-target">
         <option value="superset" selected>Superset</option>
+        <option value="datalens">DataLens</option>
       </select>
     </label>
     <span id="session-chip" class="chip chip-idle">нет сессии</span>
