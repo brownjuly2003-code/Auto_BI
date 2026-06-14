@@ -112,6 +112,11 @@
   - **Visiology-адаптер** — спайк сделан (2026-06-14, `docs/plans/2026-06-14-visiology-spike.md`): **NO-GO автономно** (нет publicREST для авторинга дашбордов — только UI-Designer; нет free/email-only стенда). Gate: лицензионный стенд v3 от заказчика.
   - **Luxms-адаптер** — спайк+дизайн сделаны (2026-06-14, `docs/plans/2026-06-14-luxms-adapter-plan.md`): **GO-with-stand** (полный REST/CRUD source→cube(SQL)→dashlet→dashboard, JWT/cookie-auth, нативный CH; живой публичный API проверен). Gate: демо-креды `sandbox.demo.luxmsbi.com` или self-hosted Docker-стенд → затем реализация (зеркало DataLens-трека).
   - Реестровая упаковка, новые движки — по конкретному запросу.
+  - **Адекватность собираемого дашборда** (2026-06-14, план `docs/plans/2026-06-14-dashboard-adequacy-fixes.md`):
+    авто-масштаб виджетов DataLens — **сделано** (merge `22c32a0`); backlog по «go» — B1 default
+    top-N для категориальных чартов (BI-agnostic), B2 категориальная ось для числового измерения
+    в DataLens (Superset уже решает через `xAxisForceCategorical`), B3 джойн id→имя (S2+eval),
+    B4 косметика осей. B2/B4 требуют живого DataLens-стенда; B1/B3-промпт — S2 + eval.
 
 ---
 
