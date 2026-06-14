@@ -374,6 +374,26 @@ def create_app(
         store.set_dm_change_request_status(request_id, body.status)
         return {"id": request_id, "status": body.status}
 
+    # --- observability (Phase 4): per-session trace + LLM-usage dashboard ----------
+
+    @app.get("/api/v1/sessions/{session_id}/trace")
+    def session_trace(session_id: str) -> dict:
+        """Durable per-session timeline: agent/build steps + the LLM calls they made.
+        Reads the store directly (survives registry eviction); unknown id -> empty."""
+        s = _store()
+        return {
+            "session_id": session_id,
+            "events": s.trace_events(session_id),
+            "llm_calls": s.llm_calls(session_id),
+            "llm_usage": s.llm_usage_summary(session_id),
+        }
+
+    @app.get("/api/v1/observability/llm")
+    def observability_llm() -> dict:
+        """Global LLM-usage aggregates. GraceKelly exposes no token/cost usage, so
+        char volumes are size proxies (not tokens or money) — see the schema docs."""
+        return _store().llm_usage_summary()
+
     @app.get("/api/v1/sessions/{session_id}/events")
     def build_events(session_id: str) -> StreamingResponse:
         managed = _get(session_id)
