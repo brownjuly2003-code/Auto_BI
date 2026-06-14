@@ -171,14 +171,19 @@ def build_dataset_payload(
     connection_id: str,
     name: str,
     source_title: str | None = None,
+    apply_limit: bool = True,
 ) -> dict:
     """`bi/createDataset` body (reversal §4): one subselect source, columns + roles from
-    the IR. No DB introspection / validateDataset needed."""
+    the IR. No DB introspection / validateDataset needed.
+
+    `apply_limit=False` drops the subselect's top-N LIMIT for charts in a dashboard
+    selector's scope, so the selector re-ranks after filtering and its option list isn't
+    capped to the pre-filter top-N (mirrors the Superset native-filter limit semantics)."""
     engine = _engine_of(model, query.table)
     source_type = _SOURCE_TYPE.get(engine)
     if source_type is None:
         raise ValueError(f"no DataLens source_type for engine {engine!r}")
-    sql = generate_chart_sql(query, dialect=sqlglot_dialect(engine))
+    sql = generate_chart_sql(query, dialect=sqlglot_dialect(engine), apply_limit=apply_limit)
     src_title = source_title or name
 
     base_table = model.table(query.table)

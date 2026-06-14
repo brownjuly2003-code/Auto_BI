@@ -14,6 +14,7 @@ gathers chart links and runs Dash.validateData server-side, then calls us._creat
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 
@@ -32,36 +33,156 @@ from auto_bi.adapters.datalens.dataset import (
     build_dataset_payload,
     dataset_name,
 )
-from auto_bi.ir.spec import ChartSpec, DashboardSpec
-from auto_bi.semantic.model import SemanticModel
+from auto_bi.adapters.superset.native_filters import participating_chart_ids
+from auto_bi.ir.spec import ChartSpec, DashboardFilter, DashboardSpec, column_alias
+from auto_bi.semantic.model import ColumnRole, SemanticModel
 
 logger = logging.getLogger(__name__)
+
+# A placed chart: its spec, the created widget entryId, and its dataset id (for selectors).
+Placement = tuple[ChartSpec, str, str]
 
 CONNECTION_NAME = "Auto_BI ClickHouse"
 
 
-# Grid: charts in a 2-column layout, each 12-of-24 columns wide and 4 rows tall.
+# Grid (24 cols): selectors in a top row (6 wide, 2 tall), charts below in 2 columns.
 _GRID_W = 12
 _GRID_H = 4
+_CTRL_W = 6
+_CTRL_H = 2
+_CTRLS_PER_ROW = 4
 
 
-def build_dashboard_data(spec: DashboardSpec, widget_ids: list[str]) -> dict:
+def _filter_is_time(filter_: DashboardFilter, model: SemanticModel) -> bool:
+    table_name, _, col = filter_.column.rpartition(".")
+    table = model.table(table_name)
+    column = table.column(col) if table else None
+    return column is not None and column.role == ColumnRole.TIME
+
+
+def _filter_label(filter_: DashboardFilter, model: SemanticModel) -> str:
+    """Readable selector title: the column's model description, else its bare alias."""
+    table_name, _, col = filter_.column.rpartition(".")
+    table = model.table(table_name)
+    column = table.column(col) if table else None
+    if column is not None and column.description.strip():
+        return column.description.strip()
+    return column_alias(filter_.column)
+
+
+def build_selectors(
+    spec: DashboardSpec,
+    placements: list[Placement],
+    fields_by_dataset: dict[str, dict[str, dict]],
+    model: SemanticModel,
+) -> tuple[list[dict], list[list[str]], list[tuple[DashboardFilter, list[str], list[str]]]]:
+    """Compile spec.filters -> (control items, alias groups, applied log).
+
+    Scope-to-applicable (mirrors superset.native_filters): a filter applies to a chart
+    only if the column is in that chart's grain (group_columns). DataLens links selectors
+    POSITIVELY by default (same dataset, or fields tied by `aliases`) — the one connection
+    kind is "ignore" (exclusion) — so an out-of-scope chart, whose dataset has no such
+    field, is simply never affected; no negative wiring is needed. Each chart is its own
+    dataset, so the column's per-dataset field guids are grouped into one alias so the
+    selector's value propagates to every in-scope chart. A control binds to the first
+    in-scope dataset's field; TIME columns become a date(range) selector, others a select.
+    """
+    controls: list[dict] = []
+    alias_groups: list[list[str]] = []
+    applied: list[tuple[DashboardFilter, list[str], list[str]]] = []
+    all_ids = [chart.id for chart, _, _ in placements]
+
+    for filter_ in spec.filters:
+        alias = column_alias(filter_.column)
+        in_scope = [
+            (chart, ds_id)
+            for chart, _, ds_id in placements
+            if alias in {column_alias(c) for c in chart.query.group_columns()}
+            and alias in fields_by_dataset.get(ds_id, {})
+        ]
+        if not in_scope:
+            continue
+        guids = [fields_by_dataset[ds_id][alias]["guid"] for _, ds_id in in_scope]
+        _, first_ds = in_scope[0]  # control binds to the first in-scope dataset's field
+        field0 = fields_by_dataset[first_ds][alias]
+        is_time = _filter_is_time(filter_, model)
+        digest = hashlib.sha1(filter_.column.encode()).hexdigest()[:6]
+        control_id = f"auto_bi_sel_{alias}_{digest}"
+        source = {
+            "datasetId": first_ds,
+            "datasetFieldId": field0["guid"],
+            "fieldType": field0["data_type"],
+            "datasetFieldType": field0["type"],
+            "showTitle": True,
+            "elementType": "date" if is_time else "select",
+            "defaultValue": "",
+        }
+        if is_time:
+            source["isRange"] = True
+        else:
+            source["multiselectable"] = True
+        controls.append(
+            {
+                "id": control_id,
+                "namespace": "default",
+                "type": "control",
+                "data": {
+                    "id": control_id,
+                    "namespace": "default",
+                    "title": _filter_label(filter_, model),
+                    "sourceType": "dataset",
+                    "source": source,
+                },
+                "defaults": {field0["guid"]: ""},
+            }
+        )
+        if len(guids) > 1:  # tie the column's field across the in-scope datasets
+            alias_groups.append(guids)
+        scoped = {chart.id for chart, _ in in_scope}
+        applied.append((filter_, list(scoped), [cid for cid in all_ids if cid not in scoped]))
+    return controls, alias_groups, applied
+
+
+def build_dashboard_data(
+    spec: DashboardSpec,
+    widget_ids: list[str],
+    controls: list[dict] | None = None,
+    alias_groups: list[list[str]] | None = None,
+) -> dict:
     """US dash-entry `data` blob (reversal §5.3), shaped for the `mix/createDashboardV1`
     gateway action (zod `dataSchema` minus `schemeVersion`, which the action injects).
 
-    One tab; charts packed into a 2-column grid. Each chart becomes a `widget` item whose
-    single inner tab binds to the chart's US entryId. `validateData` (server-side) requires
-    every item to have exactly one layout entry keyed by its id, and all ids unique — both
-    hold here (item id, inner widget-tab id and the tab id are distinct). Selectors/
-    connections (spec.filters scope-to-applicable) are not emitted yet. `widget_ids` align
+    One tab. `controls` (selectors) are laid out in a top row, charts below in a 2-column
+    grid; each chart is a `widget` item whose inner tab binds to its US entryId.
+    `validateData` (server-side) requires every item to have exactly one layout entry keyed
+    by its id, and all ids unique — both hold (control ids, item ids, inner widget-tab ids
+    and the tab id are distinct). `alias_groups` tie a filter column's per-dataset field
+    guids so a selector propagates across the in-scope charts' datasets. `widget_ids` align
     with spec.charts.
     """
     if len(widget_ids) != len(spec.charts):
         raise ValueError(f"got {len(widget_ids)} widget ids for {len(spec.charts)} charts")
+    controls = controls or []
+    alias_groups = alias_groups or []
     # Deterministic, non-empty salt; ids are explicit so the salt is not used to derive them.
     salt = uuid.uuid5(uuid.NAMESPACE_URL, f"auto_bi_dash:{spec.title}").hex
     tab_id = f"auto_bi_tab_{salt[:8]}"
-    items, layout = [], []
+    items: list[dict] = []
+    layout: list[dict] = []
+
+    for j, control in enumerate(controls):
+        items.append(control)
+        layout.append(
+            {
+                "i": control["id"],
+                "x": (j % _CTRLS_PER_ROW) * _CTRL_W,
+                "y": (j // _CTRLS_PER_ROW) * _CTRL_H,
+                "w": _CTRL_W,
+                "h": _CTRL_H,
+            }
+        )
+    y0 = -(-len(controls) // _CTRLS_PER_ROW) * _CTRL_H  # rows of controls, ceil-divided
+
     for i, (chart, wid) in enumerate(zip(spec.charts, widget_ids, strict=True)):
         item_id = f"auto_bi_item_{chart.id}"
         items.append(
@@ -88,13 +209,13 @@ def build_dashboard_data(spec: DashboardSpec, widget_ids: list[str]) -> dict:
             {
                 "i": item_id,
                 "x": (i % 2) * _GRID_W,
-                "y": (i // 2) * _GRID_H,
+                "y": y0 + (i // 2) * _GRID_H,
                 "w": _GRID_W,
                 "h": _GRID_H,
             }
         )
-    # counter = next free hashid index (1 tab id + n item ids + n widget-tab ids), >= 1.
-    counter = 1 + 2 * len(items)
+    # counter = next free hashid index (tab + per-widget item & inner-tab ids + controls), >= 1.
+    counter = 1 + 2 * len(spec.charts) + len(controls)
     return {
         "salt": salt,
         "counter": counter,
@@ -105,7 +226,7 @@ def build_dashboard_data(spec: DashboardSpec, widget_ids: list[str]) -> dict:
                 "items": items,
                 "layout": layout,
                 "connections": [],
-                "aliases": {},
+                "aliases": {"default": alias_groups} if alias_groups else {},
             }
         ],
         "settings": {
@@ -177,7 +298,9 @@ class DataLensAdapter:
                 return entry["entryId"]
         return None
 
-    def ensure_dataset(self, query, name: str | None = None) -> DatasetRef:
+    def ensure_dataset(
+        self, query, name: str | None = None, *, apply_limit: bool = True
+    ) -> DatasetRef:
         if self._connection_id is None:
             self.ensure_database()
         ds_name = name or dataset_name(query.table, query.table)
@@ -187,6 +310,7 @@ class DataLensAdapter:
             workbook_id=self._workbook_id,
             connection_id=self._connection_id,
             name=ds_name,
+            apply_limit=apply_limit,
         )
         created = self._client.gateway("bi", "createDataset", payload)
         ds_id = created["id"]
@@ -215,11 +339,36 @@ class DataLensAdapter:
         logger.info("datalens chart created: id=%s viz=%s", chart_id, chart.viz.value)
         return ChartRef(id=chart_id, name=chart.title)
 
-    def assemble_dashboard(self, spec: DashboardSpec, charts: list[ChartRef]) -> DashboardRef:
+    def assemble_dashboard(
+        self,
+        spec: DashboardSpec,
+        charts: list[ChartRef],
+        placements: list[Placement] | None = None,
+    ) -> DashboardRef:
         # `mix/createDashboardV1` injects schemeVersion, gathers chart links and runs
         # Dash.validateData server-side, then us._createEntry (scope=Dash). The `data` blob
         # must omit schemeVersion (reversal §5.3); workbook entries take workbookId+name.
-        data = build_dashboard_data(spec, [str(c.id) for c in charts])
+        # With `placements` (chart -> widget id -> dataset id) and spec.filters, compile
+        # dashboard selectors; without them the dashboard is built filterless.
+        controls: list[dict] = []
+        alias_groups: list[list[str]] = []
+        if placements and spec.filters:
+            fields_by_dataset = {
+                ds_id: self._datasets[ds_id][1]
+                for _, _, ds_id in placements
+                if ds_id in self._datasets
+            }
+            controls, alias_groups, applied = build_selectors(
+                spec, placements, fields_by_dataset, self._model
+            )
+            for filter_, scoped, excluded in applied:
+                logger.info(
+                    "datalens selector %s -> charts %s (excluded %s)",
+                    filter_.column,
+                    scoped,
+                    excluded,
+                )
+        data = build_dashboard_data(spec, [str(c.id) for c in charts], controls, alias_groups)
         created = self._client.gateway(
             "mix",
             "createDashboardV1",
@@ -242,10 +391,21 @@ class DataLensAdapter:
 
     def build(self, spec: DashboardSpec) -> DashboardRef:
         """Full compile: connection -> per-chart datasets -> charts -> dashboard entry
-        (mirrors SupersetAdapter.build, ARCHITECTURE §3.5)."""
+        (mirrors SupersetAdapter.build, ARCHITECTURE §3.5).
+
+        Charts in a dashboard selector's scope drop their SQL top-N LIMIT so the selector
+        re-ranks after filtering (computable from the spec via participating_chart_ids)."""
         self.ensure_database()
+        in_filter_scope = participating_chart_ids(spec, self._model)
+        placements: list[Placement] = []
         refs: list[ChartRef] = []
         for chart in spec.charts:
-            ds = self.ensure_dataset(chart.query, name=dataset_name(spec.title, chart.id))
-            refs.append(self.create_chart(chart, ds))
-        return self.assemble_dashboard(spec, refs)
+            ds = self.ensure_dataset(
+                chart.query,
+                name=dataset_name(spec.title, chart.id),
+                apply_limit=chart.id not in in_filter_scope,
+            )
+            ref = self.create_chart(chart, ds)
+            refs.append(ref)
+            placements.append((chart, str(ref.id), str(ds.id)))
+        return self.assemble_dashboard(spec, refs, placements=placements)

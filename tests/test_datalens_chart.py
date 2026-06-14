@@ -7,11 +7,16 @@ stand, 2026-06-14); these pin the IR->shared mapping and the adapter call sequen
 from __future__ import annotations
 
 from auto_bi.adapters.base import DWHConfig
-from auto_bi.adapters.datalens.adapter import DataLensAdapter, build_dashboard_data
+from auto_bi.adapters.datalens.adapter import (
+    DataLensAdapter,
+    build_dashboard_data,
+    build_selectors,
+)
 from auto_bi.adapters.datalens.chart_config import VIZ_ID, build_chart_shared
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
+    DashboardFilter,
     DashboardSpec,
     Measure,
     Viz,
@@ -175,6 +180,7 @@ def _model() -> SemanticModel:
                 name="dm.sales_daily",
                 columns=[
                     Column(name="date", type="Date", role=ColumnRole.TIME),
+                    Column(name="store_id", type="Int32", role=ColumnRole.DIMENSION),
                     Column(
                         name="revenue",
                         type="Decimal(18,2)",
@@ -315,3 +321,110 @@ def test_assemble_dashboard_creates_dash_entry() -> None:
     linked = body["entry"]["data"]["tabs"][0]["items"][0]["data"]["tabs"][0]["chartId"]
     assert linked == "wEnc"
     assert isinstance(ref, DashboardRef) and ref.url == f"/{ref.id}"
+
+
+# --- selectors --------------------------------------------------------------
+
+
+def _bar(cid: str, dims: list[str]) -> ChartSpec:
+    return ChartSpec(
+        id=cid, title=cid, viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily", dimensions=dims,
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        ),
+    )  # fmt: skip
+
+
+def _ds_field(guid: str, data_type: str = "integer", type_: str = "DIMENSION") -> dict:
+    return {"guid": guid, "data_type": data_type, "type": type_}
+
+
+def test_build_selectors_select_control_scope_and_no_alias_single_dataset() -> None:
+    bar = _bar("bar", ["store_id"])
+    kpi = ChartSpec(
+        id="kpi",
+        title="Total",
+        viz=Viz.BIG_NUMBER,
+        query=ChartQuery(
+            table="dm.sales_daily", measures=[Measure(column="revenue", agg=Aggregation.SUM)]
+        ),
+    )
+    spec = DashboardSpec(
+        title="dash", filters=[DashboardFilter(column="dm.sales_daily.store_id")], charts=[bar, kpi]
+    )
+    placements = [(bar, "wbar", "ds_bar"), (kpi, "wkpi", "ds_kpi")]
+    fields = {"ds_bar": {"store_id": _ds_field("g_bar")}, "ds_kpi": {}}  # KPI lacks store_id grain
+    controls, alias_groups, applied = build_selectors(spec, placements, fields, _model())
+    assert len(controls) == 1
+    src = controls[0]["data"]["source"]
+    assert src["datasetId"] == "ds_bar" and src["datasetFieldId"] == "g_bar"
+    assert src["elementType"] == "select" and src["multiselectable"] is True
+    assert src["defaultValue"] == "" and controls[0]["defaults"] == {"g_bar": ""}
+    assert controls[0]["type"] == "control" and controls[0]["data"]["sourceType"] == "dataset"
+    # only the bar chart is in scope -> KPI excluded; one dataset -> nothing to tie
+    _, scoped, excluded = applied[0]
+    assert scoped == ["bar"] and excluded == ["kpi"]
+    assert alias_groups == []
+
+
+def test_build_selectors_ties_field_across_datasets() -> None:
+    bar, line = _bar("bar", ["store_id"]), _bar("line", ["store_id"])
+    spec = DashboardSpec(
+        title="dash",
+        filters=[DashboardFilter(column="dm.sales_daily.store_id")],
+        charts=[bar, line],
+    )
+    placements = [(bar, "wb", "ds_b"), (line, "wl", "ds_l")]
+    fields = {"ds_b": {"store_id": _ds_field("gb")}, "ds_l": {"store_id": _ds_field("gl")}}
+    _, alias_groups, applied = build_selectors(spec, placements, fields, _model())
+    # field tied across both in-scope datasets so the one selector filters both charts
+    assert alias_groups == [["gb", "gl"]]
+    assert set(applied[0][1]) == {"bar", "line"}
+
+
+def test_build_selectors_time_column_is_date_range() -> None:
+    line = _bar("line", ["date"])
+    spec = DashboardSpec(
+        title="dash", filters=[DashboardFilter(column="dm.sales_daily.date")], charts=[line]
+    )
+    fields = {"ds_l": {"date": _ds_field("gd", data_type="genericdatetime")}}
+    controls, _, _ = build_selectors(spec, [(line, "wl", "ds_l")], fields, _model())
+    src = controls[0]["data"]["source"]
+    assert src["elementType"] == "date" and src["isRange"] is True and "multiselectable" not in src
+
+
+def test_build_selectors_skips_unscoped_filter() -> None:
+    bar = _bar("bar", ["store_id"])
+    spec = DashboardSpec(
+        title="dash", filters=[DashboardFilter(column="dm.sales_daily.date")], charts=[bar]
+    )
+    fields = {"ds_bar": {"store_id": _ds_field("g_bar")}}
+    controls, alias_groups, applied = build_selectors(
+        spec, [(bar, "w", "ds_bar")], fields, _model()
+    )
+    assert controls == [] and alias_groups == [] and applied == []
+
+
+def test_build_dashboard_data_places_controls_and_aliases() -> None:
+    spec = DashboardSpec(
+        title="dash",
+        charts=[_bar("a", ["store_id"]), _bar("b", ["store_id"])],
+    )
+    control = {
+        "id": "sel1", "namespace": "default", "type": "control",
+        "data": {"id": "sel1", "namespace": "default", "title": "Store",
+                 "sourceType": "dataset", "source": {}},
+        "defaults": {"g": ""},
+    }  # fmt: skip
+    data = build_dashboard_data(spec, ["w1", "w2"], controls=[control], alias_groups=[["g1", "g2"]])
+    tab = data["tabs"][0]
+    # control first, then the two widgets
+    assert tab["items"][0]["id"] == "sel1" and tab["items"][0]["type"] == "control"
+    assert [it["id"] for it in tab["items"][1:]] == ["auto_bi_item_a", "auto_bi_item_b"]
+    # validateData: one layout entry per item, keyed by id; control on top, charts below it
+    assert len(tab["layout"]) == len(tab["items"])
+    assert {lo["i"] for lo in tab["layout"]} == {it["id"] for it in tab["items"]}
+    assert next(lo for lo in tab["layout"] if lo["i"] == "sel1")["y"] == 0
+    assert next(lo for lo in tab["layout"] if lo["i"] == "auto_bi_item_a")["y"] == 2
+    assert tab["aliases"] == {"default": [["g1", "g2"]]}
