@@ -108,7 +108,10 @@
 - [x] **Observability** (2026-06-14): трейс шагов агента на сессию (`trace_events`: grounding/clarify/propose/patch/advisor/approve + build-фазы, тайминг+исход) + дашборд расходов LLM (вызовы/латентность/объёмы; разбивка по шагу). GraceKelly не отдаёт токены/стоимость → объёмы в символах = size-прокси (не токены/$). API `GET /sessions/{id}/trace` + `/observability/llm`; UI-панель «Наблюдаемость». Деталь: ARCHITECTURE §3.9.
 - [x] **Eval до 40+ кейсов** (2026-06-14): счётчик достигнут — **40 golden** (26 CH + 14 GP) + **15 advisor** (9 CH + 6 GP) = 55 кейсов (`auto_bi/eval/cases.py`). Дальше — не добивать числом, а наполнять при реальных пробелах; прогон перед каждым изменением промптов остаётся постоянной практикой.
 - [x] **Пользовательская документация + onboarding нового DWH за ≤1 час** (2026-06-14): `docs/USER_GUIDE.md` (установка, все команды CLI, web UI, два режима, advisor, наблюдаемость, конфиг) + `docs/ONBOARDING_DWH.md` (пошагово подключить новый DWH с бюджетом ≤1ч; CH через CLI, GP через `GreenplumIntrospector` API) + обновлён README (статус Phase 0→4, quickstart). Команды/сниппеты smoke-проверены.
-- Продуктовые опции по спросу: реестровая упаковка, Visiology/Luxms-адаптеры, новые движки.
+- Продуктовые опции по спросу:
+  - **Visiology-адаптер** — спайк сделан (2026-06-14, `docs/plans/2026-06-14-visiology-spike.md`): **NO-GO автономно** (нет publicREST для авторинга дашбордов — только UI-Designer; нет free/email-only стенда). Gate: лицензионный стенд v3 от заказчика.
+  - **Luxms-адаптер** — спайк+дизайн сделаны (2026-06-14, `docs/plans/2026-06-14-luxms-adapter-plan.md`): **GO-with-stand** (полный REST/CRUD source→cube(SQL)→dashlet→dashboard, JWT/cookie-auth, нативный CH; живой публичный API проверен). Gate: демо-креды `sandbox.demo.luxmsbi.com` или self-hosted Docker-стенд → затем реализация (зеркало DataLens-трека).
+  - Реестровая упаковка, новые движки — по конкретному запросу.
 
 ---
 
