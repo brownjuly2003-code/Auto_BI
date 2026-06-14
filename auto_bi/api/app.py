@@ -22,7 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -95,7 +95,9 @@ def create_app(
         return None
 
     def _resolve_user(request: Request) -> AuthUser | None:
-        token = _bearer(request.headers.get("authorization"))
+        # bearer header for API/CLI clients; cookie for the browser UI (EventSource/SSE
+        # cannot set headers, so the login cookie rides automatically on every request)
+        token = _bearer(request.headers.get("authorization")) or request.cookies.get("auth_token")
         row = store.token_user(token) if (store is not None and token) else None
         if row is None:
             return None
@@ -160,25 +162,34 @@ def create_app(
         return {"username": user.username, "role": user.role, "schemas": user.allowed_schemas}
 
     @app.post("/api/v1/auth/login")
-    def login(body: LoginRequest) -> dict:
+    def login(body: LoginRequest, response: Response) -> dict:
         if not auth_enabled:
             raise HTTPException(status_code=404, detail="auth is disabled")
         row = _store().get_user(body.username)
-        # verify even when the user is unknown? compare against a dummy to avoid leaking
-        # which half failed via timing is overkill here — return one opaque 401 either way.
+        # one opaque 401 whether the username or the password is wrong (don't leak which)
         if row is None or not verify_password(body.password, row["password_hash"]):
             raise HTTPException(status_code=401, detail="invalid username or password")
         token = store.create_token(new_token(), row["id"], auth_token_ttl_hours)
+        # cookie for the browser (HttpOnly so JS can't read it; SameSite=Lax + the CSRF
+        # Origin guard mitigate cross-site use). The token is also returned for CLI clients.
+        response.set_cookie(
+            "auth_token",
+            token,
+            max_age=auth_token_ttl_hours * 3600,
+            httponly=True,
+            samesite="lax",
+        )
         user = AuthUser(
             username=row["username"], role=row["role"], allowed_schemas=row["allowed_schemas"]
         )
         return {"token": token, "user": _user_public(user)}
 
     @app.post("/api/v1/auth/logout", status_code=204)
-    def logout(request: Request) -> None:
-        token = _bearer(request.headers.get("authorization"))
+    def logout(request: Request, response: Response) -> None:
+        token = _bearer(request.headers.get("authorization")) or request.cookies.get("auth_token")
         if token and store is not None:
             store.delete_token(token)
+        response.delete_cookie("auth_token")
 
     @app.get("/api/v1/auth/me")
     def auth_me(request: Request) -> dict:

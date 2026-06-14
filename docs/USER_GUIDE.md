@@ -152,11 +152,52 @@ vs Greenplum/Greengage).
 | `AUTO_BI_CH_HOST_FROM_DATALENS` | CH-хост, как его достаёт DataLens-коннекшн | `host.docker.internal` |
 | `AUTO_BI_GRACEKELLY_URL` / `_MODEL` | LLM-сервис | `http://127.0.0.1:8011` / `claude-sonnet-4-6` |
 | `AUTO_BI_SEND_SAMPLES` | слать ли примеры значений в grounding | `true` |
-| `AUTO_BI_STORE_PATH` | SQLite-стор (сессии, spec'ы, сборки, llm_calls, заявки DM) | `data/auto_bi.sqlite` |
+| `AUTO_BI_STORE_PATH` | SQLite-стор (сессии, spec'ы, сборки, llm_calls, заявки DM, users) | `data/auto_bi.sqlite` |
+| `AUTO_BI_AUTH_ENABLED` | включить аутентификацию + RBAC (см. §8) | `false` |
+| `AUTO_BI_AUTH_USERS_FILE` | YAML с пользователями (если пусто — бутстрап-админ) | `` |
+| `AUTO_BI_ADMIN_USER` / `_PASSWORD` | бутстрап-админ, когда auth включён и нет users-файла | `admin` / `` |
+| `AUTO_BI_AUTH_TOKEN_TTL_HOURS` | срок жизни токена/сессии | `24` |
 
 ---
 
-## 7. Частые ситуации
+## 7. Аутентификация и RBAC (опционально)
+
+По умолчанию API/UI **без аутентификации** (single-user, §2.1). Чтобы включить
+многопользовательский режим с разграничением по схемам DWH — `AUTO_BI_AUTH_ENABLED=true`.
+Когда включено: API требует bearer-токен (или cookie из логина), а каждый пользователь
+ограничен своими **схемами** (часть имени таблицы до первой точки: `dm.sales` → схема `dm`).
+
+**Пользователи** — из YAML-файла (`AUTO_BI_AUTH_USERS_FILE`):
+
+```yaml
+users:
+  - username: alice
+    password: "..."        # плейнтекст здесь = операторский секрет (как .env); храните вне VCS
+    role: analyst
+    schemas: [dm]          # доступные схемы; ["*"] = все
+  - username: root
+    password: "..."
+    role: admin
+    schemas: ["*"]
+```
+
+Без файла, но при `AUTO_BI_ADMIN_PASSWORD` — создаётся один admin (`AUTO_BI_ADMIN_USER`, все схемы).
+Пароли хэшируются (pbkdf2_sha256) при старте; в Store плейнтекста нет.
+
+**Где действует RBAC:** панель полей и gaps (`/model/*`) показывают только разрешённые
+таблицы; агент при старте сессии видит только разрешённые схемы; сборка над таблицей вне
+схем пользователя отклоняется (403).
+
+**Эндпоинты:** `POST /api/v1/auth/login {username,password}` → токен + HttpOnly-cookie;
+`POST /api/v1/auth/logout`; `GET /api/v1/auth/me`. Программный/CLI-клиент шлёт
+`Authorization: Bearer <token>`; web UI использует cookie (вход через форму логина).
+
+> Ограничение MVP: сессии не привязаны к владельцу (RBAC защищает **данные**, а не адресацию
+> сессии по id) — это следующий шаг.
+
+---
+
+## 8. Частые ситуации
 
 - **`Semantic model not found: ...`** — нет `model.yaml`. Запустите
   `auto_bi introspect --output semantic/model.yaml` (см. [ONBOARDING_DWH.md](ONBOARDING_DWH.md)).
