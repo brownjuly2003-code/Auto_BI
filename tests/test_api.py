@@ -172,6 +172,45 @@ def test_failed_build_can_be_retried(demo_model) -> None:
     assert len(attempts) == 2
 
 
+def test_target_bi_selector_routes_build_to_chosen_bi(demo_model) -> None:
+    # F8: the UI BI selector sets target_bi at session start; it is re-stamped onto the
+    # spec each turn (the LLM patch resets it to the default) and the build dispatches on it.
+    built = {}
+
+    def recording_builder(spec, log, session_id):
+        built["target_bi"] = spec.target_bi.value
+        return DashboardRef(id=1, title=spec.title, url="/x/1/")
+
+    client = make_client(
+        ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, PATCHED_SPEC]), demo_model, builder=recording_builder
+    )
+    turn = client.post(
+        "/api/v1/sessions", json={"request": "выручка по дням", "target_bi": "datalens"}
+    ).json()
+    assert turn["spec"]["target_bi"] == "datalens"  # preview reflects the choice
+
+    sid = turn["session_id"]
+    # a word edit re-proposes the spec (LLM default = superset) -> the choice is re-stamped
+    edited = client.post(f"/api/v1/sessions/{sid}/reply", json={"text": "переименуй"}).json()
+    assert edited["spec"]["target_bi"] == "datalens"
+
+    assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 202
+    assert collect_events(client, sid)[-1]["kind"] == "done"
+    assert built["target_bi"] == "datalens"  # the build dispatched on the chosen BI
+
+
+def test_target_bi_defaults_to_superset(demo_model) -> None:
+    client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model)
+    turn = start(client)  # no target_bi in the request -> spec default
+    assert turn["spec"]["target_bi"] == "superset"
+
+
+def test_unknown_target_bi_is_rejected(demo_model) -> None:
+    client = make_client(ScriptedLLM([]), demo_model)
+    response = client.post("/api/v1/sessions", json={"request": "x", "target_bi": "powerbi"})
+    assert response.status_code == 422  # unknown BI -> enum rejects, not silently coerced
+
+
 def test_protocol_errors(demo_model) -> None:
     client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model)
     assert client.get("/api/v1/sessions/nope").status_code == 404

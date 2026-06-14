@@ -11,11 +11,15 @@ from pydantic import BaseModel, model_validator
 
 from auto_bi.agent.machine import AgentTurn
 from auto_bi.agent.seed import FieldsSeed
+from auto_bi.ir.spec import TargetBI
 
 
 class StartSessionRequest(BaseModel):
     request: str = ""
     seed: FieldsSeed | None = None  # fields-first entry (task 2.3)
+    # which BI to build into (UI selector, F8); None -> the spec default (Superset).
+    # An unknown value is rejected by the enum (422), not silently coerced.
+    target_bi: TargetBI | None = None
 
     @model_validator(mode="after")
     def _at_least_one_input(self) -> StartSessionRequest:

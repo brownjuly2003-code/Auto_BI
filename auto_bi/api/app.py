@@ -43,7 +43,7 @@ from auto_bi.api.schemas import (
 from auto_bi.api.sessions import ManagedSession, SessionManager, UnknownSession
 from auto_bi.dmcr import DCR_STATUSES, render_dm_change_request
 from auto_bi.introspect.gaps import find_gaps
-from auto_bi.ir.spec import DashboardSpec
+from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient, LLMError
 from auto_bi.semantic.model import Aggregation, ColumnRole, SemanticModel
@@ -87,6 +87,14 @@ def create_app(
                 )
         return await call_next(request)
 
+    def _apply_target_bi(managed: ManagedSession) -> None:
+        # The UI BI selector (F8) fixes the build target per session; the agent's spec is
+        # BI-agnostic and the LLM patch resets target_bi to its default each turn, so the
+        # session choice is (re-)stamped onto the current spec. turn.spec is the same object
+        # the agent holds, so the response and the later approve both see it.
+        if managed.agent.spec is not None:
+            managed.agent.spec.target_bi = managed.target_bi
+
     def _turn(managed: ManagedSession, turn: AgentTurn, error: str = "") -> TurnResponse:
         return TurnResponse(session_id=managed.session_id, error=error, **turn.model_dump())
 
@@ -109,10 +117,13 @@ def create_app(
             if errors:
                 raise HTTPException(status_code=422, detail="; ".join(errors))
         try:
-            managed, turn = manager.start(body.request, seed=body.seed)
+            managed, turn = manager.start(
+                body.request, seed=body.seed, target_bi=body.target_bi or TargetBI.SUPERSET
+            )
         except LLMError as exc:
             # nothing was registered (F2): tell the client plainly instead of a bare 500
             raise HTTPException(status_code=502, detail=f"LLM failed to start: {exc}") from None
+        _apply_target_bi(managed)
         return _turn(managed, turn)
 
     @app.delete("/api/v1/sessions/{session_id}", status_code=204)
@@ -239,6 +250,7 @@ def create_app(
                 return _turn(managed, current, error=str(exc))
             except RuntimeError as exc:  # no user turn expected in this phase
                 raise HTTPException(status_code=409, detail=str(exc)) from None
+            _apply_target_bi(managed)  # the patch reset spec.target_bi -> re-stamp the choice
             return _turn(managed, turn)
 
     @app.post("/api/v1/sessions/{session_id}/approve", status_code=202)
@@ -249,6 +261,7 @@ def create_app(
         with managed.lock:
             if managed.build_status == "building":
                 raise HTTPException(status_code=409, detail="build already running")
+            _apply_target_bi(managed)  # the build dispatches on spec.target_bi (F8/F1)
             current = managed.agent.spec
             if current is not None:
                 # the model is shared and mutable (enrichment PATCH, task 2.7): a role

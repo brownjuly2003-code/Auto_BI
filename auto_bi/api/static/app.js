@@ -164,6 +164,7 @@ function handleTurn(turn) {
   state.sessionId = turn.session_id;
   state.phase = turn.phase;
   $("mode-tabs").hidden = true; // вход (текст/поля) зафиксирован стартом сессии
+  $("bi-target").disabled = true; // целевая BI зафиксирована стартом сессии (как режим)
 
   if (turn.error) {
     addMessage("error", `Правка не применена: ${turn.error}\nТекущий дашборд без изменений.`, "ошибка");
@@ -209,7 +210,7 @@ async function send(text) {
         })
       : await api("/api/v1/sessions", {
           method: "POST",
-          body: JSON.stringify({ request: text }),
+          body: JSON.stringify({ request: text, target_bi: $("bi-target").value }),
         });
     thinking.remove();
     handleTurn(turn);
@@ -636,7 +637,7 @@ async function submitSeed() {
   try {
     const turn = await api("/api/v1/sessions", {
       method: "POST",
-      body: JSON.stringify({ seed: { groups, comment } }),
+      body: JSON.stringify({ seed: { groups, comment }, target_bi: $("bi-target").value }),
     });
     thinking.remove();
     // сессия началась: дальше — обычный чат (уточнения, правки словами)

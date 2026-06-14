@@ -17,6 +17,7 @@ from auto_bi.advisor.core import Advisor
 from auto_bi.agent.machine import AgentSession, AgentTurn
 from auto_bi.agent.seed import FieldsSeed
 from auto_bi.api.schemas import BuildEvent
+from auto_bi.ir.spec import TargetBI
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import Store
@@ -30,9 +31,19 @@ class UnknownSession(KeyError):
 
 
 class ManagedSession:
-    def __init__(self, session_id: str, agent: AgentSession) -> None:
+    def __init__(
+        self,
+        session_id: str,
+        agent: AgentSession,
+        target_bi: TargetBI = TargetBI.SUPERSET,
+    ) -> None:
         self.session_id = session_id
         self.agent = agent
+        # BI target chosen by the UI selector (F8), fixed for the session like the
+        # text/fields mode. The IR is BI-agnostic (invariant 1), so this matters only at
+        # build; the API re-applies it to the spec after each turn (the LLM patch resets
+        # spec.target_bi to its default).
+        self.target_bi = target_bi
         self.lock = threading.Lock()
         self.build_status = "idle"
         self.dashboard_url = ""
@@ -96,7 +107,10 @@ class SessionManager:
         self._registry_lock = threading.Lock()
 
     def start(
-        self, request: str, seed: FieldsSeed | None = None
+        self,
+        request: str,
+        seed: FieldsSeed | None = None,
+        target_bi: TargetBI = TargetBI.SUPERSET,
     ) -> tuple[ManagedSession, AgentTurn]:
         if self._store is not None:
             # the durable per-message record gets the full rendered seed; the session
@@ -115,7 +129,7 @@ class SessionManager:
             session_id=session_id,
             include_samples=self._include_samples,
         )
-        managed = ManagedSession(session_id, agent)
+        managed = ManagedSession(session_id, agent, target_bi=target_bi)
         # start BEFORE registering (F2): a failed LLM call must not leave a zombie
         # in the registry, and nobody can race a reply while grounding still runs —
         # the session id simply does not resolve yet

@@ -162,17 +162,18 @@ class DevAdvisor:
 
 
 def dev_builder(spec, log, session_id):
+    bi = spec.target_bi.value  # reflects the UI BI selector (F8)
     for step in (
-        f"PROPOSE ok: «{spec.title}», {len(spec.charts)} чартов",
+        f"PROPOSE ok: «{spec.title}», {len(spec.charts)} чартов → {bi}",
         "SQL ok (c1): EXPLAIN + LIMIT-прогон прошли",
         "SQL ok (c2): EXPLAIN + LIMIT-прогон прошли",
         "SQL ok (c3): EXPLAIN + LIMIT-прогон прошли",
-        "Superset: datasets созданы",
-        "Superset: чарты созданы, дашборд собран",
+        f"{bi}: datasets созданы",
+        f"{bi}: чарты созданы, дашборд собран",
     ):
         log(step)
         time.sleep(0.5)
-    return DashboardRef(id=3, title=spec.title, url="/superset/dashboard/3/")
+    return DashboardRef(id=3, title=spec.title, url=f"/{bi}/dashboard/3/")
 
 
 if __name__ == "__main__":
