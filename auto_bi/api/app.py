@@ -48,6 +48,7 @@ from auto_bi.auth import (
     AuthUser,
     filter_model_by_schemas,
     forbidden_tables,
+    is_table_allowed,
     new_token,
     verify_password,
 )
@@ -152,6 +153,16 @@ def create_app(
         except UnknownSession:
             raise HTTPException(status_code=404, detail=f"unknown session {session_id!r}") from None
 
+    def _owned(session_id: str, request: Request) -> ManagedSession:
+        # session-scoped access: only the owner or an admin may address a session. auth off
+        # -> owner is None and the caller is the anonymous admin, so this is a no-op. A
+        # mismatch returns 404 (not 403) so a foreign session id can't be probed for existence.
+        managed = _get(session_id)
+        user = _user(request)
+        if auth_enabled and not user.is_admin and managed.owner != user.username:
+            raise HTTPException(status_code=404, detail=f"unknown session {session_id!r}")
+        return managed
+
     @app.get("/api/v1/health")
     def health() -> dict:
         return {"ok": True, "auth": auth_enabled}
@@ -212,6 +223,7 @@ def create_app(
                 seed=body.seed,
                 target_bi=body.target_bi or TargetBI.SUPERSET,
                 model=scoped_model,
+                owner=_user(request).username if auth_enabled else None,
             )
         except LLMError as exc:
             # nothing was registered (F2): tell the client plainly instead of a bare 500
@@ -220,8 +232,8 @@ def create_app(
         return _turn(managed, turn)
 
     @app.delete("/api/v1/sessions/{session_id}", status_code=204)
-    def delete_session(session_id: str) -> None:
-        managed = _get(session_id)
+    def delete_session(session_id: str, request: Request) -> None:
+        managed = _owned(session_id, request)
         if managed.build_status == "building":
             raise HTTPException(status_code=409, detail="build is running")
         manager.remove(session_id)  # the durable record stays in Store
@@ -251,8 +263,15 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"unknown table {table_name!r}")
         return table
 
+    def _require_table_access(table_name: str, request: Request) -> None:
+        # RBAC: enrichment edits mutate the shared model.yaml globally, so a user may only
+        # edit tables in their own schemas (auth off -> ['*'] -> always allowed)
+        if not is_table_allowed(table_name, _user(request).allowed_schemas):
+            raise HTTPException(status_code=403, detail=f"not allowed to edit table {table_name!r}")
+
     @app.patch("/api/v1/model/tables/{table_name}")
-    def update_table(table_name: str, body: TableUpdate) -> dict:
+    def update_table(table_name: str, body: TableUpdate, request: Request) -> dict:
+        _require_table_access(table_name, request)  # RBAC before anything else (403 > 503)
         path = _model_path()
         with model_write_lock:
             table = _get_table(table_name)
@@ -261,7 +280,10 @@ def create_app(
         return {"table": table_name, "description": table.description}
 
     @app.patch("/api/v1/model/tables/{table_name}/columns/{column_name}")
-    def update_column(table_name: str, column_name: str, body: ColumnUpdate) -> dict:
+    def update_column(
+        table_name: str, column_name: str, body: ColumnUpdate, request: Request
+    ) -> dict:
+        _require_table_access(table_name, request)  # RBAC before anything else (403 > 503)
         path = _model_path()
         with model_write_lock:
             table = _get_table(table_name)
@@ -335,8 +357,8 @@ def create_app(
         response_model=TurnResponse,
         response_model_exclude_none=True,
     )
-    def reply(session_id: str, body: ReplyRequest) -> TurnResponse:
-        managed = _get(session_id)
+    def reply(session_id: str, body: ReplyRequest, request: Request) -> TurnResponse:
+        managed = _owned(session_id, request)
         with managed.lock:
             agent = managed.agent
             try:
@@ -354,7 +376,7 @@ def create_app(
     def approve(session_id: str, request: Request) -> dict:
         if builder is None:
             raise HTTPException(status_code=503, detail="build is not wired (no BI configured)")
-        managed = _get(session_id)
+        managed = _owned(session_id, request)
         with managed.lock:
             if managed.build_status == "building":
                 raise HTTPException(status_code=409, detail="build already running")
@@ -443,8 +465,8 @@ def create_app(
         return {"session_id": managed.session_id, "status": "building"}
 
     @app.get("/api/v1/sessions/{session_id}", response_model=SessionState)
-    def session_state(session_id: str) -> SessionState:
-        managed = _get(session_id)
+    def session_state(session_id: str, request: Request) -> SessionState:
+        managed = _owned(session_id, request)
         return SessionState(
             session_id=managed.session_id,
             phase=managed.agent.phase.value,
@@ -483,9 +505,13 @@ def create_app(
     # --- observability (Phase 4): per-session trace + LLM-usage dashboard ----------
 
     @app.get("/api/v1/sessions/{session_id}/trace")
-    def session_trace(session_id: str) -> dict:
+    def session_trace(session_id: str, request: Request) -> dict:
         """Durable per-session timeline: agent/build steps + the LLM calls they made.
-        Reads the store directly (survives registry eviction); unknown id -> empty."""
+        Reads the store directly (survives registry eviction); unknown id -> empty.
+        When auth is on, the session must be owned by the caller (admin sees all);
+        auth off keeps the eviction-surviving direct read unchanged."""
+        if auth_enabled:
+            _owned(session_id, request)  # 404 for a session the caller doesn't own
         s = _store()
         return {
             "session_id": session_id,
@@ -501,8 +527,8 @@ def create_app(
         return _store().llm_usage_summary()
 
     @app.get("/api/v1/sessions/{session_id}/events")
-    def build_events(session_id: str) -> StreamingResponse:
-        managed = _get(session_id)
+    def build_events(session_id: str, request: Request) -> StreamingResponse:
+        managed = _owned(session_id, request)
         if managed.agent.phase != AgentPhase.APPROVED and managed.build_status == "idle":
             raise HTTPException(status_code=409, detail="no build to stream: approve first")
         return StreamingResponse(

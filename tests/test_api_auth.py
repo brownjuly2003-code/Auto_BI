@@ -18,7 +18,7 @@ def _fake_builder(spec, log, session_id):
     return DashboardRef(id=7, title=spec.title, url="/superset/dashboard/7/")
 
 
-def _auth_client(llm, demo_model, store, users) -> TestClient:
+def _auth_client(llm, demo_model, store, users, model_path=None) -> TestClient:
     for username, password, role, schemas in users:
         store.upsert_user(username, hash_password(password), role, schemas)
     app = create_app(
@@ -27,6 +27,7 @@ def _auth_client(llm, demo_model, store, users) -> TestClient:
         store=store,
         builder=_fake_builder,
         auth_enabled=True,
+        model_path=model_path,
     )
     return TestClient(app)
 
@@ -107,29 +108,65 @@ def test_fields_scoped_to_allowed_schemas(demo_model, tmp_path) -> None:
     assert bob.json() == []  # bob has no access to the dm schema
 
 
-def test_approve_blocked_for_forbidden_schema(demo_model, tmp_path) -> None:
-    # admin starts a session whose spec touches dm.*; a user without dm access must not be
-    # able to build it (RBAC gate at approve — sessions are not per-user-owned by design).
+def test_session_owner_isolation(demo_model, tmp_path) -> None:
+    # a session is addressable only by its owner or an admin; a foreign non-admin gets
+    # 404 (existence hidden) on every session-scoped endpoint — no reading another's
+    # trace, no injecting a reply into another's in-progress spec (S6 P2-2).
     store = Store(tmp_path / "s.sqlite")
     client = _auth_client(
         ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]),
         demo_model,
         store,
-        [("admin", "pw", "admin", ["*"]), ("bob", "pw", "analyst", ["finance"])],
+        [
+            ("alice", "pw", "analyst", ["dm"]),
+            ("bob", "pw", "analyst", ["dm"]),  # same schemas, different user
+            ("root", "pw", "admin", ["*"]),
+        ],
     )
-    admin = _bearer(_login(client, "admin", "pw"))
+    alice = _bearer(_login(client, "alice", "pw"))
     bob = _bearer(_login(client, "bob", "pw"))
+    root = _bearer(_login(client, "root", "pw"))
+    sid = client.post(
+        "/api/v1/sessions", json={"request": "выручка по дням"}, headers=alice
+    ).json()["session_id"]
 
-    started = client.post("/api/v1/sessions", json={"request": "выручка по дням"}, headers=admin)
-    assert started.status_code == 200, started.text
-    sid = started.json()["session_id"]
+    assert client.get(f"/api/v1/sessions/{sid}", headers=bob).status_code == 404
+    assert client.get(f"/api/v1/sessions/{sid}/trace", headers=bob).status_code == 404
+    assert (
+        client.post(f"/api/v1/sessions/{sid}/reply", json={"text": "x"}, headers=bob).status_code
+        == 404
+    )
+    assert client.get(f"/api/v1/sessions/{sid}", headers=alice).status_code == 200  # owner
+    assert client.get(f"/api/v1/sessions/{sid}", headers=root).status_code == 200  # admin sees all
 
-    denied = client.post(f"/api/v1/sessions/{sid}/approve", headers=bob)
-    assert denied.status_code == 403
-    assert "dm." in denied.json()["detail"]
 
-    allowed = client.post(f"/api/v1/sessions/{sid}/approve", headers=admin)
-    assert allowed.status_code == 202
+def test_enrichment_patch_requires_schema_access(demo_model, tmp_path) -> None:
+    # write-side RBAC (S6 P2-1): a user cannot edit the shared model.yaml for a table
+    # outside their schemas. The 403 fires before the model-path check.
+    store = Store(tmp_path / "s.sqlite")
+    model_path = tmp_path / "model.yaml"
+    demo_model.dump(model_path)
+    client = _auth_client(
+        ScriptedLLM([]),
+        demo_model,
+        store,
+        [("alice", "pw", "analyst", ["dm"]), ("bob", "pw", "analyst", ["finance"])],
+        model_path=model_path,
+    )
+    alice = _bearer(_login(client, "alice", "pw"))
+    bob = _bearer(_login(client, "bob", "pw"))
+    assert (
+        client.patch(
+            "/api/v1/model/tables/dm.stores", json={"description": "x"}, headers=bob
+        ).status_code
+        == 403
+    )
+    assert (
+        client.patch(
+            "/api/v1/model/tables/dm.stores", json={"description": "ok"}, headers=alice
+        ).status_code
+        == 200
+    )
 
 
 def test_authorized_user_completes_full_flow(demo_model, tmp_path) -> None:

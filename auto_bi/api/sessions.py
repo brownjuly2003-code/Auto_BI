@@ -36,9 +36,13 @@ class ManagedSession:
         session_id: str,
         agent: AgentSession,
         target_bi: TargetBI = TargetBI.SUPERSET,
+        owner: str | None = None,
     ) -> None:
         self.session_id = session_id
         self.agent = agent
+        # owner username when auth is on (RBAC: only the owner or an admin may address
+        # this session); None when auth is off — every caller is the anonymous admin
+        self.owner = owner
         # BI target chosen by the UI selector (F8), fixed for the session like the
         # text/fields mode. The IR is BI-agnostic (invariant 1), so this matters only at
         # build; the API re-applies it to the spec after each turn (the LLM patch resets
@@ -112,6 +116,7 @@ class SessionManager:
         seed: FieldsSeed | None = None,
         target_bi: TargetBI = TargetBI.SUPERSET,
         model: SemanticModel | None = None,
+        owner: str | None = None,
     ) -> tuple[ManagedSession, AgentTurn]:
         # `model` overrides the app-wide model for this session — the API passes an
         # RBAC-filtered view so the agent grounds only on the caller's allowed schemas
@@ -133,7 +138,7 @@ class SessionManager:
             session_id=session_id,
             include_samples=self._include_samples,
         )
-        managed = ManagedSession(session_id, agent, target_bi=target_bi)
+        managed = ManagedSession(session_id, agent, target_bi=target_bi, owner=owner)
         # start BEFORE registering (F2): a failed LLM call must not leave a zombie
         # in the registry, and nobody can race a reply while grounding still runs —
         # the session id simply does not resolve yet
