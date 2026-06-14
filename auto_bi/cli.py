@@ -278,6 +278,11 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
     model = SemanticModel.load(model_path)
     run_query = make_run_query(settings)
     store = Store(settings.store_path)
+    if settings.auth_enabled:
+        from auto_bi.auth import seed_users
+
+        n = seed_users(store, settings)
+        print(f"auth enabled: seeded {n} user(s)")
     # the build target is dispatched per-spec (spec.target_bi); the API/UI selector sets it
     adapter_for = partial(make_adapter, settings=settings, model=model)
 
@@ -300,6 +305,8 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
         builder=builder,
         include_samples=settings.send_samples,
         model_path=model_path,  # enrichment UI пишет правки обратно в model.yaml
+        auth_enabled=settings.auth_enabled,
+        auth_token_ttl_hours=settings.auth_token_ttl_hours,
     )
     uvicorn.run(app, host=host, port=port)
     return 0

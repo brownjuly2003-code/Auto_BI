@@ -105,7 +105,7 @@ def test_foreign_keys_enforced(store: Store) -> None:
 
 def test_schema_version_stamped(store: Store) -> None:
     version = store._db.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 2
+    assert version == 3
 
 
 def test_trace_events_ordered_by_seq(store: Store) -> None:
@@ -208,7 +208,7 @@ def test_migrates_v1_db_to_v2(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 3
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the pre-existing row survived and back-fills with defaults
@@ -241,7 +241,7 @@ def test_migrates_legacy_v0_db_with_old_llm_calls(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 3
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the first observability-aware write no longer crashes with "no such column: step"

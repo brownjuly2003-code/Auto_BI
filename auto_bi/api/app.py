@@ -22,7 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -35,6 +35,7 @@ from auto_bi.api.schemas import (
     BuildEvent,
     ColumnUpdate,
     DCRStatusUpdate,
+    LoginRequest,
     ReplyRequest,
     SessionState,
     StartSessionRequest,
@@ -42,6 +43,14 @@ from auto_bi.api.schemas import (
     TurnResponse,
 )
 from auto_bi.api.sessions import ManagedSession, SessionManager, UnknownSession
+from auto_bi.auth import (
+    ANONYMOUS_ADMIN,
+    AuthUser,
+    filter_model_by_schemas,
+    forbidden_tables,
+    new_token,
+    verify_password,
+)
 from auto_bi.dmcr import DCR_STATUSES, render_dm_change_request
 from auto_bi.introspect.gaps import find_gaps
 from auto_bi.ir.spec import DashboardSpec, TargetBI
@@ -65,6 +74,8 @@ def create_app(
     builder: Builder | None = None,
     include_samples: bool = True,
     model_path: str | Path | None = None,  # enables enrichment writes (task 2.7)
+    auth_enabled: bool = False,  # Phase 4 auth/RBAC, opt-in (default: open, single-user)
+    auth_token_ttl_hours: int = 24,
 ) -> FastAPI:
     manager = SessionManager(
         model=model,
@@ -75,17 +86,51 @@ def create_app(
     )
     app = FastAPI(title="Auto_BI API", version="0.1.0")
 
+    # paths reachable without a token even when auth is on (login issues the token)
+    _open_paths = {"/api/v1/health", "/api/v1/auth/login"}
+
+    def _bearer(header: str | None) -> str | None:
+        if header and header.lower().startswith("bearer "):
+            return header[7:].strip()
+        return None
+
+    def _resolve_user(request: Request) -> AuthUser | None:
+        token = _bearer(request.headers.get("authorization"))
+        row = store.token_user(token) if (store is not None and token) else None
+        if row is None:
+            return None
+        return AuthUser(
+            username=row["username"], role=row["role"], allowed_schemas=row["allowed_schemas"]
+        )
+
+    def _user(request: Request) -> AuthUser:
+        return getattr(request.state, "user", ANONYMOUS_ADMIN)
+
     @app.middleware("http")
-    async def reject_cross_origin_mutations(request, call_next):
-        # the API is unauthenticated by design (localhost, single user — §2.1);
-        # this only stops drive-by CSRF from other sites: browsers attach Origin
-        # to mutating requests, curl/CLI/SSE GETs carry none and pass (F5)
+    async def gate(request: Request, call_next):
+        # CSRF guard: browsers attach Origin to mutating requests, curl/CLI/SSE GETs carry
+        # none and pass (F5). Only stops drive-by mutations from other sites.
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             origin = request.headers.get("origin")
             if origin and urlparse(origin).netloc != request.headers.get("host", ""):
                 return JSONResponse(
                     status_code=403, content={"detail": "cross-origin mutation rejected"}
                 )
+        # auth (Phase 4, opt-in). auth OFF -> every caller is the anonymous admin with
+        # full access, so behaviour is unchanged. auth ON -> /api/v1/* (except health and
+        # login) needs a valid bearer token; the resolved user rides on request.state.
+        request.state.user = ANONYMOUS_ADMIN
+        if auth_enabled:
+            path = request.url.path
+            if path.startswith("/api/v1/") and path not in _open_paths:
+                user = _resolve_user(request)
+                if user is None:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "authentication required"},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                request.state.user = user
         return await call_next(request)
 
     def _apply_target_bi(managed: ManagedSession) -> None:
@@ -107,19 +152,55 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health() -> dict:
-        return {"ok": True}
+        return {"ok": True, "auth": auth_enabled}
+
+    # --- auth (Phase 4, opt-in) ----------------------------------------------------
+
+    def _user_public(user: AuthUser) -> dict:
+        return {"username": user.username, "role": user.role, "schemas": user.allowed_schemas}
+
+    @app.post("/api/v1/auth/login")
+    def login(body: LoginRequest) -> dict:
+        if not auth_enabled:
+            raise HTTPException(status_code=404, detail="auth is disabled")
+        row = _store().get_user(body.username)
+        # verify even when the user is unknown? compare against a dummy to avoid leaking
+        # which half failed via timing is overkill here — return one opaque 401 either way.
+        if row is None or not verify_password(body.password, row["password_hash"]):
+            raise HTTPException(status_code=401, detail="invalid username or password")
+        token = store.create_token(new_token(), row["id"], auth_token_ttl_hours)
+        user = AuthUser(
+            username=row["username"], role=row["role"], allowed_schemas=row["allowed_schemas"]
+        )
+        return {"token": token, "user": _user_public(user)}
+
+    @app.post("/api/v1/auth/logout", status_code=204)
+    def logout(request: Request) -> None:
+        token = _bearer(request.headers.get("authorization"))
+        if token and store is not None:
+            store.delete_token(token)
+
+    @app.get("/api/v1/auth/me")
+    def auth_me(request: Request) -> dict:
+        return _user_public(_user(request))
 
     @app.post("/api/v1/sessions", response_model=TurnResponse, response_model_exclude_none=True)
-    def start_session(body: StartSessionRequest) -> TurnResponse:
+    def start_session(body: StartSessionRequest, request: Request) -> TurnResponse:
+        # RBAC: the agent grounds only on the caller's allowed schemas (auth off -> all)
+        scoped_model = filter_model_by_schemas(model, _user(request).allowed_schemas)
         if body.seed is not None:
             # the UI builds its field panel from GET /model/fields, so an unknown
-            # field is protocol misuse (422), not an ambiguity for CLARIFY
-            errors = validate_seed(body.seed, model)
+            # field is protocol misuse (422), not an ambiguity for CLARIFY. Validate
+            # against the scoped model so a forbidden field is rejected too.
+            errors = validate_seed(body.seed, scoped_model)
             if errors:
                 raise HTTPException(status_code=422, detail="; ".join(errors))
         try:
             managed, turn = manager.start(
-                body.request, seed=body.seed, target_bi=body.target_bi or TargetBI.SUPERSET
+                body.request,
+                seed=body.seed,
+                target_bi=body.target_bi or TargetBI.SUPERSET,
+                model=scoped_model,
             )
         except LLMError as exc:
             # nothing was registered (F2): tell the client plainly instead of a bare 500
@@ -140,9 +221,11 @@ def create_app(
     model_write_lock = threading.Lock()
 
     @app.get("/api/v1/model/gaps")
-    def model_gaps() -> dict:
-        # offline checks only: live time-grain probes stay in `auto_bi gaps` (CLI)
-        return find_gaps(model, None).model_dump(mode="json")
+    def model_gaps(request: Request) -> dict:
+        # offline checks only: live time-grain probes stay in `auto_bi gaps` (CLI).
+        # RBAC: scope to the caller's allowed schemas (auth off -> full model).
+        scoped = filter_model_by_schemas(model, _user(request).allowed_schemas)
+        return find_gaps(scoped, None).model_dump(mode="json")
 
     def _model_path() -> Path:
         if model_path is None:
@@ -214,8 +297,10 @@ def create_app(
         }
 
     @app.get("/api/v1/model/fields")
-    def model_fields() -> list[dict]:
-        """Field panel for the fields-first mode: the semantic model as the UI sees it."""
+    def model_fields(request: Request) -> list[dict]:
+        """Field panel for the fields-first mode: the semantic model as the UI sees it.
+        RBAC: only the caller's allowed-schema tables (auth off -> all tables)."""
+        scoped = filter_model_by_schemas(model, _user(request).allowed_schemas)
         return [
             {
                 "table": t.name,
@@ -231,7 +316,7 @@ def create_app(
                     for c in t.columns
                 ],
             }
-            for t in model.tables
+            for t in scoped.tables
         ]
 
     @app.post(
@@ -255,7 +340,7 @@ def create_app(
             return _turn(managed, turn)
 
     @app.post("/api/v1/sessions/{session_id}/approve", status_code=202)
-    def approve(session_id: str) -> dict:
+    def approve(session_id: str, request: Request) -> dict:
         if builder is None:
             raise HTTPException(status_code=503, detail="build is not wired (no BI configured)")
         managed = _get(session_id)
@@ -274,6 +359,16 @@ def create_app(
                         status_code=409,
                         detail="spec no longer valid against the model "
                         f"(edited since the proposal?): {'; '.join(problems)}",
+                    )
+                # RBAC hard gate (checked on the spec to be built, BEFORE the machine
+                # transition so a denied approve has no side effect): never build over a
+                # table outside the caller's schemas. Grounding was already scoped, so this
+                # is defense in depth; auth off -> allowed_schemas ['*'] -> always empty.
+                denied = forbidden_tables(current, _user(request).allowed_schemas)
+                if denied:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"not allowed to build over tables outside your schemas: {denied}",
                     )
             if managed.build_status == "failed" and managed.agent.phase == AgentPhase.APPROVED:
                 # a failed build leaves the machine in APPROVED with no pending edit:

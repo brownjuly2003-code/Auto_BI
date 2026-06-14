@@ -32,6 +32,13 @@ class ReplyRequest(BaseModel):
     text: str
 
 
+class LoginRequest(BaseModel):
+    """Auth login (Phase 4, opt-in). Returns a bearer token on success."""
+
+    username: str
+    password: str
+
+
 class TurnResponse(AgentTurn):
     session_id: str
     error: str = ""

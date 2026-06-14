@@ -111,7 +111,11 @@ class SessionManager:
         request: str,
         seed: FieldsSeed | None = None,
         target_bi: TargetBI = TargetBI.SUPERSET,
+        model: SemanticModel | None = None,
     ) -> tuple[ManagedSession, AgentTurn]:
+        # `model` overrides the app-wide model for this session — the API passes an
+        # RBAC-filtered view so the agent grounds only on the caller's allowed schemas
+        # (auto_bi.auth.filter_model_by_schemas). None -> the full app model (default).
         if self._store is not None:
             # the durable per-message record gets the full rendered seed; the session
             # row keeps a short human label so the list view stays scannable
@@ -122,7 +126,7 @@ class SessionManager:
         else:
             session_id = uuid.uuid4().hex
         agent = AgentSession(
-            self._model,
+            model or self._model,
             self._llm,
             self._advisor,
             store=self._store,

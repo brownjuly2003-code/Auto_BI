@@ -62,7 +62,7 @@ def collect_events(client: TestClient, session_id: str) -> list[dict]:
 
 def test_health(demo_model) -> None:
     client = make_client(ScriptedLLM([]), demo_model)
-    assert client.get("/api/v1/health").json() == {"ok": True}
+    assert client.get("/api/v1/health").json() == {"ok": True, "auth": False}
 
 
 def test_clear_request_proposes_spec(demo_model) -> None:
