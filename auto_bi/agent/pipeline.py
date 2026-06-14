@@ -7,6 +7,7 @@ All collaborators are injected; the CLI wires real ones from settings.
 from collections.abc import Callable
 
 from auto_bi.adapters.base import BIAdapter, DashboardRef
+from auto_bi.agent.normalize import apply_chart_defaults
 from auto_bi.agent.propose import SpecValidationError, propose_spec
 from auto_bi.agent.sql_guard import LiveSQLValidator
 from auto_bi.agent.sqlgen import generate_chart_sql
@@ -75,6 +76,10 @@ def compile_and_build(
     spec_id: int | None = None,
 ) -> DashboardRef:
     """SQL_GEN -> VALIDATE -> BUILD for an already-produced spec (chat APPROVE path)."""
+    # deterministic top-N defaults on categorical charts (B1, dashboard adequacy): runs
+    # before SQL_GEN + adapter so BOTH the validated SQL and the built dashboard see the
+    # same normalized spec. Idempotent; no-op on charts that already express top-N.
+    spec = apply_chart_defaults(spec, model)
     # invariant 2 at the BI boundary: never let an unvalidated spec reach the adapter,
     # regardless of how `spec` was produced (defense-in-depth; no-op on the happy path).
     errors = validate_spec(spec, model)
