@@ -104,7 +104,7 @@
 
 ## Phase 4 — Hardening до продукта (2–4 нед + ongoing)
 
-- Auth/мульти-юзер (если нужен), RBAC по DWH-схемам.
+- [x] **Auth/мульти-юзер + RBAC по DWH-схемам** (2026-06-14): opt-in (`AUTO_BI_AUTH_ENABLED`, дефолт OFF → single-user без изменений). stdlib pbkdf2 хэш паролей + bearer/cookie-токены; RBAC ограничивает пользователя его схемами DWH (модель скоупится на grounding, build гейтится, enrichment-PATCH гейтится, сессии owner-bound). Web UI логин (cookie-сессия для SSE). S6-ревью пройдено (`fable_audit_phase4_auth.md`: 0 P1, 2 P2 закрыты). Деталь: `docs/USER_GUIDE.md` §7.
 - [x] **Observability** (2026-06-14): трейс шагов агента на сессию (`trace_events`: grounding/clarify/propose/patch/advisor/approve + build-фазы, тайминг+исход) + дашборд расходов LLM (вызовы/латентность/объёмы; разбивка по шагу). GraceKelly не отдаёт токены/стоимость → объёмы в символах = size-прокси (не токены/$). API `GET /sessions/{id}/trace` + `/observability/llm`; UI-панель «Наблюдаемость». Деталь: ARCHITECTURE §3.9.
 - [x] **Eval до 40+ кейсов** (2026-06-14): счётчик достигнут — **40 golden** (26 CH + 14 GP) + **15 advisor** (9 CH + 6 GP) = 55 кейсов (`auto_bi/eval/cases.py`). Дальше — не добивать числом, а наполнять при реальных пробелах; прогон перед каждым изменением промптов остаётся постоянной практикой.
 - [x] **Пользовательская документация + onboarding нового DWH за ≤1 час** (2026-06-14): `docs/USER_GUIDE.md` (установка, все команды CLI, web UI, два режима, advisor, наблюдаемость, конфиг) + `docs/ONBOARDING_DWH.md` (пошагово подключить новый DWH с бюджетом ≤1ч; CH через CLI, GP через `GreenplumIntrospector` API) + обновлён README (статус Phase 0→4, quickstart). Команды/сниппеты smoke-проверены.
