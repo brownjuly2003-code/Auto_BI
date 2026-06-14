@@ -315,12 +315,23 @@ class DataLensAdapter:
         (refreshed SQL / chart shared / dashboard layout); its id changes, which is
         invisible — datasets and charts are internal, and the dashboard URL already changes
         per build (as in Superset). Live-verified 2026-06-14 (dataset + widget delete).
+
+        NOT atomic (Phase 4 F2): the old entry is deleted BEFORE its replacement is created,
+        so a build that fails after this point (e.g. a transient charts-engine 5xx) leaves
+        the old entry gone and the dashboard inconsistent until a successful retry rebuilds
+        it. The blast radius is bounded to the dedicated Auto_BI workbook (F3), so no foreign
+        entry is ever at risk — only the agent's own previous version, which the next build
+        restores. A fully atomic rebuild would create under a temp name, then on success
+        delete the old canonical entry and rename the temp one to it (US exposes
+        `POST /v1/entries/:entryId/rename` — confirmed available, reversal §5.6); deferred as
+        it reworks the live-verified build path for a self-healing issue.
         """
         existing = self._find_entry_id(scope, name)
         if existing is not None:
             self._client.gateway("mix", "deleteEntry", {"entryId": existing, "scope": scope})
-            logger.info(
-                "datalens %s entry replaced (deleted for rebuild): id=%s name=%s",
+            logger.warning(
+                "datalens %s entry replaced (old deleted before re-create — rebuild is not "
+                "atomic, F2): id=%s name=%s",
                 scope,
                 existing,
                 name,
@@ -427,7 +438,13 @@ class DataLensAdapter:
         (mirrors SupersetAdapter.build, ARCHITECTURE §3.5).
 
         Charts in a dashboard selector's scope drop their SQL top-N LIMIT so the selector
-        re-ranks after filtering (computable from the spec via participating_chart_ids)."""
+        re-ranks after filtering (computable from the spec via participating_chart_ids).
+
+        Not atomic on rebuild: each entry is replaced delete-then-create (see
+        `_delete_if_exists`), so a mid-build failure leaves the dashboard inconsistent until
+        a retry. The exception propagates (the session is marked failed, then retried) — the
+        build never returns a half-built dashboard. Writes only to the dedicated Auto_BI
+        workbook (F3), so only the agent's own previous build is ever at risk."""
         self.ensure_database()
         in_filter_scope = participating_chart_ids(spec, self._model)
         placements: list[Placement] = []
