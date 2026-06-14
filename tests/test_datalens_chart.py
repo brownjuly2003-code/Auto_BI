@@ -122,6 +122,14 @@ def test_shared_bar_date_dimension_x_not_cast() -> None:
     assert x["data_type"] == "date" and x["cast"] == "date"
 
 
+def test_shared_bar_boolean_dimension_x_not_cast() -> None:
+    # only integer/float dimensions discretize (B2); a boolean dimension stays as-is
+    fields = _fields(("is_promo", "boolean", "DIMENSION"), ("rev", "float", "MEASURE"))
+    shared = build_chart_shared(_chart(Viz.BAR, dimensions=["is_promo"]), DS_ID, DS_NAME, fields)
+    x = {p["id"]: p for p in shared["visualization"]["placeholders"]}["x"]["items"][0]
+    assert x["data_type"] == "boolean"
+
+
 def test_shared_line_numeric_dimension_x_not_cast() -> None:
     # line/area read ALONG a continuous axis -> a numeric X stays numeric (B2 is column-only)
     fields = _fields(("store_id", "integer", "DIMENSION"), ("rev", "float", "MEASURE"))

@@ -78,8 +78,15 @@ def compile_and_build(
     """SQL_GEN -> VALIDATE -> BUILD for an already-produced spec (chat APPROVE path)."""
     # deterministic top-N defaults on categorical charts (B1, dashboard adequacy): runs
     # before SQL_GEN + adapter so BOTH the validated SQL and the built dashboard see the
-    # same normalized spec. Idempotent; no-op on charts that already express top-N.
-    spec = apply_chart_defaults(spec, model)
+    # same normalized spec. Idempotent; no-op on charts that already express top-N. The
+    # preview/advisor see the pre-normalization spec, so log what changed for transparency.
+    normalized = apply_chart_defaults(spec, model)
+    changed = [
+        c.id for o, c in zip(spec.charts, normalized.charts, strict=True) if c.query != o.query
+    ]
+    if changed:
+        log(f"нормализация: дефолтный top-N применён к категориальным чартам {changed}")
+    spec = normalized
     # invariant 2 at the BI boundary: never let an unvalidated spec reach the adapter,
     # regardless of how `spec` was produced (defense-in-depth; no-op on the happy path).
     errors = validate_spec(spec, model)

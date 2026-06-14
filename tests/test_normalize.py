@@ -117,6 +117,41 @@ def test_small_explicit_limit_is_not_widened(demo_model) -> None:
     assert _only(apply_chart_defaults(_spec(chart), demo_model)).limit == 10
 
 
+def test_order_by_measure_label_counts_as_topn(demo_model) -> None:
+    # SQL_GEN resolves a measure by its label too -> _orders_by_measure must, or it would
+    # overwrite an author's explicit top-N expressed via the measure label (P3-3)
+    m = Measure(column="revenue", agg=Aggregation.SUM, label="Выручка")
+    chart = _chart(
+        Viz.BAR, dimensions=["store_id"], measures=[m],
+        order_by=[OrderBy(by="Выручка", dir="desc")], limit=8,
+    )  # fmt: skip
+    assert apply_chart_defaults(_spec(chart), demo_model) == _spec(chart)
+
+
+def test_multi_measure_orders_by_first_measure(demo_model) -> None:
+    orders = Measure(column="orders", agg=Aggregation.SUM)  # alias -> "sum_orders"
+    chart = _chart(Viz.BAR, dimensions=["store_id"], measures=[REVENUE, orders])
+    assert _only(apply_chart_defaults(_spec(chart), demo_model)).order_by == [
+        OrderBy(by="sum_revenue", dir="desc")  # the FIRST measure's alias
+    ]
+
+
+def test_qualified_non_time_dimension_is_normalized(demo_model) -> None:
+    # the qualified ("." in ref) branch of the time check resolves a joined dimension's role;
+    # city is a non-time dimension -> the chart is still normalized (P3-5)
+    chart = _chart(Viz.BAR, dimensions=["dm.stores.city"])
+    q = _only(apply_chart_defaults(_spec(chart), demo_model))
+    assert q.order_by == [OrderBy(by="sum_revenue", dir="desc")] and q.limit == 25
+
+
+def test_unresolvable_dimension_does_not_crash(demo_model) -> None:
+    # defensive: an unknown column or table resolves to non-time (left for validate_spec to
+    # reject downstream) rather than crashing the normalizer (P3-6)
+    for dims in (["ghost_col"], ["dm.unknown.foo"]):
+        q = _only(apply_chart_defaults(_spec(_chart(Viz.BAR, dimensions=dims)), demo_model))
+        assert q.order_by == [OrderBy(by="sum_revenue", dir="desc")]
+
+
 # --- properties --------------------------------------------------------------------
 
 
