@@ -142,14 +142,17 @@ def test_shared_heatmap_degrades_to_pivot() -> None:
 
 
 class FakeClient:
-    def __init__(self) -> None:
+    def __init__(self, wb_entries: list[dict] | None = None) -> None:
         self.gateway_calls: list[tuple[str, str, dict]] = []
         self.posts: list[tuple[str, dict]] = []
+        self._wb_entries = wb_entries or []  # getWorkbookEntries result (idempotency lookup)
         self._n = 0
 
     def gateway(self, service: str, method: str, body: dict) -> dict:
         self.gateway_calls.append((service, method, body))
         self._n += 1
+        if method == "getWorkbookEntries":  # idempotency lookup
+            return {"entries": self._wb_entries}
         if method == "createDashboardV1":  # mix dash-create returns the entry envelope
             return {"entry": {"entryId": f"dash-{self._n}"}}
         return {"id": f"{method}-{self._n}"}
@@ -211,12 +214,23 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
     )
     ref = _adapter(fake).build(spec)
     methods = [m for _, m, _ in fake.gateway_calls]
-    assert methods == ["createConnection", "createDataset", "createDashboardV1"]
+    # connection lookup (idempotency) -> miss -> create, then dataset + dashboard
+    assert methods == [
+        "getWorkbookEntries",
+        "createConnection",
+        "createDataset",
+        "createDashboardV1",
+    ]
+    assert fake.gateway_calls[0][2] == {
+        "workbookId": "wb1",
+        "scope": "connection",
+        "filters": {"name": "Auto_BI ClickHouse"},
+    }
     # connection carries workbook_id (snake) and clickhouse type
-    conn_body = fake.gateway_calls[0][2]
+    conn_body = fake.gateway_calls[1][2]
     assert conn_body["workbook_id"] == "wb1" and conn_body["type"] == "clickhouse"
     # dataset carries workbook_id (snake)
-    assert fake.gateway_calls[1][2]["workbook_id"] == "wb1"
+    assert fake.gateway_calls[2][2]["workbook_id"] == "wb1"
     # chart posted to the charts engine with template=datalens + shared
     assert fake.posts[0][0] == "/api/charts/v1/charts"
     assert fake.posts[0][1]["template"] == "datalens"
@@ -226,9 +240,22 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
 
     assert isinstance(ref, DashboardRef)
     assert str(ref.id).startswith("dash-") and ref.url == f"/{ref.id}"
-    dash_body = fake.gateway_calls[2][2]
+    dash_body = fake.gateway_calls[3][2]
     linked = dash_body["entry"]["data"]["tabs"][0]["items"][0]["data"]["tabs"][0]["chartId"]
     assert linked.startswith("widget-")
+
+
+def test_ensure_database_reuses_existing_connection() -> None:
+    # a connection with the same name already exists -> reuse it, no createConnection
+    fake = FakeClient(
+        wb_entries=[
+            {"entryId": "conn-enc-id", "key": "999999/auto_bi clickhouse"},  # US lowercases keys
+        ]
+    )
+    ref = _adapter(fake).ensure_database()
+    methods = [m for _, m, _ in fake.gateway_calls]
+    assert methods == ["getWorkbookEntries"]  # lookup hit -> no create
+    assert ref.id == "conn-enc-id"
 
 
 def test_build_dashboard_data_grid() -> None:
