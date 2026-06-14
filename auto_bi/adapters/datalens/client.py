@@ -102,6 +102,9 @@ class DataLensClient:
         return response.json() if response.content else {}
 
     def health(self, path: str = "/ping") -> bool:
+        """Liveness only: ``/ping`` answers 200 whenever the UI process is up — it does NOT
+        prove a valid session, gateway forwarding, or workbook access. The adapter's
+        ``healthcheck`` adds a cheap *authorized* gateway call on top of this (F6)."""
         try:
             return self._http.get(path).status_code == 200
         except httpx.HTTPError:

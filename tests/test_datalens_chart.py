@@ -16,6 +16,7 @@ from auto_bi.adapters.datalens.adapter import (
     connection_name,
 )
 from auto_bi.adapters.datalens.chart_config import VIZ_ID, build_chart_shared
+from auto_bi.adapters.datalens.client import DataLensAPIError
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
@@ -188,6 +189,7 @@ class FakeClient:
         self.gateway_calls: list[tuple[str, str, dict]] = []
         self.posts: list[tuple[str, dict]] = []
         self.deletes: list[tuple[str, str]] = []  # (entryId, scope) from mix/deleteEntry
+        self.renames: list[tuple[str, str]] = []  # (entryId, new name) from us/renameEntry
         self._wb_entries = wb_entries or {}  # scope -> entries (idempotency lookup)
         self._n = 0
 
@@ -198,6 +200,9 @@ class FakeClient:
             return {"entries": self._wb_entries.get(body["scope"], [])}
         if method == "deleteEntry":  # mix/deleteEntry (idempotency replace)
             self.deletes.append((body["entryId"], body["scope"]))
+            return {}
+        if method == "renameEntry":  # us/renameEntry (atomic-rebuild promote, F2)
+            self.renames.append((body["entryId"], body["name"]))
             return {}
         if method == "createDashboardV1":  # mix dash-create returns the entry envelope
             return {"entry": {"entryId": f"dash-{self._n}"}}
@@ -243,6 +248,8 @@ def _adapter(fake: FakeClient) -> DataLensAdapter:
 
 
 def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
+    from auto_bi.adapters.datalens.dataset import dataset_name
+
     fake = FakeClient()
     spec = DashboardSpec(
         title="dash",
@@ -261,16 +268,24 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
     )
     ref = _adapter(fake).build(spec)
     methods = [m for _, m, _ in fake.gateway_calls]
-    # each create is preceded by an idempotency lookup (getWorkbookEntries) -> all miss
-    # here -> create. The chart create is a POST, so only its lookup shows in gateway_calls.
+    # Atomic rebuild (F2): every entry is created under a temp `__wip` name first, then
+    # promoted (delete stale canonical + rename temp->canonical) only after the whole build
+    # succeeds. Each create/promote is preceded by an idempotency lookup -> all miss here.
+    # The chart create is a POST, so only its lookups show in gateway_calls.
     assert methods == [
-        "getWorkbookEntries",  # connection lookup
+        "getWorkbookEntries",  # connection lookup (canonical, never temp)
         "createConnection",
-        "getWorkbookEntries",  # dataset lookup
+        "getWorkbookEntries",  # wip dataset lookup
         "createDataset",
-        "getWorkbookEntries",  # widget (chart) lookup
-        "getWorkbookEntries",  # dashboard lookup
+        "getWorkbookEntries",  # wip widget lookup
+        "getWorkbookEntries",  # wip dashboard lookup
         "createDashboardV1",
+        "getWorkbookEntries",  # promote dataset: canonical lookup (delete-if-exists)
+        "renameEntry",
+        "getWorkbookEntries",  # promote widget: canonical lookup
+        "renameEntry",
+        "getWorkbookEntries",  # promote dash: canonical lookup
+        "renameEntry",
     ]
     assert fake.gateway_calls[0][2] == {
         "workbookId": "wb1",
@@ -280,10 +295,17 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
     # connection carries workbook_id (snake) and clickhouse type
     conn_body = fake.gateway_calls[1][2]
     assert conn_body["workbook_id"] == "wb1" and conn_body["type"] == "clickhouse"
-    # dataset carries workbook_id (snake)
-    assert fake.gateway_calls[3][2]["workbook_id"] == "wb1"
-    # all lookups missed -> nothing deleted
+    # dataset created under the temp name, carries workbook_id (snake)
+    ds_create = fake.gateway_calls[3][2]
+    assert ds_create["workbook_id"] == "wb1"
+    assert ds_create["name"].endswith("__wip")  # created under the temp name
+    # all lookups missed -> nothing deleted; temp entries promoted to canonical names
     assert fake.deletes == []
+    assert [name for _, name in fake.renames] == [
+        dataset_name("dash", "t"),  # dataset canonical
+        "trend",  # widget canonical (safe_entry_name of chart title)
+        "dash",  # dashboard canonical (safe_entry_name of spec title)
+    ]
     # chart posted to the charts engine with template=datalens + shared
     assert fake.posts[0][0] == "/api/charts/v1/charts"
     assert fake.posts[0][1]["template"] == "datalens"
@@ -310,6 +332,36 @@ def test_ensure_database_reuses_existing_connection() -> None:
     assert methods == ["getWorkbookEntries"]  # lookup hit -> no create
     assert ref.id == "conn-enc-id"
     assert fake.deletes == []  # connection is reused (not replaced), never deleted
+
+
+def test_healthcheck_makes_authorized_call_after_ping() -> None:
+    """F6: a 200 /ping alone is not health — healthcheck also makes one cheap *authorized*
+    getWorkbookEntries on the target workbook, so a live UI with a dead session/gateway is
+    reported unhealthy here instead of failing later inside build with a worse error."""
+    # happy path: ping ok + authorized call ok
+    fake = FakeClient()
+    health = _adapter(fake).healthcheck()
+    assert health.ok and health.message == ""
+    assert [m for _, m, _ in fake.gateway_calls] == ["getWorkbookEntries"]
+    assert fake.gateway_calls[0][2] == {"workbookId": "wb1", "scope": "connection"}
+
+    # ping ok but the authorized call 401s -> unhealthy with a clear message
+    class AuthFailClient(FakeClient):
+        def gateway(self, service: str, method: str, body: dict) -> dict:
+            raise DataLensAPIError("us/getWorkbookEntries -> 401: session expired")
+
+    bad = _adapter(AuthFailClient()).healthcheck()
+    assert not bad.ok and "authorized check failed" in bad.message
+
+    # ping itself down -> unhealthy, the authorized call is never attempted
+    class DeadPingClient(FakeClient):
+        def health(self) -> bool:
+            return False
+
+    dead_client = DeadPingClient()
+    dead = _adapter(dead_client).healthcheck()
+    assert not dead.ok and "ping failed" in dead.message
+    assert dead_client.gateway_calls == []
 
 
 def test_connection_name_is_engine_aware() -> None:
@@ -366,19 +418,22 @@ def test_build_replaces_existing_dataset_chart_dashboard() -> None:
         }
     )
     _adapter(fake).build(spec)
-    # connection reused (no create, no delete); the other three replaced in place
+    # connection reused (no create, no delete). The other three are built under temp names,
+    # then promoted: the stale canonical entry is deleted and the temp one renamed onto it
+    # (atomic rebuild, F2). So the deletes happen at promote time, in promote order.
     methods = [m for _, m, _ in fake.gateway_calls]
     assert "createConnection" not in methods
     assert fake.deletes == [("ds-old", "dataset"), ("w-old", "widget"), ("b-old", "dash")]
+    assert [name for _, name in fake.renames] == [ds_name, "trend", "dash"]
 
 
-def test_build_propagates_mid_build_failure_and_is_not_atomic() -> None:
+def test_build_is_atomic_old_version_survives_mid_build_failure() -> None:
     """A chart-create failure mid-build propagates (the session is marked failed and the
-    user retries — build never returns a half-built dashboard). It also pins the documented
-    non-atomicity (F2): the old dataset+widget were already deleted before the failing
-    create, while the old dashboard is left untouched (its delete happens later, in
-    assemble). The dedicated Auto_BI workbook (F3) bounds the blast radius to the agent's
-    own previous build."""
+    user retries — build never returns a half-built dashboard). Atomic rebuild (F2): the new
+    entries are built under temp `__wip` names and the stale canonical entries are deleted
+    ONLY at promote, which a mid-build failure never reaches. So the previous working version
+    (old dataset+widget+dash) is left fully intact — nothing canonical is deleted and nothing
+    is renamed."""
 
     from auto_bi.adapters.datalens.dataset import dataset_name
 
@@ -411,10 +466,10 @@ def test_build_propagates_mid_build_failure_and_is_not_atomic() -> None:
     )
     with pytest.raises(RuntimeError, match="charts-engine 503"):
         _adapter(fake).build(spec)
-    # old dataset + widget were deleted before the failure; the old dashboard was NOT (its
-    # delete lives in assemble, never reached) -> the non-atomic window the docstring warns of
-    assert fake.deletes == [("ds-old", "dataset"), ("w-old", "widget")]
-    assert ("b-old", "dash") not in fake.deletes
+    # promote was never reached -> no canonical entry deleted, none renamed. The old working
+    # dashboard, its chart and dataset all survive the failed rebuild.
+    assert fake.deletes == []
+    assert fake.renames == []
 
 
 def test_build_dashboard_data_grid() -> None:
