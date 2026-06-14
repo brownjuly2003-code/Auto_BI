@@ -21,6 +21,8 @@ const state = {
 /* ---------- chat rendering ---------- */
 
 function addMessage(kind, text, meta) {
+  const welcome = $("chat-welcome");
+  if (welcome) welcome.hidden = true; // первое сообщение убирает приветствие
   const wrap = document.createElement("div");
   wrap.className = `msg msg-${kind}`;
   if (meta) {
@@ -582,9 +584,11 @@ function setMode(mode) {
     tab.classList.toggle("active", active);
     tab.setAttribute("aria-selected", String(active));
   }
-  $("builder").hidden = mode !== "fields";
-  $("chat-form").hidden = mode === "fields";
-  if (mode === "fields" && !$("field-tables").childElementCount) loadFieldPanel();
+  const fields = mode === "fields";
+  $("builder").hidden = !fields;
+  $("chat").hidden = fields; // в режиме «Полями» builder занимает панель сверху
+  $("chat-form").hidden = fields;
+  if (fields && !$("field-tables").childElementCount) loadFieldPanel();
   if (mode === "fields" && !state.groups.length) {
     state.groups = [{ label: "", fields: [] }];
     renderGroups();
@@ -754,6 +758,7 @@ async function submitSeed() {
     thinking.remove();
     // сессия началась: дальше — обычный чат (уточнения, правки словами)
     $("builder").hidden = true;
+    $("chat").hidden = false;
     $("chat-form").hidden = false;
     $("mode-tabs").hidden = true;
     handleTurn(turn);
@@ -788,6 +793,15 @@ $("approve-btn").addEventListener("click", approve);
 
 for (const tab of document.querySelectorAll(".mode-tab")) {
   tab.addEventListener("click", () => setMode(tab.dataset.mode));
+}
+
+// примеры в пустом чате: заполняют поле (без авто-отправки — даём отредактировать)
+for (const chip of document.querySelectorAll(".example-chip")) {
+  chip.addEventListener("click", () => {
+    const input = $("chat-text");
+    input.value = chip.textContent.trim();
+    input.focus();
+  });
 }
 
 $("add-group").addEventListener("click", () => {
