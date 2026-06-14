@@ -144,11 +144,38 @@ class DataLensAdapter:
 
     def ensure_database(self, dwh: DWHConfig | None = None) -> DatabaseRef:
         dwh = dwh or self._dwh
+        # idempotent by name (mirror SupersetAdapter): DataLens enforces unique entry keys
+        # per workbook, and CONNECTION_NAME is constant, so a second build would otherwise
+        # fail with US "entity already exists". Reuse the existing connection if present.
+        existing = self._find_entry_id("connection", CONNECTION_NAME)
+        if existing is not None:
+            self._connection_id = existing
+            logger.info("datalens connection reused: id=%s", existing)
+            return DatabaseRef(id=existing, name=CONNECTION_NAME)
         body = build_connection_payload(dwh, name=CONNECTION_NAME, workbook_id=self._workbook_id)
         created = self._client.gateway("bi", "createConnection", body)
         self._connection_id = created["id"]
         logger.info("datalens connection created: id=%s", self._connection_id)
         return DatabaseRef(id=self._connection_id, name=CONNECTION_NAME)
+
+    def _find_entry_id(self, scope: str, name: str) -> str | None:
+        """Encoded entryId of a workbook entry with this exact name and scope, or None.
+
+        Uses `us/getWorkbookEntries` (reversal §5.4): the server `filters.name` narrows the
+        page, and the exact name is matched on the `key` tail (`<id>/<name>`) case-folded —
+        US lowercases keys, so a substring filter alone is not authoritative.
+        """
+        res = self._client.gateway(
+            "us",
+            "getWorkbookEntries",
+            {"workbookId": self._workbook_id, "scope": scope, "filters": {"name": name}},
+        )
+        target = name.casefold()
+        for entry in res.get("entries", []):
+            key = entry.get("key") or ""
+            if key.rsplit("/", 1)[-1].casefold() == target:
+                return entry["entryId"]
+        return None
 
     def ensure_dataset(self, query, name: str | None = None) -> DatasetRef:
         if self._connection_id is None:
