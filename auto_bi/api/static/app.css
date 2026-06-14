@@ -562,3 +562,45 @@ body { display: flex; flex-direction: column; }
 .obs-event-kind { font-weight: 600; color: var(--text-2); }
 .obs-event-detail { color: var(--text-2); overflow-wrap: anywhere; }
 .obs-event-ms { color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---------- auth (Phase 4, opt-in) ---------- */
+.chip-user { background: #e7efee; color: var(--accent); }
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid var(--surface-dim);
+}
+.btn-ghost:hover { background: var(--surface-dim); }
+
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 35, 41, 0.45);
+  z-index: 100;
+}
+.login-card {
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(40, 35, 25, 0.18);
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.login-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+.login-card input {
+  padding: 9px 11px;
+  border: 1px solid var(--surface-dim);
+  border-radius: var(--radius);
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+}
+.login-card input:focus { outline: none; border-color: var(--accent); }
+.login-card .btn-primary { margin-top: 4px; }
+.login-error { color: var(--critical); font-size: 13px; margin: 0; }

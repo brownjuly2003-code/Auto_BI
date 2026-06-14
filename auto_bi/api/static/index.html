@@ -21,8 +21,20 @@
       </select>
     </label>
     <span id="session-chip" class="chip chip-idle">нет сессии</span>
+    <span id="user-chip" class="chip chip-user" hidden></span>
+    <button type="button" id="logout-btn" class="btn btn-ghost" hidden>Выйти</button>
   </div>
 </header>
+
+<div id="login-overlay" class="login-overlay" hidden>
+  <form id="login-form" class="login-card" aria-label="Вход">
+    <div class="login-title">Вход в Auto_BI</div>
+    <input id="login-user" type="text" placeholder="Пользователь" autocomplete="username" required>
+    <input id="login-pass" type="password" placeholder="Пароль" autocomplete="current-password" required>
+    <p id="login-error" class="login-error" hidden></p>
+    <button type="submit" class="btn btn-primary">Войти</button>
+  </form>
+</div>
 
 <main class="layout">
   <section class="chat-pane" aria-label="Диалог">

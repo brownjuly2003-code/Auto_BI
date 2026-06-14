@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-_SCHEMA_VERSION = 2  # bump together with a migration when the schema changes
+_SCHEMA_VERSION = 3  # bump together with a migration when the schema changes
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -87,7 +87,32 @@ CREATE TABLE IF NOT EXISTS dm_change_requests (
     narrative   TEXT NOT NULL DEFAULT '',
     status      TEXT NOT NULL DEFAULT 'open'
 );
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    username        TEXT NOT NULL UNIQUE,
+    password_hash   TEXT NOT NULL,
+    role            TEXT NOT NULL DEFAULT 'analyst',
+    allowed_schemas TEXT NOT NULL DEFAULT '[]'  -- JSON array; ["*"] = all schemas
+);
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    token       TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_auth_tokens_user ON auth_tokens(user_id);
 """
+
+
+def _decode_user(row: dict[str, Any]) -> dict[str, Any]:
+    """Row -> user dict with allowed_schemas decoded from its JSON-array column."""
+    user = dict(row)
+    try:
+        user["allowed_schemas"] = json.loads(user.get("allowed_schemas") or "[]")
+    except (TypeError, ValueError):
+        user["allowed_schemas"] = []
+    return user
 
 
 class Store:
@@ -111,11 +136,12 @@ class Store:
 
         executescript ran first with `CREATE TABLE IF NOT EXISTS`, so a brand-new DB
         already has the full current schema (the guarded _add_column calls below are
-        no-ops) and trace_events exists on any DB. The ALTERs add the observability
-        columns to a legacy `llm_calls` that IF NOT EXISTS left untouched — this covers
-        both a v1 DB and a pre-versioning v0 DB whose old llm_calls lacks the columns
-        (so we must NOT early-return on version 0). Idempotent — guarded by the column
-        check, so it is safe to run on the current schema too.
+        no-ops) and the newer tables (trace_events v2, users/auth_tokens v3) exist on
+        any DB. The ALTERs add the v2 observability columns to a legacy `llm_calls` that
+        IF NOT EXISTS left untouched — this covers both a v1 DB and a pre-versioning v0
+        DB whose old llm_calls lacks the columns (so we must NOT early-return on version
+        0). v3 added only new tables (no ALTER), so the version bump below suffices.
+        Idempotent — guarded by the column check, so it is safe to run on any schema.
         """
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
         if version < 2:
@@ -344,6 +370,56 @@ class Store:
             self._db.execute(
                 "UPDATE dm_change_requests SET status = ? WHERE id = ?", (status, request_id)
             )
+
+    # --- auth: users + tokens (schema v3) -----------------------------------------
+
+    def upsert_user(
+        self, username: str, password_hash: str, role: str, allowed_schemas: list[str]
+    ) -> None:
+        """Create or update a user by username (idempotent seed from the users file)."""
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO users (username, password_hash, role, allowed_schemas)"
+                " VALUES (?, ?, ?, ?)"
+                " ON CONFLICT(username) DO UPDATE SET"
+                " password_hash = excluded.password_hash, role = excluded.role,"
+                " allowed_schemas = excluded.allowed_schemas",
+                (username, password_hash, role, json.dumps(allowed_schemas)),
+            )
+
+    def get_user(self, username: str) -> dict[str, Any] | None:
+        rows = self._rows("SELECT * FROM users WHERE username = ?", username)
+        return _decode_user(rows[0]) if rows else None
+
+    def list_users(self) -> list[dict[str, Any]]:
+        return [_decode_user(r) for r in self._rows("SELECT * FROM users ORDER BY username")]
+
+    def create_token(self, token: str, user_id: int, ttl_hours: int) -> str:
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO auth_tokens (token, user_id, expires_at)"
+                f" VALUES (?, ?, datetime('now', '+{int(ttl_hours)} hours'))",
+                (token, user_id),
+            )
+        return token
+
+    def token_user(self, token: str) -> dict[str, Any] | None:
+        """Resolve a non-expired token to its user, else None."""
+        rows = self._rows(
+            "SELECT u.* FROM auth_tokens t JOIN users u ON u.id = t.user_id"
+            " WHERE t.token = ? AND t.expires_at > datetime('now')",
+            token,
+        )
+        return _decode_user(rows[0]) if rows else None
+
+    def delete_token(self, token: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM auth_tokens WHERE token = ?", (token,))
+
+    def purge_expired_tokens(self) -> int:
+        with self._lock, self._db:
+            cur = self._db.execute("DELETE FROM auth_tokens WHERE expires_at <= datetime('now')")
+        return cur.rowcount
 
     # --- helpers ------------------------------------------------------------------
 

@@ -52,7 +52,19 @@ class Settings(BaseSettings):
 
     send_samples: bool = True
 
-    # SQLite store (sessions, specs, builds, llm_calls, dm_change_requests)
+    # Auth + RBAC (Phase 4) — OPT-IN. Off by default: the CLI, tests and the single-user
+    # §2.1 flow stay unauthenticated. When enabled, the API requires a bearer token and
+    # restricts each user to their allowed DWH schemas (auto_bi.auth).
+    auth_enabled: bool = False
+    # YAML of users: `users: [{username, password, role, schemas: [...]}]`. Plaintext
+    # passwords (operator secret, keep out of VCS) are hashed before reaching the store.
+    auth_users_file: str = ""
+    # Bootstrap admin used only when auth is on AND no users file is given.
+    admin_user: str = "admin"
+    admin_password: str = ""
+    auth_token_ttl_hours: int = 24
+
+    # SQLite store (sessions, specs, builds, llm_calls, dm_change_requests, users)
     store_path: str = "data/auto_bi.sqlite"
 
 

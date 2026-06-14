@@ -802,6 +802,67 @@ $("obs").addEventListener("toggle", () => {
   if ($("obs").open) refreshObservability();
 });
 
-refreshDcr();
-refreshGaps();
-refreshObservability();
+/* ---------- auth (Phase 4, opt-in) ---------- */
+
+function startApp() {
+  refreshDcr();
+  refreshGaps();
+  refreshObservability();
+}
+
+function onAuthed(me) {
+  $("login-overlay").hidden = true;
+  const chip = $("user-chip");
+  chip.textContent = `${me.username} · ${me.role}`;
+  chip.hidden = false;
+  $("logout-btn").hidden = false;
+  startApp();
+}
+
+async function initAuth() {
+  let health = {};
+  try {
+    health = await api("/api/v1/health");
+  } catch {
+    /* health is open; if it fails the API is down — startApp surfaces errors */
+  }
+  if (!health.auth) {
+    startApp(); // auth disabled -> behave as the single-user app
+    return;
+  }
+  try {
+    onAuthed(await api("/api/v1/auth/me")); // a valid session cookie -> straight in
+  } catch {
+    $("login-overlay").hidden = false; // need to log in
+  }
+}
+
+$("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("login-error").hidden = true;
+  try {
+    const res = await api("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: $("login-user").value,
+        password: $("login-pass").value,
+      }),
+    });
+    onAuthed(res.user); // login set the cookie; fetch/SSE now carry it automatically
+  } catch {
+    const el = $("login-error");
+    el.textContent = "Неверный логин или пароль";
+    el.hidden = false;
+  }
+});
+
+$("logout-btn").addEventListener("click", async () => {
+  try {
+    await api("/api/v1/auth/logout", { method: "POST" });
+  } catch {
+    /* clear client state regardless */
+  }
+  location.reload();
+});
+
+initAuth();

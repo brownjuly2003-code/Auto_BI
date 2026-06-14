@@ -10,6 +10,7 @@ Fields-first: режим «Полями» строит панель из MODEL
 никакой бизнес-логики здесь нет.
 """
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -200,6 +201,15 @@ if __name__ == "__main__":
     store = Store(tmp / "dev_ui.sqlite")
     model_path = tmp / "dev_model.yaml"  # enrichment-правки пишутся сюда, не в repo-модель
     MODEL.dump(model_path)
+    # AUTO_BI_DEV_AUTH=1 -> включить auth/RBAC для браузерной проверки логина (Phase 4).
+    # alice видит только схему dm (вся демо-модель); bob — пустую (нет доступа к dm).
+    auth_demo = os.environ.get("AUTO_BI_DEV_AUTH") == "1"
+    if auth_demo:
+        from auto_bi.auth import hash_password
+
+        store.upsert_user("alice", hash_password("secret"), "analyst", ["dm"])
+        store.upsert_user("bob", hash_password("secret"), "analyst", ["finance"])
+        print("auth demo ON — войдите как alice / secret (или bob / secret = нет доступа к dm)")
     app = create_app(
         model=MODEL,
         llm=DevLLM(store=store),
@@ -207,5 +217,6 @@ if __name__ == "__main__":
         store=store,
         builder=dev_builder,
         model_path=model_path,
+        auth_enabled=auth_demo,
     )
     uvicorn.run(app, host="127.0.0.1", port=8201)
