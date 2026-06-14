@@ -48,19 +48,38 @@ _COLORS_CONFIG = {
 }
 _EXTRA_SETTINGS = {"titleMode": "hide", "title": "", "legendMode": "show"}
 
+# A numeric dimension (store_id, manager_id, ...) on a DataLens column chart's categorical
+# placeholder (X / color) lands on a CONTINUOUS axis — bars at numeric positions 0..N (a wall
+# of thin bars) or a color gradient instead of distinct categories. Casting the field to a
+# string in the chart placeholder forces a discrete category axis (B2, live-verified: a
+# string-cast store_id axis returns highcharts `categories`, a numeric one returns raw-numeric
+# x points). Measures and date/string dimensions are unaffected; the dataset field is untouched
+# (only the per-chart placeholder casts), so the subselect SQL and dashboard selectors are not.
+_NUMERIC_DATA_TYPES = frozenset({"integer", "float"})
 
-def _field_item(field: dict, field_id: str, dataset_id: str, dataset_name: str) -> dict:
+
+def _is_numeric_dimension(field: dict) -> bool:
+    return field.get("type") == "DIMENSION" and field.get("data_type") in _NUMERIC_DATA_TYPES
+
+
+def _field_item(
+    field: dict, field_id: str, dataset_id: str, dataset_name: str, *, as_string: bool = False
+) -> dict:
     """One placeholder item: a dataset field bound into a chart section.
 
     Shape reversed from the demo Wizard charts (reversal §5.2); the chart binds to the
-    dataset by `guid` + `avatar_id`, both produced by build_dataset_payload.
+    dataset by `guid` + `avatar_id`, both produced by build_dataset_payload. `as_string`
+    casts this placeholder's field to a string (data_type + cast) for a discrete category
+    axis — see `_NUMERIC_DATA_TYPES`.
     """
+    data_type = "string" if as_string else field["data_type"]
+    cast = "string" if as_string else field["cast"]
     return {
         "type": field["type"],
         "calc_mode": "direct",
-        "data_type": field["data_type"],
-        "initial_data_type": field["data_type"],
-        "cast": field["cast"],
+        "data_type": data_type,
+        "initial_data_type": data_type,
+        "cast": cast,
         "aggregation": field["aggregation"],
         "source": field["source"],
         "guid": field["guid"],
@@ -110,12 +129,15 @@ def build_chart_shared(
 
     used: dict[str, None] = {}  # aliases referenced by this chart, order-preserving
 
-    def item(alias: str) -> dict:
+    def item(alias: str, *, discrete: bool = False) -> dict:
         used.setdefault(alias, None)
-        return _field_item(fields_by_alias[alias], ids[alias], dataset_id, dataset_name)
+        field = fields_by_alias[alias]
+        # on a column chart, a numeric dimension must be string-cast to render as categories
+        as_string = discrete and _is_numeric_dimension(field)
+        return _field_item(field, ids[alias], dataset_id, dataset_name, as_string=as_string)
 
-    def dims(refs: list[str]) -> list[dict]:
-        return [item(column_alias(r)) for r in refs]
+    def dims(refs: list[str], *, discrete: bool = False) -> list[dict]:
+        return [item(column_alias(r), discrete=discrete) for r in refs]
 
     def measures() -> list[dict]:
         return [item(measure_alias(m)) for m in q.measures]
@@ -131,9 +153,13 @@ def build_chart_shared(
         breakdown: dict[str, None] = {}
         for r in (*q.series, *q.dimensions[1:]):
             breakdown.setdefault(r, None)
-        colors = dims(list(breakdown))
+        # bar/stacked_bar -> "column" viz: a numeric dimension on the categorical X / color
+        # would land on a continuous axis (a wall of thin bars) / a color gradient, so discretize
+        # it (B2). line/area keep a continuous axis (time / number) — they read along it.
+        discrete = chart.viz in (Viz.BAR, Viz.STACKED_BAR)
+        colors = dims(list(breakdown), discrete=discrete)
         placeholders = [
-            {"id": "x", "items": dims(q.dimensions[:1])},
+            {"id": "x", "items": dims(q.dimensions[:1], discrete=discrete)},
             {"id": "y", "items": measures()},
         ]
     elif chart.viz == Viz.PIE:

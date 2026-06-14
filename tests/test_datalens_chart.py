@@ -100,6 +100,52 @@ def test_shared_bar_is_column() -> None:
     assert shared["visualization"]["id"] == "column"
 
 
+def test_shared_bar_numeric_dimension_x_is_string_cast() -> None:
+    # B2: a numeric dimension on a column chart's X is cast to string -> discrete category
+    # axis (live-verified: returns highcharts `categories`, not raw-numeric x points). The
+    # field stays a DIMENSION; only its data_type/cast are coerced for this placeholder.
+    fields = _fields(("store_id", "integer", "DIMENSION"), ("rev", "float", "MEASURE"))
+    shared = build_chart_shared(_chart(Viz.BAR, dimensions=["store_id"]), DS_ID, DS_NAME, fields)
+    ph = {p["id"]: p for p in shared["visualization"]["placeholders"]}
+    x = ph["x"]["items"][0]
+    assert x["data_type"] == "string" and x["cast"] == "string"
+    assert x["initial_data_type"] == "string" and x["type"] == "DIMENSION"
+    # the measure on Y is never cast
+    assert ph["y"]["items"][0]["data_type"] == "float"
+
+
+def test_shared_bar_date_dimension_x_not_cast() -> None:
+    # a date X (column time-series) keeps its date type — only numeric dimensions discretize
+    fields = _fields(("date", "date", "DIMENSION"), ("rev", "float", "MEASURE"))
+    shared = build_chart_shared(_chart(Viz.BAR, dimensions=["date"]), DS_ID, DS_NAME, fields)
+    x = {p["id"]: p for p in shared["visualization"]["placeholders"]}["x"]["items"][0]
+    assert x["data_type"] == "date" and x["cast"] == "date"
+
+
+def test_shared_line_numeric_dimension_x_not_cast() -> None:
+    # line/area read ALONG a continuous axis -> a numeric X stays numeric (B2 is column-only)
+    fields = _fields(("store_id", "integer", "DIMENSION"), ("rev", "float", "MEASURE"))
+    shared = build_chart_shared(_chart(Viz.LINE, dimensions=["store_id"]), DS_ID, DS_NAME, fields)
+    x = {p["id"]: p for p in shared["visualization"]["placeholders"]}["x"]["items"][0]
+    assert x["data_type"] == "integer"
+
+
+def test_shared_stacked_bar_numeric_color_breakdown_is_string_cast() -> None:
+    # the color/series breakdown is categorical too: a numeric series would be a gradient,
+    # so it is discretized like the X axis. The date X stays a date.
+    fields = _fields(
+        ("date", "date", "DIMENSION"),
+        ("store_id", "integer", "DIMENSION"),
+        ("rev", "float", "MEASURE"),
+    )
+    chart = _chart(Viz.STACKED_BAR, dimensions=["date"], series=["store_id"])
+    shared = build_chart_shared(chart, DS_ID, DS_NAME, fields)
+    x = {p["id"]: p for p in shared["visualization"]["placeholders"]}["x"]["items"][0]
+    assert x["data_type"] == "date"  # time axis unchanged
+    color = shared["colors"][0]
+    assert color["source"] == "store_id" and color["data_type"] == "string"
+
+
 def test_shared_pie_sort_and_labels_by_measure() -> None:
     fields = _fields(("city", "string", "DIMENSION"), ("rev", "float", "MEASURE"))
     shared = build_chart_shared(_chart(Viz.PIE, dimensions=["city"]), DS_ID, DS_NAME, fields)
