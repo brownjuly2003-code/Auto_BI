@@ -35,7 +35,7 @@ from auto_bi.adapters.datalens.dataset import (
     safe_entry_name,
 )
 from auto_bi.adapters.superset.native_filters import participating_chart_ids
-from auto_bi.ir.spec import ChartSpec, DashboardFilter, DashboardSpec, column_alias
+from auto_bi.ir.spec import ChartQuery, ChartSpec, DashboardFilter, DashboardSpec, column_alias
 from auto_bi.semantic.model import ColumnRole, SemanticModel
 
 logger = logging.getLogger(__name__)
@@ -327,7 +327,7 @@ class DataLensAdapter:
             )
 
     def ensure_dataset(
-        self, query, name: str | None = None, *, apply_limit: bool = True
+        self, query: ChartQuery, name: str | None = None, *, apply_limit: bool = True
     ) -> DatasetRef:
         if self._connection_id is None:
             self.ensure_database()

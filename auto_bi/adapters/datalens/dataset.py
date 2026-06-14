@@ -83,7 +83,12 @@ def safe_entry_name(title: str, fallback: str = "Auto_BI") -> str:
     cleaned = re.sub(rf"[^{_NAME_BODY}]", " ", title)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     cleaned = cleaned.strip(_NAME_EDGE_STRIP)
-    return cleaned or fallback
+    if cleaned:
+        return cleaned
+    # nothing convertible -> make the fallback unique per original title, else two
+    # un-nameable titles ("###", "???") would both become one entry name and the
+    # idempotency lookup would delete one when creating the other.
+    return f"{fallback}_{hashlib.sha1(title.encode()).hexdigest()[:8]}"
 
 
 def _stable_uuid(*parts: str) -> str:

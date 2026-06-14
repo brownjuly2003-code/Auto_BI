@@ -20,7 +20,7 @@ from auto_bi.adapters.datalens.dataset import (
     dataset_name,
     safe_entry_name,
 )
-from auto_bi.ir.spec import ChartQuery, JoinSpec, Measure
+from auto_bi.ir.spec import ChartQuery, JoinSpec, Measure, column_alias
 from auto_bi.semantic.model import (
     Aggregation,
     Column,
@@ -166,6 +166,30 @@ def test_dataset_result_schema_roles_and_types(demo_model: SemanticModel) -> Non
     assert all(f["calc_mode"] == "direct" and f["valid"] for f in fields.values())
 
 
+def test_dataset_non_sum_measures_reaggregate_as_sum_identity(demo_model: SemanticModel) -> None:
+    """AVG/MIN/MAX measures ALSO get DataLens aggregation "sum" — correct because the
+    dataset subselect already computed the aggregate per group and the chart's group-by
+    equals the dataset grain (one row per group), so SUM over a single value is identity.
+    This pins the invariant the "sum" re-aggregation relies on (reversal §4 / F4)."""
+    query = ChartQuery(
+        table="dm.sales_daily",
+        dimensions=["store_id"],  # dataset grain == chart grain -> one row per group
+        measures=[
+            Measure(column="revenue", agg=Aggregation.AVG, label="avg_rev"),
+            Measure(column="orders", agg=Aggregation.MAX, label="max_orders"),
+        ],
+    )
+    fields = {f["title"]: f for f in build_dataset_payload(
+        query, demo_model, workbook_id="wb", connection_id="c", name="ds"
+    )["dataset"]["result_schema"]}  # fmt: skip
+    assert fields["avg_rev"]["aggregation"] == "sum" and fields["avg_rev"]["data_type"] == "float"
+    assert fields["max_orders"]["aggregation"] == "sum"
+    # the dataset's dimension fields are exactly the chart's group columns (grain match,
+    # which is what makes the sum-identity hold)
+    dims = [f["title"] for f in fields.values() if f["type"] == "DIMENSION"]
+    assert dims == [column_alias(c) for c in query.group_columns()]
+
+
 def test_dataset_joined_dimension_resolves_type_from_joined_table(
     demo_model: SemanticModel,
 ) -> None:
@@ -245,7 +269,9 @@ def test_safe_entry_name_strips_disallowed_and_edges() -> None:
     # ':' is allowed inside but not at an edge -> kept inside, trimmed off the end
     assert safe_entry_name("Итого: продажи") == "Итого: продажи"
     assert safe_entry_name("-- Итого --") == "Итого"  # edge dashes/spaces trimmed
-    assert safe_entry_name("###") == "Auto_BI"  # nothing valid -> fallback
+    # nothing valid -> fallback, made unique per title so two un-nameable titles differ
+    assert safe_entry_name("###").startswith("Auto_BI_")
+    assert safe_entry_name("###") != safe_entry_name("???")
 
 
 # --- client transport -------------------------------------------------------
