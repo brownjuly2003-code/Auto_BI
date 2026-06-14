@@ -43,7 +43,23 @@ logger = logging.getLogger(__name__)
 # A placed chart: its spec, the created widget entryId, and its dataset id (for selectors).
 Placement = tuple[ChartSpec, str, str]
 
-CONNECTION_NAME = "Auto_BI ClickHouse"
+# Connection entry name, engine-aware (F11): a CH and a GP connection in the same workbook
+# must get distinct names, else idempotent-by-name reuse (ensure_database) would conflate
+# them — both would resolve to one "Auto_BI ClickHouse" entry. The label is the human
+# spelling of the engine (so the default CH name stays "Auto_BI ClickHouse", backward
+# compatible with connections already created on the stand); unknown engines fall back to
+# the raw engine string.
+_CONNECTION_ENGINE_LABEL = {
+    "clickhouse": "ClickHouse",
+    "greenplum": "Greenplum",
+    "greengage": "Greengage",
+    "postgres": "PostgreSQL",
+    "postgresql": "PostgreSQL",
+}
+
+
+def connection_name(engine: str) -> str:
+    return f"Auto_BI {_CONNECTION_ENGINE_LABEL.get(engine, engine)}"
 
 
 # Grid (24 cols): selectors in a top row (6 wide, 2 tall), charts below in 2 columns.
@@ -266,19 +282,21 @@ class DataLensAdapter:
 
     def ensure_database(self, dwh: DWHConfig | None = None) -> DatabaseRef:
         dwh = dwh or self._dwh
+        name = connection_name(dwh.engine)
         # idempotent by name (mirror SupersetAdapter): DataLens enforces unique entry keys
-        # per workbook, and CONNECTION_NAME is constant, so a second build would otherwise
-        # fail with US "entity already exists". Reuse the existing connection if present.
-        existing = self._find_entry_id("connection", CONNECTION_NAME)
+        # per workbook, and the connection name is deterministic per engine, so a second
+        # build would otherwise fail with US "entity already exists". Reuse the existing
+        # connection if present.
+        existing = self._find_entry_id("connection", name)
         if existing is not None:
             self._connection_id = existing
             logger.info("datalens connection reused: id=%s", existing)
-            return DatabaseRef(id=existing, name=CONNECTION_NAME)
-        body = build_connection_payload(dwh, name=CONNECTION_NAME, workbook_id=self._workbook_id)
+            return DatabaseRef(id=existing, name=name)
+        body = build_connection_payload(dwh, name=name, workbook_id=self._workbook_id)
         created = self._client.gateway("bi", "createConnection", body)
         self._connection_id = created["id"]
         logger.info("datalens connection created: id=%s", self._connection_id)
-        return DatabaseRef(id=self._connection_id, name=CONNECTION_NAME)
+        return DatabaseRef(id=self._connection_id, name=name)
 
     def _find_entry_id(self, scope: str, name: str) -> str | None:
         """Encoded entryId of a workbook entry with this exact name and scope, or None.
@@ -387,6 +405,12 @@ class DataLensAdapter:
         charts: list[ChartRef],
         placements: list[Placement] | None = None,
     ) -> DashboardRef:
+        # Mirror SupersetAdapter.assemble_dashboard: fail early and clearly on a chart/spec
+        # mismatch (F5). build_dashboard_data also guards this, but only for widget_ids; a
+        # direct call with mis-synced placements/charts would otherwise fail later in
+        # build_selectors' strict zip with a worse diagnostic.
+        if len(charts) != len(spec.charts):
+            raise ValueError(f"got {len(charts)} chart refs for {len(spec.charts)} spec charts")
         # `mix/createDashboardV1` injects schemeVersion, gathers chart links and runs
         # Dash.validateData server-side, then us._createEntry (scope=Dash). The `data` blob
         # must omit schemeVersion (reversal §5.3); workbook entries take workbookId+name.

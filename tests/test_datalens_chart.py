@@ -13,6 +13,7 @@ from auto_bi.adapters.datalens.adapter import (
     DataLensAdapter,
     build_dashboard_data,
     build_selectors,
+    connection_name,
 )
 from auto_bi.adapters.datalens.chart_config import VIZ_ID, build_chart_shared
 from auto_bi.ir.spec import (
@@ -145,6 +146,40 @@ def test_shared_heatmap_degrades_to_pivot() -> None:
     assert ph["pivot-table-columns"]["items"][0]["source"] == "city"
 
 
+def test_shared_full_shape_pins_service_blocks() -> None:
+    """Pin the complete top-level shape of `shared` (F10): the service blocks
+    colorsConfig/extraSettings and version/type/updates aren't covered by the per-viz
+    tests, so a DataLens schema tightening would only surface live. Mirrors the Superset
+    form_data contract round-trip."""
+    fields = _fields(("date", "date", "DIMENSION"), ("rev", "float", "MEASURE"))
+    shared = build_chart_shared(_chart(Viz.LINE, dimensions=["date"]), DS_ID, DS_NAME, fields)
+    # exact top-level key set (no extra/missing keys vs the reversed Wizard shape)
+    assert set(shared) == {
+        "colors", "colorsConfig", "datasetsIds", "datasetsPartialFields", "extraSettings",
+        "filters", "geopointsConfig", "hierarchies", "labels", "links", "segments",
+        "shapes", "shapesConfig", "sort", "tooltips", "type", "updates", "version",
+        "visualization",
+    }  # fmt: skip
+    # service blocks the per-viz tests don't pin
+    assert shared["colorsConfig"] == {
+        "gradientMode": "2-point",
+        "gradientPalette": "default",
+        "polygonBorders": "show",
+        "reversed": False,
+        "thresholdsMode": "auto",
+    }
+    assert shared["extraSettings"] == {"titleMode": "hide", "title": "", "legendMode": "show"}
+    assert shared["type"] == "datalens" and shared["version"] == "4"
+    # empty collections the schema requires stay present and empty
+    for k in ("filters", "hierarchies", "links", "segments", "shapes", "tooltips", "updates"):
+        assert shared[k] == []
+    assert shared["geopointsConfig"] == {} and shared["shapesConfig"] == {}
+    # service-block dicts are copied per call, not shared module state (no mutable-default aliasing)
+    other = build_chart_shared(_chart(Viz.LINE, dimensions=["date"]), DS_ID, DS_NAME, fields)
+    assert shared["colorsConfig"] is not other["colorsConfig"]
+    assert shared["extraSettings"] is not other["extraSettings"]
+
+
 # --- adapter ----------------------------------------------------------------
 
 
@@ -275,6 +310,28 @@ def test_ensure_database_reuses_existing_connection() -> None:
     assert methods == ["getWorkbookEntries"]  # lookup hit -> no create
     assert ref.id == "conn-enc-id"
     assert fake.deletes == []  # connection is reused (not replaced), never deleted
+
+
+def test_connection_name_is_engine_aware() -> None:
+    # F11: a CH and a GP connection in one workbook get distinct names, so idempotent
+    # reuse never conflates them. CH keeps its existing spelling (backward compatible).
+    assert connection_name("clickhouse") == "Auto_BI ClickHouse"
+    assert connection_name("greenplum") == "Auto_BI Greenplum"
+    assert connection_name("greengage") == "Auto_BI Greengage"
+    assert connection_name("postgres") == "Auto_BI PostgreSQL"
+    assert connection_name("mystery") == "Auto_BI mystery"  # unknown -> raw engine string
+
+
+def test_ensure_database_greenplum_uses_engine_named_connection() -> None:
+    fake = FakeClient()
+    gp_dwh = DWHConfig(
+        host="h", port=5432, database="dm", user="ro", password="pw", engine="greenplum"
+    )
+    DataLensAdapter(fake, gp_dwh, _model(), workbook_id="wb1").ensure_database()
+    # both the idempotency lookup and the create use the GP-specific name + type (F11)
+    assert fake.gateway_calls[0][2]["filters"]["name"] == "Auto_BI Greenplum"
+    conn_body = fake.gateway_calls[1][2]
+    assert conn_body["name"] == "Auto_BI Greenplum" and conn_body["type"] == "greenplum"
 
 
 def test_build_replaces_existing_dataset_chart_dashboard() -> None:
@@ -417,6 +474,26 @@ def test_assemble_dashboard_creates_dash_entry() -> None:
     linked = body["entry"]["data"]["tabs"][0]["items"][0]["data"]["tabs"][0]["chartId"]
     assert linked == "wEnc"
     assert isinstance(ref, DashboardRef) and ref.url == f"/{ref.id}"
+
+
+def test_assemble_dashboard_rejects_chart_spec_mismatch() -> None:
+    # F5: mirror SupersetAdapter — a chart/spec length mismatch fails early and clearly,
+    # before any gateway call, with the same diagnostic.
+    from auto_bi.adapters.base import ChartRef
+
+    fake = FakeClient()
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(id="a", title="A", viz=Viz.BIG_NUMBER, query=ChartQuery(
+                table="dm.sales_daily", measures=[Measure(column="revenue", agg=Aggregation.SUM)])),
+            ChartSpec(id="b", title="B", viz=Viz.BIG_NUMBER, query=ChartQuery(
+                table="dm.sales_daily", measures=[Measure(column="revenue", agg=Aggregation.SUM)])),
+        ],
+    )  # fmt: skip
+    with pytest.raises(ValueError, match="1 chart refs for 2 spec charts"):
+        _adapter(fake).assemble_dashboard(spec, [ChartRef(id="w", name="A")])
+    assert fake.gateway_calls == []
 
 
 # --- selectors --------------------------------------------------------------
