@@ -16,6 +16,7 @@ from auto_bi.adapters.datalens.adapter import (
     connection_name,
 )
 from auto_bi.adapters.datalens.chart_config import VIZ_ID, build_chart_shared
+from auto_bi.adapters.datalens.client import DataLensAPIError
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
@@ -310,6 +311,36 @@ def test_ensure_database_reuses_existing_connection() -> None:
     assert methods == ["getWorkbookEntries"]  # lookup hit -> no create
     assert ref.id == "conn-enc-id"
     assert fake.deletes == []  # connection is reused (not replaced), never deleted
+
+
+def test_healthcheck_makes_authorized_call_after_ping() -> None:
+    """F6: a 200 /ping alone is not health — healthcheck also makes one cheap *authorized*
+    getWorkbookEntries on the target workbook, so a live UI with a dead session/gateway is
+    reported unhealthy here instead of failing later inside build with a worse error."""
+    # happy path: ping ok + authorized call ok
+    fake = FakeClient()
+    health = _adapter(fake).healthcheck()
+    assert health.ok and health.message == ""
+    assert [m for _, m, _ in fake.gateway_calls] == ["getWorkbookEntries"]
+    assert fake.gateway_calls[0][2] == {"workbookId": "wb1", "scope": "connection"}
+
+    # ping ok but the authorized call 401s -> unhealthy with a clear message
+    class AuthFailClient(FakeClient):
+        def gateway(self, service: str, method: str, body: dict) -> dict:
+            raise DataLensAPIError("us/getWorkbookEntries -> 401: session expired")
+
+    bad = _adapter(AuthFailClient()).healthcheck()
+    assert not bad.ok and "authorized check failed" in bad.message
+
+    # ping itself down -> unhealthy, the authorized call is never attempted
+    class DeadPingClient(FakeClient):
+        def health(self) -> bool:
+            return False
+
+    dead_client = DeadPingClient()
+    dead = _adapter(dead_client).healthcheck()
+    assert not dead.ok and "ping failed" in dead.message
+    assert dead_client.gateway_calls == []
 
 
 def test_connection_name_is_engine_aware() -> None:

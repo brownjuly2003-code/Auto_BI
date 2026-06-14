@@ -27,7 +27,7 @@ from auto_bi.adapters.base import (
     DWHConfig,
 )
 from auto_bi.adapters.datalens.chart_config import DEGRADED, build_chart_shared
-from auto_bi.adapters.datalens.client import DataLensClient
+from auto_bi.adapters.datalens.client import DataLensAPIError, DataLensClient
 from auto_bi.adapters.datalens.dataset import (
     build_connection_payload,
     build_dataset_payload,
@@ -277,8 +277,22 @@ class DataLensAdapter:
     # --- BIAdapter ----------------------------------------------------------
 
     def healthcheck(self) -> AdapterHealth:
-        ok = self._client.health()
-        return AdapterHealth(ok=ok, message="" if ok else "ping failed")
+        # `/ping` only proves the UI process is up; it answers without a valid session,
+        # gateway forwarding, or workbook access (F6). Confirm the full happy-path that
+        # `build` relies on with one cheap *authorized* call — an empty `getWorkbookEntries`
+        # scoped to the target workbook (also exercises auth cookie + gateway forward +
+        # workbook reachability), mirroring how compile_and_build gates on healthcheck().ok.
+        if not self._client.health():
+            return AdapterHealth(ok=False, message="ping failed (DataLens UI unreachable)")
+        try:
+            self._client.gateway(
+                "us",
+                "getWorkbookEntries",
+                {"workbookId": self._workbook_id, "scope": "connection"},
+            )
+        except DataLensAPIError as exc:
+            return AdapterHealth(ok=False, message=f"authorized check failed: {exc}")
+        return AdapterHealth(ok=True, message="")
 
     def ensure_database(self, dwh: DWHConfig | None = None) -> DatabaseRef:
         dwh = dwh or self._dwh
