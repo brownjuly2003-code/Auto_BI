@@ -170,7 +170,7 @@ def adapter() -> SupersetAdapter:
         user=settings.ch_user,
         password=settings.ch_password,
     )
-    a = SupersetAdapter(client, dwh)
+    a = SupersetAdapter(client, dwh, SemanticModel.load("semantic/model.yaml"))
     assert a.healthcheck().ok, "Superset /health failed — is the stand up?"
     a.ensure_database()
     return a
@@ -267,8 +267,7 @@ def test_native_filter_configuration_roundtrip(adapter: SupersetAdapter) -> None
     """build() wires spec.filters into native_filter_configuration, scoped only to the
     charts whose grain exposes the column; the city filter must leave the KPI + day
     charts out, and the participating chart's dataset must drop its SQL top-N LIMIT."""
-    model = SemanticModel.load("semantic/model.yaml")
-    ref = adapter.build(NF_SPEC, model)
+    ref = adapter.build(NF_SPEC)  # adapter is constructed with the model (fixture)
 
     dash = adapter._client.get(f"/api/v1/dashboard/{ref.id}")["result"]
     pos = json.loads(dash["position_json"])
