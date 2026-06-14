@@ -45,7 +45,7 @@ class ScriptedLLM:
         self._queue = list(responses)
         self.calls: list[tuple[str, str, bool]] = []  # (schema name, prompt, reasoning)
 
-    def complete(self, prompt, schema, *, reasoning=False, session_id=None):
+    def complete(self, prompt, schema, *, reasoning=False, session_id=None, step=""):
         self.calls.append((schema.__name__, prompt, reasoning))
         return schema.model_validate(self._queue.pop(0))
 
@@ -352,4 +352,64 @@ def test_iteration_edit_after_build_reenters_approve(demo_model, tmp_path) -> No
     # spec history is append-only: v1 approved, v2 proposed -> approved
     statuses = [s["status"] for s in store.specs(sid)]
     assert statuses == ["approved", "approved"]
+    store.close()
+
+
+def test_trace_records_agent_steps(demo_model, tmp_path) -> None:
+    # observability (Phase 4): each agent step lands one ordered trace event
+    class OneFindingAdvisor(Advisor):
+        def __init__(self) -> None:
+            pass
+
+        def review(self, spec):
+            return []
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка")
+    # advisor returns no findings -> narrate short-circuits without an LLM call, so the
+    # queue only feeds grounding/propose/patch; the advisor STEP still traces (review ran)
+    llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, PATCHED_SPEC])
+    agent = AgentSession(demo_model, llm, OneFindingAdvisor(), store=store, session_id=sid)
+    agent.start("выручка по дням")
+    agent.approve()
+    agent.reply("переименуй дашборд")
+
+    events = store.trace_events(sid)
+    assert [e["seq"] for e in events] == list(range(1, len(events) + 1))  # contiguous
+    assert [e["kind"] for e in events] == [
+        "grounding",
+        "propose",
+        "advisor",
+        "approve",
+        "patch",
+        "advisor",
+    ]
+    assert all(e["status"] == "ok" for e in events)
+    grounding = events[0]
+    assert "совпадений" in grounding["detail"]
+    store.close()
+
+
+def test_trace_records_clarify_and_grounding_error(demo_model, tmp_path) -> None:
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("неоднозначно")
+    # ambiguous grounding -> a clarify event before any propose
+    llm = ScriptedLLM([AMBIGUOUS_REPORT])
+    agent = AgentSession(demo_model, llm, store=store, session_id=sid)
+    agent.start("выручка")
+    kinds = [e["kind"] for e in store.trace_events(sid)]
+    assert kinds == ["grounding", "clarify"]
+
+    # a failed LLM call on grounding records an error event and propagates
+    class BoomLLM:
+        def complete(self, *a, **kw):
+            raise RuntimeError("llm down")
+
+    sid2 = store.create_session("err")
+    agent2 = AgentSession(demo_model, BoomLLM(), store=store, session_id=sid2)
+    with pytest.raises(RuntimeError):
+        agent2.start("выручка")
+    (event,) = store.trace_events(sid2)
+    assert event["kind"] == "grounding" and event["status"] == "error"
+    assert "llm down" in event["detail"]
     store.close()

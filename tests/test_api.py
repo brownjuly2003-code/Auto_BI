@@ -21,10 +21,12 @@ from tests.test_propose import GOOD_SPEC
 class FlakyLLM(ScriptedLLM):
     """ScriptedLLM that raises when the queued item is an exception."""
 
-    def complete(self, prompt, schema, *, reasoning=False, session_id=None):
+    def complete(self, prompt, schema, *, reasoning=False, session_id=None, step=""):
         if isinstance(self._queue[0], Exception):
             raise self._queue.pop(0)
-        return super().complete(prompt, schema, reasoning=reasoning, session_id=session_id)
+        return super().complete(
+            prompt, schema, reasoning=reasoning, session_id=session_id, step=step
+        )
 
 
 def fake_builder(spec, log, session_id):

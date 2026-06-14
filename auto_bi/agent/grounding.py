@@ -109,7 +109,11 @@ def ground(
 ) -> GroundingReport:
     prompt = build_grounding_prompt(request, model, include_samples=include_samples, pinned=pinned)
     report = llm.complete(
-        prompt, GroundingReport, reasoning=reasoning_for("grounding"), session_id=session_id
+        prompt,
+        GroundingReport,
+        reasoning=reasoning_for("grounding"),
+        session_id=session_id,
+        step="grounding",
     )
     # drop hallucinated candidates: an entry whose candidates are not in the model is
     # not a real ambiguity (invariant 4 — questions must come from grounded facts only)

@@ -264,7 +264,9 @@ def _complete_validated(
     previous_spec: DashboardSpec | None = None
     reasoning = reasoning_for(step)
     for round_no in range(1 + MAX_VALIDATION_ROUNDS):
-        spec = llm.complete(prompt, DashboardSpec, reasoning=reasoning, session_id=session_id)
+        spec = llm.complete(
+            prompt, DashboardSpec, reasoning=reasoning, session_id=session_id, step=step
+        )
         errors = validate_spec(spec, model)
         if not errors:
             return spec

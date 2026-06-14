@@ -117,6 +117,7 @@ def narrate_findings(
             _Narrative,
             reasoning=reasoning_for("narrate_advisor"),
             session_id=session_id,
+            step="narrate_advisor",
         )
     except LLMError:
         logger.warning("advisor narration failed; falling back to mechanical titles")

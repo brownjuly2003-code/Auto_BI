@@ -64,6 +64,28 @@ def test_complete_happy_path(tmp_path) -> None:
     assert result == Answer(title="ok", count=5)
 
 
+def test_complete_logs_step_and_completion_chars_to_store(tmp_path) -> None:
+    from auto_bi.store import Store
+
+    output = '```json\n{"title": "ok", "count": 5}\n```'
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        return gk_response(output)
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("r")
+    transport = httpx.MockTransport(responder)
+    http = httpx.Client(base_url="http://gk.test", transport=transport)
+    client = GraceKellyClient(
+        Settings(_env_file=None), http=http, log_path=tmp_path / "llm_calls.jsonl", store=store
+    )
+    client.complete("сделай", Answer, session_id=sid, step="propose_spec")
+    (call,) = store.llm_calls(sid)
+    assert call["step"] == "propose_spec"
+    assert call["completion_chars"] == len(output)
+    store.close()
+
+
 def test_complete_repair_loop(tmp_path) -> None:
     calls = []
 

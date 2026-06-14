@@ -108,7 +108,7 @@ class DevLLM:
         self.grounding_calls = 0
         self.spec_calls = 0
 
-    def complete(self, prompt, schema, *, reasoning=False, session_id=None):
+    def complete(self, prompt, schema, *, reasoning=False, session_id=None, step=""):
         time.sleep(0.4)  # чтобы «агент думает» был виден
         name = schema.__name__
         if name == "GroundingReport":
