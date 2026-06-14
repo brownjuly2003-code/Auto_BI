@@ -92,6 +92,18 @@
         полный отчёт: <code>auto_bi gaps</code>.</p>
       <ul id="gaps-list" class="gaps-list"></ul>
     </details>
+
+    <details id="obs" class="obs" hidden>
+      <summary>Наблюдаемость — LLM и трейс (<span id="obs-calls">0</span> вызовов)</summary>
+      <p class="obs-hint">GraceKelly не возвращает токены/стоимость — объёмы показаны
+        в символах (size-прокси), а не в токенах или деньгах.</p>
+      <div id="obs-usage" class="obs-usage"></div>
+      <div id="obs-by-step" class="obs-by-step"></div>
+      <div id="obs-trace-wrap" hidden>
+        <div class="obs-subhead">Трейс текущей сессии</div>
+        <ol id="obs-trace" class="obs-trace"></ol>
+      </div>
+    </details>
   </aside>
 </main>
 

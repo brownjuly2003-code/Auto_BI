@@ -256,7 +256,18 @@ POST http://127.0.0.1:8011/orchestrate
 
 ### 3.8 Store
 
-SQLite (одна машина, один пользователь — достаточно до Phase 4): `sessions`, `messages`, `specs` (версии), `builds` (статус, лог, URL), `llm_calls`, `dm_change_requests`. Миграция на Postgres только если появится мульти-юзер.
+SQLite (одна машина, один пользователь — достаточно до Phase 4): `sessions`, `messages`, `specs` (версии), `builds` (статус, лог, URL), `llm_calls`, `dm_change_requests`, `trace_events` (§3.9). Миграция на Postgres только если появится мульти-юзер. Версия схемы в `PRAGMA user_version`; апгрейд существующей БД — идемпотентным `_migrate()` при открытии (v2: новые колонки `llm_calls` + `trace_events`).
+
+### 3.9 Observability (Phase 4)
+
+Трейс шагов агента на сессию + дашборд расходов LLM — две половины, обе поверх Store, без внешних систем (Grafana/OTel избыточны для single-user §1.1).
+
+- **Трейс шагов** — таблица `trace_events` (`session_id, seq, kind, status, latency_ms, detail`): машина агента (`agent/machine.py`) пишет одно событие на шаг (`grounding/clarify/propose/patch/advisor/approve`) с таймингом и исходом (`ok`/`error` + текст исключения), путь сборки (`api/app.py`) — `build_start`/`build_done`/`build_error`. `seq` упорядочивает шаги внутри сессии (created_at слишком груб). Трейсинг **best-effort**: сбой записи никогда не роняет пайплайн (как и логирование LLM-вызовов).
+- **Расходы LLM** — GraceKelly **не возвращает usage/токены/стоимость** (контракт §3.6), поэтому дашборд строится на измеримом: число вызовов, успех/ошибки, латентность (всего/сред./макс), объём промпта и **ответа** (`completion_chars` — новое поле `llm_calls`, `len(output_text)`). Объёмы в символах — это **size-прокси, не токены и не деньги** (так и помечено в UI/доках). Каждый LLM-вызов несёт `step` (`grounding/propose_spec/patch_spec/narrate_advisor`) → разбивка расходов по шагу агента. Агрегаты считает `Store.llm_usage_summary()`.
+- **API**: `GET /api/v1/sessions/{id}/trace` (durable timeline + LLM-вызовы сессии + per-session summary, читается прямо из Store — переживает выселение из in-memory реестра); `GET /api/v1/observability/llm` (глобальные агрегаты; 503 без Store).
+- **UI**: сворачиваемая панель «Наблюдаемость» в правой колонке (зеркало DCR/gaps-секций) — stat-grid расходов + разбивка по шагам + таймлайн текущей сессии; обновляется после каждого хода и сборки.
+
+Токен/$-учёт отложен: требует, чтобы оркестратор отдавал usage (сегодня не отдаёт) — тогда это аддитивные колонки в `llm_calls` без смены модели данных.
 
 ## 4. Безопасность
 

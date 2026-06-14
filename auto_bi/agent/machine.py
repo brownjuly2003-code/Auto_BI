@@ -10,6 +10,10 @@ after MAX_CLARIFY_ROUNDS the agent proposes with what it has instead of interrog
 
 from __future__ import annotations
 
+import logging
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -25,6 +29,19 @@ from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import Store
 
 MAX_CLARIFY_ROUNDS = 2
+
+logger = logging.getLogger(__name__)
+
+
+def _ms(started: float) -> int:
+    return round((time.monotonic() - started) * 1000)
+
+
+class _Step:
+    """Mutable holder so a timed block can set its trace detail after the work runs."""
+
+    def __init__(self) -> None:
+        self.detail = ""
 
 
 class AgentPhase(StrEnum):
@@ -147,14 +164,16 @@ class AgentSession:
             return self._ground_then_propose()
         if self.phase in (AgentPhase.APPROVE, AgentPhase.APPROVED):
             assert self.spec is not None
-            patched = patch_spec(
-                self._llm,
-                self._model,
-                self.spec,
-                text,
-                session_id=self._session_id,
-                include_samples=self._include_samples,
-            )
+            with self._timed("patch") as step:
+                patched = patch_spec(
+                    self._llm,
+                    self._model,
+                    self.spec,
+                    text,
+                    session_id=self._session_id,
+                    include_samples=self._include_samples,
+                )
+                step.detail = f"{len(patched.charts)} чартов"
             if patched.model_dump(mode="json") == self.spec.model_dump(mode="json"):
                 # the patch contract forces a full spec back, so an edit the model cannot
                 # express returns unchanged — say so instead of announcing a "new"
@@ -182,6 +201,7 @@ class AgentSession:
         self.phase = AgentPhase.APPROVED
         if self._store is not None and self._spec_row_id is not None:
             self._store.set_spec_status(self._spec_row_id, "approved")
+        self._trace("approve", detail=f"«{self.spec.title}» → {self.spec.target_bi.value}")
         return self.spec
 
     # --- internals -------------------------------------------------------------
@@ -193,32 +213,40 @@ class AgentSession:
         return f"{self._request}\n\nУточнения пользователя:\n{answers}"
 
     def _ground_then_propose(self) -> AgentTurn:
-        self.report = ground(
-            self._llm,
-            self._model,
-            self._full_request(),
-            session_id=self._session_id,
-            include_samples=self._include_samples,
-            pinned=self._pinned,
-        )
+        with self._timed("grounding") as step:
+            self.report = ground(
+                self._llm,
+                self._model,
+                self._full_request(),
+                session_id=self._session_id,
+                include_samples=self._include_samples,
+                pinned=self._pinned,
+            )
+            step.detail = (
+                f"{len(self.report.matched)} совпадений, "
+                f"{len(self.report.ambiguous)} неоднозначных"
+            )
         questions = clarify_questions(self.report)
         if questions and self._clarify_rounds < MAX_CLARIFY_ROUNDS:
             self._clarify_rounds += 1
             self.phase = AgentPhase.CLARIFY
             message = "Нужны уточнения:"
             self._record("agent", message + " " + " | ".join(questions))
+            self._trace("clarify", detail=f"{len(questions)} вопрос(ов)")
             return AgentTurn(phase=self.phase, message=message, questions=questions)
         return self._propose()
 
     def _propose(self) -> AgentTurn:
-        self.spec = propose_spec(
-            self._llm,
-            self._model,
-            self._full_request(),
-            session_id=self._session_id,
-            include_samples=self._include_samples,
-            pinned=self._pinned or None,
-        )
+        with self._timed("propose") as step:
+            self.spec = propose_spec(
+                self._llm,
+                self._model,
+                self._full_request(),
+                session_id=self._session_id,
+                include_samples=self._include_samples,
+                pinned=self._pinned or None,
+            )
+            step.detail = f"{len(self.spec.charts)} чартов"
         # layout analysis only on the initial proposal: word edits deliberately
         # diverge from the seed, re-reporting the diff would flag the user's own edits
         notes = seed_analysis(self._seed, self.spec) if self._seed is not None else []
@@ -228,10 +256,12 @@ class AgentSession:
         assert self.spec is not None
         self.verdicts = []
         if self._advisor is not None:
-            findings = self._advisor.review(self.spec)
-            self.verdicts = narrate_findings(
-                self._llm, self.spec, findings, session_id=self._session_id
-            )
+            with self._timed("advisor") as step:
+                findings = self._advisor.review(self.spec)
+                self.verdicts = narrate_findings(
+                    self._llm, self.spec, findings, session_id=self._session_id
+                )
+                step.detail = f"{len(findings)} находок"
         self.phase = AgentPhase.APPROVE
         message = spec_summary(self.spec)
         if notes:
@@ -266,3 +296,30 @@ class AgentSession:
     def _record(self, role: str, content: str) -> None:
         if self._store is not None and self._session_id is not None:
             self._store.add_message(self._session_id, role, content)
+
+    # --- observability (Phase 4): durable per-session step trace -------------------
+
+    def _trace(
+        self, kind: str, *, status: str = "ok", latency_ms: int = 0, detail: str = ""
+    ) -> None:
+        if self._store is None or self._session_id is None:
+            return
+        try:
+            self._store.add_trace_event(
+                self._session_id, kind=kind, status=status, latency_ms=latency_ms, detail=detail
+            )
+        except Exception:  # tracing must never kill the pipeline
+            logger.exception("failed to record trace event")
+
+    @contextmanager
+    def _timed(self, kind: str) -> Iterator[_Step]:
+        """Time a step and record one trace event — ok with the block's detail, or
+        error with the exception text if it raised (then re-raises)."""
+        step = _Step()
+        started = time.monotonic()
+        try:
+            yield step
+        except Exception as exc:
+            self._trace(kind, status="error", latency_ms=_ms(started), detail=str(exc)[:200])
+            raise
+        self._trace(kind, latency_ms=_ms(started), detail=step.detail)

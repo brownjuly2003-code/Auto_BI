@@ -54,7 +54,7 @@ class FakeLLM:
         self._queue = list(specs)
         self.prompts: list[str] = []
 
-    def complete(self, prompt, schema, *, reasoning=False, session_id=None):
+    def complete(self, prompt, schema, *, reasoning=False, session_id=None, step=""):
         self.prompts.append(prompt)
         return schema.model_validate(self._queue.pop(0))
 

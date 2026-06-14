@@ -102,39 +102,58 @@ CLEAR = {
 
 
 class DevLLM:
-    """Отвечает по имени запрошенной схемы; первый grounding — с вопросами."""
+    """Отвечает по имени запрошенной схемы; первый grounding — с вопросами.
 
-    def __init__(self) -> None:
+    Логирует каждый вызов в Store с полями step/completion_chars, как это делает
+    GraceKellyClient — чтобы панель «Наблюдаемость» показывала ненулевые расходы.
+    """
+
+    def __init__(self, store=None) -> None:
         self.grounding_calls = 0
         self.spec_calls = 0
+        self._store = store
 
-    def complete(self, prompt, schema, *, reasoning=False, session_id=None):
+    def complete(self, prompt, schema, *, reasoning=False, session_id=None, step=""):
+        started = time.monotonic()
         time.sleep(0.4)  # чтобы «агент думает» был виден
         name = schema.__name__
         if name == "GroundingReport":
             self.grounding_calls += 1
-            return schema.model_validate(AMBIGUOUS if self.grounding_calls == 1 else CLEAR)
-        if name == "DashboardSpec":
+            result = schema.model_validate(AMBIGUOUS if self.grounding_calls == 1 else CLEAR)
+        elif name == "DashboardSpec":
             self.spec_calls += 1
             spec = dict(SPEC)
             if self.spec_calls > 1:
                 # title капится на v2: вторая и последующие правки возвращают тот же
                 # spec — браузерная проверка noop-ветки («правка не изменила спецификацию»)
                 spec = {**SPEC, "title": f"Обзор продаж · v{min(self.spec_calls, 2)}"}
-            return schema.model_validate(spec)
-        # _Narrative (вердикты advisor)
-        return schema.model_validate(
-            {
-                "verdicts": [
-                    {
-                        "chart_id": "c3",
-                        "text": "GROUP BY по store_id на полном факте: скан 100% "
-                        "(EXPLAIN ESTIMATE 20M строк). Сузьте период или возьмите витрину "
-                        "с агрегатом по магазинам.",
-                    }
-                ]
-            }
-        )
+            result = schema.model_validate(spec)
+        else:  # _Narrative (вердикты advisor)
+            result = schema.model_validate(
+                {
+                    "verdicts": [
+                        {
+                            "chart_id": "c3",
+                            "text": "GROUP BY по store_id на полном факте: скан 100% "
+                            "(EXPLAIN ESTIMATE 20M строк). Сузьте период или возьмите витрину "
+                            "с агрегатом по магазинам.",
+                        }
+                    ]
+                }
+            )
+        if self._store is not None:
+            self._store.log_llm_call(
+                session_id=session_id,
+                model="dev-scripted",
+                prompt_sha256="dev",
+                prompt_chars=len(prompt),
+                reasoning=reasoning,
+                status="completed",
+                latency_ms=round((time.monotonic() - started) * 1000),
+                step=step,
+                completion_chars=len(result.model_dump_json()),
+            )
+        return result
 
 
 class DevAdvisor:
@@ -183,7 +202,7 @@ if __name__ == "__main__":
     MODEL.dump(model_path)
     app = create_app(
         model=MODEL,
-        llm=DevLLM(),
+        llm=DevLLM(store=store),
         advisor=DevAdvisor(),
         store=store,
         builder=dev_builder,

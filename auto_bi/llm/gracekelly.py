@@ -101,12 +101,13 @@ class GraceKellyClient:
         *,
         reasoning: bool = False,
         session_id: str | None = None,
+        step: str = "",
     ) -> T:
         current = prompt
         last_error = ""
         previous_answer: str | None = None
         for attempt in range(1 + MAX_REPAIRS):
-            answer = self._call(current, reasoning=reasoning, session_id=session_id)
+            answer = self._call(current, reasoning=reasoning, session_id=session_id, step=step)
             try:
                 return schema.model_validate_json(extract_json(answer))
             except (ValueError, ValidationError) as exc:
@@ -123,7 +124,7 @@ class GraceKellyClient:
                 )
         raise LLMError(f"structured output failed after {MAX_REPAIRS} repairs: {last_error}")
 
-    def _call(self, prompt: str, *, reasoning: bool, session_id: str | None) -> str:
+    def _call(self, prompt: str, *, reasoning: bool, session_id: str | None, step: str) -> str:
         if len(prompt) > PROMPT_LIMIT:
             raise LLMError(f"prompt is {len(prompt)} chars, GraceKelly limit is {PROMPT_LIMIT}")
         payload = {
@@ -136,21 +137,32 @@ class GraceKellyClient:
         }
         started = time.monotonic()
         status = "transport_error"
+        completion_chars = 0
         try:
             response = self._http.post("/api/v1/orchestrate", json=payload)
             response.raise_for_status()
             data = response.json()
             status = data.get("status", "unknown")
-            if status != "completed" or not data.get("output_text"):
+            output = data.get("output_text") or ""
+            completion_chars = len(output)
+            if status != "completed" or not output:
                 raise LLMError(
                     f"GraceKelly task {status}: "
                     f"{data.get('failure_code')} {data.get('failure_message')}"
                 )
-            return data["output_text"]
+            return output
         except httpx.HTTPError as exc:
             raise LLMError(f"GraceKelly transport error: {exc}") from exc
         finally:
-            self._log(prompt, reasoning, status, time.monotonic() - started, session_id)
+            self._log(
+                prompt,
+                reasoning,
+                status,
+                time.monotonic() - started,
+                session_id,
+                step,
+                completion_chars,
+            )
 
     def _log(
         self,
@@ -159,6 +171,8 @@ class GraceKellyClient:
         status: str,
         latency_s: float,
         session_id: str | None = None,
+        step: str = "",
+        completion_chars: int = 0,
     ) -> None:
         record = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -168,6 +182,8 @@ class GraceKellyClient:
             "reasoning": reasoning,
             "status": status,
             "latency_ms": round(latency_s * 1000),
+            "step": step,
+            "completion_chars": completion_chars,
         }
         try:
             self._log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,6 +201,8 @@ class GraceKellyClient:
                     reasoning=reasoning,
                     status=status,
                     latency_ms=record["latency_ms"],
+                    step=step,
+                    completion_chars=completion_chars,
                 )
             except Exception:  # logging must never kill the pipeline
                 logger.exception("failed to write llm call to the store")

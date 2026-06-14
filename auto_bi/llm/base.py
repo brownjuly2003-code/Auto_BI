@@ -19,6 +19,11 @@ class LLMClient(Protocol):
         *,
         reasoning: bool = False,
         session_id: str | None = None,
+        step: str = "",
     ) -> T:
-        """Run the prompt and return a schema-validated object (repair loop inside)."""
+        """Run the prompt and return a schema-validated object (repair loop inside).
+
+        `step` labels which agent step the call serves (grounding/propose/patch/
+        narrate) so the observability dashboard can break LLM usage down by step.
+        """
         ...

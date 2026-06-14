@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
@@ -287,7 +288,25 @@ def create_app(
             managed.reset_events()  # iteration re-approve: fresh stream for this build
             managed.build_status = "building"
 
+        def _trace_build(
+            kind: str, *, status: str = "ok", latency_ms: int = 0, detail: str = ""
+        ) -> None:
+            if store is None:
+                return
+            try:
+                store.add_trace_event(
+                    managed.session_id,
+                    kind=kind,
+                    status=status,
+                    latency_ms=latency_ms,
+                    detail=detail,
+                )
+            except Exception:  # tracing must never kill the build
+                logger.exception("failed to record build trace event")
+
         def _build() -> None:
+            started = time.monotonic()
+            _trace_build("build_start", detail=spec.title)
             try:
                 ref = builder(
                     spec,
@@ -298,10 +317,21 @@ def create_app(
                 logger.exception("build failed for session %s", managed.session_id)
                 managed.build_status = "failed"
                 managed.add_event(BuildEvent(kind="error", text=str(exc)))
+                _trace_build(
+                    "build_error",
+                    status="error",
+                    latency_ms=round((time.monotonic() - started) * 1000),
+                    detail=str(exc)[:200],
+                )
                 return
             managed.build_status = "built"
             managed.dashboard_url = ref.url
             managed.add_event(BuildEvent(kind="done", text=ref.title, url=ref.url))
+            _trace_build(
+                "build_done",
+                latency_ms=round((time.monotonic() - started) * 1000),
+                detail=ref.title,
+            )
 
         threading.Thread(target=_build, name=f"build-{managed.session_id}", daemon=True).start()
         return {"session_id": managed.session_id, "status": "building"}
@@ -343,6 +373,26 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"unknown dm_change_request {request_id}")
         store.set_dm_change_request_status(request_id, body.status)
         return {"id": request_id, "status": body.status}
+
+    # --- observability (Phase 4): per-session trace + LLM-usage dashboard ----------
+
+    @app.get("/api/v1/sessions/{session_id}/trace")
+    def session_trace(session_id: str) -> dict:
+        """Durable per-session timeline: agent/build steps + the LLM calls they made.
+        Reads the store directly (survives registry eviction); unknown id -> empty."""
+        s = _store()
+        return {
+            "session_id": session_id,
+            "events": s.trace_events(session_id),
+            "llm_calls": s.llm_calls(session_id),
+            "llm_usage": s.llm_usage_summary(session_id),
+        }
+
+    @app.get("/api/v1/observability/llm")
+    def observability_llm() -> dict:
+        """Global LLM-usage aggregates. GraceKelly exposes no token/cost usage, so
+        char volumes are size proxies (not tokens or money) — see the schema docs."""
+        return _store().llm_usage_summary()
 
     @app.get("/api/v1/sessions/{session_id}/events")
     def build_events(session_id: str) -> StreamingResponse:

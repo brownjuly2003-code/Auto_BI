@@ -214,6 +214,7 @@ async function send(text) {
         });
     thinking.remove();
     handleTurn(turn);
+    refreshObservability();
   } catch (err) {
     thinking.remove();
     addMessage("error", String(err.message || err), "ошибка");
@@ -261,6 +262,7 @@ function approve() {
         addMessage("agent", "Готово. Дальше можно дорабатывать правками словами — пересоберу.", "агент");
         $("approve-btn").textContent = "Пересобрать дашборд";
         refreshDcr();
+        refreshObservability();
       });
       events.addEventListener("error", (e) => {
         if (!e.data) return; // transport-level noise, EventSource ретраится сам
@@ -272,6 +274,7 @@ function approve() {
         result.hidden = false;
         setChip("ошибка сборки", "failed");
         $("approve-btn").disabled = false;
+        refreshObservability();
       });
     })
     .catch((err) => {
@@ -308,6 +311,115 @@ async function refreshDcr() {
     rule.textContent = `— ${row.rule}`;
     li.append(sev, table, rule);
     list.appendChild(li);
+  }
+}
+
+/* ---------- observability (Phase 4): LLM usage + per-session trace ---------- */
+
+const STEP_LABELS = {
+  grounding: "grounding",
+  propose_spec: "propose",
+  patch_spec: "patch",
+  narrate_advisor: "advisor",
+  propose: "propose",
+  clarify: "clarify",
+  patch: "patch",
+  advisor: "advisor",
+  approve: "approve",
+  build_start: "сборка",
+  build_done: "сборка ✓",
+  build_error: "сборка ✗",
+};
+
+function statCell(label, value) {
+  const cell = document.createElement("div");
+  cell.className = "obs-stat";
+  const v = document.createElement("div");
+  v.className = "obs-stat-val";
+  v.textContent = value;
+  const l = document.createElement("div");
+  l.className = "obs-stat-label";
+  l.textContent = label;
+  cell.append(v, l);
+  return cell;
+}
+
+function renderUsage(usage) {
+  const t = usage.totals;
+  const grid = $("obs-usage");
+  grid.replaceChildren();
+  grid.append(
+    statCell("вызовов", t.calls),
+    statCell("успешно / ошибок", `${t.ok} / ${t.failed}`),
+    statCell("латентность всего", `${(t.latency_ms_total / 1000).toFixed(1)} с`),
+    statCell("латентность сред.", `${t.latency_ms_avg} мс`),
+    statCell("промпт, симв.", t.prompt_chars.toLocaleString("ru")),
+    statCell("ответ, симв.", t.completion_chars.toLocaleString("ru"))
+  );
+
+  const byStep = $("obs-by-step");
+  byStep.replaceChildren();
+  const rows = (usage.by_step || []).filter((r) => r.step);
+  for (const r of rows) {
+    const row = document.createElement("div");
+    row.className = "obs-step-row";
+    const name = document.createElement("span");
+    name.className = "obs-step-name";
+    name.textContent = STEP_LABELS[r.step] || r.step;
+    const meta = document.createElement("span");
+    meta.className = "obs-step-meta";
+    meta.textContent = `${r.calls} выз · ${(r.latency_ms_total / 1000).toFixed(1)} с`;
+    row.append(name, meta);
+    byStep.appendChild(row);
+  }
+}
+
+function renderTrace(events) {
+  const wrap = $("obs-trace-wrap");
+  const list = $("obs-trace");
+  list.replaceChildren();
+  if (!events || !events.length) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  for (const e of events) {
+    const li = document.createElement("li");
+    li.className = `obs-event obs-event-${e.status}`;
+    const kind = document.createElement("span");
+    kind.className = "obs-event-kind";
+    kind.textContent = STEP_LABELS[e.kind] || e.kind;
+    const detail = document.createElement("span");
+    detail.className = "obs-event-detail";
+    detail.textContent = e.detail || "";
+    const ms = document.createElement("span");
+    ms.className = "obs-event-ms";
+    ms.textContent = e.latency_ms ? `${e.latency_ms} мс` : "";
+    li.append(kind, detail, ms);
+    list.appendChild(li);
+  }
+}
+
+async function refreshObservability() {
+  let usage;
+  try {
+    usage = await api("/api/v1/observability/llm");
+  } catch {
+    $("obs").hidden = true; // store не сконфигурирован — секцию не показываем
+    return;
+  }
+  $("obs").hidden = false;
+  $("obs-calls").textContent = usage.totals.calls;
+  renderUsage(usage);
+  if (state.sessionId) {
+    try {
+      const trace = await api(`/api/v1/sessions/${state.sessionId}/trace`);
+      renderTrace(trace.events);
+    } catch {
+      renderTrace([]);
+    }
+  } else {
+    renderTrace([]);
   }
 }
 
@@ -645,6 +757,7 @@ async function submitSeed() {
     $("chat-form").hidden = false;
     $("mode-tabs").hidden = true;
     handleTurn(turn);
+    refreshObservability();
   } catch (err) {
     thinking.remove();
     addMessage("error", String(err.message || err), "ошибка");
@@ -685,5 +798,10 @@ $("add-group").addEventListener("click", () => {
 
 $("seed-submit").addEventListener("click", submitSeed);
 
+$("obs").addEventListener("toggle", () => {
+  if ($("obs").open) refreshObservability();
+});
+
 refreshDcr();
 refreshGaps();
+refreshObservability();
