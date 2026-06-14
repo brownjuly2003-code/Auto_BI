@@ -32,6 +32,7 @@ from auto_bi.adapters.datalens.dataset import (
     build_connection_payload,
     build_dataset_payload,
     dataset_name,
+    safe_entry_name,
 )
 from auto_bi.adapters.superset.native_filters import participating_chart_ids
 from auto_bi.ir.spec import ChartSpec, DashboardFilter, DashboardSpec, column_alias
@@ -354,19 +355,20 @@ class DataLensAdapter:
         shared = build_chart_shared(chart, str(ds.id), ds_name, fields)
         if chart.viz in DEGRADED:
             logger.warning("chart %r: %s", chart.title, DEGRADED[chart.viz])
-        self._delete_if_exists("widget", chart.title)  # idempotency: rebuild replaces in place
+        name = safe_entry_name(chart.title)  # charts-engine validates the entry-name charset
+        self._delete_if_exists("widget", name)  # idempotency: rebuild replaces in place
         created = self._client.post(
             "/api/charts/v1/charts",
             {
                 "data": shared,
                 "template": "datalens",
                 "workbookId": self._workbook_id,
-                "name": chart.title,
+                "name": name,
             },
         )
         chart_id = created["entryId"]
         logger.info("datalens chart created: id=%s viz=%s", chart_id, chart.viz.value)
-        return ChartRef(id=chart_id, name=chart.title)
+        return ChartRef(id=chart_id, name=name)
 
     def assemble_dashboard(
         self,
@@ -398,7 +400,8 @@ class DataLensAdapter:
                     excluded,
                 )
         data = build_dashboard_data(spec, [str(c.id) for c in charts], controls, alias_groups)
-        self._delete_if_exists("dash", spec.title)  # idempotency: rebuild replaces in place
+        name = safe_entry_name(spec.title)  # US validates the dashboard entry-name charset
+        self._delete_if_exists("dash", name)  # idempotency: rebuild replaces in place
         created = self._client.gateway(
             "mix",
             "createDashboardV1",
@@ -407,7 +410,7 @@ class DataLensAdapter:
                     "data": data,
                     "meta": None,
                     "workbookId": self._workbook_id,
-                    "name": spec.title,
+                    "name": name,
                 },
                 "mode": "publish",
             },

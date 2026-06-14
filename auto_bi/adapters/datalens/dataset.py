@@ -59,9 +59,31 @@ def _slug(text: str, max_len: int = 40) -> str:
 
 
 def dataset_name(title: str, chart_id: str) -> str:
-    """Readable, collision-free dataset name (mirrors SupersetAdapter._dataset_name)."""
+    """Readable, collision-free dataset name (mirrors SupersetAdapter._dataset_name).
+
+    Always within the DataLens entry-name charset (only word chars + underscores), so it
+    needs no `safe_entry_name` pass — unlike free-form chart/dashboard titles."""
     suffix = hashlib.sha1(chart_id.encode()).hexdigest()[:8]
     return f"auto_bi__{_slug(title)}__{_slug(chart_id)}__{suffix}"
+
+
+# DataLens entry-name charset (charts-engine `data.name` + US validation, live-verified):
+# the name must START and END with [A-Za-zА-Яа-яЁё0-9_@()%] and may otherwise also contain
+# .,:;'|-–—−$*& and spaces. Free-form chart/dashboard titles (LLM- or user-authored) can
+# carry other punctuation ([], /, #, ?, "…) that 400s the create, so their entry names are
+# sanitized to this set. (Superset imposes no such restriction.)
+_NAME_BODY = r"A-Za-zЀ-ӿ0-9_@()%.,:;'|\-–—−$*& "
+_NAME_EDGE_STRIP = " .,:;'|-–—−$*&"
+
+
+def safe_entry_name(title: str, fallback: str = "Auto_BI") -> str:
+    """Coerce a free-form title into a valid DataLens entry name: replace any disallowed
+    char with a space, collapse runs, and trim the ends down to an edge-allowed char.
+    A title already within the charset (e.g. Cyrillic + spaces + parens) is unchanged."""
+    cleaned = re.sub(rf"[^{_NAME_BODY}]", " ", title)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = cleaned.strip(_NAME_EDGE_STRIP)
+    return cleaned or fallback
 
 
 def _stable_uuid(*parts: str) -> str:
