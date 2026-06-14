@@ -65,3 +65,10 @@ class BIAdapter(Protocol):
     def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef: ...
 
     def assemble_dashboard(self, spec: DashboardSpec, charts: list[ChartRef]) -> DashboardRef: ...
+
+    # Orchestrator entry point: full compile (database -> datasets -> charts -> dashboard).
+    # The semantic model an adapter needs (native-filter scoping, dataset field types) is
+    # injected at construction, so build takes only the spec — both adapters expose the same
+    # signature, letting the pipeline dispatch one spec to either BI by `spec.target_bi`
+    # (Phase 4 F1; see auto_bi.adapters.factory.make_adapter and ARCHITECTURE §3.5).
+    def build(self, spec: DashboardSpec) -> DashboardRef: ...

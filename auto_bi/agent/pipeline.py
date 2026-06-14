@@ -6,15 +6,20 @@ All collaborators are injected; the CLI wires real ones from settings.
 
 from collections.abc import Callable
 
-from auto_bi.adapters.base import DashboardRef
-from auto_bi.adapters.superset.adapter import SupersetAdapter
+from auto_bi.adapters.base import BIAdapter, DashboardRef
 from auto_bi.agent.propose import SpecValidationError, propose_spec
 from auto_bi.agent.sql_guard import LiveSQLValidator
 from auto_bi.agent.sqlgen import generate_chart_sql
+from auto_bi.ir.spec import TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import Store
+
+# Resolve the spec's BI target to a wired adapter (auto_bi.adapters.factory.make_adapter,
+# partial-applied with settings+model). Injected as a resolver so the pipeline never names a
+# concrete adapter (Phase 4 F1) and tests can supply a fake.
+AdapterFor = Callable[[TargetBI], BIAdapter]
 
 
 def build_dashboard(
@@ -22,18 +27,23 @@ def build_dashboard(
     model: SemanticModel,
     llm: LLMClient,
     sql_validator: LiveSQLValidator,
-    adapter: SupersetAdapter,
+    adapter_for: AdapterFor,
     log: Callable[[str], None] = print,
     *,
     include_samples: bool = True,
     store: Store | None = None,
     session_id: str | None = None,
+    target_bi: TargetBI | None = None,
 ) -> DashboardRef:
     log(f"PROPOSE_SPEC: «{description}»")
     spec = propose_spec(
         llm, model, description, session_id=session_id, include_samples=include_samples
     )
-    log(f"spec ok: «{spec.title}», {len(spec.charts)} чартов")
+    if target_bi is not None:
+        # explicit user choice (e.g. CLI --target) wins over the spec default; the prompt
+        # does not ask the LLM for a BI target, so spec.target_bi is otherwise SUPERSET
+        spec.target_bi = target_bi
+    log(f"spec ok: «{spec.title}», {len(spec.charts)} чартов → {spec.target_bi.value}")
     for chart in spec.charts:
         log(f"  - [{chart.viz.value}] {chart.title}")
 
@@ -45,7 +55,7 @@ def build_dashboard(
         spec,
         model,
         sql_validator,
-        adapter,
+        adapter_for,
         log,
         store=store,
         session_id=session_id,
@@ -57,7 +67,7 @@ def compile_and_build(
     spec,
     model: SemanticModel,
     sql_validator: LiveSQLValidator,
-    adapter: SupersetAdapter,
+    adapter_for: AdapterFor,
     log: Callable[[str], None] = print,
     *,
     store: Store | None = None,
@@ -76,12 +86,15 @@ def compile_and_build(
         sql_validator.validate(sql)
         log(f"SQL ok ({chart.id}): EXPLAIN + LIMIT-прогон прошли")
 
+    # dispatch on the spec's declared target so a "datalens" spec never silently builds in
+    # Superset (invariant 2 at the BI boundary; Phase 4 F1)
+    adapter = adapter_for(spec.target_bi)
     health = adapter.healthcheck()
     if not health.ok:
-        raise RuntimeError(f"Superset healthcheck failed: {health.message}")
+        raise RuntimeError(f"{spec.target_bi.value} healthcheck failed: {health.message}")
 
     try:
-        ref = adapter.build(spec, model)
+        ref = adapter.build(spec)
     except Exception as exc:
         if store is not None and session_id is not None:
             store.save_build(session_id, spec_id, status="failed", error=str(exc))

@@ -19,7 +19,7 @@ def test_build_dashboard_happy_path() -> None:
         demo_model_fixtureless(),
         llm=FakeLLM([GOOD_SPEC]),
         sql_validator=LiveSQLValidator(stub_run_query),
-        adapter=make_adapter(FakeSuperset()),
+        adapter_for=lambda _target: make_adapter(FakeSuperset()),
         log=log.append,
     )
     assert ref.url.startswith("/superset/dashboard/")
@@ -39,7 +39,7 @@ def test_build_dashboard_stops_on_sql_failure() -> None:
             demo_model_fixtureless(),
             llm=FakeLLM([GOOD_SPEC]),
             sql_validator=LiveSQLValidator(failing_run),
-            adapter=make_adapter(fake_superset),
+            adapter_for=lambda _target: make_adapter(fake_superset),
             log=lambda s: None,
         )
     # nothing was created in the BI after SQL validation failed
@@ -56,7 +56,7 @@ def test_build_dashboard_records_spec_and_build_in_store(tmp_path) -> None:
         demo_model_fixtureless(),
         llm=FakeLLM([GOOD_SPEC]),
         sql_validator=LiveSQLValidator(stub_run_query),
-        adapter=make_adapter(FakeSuperset()),
+        adapter_for=lambda _target: make_adapter(FakeSuperset()),
         log=lambda s: None,
         store=store,
         session_id=sid,

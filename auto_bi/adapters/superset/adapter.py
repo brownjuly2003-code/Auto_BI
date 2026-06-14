@@ -48,9 +48,14 @@ def _dataset_name(title: str, chart_id: str) -> str:
 
 
 class SupersetAdapter:
-    def __init__(self, client: SupersetClient, dwh: DWHConfig) -> None:
+    def __init__(
+        self, client: SupersetClient, dwh: DWHConfig, model: SemanticModel | None = None
+    ) -> None:
         self._client = client
         self._dwh = dwh
+        # `model` (constructor-injected, mirrors DataLensAdapter) lets build() scope native
+        # filters by column role/grain; without it filters degrade to the documented warning.
+        self._model = model
         self._database: DatabaseRef | None = None
 
     # --- BIAdapter ----------------------------------------------------------
@@ -184,12 +189,15 @@ class SupersetAdapter:
 
     # --- happy path ----------------------------------------------------------
 
-    def build(self, spec: DashboardSpec, model: SemanticModel | None = None) -> DashboardRef:
+    def build(self, spec: DashboardSpec) -> DashboardRef:
         """Full compile: database -> per-chart datasets -> charts -> dashboard.
 
-        `model` lets the dashboard wire native filters (scope by column role/grain);
-        without it the filters degrade to the documented "skipped" warning.
+        The constructor-injected model lets the dashboard wire native filters (scope by
+        column role/grain); without it the filters degrade to the documented "skipped"
+        warning. Signature mirrors DataLensAdapter.build so the pipeline can dispatch by
+        `spec.target_bi` (Phase 4 F1).
         """
+        model = self._model
         self.ensure_database()
         # charts in a dashboard filter's scope drop the SQL top-N LIMIT (it moves to
         # form_data) so the filter re-ranks after filtering — computable from the spec

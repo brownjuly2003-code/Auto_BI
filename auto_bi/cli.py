@@ -11,6 +11,12 @@ def main(argv: list[str] | None = None) -> int:
     build = sub.add_parser("build", help="Build a dashboard from a text description")
     build.add_argument("description", help="Dashboard description in natural language")
     build.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
+    build.add_argument(
+        "--target",
+        choices=["superset", "datalens"],
+        default="superset",
+        help="BI target to build into (default: superset)",
+    )
 
     chat = sub.add_parser("chat", help="Dialogue: clarify -> preview spec -> approve -> build")
     chat.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
@@ -53,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "build":
-        return _build(args.description, args.model_path)
+        return _build(args.description, args.model_path, args.target)
     if args.command == "chat":
         return _chat(args.model_path)
     if args.command == "serve":
@@ -69,16 +75,16 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _build(description: str, model_path: str) -> int:
+def _build(description: str, model_path: str, target: str = "superset") -> int:
+    from functools import partial
     from pathlib import Path
 
-    from auto_bi.adapters.base import DWHConfig
-    from auto_bi.adapters.superset.adapter import SupersetAdapter
-    from auto_bi.adapters.superset.client import SupersetClient
+    from auto_bi.adapters.factory import make_adapter
     from auto_bi.agent.pipeline import build_dashboard
     from auto_bi.agent.sql_guard import LiveSQLValidator
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
+    from auto_bi.ir.spec import TargetBI
     from auto_bi.llm.gracekelly import GraceKellyClient
     from auto_bi.semantic.model import SemanticModel
     from auto_bi.store import Store
@@ -90,16 +96,7 @@ def _build(description: str, model_path: str) -> int:
 
     settings = get_settings()
     model = SemanticModel.load(model_path)
-    adapter = SupersetAdapter(
-        SupersetClient(settings.superset_url, settings.superset_user, settings.superset_password),
-        DWHConfig(
-            host=settings.ch_host_from_bi or settings.ch_host,
-            port=settings.ch_port_from_bi or settings.ch_port,
-            database=settings.ch_database,
-            user=settings.ch_user,
-            password=settings.ch_password,
-        ),
-    )
+    target_bi = TargetBI(target)
     store = Store(settings.store_path)
     session_id = store.create_session(description)
     store.add_message(session_id, "user", description)
@@ -108,12 +105,14 @@ def _build(description: str, model_path: str) -> int:
         model,
         llm=GraceKellyClient(settings, store=store),
         sql_validator=LiveSQLValidator(make_run_query(settings)),
-        adapter=adapter,
+        adapter_for=partial(make_adapter, settings=settings, model=model),
         include_samples=settings.send_samples,
         store=store,
         session_id=session_id,
+        target_bi=target_bi,
     )
-    print(f"\nДашборд готов: {settings.superset_url.rstrip('/')}{ref.url}")
+    base = settings.datalens_url if target_bi == TargetBI.DATALENS else settings.superset_url
+    print(f"\nДашборд готов: {base.rstrip('/')}{ref.url}")
     return 0
 
 
@@ -122,14 +121,13 @@ QUIT_WORDS = {"выход", "quit", "exit", "q"}
 
 
 def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, logic in machine
+    from functools import partial
     from pathlib import Path
 
     from rich.console import Console
     from rich.panel import Panel
 
-    from auto_bi.adapters.base import DWHConfig
-    from auto_bi.adapters.superset.adapter import SupersetAdapter
-    from auto_bi.adapters.superset.client import SupersetClient
+    from auto_bi.adapters.factory import make_adapter
     from auto_bi.advisor.core import Advisor
     from auto_bi.agent.machine import AgentPhase, AgentSession
     from auto_bi.agent.pipeline import compile_and_build
@@ -151,16 +149,7 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
     model = SemanticModel.load(model_path)
     run_query = make_run_query(settings)
     store = Store(settings.store_path)
-    adapter = SupersetAdapter(
-        SupersetClient(settings.superset_url, settings.superset_user, settings.superset_password),
-        DWHConfig(
-            host=settings.ch_host_from_bi or settings.ch_host,
-            port=settings.ch_port_from_bi or settings.ch_port,
-            database=settings.ch_database,
-            user=settings.ch_user,
-            password=settings.ch_password,
-        ),
-    )
+    adapter_for = partial(make_adapter, settings=settings, model=model)
 
     console.print(
         Panel(
@@ -212,12 +201,17 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
                             spec,
                             model,
                             LiveSQLValidator(run_query),
-                            adapter,
+                            adapter_for,
                             log=lambda s: console.print(f"[dim]{s}[/dim]"),
                             store=store,
                             session_id=session_id,
                         )
-                        url = settings.superset_url.rstrip("/") + ref.url
+                        base = (
+                            settings.datalens_url
+                            if spec.target_bi.value == "datalens"
+                            else settings.superset_url
+                        )
+                        url = base.rstrip("/") + ref.url
                         console.print(f"\n[bold green]Дашборд готов:[/bold green] {url}")
                         # iterations (2.4): keep the session — a further edit patches the
                         # built spec and re-enters APPROVE for a rebuild
@@ -253,13 +247,12 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
 
 
 def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover — wiring only
+    from functools import partial
     from pathlib import Path
 
     import uvicorn
 
-    from auto_bi.adapters.base import DWHConfig
-    from auto_bi.adapters.superset.adapter import SupersetAdapter
-    from auto_bi.adapters.superset.client import SupersetClient
+    from auto_bi.adapters.factory import make_adapter
     from auto_bi.advisor.core import Advisor
     from auto_bi.agent.pipeline import compile_and_build
     from auto_bi.agent.sql_guard import LiveSQLValidator
@@ -279,23 +272,15 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
     model = SemanticModel.load(model_path)
     run_query = make_run_query(settings)
     store = Store(settings.store_path)
-    adapter = SupersetAdapter(
-        SupersetClient(settings.superset_url, settings.superset_user, settings.superset_password),
-        DWHConfig(
-            host=settings.ch_host_from_bi or settings.ch_host,
-            port=settings.ch_port_from_bi or settings.ch_port,
-            database=settings.ch_database,
-            user=settings.ch_user,
-            password=settings.ch_password,
-        ),
-    )
+    # the build target is dispatched per-spec (spec.target_bi); the API/UI selector sets it
+    adapter_for = partial(make_adapter, settings=settings, model=model)
 
     def builder(spec, log, session_id):
         return compile_and_build(
             spec,
             model,
             LiveSQLValidator(run_query),
-            adapter,
+            adapter_for,
             log,
             store=store,
             session_id=session_id,

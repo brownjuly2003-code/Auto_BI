@@ -180,9 +180,12 @@ class BIAdapter(Protocol):
     def ensure_dataset(self, query: ChartQuery) -> DatasetRef     # physical table или SQL-датасет
     def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef
     def assemble_dashboard(self, spec: DashboardSpec, charts: list[ChartRef]) -> DashboardRef
+    def build(self, spec: DashboardSpec) -> DashboardRef          # оркестратор: full compile
 ```
 
-`SupersetAdapter.build(spec, model)` оркеструет шаги (не в Protocol); `model` нужен для нативных фильтров (роль колонки + grain). `assemble_dashboard` принимает доп. `datasets`/`model` (аддитивно к Protocol) — без них фильтры деградируют в задокументированное предупреждение.
+`build(spec)` оркеструет шаги одинаково для обоих адаптеров (Phase 4 F1): семантическая модель, нужная адаптеру (скоупинг нативных фильтров по роли/grain колонки у Superset; типы полей датасета у DataLens), **инжектится в конструктор**, поэтому `build` принимает только spec — единая сигнатура позволяет пайплайну диспетчить один spec в любой BI по `spec.target_bi`. Без модели фильтры Superset деградируют в задокументированное предупреждение. `assemble_dashboard` принимает доп. `datasets`/`model` (Superset) или `placements` (DataLens) — аддитивно к Protocol, для прямых вызовов в контракт-тестах.
+
+**Фабрика `adapters/factory.py::make_adapter(target_bi, settings, model) -> BIAdapter`** — единственная точка, знающая о конкретных адаптерах: собирает клиент + DWHConfig из настроек. Пайплайн (`agent/pipeline.py`) типизирован на `BIAdapter` и получает резолвер `Callable[[TargetBI], BIAdapter]` (фабрика с зафиксированными settings+model); `compile_and_build` вызывает `adapter_for(spec.target_bi)`, так что spec с `target_bi="datalens"` не может молча собраться в Superset (инвариант 2 на границе BI). `cli build` принимает `--target {superset|datalens}` (переопределяет дефолт spec); API/UI-селектор BI ставит `spec.target_bi` (Phase 4).
 
 Ref-id'ы (`DatabaseRef.id`, `DatasetRef.id`, `ChartRef.id`, `DashboardRef.id`) типизированы **`int | str`** — BI-нативный идентификатор: Superset отдаёт целые id, DataLens — строковые entry id. Ref'ы потребляются только внутри своего адаптера (в общий код не текут), поэтому тип не дискриминируется нигде, а Superset-путь продолжает оперировать int без изменений (решение S4-2, 2026-06-13). `TargetBI` enum — `superset | datalens` (§3.4).
 
