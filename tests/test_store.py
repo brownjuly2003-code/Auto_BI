@@ -219,3 +219,44 @@ def test_migrates_v1_db_to_v2(tmp_path) -> None:
     store.add_trace_event(sid, kind="grounding")
     assert len(store.trace_events(sid)) == 1
     store.close()
+
+
+def test_migrates_legacy_v0_db_with_old_llm_calls(tmp_path) -> None:
+    # a pre-versioning DB: user_version stayed 0 but llm_calls predates the
+    # observability columns. CREATE TABLE IF NOT EXISTS leaves it untouched, so the
+    # migration must still ALTER it (must NOT early-return on version 0).
+    import sqlite3
+
+    path = tmp_path / "v0.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, created_at TEXT, request TEXT, status TEXT);"
+        "CREATE TABLE llm_calls ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, created_at TEXT,"
+        " model TEXT NOT NULL, prompt_sha256 TEXT NOT NULL, prompt_chars INTEGER NOT NULL,"
+        " reasoning INTEGER NOT NULL, status TEXT NOT NULL, latency_ms INTEGER NOT NULL);"
+    )
+    db.commit()
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 0
+    db.close()
+
+    store = Store(path)
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 2
+    cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
+    assert {"step", "completion_chars"} <= cols
+    # the first observability-aware write no longer crashes with "no such column: step"
+    sid = store.create_session("r")
+    store.log_llm_call(
+        session_id=sid,
+        model="m",
+        prompt_sha256="h",
+        prompt_chars=1,
+        reasoning=False,
+        status="completed",
+        latency_ms=1,
+        step="grounding",
+        completion_chars=7,
+    )
+    (row,) = store.llm_calls(sid)
+    assert row["step"] == "grounding" and row["completion_chars"] == 7
+    store.close()

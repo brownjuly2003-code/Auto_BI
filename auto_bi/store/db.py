@@ -109,16 +109,15 @@ class Store:
     def _migrate(self) -> None:
         """Bring an existing DB up to _SCHEMA_VERSION.
 
-        A brand-new DB (user_version 0) just had the current schema created by
-        executescript, so we only stamp the version. A v1 DB predates the
-        observability columns: `CREATE TABLE IF NOT EXISTS` left its old `llm_calls`
-        untouched, so add the columns explicitly (trace_events is created by the
-        IF NOT EXISTS above). Idempotent — guarded by the column check.
+        executescript ran first with `CREATE TABLE IF NOT EXISTS`, so a brand-new DB
+        already has the full current schema (the guarded _add_column calls below are
+        no-ops) and trace_events exists on any DB. The ALTERs add the observability
+        columns to a legacy `llm_calls` that IF NOT EXISTS left untouched — this covers
+        both a v1 DB and a pre-versioning v0 DB whose old llm_calls lacks the columns
+        (so we must NOT early-return on version 0). Idempotent — guarded by the column
+        check, so it is safe to run on the current schema too.
         """
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version == 0:
-            self._db.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
-            return
         if version < 2:
             self._add_column("llm_calls", "step", "TEXT NOT NULL DEFAULT ''")
             self._add_column("llm_calls", "completion_chars", "INTEGER NOT NULL DEFAULT 0")
