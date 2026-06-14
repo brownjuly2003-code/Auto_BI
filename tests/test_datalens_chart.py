@@ -6,8 +6,6 @@ stand, 2026-06-14); these pin the IR->shared mapping and the adapter call sequen
 
 from __future__ import annotations
 
-import pytest
-
 from auto_bi.adapters.base import DWHConfig
 from auto_bi.adapters.datalens.adapter import DataLensAdapter, build_dashboard_data
 from auto_bi.adapters.datalens.chart_config import VIZ_ID, build_chart_shared
@@ -152,6 +150,8 @@ class FakeClient:
     def gateway(self, service: str, method: str, body: dict) -> dict:
         self.gateway_calls.append((service, method, body))
         self._n += 1
+        if method == "createDashboardV1":  # mix dash-create returns the entry envelope
+            return {"entry": {"entryId": f"dash-{self._n}"}}
         return {"id": f"{method}-{self._n}"}
 
     def post(self, path: str, body: dict) -> dict:
@@ -192,7 +192,7 @@ def _adapter(fake: FakeClient) -> DataLensAdapter:
     return DataLensAdapter(fake, DWH, _model(), workbook_id="wb1")
 
 
-def test_adapter_build_calls_connection_dataset_chart() -> None:
+def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
     fake = FakeClient()
     spec = DashboardSpec(
         title="dash",
@@ -209,9 +209,9 @@ def test_adapter_build_calls_connection_dataset_chart() -> None:
             )
         ],
     )
-    refs = _adapter(fake).build(spec)
+    ref = _adapter(fake).build(spec)
     methods = [m for _, m, _ in fake.gateway_calls]
-    assert methods == ["createConnection", "createDataset"]
+    assert methods == ["createConnection", "createDataset", "createDashboardV1"]
     # connection carries workbook_id (snake) and clickhouse type
     conn_body = fake.gateway_calls[0][2]
     assert conn_body["workbook_id"] == "wb1" and conn_body["type"] == "clickhouse"
@@ -221,7 +221,14 @@ def test_adapter_build_calls_connection_dataset_chart() -> None:
     assert fake.posts[0][0] == "/api/charts/v1/charts"
     assert fake.posts[0][1]["template"] == "datalens"
     assert fake.posts[0][1]["data"]["visualization"]["id"] == "line"
-    assert len(refs) == 1 and str(refs[0].id).startswith("widget-")
+    # build returns a dashboard ref; its blob links the created widget by entryId
+    from auto_bi.adapters.base import DashboardRef
+
+    assert isinstance(ref, DashboardRef)
+    assert str(ref.id).startswith("dash-") and ref.url == f"/{ref.id}"
+    dash_body = fake.gateway_calls[2][2]
+    linked = dash_body["entry"]["data"]["tabs"][0]["items"][0]["data"]["tabs"][0]["chartId"]
+    assert linked.startswith("widget-")
 
 
 def test_build_dashboard_data_grid() -> None:
@@ -236,20 +243,48 @@ def test_build_dashboard_data_grid() -> None:
         ],
     )  # fmt: skip
     data = build_dashboard_data(spec, ["w1", "w2"])
-    assert data["schemeVersion"] == 7
+    # schemeVersion is injected server-side by mix/createDashboardV1, never sent
+    assert "schemeVersion" not in data
+    assert data["salt"] and isinstance(data["counter"], int) and data["counter"] >= 1
+    # settings must carry every field the zod settingsSchema requires
+    for k in (
+        "autoupdateInterval",
+        "maxConcurrentRequests",
+        "silentLoading",
+        "dependentSelectors",
+        "hideTabs",
+        "expandTOC",
+    ):
+        assert k in data["settings"]  # fmt: skip
     tab = data["tabs"][0]
+    # tabSchema is .strict() — exactly these keys, no extras
+    assert set(tab) == {"id", "title", "items", "layout", "connections", "aliases"}
     assert [it["data"]["tabs"][0]["chartId"] for it in tab["items"]] == ["w1", "w2"]
-    assert tab["layout"][0]["x"] == 0 and tab["layout"][1]["x"] == 6  # two columns
+    # each widget inner-tab has the fields widgetSchema requires
+    wt = tab["items"][0]["data"]["tabs"][0]
+    assert wt["isDefault"] is True and wt["params"] == {} and "description" in wt
+    assert tab["items"][0]["type"] == "widget" and tab["items"][0]["namespace"] == "default"
+    # layout: two columns; one entry per item, keyed by item id (validateData requires this)
+    assert tab["layout"][0]["x"] == 0 and tab["layout"][1]["x"] == 12
+    assert [lo["i"] for lo in tab["layout"]] == [it["id"] for it in tab["items"]]
 
 
-def test_assemble_dashboard_not_implemented_but_blob_builds() -> None:
+def test_assemble_dashboard_creates_dash_entry() -> None:
     fake = FakeClient()
     spec = DashboardSpec(
         title="dash",
         charts=[ChartSpec(id="a", title="A", viz=Viz.BIG_NUMBER, query=ChartQuery(
             table="dm.sales_daily", measures=[Measure(column="revenue", agg=Aggregation.SUM)]))],
     )  # fmt: skip
-    from auto_bi.adapters.base import ChartRef
+    from auto_bi.adapters.base import ChartRef, DashboardRef
 
-    with pytest.raises(NotImplementedError, match="dashboard create endpoint"):
-        _adapter(fake).assemble_dashboard(spec, [ChartRef(id="w1", name="A")])
+    ref = _adapter(fake).assemble_dashboard(spec, [ChartRef(id="wEnc", name="A")])
+    svc, method, body = fake.gateway_calls[0]
+    assert (svc, method) == ("mix", "createDashboardV1")
+    assert body["mode"] == "publish"
+    assert body["entry"]["workbookId"] == "wb1" and body["entry"]["name"] == "dash"
+    assert "schemeVersion" not in body["entry"]["data"]  # action injects it
+    # chart linked by its (encoded) entryId — US decodeId(chartId) must succeed
+    linked = body["entry"]["data"]["tabs"][0]["items"][0]["data"]["tabs"][0]["chartId"]
+    assert linked == "wEnc"
+    assert isinstance(ref, DashboardRef) and ref.url == f"/{ref.id}"
