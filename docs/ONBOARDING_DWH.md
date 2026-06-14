@@ -2,8 +2,7 @@
 
 Как подключить к Auto_BI новую витрину данных (DM-слой DWH) и довести её до состояния, в
 котором агент строит по ней дашборды. Цель — уложиться в час. Поддержанные движки:
-**ClickHouse** (v1, путь через CLI) и **Greenplum/Greengage** (v2, путь через Python-API —
-см. §6).
+**ClickHouse** (v1) и **Greenplum/Greengage** (v2) — оба через CLI `introspect --engine`.
 
 Принцип: интроспекция даёт **черновик** семантической модели, дальше его обогащают
 (dbt-артефакты + ручные правки) и проверяют. Ручные правки в `model.yaml` всегда выигрывают
@@ -56,20 +55,23 @@ AUTO_BI_GP_DATABASE=postgres
 AUTO_BI_GP_SCHEMA=dm
 ```
 
-## Шаг 2. Интроспекция → черновик модели (ClickHouse)
+## Шаг 2. Интроспекция → черновик модели
 
 ```bash
+# ClickHouse (по умолчанию):
 auto_bi introspect --output semantic/model.yaml
-# при необходимости другая БД:
-auto_bi introspect --database my_dm --output semantic/model.yaml
+auto_bi introspect --database my_dm --output semantic/model.yaml   # другая БД
+
+# Greenplum / Greengage (использует AUTO_BI_GP_*):
+auto_bi introspect --engine greenplum --output semantic/model_gp.yaml
+auto_bi introspect --engine greenplum --database my_schema --output semantic/model_gp.yaml
 ```
 
-Интроспектор читает таблицы, колонки, типы и физику движка (для CH — ключи сортировки/
-партиционирования, оценки размеров) и пишет черновик `model.yaml`. Команда печатает
-`Draft written to ...: N tables, M columns`.
-
-Для Greenplum интроспекция сейчас выполняется через Python-API (CLI `introspect` пока
-только ClickHouse) — см. **§6**.
+Интроспектор читает таблицы, колонки, типы и физику движка (CH — ключи сортировки/
+партиционирования, оценки размеров; GP — `DISTRIBUTED BY`, многоуровневые партиции,
+`n_distinct`, строки по партиц-детям) и пишет черновик. Команда печатает
+`Draft written to ...: N tables, M columns`. Для GP `--database` переопределяет схему
+(по умолчанию `AUTO_BI_GP_SCHEMA`). Программный путь (без CLI) — **§6**.
 
 ## Шаг 3. Обогащение модели
 
@@ -116,10 +118,11 @@ auto_bi build "<простой запрос по новой витрине>"
 
 ---
 
-## 6. Greenplum / Greengage: интроспекция через Python-API
+## 6. Greenplum / Greengage: программный путь и ограничения
 
-CLI-команда `introspect` пока поддерживает только ClickHouse. Для Greenplum используйте
-интроспектор напрямую (после заполнения `AUTO_BI_GP_*` в `.env`):
+Обычно достаточно CLI (`auto_bi introspect --engine greenplum`, шаг 2). Если интроспекция
+нужна программно (скрипт/пайплайн), используйте интроспектор напрямую — после заполнения
+`AUTO_BI_GP_*` в `.env`:
 
 ```python
 from auto_bi.config import get_settings
@@ -138,8 +141,7 @@ model.dump("semantic/model_gp.yaml")
 (eval сам выберет GP-набор правил по `physical.engine`).
 
 > **Ограничения GP:** Auto_BI использует Greenplum для **интроспекции и advisor**; сборка
-> дашборда в BI идёт всегда через ClickHouse-коннекшн (GP-BI-сборка не реализована). Полноценный
-> CLI-путь `introspect --engine greenplum` — возможное будущее улучшение (интроспектор уже есть).
+> дашборда в BI идёт всегда через ClickHouse-коннекшн (GP-BI-сборка не реализована).
 
 ---
 

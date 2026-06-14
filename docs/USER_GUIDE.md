@@ -63,7 +63,7 @@ auto_bi serve            # http://127.0.0.1:8200
 | `build "<запрос>"` | Happy-path: текст → spec → сборка дашборда, без диалога. `--target superset\|datalens` (по умолчанию `superset`). |
 | `chat` | Диалог: уточнения → превью spec → `да` собрать / правка словами / `отмена`. После сборки можно дорабатывать словами (итерации). |
 | `serve` | HTTP API + web UI (FastAPI/uvicorn). `--host` (def `127.0.0.1`), `--port` (def `8200`). |
-| `introspect` | Интроспекция DWH → черновик `model.yaml` (ClickHouse). `--database`, `--output`. |
+| `introspect` | Интроспекция DWH → черновик `model.yaml`. `--engine clickhouse\|greenplum` (def `clickhouse`; GP использует `AUTO_BI_GP_*`), `--database`, `--output`. |
 | `gaps` | Детерминированный отчёт «что в модели не заполнено / неоднозначно». `--offline` без подключения к DWH, `--output file.md` в файл. |
 | `eval` | Прогон eval-сьютов. `--suite advisor\|golden\|all`, `--cases id1,id2` (подмножество). advisor — офлайн; golden — через живой GraceKelly. |
 | `dbt-import` | Обогащение `model.yaml` из dbt-артефактов (описания, связи). `--manifest` (обяз.), `--catalog`, `--dry-run`. Заполняет ТОЛЬКО пустые значения — ручные правки всегда выигрывают. |
