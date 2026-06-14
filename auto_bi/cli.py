@@ -24,6 +24,12 @@ def main(argv: list[str] | None = None) -> int:
     intro = sub.add_parser("introspect", help="Introspect DWH and write a draft model.yaml")
     intro.add_argument("--database", default=None, help="Database/schema (default: settings)")
     intro.add_argument("--output", default="semantic/model.yaml", help="Where to write the draft")
+    intro.add_argument(
+        "--engine",
+        choices=["clickhouse", "greenplum"],
+        default="clickhouse",
+        help="DWH engine to introspect (default: clickhouse; greenplum uses AUTO_BI_GP_*)",
+    )
 
     gaps = sub.add_parser("gaps", help="Deterministic gaps report over an introspected model")
     gaps.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
@@ -65,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         return _serve(args.model_path, args.host, args.port)
     if args.command == "introspect":
-        return _introspect(args.database, args.output)
+        return _introspect(args.database, args.output, args.engine)
     if args.command == "gaps":
         return _gaps(args.model_path, args.output, args.offline)
     if args.command == "eval":
@@ -474,13 +480,23 @@ def _dbt_import(manifest_path: str, catalog_path: str, model_path: str, dry_run:
     return 0
 
 
-def _introspect(database: str | None, output: str) -> int:
+def _introspect(database: str | None, output: str, engine: str = "clickhouse") -> int:
     from auto_bi.config import get_settings
-    from auto_bi.introspect.clickhouse import ClickHouseIntrospector, make_run_query
 
     settings = get_settings()
-    introspector = ClickHouseIntrospector(make_run_query(settings))
-    model = introspector.introspect(database or settings.ch_database)
+    if engine == "greenplum":
+        from auto_bi.introspect.greenplum import GreenplumIntrospector, make_run_query_pg
+
+        # for GP, --database overrides the schema (default AUTO_BI_GP_SCHEMA); connection
+        # params (db/host/...) come from AUTO_BI_GP_*. GP supports introspection + advisor;
+        # it is not a BI build target (the BI connection always points at ClickHouse).
+        introspector = GreenplumIntrospector(make_run_query_pg(settings), schema=settings.gp_schema)
+        model = introspector.introspect(database)
+    else:
+        from auto_bi.introspect.clickhouse import ClickHouseIntrospector, make_run_query
+
+        introspector = ClickHouseIntrospector(make_run_query(settings))
+        model = introspector.introspect(database or settings.ch_database)
     model.dump(output)
     n_cols = sum(len(t.columns) for t in model.tables)
     print(f"Draft written to {output}: {len(model.tables)} tables, {n_cols} columns")
