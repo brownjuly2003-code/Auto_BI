@@ -15,6 +15,37 @@
 - 11 сервисов, 8 образов `ghcr.io/datalens-tech/*` (ui, ui-api, control-api, data-api, us, auth,
   postgres, meta-manager, temporal).
 
+## Версия стенда — контрактный пин (Phase 4 F7, инвариант 7)
+
+Реверс-блобы DataLens-адаптера завязаны на конкретную версию gateway/US/charts-engine, поэтому
+поддержанная версия фиксируется здесь (аналог пина Superset в `docker-compose.yml`, инвариант 7
+теперь распространён на DataLens — см. ARCHITECTURE §3.5).
+
+**Контрактные маркеры версии (на чём реверснуты и live-проверены payload'ы 3.1/3.2):**
+
+| Маркер | Значение | Где используется |
+|---|---|---|
+| UI-gateway | `v4.10.4` | транспорт `/gateway/root/<svc>/<method>` (баг `validateDataset` 415 в этой версии) |
+| dash zod `dataSchema` `schemeVersion` | `8` | инжектится server-side `mix/createDashboardV1`; блоб его НЕ шлёт (`build_dashboard_data`) |
+| chart `shared` `version` | `"4"` | `chart_config.build_chart_shared` (закреплён unit-тестом F10) |
+| Highcharts | `HC=1` | Editor-чарты на Highcharts + нативный heatmap (иначе деградация в pivot) |
+| Источник образов | `ghcr.io/datalens-tech/*` | клон `datalens-tech/datalens` depth=1 |
+
+**Гэп (то, что ещё не запинено намертво):** стенд — это depth-1 клон `main`, образы тянутся по
+плавающему тегу (фактически `:latest`-семантика), поэтому точные digest'ы образов в репо НЕ
+зафиксированы. Чтобы закрыть гэп при следующем поднятии стенда — снять точные теги/digest'ы и
+вписать их сюда:
+
+```bash
+# на Mac-стенде, стенд Up:
+cd ~/datalens_dl && /usr/local/bin/docker compose images          # тег по сервису
+cd ~/datalens_dl && /usr/local/bin/docker compose config | grep -E '^\s+image:'  # image-строки compose
+```
+
+**Дисциплина апгрейда (инвариант 7 для DataLens):** обновление версии стенда (новый pull / смена
+тега) — ОТДЕЛЬНАЯ задача с обязательным прогоном live contract-сьюта `tests/test_datalens_contract.py`
+(11 кейсов, integration-gated); расхождение блоба → правка реверс-дока + адаптера до мержа.
+
 ## КРИТИЧНО — DNS-фикс для ghcr.io (иначе pull падает)
 
 Симптом: `failed to resolve reference "ghcr.io/...": dial tcp: lookup ghcr.io on 192.168.5.1:53:
