@@ -147,17 +147,21 @@ def test_shared_heatmap_degrades_to_pivot() -> None:
 
 
 class FakeClient:
-    def __init__(self, wb_entries: list[dict] | None = None) -> None:
+    def __init__(self, wb_entries: dict[str, list[dict]] | None = None) -> None:
         self.gateway_calls: list[tuple[str, str, dict]] = []
         self.posts: list[tuple[str, dict]] = []
-        self._wb_entries = wb_entries or []  # getWorkbookEntries result (idempotency lookup)
+        self.deletes: list[tuple[str, str]] = []  # (entryId, scope) from mix/deleteEntry
+        self._wb_entries = wb_entries or {}  # scope -> entries (idempotency lookup)
         self._n = 0
 
     def gateway(self, service: str, method: str, body: dict) -> dict:
         self.gateway_calls.append((service, method, body))
         self._n += 1
-        if method == "getWorkbookEntries":  # idempotency lookup
-            return {"entries": self._wb_entries}
+        if method == "getWorkbookEntries":  # idempotency lookup, scope-keyed
+            return {"entries": self._wb_entries.get(body["scope"], [])}
+        if method == "deleteEntry":  # mix/deleteEntry (idempotency replace)
+            self.deletes.append((body["entryId"], body["scope"]))
+            return {}
         if method == "createDashboardV1":  # mix dash-create returns the entry envelope
             return {"entry": {"entryId": f"dash-{self._n}"}}
         return {"id": f"{method}-{self._n}"}
@@ -220,11 +224,15 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
     )
     ref = _adapter(fake).build(spec)
     methods = [m for _, m, _ in fake.gateway_calls]
-    # connection lookup (idempotency) -> miss -> create, then dataset + dashboard
+    # each create is preceded by an idempotency lookup (getWorkbookEntries) -> all miss
+    # here -> create. The chart create is a POST, so only its lookup shows in gateway_calls.
     assert methods == [
-        "getWorkbookEntries",
+        "getWorkbookEntries",  # connection lookup
         "createConnection",
+        "getWorkbookEntries",  # dataset lookup
         "createDataset",
+        "getWorkbookEntries",  # widget (chart) lookup
+        "getWorkbookEntries",  # dashboard lookup
         "createDashboardV1",
     ]
     assert fake.gateway_calls[0][2] == {
@@ -236,7 +244,9 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
     conn_body = fake.gateway_calls[1][2]
     assert conn_body["workbook_id"] == "wb1" and conn_body["type"] == "clickhouse"
     # dataset carries workbook_id (snake)
-    assert fake.gateway_calls[2][2]["workbook_id"] == "wb1"
+    assert fake.gateway_calls[3][2]["workbook_id"] == "wb1"
+    # all lookups missed -> nothing deleted
+    assert fake.deletes == []
     # chart posted to the charts engine with template=datalens + shared
     assert fake.posts[0][0] == "/api/charts/v1/charts"
     assert fake.posts[0][1]["template"] == "datalens"
@@ -246,7 +256,7 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
 
     assert isinstance(ref, DashboardRef)
     assert str(ref.id).startswith("dash-") and ref.url == f"/{ref.id}"
-    dash_body = fake.gateway_calls[3][2]
+    dash_body = next(c[2] for c in fake.gateway_calls if c[1] == "createDashboardV1")
     linked = dash_body["entry"]["data"]["tabs"][0]["items"][0]["data"]["tabs"][0]["chartId"]
     assert linked.startswith("widget-")
 
@@ -254,14 +264,53 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
 def test_ensure_database_reuses_existing_connection() -> None:
     # a connection with the same name already exists -> reuse it, no createConnection
     fake = FakeClient(
-        wb_entries=[
-            {"entryId": "conn-enc-id", "key": "999999/auto_bi clickhouse"},  # US lowercases keys
-        ]
+        wb_entries={
+            "connection": [{"entryId": "conn-enc-id", "key": "999999/auto_bi clickhouse"}],
+        }
     )
     ref = _adapter(fake).ensure_database()
     methods = [m for _, m, _ in fake.gateway_calls]
     assert methods == ["getWorkbookEntries"]  # lookup hit -> no create
     assert ref.id == "conn-enc-id"
+    assert fake.deletes == []  # connection is reused (not replaced), never deleted
+
+
+def test_build_replaces_existing_dataset_chart_dashboard() -> None:
+    """A re-build whose dataset/chart/dashboard names already exist deletes each (by exact
+    name+scope, via mix/deleteEntry) before re-creating it — DataLens entry keys are unique
+    per workbook+scope, so a plain create would 400. The connection is reused, not deleted.
+    """
+    from auto_bi.adapters.datalens.dataset import dataset_name
+
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="t",
+                title="trend",
+                viz=Viz.LINE,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    dimensions=["date"],
+                    measures=[Measure(column="revenue", agg=Aggregation.SUM, label="rev")],
+                ),
+            )
+        ],
+    )
+    ds_name = dataset_name(spec.title, "t")
+    fake = FakeClient(
+        wb_entries={
+            "connection": [{"entryId": "conn-old", "key": "1/Auto_BI ClickHouse"}],
+            "dataset": [{"entryId": "ds-old", "key": f"2/{ds_name}"}],
+            "widget": [{"entryId": "w-old", "key": "3/trend"}],
+            "dash": [{"entryId": "b-old", "key": "4/dash"}],
+        }
+    )
+    _adapter(fake).build(spec)
+    # connection reused (no create, no delete); the other three replaced in place
+    methods = [m for _, m, _ in fake.gateway_calls]
+    assert "createConnection" not in methods
+    assert fake.deletes == [("ds-old", "dataset"), ("w-old", "widget"), ("b-old", "dash")]
 
 
 def test_build_dashboard_data_grid() -> None:
@@ -312,7 +361,7 @@ def test_assemble_dashboard_creates_dash_entry() -> None:
     from auto_bi.adapters.base import ChartRef, DashboardRef
 
     ref = _adapter(fake).assemble_dashboard(spec, [ChartRef(id="wEnc", name="A")])
-    svc, method, body = fake.gateway_calls[0]
+    svc, method, body = next(c for c in fake.gateway_calls if c[1] == "createDashboardV1")
     assert (svc, method) == ("mix", "createDashboardV1")
     assert body["mode"] == "publish"
     assert body["entry"]["workbookId"] == "wb1" and body["entry"]["name"] == "dash"

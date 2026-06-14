@@ -283,8 +283,9 @@ class DataLensAdapter:
         """Encoded entryId of a workbook entry with this exact name and scope, or None.
 
         Uses `us/getWorkbookEntries` (reversal §5.4): the server `filters.name` narrows the
-        page, and the exact name is matched on the `key` tail (`<id>/<name>`) case-folded —
-        US lowercases keys, so a substring filter alone is not authoritative.
+        page (live-verified to work for Cyrillic names too), and the exact name is matched
+        on the `key` tail (`<id>/<name>`) case-folded — the name's case is preserved in the
+        key, so a substring filter alone is not authoritative.
         """
         res = self._client.gateway(
             "us",
@@ -298,12 +299,39 @@ class DataLensAdapter:
                 return entry["entryId"]
         return None
 
+    def _delete_if_exists(self, scope: str, name: str) -> None:
+        """Delete an existing workbook entry with this exact name+scope so a re-build can
+        create it fresh (idempotency, reversal §5.5).
+
+        DataLens (US) enforces unique entry keys per workbook+scope, so a second create of
+        the same name 400s with "entity already exists" — and unlike Superset (where chart
+        and dashboard names may duplicate, only the dataset is reused) the dataset, chart
+        AND dashboard all collide. delete+create is used uniformly rather than update-in-
+        place: the only generic delete, `mix/deleteEntry`, is exposed via the cookie gateway
+        and routes per scope (dataset -> bi.deleteDataset, others -> US delete), whereas the
+        private `us/_deleteUSEntry` is not reachable through the gateway (404) and the
+        update actions differ per service. The fresh entry fully reflects the current spec
+        (refreshed SQL / chart shared / dashboard layout); its id changes, which is
+        invisible — datasets and charts are internal, and the dashboard URL already changes
+        per build (as in Superset). Live-verified 2026-06-14 (dataset + widget delete).
+        """
+        existing = self._find_entry_id(scope, name)
+        if existing is not None:
+            self._client.gateway("mix", "deleteEntry", {"entryId": existing, "scope": scope})
+            logger.info(
+                "datalens %s entry replaced (deleted for rebuild): id=%s name=%s",
+                scope,
+                existing,
+                name,
+            )
+
     def ensure_dataset(
         self, query, name: str | None = None, *, apply_limit: bool = True
     ) -> DatasetRef:
         if self._connection_id is None:
             self.ensure_database()
         ds_name = name or dataset_name(query.table, query.table)
+        self._delete_if_exists("dataset", ds_name)  # idempotency: rebuild replaces in place
         payload = build_dataset_payload(
             query,
             self._model,
@@ -326,6 +354,7 @@ class DataLensAdapter:
         shared = build_chart_shared(chart, str(ds.id), ds_name, fields)
         if chart.viz in DEGRADED:
             logger.warning("chart %r: %s", chart.title, DEGRADED[chart.viz])
+        self._delete_if_exists("widget", chart.title)  # idempotency: rebuild replaces in place
         created = self._client.post(
             "/api/charts/v1/charts",
             {
@@ -369,6 +398,7 @@ class DataLensAdapter:
                     excluded,
                 )
         data = build_dashboard_data(spec, [str(c.id) for c in charts], controls, alias_groups)
+        self._delete_if_exists("dash", spec.title)  # idempotency: rebuild replaces in place
         created = self._client.gateway(
             "mix",
             "createDashboardV1",
