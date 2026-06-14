@@ -42,7 +42,19 @@
       <button type="button" class="mode-tab active" data-mode="text" role="tab" aria-selected="true">Текстом</button>
       <button type="button" class="mode-tab" data-mode="fields" role="tab" aria-selected="false">Полями</button>
     </div>
-    <div id="chat" class="chat"></div>
+    <div id="chat" class="chat">
+      <div id="chat-welcome" class="chat-welcome">
+        <p class="welcome-lead">Опишите дашборд обычными словами — агент уточнит детали,
+          предложит чарты и проверит их advisor’ом до сборки. Либо соберите дашборд из полей
+          витрин на вкладке «Полями».</p>
+        <div class="welcome-examples">
+          <span class="welcome-label">С чего начать</span>
+          <button type="button" class="example-chip">Обзор продаж: выручка по дням и топ-10 магазинов</button>
+          <button type="button" class="example-chip">Динамика заказов по городам за последний квартал</button>
+          <button type="button" class="example-chip">Сводка: выручка, число заказов, средний чек</button>
+        </div>
+      </div>
+    </div>
 
     <div id="builder" class="builder" hidden aria-label="Раскладка полей">
       <div class="builder-cols">

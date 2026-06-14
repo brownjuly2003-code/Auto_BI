@@ -146,6 +146,39 @@ body { display: flex; flex-direction: column; }
 }
 .chat-input textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 
+/* ---------- chat empty state ---------- */
+
+.chat-welcome {
+  max-width: 58ch;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.welcome-lead { margin: 0; color: var(--text-2); font-size: 14px; }
+.welcome-examples { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.welcome-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  margin-bottom: 2px;
+}
+.example-chip {
+  border: none;
+  background: var(--surface-dim);
+  color: var(--text);
+  padding: 7px 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.example-chip:hover { background: #e7e4de; }
+
 /* ---------- mode tabs ---------- */
 
 .mode-tabs {
@@ -169,7 +202,8 @@ body { display: flex; flex-direction: column; }
 
 /* ---------- fields-first builder ---------- */
 
-.builder { padding: 12px 16px 16px; overflow-y: auto; }
+/* В режиме «Полями» #chat скрыт → builder занимает панель сверху, без пустоты. */
+.builder { flex: 1 1 auto; min-height: 0; padding: 12px 16px 16px; overflow-y: auto; }
 .builder-cols {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
@@ -327,7 +361,8 @@ body { display: flex; flex-direction: column; }
 
 /* ---------- spec pane ---------- */
 
-.spec-pane { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+/* padding-right: контент не уходит под overlay-скроллбар у правого края панели. */
+.spec-pane { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 6px; }
 
 .pane-title {
   margin: 0 0 8px;
@@ -420,6 +455,10 @@ body { display: flex; flex-direction: column; }
 .build-result { font-weight: 600; }
 .build-result a { color: var(--accent); }
 .build-result.failed { color: var(--critical); }
+
+/* ---------- diagnostics group (dcr / gaps / observability) ---------- */
+/* Тонкий разделитель отделяет вспомогательную диагностику от спеки/сборки выше. */
+.dcr, .gaps, .obs { border-top: 1px solid var(--surface-dim); padding-top: 14px; }
 
 /* ---------- dm change requests ---------- */
 
@@ -604,3 +643,22 @@ body { display: flex; flex-direction: column; }
 .login-card input:focus { outline: none; border-color: var(--accent); }
 .login-card .btn-primary { margin-top: 4px; }
 .login-error { color: var(--critical); font-size: 13px; margin: 0; }
+
+/* ---------- focus visibility (keyboard a11y) ---------- */
+/* Текстовые поля держат свой :focus-outline; здесь — клавиатурный фокус для
+   кнопок/табов/ссылок/раскрывашек, у которых его не было. */
+.btn:focus-visible,
+.mode-tab:focus-visible,
+.example-chip:focus-visible,
+.field-item:focus-visible,
+.add-group:focus-visible,
+.gap-save:focus-visible,
+.group-remove:focus-visible,
+.chip-remove:focus-visible,
+.bi-select select:focus-visible,
+summary:focus-visible,
+.build-result a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
