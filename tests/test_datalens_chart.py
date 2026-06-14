@@ -525,6 +525,67 @@ def test_promote_partial_failure_window_is_narrowed_not_atomic() -> None:
     assert [name for _, name in fake.renames] == [ds_canon]  # only the dataset got renamed
 
 
+def test_build_cleans_up_wip_orphans_on_failure() -> None:
+    """A mid-build failure sweeps the temp `__wip` entries created so far (F2 audit P3), so a
+    failed build leaves no orphans even if the next attempt's spec differs. Uses a fake that
+    serves back created entries so the cleanup lookup can actually find and delete them."""
+
+    class TrackingFailClient(FakeClient):
+        """Records created dataset entries + serves them on lookup; fails at chart create."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._live: dict[str, list[dict]] = {}
+
+        def gateway(self, service: str, method: str, body: dict) -> dict:
+            if method == "getWorkbookEntries":
+                self.gateway_calls.append((service, method, body))
+                entries = self._live.get(body["scope"], [])
+                name = (body.get("filters") or {}).get("name")
+                if name is not None:
+                    t = name.casefold()
+                    entries = [e for e in entries if e["key"].rsplit("/", 1)[-1].casefold() == t]
+                return {"entries": entries}
+            if method == "createDataset":
+                r = super().gateway(service, method, body)
+                self._live.setdefault("dataset", []).append(
+                    {"entryId": r["id"], "key": f"9/{body['name']}"}
+                )
+                return r
+            if method == "deleteEntry":
+                r = super().gateway(service, method, body)  # records into self.deletes
+                self._live[body["scope"]] = [
+                    e for e in self._live.get(body["scope"], []) if e["entryId"] != body["entryId"]
+                ]
+                return r
+            return super().gateway(service, method, body)
+
+        def post(self, path: str, body: dict) -> dict:
+            raise DataLensAPIError("charts-engine 503")  # fail right after the dataset is created
+
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="t",
+                title="trend",
+                viz=Viz.LINE,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    dimensions=["date"],
+                    measures=[Measure(column="revenue", agg=Aggregation.SUM, label="rev")],
+                ),
+            )
+        ],
+    )
+    fake = TrackingFailClient()
+    with pytest.raises(DataLensAPIError, match="charts-engine 503"):
+        _adapter(fake).build(spec)
+    # the wip dataset created before the chart-create failure was swept -> no orphan remains
+    assert any(scope == "dataset" for _, scope in fake.deletes), "wip dataset was not cleaned up"
+    assert fake._live.get("dataset", []) == []
+
+
 def test_build_dashboard_data_grid() -> None:
     spec = DashboardSpec(
         title="dash",

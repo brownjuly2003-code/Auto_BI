@@ -531,36 +531,56 @@ class DataLensAdapter:
         then retried), and build never returns or leaves a half-built dashboard. The promote
         loop itself is NOT atomic across the three entries (see `_promote_to_canonical`): a
         crash inside it leaves a narrowed inconsistency window that self-heals on the next
-        build. Writes only to the dedicated Auto_BI workbook (F3). A re-build's leftover temp
-        entries from a prior failure are cleaned by the temp-name delete-then-create on the
-        next build *when the spec's entry names match*; if the title/chart set changed between
-        attempts, stale `__wip` entries can linger in the workbook (harmless extra entries,
-        Phase-4 F2 audit P3)."""
+        build. Writes only to the dedicated Auto_BI workbook (F3). A failed build cleans up
+        the temp `__wip` entries it created (`_cleanup_wip` in the except branch), so they do
+        not linger as orphans even if the next attempt's title/chart set differs (F2 audit
+        P3)."""
         self.ensure_database()
         in_filter_scope = participating_chart_ids(spec, self._model)
         placements: list[Placement] = []
         refs: list[ChartRef] = []
         # (scope, canonical_name, temp_entry_id) promoted only after a fully successful build
         to_promote: list[tuple[str, str, str]] = []
-        for chart in spec.charts:
-            ds_canonical = dataset_name(spec.title, chart.id)
-            ds = self.ensure_dataset(
-                chart.query,
-                name=_wip_name(ds_canonical),
-                apply_limit=chart.id not in in_filter_scope,
+        # (scope, wip_name) recorded before each create so a failed build can sweep its own
+        # temp entries (F2 audit P3); recorded pre-create is safe — cleanup is idempotent.
+        wip_created: list[tuple[str, str]] = []
+        try:
+            for chart in spec.charts:
+                ds_canonical = dataset_name(spec.title, chart.id)
+                wip_created.append(("dataset", _wip_name(ds_canonical)))
+                ds = self.ensure_dataset(
+                    chart.query,
+                    name=_wip_name(ds_canonical),
+                    apply_limit=chart.id not in in_filter_scope,
+                )
+                to_promote.append(("dataset", ds_canonical, str(ds.id)))
+                chart_canonical = safe_entry_name(chart.title)
+                wip_created.append(("widget", _wip_name(chart_canonical)))
+                ref = self.create_chart(chart, ds, name=_wip_name(chart_canonical))
+                to_promote.append(("widget", chart_canonical, str(ref.id)))
+                refs.append(ref)
+                placements.append((chart, str(ref.id), str(ds.id)))
+            dash_canonical = safe_entry_name(spec.title)
+            wip_created.append(("dash", _wip_name(dash_canonical)))
+            dash = self.assemble_dashboard(
+                spec, refs, placements=placements, name=_wip_name(dash_canonical)
             )
-            to_promote.append(("dataset", ds_canonical, str(ds.id)))
-            chart_canonical = safe_entry_name(chart.title)
-            ref = self.create_chart(chart, ds, name=_wip_name(chart_canonical))
-            to_promote.append(("widget", chart_canonical, str(ref.id)))
-            refs.append(ref)
-            placements.append((chart, str(ref.id), str(ds.id)))
-        dash_canonical = safe_entry_name(spec.title)
-        dash = self.assemble_dashboard(
-            spec, refs, placements=placements, name=_wip_name(dash_canonical)
-        )
-        to_promote.append(("dash", dash_canonical, str(dash.id)))
-        # Build fully succeeded under temp names -> promote them to canonical (delete stale +
-        # rename). Reached only on success, so the old version survives any earlier failure.
-        self._promote_to_canonical(to_promote)
-        return dash
+            to_promote.append(("dash", dash_canonical, str(dash.id)))
+            # Build fully succeeded under temp names -> promote them to canonical (delete stale
+            # + rename). Reached only on success, so the old version survives any earlier failure.
+            self._promote_to_canonical(to_promote)
+            return dash
+        except Exception:
+            self._cleanup_wip(wip_created)  # don't leave temp entries behind on failure
+            raise
+
+    def _cleanup_wip(self, wip_entries: list[tuple[str, str]]) -> None:
+        """Best-effort removal of temp `__wip` entries created by a failed build (F2 audit P3).
+        Promoted entries were already renamed off their `__wip` name, so the lookup misses them;
+        only the not-yet-promoted temps of this build are deleted. Errors are swallowed so a
+        cleanup failure never masks the original build exception that is about to re-raise."""
+        for scope, wip_name in wip_entries:
+            try:
+                self._delete_if_exists(scope, wip_name)
+            except Exception:  # cleanup must never mask the original build exception
+                logger.warning("datalens __wip cleanup failed for %s %s", scope, wip_name)
