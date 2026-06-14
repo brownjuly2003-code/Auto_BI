@@ -18,6 +18,7 @@ from auto_bi.adapters.datalens.dataset import (
     build_connection_payload,
     build_dataset_payload,
     dataset_name,
+    safe_entry_name,
 )
 from auto_bi.ir.spec import ChartQuery, JoinSpec, Measure
 from auto_bi.semantic.model import (
@@ -233,6 +234,18 @@ def test_dataset_name_unique_even_when_slugs_collide() -> None:
     b = dataset_name("Обзор", "chart!a")  # slugs to the same "chart_a", different raw id
     assert a != b
     assert a.startswith("auto_bi__")
+
+
+def test_safe_entry_name_strips_disallowed_and_edges() -> None:
+    # brackets/slash/question-mark are outside the DataLens entry-name charset
+    assert safe_entry_name("[dl-contract] dashboard") == "dl-contract dashboard"
+    assert safe_entry_name("Продажи / Q2?") == "Продажи Q2"
+    # Cyrillic + spaces + parens are all allowed -> unchanged
+    assert safe_entry_name("Выручка по магазинам (idem)") == "Выручка по магазинам (idem)"
+    # ':' is allowed inside but not at an edge -> kept inside, trimmed off the end
+    assert safe_entry_name("Итого: продажи") == "Итого: продажи"
+    assert safe_entry_name("-- Итого --") == "Итого"  # edge dashes/spaces trimmed
+    assert safe_entry_name("###") == "Auto_BI"  # nothing valid -> fallback
 
 
 # --- client transport -------------------------------------------------------

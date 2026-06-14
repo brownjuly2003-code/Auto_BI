@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     superset_user: str = "admin"
     superset_password: str = ""
 
+    # DataLens (self-hosted OSS stand, v2 BI target)
+    datalens_url: str = "http://localhost:8090"
+    datalens_user: str = "admin"
+    datalens_password: str = "admin"
+    # the OpenSource Demo workbook on the self-hosted stand (stable id; not a secret)
+    datalens_workbook_id: str = "z4wtz6tg5194o"
+    # ClickHouse host as the DataLens connection reaches it (host.docker.internal on the
+    # self-hosted compose stand); port reuses ch_port.
+    ch_host_from_datalens: str = "host.docker.internal"
+
     # GraceKelly LLM service
     gracekelly_url: str = "http://127.0.0.1:8011"
     gracekelly_model: str = "claude-sonnet-4-6"
