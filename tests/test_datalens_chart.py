@@ -22,6 +22,7 @@ from auto_bi.ir.spec import (
     ChartSpec,
     DashboardFilter,
     DashboardSpec,
+    LayoutHint,
     Measure,
     Viz,
 )
@@ -619,9 +620,37 @@ def test_build_dashboard_data_grid() -> None:
     wt = tab["items"][0]["data"]["tabs"][0]
     assert wt["isDefault"] is True and wt["params"] == {} and "description" in wt
     assert tab["items"][0]["type"] == "widget" and tab["items"][0]["namespace"] == "default"
-    # layout: two columns; one entry per item, keyed by item id (validateData requires this)
+    # layout: two half-width tiles share a row; one entry per item, keyed by item id
+    # (validateData requires this)
     assert tab["layout"][0]["x"] == 0 and tab["layout"][1]["x"] == 12
+    assert tab["layout"][0]["y"] == tab["layout"][1]["y"] == 0
     assert [lo["i"] for lo in tab["layout"]] == [it["id"] for it in tab["items"]]
+    # auto-scaled heights (no longer a flat h=4): KPI compact, line chart a real plot area
+    assert tab["layout"][0]["h"] == 6  # big_number floor
+    assert tab["layout"][1]["h"] == 9  # line floor
+
+
+def test_build_dashboard_data_auto_scales_by_viz_and_hint() -> None:
+    # Auto-scaling: a full-width table is tall and spans the grid; a wide line honors its
+    # hint width; a tall hint raises the height above the viz floor; tiles never overlap.
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(id="t", title="T", viz=Viz.TABLE, layout_hint=LayoutHint(w=12, h=4, row=0),
+                      query=ChartQuery(table="dm.sales_daily", dimensions=["store_id"],
+                                       measures=[Measure(column="revenue", agg=Aggregation.SUM)])),
+            ChartSpec(id="l", title="L", viz=Viz.LINE, layout_hint=LayoutHint(w=12, h=6, row=1),
+                      query=ChartQuery(table="dm.sales_daily", dimensions=["date"],
+                                       measures=[Measure(column="revenue", agg=Aggregation.SUM)])),
+        ],
+    )  # fmt: skip
+    layout = {lo["i"]: lo for lo in build_dashboard_data(spec, ["w1", "w2"])["tabs"][0]["layout"]}
+    table, line = layout["auto_bi_item_t"], layout["auto_bi_item_l"]
+    assert table["w"] == 24 and table["h"] == 12  # hint w=12 -> full grid; table floor h=12
+    assert line["w"] == 24 and line["h"] == 9 + 2 * 2  # line floor 9 + (hint.h 6 - default 4)*2
+    # row-hint change starts a new shelf below the table (no overlap)
+    assert table["x"] == 0 and table["y"] == 0
+    assert line["x"] == 0 and line["y"] == table["h"]
 
 
 def test_assemble_dashboard_creates_dash_entry() -> None:

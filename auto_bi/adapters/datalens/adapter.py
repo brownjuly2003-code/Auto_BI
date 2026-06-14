@@ -35,7 +35,15 @@ from auto_bi.adapters.datalens.dataset import (
     safe_entry_name,
 )
 from auto_bi.adapters.superset.native_filters import participating_chart_ids
-from auto_bi.ir.spec import ChartQuery, ChartSpec, DashboardFilter, DashboardSpec, column_alias
+from auto_bi.ir.spec import (
+    ChartQuery,
+    ChartSpec,
+    DashboardFilter,
+    DashboardSpec,
+    LayoutHint,
+    Viz,
+    column_alias,
+)
 from auto_bi.semantic.model import ColumnRole, SemanticModel
 
 logger = logging.getLogger(__name__)
@@ -73,12 +81,50 @@ def _wip_name(canonical: str) -> str:
     return f"{canonical}{_WIP_SUFFIX}"
 
 
-# Grid (24 cols): selectors in a top row (6 wide, 2 tall), charts below in 2 columns.
-_GRID_W = 12
-_GRID_H = 4
+# Dash grid is 24 columns. Selectors sit in a top row (6 wide, 2 tall, 4 per row); charts
+# are packed below it. Chart tiles are sized per viz + the IR layout_hint (see _chart_tile),
+# NOT a flat size — a fixed h=4 left big_numbers/charts too short and tables with no visible
+# rows on the stand.
+_DL_GRID_COLS = 24
 _CTRL_W = 6
 _CTRL_H = 2
 _CTRLS_PER_ROW = 4
+
+# Width: the IR layout_hint is on a 12-col scale (mirrors Superset / propose.py); map it to
+# the 24-col dash grid so DataLens and Superset place charts consistently (×2).
+_HINT_W_SCALE = 2
+
+# Height (dash grid rows): a per-viz readability floor — tables/pivots need rows visible,
+# charts need a real plot area, KPIs stay compact. The author's layout_hint.h only raises it
+# (an explicit taller-than-default hint adds rows); it never shrinks a widget below its floor.
+_VIZ_MIN_H: dict[Viz, int] = {
+    Viz.BIG_NUMBER: 6,
+    Viz.TABLE: 12,
+    Viz.PIVOT: 12,
+    Viz.HEATMAP: 10,
+    Viz.PIE: 9,
+    Viz.LINE: 9,
+    Viz.AREA: 9,
+    Viz.BAR: 9,
+    Viz.STACKED_BAR: 9,
+}
+_DEFAULT_MIN_H = 9
+_HINT_DEFAULT_H = LayoutHint().h  # hint.h above this default bumps the floor up
+_HINT_H_SCALE = 2  # each extra hint-row -> this many dash rows
+
+
+def _chart_tile(chart: ChartSpec) -> tuple[int, int]:
+    """(width_cols, height_rows) of a chart widget on the 24-col dash grid — auto-scaled.
+
+    Width honors the author's `layout_hint.w` (12-col scale -> 24, ×2) so charts land where
+    Superset would put them. Height is the larger of a per-viz readability floor and the
+    author's hint scaled up, so a KPI stays compact, a line/bar chart gets a real plot area,
+    and a table/pivot is tall enough to show rows — replacing the old flat h=4 that cut
+    content off (KPI showed no figure, table showed no rows). Width is clamped to the grid."""
+    w = max(1, min(chart.layout_hint.w * _HINT_W_SCALE, _DL_GRID_COLS))
+    extra = max(0, chart.layout_hint.h - _HINT_DEFAULT_H)  # author asked for taller than default
+    h = _VIZ_MIN_H.get(chart.viz, _DEFAULT_MIN_H) + extra * _HINT_H_SCALE
+    return w, h
 
 
 def _filter_is_time(filter_: DashboardFilter, model: SemanticModel) -> bool:
@@ -211,7 +257,15 @@ def build_dashboard_data(
         )
     y0 = -(-len(controls) // _CTRLS_PER_ROW) * _CTRL_H  # rows of controls, ceil-divided
 
-    for i, (chart, wid) in enumerate(zip(spec.charts, widget_ids, strict=True)):
+    # Shelf-pack the auto-scaled chart tiles below the controls (mirrors Superset _pack_rows):
+    # place left-to-right, wrapping to a new shelf when the next tile would overflow the 24-col
+    # grid or when layout_hint.row changes (author's row grouping). Each shelf's y advances by
+    # the tallest tile on it, so variable heights never overlap.
+    cx = 0
+    cy = y0
+    shelf_h = 0
+    prev_row_hint: int | None = None
+    for chart, wid in zip(spec.charts, widget_ids, strict=True):
         item_id = f"auto_bi_item_{chart.id}"
         items.append(
             {
@@ -233,15 +287,16 @@ def build_dashboard_data(
                 },
             }
         )
-        layout.append(
-            {
-                "i": item_id,
-                "x": (i % 2) * _GRID_W,
-                "y": y0 + (i // 2) * _GRID_H,
-                "w": _GRID_W,
-                "h": _GRID_H,
-            }
-        )
+        w, h = _chart_tile(chart)
+        new_group = prev_row_hint is not None and chart.layout_hint.row != prev_row_hint
+        if cx > 0 and (new_group or cx + w > _DL_GRID_COLS):
+            cx = 0
+            cy += shelf_h
+            shelf_h = 0
+        layout.append({"i": item_id, "x": cx, "y": cy, "w": w, "h": h})
+        cx += w
+        shelf_h = max(shelf_h, h)
+        prev_row_hint = chart.layout_hint.row
     # counter = next free hashid index (tab + per-widget item & inner-tab ids + controls), >= 1.
     counter = 1 + 2 * len(spec.charts) + len(controls)
     return {
