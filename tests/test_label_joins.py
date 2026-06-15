@@ -265,6 +265,21 @@ def test_pie_swap_keeps_single_dimension(model) -> None:
     assert validate_spec(out, model) == []  # pie still has exactly one dimension
 
 
+def test_heatmap_two_dims_one_swapped_keeps_shape(model) -> None:
+    # in-place replacement must preserve the exact dimension count heatmap requires (2)
+    out = apply_label_joins(_spec(_chart(Viz.HEATMAP, dimensions=["store_id", "date"])), model)
+    assert _q(out).dimensions == ["dm.stores.name", "date"]
+    assert validate_spec(out, model) == []  # heatmap still has exactly two dimensions
+
+
+def test_mixed_unique_and_non_unique_ids_swaps_only_safe_one(model) -> None:
+    # store name is unique (swap), region name collides (kept) -> partial, still valid
+    out = apply_label_joins(_spec(_chart(Viz.TABLE, dimensions=["store_id", "region_id"])), model)
+    assert _q(out).dimensions == ["dm.stores.name", "region_id"]
+    assert [j.table for j in _q(out).joins] == ["dm.stores"]
+    assert validate_spec(out, model) == []
+
+
 def test_composes_with_topn(model) -> None:
     # B3 swaps id->name, then B1 ranks the named categorical axis by the measure
     labeled = apply_label_joins(_spec(_chart(Viz.BAR, dimensions=["store_id"])), model)

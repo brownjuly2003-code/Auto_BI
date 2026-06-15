@@ -133,6 +133,13 @@ def _label_column(target: Table, id_col: str) -> Column | None:
     Heuristic (a dimension column whose name looks like a label) gated by cardinality:
     the name's recorded distinct count must be ~equal to the id's, so grouping by the name
     does not merge distinct ids. No cardinality evidence -> no swap (conservative).
+
+    Only `role=DIMENSION` columns are considered label candidates: a measure/time column
+    is never a sensible axis label, and skipping one only forgoes readability (never wrong).
+    When `id_col` itself has no recorded cardinality the guard falls back to `phys.rows`,
+    which is >= any column's distinct count — so the >=0.99 ratio can only get *stricter*,
+    never looser; the fallback can never cause an unsafe swap. Ties among label candidates
+    are broken `name`-first then by column order (deterministic, but incidental).
     """
     phys = target.physical
     if phys is None or not phys.cardinality:
