@@ -26,11 +26,13 @@ from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
     DashboardSpec,
+    JoinSpec,
     OrderBy,
     Viz,
+    column_alias,
     measure_alias,
 )
-from auto_bi.semantic.model import ColumnRole, SemanticModel
+from auto_bi.semantic.model import Column, ColumnRole, SemanticModel, Table
 
 # viz whose x-axis / slices are categorical and degrade into a "wall" without top-N
 _CATEGORICAL_VIZ = frozenset({Viz.BAR, Viz.STACKED_BAR, Viz.PIE})
@@ -100,4 +102,132 @@ def apply_chart_defaults(spec: DashboardSpec, model: SemanticModel) -> Dashboard
     a measure, so `_orders_by_measure` short-circuits it).
     """
     charts = [_normalize_chart(chart, model) for chart in spec.charts]
+    return spec.model_copy(update={"charts": charts})
+
+
+# --- B3: label joins (raw FK id dimension -> human-readable name) -------------------
+#
+# A dimension that is a raw foreign key (`store_id`) renders as opaque integers. When the
+# semantic model says that id points (via `Column.fk`) at a table holding a human-readable
+# name AND that name is ~unique per id, rewrite the dimension to the joined name column and
+# add the LEFT JOIN. Deterministic half of dashboard-adequacy B3, done at the IR layer so
+# BOTH adapters inherit it — they already render joined dimensions (Phase 3 contract tests).
+#
+# Lossless by construction: the cardinality guard (`_label_column`) only swaps when the
+# model records the name's distinct count as ~equal to the id's, so grouping by the name
+# cannot merge distinct ids. Where names collide (or no cardinality evidence exists) the id
+# is left in place — never a silent row merge (the correctness tradeoff B3 was gated on).
+
+# column-name hints for a human-readable label of an entity (matched case-insensitively)
+_LABEL_NAME_HINTS = ("name", "title", "label", "наименование", "название", "имя")
+# the joined name must identify the id near-1:1; recorded cardinalities are approximate
+# (ClickHouse uniqCombined), so allow a little slack rather than demanding exact equality
+_LABEL_UNIQUENESS = 0.99
+# dimension-like roles a label swap applies to (measures/filters keep the raw id)
+_DIM_ROLES = ("dimensions", "series", "rows", "columns")
+
+
+def _label_column(target: Table, id_col: str) -> Column | None:
+    """A near-unique, human-readable name column of `target`, or None.
+
+    Heuristic (a dimension column whose name looks like a label) gated by cardinality:
+    the name's recorded distinct count must be ~equal to the id's, so grouping by the name
+    does not merge distinct ids. No cardinality evidence -> no swap (conservative).
+    """
+    phys = target.physical
+    if phys is None or not phys.cardinality:
+        return None
+    id_card = phys.cardinality.get(id_col) or phys.rows
+    if not id_card:
+        return None
+    candidates = [
+        c
+        for c in target.columns
+        if c.name != id_col
+        and c.role == ColumnRole.DIMENSION
+        and any(h in c.name.lower() for h in _LABEL_NAME_HINTS)
+    ]
+    candidates.sort(key=lambda c: c.name.lower() != "name")  # prefer an exact "name"
+    for c in candidates:
+        label_card = phys.cardinality.get(c.name)
+        if label_card and label_card >= _LABEL_UNIQUENESS * id_card:
+            return c
+    return None
+
+
+def _label_join_for(ref: str, base_table: str, model: SemanticModel) -> tuple[str, JoinSpec] | None:
+    """If bare dimension `ref` is a labelable FK id, return (qualified label ref, join).
+
+    Only base-table id columns with an `fk` whose edge exists in the model are eligible
+    (invariant 2 — we never invent a join). Already-qualified refs (a joined column) and
+    non-FK dimensions are left alone.
+    """
+    if "." in ref:
+        return None
+    base = model.table(base_table)
+    if base is None:
+        return None
+    col = base.column(ref)
+    if col is None or col.role != ColumnRole.DIMENSION or not col.fk:
+        return None
+    target_name, _, target_id = col.fk.rpartition(".")
+    target = model.table(target_name)
+    if target is None:
+        return None
+    label = _label_column(target, target_id)
+    if label is None:
+        return None
+    on_left = f"{base_table}.{ref}"
+    edges = {frozenset((j.left, j.right)) for j in model.joins}
+    if frozenset((on_left, col.fk)) not in edges:
+        return None  # only joins validate_spec will accept
+    join = JoinSpec(table=target_name, on_left=on_left, on_right=col.fk)
+    return f"{target_name}.{label.name}", join
+
+
+def _label_joins_chart(chart: ChartSpec, model: SemanticModel) -> ChartSpec:
+    q = chart.query
+    swaps: dict[str, str] = {}  # bare id ref -> qualified label ref
+    added: dict[frozenset[str], JoinSpec] = {}
+    for role in _DIM_ROLES:
+        for ref in getattr(q, role):
+            if ref in swaps:
+                continue
+            result = _label_join_for(ref, q.table, model)
+            if result is None:
+                continue
+            label_ref, join = result
+            swaps[ref] = label_ref
+            added[frozenset((join.on_left, join.on_right))] = join
+    if not swaps:
+        return chart
+
+    def rewrite(refs: list[str]) -> list[str]:
+        return [swaps.get(r, r) for r in refs]
+
+    new_roles = {role: rewrite(getattr(q, role)) for role in _DIM_ROLES}
+    # bail if a swap would collide bare aliases (two columns sharing a bare name in one
+    # chart is rejected by validate_spec) — keep the id rather than emit an invalid spec
+    group_cols = [c for role in _DIM_ROLES for c in new_roles[role]]
+    bare = [column_alias(c) for c in dict.fromkeys(group_cols)]
+    if len(bare) != len(set(bare)):
+        return chart
+
+    existing = {frozenset((j.on_left, j.on_right)): j for j in q.joins}
+    merged_joins = list({**existing, **added}.values())
+    new_order_by = [
+        ob.model_copy(update={"by": swaps[ob.by]}) if ob.by in swaps else ob for ob in q.order_by
+    ]
+    new_query = q.model_copy(update={**new_roles, "joins": merged_joins, "order_by": new_order_by})
+    return chart.model_copy(update={"query": new_query})
+
+
+def apply_label_joins(spec: DashboardSpec, model: SemanticModel) -> DashboardSpec:
+    """Return a copy of `spec` with raw FK id dimensions replaced by their human-readable
+    name (via a LEFT JOIN), where the model proves the name is ~unique per id (B3).
+
+    Pure and idempotent: after a swap the dimension is a qualified joined ref, which
+    `_label_join_for` skips, so a second pass is a no-op.
+    """
+    charts = [_label_joins_chart(chart, model) for chart in spec.charts]
     return spec.model_copy(update={"charts": charts})
