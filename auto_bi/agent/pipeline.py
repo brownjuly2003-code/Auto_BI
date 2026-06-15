@@ -7,7 +7,7 @@ All collaborators are injected; the CLI wires real ones from settings.
 from collections.abc import Callable
 
 from auto_bi.adapters.base import BIAdapter, DashboardRef
-from auto_bi.agent.normalize import apply_chart_defaults
+from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.propose import SpecValidationError, propose_spec
 from auto_bi.agent.sql_guard import LiveSQLValidator
 from auto_bi.agent.sqlgen import generate_chart_sql
@@ -76,16 +76,23 @@ def compile_and_build(
     spec_id: int | None = None,
 ) -> DashboardRef:
     """SQL_GEN -> VALIDATE -> BUILD for an already-produced spec (chat APPROVE path)."""
-    # deterministic top-N defaults on categorical charts (B1, dashboard adequacy): runs
-    # before SQL_GEN + adapter so BOTH the validated SQL and the built dashboard see the
-    # same normalized spec. Idempotent; no-op on charts that already express top-N. The
-    # preview/advisor see the pre-normalization spec, so log what changed for transparency.
-    normalized = apply_chart_defaults(spec, model)
-    changed = [
-        c.id for o, c in zip(spec.charts, normalized.charts, strict=True) if c.query != o.query
+    # deterministic dashboard-adequacy normalization, before SQL_GEN + adapter so BOTH the
+    # validated SQL and the built dashboard see one normalized spec. Both passes are pure
+    # and idempotent. The preview/advisor see the pre-normalization spec, so log changes.
+    # B3 (label joins) runs first — it swaps raw FK id dimensions for their human-readable
+    # name via a safe LEFT JOIN; B1 (top-N) then ranks the now-named categorical axis.
+    labeled = apply_label_joins(spec, model)
+    relabeled = [
+        c.id for o, c in zip(spec.charts, labeled.charts, strict=True) if c.query != o.query
     ]
-    if changed:
-        log(f"нормализация: дефолтный top-N применён к категориальным чартам {changed}")
+    if relabeled:
+        log(f"нормализация: id-измерения заменены на названия через join в чартах {relabeled}")
+    normalized = apply_chart_defaults(labeled, model)
+    topn_changed = [
+        c.id for o, c in zip(labeled.charts, normalized.charts, strict=True) if c.query != o.query
+    ]
+    if topn_changed:
+        log(f"нормализация: дефолтный top-N применён к категориальным чартам {topn_changed}")
     spec = normalized
     # invariant 2 at the BI boundary: never let an unvalidated spec reach the adapter,
     # regardless of how `spec` was produced (defense-in-depth; no-op on the happy path).
