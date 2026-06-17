@@ -1,9 +1,19 @@
 # Auto_BI
 
+![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![BI targets](https://img.shields.io/badge/BI-Superset_+_DataLens-1FA8C9) ![DWH](https://img.shields.io/badge/DWH-ClickHouse_+_Greenplum-FACC15) ![License](https://img.shields.io/badge/license-MIT-blue)
+
 Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом или drag&drop-раскладкой полей витрин**, уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
 
 **Скоуп v1 (RU-рынок):** ClickHouse (DM) + Apache Superset (BI). v2: Greengage/Greenplum + Yandex DataLens (self-hosted OSS-стенд). Универсальность — в швах (IR, адаптеры), не в имплементации.
 **LLM:** Sonnet 4.6 thinking через GraceKelly API (`http://127.0.0.1:8011/api/v1/orchestrate`).
+
+## Демо
+
+| Веб-UI: запрос → спецификация + Feasibility Advisor | Собранный дашборд (Superset) |
+|:--:|:--:|
+| ![Auto_BI web UI — превью спецификации с вердиктами advisor](docs/screenshots/web-ui-spec.png) | ![Auto_BI дашборд — топ-10 городов по выручке, Superset](docs/screenshots/dashboard-superset.png) |
+
+Слева — естественно-языковой запрос, уточнения агента, превью спецификации (IR) и вердикты Feasibility Advisor (CRITICAL → заявка владельцу DM, WARN → правка спеки). Справа — собранный из той же спецификации дашборд Superset на реальных данных ClickHouse.
 
 ## Статус
 
@@ -34,3 +44,7 @@ auto_bi serve                                     # web UI на http://127.0.0.1
 ## Суть архитектуры в одном абзаце
 
 LLM никогда не генерирует нативные форматы BI. Пайплайн: запрос (текст или раскладка полей) → grounding по семантической модели (`model.yaml`, включая физический слой движка) → уточнения при необходимости → **DashboardSpec** (BI-агностичный JSON, жёстко валидируется по модели) → SQL с проверкой (sqlglot/EXPLAIN/LIMIT) → детерминированный компилятор-адаптер строит дашборд через API выбранной BI. Параллельно детерминированный **Feasibility Checker** сверяет запрос с физикой витрины (ключи сортировки/партиции, размеры, EXPLAIN) — advisor прямо говорит, когда дашборд витриной не предусмотрен, и умеет оформить заявку владельцу DM. Один spec — N платформ.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
