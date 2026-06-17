@@ -7,11 +7,7 @@
 
 ## Статус
 
-**Phase 0–3 завершены; Phase 4 (hardening) идёт.** Работает end-to-end: текст/поля →
-spec → валидация → сборка дашборда. v1-стек (ClickHouse + Superset) и v2-стек
-(Greenplum/Greengage интроспекция+advisor; self-hosted DataLens-адаптер) live-проверены;
-web UI с двумя режимами ввода, итерациями, Feasibility Advisor, заявками владельцу DM и
-панелью наблюдаемости. Детальный текущий статус и история фаз — в [CLAUDE.md](CLAUDE.md).
+**Phase 0–4 + бэклог адекватности дашбордов (B1–B4) закрыты.** Работает end-to-end: текст/поля → spec → валидация → сборка дашборда. v1-стек (ClickHouse + Superset) и v2-стек (Greenplum/Greengage интроспекция + advisor; self-hosted DataLens-адаптер) live-проверены; web UI с двумя режимами ввода, итерациями, Feasibility Advisor, заявками владельцу DM и панелью наблюдаемости. Остаток — owner/стенд-зависимый (адаптеры Visiology/Luxms). История фаз и план — в [docs/PLAN.md](docs/PLAN.md).
 
 ## Как пользоваться
 
@@ -34,7 +30,6 @@ auto_bi serve                                     # web UI на http://127.0.0.1
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура: скоуп, IR-first, семантическая модель с физическим слоем, агент, Feasibility Advisor, адаптеры, LLM-слой, решения D1–D10, риски |
 | [docs/PLAN.md](docs/PLAN.md) | План: Phase 0–4, задачи, exit criteria; полезный продукт после Phase 2 (~2.5–3 мес FTE) |
 | [docs/MARKET.md](docs/MARKET.md) | Рынок на 06.2026: RU (СУБД, BI, AI-фичи конкурентов, статус Superset) + глобальный контекст |
-| [CLAUDE.md](CLAUDE.md) | Правила работы над проектом для Claude Code |
 
 ## Суть архитектуры в одном абзаце
 
