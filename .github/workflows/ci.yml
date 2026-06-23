@@ -42,3 +42,9 @@ jobs:
       # churning uv.lock.
       - name: Pytest + coverage
         run: uv run --with pytest-cov pytest -q --cov=auto_bi --cov-report=term-missing
+
+      # The advisor eval suite is deterministic (rule-pack findings, no LLM/stand) —
+      # running it in CI machinizes part of invariant 8 (don't ship a prompt/advisor
+      # change that regresses the golden anti-patterns).
+      - name: Eval — advisor suite (offline)
+        run: uv run auto_bi eval --suite advisor --model-path semantic/model.yaml

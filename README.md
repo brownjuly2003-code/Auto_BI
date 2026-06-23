@@ -19,6 +19,28 @@
 
 **Phase 0–4 + бэклог адекватности дашбордов (B1–B4) закрыты.** Работает end-to-end: текст/поля → spec → валидация → сборка дашборда. v1-стек (ClickHouse + Superset) и v2-стек (Greenplum/Greengage интроспекция + advisor; self-hosted DataLens-адаптер) live-проверены; web UI с двумя режимами ввода, итерациями, Feasibility Advisor, заявками владельцу DM и панелью наблюдаемости. Остаток — owner/стенд-зависимый (адаптеры Visiology/Luxms). История фаз и план — в [docs/PLAN.md](docs/PLAN.md).
 
+## Чем отличается
+
+Зрелого бесплатного инструмента «диалог → целый дашборд поверх DWH с выбором BI» нет ни в России, ни глобально (обзор с проверкой первоисточников — [docs/MARKET.md](docs/MARKET.md)). Три отличия от существующих NL→chart-решений:
+
+- **Grounding по конкретному DM, а не свободный чат** — уточнения только при реальных расхождениях запроса с витриной; однозначный запрос → ноль вопросов.
+- **Дашборд целиком из BI-агностичного IR** (layout, фильтры, N чартов) — а не один чарт по готовому датасету (отличие от DataLens «Нейроаналитик»). Один spec → Superset и DataLens.
+- **Engine-aware Feasibility Advisor** — детерминированно сверяет запрос с физикой витрины (ключи сортировки/партиции, EXPLAIN) и прямо говорит «такой дашборд витриной не предусмотрен, вот evidence и заявка владельцу DM». Этого нет ни у одного конкурента.
+
+```mermaid
+flowchart LR
+    Q["Запрос<br/>текст · поля"] --> G["GROUNDING<br/>по semantic model"]
+    G --> C{"уточнения?"}
+    C -->|да| G
+    C -->|нет| S["DashboardSpec<br/>IR · валидируется по модели"]
+    S --> SQL["SQL-guard<br/>sqlglot · EXPLAIN · LIMIT"]
+    S -.->|вердикты| ADV["Feasibility Advisor<br/>engine-aware"]
+    SQL --> A1["Superset adapter"]
+    SQL --> A2["DataLens adapter"]
+    A1 --> D[("Дашборд")]
+    A2 --> D
+```
+
 ## Как пользоваться
 
 Установка, команды CLI, web UI, конфигурация — [docs/USER_GUIDE.md](docs/USER_GUIDE.md).

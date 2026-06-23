@@ -91,7 +91,7 @@ def _build(description: str, model_path: str, target: str = "superset") -> int:
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
     from auto_bi.ir.spec import TargetBI
-    from auto_bi.llm.gracekelly import GraceKellyClient
+    from auto_bi.llm.factory import make_llm
     from auto_bi.semantic.model import SemanticModel
     from auto_bi.store import Store
 
@@ -109,7 +109,7 @@ def _build(description: str, model_path: str, target: str = "superset") -> int:
     ref = build_dashboard(
         description,
         model,
-        llm=GraceKellyClient(settings, store=store),
+        llm=make_llm(settings, store=store),
         sql_validator=LiveSQLValidator(make_run_query(settings)),
         adapter_for=partial(make_adapter, settings=settings, model=model),
         include_samples=settings.send_samples,
@@ -142,7 +142,7 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
     from auto_bi.llm.base import LLMError
-    from auto_bi.llm.gracekelly import GraceKellyClient
+    from auto_bi.llm.factory import make_llm
     from auto_bi.semantic.model import SemanticModel
     from auto_bi.store import Store
 
@@ -164,7 +164,7 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
             title="auto_bi chat",
         )
     )
-    llm = GraceKellyClient(settings, store=store)  # one client (and HTTP pool) per REPL
+    llm = make_llm(settings, store=store)  # one client (and HTTP pool) per REPL
     while True:
         request = console.input("\n[bold cyan]Вы:[/bold cyan] ").strip()
         if not request:
@@ -265,7 +265,7 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
     from auto_bi.api import create_app
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
-    from auto_bi.llm.gracekelly import GraceKellyClient
+    from auto_bi.llm.factory import make_llm
     from auto_bi.semantic.model import SemanticModel
     from auto_bi.store import Store
 
@@ -299,7 +299,7 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
 
     app = create_app(
         model=model,
-        llm=GraceKellyClient(settings, store=store),
+        llm=make_llm(settings, store=store),
         advisor=Advisor(model, run_query),
         store=store,
         builder=builder,
@@ -385,10 +385,10 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
             f"is a separate (S2) task; the advisor suite covers the {engine} rule pack.[/yellow]"
         )
     elif suite in ("golden", "all"):
-        from auto_bi.llm.gracekelly import GraceKellyClient
+        from auto_bi.llm.factory import make_llm
 
         settings = get_settings()
-        llm = GraceKellyClient(settings)
+        llm = make_llm(settings)
         cases = [c for c in golden_cases if not wanted or c.id in wanted]
         console.print(
             f"[dim]golden: {len(cases)} cases через GraceKelly "

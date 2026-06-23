@@ -17,6 +17,11 @@ dependencies = [
     "psycopg[binary]>=3.3.4",
 ]
 
+[project.optional-dependencies]
+# Direct Anthropic Messages API provider (AUTO_BI_LLM_PROVIDER=anthropic). Optional so the
+# lean core stays GraceKelly-only by default: `uv sync --extra anthropic` / `pip install '.[anthropic]'`.
+anthropic = ["anthropic>=0.40"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.2",

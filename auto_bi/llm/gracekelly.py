@@ -9,18 +9,16 @@ Every call is appended to logs/llm_calls.jsonl (prompt hash, latency, status —
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
-import re
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from auto_bi.config import Settings
+from auto_bi.llm._structured import append_llm_log, complete_with_repair, extract_json
 from auto_bi.llm.base import LLMError
 
 if TYPE_CHECKING:
@@ -30,51 +28,11 @@ T = TypeVar("T", bound=BaseModel)
 
 logger = logging.getLogger(__name__)
 
+# GraceKelly enforces a 40k-char prompt limit (its own constraint — see ARCHITECTURE §3.6).
 PROMPT_LIMIT = 40_000
-MAX_REPAIRS = 3
-_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
-REPAIR_PROMPT = """Твой предыдущий ответ не прошёл валидацию схемы.
-
-Ошибка валидации:
-{error}
-
-Предыдущий ответ:
-{previous}
-
-JSON Schema, которой должен соответствовать ответ:
-{schema}
-
-Верни ИСПРАВЛЕННЫЙ JSON-объект строго по этой схеме (все обязательные поля, без \
-переименований). Только JSON в блоке ```json```, без пояснений."""
-
-
-def extract_json(text: str) -> str:
-    """JSON object from an LLM answer: fenced ```json``` block, else first balanced {...}."""
-    fenced = _JSON_FENCE_RE.search(text)
-    if fenced:
-        return fenced.group(1)
-    start = text.find("{")
-    if start == -1:
-        raise ValueError("no JSON object found in the answer")
-    depth = 0
-    in_string = False
-    escape = False
-    for i, ch in enumerate(text[start:], start):
-        if escape:
-            escape = False
-        elif ch == "\\":
-            escape = in_string
-        elif ch == '"':
-            in_string = not in_string
-        elif not in_string:
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[start : i + 1]
-    raise ValueError("unbalanced JSON object in the answer")
+# `extract_json` is re-exported (tests and callers import it from this module).
+__all__ = ["PROMPT_LIMIT", "GraceKellyClient", "extract_json"]
 
 
 class GraceKellyClient:
@@ -103,26 +61,14 @@ class GraceKellyClient:
         session_id: str | None = None,
         step: str = "",
     ) -> T:
-        current = prompt
-        last_error = ""
-        previous_answer: str | None = None
-        for attempt in range(1 + MAX_REPAIRS):
-            answer = self._call(current, reasoning=reasoning, session_id=session_id, step=step)
-            try:
-                return schema.model_validate_json(extract_json(answer))
-            except (ValueError, ValidationError) as exc:
-                last_error = str(exc)
-                logger.warning("structured output invalid (attempt %d): %s", attempt + 1, exc)
-                if answer == previous_answer:  # repair produced the same broken output
-                    logger.warning("structured output unchanged after repair; aborting early")
-                    break
-                previous_answer = answer
-                current = REPAIR_PROMPT.format(
-                    error=last_error,
-                    previous=answer[:8000],
-                    schema=json.dumps(schema.model_json_schema(), ensure_ascii=False),
-                )
-        raise LLMError(f"structured output failed after {MAX_REPAIRS} repairs: {last_error}")
+        return cast(
+            T,
+            complete_with_repair(
+                lambda p: self._call(p, reasoning=reasoning, session_id=session_id, step=step),
+                prompt,
+                schema,
+            ),
+        )
 
     def _call(self, prompt: str, *, reasoning: bool, session_id: str | None, step: str) -> str:
         if len(prompt) > PROMPT_LIMIT:
@@ -174,35 +120,15 @@ class GraceKellyClient:
         step: str = "",
         completion_chars: int = 0,
     ) -> None:
-        record = {
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "model": self._settings.gracekelly_model,
-            "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest()[:16],
-            "prompt_chars": len(prompt),
-            "reasoning": reasoning,
-            "status": status,
-            "latency_ms": round(latency_s * 1000),
-            "step": step,
-            "completion_chars": completion_chars,
-        }
-        try:
-            self._log_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except OSError:  # logging must never kill the pipeline
-            logger.exception("failed to write llm call log")
-        if self._store is not None:
-            try:
-                self._store.log_llm_call(
-                    session_id=session_id,
-                    model=record["model"],
-                    prompt_sha256=record["prompt_sha256"],
-                    prompt_chars=record["prompt_chars"],
-                    reasoning=reasoning,
-                    status=status,
-                    latency_ms=record["latency_ms"],
-                    step=step,
-                    completion_chars=completion_chars,
-                )
-            except Exception:  # logging must never kill the pipeline
-                logger.exception("failed to write llm call to the store")
+        append_llm_log(
+            self._log_path,
+            self._store,
+            model=self._settings.gracekelly_model,
+            prompt=prompt,
+            reasoning=reasoning,
+            status=status,
+            latency_ms=round(latency_s * 1000),
+            session_id=session_id,
+            step=step,
+            completion_chars=completion_chars,
+        )

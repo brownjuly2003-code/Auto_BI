@@ -1,0 +1,137 @@
+"""AnthropicClient — direct Anthropic Messages API behind the same LLMClient seam.
+
+A second implementation of the `LLMClient` protocol so Auto_BI can run WITHOUT the
+GraceKelly service (removing that single point of failure — see ARCHITECTURE §3.6,
+"if we hit tool-use/caching limits, a direct AnthropicClient is added without changing
+the agent"). The structured-output repair loop and call logging are shared with
+GraceKellyClient via `auto_bi.llm._structured`; only the transport differs.
+
+The `anthropic` SDK is an OPTIONAL dependency (the lean core does not require it):
+install with `pip install 'auto-bi[anthropic]'` or `uv sync --extra anthropic`. It is
+imported lazily, so importing this module never forces the SDK to be present — useful
+for tests, which inject a fake `create` callable instead.
+"""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, TypeVar, cast
+
+from pydantic import BaseModel
+
+from auto_bi.config import Settings
+from auto_bi.llm._structured import append_llm_log, complete_with_repair
+from auto_bi.llm.base import LLMError
+
+if TYPE_CHECKING:
+    from auto_bi.store import Store
+
+T = TypeVar("T", bound=BaseModel)
+
+# A callable with the shape of `anthropic.Anthropic().messages.create` (kwargs in, response out).
+MessagesCreate = Callable[..., Any]
+
+
+def _build_create(settings: Settings) -> MessagesCreate:
+    """Construct the real Anthropic SDK client lazily; clear error if it's unavailable."""
+    try:
+        import anthropic
+    except ImportError as exc:  # optional dependency
+        raise LLMError(
+            "the 'anthropic' package is required for AUTO_BI_LLM_PROVIDER=anthropic; "
+            "install it with `pip install 'auto-bi[anthropic]'` or `uv sync --extra anthropic`"
+        ) from exc
+    try:
+        # api_key blank -> SDK falls back to the ANTHROPIC_API_KEY env var.
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key or None)
+    except Exception as exc:  # missing key, bad config
+        raise LLMError(f"failed to initialise the Anthropic client: {exc}") from exc
+    return client.messages.create
+
+
+def _extract_text(response: Any) -> str:
+    """Concatenate the text content blocks of a Messages API response (ignore thinking blocks)."""
+    parts: list[str] = []
+    for block in getattr(response, "content", None) or []:
+        if getattr(block, "type", None) == "text":
+            parts.append(getattr(block, "text", "") or "")
+    return "".join(parts)
+
+
+class AnthropicClient:
+    """LLMClient backed by the Anthropic Messages API (sync, text-in/JSON-out)."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        create: MessagesCreate | None = None,
+        log_path: str | Path = "logs/llm_calls.jsonl",
+        store: Store | None = None,
+    ) -> None:
+        self._settings = settings
+        # Injected `create` keeps unit tests SDK-free; otherwise build the real client now,
+        # which is also where the optional dependency / API key is actually required.
+        self._create = create or _build_create(settings)
+        self._log_path = Path(log_path)
+        self._store = store
+
+    def complete(
+        self,
+        prompt: str,
+        schema: type[T],
+        *,
+        reasoning: bool = False,
+        session_id: str | None = None,
+        step: str = "",
+    ) -> T:
+        return cast(
+            T,
+            complete_with_repair(
+                lambda p: self._call(p, reasoning=reasoning, session_id=session_id, step=step),
+                prompt,
+                schema,
+            ),
+        )
+
+    def _call(self, prompt: str, *, reasoning: bool, session_id: str | None, step: str) -> str:
+        started = time.monotonic()
+        status = "transport_error"
+        completion_chars = 0
+        try:
+            # reasoning -> adaptive thinking on GROUNDING/PROPOSE; mechanical steps run without it
+            # (Sonnet 4.6 supports both; mirrors the GraceKelly reasoning flag, llm/policy.py).
+            thinking = {"type": "adaptive"} if reasoning else {"type": "disabled"}
+            response = self._create(
+                model=self._settings.anthropic_model,
+                max_tokens=self._settings.anthropic_max_tokens,
+                thinking=thinking,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            status = getattr(response, "stop_reason", None) or "unknown"
+            if status == "refusal":
+                raise LLMError("Anthropic declined the request (stop_reason=refusal)")
+            text = _extract_text(response)
+            completion_chars = len(text)
+            if not text:
+                raise LLMError(f"Anthropic returned no text (stop_reason={status})")
+            return text
+        except LLMError:
+            raise
+        except Exception as exc:  # SDK/transport error
+            raise LLMError(f"Anthropic transport error: {exc}") from exc
+        finally:
+            append_llm_log(
+                self._log_path,
+                self._store,
+                model=self._settings.anthropic_model,
+                prompt=prompt,
+                reasoning=reasoning,
+                status=status,
+                latency_ms=round((time.monotonic() - started) * 1000),
+                session_id=session_id,
+                step=step,
+                completion_chars=completion_chars,
+            )

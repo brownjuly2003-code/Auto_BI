@@ -46,9 +46,19 @@ class Settings(BaseSettings):
     # self-hosted compose stand); port reuses ch_port.
     ch_host_from_datalens: str = "host.docker.internal"
 
+    # LLM provider seam (llm/factory.py): "gracekelly" (default, local service) or
+    # "anthropic" (direct Anthropic Messages API — removes the GraceKelly SPOF, ARCHITECTURE §3.6).
+    llm_provider: str = "gracekelly"
+
     # GraceKelly LLM service
     gracekelly_url: str = "http://127.0.0.1:8011"
     gracekelly_model: str = "claude-sonnet-4-6"
+
+    # Direct Anthropic API (used when llm_provider="anthropic"; SDK is an optional extra).
+    # api_key blank -> the SDK reads the standard ANTHROPIC_API_KEY env var.
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-6"
+    anthropic_max_tokens: int = 16000
 
     send_samples: bool = True
 
