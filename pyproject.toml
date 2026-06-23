@@ -55,3 +55,9 @@ markers = [
     "integration: requires running ClickHouse/Superset stand (docker, runs on Mac)",
 ]
 addopts = "-m 'not integration'"
+
+# Coverage is measured in CI and locally via:
+#   uv run --with pytest-cov pytest --cov=auto_bi --cov-report=term-missing
+[tool.coverage.run]
+source = ["auto_bi"]
+omit = ["*/__init__.py"]

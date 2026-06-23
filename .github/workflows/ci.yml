@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, format & tests (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Ruff (lint)
+        run: uv run ruff check .
+
+      - name: Black (format check)
+        run: uv run black --check auto_bi tests
+
+      # Integration tests (require the ClickHouse/Superset/DataLens stand) are
+      # deselected by default via pyproject `addopts = -m 'not integration'`,
+      # so CI stays hermetic. pytest-cov is pulled in ephemerally to avoid
+      # churning uv.lock.
+      - name: Pytest + coverage
+        run: uv run --with pytest-cov pytest -q --cov=auto_bi --cov-report=term-missing

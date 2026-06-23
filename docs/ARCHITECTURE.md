@@ -201,6 +201,8 @@ Ref-id'ы (`DatabaseRef.id`, `DatasetRef.id`, `ChartRef.id`, `DashboardRef.id`) 
 
 Power BI / Tableau / Metabase — вне скоупа (см. §1.1); интерфейс позволяет вернуть.
 
+> **Уточнение (2026-06-23):** строка «DataLens» в таблице выше — *исходный замысел* (облачный Public API `api.datalens.tech`). Фактически реализован и live-проверен **self-hosted open-source DataLens** (gateway-реверс — см. жирные блоки §3.5 ниже и runbook `docs/plans/2026-06-13-datalens-selfhosted-runbook.md`), а не облако: Yandex Cloud требует аккаунт/биллинг, недоступные проекту. Швы IR и `BIAdapter` идентичны — отличаются только auth и транспорт (cookie-gateway вместо IAM-Bearer).
+
 Правила стабильности Superset-адаптера: версия Superset зафиксирована в `docker-compose.yml`; contract-тесты «create → GET → assert» на каждый viz_type; обновление версии — отдельная задача с прогоном контрактов.
 
 **Правила стабильности DataLens-адаптера (Phase 4 F7, инвариант 7 распространён на DataLens):** реверс-блобы (zod `dataSchema` `schemeVersion=8`, chart `shared` `version="4"`, charset имени entry, `mix/createDashboardV1`/`mix/deleteEntry`, gateway `v4.10.4`, `HC=1`) завязаны на конкретную версию self-hosted стенда. Поддержанная версия и контрактные маркеры зафиксированы в runbook `docs/plans/2026-06-13-datalens-selfhosted-runbook.md` (секция «Версия стенда — контрактный пин»); обновление версии стенда — отдельная задача с обязательным прогоном live contract-сьюта `tests/test_datalens_contract.py`. Гэп: точные image-digest'ы (стенд = depth-1 клон, плавающий тег) ещё не сняты — команда захвата в runbook.

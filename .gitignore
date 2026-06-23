@@ -18,6 +18,12 @@ __pycache__/
 logs/
 .tmp/
 
+# coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
 # docker volumes / local data
 data/
 .docker/
