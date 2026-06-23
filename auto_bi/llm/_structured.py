@@ -123,11 +123,13 @@ def append_llm_log(
     The prompt itself is NEVER logged — only its sha256 prefix and length (security §4).
     Logging is best-effort: a failure here must never kill the pipeline.
     """
+    prompt_sha256 = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+    prompt_chars = len(prompt)
     record = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "model": model,
-        "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest()[:16],
-        "prompt_chars": len(prompt),
+        "prompt_sha256": prompt_sha256,
+        "prompt_chars": prompt_chars,
         "reasoning": reasoning,
         "status": status,
         "latency_ms": latency_ms,
@@ -146,8 +148,8 @@ def append_llm_log(
             store.log_llm_call(
                 session_id=session_id,
                 model=model,
-                prompt_sha256=record["prompt_sha256"],
-                prompt_chars=record["prompt_chars"],
+                prompt_sha256=prompt_sha256,
+                prompt_chars=prompt_chars,
                 reasoning=reasoning,
                 status=status,
                 latency_ms=latency_ms,
