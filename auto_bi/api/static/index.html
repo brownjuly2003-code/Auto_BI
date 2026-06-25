@@ -41,6 +41,7 @@
     <div id="mode-tabs" class="mode-tabs" role="tablist" aria-label="Режим запроса">
       <button type="button" class="mode-tab active" data-mode="text" role="tab" aria-selected="true">Текстом</button>
       <button type="button" class="mode-tab" data-mode="fields" role="tab" aria-selected="false">Полями</button>
+      <button type="button" class="mode-tab" data-mode="auto" role="tab" aria-selected="false">Авто</button>
     </div>
     <div id="chat" class="chat">
       <div id="chat-welcome" class="chat-welcome">
@@ -73,6 +74,19 @@
           <button type="button" id="seed-submit" class="btn btn-primary">Предложить дашборд</button>
         </div>
       </div>
+    </div>
+
+    <div id="auto-panel" class="auto-panel" hidden aria-label="Авто-обзор витрины">
+      <div class="builder-title">Авто-дашборд по витрине</div>
+      <p class="builder-hint">Выберите витрину — агент детерминированно соберёт обзорный
+        дашборд (KPI, динамика, ключевые разрезы) без единого запроса и без LLM.</p>
+      <label class="auto-field">Витрина
+        <select id="auto-table"></select>
+      </label>
+      <label class="auto-field">Максимум чартов
+        <input id="auto-max" type="number" min="1" max="12" value="8">
+      </label>
+      <button type="button" id="auto-submit" class="btn btn-primary">Собрать обзор</button>
     </div>
 
     <form id="chat-form" class="chat-input">

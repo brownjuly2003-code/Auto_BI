@@ -22,30 +22,72 @@ import uvicorn
 from auto_bi.adapters.base import DashboardRef
 from auto_bi.advisor.findings import Finding, Severity, VerdictClass
 from auto_bi.api import create_app
-from auto_bi.semantic.model import Column, ColumnRole, SemanticModel, Table
+from auto_bi.semantic.model import Column, ColumnRole, Join, Physical, SemanticModel, Table
 from auto_bi.store import Store
 
+# cardinality + fk + the join are here so the «Авто» mode shows real breakdowns/pie
 MODEL = SemanticModel(
     tables=[
         Table(
             name="dm.sales_daily",
             description="Дневные продажи",
+            grain=["date", "store_id"],
             columns=[
-                Column(name="date", type="Date", role=ColumnRole.TIME),
-                Column(name="store_id", type="UInt32", role=ColumnRole.DIMENSION),
-                Column(name="revenue", type="Decimal(18,2)", role=ColumnRole.MEASURE),
-                Column(name="orders", type="UInt32", role=ColumnRole.MEASURE),
+                Column(name="date", type="Date", role=ColumnRole.TIME, description="День продажи"),
+                Column(
+                    name="store_id", type="UInt32", role=ColumnRole.DIMENSION, fk="dm.stores.id"
+                ),
+                Column(
+                    name="revenue",
+                    type="Decimal(18,2)",
+                    role=ColumnRole.MEASURE,
+                    agg="sum",
+                    description="Выручка, руб",
+                ),
+                Column(
+                    name="orders",
+                    type="UInt32",
+                    role=ColumnRole.MEASURE,
+                    agg="sum",
+                    description="Число заказов",
+                ),
             ],
+            physical=Physical(engine="clickhouse", rows=20_000_000, cardinality={"store_id": 4200}),
         ),
         Table(
             name="dm.stores",
             description="Справочник магазинов",
+            grain=["id"],
             columns=[
+                Column(name="id", type="UInt32", role=ColumnRole.DIMENSION),
                 Column(name="name", type="String", role=ColumnRole.DIMENSION),
-                Column(name="city", type="LowCardinality(String)", role=ColumnRole.DIMENSION),
+                Column(
+                    name="city",
+                    type="LowCardinality(String)",
+                    role=ColumnRole.DIMENSION,
+                    description="Город",
+                ),
+                Column(
+                    name="region",
+                    type="LowCardinality(String)",
+                    role=ColumnRole.DIMENSION,
+                    description="Регион",
+                ),
+                Column(
+                    name="format",
+                    type="LowCardinality(String)",
+                    role=ColumnRole.DIMENSION,
+                    description="Формат",
+                ),
             ],
+            physical=Physical(
+                engine="clickhouse",
+                rows=4200,
+                cardinality={"id": 4200, "name": 4203, "city": 20, "region": 8, "format": 3},
+            ),
         ),
-    ]
+    ],
+    joins=[Join(left="dm.sales_daily.store_id", right="dm.stores.id")],
 )
 
 SPEC = {

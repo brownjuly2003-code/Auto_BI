@@ -195,6 +195,29 @@ class AgentSession:
             return self._propose_turn()
         raise RuntimeError(f"no user turn expected in phase {self.phase}")
 
+    def adopt_spec(self, spec: DashboardSpec) -> AgentTurn:
+        """Enter APPROVE with an externally-built spec (auto-overview mode), no LLM.
+
+        The auto-overview entry (`agent/autospec.py`) produces a deterministic spec, so
+        the machine skips GROUNDING/PROPOSE and goes straight to APPROVE — the same
+        approve/build/iterate path then applies. Advisor narration needs the LLM, so
+        verdicts stay empty here (the deterministic findings still show in the CLI/offline
+        path); a later word edit in APPROVE patches via the LLM as usual.
+        """
+        if self.phase != AgentPhase.INTAKE:
+            raise RuntimeError(f"session already started (phase={self.phase})")
+        self.spec = spec
+        self.verdicts = []
+        self.phase = AgentPhase.APPROVE
+        message = spec_summary(spec)
+        self._record("agent", message)
+        if self._store is not None and self._session_id is not None:
+            self._spec_row_id = self._store.save_spec(
+                self._session_id, spec.model_dump(mode="json")
+            )
+        self._trace("auto_propose", detail=f"{len(spec.charts)} чартов")
+        return AgentTurn(phase=self.phase, message=message, spec=spec, verdicts=[])
+
     def approve(self) -> DashboardSpec:
         if self.phase != AgentPhase.APPROVE or self.spec is None:
             raise RuntimeError(f"nothing to approve in phase {self.phase}")

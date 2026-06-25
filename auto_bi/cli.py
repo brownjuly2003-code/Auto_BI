@@ -9,13 +9,30 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     build = sub.add_parser("build", help="Build a dashboard from a text description")
-    build.add_argument("description", help="Dashboard description in natural language")
+    build.add_argument(
+        "description",
+        nargs="?",
+        default="",
+        help="Dashboard description in natural language (omit when using --auto)",
+    )
     build.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
     build.add_argument(
         "--target",
         choices=["superset", "datalens"],
         default="superset",
         help="BI target to build into (default: superset)",
+    )
+    build.add_argument(
+        "--auto",
+        metavar="TABLE",
+        default="",
+        help="Auto-overview: build a curated dashboard from a datamart (no text, no LLM)",
+    )
+    build.add_argument(
+        "--max-charts",
+        type=int,
+        default=8,
+        help="Auto mode: maximum number of charts (default: 8)",
     )
 
     chat = sub.add_parser("chat", help="Dialogue: clarify -> preview spec -> approve -> build")
@@ -65,6 +82,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "build":
+        if args.auto:
+            return _build_auto(args.auto, args.model_path, args.target, args.max_charts)
+        if not args.description:
+            parser.error("build needs a description or --auto <table>")
         return _build(args.description, args.model_path, args.target)
     if args.command == "chat":
         return _chat(args.model_path)
@@ -116,6 +137,56 @@ def _build(description: str, model_path: str, target: str = "superset") -> int:
         store=store,
         session_id=session_id,
         target_bi=target_bi,
+    )
+    base = settings.datalens_url if target_bi == TargetBI.DATALENS else settings.superset_url
+    print(f"\nДашборд готов: {base.rstrip('/')}{ref.url}")
+    return 0
+
+
+def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) -> int:
+    """Auto-overview: a curated dashboard built deterministically from a datamart (no LLM)."""
+    from functools import partial
+    from pathlib import Path
+
+    from auto_bi.adapters.factory import make_adapter
+    from auto_bi.agent.autospec import build_auto_spec
+    from auto_bi.agent.pipeline import compile_and_build
+    from auto_bi.agent.sql_guard import LiveSQLValidator
+    from auto_bi.config import get_settings
+    from auto_bi.introspect.clickhouse import make_run_query
+    from auto_bi.ir.spec import TargetBI
+    from auto_bi.semantic.model import SemanticModel
+    from auto_bi.store import Store
+
+    if not Path(model_path).exists():
+        print(f"Semantic model not found: {model_path}")
+        print("Generate the draft first: auto_bi introspect --output semantic/model.yaml")
+        return 2
+
+    settings = get_settings()
+    model = SemanticModel.load(model_path)
+    target_bi = TargetBI(target)
+    try:
+        spec = build_auto_spec(model, table_name, max_charts=max_charts, target_bi=target_bi)
+    except ValueError as exc:
+        print(f"Авто-режим: {exc}")
+        return 2
+
+    store = Store(settings.store_path)
+    session_id = store.create_session(f"авто-обзор: {table_name}")
+    spec_id = store.save_spec(session_id, spec.model_dump(mode="json"))
+    print(f"Авто-обзор «{table_name}»: {len(spec.charts)} чартов")
+    for chart in spec.charts:
+        print(f"  - [{chart.viz.value}] {chart.title}")
+
+    ref = compile_and_build(
+        spec,
+        model,
+        LiveSQLValidator(make_run_query(settings)),
+        partial(make_adapter, settings=settings, model=model),
+        store=store,
+        session_id=session_id,
+        spec_id=spec_id,
     )
     base = settings.datalens_url if target_bi == TargetBI.DATALENS else settings.superset_url
     print(f"\nДашборд готов: {base.rstrip('/')}{ref.url}")

@@ -28,6 +28,14 @@ class StartSessionRequest(BaseModel):
         return self
 
 
+class AutoSessionRequest(BaseModel):
+    """Auto-overview entry: a curated dashboard built from one datamart, no text/LLM."""
+
+    table: str
+    target_bi: TargetBI | None = None  # None -> Superset (mirrors StartSessionRequest)
+    max_charts: int = 8
+
+
 class ReplyRequest(BaseModel):
     text: str
 

@@ -28,10 +28,12 @@ from fastapi.staticfiles import StaticFiles
 
 from auto_bi.adapters.base import DashboardRef
 from auto_bi.advisor.core import Advisor
+from auto_bi.agent.autospec import build_auto_spec
 from auto_bi.agent.machine import AgentPhase, AgentTurn
 from auto_bi.agent.propose import SpecValidationError
 from auto_bi.agent.seed import validate_seed
 from auto_bi.api.schemas import (
+    AutoSessionRequest,
     BuildEvent,
     ColumnUpdate,
     DCRStatusUpdate,
@@ -229,6 +231,33 @@ def create_app(
             # nothing was registered (F2): tell the client plainly instead of a bare 500
             raise HTTPException(status_code=502, detail=f"LLM failed to start: {exc}") from None
         _apply_target_bi(managed)
+        return _turn(managed, turn)
+
+    @app.post(
+        "/api/v1/sessions/auto", response_model=TurnResponse, response_model_exclude_none=True
+    )
+    def start_auto_session(body: AutoSessionRequest, request: Request) -> TurnResponse:
+        # Auto-overview: a curated dashboard built deterministically from one datamart
+        # (no text, no LLM). RBAC: scope to allowed schemas, then hard-gate the table the
+        # build runs over (auto builds over exactly this table; auth off -> always allowed).
+        scoped_model = filter_model_by_schemas(model, _user(request).allowed_schemas)
+        if scoped_model.table(body.table) is None:
+            raise HTTPException(status_code=404, detail=f"unknown table {body.table!r}")
+        if not is_table_allowed(body.table, _user(request).allowed_schemas):
+            raise HTTPException(status_code=403, detail=f"not allowed: {body.table!r}")
+        target = body.target_bi or TargetBI.SUPERSET
+        try:
+            spec = build_auto_spec(
+                scoped_model, body.table, max_charts=body.max_charts, target_bi=target
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+        managed, turn = manager.start_auto(
+            spec,
+            target_bi=target,
+            model=scoped_model,
+            owner=_user(request).username if auth_enabled else None,
+        )
         return _turn(managed, turn)
 
     @app.delete("/api/v1/sessions/{session_id}", status_code=204)
