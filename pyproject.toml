@@ -66,3 +66,16 @@ addopts = "-m 'not integration'"
 [tool.coverage.run]
 source = ["auto_bi"]
 omit = ["*/__init__.py"]
+
+# mypy is run on auto_bi (not tests, whose fixtures use loose typing by design). Run via:
+#   uv run --with mypy --with types-PyYAML mypy auto_bi
+# types-PyYAML is pulled in ephemerally to keep uv.lock lean, mirroring pytest-cov in CI.
+[tool.mypy]
+python_version = "3.12"
+files = ["auto_bi"]
+
+[[tool.mypy.overrides]]
+# anthropic is an optional extra (installed only with `.[anthropic]`); clickhouse_connect
+# ships no py.typed marker. Neither has type info, but neither should block checking our code.
+module = ["anthropic", "clickhouse_connect", "clickhouse_connect.*"]
+ignore_missing_imports = true

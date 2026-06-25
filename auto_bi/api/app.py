@@ -182,7 +182,7 @@ def create_app(
         # one opaque 401 whether the username or the password is wrong (don't leak which)
         if row is None or not verify_password(body.password, row["password_hash"]):
             raise HTTPException(status_code=401, detail="invalid username or password")
-        token = store.create_token(new_token(), row["id"], auth_token_ttl_hours)
+        token = _store().create_token(new_token(), row["id"], auth_token_ttl_hours)
         # cookie for the browser (HttpOnly so JS can't read it; SameSite=Lax + the CSRF
         # Origin guard mitigate cross-site use). The token is also returned for CLI clients.
         response.set_cookie(
@@ -528,7 +528,7 @@ def create_app(
             )
         if _store().dm_change_request(request_id) is None:
             raise HTTPException(status_code=404, detail=f"unknown dm_change_request {request_id}")
-        store.set_dm_change_request_status(request_id, body.status)
+        _store().set_dm_change_request_status(request_id, body.status)
         return {"id": request_id, "status": body.status}
 
     # --- observability (Phase 4): per-session trace + LLM-usage dashboard ----------

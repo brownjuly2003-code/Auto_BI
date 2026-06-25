@@ -444,8 +444,10 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
 
     ok = True
     if suite in ("advisor", "all"):
-        cases = [c for c in advisor_cases_for_engine(engine) if not wanted or c.id in wanted]
-        report = run_advisor_suite(model, cases)
+        advisor_cases = [
+            c for c in advisor_cases_for_engine(engine) if not wanted or c.id in wanted
+        ]
+        report = run_advisor_suite(model, advisor_cases)
         _render(f"Advisor anti-pattern suite — {engine} (deterministic)", report)
         ok &= advisor_suite_ok(report)
 
@@ -460,15 +462,15 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
 
         settings = get_settings()
         llm = make_llm(settings)
-        cases = [c for c in golden_cases if not wanted or c.id in wanted]
+        golden_selected = [c for c in golden_cases if not wanted or c.id in wanted]
         console.print(
-            f"[dim]golden: {len(cases)} cases через GraceKelly "
+            f"[dim]golden: {len(golden_selected)} cases через GraceKelly "
             f"({settings.gracekelly_url}, {settings.gracekelly_model})…[/dim]"
         )
         report = run_golden_suite(
             model,
             llm,
-            cases=cases,
+            cases=golden_selected,
             progress=lambda r: console.print(
                 f"  [dim]{r.case_id}[/dim] "
                 + ("[green]PASS[/green]" if r.passed else f"[red]FAIL[/red] {r.detail}")
@@ -568,13 +570,15 @@ def _introspect(database: str | None, output: str, engine: str = "clickhouse") -
         # for GP, --database overrides the schema (default AUTO_BI_GP_SCHEMA); connection
         # params (db/host/...) come from AUTO_BI_GP_*. GP supports introspection + advisor;
         # it is not a BI build target (the BI connection always points at ClickHouse).
-        introspector = GreenplumIntrospector(make_run_query_pg(settings), schema=settings.gp_schema)
-        model = introspector.introspect(database)
+        gp_introspector = GreenplumIntrospector(
+            make_run_query_pg(settings), schema=settings.gp_schema
+        )
+        model = gp_introspector.introspect(database)
     else:
         from auto_bi.introspect.clickhouse import ClickHouseIntrospector, make_run_query
 
-        introspector = ClickHouseIntrospector(make_run_query(settings))
-        model = introspector.introspect(database or settings.ch_database)
+        ch_introspector = ClickHouseIntrospector(make_run_query(settings))
+        model = ch_introspector.introspect(database or settings.ch_database)
     model.dump(output)
     n_cols = sum(len(t.columns) for t in model.tables)
     print(f"Draft written to {output}: {len(model.tables)} tables, {n_cols} columns")

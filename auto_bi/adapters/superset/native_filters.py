@@ -93,6 +93,8 @@ def build_native_filter_configuration(
                     target_dataset = dataset_id
         if not in_scope:
             continue
+        # in_scope is non-empty here, so target_dataset was set alongside its first chart
+        assert target_dataset is not None
         excluded = [sid for sid in all_ids if sid not in in_scope]
         name = _filter_name(filter_, model)
         if _is_temporal(filter_.column, model):

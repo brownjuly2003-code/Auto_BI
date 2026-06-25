@@ -33,10 +33,10 @@ def make_adapter(target_bi: TargetBI, settings: Settings, model: SemanticModel) 
             user=settings.ch_user,
             password=settings.ch_password,
         )
-        client = SupersetClient(
+        superset_client = SupersetClient(
             settings.superset_url, settings.superset_user, settings.superset_password
         )
-        return SupersetAdapter(client, dwh, model)
+        return SupersetAdapter(superset_client, dwh, model)
 
     if target_bi == TargetBI.DATALENS:
         from auto_bi.adapters.datalens.adapter import DataLensAdapter
@@ -49,9 +49,9 @@ def make_adapter(target_bi: TargetBI, settings: Settings, model: SemanticModel) 
             user=settings.ch_user,
             password=settings.ch_password,
         )
-        client = DataLensClient(
+        datalens_client = DataLensClient(
             settings.datalens_url, settings.datalens_user, settings.datalens_password
         )
-        return DataLensAdapter(client, dwh, model, settings.datalens_workbook_id)
+        return DataLensAdapter(datalens_client, dwh, model, settings.datalens_workbook_id)
 
     raise ValueError(f"unsupported BI target: {target_bi!r}")

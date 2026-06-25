@@ -36,6 +36,12 @@ jobs:
       - name: Black (format check)
         run: uv run black --check auto_bi tests
 
+      # mypy gates type-correctness on our own code (not tests, whose fixtures use loose
+      # typing by design). types-PyYAML is pulled in ephemerally like pytest-cov to keep
+      # uv.lock lean; config (target package, third-party overrides) lives in pyproject.
+      - name: Mypy (types)
+        run: uv run --with mypy --with types-PyYAML mypy auto_bi
+
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
       # so CI stays hermetic. pytest-cov is pulled in ephemerally to avoid

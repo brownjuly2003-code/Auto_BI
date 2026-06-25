@@ -34,8 +34,9 @@ def _measure_expr(measure: Measure, col_ref: str | None = None) -> exp.Expressio
     if measure.agg == Aggregation.COUNT_DISTINCT:
         agg: exp.Expression = exp.Count(this=exp.Distinct(expressions=[col]))
     else:
-        agg = exp.func(_AGG_FUNC[measure.agg], col)
-    return exp.alias_(agg, measure_alias(measure), quoted=True)
+        # sqlglot types func()/alias_ as Func/Expr, both Expression subclasses at runtime
+        agg = exp.func(_AGG_FUNC[measure.agg], col)  # type: ignore[assignment]
+    return exp.alias_(agg, measure_alias(measure), quoted=True)  # type: ignore[return-value]
 
 
 def _literal(value: str | int | float) -> exp.Expression:

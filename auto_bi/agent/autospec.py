@@ -198,8 +198,10 @@ def build_auto_spec(
 
     charts: list[ChartSpec] = []
 
-    # P1 — KPI per measure
-    for col, m in zip(measures or [None], measure_objs, strict=True):
+    # P1 — KPI per measure (when there are no real measures, a single synthetic COUNT
+    # pairs with a None column -> the "Количество" title)
+    cols: list[Column | None] = list(measures) if measures else [None]
+    for col, m in zip(cols, measure_objs, strict=True):
         title = _short(col) if col is not None else "Количество"
         charts.append(
             ChartSpec(

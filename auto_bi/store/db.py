@@ -20,6 +20,14 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+
+def _row_id(cur: sqlite3.Cursor) -> int:
+    """`Cursor.lastrowid` is Optional in the stubs but is always set by the INSERT that
+    precedes each call here; assert it so the insert helpers keep their `-> int`."""
+    assert cur.lastrowid is not None
+    return cur.lastrowid
+
+
 _SCHEMA_VERSION = 3  # bump together with a migration when the schema changes
 
 _SCHEMA = """
@@ -178,7 +186,7 @@ class Store:
                 "INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)",
                 (session_id, role, content),
             )
-        return cur.lastrowid
+        return _row_id(cur)
 
     def messages(self, session_id: str) -> list[dict[str, Any]]:
         return self._rows("SELECT * FROM messages WHERE session_id = ? ORDER BY id", session_id)
@@ -191,7 +199,7 @@ class Store:
                 "INSERT INTO specs (session_id, spec_json, status) VALUES (?, ?, ?)",
                 (session_id, json.dumps(spec_json, ensure_ascii=False), status),
             )
-        return cur.lastrowid
+        return _row_id(cur)
 
     def set_spec_status(self, spec_id: int, status: str) -> None:
         with self._lock, self._db:
@@ -208,7 +216,8 @@ class Store:
         session_id: str,
         spec_id: int | None,
         *,
-        dashboard_id: int | None = None,
+        # DataLens entry ids are strings, Superset ids are ints (SQLite stores either)
+        dashboard_id: int | str | None = None,
         url: str = "",
         status: str = "ok",
         error: str = "",
@@ -219,7 +228,7 @@ class Store:
                 " VALUES (?, ?, ?, ?, ?, ?)",
                 (session_id, spec_id, dashboard_id, url, status, error),
             )
-        return cur.lastrowid
+        return _row_id(cur)
 
     def builds(self, session_id: str) -> list[dict[str, Any]]:
         return self._rows("SELECT * FROM builds WHERE session_id = ? ORDER BY id", session_id)
@@ -257,7 +266,7 @@ class Store:
                     completion_chars,
                 ),
             )
-        return cur.lastrowid
+        return _row_id(cur)
 
     def llm_calls(self, session_id: str | None = None) -> list[dict[str, Any]]:
         if session_id is None:
@@ -287,7 +296,7 @@ class Store:
                 " VALUES (?, ?, ?, ?, ?, ?)",
                 (session_id, seq, kind, status, latency_ms, detail),
             )
-        return cur.lastrowid
+        return _row_id(cur)
 
     def trace_events(self, session_id: str) -> list[dict[str, Any]]:
         return self._rows(
@@ -349,7 +358,7 @@ class Store:
                 " narrative) VALUES (?, ?, ?, ?, ?)",
                 (session_id, table_name, rule, severity, narrative),
             )
-        return cur.lastrowid
+        return _row_id(cur)
 
     def dm_change_requests(self, status: str | None = None) -> list[dict[str, Any]]:
         if status is None:

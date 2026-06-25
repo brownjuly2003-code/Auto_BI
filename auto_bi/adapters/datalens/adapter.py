@@ -437,13 +437,15 @@ class DataLensAdapter:
     ) -> DatasetRef:
         if self._connection_id is None:
             self.ensure_database()
+        connection_id = self._connection_id
+        assert connection_id is not None  # ensure_database sets it
         ds_name = name or dataset_name(query.table, query.table)
         self._delete_if_exists("dataset", ds_name)  # idempotency: rebuild replaces in place
         payload = build_dataset_payload(
             query,
             self._model,
             workbook_id=self._workbook_id,
-            connection_id=self._connection_id,
+            connection_id=connection_id,
             name=ds_name,
             apply_limit=apply_limit,
         )

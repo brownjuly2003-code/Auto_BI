@@ -40,6 +40,13 @@ def _slug(text: str, max_len: int = 40) -> str:
     return re.sub(r"\W+", "_", text.lower()).strip("_")[:max_len] or "dataset"
 
 
+def _int_id(ref_id: int | str) -> int:
+    """Superset entity ids are ints; refs type them `int | str` only to share the BIAdapter
+    Protocol with DataLens (string entry ids, see base.py). Narrow back at the Superset
+    boundary where the REST API and form_data/position helpers genuinely require ints."""
+    return int(ref_id)
+
+
 def _dataset_name(title: str, chart_id: str) -> str:
     """Readable, collision-free dataset name: slugs can truncate-collide, so a short
     hash of the full chart_id (unique per spec) keeps two charts on distinct datasets."""
@@ -86,8 +93,7 @@ class SupersetAdapter:
     def ensure_dataset(
         self, query: ChartQuery, name: str | None = None, *, apply_limit: bool = True
     ) -> DatasetRef:
-        if self._database is None:
-            self.ensure_database()
+        db = self._database or self.ensure_database()
         sql = generate_chart_sql(query, apply_limit=apply_limit)
         table_name = name or f"auto_bi__{_slug(query.table)}"
 
@@ -102,7 +108,7 @@ class SupersetAdapter:
         created = self._client.post(
             "/api/v1/dataset/",
             json={
-                "database": self._database.id,
+                "database": db.id,
                 "table_name": table_name,
                 "sql": sql,
                 "schema": self._dwh.database,
@@ -119,7 +125,7 @@ class SupersetAdapter:
                 "viz_type": VIZ_TYPE[chart.viz],
                 "datasource_id": ds.id,
                 "datasource_type": "table",
-                "params": json.dumps(build_form_data(chart, ds.id), ensure_ascii=False),
+                "params": json.dumps(build_form_data(chart, _int_id(ds.id)), ensure_ascii=False),
             },
         )
         logger.info("chart %r created: id=%s", chart.title, created["id"])
@@ -139,7 +145,7 @@ class SupersetAdapter:
         if spec.filters:
             if datasets is not None and model is not None:
                 placements = [
-                    (chart, ref.id, ds.id)
+                    (chart, _int_id(ref.id), _int_id(ds.id))
                     for chart, ref, ds in zip(spec.charts, charts, datasets, strict=True)
                 ]
                 native_filters, applied = build_native_filter_configuration(spec, placements, model)
@@ -165,7 +171,7 @@ class SupersetAdapter:
                     [f.column for f in spec.filters],
                 )
 
-        placed = list(zip(spec.charts, [c.id for c in charts], strict=True))
+        placed = list(zip(spec.charts, [_int_id(c.id) for c in charts], strict=True))
         position = build_position_json(spec, placed)
         json_metadata: dict = {"chart_configuration": {}}
         if native_filters:

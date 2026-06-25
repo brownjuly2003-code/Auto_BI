@@ -18,3 +18,14 @@ repos:
     rev: 24.10.0
     hooks:
       - id: black
+
+  # mypy on the whole auto_bi package (not per-file) via the project's uv env, mirroring
+  # the CI step. Runs only when an auto_bi source file changes.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (auto_bi)
+        entry: uv run --with mypy --with types-PyYAML mypy auto_bi
+        language: system
+        pass_filenames: false
+        files: ^auto_bi/.*\.py$

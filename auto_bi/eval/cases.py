@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from auto_bi.agent.seed import FieldsSeed, SeedGroup
 from auto_bi.engine import GREENPLUM
 from auto_bi.ir.spec import ChartQuery, ChartSpec, FilterOp, JoinSpec, Measure, QueryFilter, Viz
-from auto_bi.semantic.model import Aggregation, SemanticModel
+from auto_bi.semantic.model import Aggregation, Physical, SemanticModel
 
 
 class CaseKind(StrEnum):
@@ -295,13 +295,21 @@ class AdvisorCase(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
+def _physical(model: SemanticModel, table: str) -> Physical:
+    """Non-optional physical-stats accessor for the seed helpers below: a seed names a
+    table that the demo model is known to carry with physical stats."""
+    t = model.table(table)
+    assert t is not None and t.physical is not None, f"seed expects {table} with physical stats"
+    return t.physical
+
+
 def _seed_high_cardinality(model: SemanticModel) -> None:
     """Seed: a real DM would have a 100k+ dimension; demo tops out at ~17k."""
-    model.table("dm.sales_daily").physical.cardinality["manager_id"] = 150_000
+    _physical(model, "dm.sales_daily").cardinality["manager_id"] = 150_000
 
 
 def _seed_collapsing_engine(model: SemanticModel) -> None:
-    model.table("dm.sales_daily").physical.table_engine = "ReplacingMergeTree"
+    _physical(model, "dm.sales_daily").table_engine = "ReplacingMergeTree"
 
 
 def _chart(cid: str, viz: Viz, **query) -> ChartSpec:
@@ -406,12 +414,12 @@ ADVISOR_CASES: list[AdvisorCase] = [
 
 def _seed_gp_large_fact(model: SemanticModel) -> None:
     """A real GP fact crosses the 10M threshold; the demo model ships at 300k."""
-    model.table("dm.sales").physical.rows = 20_000_000
+    _physical(model, "dm.sales").rows = 20_000_000
 
 
 def _seed_gp_high_cardinality(model: SemanticModel) -> None:
     """A real product dimension is far larger than the demo's 50 rows."""
-    model.table("dm.sales").physical.cardinality["product_id"] = 150_000
+    _physical(model, "dm.sales").cardinality["product_id"] = 150_000
 
 
 def _gp_chart(cid: str, viz: Viz, **query) -> ChartSpec:

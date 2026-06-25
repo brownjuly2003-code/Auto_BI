@@ -128,14 +128,14 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
             errors.append(f"{prefix}: join to {j.table} is declared but no column of it is used")
 
     for measure in chart.query.measures:
-        col = table.column(measure.column)
-        if col is None:
+        mcol = table.column(measure.column)
+        if mcol is None:
             errors.append(_unknown(measure.column, "measure column"))
-        elif col.role == ColumnRole.TIME:
+        elif mcol.role == ColumnRole.TIME:
             errors.append(f"{prefix}: time column {measure.column!r} cannot be a measure")
-        elif measure.agg in _NUMERIC_AGGS and col.role != ColumnRole.MEASURE:
+        elif measure.agg in _NUMERIC_AGGS and mcol.role != ColumnRole.MEASURE:
             errors.append(
-                f"{prefix}: {measure.agg.value} over {col.role.value} column "
+                f"{prefix}: {measure.agg.value} over {mcol.role.value} column "
                 f"{measure.column!r} — для неё допустимы только count/count_distinct"
             )
 

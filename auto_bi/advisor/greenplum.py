@@ -119,6 +119,7 @@ def distribution_skew(ctx: RuleContext) -> list[Finding]:
         return []
     total_distinct = 1
     for c in cards:
+        assert c is not None  # the `any(... is None)` guard above returned otherwise
         total_distinct *= c
     if total_distinct >= DIST_KEY_LOW_CARDINALITY:
         return []
