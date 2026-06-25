@@ -167,3 +167,121 @@ def test_review_aggregates_over_charts() -> None:
     )
     findings = Advisor(fact_model()).review(spec)
     assert {f.chart_id for f in findings} == {"c0", "c1"}
+
+
+# --- remediation: the advisor hands a ready-to-run fix artifact, not just a diagnosis -------
+
+
+def test_dm_change_request_carries_projection_remediation() -> None:
+    # manager_id is off the sorting key entirely -> dm_change_request + a concrete projection
+    chart = bar(filters=[QueryFilter(column="manager_id", op=FilterOp.EQ, value=7)])
+    f = next(
+        x
+        for x in Advisor(fact_model()).review_chart(chart)
+        if x.rule == "filter_not_in_sorting_key_prefix"
+    )
+    assert f.verdict_class == VerdictClass.DM_CHANGE_REQUEST
+    assert f.remediation is not None
+    assert f.remediation.kind == "ch_projection"
+    # the DDL is deterministic from the table + filtered columns and is runnable as-is
+    assert "ADD PROJECTION p_by_manager_id" in f.remediation.ddl
+    assert "ORDER BY manager_id" in f.remediation.ddl
+    assert "MATERIALIZE PROJECTION p_by_manager_id" in f.remediation.ddl
+    assert "dm.sales_daily" in f.remediation.ddl
+
+
+def test_spec_adjustment_has_no_remediation() -> None:
+    # store_id is IN the key (just not leading) -> a query tweak fixes it, no DM artifact
+    chart = bar(filters=[QueryFilter(column="store_id", op=FilterOp.EQ, value=1)])
+    f = next(
+        x
+        for x in Advisor(fact_model()).review_chart(chart)
+        if x.rule == "filter_not_in_sorting_key_prefix"
+    )
+    assert f.verdict_class == VerdictClass.SPEC_ADJUSTMENT
+    assert f.remediation is None
+
+
+def _join_model(*, joined_rows: int) -> SemanticModel:
+    """Fact (100M) joined to a second table sized by `joined_rows` (large or small dim)."""
+    from auto_bi.semantic.model import Join
+
+    sales = Table(
+        name="dm.sales_daily",
+        columns=[
+            Column(name="date", type="Date", role=ColumnRole.TIME),
+            Column(name="order_id", type="UInt64", role=ColumnRole.DIMENSION, fk="dm.orders.id"),
+            Column(
+                name="revenue", type="Decimal(18, 2)", role=ColumnRole.MEASURE, agg=Aggregation.SUM
+            ),
+        ],
+        physical=Physical(
+            engine="clickhouse", table_engine="MergeTree", sorting_key=["date"], rows=100_000_000
+        ),
+    )
+    orders = Table(
+        name="dm.orders",
+        columns=[
+            Column(name="id", type="UInt64", role=ColumnRole.DIMENSION),
+            Column(name="channel", type="String", role=ColumnRole.DIMENSION),
+        ],
+        physical=Physical(engine="clickhouse", table_engine="MergeTree", rows=joined_rows),
+    )
+    return SemanticModel(
+        tables=[sales, orders],
+        joins=[Join(left="dm.sales_daily.order_id", right="dm.orders.id")],
+    )
+
+
+def _join_chart() -> ChartSpec:
+    from auto_bi.ir.spec import JoinSpec
+
+    return ChartSpec(
+        id="c1",
+        title="t",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["dm.orders.channel"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            joins=[
+                JoinSpec(
+                    table="dm.orders", on_left="dm.sales_daily.order_id", on_right="dm.orders.id"
+                )
+            ],
+            filters=[date_filter()],  # otherwise no_filter_on_large_fact also fires (harmless)
+        ),
+    )
+
+
+def test_join_large_large_fires_with_denormalised_mart() -> None:
+    f = next(
+        x
+        for x in Advisor(_join_model(joined_rows=50_000_000)).review_chart(_join_chart())
+        if x.rule == "join_large_large"
+    )
+    assert f.verdict_class == VerdictClass.DM_CHANGE_REQUEST
+    assert f.severity == Severity.CRITICAL
+    assert f.evidence["joined_tables"] == {"dm.orders": 50_000_000}
+    assert f.remediation is not None and f.remediation.kind == "denormalised_mart"
+    assert "CREATE TABLE dm.sales_daily__wide" in f.remediation.ddl
+    assert "LEFT JOIN dm.orders ON dm.sales_daily.order_id = dm.orders.id" in f.remediation.ddl
+
+
+def test_join_to_small_dim_is_silent() -> None:
+    # joining a 4200-row dimension is a cheap broadcast hash join, not a large×large cliff
+    found = rules(Advisor(_join_model(joined_rows=4200)).review_chart(_join_chart()))
+    assert "join_large_large" not in found
+
+
+def test_join_large_large_silent_without_model() -> None:
+    # the metadata-only path (no model in context) can't size the joined table -> stays quiet
+    from auto_bi.advisor.clickhouse import RuleContext, join_large_large
+
+    chart = _join_chart()
+    table = _join_model(joined_rows=50_000_000).table("dm.sales_daily")
+    assert table is not None and table.physical is not None
+    ctx = RuleContext(
+        chart_id="c1", query=chart.query, table=table, physical=table.physical, model=None
+    )
+    assert join_large_large(ctx) == []

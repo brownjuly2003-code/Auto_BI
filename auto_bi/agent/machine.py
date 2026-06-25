@@ -10,6 +10,7 @@ after MAX_CLARIFY_ROUNDS the agent proposes with what it has instead of interrog
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Iterator
@@ -301,12 +302,18 @@ class AgentSession:
                     if key in self._dcr_logged:
                         continue  # word edits re-run the advisor: one request per finding
                     self._dcr_logged.add(key)
+                    remediation = (
+                        json.dumps([r.model_dump() for r in v.remediations], ensure_ascii=False)
+                        if v.remediations
+                        else ""
+                    )
                     self._store.add_dm_change_request(
                         self._session_id,
                         table_name=key[0],
                         rule=key[1],
                         severity=v.severity.value,
                         narrative=v.text,
+                        remediation=remediation,
                     )
         return AgentTurn(
             phase=self.phase,

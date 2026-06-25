@@ -49,6 +49,7 @@ class Advisor:
             table=table,
             physical=table.physical,
             evidence=evidence,
+            model=self._model,
         )
         findings: list[Finding] = []
         for rule in self._rules:

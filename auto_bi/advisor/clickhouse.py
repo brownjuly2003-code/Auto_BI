@@ -20,9 +20,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from auto_bi.advisor.findings import Finding, Severity, VerdictClass
+from auto_bi.advisor.findings import Finding, Remediation, Severity, VerdictClass
 from auto_bi.ir.spec import ChartQuery
-from auto_bi.semantic.model import Physical, Table
+from auto_bi.semantic.model import Physical, SemanticModel, Table
 
 # thresholds — tuned to the demo-DM scale; revisit with real DMs
 LARGE_FACT_ROWS = 10_000_000
@@ -39,10 +39,19 @@ class RuleContext:
     table: Table
     physical: Physical
     evidence: dict = field(default_factory=dict)  # EXPLAIN-derived facts, may be empty
+    # the whole model — only rules that reason across tables (join_large_large) need it;
+    # None keeps metadata-only callers and the existing single-table rules unaffected
+    model: SemanticModel | None = None
 
     @property
     def filter_columns(self) -> list[str]:
         return [f.column for f in self.query.filters]
+
+
+def _projection_name(columns: list[str]) -> str:
+    """Stable ClickHouse projection identifier from the filtered columns."""
+    bare = [c.rpartition(".")[2] for c in columns]
+    return "p_by_" + "_".join(bare)
 
 
 def _size_severity(rows: int) -> Severity:
@@ -87,6 +96,7 @@ def filter_not_in_sorting_key_prefix(ctx: RuleContext) -> list[Finding]:
     if leading in filters:
         return []  # prefix used -> index works
     in_key = [c for c in filters if c in sk]
+    remediation: Remediation | None = None
     if in_key:
         verdict = VerdictClass.SPEC_ADJUSTMENT
         title = f"filters {filters} miss the leading sorting key {leading!r} on {ctx.table.name}"
@@ -98,6 +108,24 @@ def filter_not_in_sorting_key_prefix(ctx: RuleContext) -> list[Finding]:
             f"this access path isn't in the DM design (sorting key {sk}); "
             "needs a projection or a different ORDER BY"
         ]
+        # concrete fix: a ClickHouse projection that physically re-orders the data by the
+        # filtered columns, so this access path gets its own primary index inside the table
+        proj = _projection_name(ctx.filter_columns)
+        order_cols = ", ".join(c.rpartition(".")[2] for c in ctx.filter_columns)
+        remediation = Remediation(
+            kind="ch_projection",
+            summary=f"ClickHouse projection {proj!r} on {ctx.table.name} ordered by ({order_cols})",
+            ddl=(
+                f"ALTER TABLE {ctx.table.name}\n"
+                f"  ADD PROJECTION {proj} (SELECT * ORDER BY {order_cols});\n"
+                f"ALTER TABLE {ctx.table.name} MATERIALIZE PROJECTION {proj};"
+            ),
+            rationale=(
+                f"the table is sorted by {sk}, so a filter on {ctx.filter_columns} can't use the "
+                f"primary index; a projection ordered by ({order_cols}) gives that access path its "
+                "own sorted copy without changing the base table's ORDER BY"
+            ),
+        )
     return [
         Finding(
             rule="filter_not_in_sorting_key_prefix",
@@ -107,6 +135,7 @@ def filter_not_in_sorting_key_prefix(ctx: RuleContext) -> list[Finding]:
             title=title,
             evidence={"sorting_key": sk, "filter_columns": filters, "leading_key": leading},
             suggestions=suggestions,
+            remediation=remediation,
         )
     ]
 
@@ -196,6 +225,67 @@ def collapsing_engine_needs_final(ctx: RuleContext) -> list[Finding]:
     ]
 
 
+def join_large_large(ctx: RuleContext) -> list[Finding]:
+    """A join between two large tables. ClickHouse builds the RIGHT side into an in-memory
+    hash table for every query, so joining two big facts is a memory/latency cliff that no
+    filter fixes — the DM answer is a denormalised mart that pre-joins them. Needs the model
+    to size the joined tables; silent without it (metadata-only callers) or on fact->small-dim
+    joins (the common, cheap case)."""
+    if not ctx.query.joins or ctx.model is None or ctx.physical.rows < LARGE_FACT_ROWS:
+        return []
+    big = [
+        (j, jt)
+        for j in ctx.query.joins
+        if (jt := ctx.model.table(j.table)) is not None
+        and jt.physical is not None
+        and jt.physical.rows >= LARGE_FACT_ROWS
+    ]
+    if not big:
+        return []  # joined tables are small dimensions -> a broadcast hash join is cheap
+    joined_names = [jt.name for _, jt in big]
+    order_key = ", ".join(ctx.physical.sorting_key) or "<sorting key>"
+    join_clauses = "\n".join(f"LEFT JOIN {j.table} ON {j.on_left} = {j.on_right}" for j, _ in big)
+    wide = f"{ctx.table.name}__wide"
+    remediation = Remediation(
+        kind="denormalised_mart",
+        summary=f"denormalised mart {wide!r} pre-joining {ctx.table.name} + {joined_names}",
+        ddl=(
+            f"-- Денормализующая витрина: предзаджойнить большие таблицы один раз при сборке,\n"
+            f"-- чтобы убрать large×large join из каждого запроса дашборда.\n"
+            f"CREATE TABLE {wide}\n"
+            f"ENGINE = MergeTree ORDER BY ({order_key})\n"
+            f"AS SELECT *\n"
+            f"FROM {ctx.table.name}\n"
+            f"{join_clauses};"
+        ),
+        rationale=(
+            "ClickHouse loads the right-hand table of a join into memory per query; with both "
+            f"sides ≥ {LARGE_FACT_ROWS} rows this dominates latency. A mart that materialises the "
+            "join once turns it into a single sorted scan."
+        ),
+    )
+    return [
+        Finding(
+            rule="join_large_large",
+            severity=Severity.CRITICAL,
+            verdict_class=VerdictClass.DM_CHANGE_REQUEST,
+            chart_id=ctx.chart_id,
+            title=(
+                f"join of {ctx.table.name} ({ctx.physical.rows} rows) with large table(s) "
+                f"{joined_names} -> in-memory hash join on every refresh"
+            ),
+            evidence={
+                "base_rows": ctx.physical.rows,
+                "joined_tables": {
+                    jt.name: jt.physical.rows for _, jt in big if jt.physical is not None
+                },
+            },
+            suggestions=["pre-join into a denormalised mart instead of joining at query time"],
+            remediation=remediation,
+        )
+    ]
+
+
 # the ClickHouse rule pack (mechanisms); EXPLAIN evidence first, then metadata rules
 RULES: tuple[Callable[[RuleContext], list[Finding]], ...] = (
     explain_high_scan_fraction,
@@ -204,4 +294,5 @@ RULES: tuple[Callable[[RuleContext], list[Finding]], ...] = (
     no_filter_on_large_fact,
     group_by_high_cardinality,
     collapsing_engine_needs_final,
+    join_large_large,
 )

@@ -28,7 +28,7 @@ def _row_id(cur: sqlite3.Cursor) -> int:
     return cur.lastrowid
 
 
-_SCHEMA_VERSION = 3  # bump together with a migration when the schema changes
+_SCHEMA_VERSION = 4  # bump together with a migration when the schema changes
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS dm_change_requests (
     rule        TEXT NOT NULL,
     severity    TEXT NOT NULL,
     narrative   TEXT NOT NULL DEFAULT '',
+    remediation TEXT NOT NULL DEFAULT '',  -- JSON array of Remediation artifacts (runnable DDL)
     status      TEXT NOT NULL DEFAULT 'open'
 );
 CREATE TABLE IF NOT EXISTS users (
@@ -148,13 +149,17 @@ class Store:
         any DB. The ALTERs add the v2 observability columns to a legacy `llm_calls` that
         IF NOT EXISTS left untouched — this covers both a v1 DB and a pre-versioning v0
         DB whose old llm_calls lacks the columns (so we must NOT early-return on version
-        0). v3 added only new tables (no ALTER), so the version bump below suffices.
+        0). v3 added only new tables (no ALTER), so the version bump below suffices. v4
+        adds dm_change_requests.remediation (guarded ALTER, no-op on a fresh DB).
         Idempotent — guarded by the column check, so it is safe to run on any schema.
         """
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
         if version < 2:
             self._add_column("llm_calls", "step", "TEXT NOT NULL DEFAULT ''")
             self._add_column("llm_calls", "completion_chars", "INTEGER NOT NULL DEFAULT 0")
+        if version < 4:
+            # v4: dm_change_requests carries the advisor's concrete fix artifact (DDL)
+            self._add_column("dm_change_requests", "remediation", "TEXT NOT NULL DEFAULT ''")
         if version < _SCHEMA_VERSION:
             self._db.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
 
@@ -351,12 +356,13 @@ class Store:
         rule: str,
         severity: str,
         narrative: str = "",
+        remediation: str = "",  # JSON array of Remediation artifacts, "" when none
     ) -> int:
         with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO dm_change_requests (session_id, table_name, rule, severity,"
-                " narrative) VALUES (?, ?, ?, ?, ?)",
-                (session_id, table_name, rule, severity, narrative),
+                " narrative, remediation) VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, table_name, rule, severity, narrative, remediation),
             )
         return _row_id(cur)
 

@@ -173,6 +173,7 @@ def _finding(chart_id="c1", severity=Severity.WARN, vc=VerdictClass.SPEC_ADJUSTM
         title=kw.get("title", "фильтр мимо префикса ключа сортировки"),
         evidence=kw.get("evidence", {"scan_fraction": 0.96}),
         suggestions=kw.get("suggestions", ["добавить фильтр по date"]),
+        remediation=kw.get("remediation"),
     )
 
 
@@ -192,6 +193,18 @@ def test_worst_verdicts_takes_worst_class_and_severity() -> None:
     assert verdict.verdict_class == VerdictClass.DM_CHANGE_REQUEST
     assert set(verdict.rules) == {"filter_not_in_sorting_key_prefix", "partition_misaligned_filter"}
     assert verdict.suggestions == ["добавить фильтр по date", "новая витрина"]
+
+
+def test_worst_verdicts_collects_remediations() -> None:
+    from auto_bi.advisor.findings import Remediation
+
+    rem = Remediation(kind="ch_projection", summary="проекция", ddl="ALTER TABLE ...")
+    findings = [
+        _finding(severity=Severity.WARN),  # no remediation
+        _finding(vc=VerdictClass.DM_CHANGE_REQUEST, rule="r2", remediation=rem),
+    ]
+    (verdict,) = worst_verdicts(findings).values()
+    assert verdict.remediations == [rem]  # carried through verbatim, only the ones present
 
 
 def test_narrate_uses_llm_text_and_keeps_code_verdict(demo_model) -> None:

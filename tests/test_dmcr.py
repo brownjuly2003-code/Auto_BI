@@ -63,3 +63,42 @@ def test_optional_lines_omitted_without_request_or_session() -> None:
 def test_open_is_a_known_status() -> None:
     # the renderer's default status must be a real lifecycle value
     assert "open" in DCR_STATUSES
+
+
+def _row_with_remediation() -> dict:
+    row = _full_row()
+    row["remediation"] = (
+        '[{"kind": "ch_projection", "summary": "проекция по manager_id",'
+        ' "rationale": "таблица отсортирована по date", '
+        '"ddl": "ALTER TABLE dm.sales_daily ADD PROJECTION p_by_manager_id (...);"}]'
+    )
+    return row
+
+
+def test_remediation_section_renders_ddl() -> None:
+    md = render_dm_change_request(_row_with_remediation())
+
+    assert "## Предлагаемое решение (готовый артефакт)" in md
+    assert "**проекция по manager_id**" in md
+    assert "таблица отсортирована по date" in md
+    assert "```sql" in md
+    assert "ADD PROJECTION p_by_manager_id" in md
+    # the closing ask points at the attached artifact instead of the generic wording
+    assert "готовый артефакт-решение приложен выше" in md
+
+
+def test_no_remediation_keeps_generic_ask() -> None:
+    md = render_dm_change_request(_full_row())  # no remediation key
+
+    assert "## Предлагаемое решение" not in md
+    assert "новую витрину/колонку" in md  # the generic ask is preserved
+
+
+def test_malformed_remediation_degrades_without_section() -> None:
+    row = _full_row()
+    row["remediation"] = "not json at all"
+    md = render_dm_change_request(row)
+
+    # advisory-only: a malformed artifact never errors, it just drops the section
+    assert "## Предлагаемое решение" not in md
+    assert "## Что просим" in md

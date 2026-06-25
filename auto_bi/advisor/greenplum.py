@@ -16,7 +16,7 @@ from auto_bi.advisor.clickhouse import (
     group_by_high_cardinality,
     no_filter_on_large_fact,
 )
-from auto_bi.advisor.findings import Finding, Severity, VerdictClass
+from auto_bi.advisor.findings import Finding, Remediation, Severity, VerdictClass
 from auto_bi.introspect.base import RunQuery
 
 # a distribution key with few distinct values can't spread rows evenly across segments
@@ -123,6 +123,33 @@ def distribution_skew(ctx: RuleContext) -> list[Finding]:
         total_distinct *= c
     if total_distinct >= DIST_KEY_LOW_CARDINALITY:
         return []
+    # concrete fix: redistribute on the highest-cardinality column we know, else go random
+    dist_set = set(dist)
+    candidates = sorted(
+        ((card, col) for col, card in ctx.physical.cardinality.items() if col not in dist_set),
+        reverse=True,
+    )
+    if candidates and candidates[0][0] >= DIST_KEY_LOW_CARDINALITY:
+        best = candidates[0][1]
+        remediation = Remediation(
+            kind="gp_redistribute",
+            summary=f"redistribute {ctx.table.name} by higher-cardinality {best!r}",
+            ddl=f"ALTER TABLE {ctx.table.name} SET DISTRIBUTED BY ({best});",
+            rationale=(
+                f"{best!r} has ~{candidates[0][0]} distinct values (vs ~{total_distinct} for the "
+                f"current key {dist}); a higher-cardinality key spreads rows evenly across segments"
+            ),
+        )
+    else:
+        remediation = Remediation(
+            kind="gp_redistribute",
+            summary=f"redistribute {ctx.table.name} randomly (no higher-cardinality key known)",
+            ddl=f"ALTER TABLE {ctx.table.name} SET DISTRIBUTED RANDOMLY;",
+            rationale=(
+                f"no column with cardinality ≥ {DIST_KEY_LOW_CARDINALITY} is recorded for an even "
+                "key; random distribution avoids the skew at the cost of redistribute on joins"
+            ),
+        )
     return [
         Finding(
             rule="distribution_skew",
@@ -138,6 +165,7 @@ def distribution_skew(ctx: RuleContext) -> list[Finding]:
                 "this is a DM design choice: a higher-cardinality distribution key spreads "
                 "the fact evenly across segments"
             ],
+            remediation=remediation,
         )
     ]
 

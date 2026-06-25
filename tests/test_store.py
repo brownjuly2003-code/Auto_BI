@@ -105,7 +105,7 @@ def test_foreign_keys_enforced(store: Store) -> None:
 
 def test_schema_version_stamped(store: Store) -> None:
     version = store._db.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 3
+    assert version == 4
 
 
 def test_trace_events_ordered_by_seq(store: Store) -> None:
@@ -208,7 +208,7 @@ def test_migrates_v1_db_to_v2(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 4
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the pre-existing row survived and back-fills with defaults
@@ -241,7 +241,7 @@ def test_migrates_legacy_v0_db_with_old_llm_calls(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 4
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the first observability-aware write no longer crashes with "no such column: step"
@@ -260,3 +260,51 @@ def test_migrates_legacy_v0_db_with_old_llm_calls(tmp_path) -> None:
     (row,) = store.llm_calls(sid)
     assert row["step"] == "grounding" and row["completion_chars"] == 7
     store.close()
+
+
+def test_migrates_v3_db_adds_remediation_column(tmp_path) -> None:
+    # a v3 DB: dm_change_requests exists but predates the remediation column. CREATE TABLE
+    # IF NOT EXISTS leaves it untouched, so the v4 migration must ALTER it in place and the
+    # old rows must back-fill with the '' default.
+    import sqlite3
+
+    path = tmp_path / "v3.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, created_at TEXT, request TEXT, status TEXT);"
+        "CREATE TABLE dm_change_requests ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, created_at TEXT,"
+        " table_name TEXT NOT NULL, rule TEXT NOT NULL, severity TEXT NOT NULL,"
+        " narrative TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'open');"
+    )
+    db.execute(
+        "INSERT INTO dm_change_requests (table_name, rule, severity, narrative)"
+        " VALUES ('dm.sales', 'r', 'critical', 'legacy request')"
+    )
+    db.execute("PRAGMA user_version = 3")
+    db.commit()
+    db.close()
+
+    store = Store(path)
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 4
+    cols = {r["name"] for r in store._db.execute("PRAGMA table_info(dm_change_requests)")}
+    assert "remediation" in cols
+    # the pre-existing row survived and back-fills the new column with its default
+    (row,) = store.dm_change_requests()
+    assert row["narrative"] == "legacy request" and row["remediation"] == ""
+    store.close()
+
+
+def test_dm_change_request_persists_remediation(store: Store) -> None:
+    sid = store.create_session("r")
+    req_id = store.add_dm_change_request(
+        sid,
+        table_name="dm.sales_daily",
+        rule="filter_not_in_sorting_key_prefix",
+        severity="critical",
+        narrative="фильтр мимо ключа сортировки",
+        remediation='[{"kind": "ch_projection", "ddl": "ALTER TABLE ..."}]',
+    )
+    row = store.dm_change_request(req_id)
+    assert row is not None
+    assert row["remediation"] == '[{"kind": "ch_projection", "ddl": "ALTER TABLE ..."}]'

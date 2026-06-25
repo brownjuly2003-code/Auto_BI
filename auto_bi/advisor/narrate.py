@@ -13,7 +13,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from auto_bi.advisor.findings import Finding, Severity, VerdictClass
+from auto_bi.advisor.findings import Finding, Remediation, Severity, VerdictClass
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.llm.base import LLMClient, LLMError
 from auto_bi.llm.policy import reasoning_for
@@ -37,6 +37,9 @@ class ChartVerdict(BaseModel):
     text: str  # LLM narrative (or mechanical fallback)
     suggestions: list[str] = Field(default_factory=list)
     rules: list[str] = Field(default_factory=list)  # finding ids behind the verdict
+    # concrete fix artifacts (DDL / denormalising mart) from dm_change_request findings;
+    # the LLM never authors these — they are carried through verbatim from the rules
+    remediations: list[Remediation] = Field(default_factory=list)
 
 
 class _Narrative(BaseModel):  # LLM output: text only, keyed by chart
@@ -79,6 +82,7 @@ def worst_verdicts(findings: list[Finding]) -> dict[str, ChartVerdict]:
                 text=f.title,
                 suggestions=list(f.suggestions),
                 rules=[f.rule],
+                remediations=[f.remediation] if f.remediation else [],
             )
             continue
         if _SEVERITY_ORDER[f.severity] > _SEVERITY_ORDER[current.severity]:
@@ -88,6 +92,8 @@ def worst_verdicts(findings: list[Finding]) -> dict[str, ChartVerdict]:
         current.text = f"{current.text}; {f.title}"  # mechanical fallback text
         current.suggestions.extend(s for s in f.suggestions if s not in current.suggestions)
         current.rules.append(f.rule)
+        if f.remediation:
+            current.remediations.append(f.remediation)
     return per_chart
 
 

@@ -142,6 +142,29 @@ def test_distribution_skew_fires_on_low_cardinality_key_large_fact() -> None:
     assert len(findings) == 1 and findings[0].rule == "distribution_skew"
 
 
+def test_distribution_skew_remediation_picks_higher_cardinality_key() -> None:
+    q = ChartQuery(table="dm.sales", dimensions=["store_id"], measures=[_REV])
+    phys = _phys(
+        distribution_key=["store_id"],
+        rows=20_000_000,
+        cardinality={"store_id": 20, "order_id": 5_000_000},
+    )
+    (f,) = distribution_skew(_ctx(q, phys))
+    assert f.remediation is not None and f.remediation.kind == "gp_redistribute"
+    assert f.remediation.ddl == "ALTER TABLE dm.sales SET DISTRIBUTED BY (order_id);"
+
+
+def test_distribution_skew_remediation_falls_back_to_random() -> None:
+    # no other column with cardinality >= the even-spread threshold -> random distribution
+    q = ChartQuery(table="dm.sales", dimensions=["store_id"], measures=[_REV])
+    phys = _phys(
+        distribution_key=["store_id"], rows=20_000_000, cardinality={"store_id": 20, "region": 8}
+    )
+    (f,) = distribution_skew(_ctx(q, phys))
+    assert f.remediation is not None
+    assert f.remediation.ddl == "ALTER TABLE dm.sales SET DISTRIBUTED RANDOMLY;"
+
+
 def test_distribution_skew_silent_on_high_cardinality_or_small_fact() -> None:
     q = ChartQuery(table="dm.sales", dimensions=["store_id"], measures=[_REV])
     # high-cardinality key spreads evenly
