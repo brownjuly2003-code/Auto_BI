@@ -29,6 +29,7 @@ edge (invariant 2).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from auto_bi.ir.spec import (
@@ -71,6 +72,13 @@ class _Breakdown:
     join: JoinSpec | None
     card: int
     human: str  # short human label for the chart title ("Город")
+
+
+def _clean_title(text: str) -> str:
+    """Drop a trailing technical grain annotation a modeler left in the table description
+    ('... (грейн: date, store_id, product_id)'): internal metadata, not a user-facing
+    dashboard title. A non-technical parenthetical (e.g. '(РФ)') is kept."""
+    return re.sub(r"\s*\((?:грейн|grain)\b[^)]*\)\s*$", "", text, flags=re.IGNORECASE).strip()
 
 
 def _short(col: Column) -> str:
@@ -289,7 +297,7 @@ def build_auto_spec(
         filters.append(DashboardFilter(column=f"{table_name}.{time_col.name}", type="time_range"))
 
     return DashboardSpec(
-        title=f"Обзор: {table.description or table_name}",
+        title=_clean_title(f"Обзор: {table.description or table_name}"),
         target_bi=target_bi,
         filters=filters,
         charts=charts,

@@ -16,7 +16,23 @@ keyed by the bare alias (column_alias / measure_alias) the SQL_GEN subselect emi
 
 from __future__ import annotations
 
-from auto_bi.ir.spec import ChartSpec, Viz, column_alias, measure_alias
+from auto_bi.ir.spec import ChartSpec, Viz, column_alias, is_compact_number, measure_alias
+
+# Compact display for large additive aggregates (dashboard-craft §4): the DataLens `metric`
+# widget shows the figure at a fixed large font and CLIPS a raw billions-scale number; an
+# abbreviated number ("236,1B") fits. `unit: "auto"` lets DataLens pick the magnitude (the
+# stand renders SI suffixes B/M, not "млрд/млн" — locale-bound); SQL/values are unchanged
+# (display only). Live-verified on the self-hosted stand: KPI 236,1B / 115,0M / 210,0M, bar
+# and pie value labels abbreviated too, console clean (screenshot autobi_auto_datalens_compact).
+_COMPACT_FORMATTING = {
+    "format": "number",
+    "showRankDelimiter": True,
+    "prefix": "",
+    "postfix": "",
+    "unit": "auto",
+    "precision": 1,
+    "labelMode": "absolute",
+}
 
 # IR Viz -> DataLens visualization.id (reversal §5.2). bar/stacked_bar -> "column"
 # (vertical bars, mirrors Superset echarts_timeseries_bar). heatmap has no cartesian
@@ -128,13 +144,18 @@ def build_chart_shared(
             ids[alias] = f"dimension-{d_n}"
 
     used: dict[str, None] = {}  # aliases referenced by this chart, order-preserving
+    # measure aliases whose figure should display abbreviated (236,1 млрд, not 236149963687)
+    compact_aliases = {measure_alias(m) for m in q.measures if is_compact_number(m)}
 
     def item(alias: str, *, discrete: bool = False) -> dict:
         used.setdefault(alias, None)
         field = fields_by_alias[alias]
         # on a column chart, a numeric dimension must be string-cast to render as categories
         as_string = discrete and _is_numeric_dimension(field)
-        return _field_item(field, ids[alias], dataset_id, dataset_name, as_string=as_string)
+        out = _field_item(field, ids[alias], dataset_id, dataset_name, as_string=as_string)
+        if alias in compact_aliases:
+            out["formatting"] = dict(_COMPACT_FORMATTING)
+        return out
 
     def dims(refs: list[str], *, discrete: bool = False) -> list[dict]:
         return [item(column_alias(r), discrete=discrete) for r in refs]

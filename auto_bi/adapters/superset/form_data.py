@@ -10,7 +10,21 @@ grouped rows: SUM over one row per group is the identity, MAX for big_number's
 single row likewise.
 """
 
-from auto_bi.ir.spec import ChartSpec, DashboardSpec, Measure, Viz, column_alias, measure_alias
+from auto_bi.ir.spec import (
+    ChartSpec,
+    DashboardSpec,
+    Measure,
+    Viz,
+    column_alias,
+    is_compact_number,
+    measure_alias,
+)
+
+# d3 format for large additive aggregates: 3 significant figures, SI-abbreviated and
+# trailing-zero-trimmed (236149963687 -> "236G", 114971033 -> "115M"). Superset renders
+# d3 in the en locale, so the suffix is SI (G/M/k), not "млрд" — still scaled, never the raw
+# 12-digit number that overflows a big_number tile / collides on an axis (dashboard-craft §4).
+_COMPACT_D3 = ".3~s"
 
 VIZ_TYPE = {
     Viz.BIG_NUMBER: "big_number_total",
@@ -42,10 +56,21 @@ def _adhoc_metric(measure: Measure, chart_id: str, index: int, agg: str = "SUM")
     }
 
 
+def _compact_format(measures: list[Measure]) -> str:
+    """Chart-level value format: compact when the primary measure is a large aggregate.
+
+    The auto-overview charts are single-measure; for an LLM multi-measure chart the primary
+    (first) measure sets the axis format — the common, sensible default. Empty string => leave
+    Superset's default (so averages/extrema and existing contract specs are untouched).
+    """
+    return _COMPACT_D3 if measures and is_compact_number(measures[0]) else ""
+
+
 def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
     """Superset chart params for the pinned 4.1, on top of a virtual dataset."""
     q = chart.query
     metrics = [_adhoc_metric(m, chart.id, i) for i, m in enumerate(q.measures)]
+    fmt = _compact_format(q.measures)
     base = {
         "datasource": f"{dataset_id}__table",
         "viz_type": VIZ_TYPE[chart.viz],
@@ -55,24 +80,39 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
     if chart.viz == Viz.BIG_NUMBER:
         # the dataset is a single already-aggregated row -> MAX is the identity
         metric = _adhoc_metric(q.measures[0], chart.id, 0, agg="MAX")
-        return {**base, "metric": metric, "subheader": ""}
+        fd = {**base, "metric": metric, "subheader": ""}
+        if fmt:
+            fd["y_axis_format"] = fmt
+        return fd
 
     if chart.viz == Viz.PIE:
         # shape-validated to exactly one dimension + one measure
-        return {
+        fd = {
             **base,
             "groupby": [column_alias(c) for c in q.dimensions],
             "metric": metrics[0],
             "sort_by_metric": True,
         }
+        if fmt:
+            fd["number_format"] = fmt
+        return fd
 
     if chart.viz == Viz.TABLE:
-        return {
+        fd = {
             **base,
             "query_mode": "aggregate",
             "groupby": [column_alias(c) for c in q.group_columns()],
             "metrics": metrics,
         }
+        # per-metric compact format (a table can mix a big sum and a small average)
+        column_config = {
+            measure_alias(m): {"d3NumberFormat": _COMPACT_D3}
+            for m in q.measures
+            if is_compact_number(m)
+        }
+        if column_config:
+            fd["column_config"] = column_config
+        return fd
 
     if chart.viz == Viz.PIVOT:
         # cells re-aggregate with Sum: the dataset grain is exactly rows x columns,
@@ -112,6 +152,8 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
         "metrics": metrics,
         "groupby": [column_alias(c) for c in breakdown],
     }
+    if fmt:
+        form_data["y_axis_format"] = fmt
     if chart.viz in (Viz.BAR, Viz.STACKED_BAR):
         # a numeric dimension (store_id) otherwise lands on a continuous value
         # axis: thin bars at their numeric positions instead of categories

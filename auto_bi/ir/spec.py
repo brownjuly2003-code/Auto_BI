@@ -66,6 +66,16 @@ def measure_alias(measure: Measure) -> str:
     return measure.label or f"{measure.agg.value}_{measure.column}"
 
 
+def is_compact_number(measure: Measure) -> bool:
+    """Whether a measure should DISPLAY abbreviated (236G / 236,1 млрд) rather than in full
+    (236149963687). Additive aggregates over a fact table reach millions/billions and overflow
+    a KPI tile / collide on an axis; averages and extrema stay small and keep full precision
+    (an average check is 3614, not '3.6k'). Display hint only — SQL and values are unchanged.
+    The adapters map it to the native format (Superset d3 `~s`, DataLens compact `formatting`).
+    """
+    return measure.agg in (Aggregation.SUM, Aggregation.COUNT, Aggregation.COUNT_DISTINCT)
+
+
 class OrderBy(BaseModel):
     by: str  # dimension column or measure label/column
     dir: str = Field(default="asc", pattern="^(asc|desc)$")

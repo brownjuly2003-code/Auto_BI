@@ -108,6 +108,26 @@ def test_form_data_big_number() -> None:
     assert "metrics" not in fd
 
 
+def test_form_data_compacts_large_aggregates() -> None:
+    # dashboard-craft §4: a fact sum reaches billions; show it abbreviated (236G), not the raw
+    # 12-digit number that overflows a big_number tile / collides on an axis. SUM/COUNT only.
+    assert build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1)["y_axis_format"] == ".3~s"
+    assert build_form_data(_chart(Viz.LINE, dimensions=["date"]), 1)["y_axis_format"] == ".3~s"
+    assert build_form_data(_chart(Viz.PIE, dimensions=["store_id"]), 1)["number_format"] == ".3~s"
+    table = build_form_data(_chart(Viz.TABLE, dimensions=["store_id"]), dataset_id=1)
+    assert table["column_config"]["sum_revenue"]["d3NumberFormat"] == ".3~s"
+
+
+def test_form_data_keeps_full_precision_for_averages() -> None:
+    # an average check is 3614, not "3.6k" — only additive aggregates (SUM/COUNT) compact (§4)
+    avg = _chart(Viz.BIG_NUMBER, measures=[Measure(column="check", agg=Aggregation.AVG)])
+    assert "y_axis_format" not in build_form_data(avg, dataset_id=1)
+    avg_table = _chart(
+        Viz.TABLE, dimensions=["store_id"], measures=[Measure(column="check", agg=Aggregation.AVG)]
+    )
+    assert "column_config" not in build_form_data(avg_table, dataset_id=1)
+
+
 def test_form_data_escapes_malicious_label() -> None:
     # an LLM-controlled label must not break out of SUM("...") and inject SQL (F1)
     evil = Measure(column="revenue", agg=Aggregation.SUM, label='x") FROM system.numbers --')

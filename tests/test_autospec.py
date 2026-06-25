@@ -164,6 +164,15 @@ def test_unknown_table_raises(model) -> None:
         build_auto_spec(model, "dm.nope")
 
 
+def test_title_drops_technical_grain_annotation() -> None:
+    # a modeler's grain note is internal metadata, not a user-facing title (dashboard-craft)
+    from auto_bi.agent.autospec import _clean_title
+
+    assert _clean_title("Обзор: Продажи (грейн: date, store_id, product_id)") == "Обзор: Продажи"
+    assert _clean_title("Обзор: Продажи (grain: date)") == "Обзор: Продажи"
+    assert _clean_title("Обзор: Продажи (РФ)") == "Обзор: Продажи (РФ)"  # non-technical kept
+
+
 def test_idempotent_and_valid_under_normalize(model) -> None:
     """The normalize pass compile_and_build runs must keep the spec valid and stable."""
     spec = build_auto_spec(model, "dm.sales_daily")
