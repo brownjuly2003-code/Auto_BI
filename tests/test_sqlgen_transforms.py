@@ -47,11 +47,14 @@ def test_pop_abs_clickhouse_uses_laginframe_and_subquery() -> None:
     assert (
         'SELECT "date", SUM("revenue") AS "__src_0" FROM "dm"."sales_daily" GROUP BY "date"' in sql
     )
-    # outer window: ClickHouse lagInFrame with an explicit ROWS frame, over the inner alias
+    # outer window: ClickHouse lagInFrame with an explicit ROWS frame, over the inner alias.
+    # The source is wrapped in toNullable so the first (out-of-frame) row is NULL, not 0:
+    # ClickHouse lagInFrame returns the type default (0) out-of-frame, where Postgres LAG
+    # gives NULL. Verified live on the stand (docs/plans/2026-06-25-derived-metrics-pop.md §6).
     assert (
-        'lagInFrame("__src_0") OVER (ORDER BY "date" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)'
-        in sql
-    )
+        'lagInFrame(toNullable("__src_0")) OVER '
+        '(ORDER BY "date" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)'
+    ) in sql
     assert 'AS "pop_abs_sum_revenue"' in sql
     guard_sql(sql)
 
@@ -59,6 +62,8 @@ def test_pop_abs_clickhouse_uses_laginframe_and_subquery() -> None:
 def test_pop_abs_postgres_uses_plain_lag() -> None:
     sql = generate_chart_sql(make_q(MeasureTransform.POP_ABS), dialect="postgres")
     assert "lagInFrame" not in sql
+    # Postgres LAG already returns NULL for the first row, so the source is NOT wrapped
+    assert "toNullable" not in sql
     assert 'LAG("__src_0") OVER (ORDER BY "date" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)' in sql
     guard_sql(sql, dialect="postgres")
 
@@ -69,6 +74,19 @@ def test_pop_pct_numerator_is_parenthesized() -> None:
     sql = generate_chart_sql(make_q(MeasureTransform.POP_PCT))
     assert '("__src_0" - lagInFrame(' in sql
     assert "nullIf(lagInFrame(" in sql  # guarded division (ClickHouse spelling)
+
+
+def test_ratio_transforms_divide_in_float() -> None:
+    # ClickHouse `Decimal / Decimal` keeps the dividend's scale (2dp) so a small ratio
+    # truncates to 0.00 and category shares no longer sum to 1 — the numerator must be cast
+    # to float. Both pop_pct and share_of_total go through the guarded division.
+    pct = generate_chart_sql(make_q(MeasureTransform.POP_PCT))
+    share = generate_chart_sql(make_q(MeasureTransform.SHARE_OF_TOTAL, dimensions=["store_id"]))
+    assert "CAST((" in pct and "Float64)" in pct  # numerator (src - lag) cast to float
+    assert 'CAST("__src_0" AS' in share and "Float64)" in share
+    # Postgres renders the same cast as DOUBLE PRECISION (numeric division is already exact)
+    pct_pg = generate_chart_sql(make_q(MeasureTransform.POP_PCT), dialect="postgres")
+    assert "DOUBLE PRECISION" in pct_pg
 
 
 def test_share_of_total_is_window_sum_over_empty() -> None:
@@ -106,7 +124,7 @@ def test_mixed_base_and_transform_share_inner_aggregates() -> None:
     sql = generate_chart_sql(q)
     assert 'SUM("revenue") AS "__src_0", SUM("revenue") AS "__src_1"' in sql
     assert '"__src_0" AS "Выручка"' in sql  # base measure passthrough
-    assert 'lagInFrame("__src_1")' in sql  # transform over its own source
+    assert 'lagInFrame(toNullable("__src_1"))' in sql  # transform over its own source
 
 
 def test_transform_order_and_limit_apply_to_outer() -> None:

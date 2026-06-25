@@ -87,6 +87,45 @@ PG-путь сверен численно через DuckDB. **ClickHouse `lagIn
    подтверждения на стенде («доки ≠ реальность» — урок Phase 3).
 4. Прогнать на **обоих** BI (Superset + DataLens), сверить числа с прямым CH.
 
+## 6.1 Итог live-verify (2026-06-26, Mac-стенд)
+
+Гейт **поймал 3 реальных бага CH-пути**, которые числовая сверка PG-пути в DuckDB не ловила
+(Postgres-семантика окон ≠ ClickHouse). Все исправлены и перепроверены на живом CH +
+собраны на обоих BI.
+
+1. **`pop_abs` первая строка = `agg[0]` вместо NULL.** CH `lagInFrame` для значения вне фрейма
+   возвращает дефолт типа (`0`), а не NULL как PG `LAG` → PoP первой строки выходил `agg[0]−0`.
+   Фикс: источник lag обёрнут в `toNullable` ТОЛЬКО на CH (PG `LAG` и так даёт NULL) →
+   `lagInFrame(toNullable(__src_0))`. Подтверждено пробой: `toNullable` → `\N` на первой строке.
+2. **`pop_pct` / `share_of_total` усекались до scale 2 → 0.00.** CH `Decimal/Decimal` сохраняет
+   масштаб делимого (Decimal(18,2)) → доля `0.0084` округлялась в `0.00`, доли категорий не
+   суммировались в 1 (давали 0.92). Фикс: числитель кастится в Float64 (`_safe_div` →
+   `CAST(num AS DOUBLE)`), деление становится плавающим в обоих диалектах (PG numeric и так точен).
+3. Оба фикса **кросс-диалектны**, не-transform путь и PG-путь не тронуты.
+
+**Верификация (живой CH через `ssh→docker exec clickhouse-client`):** реальный код
+`generate_chart_sql(dialect="clickhouse")` прогнан на `dm.sales_daily`, ряды pop_abs/pop_pct/
+running/share сверены поэлементно с независимым расчётом из базового GROUP BY: **PASS** (730 дат;
+share-по-категории = 1.000000). Гейт: mypy 0/65 · pytest **457** · ruff · black.
+
+**Live-build обоих BI:**
+- **Superset** (`/superset/dashboard/16/`): 3 transform-чарта прошли EXPLAIN+LIMIT на CH;
+  payload корректен — pop_pct/share `y_axis_format = ".1%"` (рендерится как процент),
+  running_total `.3~s` (компакт, рубли). ✅ ЗАКРЫТО.
+- **DataLens** (`/bwyp.../` и т.д.): числа корректны, чарты рендерят реальные данные, компакт
+  работает (running `300B`). 🔴 **Percent-ось показывает сырое 0..1 (`0.25`, не `25%`)** —
+  placeholder `formatting{format:"percent"}` НЕ переключает тип формата на стенде (компакт
+  `format:"number"` там работает). Проверены 3 формы payload (placeholder; dataset-поле
+  `result_schema.formatting`; field-only без placeholder-shadow) — все рендерят сырой ratio.
+  **Вывод: known-limitation DataLens-адаптера** (числа верны, дефект только в отображении %);
+  правильная форма требует авторитетного реверса из Wizard (UI-popup не поддаётся a11y-автоматизации).
+  Код возвращён в исходное состояние (эксперименты откатаны), комментарий у `_PERCENT_FORMATTING`
+  фиксирует находку. Открытый пункт.
+
+**Итог:** числовое ядро (§6.1/§6.2) ЗАКРЫТО на обоих BI и обоих диалектах; percent-РЕНДЕР закрыт
+на Superset, на DataLens — known-limitation. Merge derived-metrics в main разблокирован по числам;
+DataLens percent-формат — отдельный реверс.
+
 ## 7. Дальше (по фазам, не в этой сессии)
 
 - `yoy`/`mom` (lag по календарю на N периодов, не lag(1)) — нужен period-matching по дате; отдельный

@@ -190,19 +190,46 @@ def _generate_flat_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) ->
 
 
 def _safe_div(num: exp.Expression, den: exp.Expression) -> exp.Expression:
-    """num / NULLIF(den, 0) — a zero/NULL denominator yields NULL, not a divide error."""
-    return exp.Div(this=num, expression=exp.Nullif(this=den, expression=exp.Literal.number(0)))
+    """num / NULLIF(den, 0) in floating point — a zero/NULL denominator yields NULL.
+
+    The numerator is cast to double so the division is floating point in BOTH dialects.
+    ClickHouse keeps the dividend's scale on `Decimal / Decimal` (a ratio like 0.0084 over
+    a Decimal(18,2) numerator truncates to 0.00, and category shares lose their fraction so
+    they no longer sum to 1) — a ratio measure must divide in Float64. Postgres numeric
+    division is already exact; the cast only normalises the result type. Verified live on the
+    ClickHouse stand (docs/plans/2026-06-25-derived-metrics-pop.md §6)."""
+    return exp.Div(
+        this=exp.cast(num, "DOUBLE"),
+        expression=exp.Nullif(this=den, expression=exp.Literal.number(0)),
+    )
 
 
 def _window_expr(
-    transform: MeasureTransform, src: exp.Column, order_col: exp.Column | None
+    transform: MeasureTransform,
+    src: exp.Column,
+    order_col: exp.Column | None,
+    *,
+    dialect: str,
 ) -> exp.Expression:
     """Window expression over the inner base aggregate referenced by `src` (its alias).
 
     Dialect rendering is handled by sqlglot on output: `exp.Lag` becomes ClickHouse
     `lagInFrame` and Postgres `LAG`; `SUM(...) OVER (...)` is identical in both. Every
     leaf is `.copy()`d so reusing `src`/`order` across the AST never aliases a node.
+
+    `dialect` is needed for one ClickHouse-specific accommodation: its `lagInFrame` returns
+    the source type's default (0) for an out-of-frame row, while Postgres `LAG` returns NULL.
+    The lag source is wrapped in `toNullable` on ClickHouse so the first PoP row is NULL,
+    matching the live-verified Postgres path.
     """
+
+    def lag_source() -> exp.Expression:
+        s = src.copy()
+        if dialect != "clickhouse":
+            return s
+        # sqlglot types func() as Func (an Expression subclass at runtime), as in _measure_expr
+        return exp.func("toNullable", s)  # type: ignore[return-value]
+
     if transform == MeasureTransform.SHARE_OF_TOTAL:
         total = exp.Window(this=exp.func("sum", src.copy()))  # SUM(src) OVER ()
         return _safe_div(src.copy(), total)
@@ -223,7 +250,7 @@ def _window_expr(
     # lagInFrame reads exactly the previous row (Postgres LAG ignores the frame clause)
     def lag() -> exp.Expression:
         spec = exp.WindowSpec(kind="ROWS", start="1", start_side="PRECEDING", end="CURRENT ROW")
-        return exp.Window(this=exp.Lag(this=src.copy()), order=order.copy(), spec=spec)
+        return exp.Window(this=exp.Lag(this=lag_source()), order=order.copy(), spec=spec)
 
     if transform == MeasureTransform.POP_ABS:
         return exp.Sub(this=src.copy(), expression=lag())
@@ -257,7 +284,11 @@ def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool
     outer_measures: list[exp.Expression] = []
     for i, m in enumerate(query.measures):
         src = exp.column(src_aliases[i], quoted=True)
-        body = src if m.transform is None else _window_expr(m.transform, src, order_col)
+        body = (
+            src
+            if m.transform is None
+            else _window_expr(m.transform, src, order_col, dialect=dialect)
+        )
         # sqlglot types alias_ as Expr (an Expression subclass at runtime), as in _measure_expr
         outer_measures.append(exp.alias_(body, measure_alias(m), quoted=True))  # type: ignore[arg-type]
 

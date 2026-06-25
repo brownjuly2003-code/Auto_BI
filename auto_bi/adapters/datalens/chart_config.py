@@ -45,6 +45,11 @@ _COMPACT_FORMATTING = {
 # DataLens `format: "percent"` scales by 100 and appends the sign; no SI unit. Display only.
 # NB: the exact `formatting` shape for percent is reversed from the demo Wizard and must be
 # live-verified on the stand (the field is otherwise asserted only by unit tests here).
+# LIVE FINDING (2026-06-26): this placeholder-level `formatting` does NOT switch the axis to
+# percent on the self-hosted stand (the axis stays at the raw 0..1 ratio); the compact
+# `format: "number"` variant DOES apply at placeholder level. Switching the format *type* to
+# percent likely has to live on the dataset field (result_schema), not the chart placeholder —
+# open item, see docs/plans/2026-06-25-derived-metrics-pop.md §6.
 _PERCENT_FORMATTING = {
     "format": "percent",
     "showRankDelimiter": True,
