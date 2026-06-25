@@ -78,8 +78,8 @@ function renderSpec(spec, verdicts, notes) {
   if (spec.filters && spec.filters.length) {
     const cols = spec.filters.map((f) => f.column + (f.default ? ` = ${f.default}` : ""));
     filters.textContent =
-      `Фильтры дашборда (${cols.join(", ")}) пока не переносятся в Superset — ` +
-      "задайте период фильтром чарта или соберите без них.";
+      `Фильтры дашборда (${cols.join(", ")}) переносятся в BI как интерактивные ` +
+      "контролы и действуют на чарты с этим разрезом (остальные не затрагивают).";
     filters.hidden = false;
   } else {
     filters.hidden = true;

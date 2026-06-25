@@ -32,9 +32,13 @@
 - [x] CLI `auto_bi build --auto <table> [--max-charts N]` (`cli.py::_build_auto`); DWH-free dispatch-тесты `tests/test_cli_build_auto.py` (4)
 - [x] UI: вкладка «Авто» + панель выбора витрины (`index.html`/`app.js`/`app.css`); эндпоинт `POST /api/v1/sessions/auto` (`api/app.py`) → `AgentSession.adopt_spec` (APPROVE без LLM) → тот же approve/build/iterate путь; API-тесты `tests/test_api.py` (+4); Playwright-проверка (вкладка→витрина→превью 7 чартов→сборка→`/superset/dashboard/3/`, консоль чистая, скрин `D:\.playwright-mcp\autobi_auto_mode_built.png`)
 
-## Follow-up (по «go»)
+## Follow-up
 - [x] Live-сборка на стенде Mac реальным `auto_bi build --auto dm.sales_daily` → 8/8 чартов EXPLAIN+LIMIT на CH (20M) → дашборд `/superset/dashboard/14/` (Superset API: 8 slices; данные реальные — revenue 236 149 963 687 ₽). Скрин дашборда — опц. (логин Superset, не делал ради нераскрытия кредов).
-- eval-кейс авто-обзора.
+- [x] **F3 (Advisor coupling) — РЕШЕНО: осознанный non-goal.** Advisor метит `no_filter_on_large_fact` на чартах факта, т.к. читает SQL чарта, а не dashboard-фильтр. Это КОРРЕКТНО (SQL чарта действительно без фильтра) и в авто-режиме НЕ показывается (`adopt_spec` → verdicts=[]). Толкать относительный «последние N дней» в per-chart литеральный SQL нельзя без «сегодня»/live-probe. Dashboard time-фильтр остаётся интерактивным контролом (адаптер его компилирует, scope-to-applicable). Менять не нужно.
+- [x] **Чистка по ходу:** убран мёртвый `default="последние 90 дней"` у dashboard-фильтра (`_time_filter` его игнорирует → вводил в заблуждение); исправлено УСТАРЕВШЕЕ предупреждение в `app.js` («фильтры не переносятся в Superset» — на деле native-фильтры реализованы и подключены в `superset/adapter.py`).
+- eval-кейс авто-обзора — **отложен (низкий приоритет):** авто-spec детерминирован и уже покрыт unit (`test_autospec.py` 11) + offline-прогоном на реальной `model.yaml` + live-сборкой; eval-сьют заточен под LLM-диалог (golden), авто-режим туда не ложится естественно.
+- v2: опциональное LLM-ранжирование заголовков/порядка — **отложено (S2, не на Opus в /auto; не запрошено).**
+- Merge в main + push + ревью (`/cxkm`) — по слову владельца (наружу, публичный репо).
 - Решить связку F3: толкать ли дефолтный time-фильтр в чарты факта (per-period KPI) или оставить dashboard-фильтр.
 - v2: опциональное LLM-ранжирование заголовков/порядка (S2 — не на Opus в /auto).
 - Коммит/ветка + ревью (`/cxkm`) — по слову владельца (сейчас всё в рабочем дереве, не закоммичено).

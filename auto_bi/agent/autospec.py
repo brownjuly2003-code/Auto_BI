@@ -280,16 +280,13 @@ def build_auto_spec(
     for i, chart in enumerate(charts, start=1):
         chart.id = f"auto{i}"
 
-    # a sane default time filter for the dashboard (advisory; per-chart SQL stays full-history)
+    # an interactive period control for the overview: the Superset/DataLens adapters compile
+    # spec.filters into a native time filter scoped to the charts that expose the time column
+    # (KPIs/breakdowns over the fact). No preset range — the adapter applies no default value,
+    # so claiming one here would be misleading; the user picks the period on the dashboard.
     filters: list[DashboardFilter] = []
     if time_col is not None:
-        filters.append(
-            DashboardFilter(
-                column=f"{table_name}.{time_col.name}",
-                type="time_range",
-                default="последние 90 дней",
-            )
-        )
+        filters.append(DashboardFilter(column=f"{table_name}.{time_col.name}", type="time_range"))
 
     return DashboardSpec(
         title=f"Обзор: {table.description or table_name}",
