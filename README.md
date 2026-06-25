@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml/badge.svg)](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/badge/coverage-93%25-success) ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![BI targets](https://img.shields.io/badge/BI-Superset_+_DataLens-1FA8C9) ![DWH](https://img.shields.io/badge/DWH-ClickHouse_+_Greenplum-FACC15) ![License](https://img.shields.io/badge/license-MIT-blue)
 
-Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом или drag&drop-раскладкой полей витрин**, уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
+Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом, drag&drop-раскладкой полей витрин или авто-обзором витрины** (детерминированный курируемый дашборд без LLM), уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
 
 **Скоуп v1 (RU-рынок):** ClickHouse (DM) + Apache Superset (BI). v2: Greengage/Greenplum + Yandex DataLens (self-hosted OSS-стенд). Универсальность — в швах (IR, адаптеры), не в имплементации.
 **LLM:** Sonnet 4.6 thinking через GraceKelly API (`http://127.0.0.1:8011/api/v1/orchestrate`).
@@ -50,6 +50,7 @@ flowchart LR
 pip install -e .                                  # консольная команда auto_bi
 auto_bi introspect --output semantic/model.yaml   # DWH -> черновик модели
 auto_bi build "Выручка по магазинам за июнь 2026"  # текст -> дашборд
+auto_bi build --auto dm.sales_daily                # витрина -> обзорный дашборд (без LLM)
 auto_bi serve                                     # web UI на http://127.0.0.1:8200
 ```
 
