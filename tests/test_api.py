@@ -564,3 +564,42 @@ def test_event_stream_heartbeats_while_idle(demo_model) -> None:
     assert next(stream) is None  # no events yet -> heartbeat, not a hang
     managed.add_event(BuildEvent(kind="done", text="ok"))
     assert next(stream).kind == "done"
+
+
+# --- auto-overview mode (deterministic spec, no LLM) -------------------------------
+
+
+def test_auto_session_adopts_spec_into_approve(demo_model) -> None:
+    # ScriptedLLM([]) proves the auto entry never calls the LLM
+    client = make_client(ScriptedLLM([]), demo_model)
+    response = client.post("/api/v1/sessions/auto", json={"table": "dm.sales_daily"})
+    assert response.status_code == 200, response.text
+    turn = response.json()
+    assert turn["phase"] == "approve"
+    assert turn["spec"]["title"].startswith("Обзор:")
+    assert turn["spec"]["charts"]  # a curated spec was produced and adopted
+    assert turn["session_id"]
+
+
+def test_auto_session_builds_through_the_normal_path(demo_model) -> None:
+    client = make_client(ScriptedLLM([]), demo_model)
+    sid = client.post("/api/v1/sessions/auto", json={"table": "dm.sales_daily"}).json()[
+        "session_id"
+    ]
+    assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 202
+    events = collect_events(client, sid)
+    assert events[-1]["kind"] == "done"
+
+
+def test_auto_session_unknown_table_404(demo_model) -> None:
+    client = make_client(ScriptedLLM([]), demo_model)
+    response = client.post("/api/v1/sessions/auto", json={"table": "dm.nope"})
+    assert response.status_code == 404
+
+
+def test_auto_session_max_charts_capped(demo_model) -> None:
+    client = make_client(ScriptedLLM([]), demo_model)
+    turn = client.post(
+        "/api/v1/sessions/auto", json={"table": "dm.sales_daily", "max_charts": 2}
+    ).json()
+    assert len(turn["spec"]["charts"]) == 2

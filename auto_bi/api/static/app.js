@@ -78,8 +78,8 @@ function renderSpec(spec, verdicts, notes) {
   if (spec.filters && spec.filters.length) {
     const cols = spec.filters.map((f) => f.column + (f.default ? ` = ${f.default}` : ""));
     filters.textContent =
-      `Фильтры дашборда (${cols.join(", ")}) пока не переносятся в Superset — ` +
-      "задайте период фильтром чарта или соберите без них.";
+      `Фильтры дашборда (${cols.join(", ")}) переносятся в BI как интерактивные ` +
+      "контролы и действуют на чарты с этим разрезом (остальные не затрагивают).";
     filters.hidden = false;
   } else {
     filters.hidden = true;
@@ -585,13 +585,61 @@ function setMode(mode) {
     tab.setAttribute("aria-selected", String(active));
   }
   const fields = mode === "fields";
+  const auto = mode === "auto";
   $("builder").hidden = !fields;
-  $("chat").hidden = fields; // в режиме «Полями» builder занимает панель сверху
-  $("chat-form").hidden = fields;
+  $("auto-panel").hidden = !auto;
+  $("chat").hidden = fields || auto; // builder/auto-панель занимают панель сверху
+  $("chat-form").hidden = fields || auto;
   if (fields && !$("field-tables").childElementCount) loadFieldPanel();
-  if (mode === "fields" && !state.groups.length) {
+  if (fields && !state.groups.length) {
     state.groups = [{ label: "", fields: [] }];
     renderGroups();
+  }
+  if (auto && !$("auto-table").childElementCount) loadAutoTables();
+}
+
+async function loadAutoTables() {
+  let tables;
+  try {
+    tables = await api("/api/v1/model/fields");
+  } catch (err) {
+    addMessage("error", `Не удалось загрузить витрины: ${err.message || err}`, "ошибка");
+    return;
+  }
+  const select = $("auto-table");
+  select.innerHTML = "";
+  for (const t of tables) {
+    const opt = document.createElement("option");
+    opt.value = t.table;
+    opt.textContent = t.description ? `${t.table} — ${t.description}` : t.table;
+    select.appendChild(opt);
+  }
+}
+
+async function submitAuto() {
+  const table = $("auto-table").value;
+  if (!table) return;
+  const maxCharts = parseInt($("auto-max").value, 10) || 8;
+  addMessage("user", `Авто-обзор витрины: ${table}`);
+  $("auto-submit").disabled = true;
+  const thinking = addMessage("agent", "…", "агент собирает обзор");
+  try {
+    const turn = await api("/api/v1/sessions/auto", {
+      method: "POST",
+      body: JSON.stringify({ table, max_charts: maxCharts, target_bi: $("bi-target").value }),
+    });
+    thinking.remove();
+    $("auto-panel").hidden = true;
+    $("chat").hidden = false;
+    $("chat-form").hidden = false;
+    $("mode-tabs").hidden = true;
+    handleTurn(turn);
+    refreshObservability();
+  } catch (err) {
+    thinking.remove();
+    addMessage("error", String(err.message || err), "ошибка");
+  } finally {
+    $("auto-submit").disabled = false;
   }
 }
 
@@ -811,6 +859,7 @@ $("add-group").addEventListener("click", () => {
 });
 
 $("seed-submit").addEventListener("click", submitSeed);
+$("auto-submit").addEventListener("click", submitAuto);
 
 $("obs").addEventListener("toggle", () => {
   if ($("obs").open) refreshObservability();

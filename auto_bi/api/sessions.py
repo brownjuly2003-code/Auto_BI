@@ -17,7 +17,7 @@ from auto_bi.advisor.core import Advisor
 from auto_bi.agent.machine import AgentSession, AgentTurn
 from auto_bi.agent.seed import FieldsSeed
 from auto_bi.api.schemas import BuildEvent
-from auto_bi.ir.spec import TargetBI
+from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import Store
@@ -144,6 +144,38 @@ class SessionManager:
         # the session id simply does not resolve yet
         with managed.lock:
             turn = agent.start(request, seed=seed)
+        with self._registry_lock:
+            self._evict_idle_locked()
+            self._sessions[session_id] = managed
+        return managed, turn
+
+    def start_auto(
+        self,
+        spec: DashboardSpec,
+        target_bi: TargetBI = TargetBI.SUPERSET,
+        model: SemanticModel | None = None,
+        owner: str | None = None,
+    ) -> tuple[ManagedSession, AgentTurn]:
+        """Register a session whose spec is built deterministically (auto-overview mode).
+
+        Mirrors `start`, but adopts a pre-built spec straight into APPROVE instead of
+        running the LLM (no GROUNDING/PROPOSE). The same approve/build/iterate path applies.
+        """
+        if self._store is not None:
+            session_id = self._store.create_session(f"авто-обзор: {spec.title}")
+        else:
+            session_id = uuid.uuid4().hex
+        agent = AgentSession(
+            model or self._model,
+            self._llm,
+            self._advisor,
+            store=self._store,
+            session_id=session_id,
+            include_samples=self._include_samples,
+        )
+        managed = ManagedSession(session_id, agent, target_bi=target_bi, owner=owner)
+        with managed.lock:
+            turn = agent.adopt_spec(spec)
         with self._registry_lock:
             self._evict_idle_locked()
             self._sessions[session_id] = managed
