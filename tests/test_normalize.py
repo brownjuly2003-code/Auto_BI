@@ -166,3 +166,32 @@ def test_normalized_query_emits_order_by_and_limit(demo_model) -> None:
     sql = generate_chart_sql(_only(out))
     assert 'ORDER BY "sum_revenue" DESC' in sql
     assert "LIMIT 25" in sql
+
+
+def test_share_transform_on_pie_gets_topn_by_its_alias(demo_model) -> None:
+    # a share_of_total measure on a categorical pie still gets a deterministic top-N,
+    # ordered by the transform's own alias (measure_alias includes the transform)
+    from auto_bi.agent.normalize import apply_label_joins
+    from auto_bi.ir.spec import MeasureTransform
+
+    share = Measure(
+        column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL
+    )
+    chart = _chart(Viz.PIE, dimensions=["product_id"], measures=[share])
+    out = apply_chart_defaults(_spec(chart), demo_model).charts[0].query
+    assert out.order_by == [OrderBy(by="share_of_total_sum_revenue", dir="desc")]
+    assert out.limit == 12  # pie cap
+    # label-join pass leaves a non-FK dimension untouched and still compiles
+    labeled = apply_label_joins(_spec(chart), demo_model).charts[0].query
+    assert labeled.dimensions == ["product_id"]
+
+
+def test_pop_on_line_is_left_untouched(demo_model) -> None:
+    # line is not categorical -> the normalizer never reorders a time series
+    from auto_bi.ir.spec import MeasureTransform
+
+    pop = Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.POP_PCT)
+    chart = _chart(Viz.LINE, dimensions=["date"], measures=[pop])
+    out = apply_chart_defaults(_spec(chart), demo_model).charts[0].query
+    assert out.order_by == []  # unchanged
+    assert "OVER" in generate_chart_sql(out).upper()

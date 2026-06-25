@@ -10,6 +10,7 @@ from auto_bi.ir.spec import (
     ChartQuery,
     FilterOp,
     Measure,
+    MeasureTransform,
     QueryFilter,
     column_alias,
     measure_alias,
@@ -27,16 +28,20 @@ _AGG_FUNC = {
 }
 
 
-def _measure_expr(measure: Measure, col_ref: str | None = None) -> exp.Expression:
+def _measure_expr(
+    measure: Measure, col_ref: str | None = None, *, alias: str | None = None
+) -> exp.Expression:
     # col_ref lets the caller qualify the column for joined queries; the SELECT
-    # alias always comes from the measure itself, so it never grows a table prefix
+    # alias always comes from the measure itself, so it never grows a table prefix.
+    # `alias` overrides the SELECT alias — the windowed path names the inner base
+    # aggregate with a private alias the outer window then reads.
     col = _dim_column(col_ref or measure.column)
     if measure.agg == Aggregation.COUNT_DISTINCT:
         agg: exp.Expression = exp.Count(this=exp.Distinct(expressions=[col]))
     else:
         # sqlglot types func()/alias_ as Func/Expr, both Expression subclasses at runtime
         agg = exp.func(_AGG_FUNC[measure.agg], col)  # type: ignore[assignment]
-    return exp.alias_(agg, measure_alias(measure), quoted=True)  # type: ignore[return-value]
+    return exp.alias_(agg, alias or measure_alias(measure), quoted=True)  # type: ignore[return-value]
 
 
 def _literal(value: str | int | float) -> exp.Expression:
@@ -76,6 +81,40 @@ def _filter_expr(qf: QueryFilter) -> exp.Expression:
     raise ValueError(f"unsupported filter operator: {qf.op}")
 
 
+def _order_targets(query: ChartQuery) -> dict[str, str]:
+    """Map every legal `order_by.by` reference to the SELECT alias it must sort on.
+
+    A measure is addressable by raw column / canonical alias / label, a qualified
+    dimension by its bare alias. Ordering by a raw measure column would reference a
+    non-grouped column (ClickHouse error 215); the SELECT alias is always safe.
+    """
+    targets: dict[str, str] = {}
+    for m in query.measures:
+        alias = measure_alias(m)
+        targets[m.column] = alias
+        targets[alias] = alias
+        if m.label:
+            targets[m.label] = alias
+    for c in query.group_columns():
+        if "." in c:
+            targets[c] = column_alias(c)
+    return targets
+
+
+def _apply_order_and_limit(
+    select: exp.Select, query: ChartQuery, *, apply_limit: bool
+) -> exp.Select:
+    targets = _order_targets(query)
+    for ob in query.order_by:
+        target = targets.get(ob.by, ob.by)
+        select = select.order_by(
+            exp.Ordered(this=exp.column(target, quoted=True), desc=ob.dir == "desc")
+        )
+    if apply_limit:
+        select = select.limit(query.limit)
+    return select
+
+
 def generate_chart_sql(
     query: ChartQuery, *, dialect: str = DIALECT, apply_limit: bool = True
 ) -> str:
@@ -83,15 +122,25 @@ def generate_chart_sql(
 
     The AST is dialect-agnostic; `dialect` (a sqlglot dialect, e.g. "clickhouse" v1 or
     "postgres" for Greenplum/Greengage v2 — see auto_bi.engine.sqlglot_dialect) only
-    changes identifier quoting and function rendering on output.
+    changes identifier quoting and function rendering on output (e.g. a window LAG renders
+    as ClickHouse `lagInFrame` vs Postgres `LAG`).
 
     `apply_limit=False` drops the trailing top-N LIMIT: used for charts in a native
     dashboard filter's scope, where the limit moves to form_data so re-ranking happens
     AFTER the viewer's filter (a pre-truncated top-N would filter the wrong rows, and a
     select filter's options would be capped to that pre-filter top-N). The dataset is
     already aggregated, so the row count stays small regardless.
-    """
 
+    When any measure carries a `transform` (period-over-period, share, running total) the
+    query becomes two-level: an inner GROUP BY computes the base aggregates and an outer
+    SELECT applies the window functions over them (see `_generate_windowed_sql`).
+    """
+    if any(m.transform is not None for m in query.measures):
+        return _generate_windowed_sql(query, dialect=dialect, apply_limit=apply_limit)
+    return _generate_flat_sql(query, dialect=dialect, apply_limit=apply_limit)
+
+
+def _resolve_for(query: ChartQuery):
     def resolve(ref: str) -> str:
         # with joins in play every bare reference is qualified with the base table:
         # joined tables can share column names (stores.name vs products.name) and an
@@ -100,6 +149,16 @@ def generate_chart_sql(
             return f"{query.table}.{ref}"
         return ref
 
+    return resolve
+
+
+def _grouped_select(query: ChartQuery, *, measure_exprs: list[exp.Expression]) -> exp.Select:
+    """FROM + JOINs + WHERE + GROUP BY with the given measure SELECT expressions.
+
+    Shared by the flat path (measures aliased to their final names) and the windowed
+    path's inner query (measures aliased to private `__src_i` names).
+    """
+    resolve = _resolve_for(query)
     group_cols = query.group_columns()  # dimensions + series + rows + columns, deduped
     group_exprs = [_dim_column(resolve(c)) for c in group_cols]
     # qualified columns get their bare name as the SELECT alias, so the dataset exposes
@@ -108,7 +167,6 @@ def generate_chart_sql(
         exp.alias_(e, column_alias(c), quoted=True) if "." in resolve(c) else e
         for c, e in zip(group_cols, group_exprs, strict=True)
     ]
-    measure_exprs = [_measure_expr(m, resolve(m.column)) for m in query.measures]
     select = exp.select(*select_dims, *measure_exprs).from_(exp.to_table(query.table))
     for j in query.joins:
         select = select.join(
@@ -120,25 +178,89 @@ def generate_chart_sql(
         select = select.where(_filter_expr(qf.model_copy(update={"column": resolve(qf.column)})))
     if group_exprs:
         select = select.group_by(*group_exprs)
-    # any reference to a measure (raw column, label, or computed alias) must order by
-    # the SELECT alias, never the raw column: a bare measure column is not in GROUP BY
-    # and ClickHouse rejects it (error 215, NOT_AN_AGGREGATE). Qualified dimensions
-    # likewise map to their bare SELECT alias.
-    order_targets: dict[str, str] = {}
-    for m in query.measures:
-        alias = measure_alias(m)
-        order_targets[m.column] = alias
-        order_targets[alias] = alias
-        if m.label:
-            order_targets[m.label] = alias
-    for c in group_cols:
-        if "." in c:
-            order_targets[c] = column_alias(c)
-    for ob in query.order_by:
-        target = order_targets.get(ob.by, ob.by)
-        select = select.order_by(
-            exp.Ordered(this=exp.column(target, quoted=True), desc=ob.dir == "desc")
-        )
-    if apply_limit:
-        select = select.limit(query.limit)
+    return select
+
+
+def _generate_flat_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) -> str:
+    resolve = _resolve_for(query)
+    measure_exprs = [_measure_expr(m, resolve(m.column)) for m in query.measures]
+    select = _grouped_select(query, measure_exprs=measure_exprs)
+    select = _apply_order_and_limit(select, query, apply_limit=apply_limit)
     return select.sql(dialect=dialect, identify=True)
+
+
+def _safe_div(num: exp.Expression, den: exp.Expression) -> exp.Expression:
+    """num / NULLIF(den, 0) — a zero/NULL denominator yields NULL, not a divide error."""
+    return exp.Div(this=num, expression=exp.Nullif(this=den, expression=exp.Literal.number(0)))
+
+
+def _window_expr(
+    transform: MeasureTransform, src: exp.Column, order_col: exp.Column | None
+) -> exp.Expression:
+    """Window expression over the inner base aggregate referenced by `src` (its alias).
+
+    Dialect rendering is handled by sqlglot on output: `exp.Lag` becomes ClickHouse
+    `lagInFrame` and Postgres `LAG`; `SUM(...) OVER (...)` is identical in both. Every
+    leaf is `.copy()`d so reusing `src`/`order` across the AST never aliases a node.
+    """
+    if transform == MeasureTransform.SHARE_OF_TOTAL:
+        total = exp.Window(this=exp.func("sum", src.copy()))  # SUM(src) OVER ()
+        return _safe_div(src.copy(), total)
+
+    # ordered transforms (pop_*, running_total) sort by the chart's time x-axis, which
+    # validate guarantees exists; defensive guard keeps the failure local and clear
+    if order_col is None:
+        raise ValueError(f"transform {transform.value!r} requires a time dimension to order by")
+    order = exp.Order(expressions=[exp.Ordered(this=order_col.copy())])
+
+    if transform == MeasureTransform.RUNNING_TOTAL:
+        spec = exp.WindowSpec(
+            kind="ROWS", start="UNBOUNDED", start_side="PRECEDING", end="CURRENT ROW"
+        )
+        return exp.Window(this=exp.func("sum", src.copy()), order=order, spec=spec)
+
+    # pop_abs / pop_pct: lag with an explicit ROWS frame so ClickHouse's frame-bounded
+    # lagInFrame reads exactly the previous row (Postgres LAG ignores the frame clause)
+    def lag() -> exp.Expression:
+        spec = exp.WindowSpec(kind="ROWS", start="1", start_side="PRECEDING", end="CURRENT ROW")
+        return exp.Window(this=exp.Lag(this=src.copy()), order=order.copy(), spec=spec)
+
+    if transform == MeasureTransform.POP_ABS:
+        return exp.Sub(this=src.copy(), expression=lag())
+    # pop_pct: (src - lag) / lag — the numerator MUST be parenthesized, else `/` binds
+    # tighter than `-` and ClickHouse computes `src - (lag / lag)` (Postgres is saved only
+    # by an incidental CAST wrapper, so don't rely on the dialect adding parens)
+    return _safe_div(exp.paren(exp.Sub(this=src.copy(), expression=lag())), lag())
+
+
+def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) -> str:
+    """Two-level SELECT for transform measures: inner GROUP BY of base aggregates, outer
+    window functions over them. Plain measures pass through the outer SELECT unchanged."""
+    resolve = _resolve_for(query)
+    # inner: every measure's base aggregate under a private alias (measure order preserved)
+    src_aliases = [f"__src_{i}" for i in range(len(query.measures))]
+    inner_measures = [
+        _measure_expr(m, resolve(m.column), alias=src_aliases[i])
+        for i, m in enumerate(query.measures)
+    ]
+    inner = _grouped_select(query, measure_exprs=inner_measures)
+
+    # window order column = the chart's first dimension (validate proves it is TIME for the
+    # ordered transforms); None when the chart has no dimension (share_of_total only)
+    order_col = (
+        exp.column(column_alias(query.dimensions[0]), quoted=True) if query.dimensions else None
+    )
+
+    outer_dims: list[exp.Expression] = [
+        exp.column(column_alias(c), quoted=True) for c in query.group_columns()
+    ]
+    outer_measures: list[exp.Expression] = []
+    for i, m in enumerate(query.measures):
+        src = exp.column(src_aliases[i], quoted=True)
+        body = src if m.transform is None else _window_expr(m.transform, src, order_col)
+        # sqlglot types alias_ as Expr (an Expression subclass at runtime), as in _measure_expr
+        outer_measures.append(exp.alias_(body, measure_alias(m), quoted=True))  # type: ignore[arg-type]
+
+    outer = exp.select(*outer_dims, *outer_measures).from_(inner.subquery(alias="t"))
+    outer = _apply_order_and_limit(outer, query, apply_limit=apply_limit)
+    return outer.sql(dialect=dialect, identify=True)

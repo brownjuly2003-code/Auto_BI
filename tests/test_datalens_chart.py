@@ -94,6 +94,49 @@ def test_shared_big_number() -> None:
     assert ph[0]["id"] == "measures" and ph[0]["items"][0]["source"] == "rev"
 
 
+def _y_item(chart: ChartSpec, fields: dict[str, dict]) -> dict:
+    shared = build_chart_shared(chart, DS_ID, DS_NAME, fields)
+    ph = {p["id"]: p for p in shared["visualization"]["placeholders"]}
+    return ph["y"]["items"][0]
+
+
+def test_shared_compact_formatting_for_large_aggregate() -> None:
+    # a SUM measure (alias sum_revenue) gets the compact `formatting` block (B5)
+    fields = _fields(("date", "date", "DIMENSION"), ("sum_revenue", "float", "MEASURE"))
+    chart = ChartSpec(
+        id="c",
+        title="c",
+        viz=Viz.LINE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        ),
+    )
+    fmt = _y_item(chart, fields)["formatting"]
+    assert fmt["format"] == "number" and fmt["unit"] == "auto"
+
+
+def test_shared_percent_formatting_for_ratio_transform() -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    fields = _fields(("date", "date", "DIMENSION"), ("pop_pct_sum_revenue", "float", "MEASURE"))
+    chart = ChartSpec(
+        id="c",
+        title="c",
+        viz=Viz.LINE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date"],
+            measures=[
+                Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.POP_PCT)
+            ],
+        ),
+    )
+    fmt = _y_item(chart, fields)["formatting"]
+    assert fmt["format"] == "percent" and fmt["precision"] == 1
+
+
 def test_shared_bar_is_column() -> None:
     fields = _fields(("store_id", "integer", "DIMENSION"), ("rev", "float", "MEASURE"))
     shared = build_chart_shared(_chart(Viz.BAR, dimensions=["store_id"]), DS_ID, DS_NAME, fields)

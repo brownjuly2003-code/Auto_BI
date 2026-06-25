@@ -63,6 +63,10 @@ addopts = "-m 'not integration'"
 
 # Coverage is measured in CI and locally via:
 #   uv run --with pytest-cov pytest --cov=auto_bi --cov-report=term-missing
+# duckdb is an ephemeral test-only dep (like pytest-cov) — it runs the transform SQL's
+# numeric check (tests/test_sqlgen_transforms.py) under PostgreSQL window semantics:
+#   uv run --with duckdb pytest tests/test_sqlgen_transforms.py
+# Without it those tests `importorskip` and skip; CI passes `--with duckdb` so they run.
 [tool.coverage.run]
 source = ["auto_bi"]
 omit = ["*/__init__.py"]

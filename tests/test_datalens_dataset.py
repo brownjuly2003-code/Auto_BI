@@ -160,6 +160,24 @@ def test_dataset_result_schema_roles_and_types(demo_model: SemanticModel) -> Non
     assert fields["Выручка"]["data_type"] == "float"  # Decimal(18,2)
     assert fields["sum_orders"]["data_type"] == "integer"  # UInt32
     assert fields["n_stores"]["data_type"] == "integer"  # count_distinct
+
+
+def test_dataset_transform_measure_is_float_and_windowed(demo_model: SemanticModel) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    query = ChartQuery(
+        table="dm.sales_daily",
+        dimensions=["date"],
+        measures=[
+            # orders is UInt32, but a share is a ratio -> float, not integer
+            Measure(column="orders", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL)
+        ],
+    )
+    body = build_dataset_payload(query, demo_model, workbook_id="wb", connection_id="c", name="ds")
+    fields = {f["title"]: f for f in body["dataset"]["result_schema"]}
+    assert fields["share_of_total_sum_orders"]["data_type"] == "float"
+    # the subselect carries the window over the inner aggregate (ClickHouse dialect here)
+    assert 'SUM("__src_0") OVER ()' in body["dataset"]["sources"][0]["parameters"]["subsql"]
     # every field carries the same root avatar id and a stable guid
     avatar_ids = {f["avatar_id"] for f in fields.values()}
     assert len(avatar_ids) == 1

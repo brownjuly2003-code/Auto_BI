@@ -45,6 +45,26 @@ class FilterOp(StrEnum):
     LTE = "<="
 
 
+class MeasureTransform(StrEnum):
+    """Analytical transform applied to a base aggregate via a window function (SQL_GEN).
+
+    The base aggregate (`agg(column)`) is computed in an inner GROUP BY; the transform is a
+    window over that result in an outer SELECT (deterministic, no LLM — invariant 1/D5):
+    - `pop_abs`  — period-over-period absolute change: `agg - lag(agg) OVER (ORDER BY time)`;
+    - `pop_pct`  — period-over-period relative change: `(agg - lag(agg)) / lag(agg)`;
+    - `share_of_total` — share of the column total: `agg / sum(agg) OVER ()`;
+    - `running_total`  — cumulative sum over time: `sum(agg) OVER (ORDER BY time ROWS …)`.
+
+    pop_* / running_total order by the chart's first (time) dimension; share_of_total needs
+    none. Validation enforces the required shape (a time x-axis for the ordered transforms).
+    """
+
+    POP_ABS = "pop_abs"
+    POP_PCT = "pop_pct"
+    SHARE_OF_TOTAL = "share_of_total"
+    RUNNING_TOTAL = "running_total"
+
+
 class QueryFilter(BaseModel):
     column: str
     op: FilterOp
@@ -55,6 +75,9 @@ class Measure(BaseModel):
     column: str
     agg: Aggregation
     label: str = ""
+    # optional analytical transform (period-over-period, share, running total) computed
+    # as a window over the base aggregate; None => a plain aggregate (the common case)
+    transform: MeasureTransform | None = None
 
 
 def measure_alias(measure: Measure) -> str:
@@ -62,8 +85,22 @@ def measure_alias(measure: Measure) -> str:
 
     Single source of truth shared by SQL_GEN, the adapters, and validation so the
     alias a chart is ordered/aggregated by always matches the column SQL_GEN emits.
+    A transformed measure with no explicit label gets the transform in its default alias
+    (`pop_pct_sum_revenue`) so it cannot collide with the same chart's base aggregate.
     """
-    return measure.label or f"{measure.agg.value}_{measure.column}"
+    if measure.label:
+        return measure.label
+    base = f"{measure.agg.value}_{measure.column}"
+    return f"{measure.transform.value}_{base}" if measure.transform is not None else base
+
+
+def is_percent_measure(measure: Measure) -> bool:
+    """Whether a measure's value is a ratio/share to DISPLAY as a percent (pop_pct, share).
+
+    pop_abs / running_total keep the base measure's number family (a cumulative sum is still
+    rubles), so they are not percents. The adapters map this to the native percent format
+    (Superset d3 `.1%`, DataLens `formatting` percent)."""
+    return measure.transform in (MeasureTransform.POP_PCT, MeasureTransform.SHARE_OF_TOTAL)
 
 
 def is_compact_number(measure: Measure) -> bool:
@@ -72,7 +109,12 @@ def is_compact_number(measure: Measure) -> bool:
     a KPI tile / collide on an axis; averages and extrema stay small and keep full precision
     (an average check is 3614, not '3.6k'). Display hint only — SQL and values are unchanged.
     The adapters map it to the native format (Superset d3 `~s`, DataLens compact `formatting`).
+
+    A percent transform (pop_pct, share) is never compact — it renders as a percent, not an
+    SI-abbreviated count. pop_abs / running_total keep the underlying aggregate's rule.
     """
+    if is_percent_measure(measure):
+        return False
     return measure.agg in (Aggregation.SUM, Aggregation.COUNT, Aggregation.COUNT_DISTINCT)
 
 

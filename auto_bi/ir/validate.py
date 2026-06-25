@@ -4,13 +4,29 @@ Runs BEFORE any BI/SQL work. Unknown table/column -> error list for the repair l
 no silent fixes ever. Returns human-readable errors the LLM can act on.
 """
 
-from auto_bi.ir.spec import ChartSpec, DashboardSpec, FilterOp, Viz, column_alias, measure_alias
+from auto_bi.ir.spec import (
+    ChartSpec,
+    DashboardSpec,
+    FilterOp,
+    MeasureTransform,
+    Viz,
+    column_alias,
+    measure_alias,
+)
 from auto_bi.semantic.model import Aggregation, ColumnRole, SemanticModel, Table
 
 # numeric aggregations make no sense over dimension columns; count/count_distinct
 # are legal over anything. Rejecting here keeps the error actionable for the repair
 # loop instead of a late EXPLAIN failure in compile_and_build.
 _NUMERIC_AGGS = frozenset({Aggregation.SUM, Aggregation.AVG, Aggregation.MIN, Aggregation.MAX})
+
+# transforms whose window orders by the chart's first dimension — that dimension must be a
+# TIME column (a period-over-period / running total is only meaningful along a time axis)
+_ORDERED_TRANSFORMS = frozenset(
+    {MeasureTransform.POP_ABS, MeasureTransform.POP_PCT, MeasureTransform.RUNNING_TOTAL}
+)
+# viz with no single ordered category axis the SQL_GEN window can sort by
+_TRANSFORM_UNSUPPORTED_VIZ = frozenset({Viz.BIG_NUMBER, Viz.PIVOT, Viz.HEATMAP})
 
 
 def validate_spec(spec: DashboardSpec, model: SemanticModel) -> list[str]:
@@ -157,7 +173,55 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
                 f"{prefix}: order_by {ob.by!r} is neither a dimension nor a measure of the chart"
             )
 
+    errors.extend(_validate_transforms(chart, model, prefix))
     errors.extend(_validate_viz_shape(chart, prefix))
+    return errors
+
+
+def _first_dimension_is_time(chart: ChartSpec, model: SemanticModel) -> bool:
+    """Whether the chart's first dimension resolves to a TIME column (the window x-axis).
+
+    Defensive: an unknown table/column resolves to non-time, leaving the underlying
+    unknown-column error (already emitted above) as the actionable message."""
+    dims = chart.query.dimensions
+    if not dims:
+        return False
+    ref = dims[0]
+    table_name, _, col = ref.rpartition(".") if "." in ref else ("", "", ref)
+    table = model.table(table_name) if table_name else model.table(chart.query.table)
+    column = table.column(col) if table is not None else None
+    return column is not None and column.role == ColumnRole.TIME
+
+
+def _validate_transforms(chart: ChartSpec, model: SemanticModel, prefix: str) -> list[str]:
+    """Shape rules for analytical transforms (PoP / share / running total).
+
+    A period-over-period or running total is computed as a window ordered by the chart's
+    first dimension, so that dimension must be a TIME column and the viz must have a single
+    ordered axis (not a KPI / pivot / heatmap). share_of_total needs at least one dimension
+    to be a share *of* — without grouping the share is a trivial 100%.
+    """
+    transformed = [m for m in chart.query.measures if m.transform is not None]
+    if not transformed:
+        return []
+    if chart.viz in _TRANSFORM_UNSUPPORTED_VIZ:
+        names = ", ".join(sorted({m.transform.value for m in transformed if m.transform}))
+        return [
+            f"{prefix}: преобразования мер ({names}) не поддерживаются для {chart.viz.value} — "
+            "нужен график с одной упорядоченной осью (line/area/bar/pie/table)"
+        ]
+    errors: list[str] = []
+    first_is_time = _first_dimension_is_time(chart, model)
+    for m in transformed:
+        if m.transform in _ORDERED_TRANSFORMS and not first_is_time:
+            errors.append(
+                f"{prefix}: преобразование {m.transform.value!r} требует, чтобы первое "
+                "измерение было колонкой времени (ось x по времени)"
+            )
+        elif m.transform == MeasureTransform.SHARE_OF_TOTAL and not chart.query.dimensions:
+            errors.append(
+                f"{prefix}: преобразование 'share_of_total' требует хотя бы одно измерение"
+            )
     return errors
 
 

@@ -240,3 +240,84 @@ def test_alias_collision_between_tables_is_rejected(demo_model) -> None:
     chart = _join_chart(dimensions=["dm.stores.name", "name"])
     errors = validate_spec(_spec_of(chart), demo_model)
     assert errors  # bare "name" is unknown in the base table AND would collide
+
+
+# --- analytical transforms (PoP / share / running total) --------------------
+
+
+def _t_chart(transform, viz=Viz.LINE, **query_kwargs):
+    from auto_bi.ir.spec import MeasureTransform  # noqa: F401 (imported for callers)
+
+    defaults = dict(
+        table="dm.sales_daily",
+        dimensions=["date"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM, transform=transform)],
+    )
+    defaults.update(query_kwargs)
+    return ChartSpec(id="c1", title="t", viz=viz, query=ChartQuery(**defaults))
+
+
+def test_pop_over_time_dimension_is_valid(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    assert validate_spec(spec(_t_chart(MeasureTransform.POP_PCT)), demo_model) == []
+
+
+def test_running_total_over_time_is_valid(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    assert validate_spec(spec(_t_chart(MeasureTransform.RUNNING_TOTAL)), demo_model) == []
+
+
+def test_pop_over_non_time_dimension_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    # store_id is a dimension, not time -> a period-over-period has no order to walk
+    bad = _t_chart(MeasureTransform.POP_ABS, viz=Viz.BAR, dimensions=["store_id"])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("колонкой времени" in e for e in errors)
+
+
+def test_share_of_total_over_category_is_valid(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    # share needs no time order; a categorical axis is fine
+    ok = _t_chart(MeasureTransform.SHARE_OF_TOTAL, viz=Viz.PIE, dimensions=["store_id"])
+    assert validate_spec(spec(ok), demo_model) == []
+
+
+def test_share_of_total_without_dimension_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    # big_number forbids dimensions, so a share there has nothing to be a share of
+    bad = _t_chart(MeasureTransform.SHARE_OF_TOTAL, viz=Viz.BIG_NUMBER, dimensions=[])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("share_of_total" in e or "не поддерживаются" in e for e in errors)
+
+
+def test_transform_on_big_number_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    bad = _t_chart(MeasureTransform.RUNNING_TOTAL, viz=Viz.BIG_NUMBER, dimensions=[])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("не поддерживаются" in e and "big_number" in e for e in errors)
+
+
+def test_transform_on_pivot_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    bad = ChartSpec(
+        id="c1",
+        title="t",
+        viz=Viz.PIVOT,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            rows=["store_id"],
+            columns=["date"],
+            measures=[
+                Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.POP_ABS)
+            ],
+        ),
+    )
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("не поддерживаются" in e for e in errors)

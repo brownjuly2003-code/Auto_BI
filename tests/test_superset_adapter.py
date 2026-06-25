@@ -128,6 +128,26 @@ def test_form_data_keeps_full_precision_for_averages() -> None:
     assert "column_config" not in build_form_data(avg_table, dataset_id=1)
 
 
+def test_form_data_percent_format_for_ratio_transforms() -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    pct = Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.POP_PCT)
+    line = _chart(Viz.LINE, dimensions=["date"], measures=[pct])
+    assert build_form_data(line, dataset_id=1)["y_axis_format"] == ".1%"
+    # a table mixes a compact sum and a percent share, formatted per-column
+    share = Measure(
+        column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL
+    )
+    table = _chart(
+        Viz.TABLE,
+        dimensions=["store_id"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM, label="Выручка"), share],
+    )
+    cfg = build_form_data(table, dataset_id=1)["column_config"]
+    assert cfg["Выручка"]["d3NumberFormat"] == ".3~s"
+    assert cfg["share_of_total_sum_revenue"]["d3NumberFormat"] == ".1%"
+
+
 def test_form_data_escapes_malicious_label() -> None:
     # an LLM-controlled label must not break out of SUM("...") and inject SQL (F1)
     evil = Measure(column="revenue", agg=Aggregation.SUM, label='x") FROM system.numbers --')

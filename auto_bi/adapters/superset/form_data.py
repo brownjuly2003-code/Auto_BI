@@ -17,6 +17,7 @@ from auto_bi.ir.spec import (
     Viz,
     column_alias,
     is_compact_number,
+    is_percent_measure,
     measure_alias,
 )
 
@@ -25,6 +26,18 @@ from auto_bi.ir.spec import (
 # d3 in the en locale, so the suffix is SI (G/M/k), not "млрд" — still scaled, never the raw
 # 12-digit number that overflows a big_number tile / collides on an axis (dashboard-craft §4).
 _COMPACT_D3 = ".3~s"
+# d3 percent format for ratio transforms (pop_pct, share): a 0..1 ratio renders as "50.0%"
+# (d3 `%` multiplies by 100 and appends the sign). Display only — the SQL value stays a ratio.
+_PERCENT_D3 = ".1%"
+
+
+def _measure_d3(measure: Measure) -> str:
+    """d3 number format for one measure: percent for ratio transforms, compact for large
+    additive aggregates, else "" (leave Superset's default — averages/extrema, contract specs)."""
+    if is_percent_measure(measure):
+        return _PERCENT_D3
+    return _COMPACT_D3 if is_compact_number(measure) else ""
+
 
 VIZ_TYPE = {
     Viz.BIG_NUMBER: "big_number_total",
@@ -56,21 +69,22 @@ def _adhoc_metric(measure: Measure, chart_id: str, index: int, agg: str = "SUM")
     }
 
 
-def _compact_format(measures: list[Measure]) -> str:
-    """Chart-level value format: compact when the primary measure is a large aggregate.
+def _chart_format(measures: list[Measure]) -> str:
+    """Chart-level value format from the primary (first) measure: percent for a ratio
+    transform, compact for a large aggregate, else Superset's default ("").
 
     The auto-overview charts are single-measure; for an LLM multi-measure chart the primary
-    (first) measure sets the axis format — the common, sensible default. Empty string => leave
-    Superset's default (so averages/extrema and existing contract specs are untouched).
+    measure sets the single axis format — the common, sensible default (a table mixing
+    families instead formats per-column via column_config below).
     """
-    return _COMPACT_D3 if measures and is_compact_number(measures[0]) else ""
+    return _measure_d3(measures[0]) if measures else ""
 
 
 def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
     """Superset chart params for the pinned 4.1, on top of a virtual dataset."""
     q = chart.query
     metrics = [_adhoc_metric(m, chart.id, i) for i, m in enumerate(q.measures)]
-    fmt = _compact_format(q.measures)
+    fmt = _chart_format(q.measures)
     base = {
         "datasource": f"{dataset_id}__table",
         "viz_type": VIZ_TYPE[chart.viz],
@@ -104,11 +118,11 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
             "groupby": [column_alias(c) for c in q.group_columns()],
             "metrics": metrics,
         }
-        # per-metric compact format (a table can mix a big sum and a small average)
+        # per-metric format (a table can mix a big sum, a small average, and a percent share)
         column_config = {
-            measure_alias(m): {"d3NumberFormat": _COMPACT_D3}
+            measure_alias(m): {"d3NumberFormat": _measure_d3(m)}
             for m in q.measures
-            if is_compact_number(m)
+            if _measure_d3(m)
         }
         if column_config:
             fd["column_config"] = column_config

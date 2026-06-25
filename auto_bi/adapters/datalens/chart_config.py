@@ -16,7 +16,14 @@ keyed by the bare alias (column_alias / measure_alias) the SQL_GEN subselect emi
 
 from __future__ import annotations
 
-from auto_bi.ir.spec import ChartSpec, Viz, column_alias, is_compact_number, measure_alias
+from auto_bi.ir.spec import (
+    ChartSpec,
+    Viz,
+    column_alias,
+    is_compact_number,
+    is_percent_measure,
+    measure_alias,
+)
 
 # Compact display for large additive aggregates (dashboard-craft §4): the DataLens `metric`
 # widget shows the figure at a fixed large font and CLIPS a raw billions-scale number; an
@@ -30,6 +37,20 @@ _COMPACT_FORMATTING = {
     "prefix": "",
     "postfix": "",
     "unit": "auto",
+    "precision": 1,
+    "labelMode": "absolute",
+}
+
+# percent display for ratio transforms (pop_pct, share): a 0..1 ratio renders as "50,0 %".
+# DataLens `format: "percent"` scales by 100 and appends the sign; no SI unit. Display only.
+# NB: the exact `formatting` shape for percent is reversed from the demo Wizard and must be
+# live-verified on the stand (the field is otherwise asserted only by unit tests here).
+_PERCENT_FORMATTING = {
+    "format": "percent",
+    "showRankDelimiter": True,
+    "prefix": "",
+    "postfix": "",
+    "unit": None,
     "precision": 1,
     "labelMode": "absolute",
 }
@@ -146,6 +167,8 @@ def build_chart_shared(
     used: dict[str, None] = {}  # aliases referenced by this chart, order-preserving
     # measure aliases whose figure should display abbreviated (236,1 млрд, not 236149963687)
     compact_aliases = {measure_alias(m) for m in q.measures if is_compact_number(m)}
+    # ratio-transform aliases (pop_pct, share) that display as a percent
+    percent_aliases = {measure_alias(m) for m in q.measures if is_percent_measure(m)}
 
     def item(alias: str, *, discrete: bool = False) -> dict:
         used.setdefault(alias, None)
@@ -153,7 +176,9 @@ def build_chart_shared(
         # on a column chart, a numeric dimension must be string-cast to render as categories
         as_string = discrete and _is_numeric_dimension(field)
         out = _field_item(field, ids[alias], dataset_id, dataset_name, as_string=as_string)
-        if alias in compact_aliases:
+        if alias in percent_aliases:
+            out["formatting"] = dict(_PERCENT_FORMATTING)
+        elif alias in compact_aliases:
             out["formatting"] = dict(_COMPACT_FORMATTING)
         return out
 
