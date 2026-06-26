@@ -209,6 +209,54 @@ def test_line_no_reversal_when_both_halves_move_together() -> None:
     assert "reversal" not in [o.kind for o in obs]
 
 
+# --- momentum (change of pace: same direction, but the slope changes) ------------------
+
+
+def test_line_steady_linear_growth_is_not_decelerating() -> None:
+    # THE correctness guard: a linear climb has a CONSTANT slope but a falling percent each
+    # half (the base grows). Pace is judged on slope, so this must read as a steady trend,
+    # never as "рост замедляется".
+    obs = _line([{"d": i, "sum_x": float(100 + 5 * i)} for i in range(30)])
+    assert [o.kind for o in obs] == ["trend"]
+
+
+def test_line_reports_decelerating_growth_as_momentum() -> None:
+    # a steep climb (slope 20) then a gentle one (slope 8): same direction, but the pace drops
+    rows = [
+        {"d": i, "sum_x": float(100 + 20 * i if i < 15 else 400 + 8 * (i - 15))} for i in range(30)
+    ]
+    obs = _line(rows)
+    assert "reversal" not in [o.kind for o in obs]  # same direction -> never a reversal
+    m = next(o for o in obs if o.kind == "momentum")
+    assert "рост замедляется" in m.text
+    assert "+" in m.text and m.value is not None and m.value > 0
+
+
+def test_line_reports_accelerating_growth_as_momentum() -> None:
+    # a gentle climb (slope 2) then a steep one (slope 20): growth speeds up
+    rows = [
+        {"d": i, "sum_x": float(100 + 2 * i if i < 15 else 130 + 20 * (i - 15))} for i in range(30)
+    ]
+    m = next(o for o in _line(rows) if o.kind == "momentum")
+    assert "рост ускоряется" in m.text
+
+
+def test_line_reports_accelerating_decline_as_momentum() -> None:
+    # a gentle fall (slope -8) then a steep one (slope -20): both halves down, decline speeds up
+    rows = [
+        {"d": i, "sum_x": float(1000 - 8 * i if i < 15 else 880 - 20 * (i - 15))} for i in range(30)
+    ]
+    m = next(o for o in _line(rows) if o.kind == "momentum")
+    assert "снижение ускоряется" in m.text
+    assert m.value is not None and m.value < 0
+
+
+def test_line_no_momentum_when_a_half_is_flat() -> None:
+    # the first half is flat (< the materiality floor): there is no two-paced story to tell
+    rows = [{"d": i, "sum_x": (100.0 if i < 15 else float(100 + 30 * (i - 15)))} for i in range(30)]
+    assert "momentum" not in [o.kind for o in _line(rows)]
+
+
 # --- day-of-week seasonality ----------------------------------------------------------
 
 _MONDAY = date(2026, 1, 5)  # twelve whole weeks from here → 12 samples per weekday

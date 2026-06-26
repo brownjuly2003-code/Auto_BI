@@ -228,12 +228,12 @@ def dev_run_query(sql):
     """Crafted rows so the «Что видно» insight panel populates without a DWH.
 
     Routes a chart's generated SQL by the column it selects, and is shaped to exercise every
-    observation kind: the daily revenue series spans twelve weeks, climbing through the first
-    half then turning down (a reversal the overall trend hides), with a clear weekend lift (a
-    day-of-week seasonality) and one anomalous spike day; the region ranking is concentrated
-    (leader + top-3 concentration); the city ranking is evenly spread (leader + spread, the
-    complement); the format chart is a 3-way share. Large numbers exercise the compact RU
-    formatting (млрд / млн)."""
+    observation kind: the daily revenue series spans twelve weeks, climbing steeply through
+    the first half then far more gently (growth that decelerates — a "темп" story), with a
+    clear weekend lift (a day-of-week seasonality) and one anomalous spike day; the region
+    ranking is concentrated (leader + top-3 concentration); the city ranking is evenly spread
+    (leader + spread, the complement); the format chart is a 3-way share. Large numbers
+    exercise the compact RU formatting (млрд / млн)."""
     if "share_of_total" in sql:
         return [
             {"format": f, "share_of_total_sum_revenue": v}
@@ -244,7 +244,9 @@ def dev_run_query(sql):
 
         def _rev(i: int) -> float:
             d = start + timedelta(days=i)
-            ramp = i if i <= 42 else (84 - i)  # up to week 6, then back down → a reversal
+            # steep climb through week 6, then a gentle one → growth that decelerates (a "темп"
+            # story; slope drops though the direction holds, so it is not a reversal)
+            ramp = i if i <= 42 else 42 + 0.3 * (i - 42)
             base = 2.0e8 + 6.0e6 * ramp
             if d.weekday() >= 5:  # Saturday/Sunday run higher → weekday seasonality
                 base *= 1.4

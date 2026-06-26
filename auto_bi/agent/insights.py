@@ -1,11 +1,12 @@
 """Deterministic insight layer over a built dashboard — the "Что видно" surface.
 
 A read-only pass that runs each chart's SQL once and turns the *real* aggregates into a
-few plain observations: a time series' trend (% change over the period), a reversal of that
-trend in the second half, a standing day-of-week pattern, and its single most extreme spike
-or dip; a ranking's leader and either its top-3 concentration or — the complement — its even
-spread; a structure chart's largest share. It answers "what does this dashboard actually
-say?" without the reader having to eyeball every chart.
+few plain observations: a time series' trend (% change over the period), how its second half
+differs from its first (a reversal, or a change of pace — accelerating / decelerating), a
+standing day-of-week pattern, and its single most extreme spike or dip; a ranking's leader
+and either its top-3 concentration or — the complement — its even spread; a structure
+chart's largest share. It answers "what does this dashboard actually say?" without the
+reader having to eyeball every chart.
 
 It is a SEPARATE surface from the dashboard, never rendered inside it — an operational
 dashboard shows the numbers and the filters; the narrative belongs on its own layer
@@ -57,9 +58,15 @@ _ANOMALY_MIN_POINTS = 8
 _ANOMALY_SIGMA = 3.0  # the extreme must clear mean ± 3σ ...
 _ANOMALY_MIN_RATIO = 2.0  # ... and be ≥2× / ≤½ the mean to read as a real spike or dip
 
-# a reversal needs enough points for two stable halves and a real move within each half
-_REVERSAL_MIN_POINTS = 8
-_REVERSAL_MIN_PCT = 8.0
+# the "second-half story" (a reversal, or a change of pace) needs enough points for two
+# stable halves and a real move within each half
+_HALF_MIN_POINTS = 8
+_HALF_MIN_PCT = 8.0
+# a change of pace is only worth stating when the slope genuinely changed: one half's
+# absolute move must be at least this many times the other's (below it the trend is steady
+# and the trend line already says so). Judged on slope, NOT percent — a linear climb shows a
+# falling percent each half merely because the base grows, and is not a deceleration.
+_MOMENTUM_MIN_RATIO = 1.5
 
 # a weekday-seasonality observation needs many weeks so each weekday's MEDIAN is stable (a
 # median over few samples can still be shifted a rank by one spike); below this the weekly
@@ -89,7 +96,8 @@ class Observation:
     """
 
     chart_id: str
-    # trend | reversal | seasonality | anomaly | leader | concentration | spread | share_lead
+    # trend | reversal | momentum | seasonality | anomaly | leader | concentration | spread
+    # | share_lead
     kind: str
     text: str
     value: float | None = None
@@ -163,9 +171,10 @@ def _observe_chart(chart: ChartSpec, run_query: RunQuery, dialect: str) -> list[
 def _observe_line(
     chart: ChartSpec, rows: list[dict], m_alias: str, t_alias: str
 ) -> list[Observation]:
-    """The headline story of a time series: its trend, a reversal of that trend in the
-    second half, a standing day-of-week pattern, and the single most extreme spike or dip —
-    ordered by importance (trend, reversal, seasonality, then extremes) so the per-chart cap
+    """The headline story of a time series: its trend, how its second half differs from the
+    first (a reversal of that trend, or a change of pace — accelerating / decelerating), a
+    standing day-of-week pattern, and the single most extreme spike or dip — ordered by
+    importance (trend, second-half story, seasonality, then extremes) so the per-chart cap
     keeps the headlines.
 
     Rows arrive ordered by time ascending. Every comparison is the mean of a small window
@@ -194,17 +203,8 @@ def _observe_line(
             )
         )
 
-    if n >= _REVERSAL_MIN_POINTS and (rev := _reversal(vals, n, k)) is not None:
-        first_pct, second_pct = rev
-        out.append(
-            Observation(
-                chart.id,
-                "reversal",
-                f"«{chart.title}» — разворот: первая половина {_signed_pct(first_pct)}, "
-                f"вторая {_signed_pct(second_pct)}",
-                value=round(second_pct, 1),
-            )
-        )
+    if n >= _HALF_MIN_POINTS:
+        out.extend(_second_half_story(chart, vals, n, k))
 
     out.extend(_seasonality(chart, rows, m_alias, t_alias))
 
@@ -213,23 +213,72 @@ def _observe_line(
     return out
 
 
-def _reversal(vals: list[float], n: int, k: int) -> tuple[float, float] | None:
-    """A second-half move against the first half (an inflection the overall trend hides).
+def _half_changes(vals: list[float], n: int, k: int) -> tuple[float, float, float, float] | None:
+    """Each half's net move, as both an absolute delta (slope proxy) and a percent.
 
-    Each half's net change is measured between its boundary windows of width `k`; a reversal
-    is reported only when the halves move in opposite directions and each change is material.
-    Returns (first-half %, second-half %) or None.
+    Measured between the boundary windows of width `k` at the start, middle and end. The two
+    halves span the same number of points, so their deltas are directly comparable as slopes.
+    Returns (first Δ, second Δ, first %, second %), or None when a base is zero.
     """
     mid = n // 2
     first_base = fmean(vals[:k])
     second_base = fmean(vals[mid : mid + k])
     if first_base == 0 or second_base == 0:
         return None
-    first_pct = (fmean(vals[mid - k : mid]) - first_base) / first_base * 100.0
-    second_pct = (fmean(vals[-k:]) - second_base) / second_base * 100.0
-    opposite = (first_pct > 0) != (second_pct > 0)
-    material = abs(first_pct) >= _REVERSAL_MIN_PCT and abs(second_pct) >= _REVERSAL_MIN_PCT
-    return (first_pct, second_pct) if opposite and material else None
+    first_delta = fmean(vals[mid - k : mid]) - first_base
+    second_delta = fmean(vals[-k:]) - second_base
+    return (
+        first_delta,
+        second_delta,
+        first_delta / first_base * 100.0,
+        second_delta / second_base * 100.0,
+    )
+
+
+def _second_half_story(chart: ChartSpec, vals: list[float], n: int, k: int) -> list[Observation]:
+    """How the second half differs from the first — a reversal, or a change of pace. The two
+    are mutually exclusive (opposite vs same direction), so a line reports at most one.
+
+    Reversal: the halves move in opposite directions (an inflection the overall trend hides).
+    Change of pace: same direction, but one half is clearly steeper — growth/decline that is
+    accelerating or decelerating. Pace is judged by SLOPE (the absolute delta of each half),
+    not by percent: a steady linear climb shows a *falling* percent each half only because the
+    base grows, and must never be mislabeled "замедляется". Materiality and the human evidence
+    use percent; both halves must clear `_HALF_MIN_PCT` so a flat half is never a "story".
+    """
+    cuts = _half_changes(vals, n, k)
+    if cuts is None:
+        return []
+    first_delta, second_delta, first_pct, second_pct = cuts
+    if abs(first_pct) < _HALF_MIN_PCT or abs(second_pct) < _HALF_MIN_PCT:
+        return []
+    halves = f"первая половина {_signed_pct(first_pct)}, вторая {_signed_pct(second_pct)}"
+
+    if (first_delta > 0) != (second_delta > 0):
+        return [
+            Observation(
+                chart.id,
+                "reversal",
+                f"«{chart.title}» — разворот: {halves}",
+                value=round(second_pct, 1),
+            )
+        ]
+
+    faster, slower = max(abs(first_delta), abs(second_delta)), min(
+        abs(first_delta), abs(second_delta)
+    )
+    if slower == 0 or faster < _MOMENTUM_MIN_RATIO * slower:
+        return []  # same direction at a steady slope — the trend line already says so
+    direction = "рост" if second_delta > 0 else "снижение"
+    pace = "ускоряется" if abs(second_delta) > abs(first_delta) else "замедляется"
+    return [
+        Observation(
+            chart.id,
+            "momentum",
+            f"«{chart.title}» — {direction} {pace}: {halves}",
+            value=round(second_pct, 1),
+        )
+    ]
 
 
 def _parse_date(value: object) -> date | None:

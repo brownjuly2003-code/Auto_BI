@@ -323,6 +323,7 @@ async function refreshDcr() {
 const INSIGHT_KIND_LABELS = {
   trend: "тренд",
   reversal: "разворот",
+  momentum: "темп",
   seasonality: "сезонность",
   anomaly: "аномалия",
   leader: "лидер",
