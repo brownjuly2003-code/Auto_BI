@@ -155,6 +155,18 @@ def test_shared_bar_horizontal_is_bar_viz() -> None:
     assert vert["visualization"]["id"] == "column"
 
 
+def test_shared_categorical_bar_sorts_by_measure() -> None:
+    # a categorical (horizontal) bar ranks by its measure: DataLens orders a categorical axis
+    # alphabetically unless a `sort` field is set (the sorted-bar rule), so set it
+    fields = _fields(("city", "string", "DIMENSION"), ("rev", "float", "MEASURE"))
+    chart = _chart(Viz.BAR, dimensions=["city"])
+    shared = build_chart_shared(chart, DS_ID, DS_NAME, fields, horizontal=True)
+    assert [i["source"] for i in shared["sort"]] == ["rev"]
+    # a time/continuous bar (horizontal False) keeps its axis order — no value sort imposed
+    vert = build_chart_shared(chart, DS_ID, DS_NAME, fields, horizontal=False)
+    assert vert["sort"] == []
+
+
 def test_shared_bar_numeric_dimension_x_is_string_cast() -> None:
     # B2: a numeric dimension on a column chart's X is cast to string -> discrete category
     # axis (live-verified: returns highcharts `categories`, not raw-numeric x points). The

@@ -226,6 +226,12 @@ def build_chart_shared(
             {"id": "x", "items": dims(q.dimensions[:1], discrete=discrete)},
             {"id": "y", "items": measures()},
         ]
+        # a categorical bar ranks by its measure: DataLens orders a categorical axis
+        # alphabetically unless a `sort` field is set, so the biggest bar would not come first
+        # even though the SQL orders by the measure. Mirror the measure order (the sorted-bar
+        # rule) for a horizontal (categorical) bar; a time/continuous bar keeps its axis order.
+        if horizontal and q.measures:
+            sort = [item(measure_alias(q.measures[0]))]
     elif chart.viz == Viz.PIE:
         placeholders = [
             {"id": "dimensions", "items": dims(q.dimensions[:1])},
