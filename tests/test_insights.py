@@ -1,0 +1,244 @@
+"""Deterministic insight layer ("Что видно") over a built overview — offline, no DWH.
+
+The whole pass is deterministic, so a fake RunQuery returning crafted rows fully exercises
+it: end-to-end on the committed demo model plus direct unit tests for each observation
+branch and the RU number formatting. No stand needed.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from auto_bi.agent import insights as I
+from auto_bi.agent.autospec import build_auto_spec
+from auto_bi.agent.insights import Observation, analyze_spec
+from auto_bi.ir.spec import (
+    Aggregation,
+    ChartQuery,
+    ChartSpec,
+    Measure,
+    MeasureTransform,
+    Viz,
+)
+from auto_bi.semantic.model import SemanticModel
+
+MODEL = "semantic/model.yaml"  # committed demo model (repo root is pytest cwd)
+
+
+def _fake_run_query(sql: str) -> list[dict]:
+    """Route a chart's generated SQL to crafted rows by the column it selects.
+
+    A rising 30-day revenue series with a single mid-series spike (day 15); a concentrated
+    region ranking; a diffuse (flat) category ranking; a 3-row city ranking; a 3-way format
+    share. KPI SQL (no dimension token) falls through to no rows.
+    """
+    if "share_of_total" in sql:
+        return [
+            {"format": "магазин у дома", "share_of_total_sum_revenue": 0.41},
+            {"format": "супермаркет", "share_of_total_sum_revenue": 0.35},
+            {"format": "гипермаркет", "share_of_total_sum_revenue": 0.24},
+        ]
+    if '"date"' in sql:
+        return [
+            {"date": f"2026-01-{i:02d}", "sum_revenue": (2000.0 if i == 15 else float(100 + 5 * i))}
+            for i in range(1, 31)
+        ]
+    if "region" in sql:
+        return [
+            {"region": r, "sum_revenue": float(v)}
+            for r, v in [("Центр", 500), ("Юг", 100), ("Урал", 80), ("Сибирь", 60), ("СЗ", 40)]
+        ]
+    if "category" in sql:
+        return [{"category": f"cat{i}", "sum_revenue": 10.0} for i in range(1, 11)]
+    if "city" in sql:
+        return [
+            {"city": c, "sum_revenue": float(v)}
+            for c, v in [("Самара", 300), ("Пермь", 200), ("Омск", 100)]
+        ]
+    return []  # KPIs and anything else
+
+
+def _by_chart(obs: list[Observation]) -> dict[str, list[Observation]]:
+    out: dict[str, list[Observation]] = {}
+    for o in obs:
+        out.setdefault(o.chart_id, []).append(o)
+    return out
+
+
+# --- end-to-end on the real auto-overview ---------------------------------------------
+
+
+def test_analyze_real_auto_overview_produces_expected_observations() -> None:
+    model = SemanticModel.load(MODEL)
+    spec = build_auto_spec(model, "dm.sales_daily")
+    ins = analyze_spec(spec, model, _fake_run_query)
+
+    per = _by_chart(ins.observations)
+
+    # KPIs (auto1..auto3, big_number, no dimension) carry no trend/ranking story
+    assert "auto1" not in per and "auto2" not in per and "auto3" not in per
+
+    # line: a smoothed rising trend + the mid-series spike as an anomaly
+    line = per["auto4"]
+    trend = next(o for o in line if o.kind == "trend")
+    assert trend.value == pytest.approx(122.7, abs=0.1) and "рост" in trend.text
+    assert "+" in trend.text
+    anomaly = next(o for o in line if o.kind == "anomaly")
+    assert anomaly.subject == "2026-01-15" and anomaly.value == pytest.approx(2000.0)
+
+    # concentrated ranking (region): leader + a top-3 concentration line
+    region = per["auto5"]
+    leader = next(o for o in region if o.kind == "leader")
+    assert leader.subject == "Центр" and leader.value == pytest.approx(500.0)
+    assert "64,1% видимой суммы" in leader.text
+    assert any(
+        o.kind == "concentration" and o.value == pytest.approx(87.2, abs=0.1) for o in region
+    )
+
+
+def test_diffuse_ranking_emits_leader_but_no_concentration() -> None:
+    # category is ten equal rows: top-3 = 30% < 50% -> "concentration" is not a finding
+    model = SemanticModel.load(MODEL)
+    spec = build_auto_spec(model, "dm.sales_daily")
+    per = _by_chart(analyze_spec(spec, model, _fake_run_query).observations)
+
+    category = per["auto6"]
+    assert [o.kind for o in category] == ["leader"]
+    assert category[0].subject == "cat1"
+
+
+def test_structure_chart_reports_largest_share() -> None:
+    model = SemanticModel.load(MODEL)
+    spec = build_auto_spec(model, "dm.sales_daily")
+    per = _by_chart(analyze_spec(spec, model, _fake_run_query).observations)
+
+    share = per["auto8"]
+    assert [o.kind for o in share] == ["share_lead"]
+    assert share[0].subject == "магазин у дома" and share[0].value == pytest.approx(41.0)
+    assert "41%" in share[0].text
+
+
+def test_render_lists_each_observation_under_a_header() -> None:
+    model = SemanticModel.load(MODEL)
+    spec = build_auto_spec(model, "dm.sales_daily")
+    ins = analyze_spec(spec, model, _fake_run_query)
+
+    text = ins.render()
+    assert text.splitlines()[0].startswith("Что видно")
+    assert text.count("\n  — ") == len(ins.observations)
+    assert not ins.is_empty
+
+
+def test_pass_is_best_effort_a_failing_query_yields_no_observations() -> None:
+    def boom(sql: str) -> list[dict]:
+        raise RuntimeError("DWH down")
+
+    model = SemanticModel.load(MODEL)
+    spec = build_auto_spec(model, "dm.sales_daily")
+    ins = analyze_spec(spec, model, boom)  # must not raise — advisory only
+
+    assert ins.is_empty and ins.render() == ""
+
+
+# --- direct branch coverage of the observation rules ----------------------------------
+
+
+def _line(rows: list[dict]) -> list[Observation]:
+    chart = ChartSpec(
+        id="c",
+        title="Динамика",
+        viz=Viz.LINE,
+        query=ChartQuery(
+            table="t", dimensions=["d"], measures=[Measure(column="x", agg=Aggregation.SUM)]
+        ),
+    )
+    return I._observe_line(chart, rows, "sum_x", "d")
+
+
+def test_line_trend_falls_and_flat() -> None:
+    falling = [{"d": i, "sum_x": float(300 - i)} for i in range(30)]
+    obs = _line(falling)
+    trend = next(o for o in obs if o.kind == "trend")
+    assert (
+        trend.value is not None
+        and trend.value < 0
+        and "снижение" in trend.text
+        and "−" in trend.text
+    )
+
+    flat = [{"d": i, "sum_x": 100.0} for i in range(30)]
+    trend2 = next(o for o in _line(flat) if o.kind == "trend")
+    assert trend2.value == pytest.approx(0.0) and "почти без изменений" in trend2.text
+
+
+def test_line_too_short_and_no_anomaly() -> None:
+    assert _line([{"d": 0, "sum_x": 5.0}]) == []  # < 2 points
+    # a clean monotone series has no point past mean+3σ -> no anomaly, just a trend
+    obs = _line([{"d": i, "sum_x": float(100 + i)} for i in range(30)])
+    assert [o.kind for o in obs] == ["trend"]
+
+
+def test_bar_total_non_positive_skips_share() -> None:
+    chart = ChartSpec(
+        id="c",
+        title="Bar",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="t", dimensions=["d"], measures=[Measure(column="x", agg=Aggregation.SUM)]
+        ),
+    )
+    rows = [{"d": "a", "sum_x": 0.0}, {"d": "b", "sum_x": 0.0}]
+    obs = I._observe_bar(chart, rows, "sum_x", "d")
+    assert [o.kind for o in obs] == ["leader"] and "видимой суммы" not in obs[0].text
+
+
+def test_observe_chart_skips_table_viz() -> None:
+    chart = ChartSpec(
+        id="c",
+        title="Детализация",
+        viz=Viz.TABLE,
+        query=ChartQuery(
+            table="t", dimensions=["d"], measures=[Measure(column="x", agg=Aggregation.SUM)]
+        ),
+    )
+    # a table is a detail grid, not a single headline -> no observation even with rows
+    assert I._observe_chart(chart, lambda sql: [{"d": "a", "sum_x": 1.0}], "clickhouse") == []
+
+
+def test_percent_measure_routes_to_share_branch() -> None:
+    share_m = Measure(column="x", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL)
+    chart = ChartSpec(
+        id="c",
+        title="Доля",
+        viz=Viz.BAR,
+        query=ChartQuery(table="t", dimensions=["d"], measures=[share_m]),
+    )
+    rows = [{"d": "a", "share_of_total_sum_x": 0.6}, {"d": "b", "share_of_total_sum_x": 0.4}]
+    obs = I._observe_chart(chart, lambda sql: rows, "clickhouse")
+    assert [o.kind for o in obs] == ["share_lead"] and obs[0].subject == "a"
+
+
+# --- RU number formatting -------------------------------------------------------------
+
+
+def test_compact_magnitudes() -> None:
+    assert I._compact(236.149e9) == f"236,1{I._SEP}млрд"
+    assert I._compact(115e6) == f"115{I._SEP}млн"  # trailing ,0 stripped
+    assert I._compact(3614) == f"3,6{I._SEP}тыс"
+    assert I._compact(842) == "842"
+
+
+def test_percent_and_sign() -> None:
+    assert I._pct(40.25) == "40,2%"
+    assert I._pct(12.0) == "12%"  # no stray ,0
+    assert I._signed_pct(122.7) == "+122,7%"
+    assert I._signed_pct(-4.0) == "−4%"
+    assert I._signed_pct(0.0) == "0%"
+
+
+def test_num_coercion_rejects_non_numeric_and_bool() -> None:
+    assert I._num(None) is None
+    assert I._num(True) is None  # a bool is not a measurement
+    assert I._num("nope") is None
+    assert I._num("3.5") == pytest.approx(3.5)
+    assert I._num(7) == pytest.approx(7.0)

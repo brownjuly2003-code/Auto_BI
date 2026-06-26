@@ -150,6 +150,7 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
 
     from auto_bi.adapters.factory import make_adapter
     from auto_bi.agent.autospec import build_auto_spec
+    from auto_bi.agent.insights import analyze_spec
     from auto_bi.agent.pipeline import compile_and_build
     from auto_bi.agent.sql_guard import LiveSQLValidator
     from auto_bi.config import get_settings
@@ -179,10 +180,11 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
     for chart in spec.charts:
         print(f"  - [{chart.viz.value}] {chart.title}")
 
+    run_query = make_run_query(settings)
     ref = compile_and_build(
         spec,
         model,
-        LiveSQLValidator(make_run_query(settings)),
+        LiveSQLValidator(run_query),
         partial(make_adapter, settings=settings, model=model),
         store=store,
         session_id=session_id,
@@ -190,6 +192,15 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
     )
     base = settings.datalens_url if target_bi == TargetBI.DATALENS else settings.superset_url
     print(f"\nДашборд готов: {base.rstrip('/')}{ref.url}")
+
+    # a deterministic "Что видно" layer over the real aggregates — a separate surface from
+    # the dashboard, best-effort (a failed read never fails the build).
+    try:
+        section = analyze_spec(spec, model, run_query).render()
+        if section:
+            print(f"\n{section}")
+    except Exception:
+        pass
     return 0
 
 
