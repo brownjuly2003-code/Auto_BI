@@ -126,6 +126,43 @@ share-по-категории = 1.000000). Гейт: mypy 0/65 · pytest **457**
 на Superset, на DataLens — known-limitation. Merge derived-metrics в main разблокирован по числам;
 DataLens percent-формат — отдельный реверс.
 
+## 6.3 DataLens percent — РЕВЕРС ПРОДВИНУТ, но рендер в чарте не закрыт (2026-06-26 cont. 2)
+
+Авторитетный реверс из Wizard **dataset field editor** (Fields → поле → «Display settings» →
+Format: Number|Percent — popup ДОСТУПЕН через a11y, в отличие от chart-field popup). Снята
+точная форма percent-формата поля датасета:
+
+```
+ui_settings : '{"numberFormatting":{"format":"percent","showRankDelimiter":true,"prefix":"","postfix":"","precision":2}}'
+formatting  : null    ← percent НЕ здесь
+```
+
+**КЛЮЧЕВАЯ НАХОДКА:** percent-формат живёт в поле `ui_settings` (JSON-СТРОКА, ключ
+`numberFormatting`) result_schema-поля датасета, **НЕ в `formatting`** (которое остаётся null) и
+**НЕ на chart-placeholder** (где прошлая сессия пробовала `formatting:{format:"percent"}` — оттого
+и провал: пробовали неверный ключ на неверном уровне).
+
+**НО реализация через dataset `ui_settings` НЕ ДАЛА percent в рендере чарта** (проверено на стенде,
+2 сборки):
+- `createDataset` ПРИНИМАЕТ и СОХРАНЯЕТ `ui_settings` percent (verified: `us/getEntry` свежесозданного
+  датасета вернул наш `ui_settings` дословно);
+- но рендер — **сырой ratio во всех viz**: line/bar Y-ось `0.25` (не `25%`), flatTable-колонка `0,00`
+  (не `0,3%`). charts-engine при рендере НЕ применяет dataset-field `ui_settings`.
+- chart-placeholder `formatting:{format:"number",unit,precision}` РАБОТАЕТ (компакт 277,0M), а
+  `{format:"percent"}` — нет → DataLens placeholder formatting поддерживает только number-тип, не percent.
+
+**Стена:** percent в чарте задаётся форматом **поля внутри чарта** (Wizard: клик на поле в Y →
+popover «Number format») — а этот popover, как и отметила прошлая сессия, **НЕ берётся Playwright
+a11y** (snapshot его не видит; gear секции Y открывает только add-field, не формат). Эксперимент
+(dataset `ui_settings`) ОТКАЧЕН — не оставляем код, не дающий рабочего percent в чарте.
+
+**Следующий шаг (нужен человек ИЛИ сетевой перехват):** задать percent полю **внутри чарта** в
+Wizard руками → перехватить `us/updateEntry`/chart `data` payload (browser_network_requests при
+Save) → увидеть, КАКОЙ ключ chart-config несёт percent (вероятно `ui_settings`/`formatting` на
+chart-field, не на placeholder) → реплицировать в `build_chart_shared`. Альтернатива — поднять
+DataLens charts-engine на чтение dataset-field `ui_settings` (вне нашего кода). До этого DataLens
+percent = known-limitation (числа верны; Superset % работает).
+
 ## 7. Дальше (по фазам, не в этой сессии)
 
 - `yoy`/`mom` (lag по календарю на N периодов, не lag(1)) — нужен period-matching по дате; отдельный
