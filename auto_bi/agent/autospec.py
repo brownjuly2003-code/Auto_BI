@@ -18,7 +18,9 @@ Recipe (truncated to `max_charts` by priority P1..P5):
   P3 breakdowns — primary measure as a bar over each "good breakdown" (a dimension whose
                   cardinality is in [2..CARD_MAX], including attributes of adjacent dim
                   tables reached by a model-edge JOIN: city / region / format / ...)
-  P4 structure  — primary measure as a pie over the lowest-cardinality breakdown
+  P4 structure  — each category's SHARE of the total (a sorted share-of-total bar) over the
+                  lowest-cardinality breakdown — part-to-whole WITHOUT a pie (the dashboard
+                  playbook bans pie/donut: angle/area read poorly, 31% vs 34% look equal)
   P5 detail     — primary measure as a table over the top breakdown
 
 Hard stops that make it a dashboard, not a dump: aggregate only `role=measure` (or a
@@ -40,6 +42,7 @@ from auto_bi.ir.spec import (
     JoinSpec,
     LayoutHint,
     Measure,
+    MeasureTransform,
     OrderBy,
     TargetBI,
     Viz,
@@ -57,7 +60,7 @@ from auto_bi.semantic.model import (
 # below 2 it is constant, above CARD_MAX it is a "wall" better served by a top-N id chart
 _CARD_MIN = 2
 _CARD_MAX = 50
-_PIE_CARD_MAX = 12  # a pie with more than ~12 slices is unreadable
+_STRUCTURE_CARD_MAX = 12  # a part-to-whole view with more than ~12 categories is unreadable
 
 _DEFAULT_MAX_CHARTS = 8
 _MAX_KPIS = 4
@@ -110,6 +113,17 @@ def _cardinality(table: Table, col: str) -> int | None:
 def _to_measure(col: Column) -> Measure:
     # empty label => SQL alias is "<agg>_<column>" (measure_alias); chart titles are human
     return Measure(column=col.name, agg=col.agg or Aggregation.SUM, label="")
+
+
+def _share_of(measure: Measure) -> Measure:
+    """Part-to-whole variant of a measure: each category's share of the column total.
+
+    Computed deterministically as a window over the base aggregate (invariant 1) and rendered
+    as a percent (`is_percent_measure`). This is the structure view that replaces a pie — the
+    dashboard playbook bans pie/donut (angle/area read poorly), so part-to-whole is a sorted
+    share bar instead. The label is cleared so the alias reflects the transform.
+    """
+    return measure.model_copy(update={"transform": MeasureTransform.SHARE_OF_TOTAL, "label": ""})
 
 
 def _synthetic_count(table: Table) -> Measure:
@@ -217,10 +231,12 @@ def build_auto_spec(
 
     primary_title = _short(measures[0]) if measures else "Количество"
 
-    # the lowest-cardinality breakdown is shown as a pie (structure), the rest as bars —
-    # so the same column is never both a bar and a pie (`breakdowns` is sorted card asc)
-    pie_break = breakdowns[0] if breakdowns and breakdowns[0].card <= _PIE_CARD_MAX else None
-    bar_breaks = [b for b in breakdowns if b is not pie_break][:_MAX_BAR_BREAKDOWNS]
+    # the lowest-cardinality breakdown becomes a part-to-whole SHARE bar (structure), the rest
+    # absolute bars — so the same column is never both (`breakdowns` is sorted card asc)
+    share_break = (
+        breakdowns[0] if breakdowns and breakdowns[0].card <= _STRUCTURE_CARD_MAX else None
+    )
+    bar_breaks = [b for b in breakdowns if b is not share_break][:_MAX_BAR_BREAKDOWNS]
 
     # P2 — dynamics over time (ordered by time, never top-N'd)
     if time_col is not None:
@@ -251,20 +267,23 @@ def build_auto_spec(
             )
         )
 
-    # P4 — structure (pie over the single lowest-card breakdown)
-    if pie_break is not None:
+    # P4 — structure: each category's share of total as a sorted bar (part-to-whole, no pie).
+    # The share is a window over the base aggregate; ordering by it equals ordering by the base
+    # measure (the total is constant), so the bar still reads top-down by contribution.
+    if share_break is not None:
+        share = _share_of(primary)
         charts.append(
             ChartSpec(
                 id="",
-                title=f"Доля: {pie_break.human}",
-                viz=Viz.PIE,
+                title=f"Доля: {share_break.human}",
+                viz=Viz.BAR,
                 query=ChartQuery(
                     table=table_name,
-                    dimensions=[pie_break.ref],
-                    measures=[primary],
-                    joins=[pie_break.join] if pie_break.join else [],
-                    order_by=[OrderBy(by=measure_alias(primary), dir="desc")],
-                    limit=min(pie_break.card, _PIE_CARD_MAX),
+                    dimensions=[share_break.ref],
+                    measures=[share],
+                    joins=[share_break.join] if share_break.join else [],
+                    order_by=[OrderBy(by=measure_alias(share), dir="desc")],
+                    limit=min(share_break.card, _STRUCTURE_CARD_MAX),
                 ),
                 layout_hint=LayoutHint(w=6, h=6),
             )

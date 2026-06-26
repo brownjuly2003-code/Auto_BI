@@ -10,7 +10,7 @@ import pytest
 
 from auto_bi.agent.autospec import build_auto_spec
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
-from auto_bi.ir.spec import Viz
+from auto_bi.ir.spec import MeasureTransform, Viz
 from auto_bi.ir.validate import validate_spec
 from auto_bi.semantic.model import (
     Aggregation,
@@ -128,14 +128,32 @@ def test_breakdowns_use_joined_attributes_not_raw_ids(model) -> None:
     assert "manager_id" not in dims
 
 
-def test_pie_and_bars_never_share_a_column(model) -> None:
+def test_structure_view_is_a_share_bar_not_a_pie(model) -> None:
+    # the dashboard playbook bans pie/donut (angle/area read poorly) — the structure / part-to-
+    # whole view is a sorted share-of-total bar instead
     spec = build_auto_spec(model, "dm.sales_daily")
-    bar_dims = {d for c in spec.charts if c.viz == Viz.BAR for d in c.query.dimensions}
-    pie_dims = {d for c in spec.charts if c.viz == Viz.PIE for d in c.query.dimensions}
-    assert not (bar_dims & pie_dims)
-    # the pie is the lowest-cardinality breakdown (format=3)
-    if pie_dims:
-        assert pie_dims == {"dm.stores.format"}
+    assert all(c.viz != Viz.PIE for c in spec.charts)
+
+    share_bars = [
+        c
+        for c in spec.charts
+        if c.viz == Viz.BAR
+        and any(m.transform == MeasureTransform.SHARE_OF_TOTAL for m in c.query.measures)
+    ]
+    assert len(share_bars) == 1
+    structure = share_bars[0]
+    # it is the lowest-cardinality breakdown (format=3), sorted by the share descending
+    assert structure.query.dimensions == ["dm.stores.format"]
+    assert structure.query.order_by and structure.query.order_by[0].dir == "desc"
+
+    # absolute (non-transformed) bars never reuse the structure column
+    abs_bar_dims = {
+        d
+        for c in spec.charts
+        if c.viz == Viz.BAR and not any(m.transform for m in c.query.measures)
+        for d in c.query.dimensions
+    }
+    assert "dm.stores.format" not in abs_bar_dims
 
 
 def test_every_join_is_a_model_edge(model) -> None:
