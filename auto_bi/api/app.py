@@ -562,10 +562,11 @@ def create_app(
     def session_insights(session_id: str, request: Request) -> dict:
         """Deterministic 'Что видно' observations over the session's current spec.
 
-        Runs each chart read-only and reports trend / leader+concentration / largest
-        share / anomaly (auto_bi.agent.insights). A separate surface from the dashboard,
-        best-effort: a chart that fails to run is skipped. 503 when no DWH connection is
-        configured; empty list when the session has no spec yet."""
+        Runs each chart read-only and reports trend / reversal / spike or dip /
+        leader+concentration (or even spread) / largest share (auto_bi.agent.insights).
+        A separate surface from the dashboard, best-effort: a chart that fails to run is
+        skipped. 503 when no DWH connection is configured; empty list when the session has
+        no spec yet."""
         managed = _owned(session_id, request)
         spec = managed.agent.spec
         if spec is None:

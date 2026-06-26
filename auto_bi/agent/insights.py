@@ -1,10 +1,11 @@
 """Deterministic insight layer over a built dashboard — the "Что видно" surface.
 
 A read-only pass that runs each chart's SQL once and turns the *real* aggregates into a
-few plain observations: a time series' trend (% change over the period), a ranking's
-leader and concentration (top-3 share), a structure chart's largest share, and a genuine
-anomaly (a spike far above the mean). It answers "what does this dashboard actually say?"
-without the reader having to eyeball every chart.
+few plain observations: a time series' trend (% change over the period), a reversal of that
+trend in the second half, and its single most extreme spike or dip; a ranking's leader and
+either its top-3 concentration or — the complement — its even spread; a structure chart's
+largest share. It answers "what does this dashboard actually say?" without the reader having
+to eyeball every chart.
 
 It is a SEPARATE surface from the dashboard, never rendered inside it — an operational
 dashboard shows the numbers and the filters; the narrative belongs on its own layer
@@ -44,10 +45,20 @@ from auto_bi.semantic.model import SemanticModel
 # dominate; below this the ranking is diffuse and "top-3 = 38%" is noise, not a finding
 _CONCENTRATION_MIN_PCT = 50.0
 
-# an anomaly needs both enough points to have a stable mean and a genuinely extreme peak
+# the complement of concentration: a ranking reads as genuinely "ровное" when even the top-3
+# carry little AND there are enough categories for "even" to mean something. The 40–50% band
+# is a deliberate dead zone so a ranking is never called both concentrated and diffuse.
+_SPREAD_MAX_PCT = 40.0
+_SPREAD_MIN_CATEGORIES = 5
+
+# an anomaly needs both enough points to have a stable mean and a genuinely extreme peak/dip
 _ANOMALY_MIN_POINTS = 8
-_ANOMALY_SIGMA = 3.0  # peak must clear mean + 3σ ...
-_ANOMALY_MIN_RATIO = 2.0  # ... and be at least 2× the mean to read as a spike
+_ANOMALY_SIGMA = 3.0  # the extreme must clear mean ± 3σ ...
+_ANOMALY_MIN_RATIO = 2.0  # ... and be ≥2× / ≤½ the mean to read as a real spike or dip
+
+# a reversal needs enough points for two stable halves and a real move within each half
+_REVERSAL_MIN_POINTS = 8
+_REVERSAL_MIN_PCT = 8.0
 
 
 @dataclass(frozen=True)
@@ -59,7 +70,7 @@ class Observation:
     """
 
     chart_id: str
-    kind: str  # trend | anomaly | leader | concentration | share_lead
+    kind: str  # trend | reversal | anomaly | leader | concentration | spread | share_lead
     text: str
     value: float | None = None
     subject: str | None = None
@@ -88,7 +99,7 @@ def analyze_spec(
     model: SemanticModel,
     run_query: RunQuery,
     *,
-    max_per_chart: int = 2,
+    max_per_chart: int = 3,
 ) -> Insights:
     """Run each chart of `spec` read-only and collect deterministic observations.
 
@@ -132,10 +143,12 @@ def _observe_chart(chart: ChartSpec, run_query: RunQuery, dialect: str) -> list[
 def _observe_line(
     chart: ChartSpec, rows: list[dict], m_alias: str, t_alias: str
 ) -> list[Observation]:
-    """Trend over the period (smoothed first-vs-last) plus a genuine spike, if any.
+    """The headline story of a time series: its trend, a reversal of that trend in the
+    second half, and the single most extreme spike or dip — ordered by importance so the
+    per-chart cap keeps the headlines.
 
-    Rows arrive ordered by time ascending. The trend compares the mean of the first and
-    last tenth of the series, not single endpoints, so one noisy day does not flip it.
+    Rows arrive ordered by time ascending. Every comparison is the mean of a small window
+    (a tenth of the series), not a single endpoint, so one noisy day never drives it.
     """
     pts = [(_label(r.get(t_alias)), v) for r in rows if (v := _num(r.get(m_alias))) is not None]
     if len(pts) < 2:
@@ -146,6 +159,7 @@ def _observe_line(
     head = fmean(vals[:k])
     tail = fmean(vals[-k:])
     out: list[Observation] = []
+
     if head != 0:
         pct = (tail - head) / head * 100.0
         direction = "рост" if pct >= 1 else "снижение" if pct <= -1 else "почти без изменений"
@@ -158,23 +172,86 @@ def _observe_line(
                 value=round(pct, 1),
             )
         )
+
+    if n >= _REVERSAL_MIN_POINTS and (rev := _reversal(vals, n, k)) is not None:
+        first_pct, second_pct = rev
+        out.append(
+            Observation(
+                chart.id,
+                "reversal",
+                f"«{chart.title}» — разворот: первая половина {_signed_pct(first_pct)}, "
+                f"вторая {_signed_pct(second_pct)}",
+                value=round(second_pct, 1),
+            )
+        )
+
     if n >= _ANOMALY_MIN_POINTS:
-        mu = fmean(vals)
-        sigma = pstdev(vals)
-        label, peak = max(pts, key=lambda p: p[1])
-        extreme = mu > 0 and sigma > 0 and peak > mu + _ANOMALY_SIGMA * sigma
-        if extreme and peak / mu >= _ANOMALY_MIN_RATIO:
-            out.append(
+        out.extend(_extreme(chart, pts, vals))
+    return out
+
+
+def _reversal(vals: list[float], n: int, k: int) -> tuple[float, float] | None:
+    """A second-half move against the first half (an inflection the overall trend hides).
+
+    Each half's net change is measured between its boundary windows of width `k`; a reversal
+    is reported only when the halves move in opposite directions and each change is material.
+    Returns (first-half %, second-half %) or None.
+    """
+    mid = n // 2
+    first_base = fmean(vals[:k])
+    second_base = fmean(vals[mid : mid + k])
+    if first_base == 0 or second_base == 0:
+        return None
+    first_pct = (fmean(vals[mid - k : mid]) - first_base) / first_base * 100.0
+    second_pct = (fmean(vals[-k:]) - second_base) / second_base * 100.0
+    opposite = (first_pct > 0) != (second_pct > 0)
+    material = abs(first_pct) >= _REVERSAL_MIN_PCT and abs(second_pct) >= _REVERSAL_MIN_PCT
+    return (first_pct, second_pct) if opposite and material else None
+
+
+def _extreme(
+    chart: ChartSpec, pts: list[tuple[str, float]], vals: list[float]
+) -> list[Observation]:
+    """The most extreme spike and/or dip — each guarded by mean ± 3σ and a 2× ratio so the
+    natural spread of a trending series is never flagged. Both are returned when both qualify,
+    ordered by how extreme they are (the per-chart cap keeps the stronger one)."""
+    mu = fmean(vals)
+    sigma = pstdev(vals)
+    if mu <= 0 or sigma <= 0:
+        return []
+    hi_label, hi = max(pts, key=lambda p: p[1])
+    lo_label, lo = min(pts, key=lambda p: p[1])
+    cands: list[tuple[float, Observation]] = []
+    if hi > mu + _ANOMALY_SIGMA * sigma and hi >= mu * _ANOMALY_MIN_RATIO:
+        cands.append(
+            (
+                hi / mu,
                 Observation(
                     chart.id,
                     "anomaly",
-                    f"«{chart.title}» — аномальный пик {label}: {_compact(peak)} "
-                    f"(×{_ratio(peak / mu)} к среднему)",
-                    value=round(peak, 1),
-                    subject=label,
-                )
+                    f"«{chart.title}» — аномальный пик {hi_label}: {_compact(hi)} "
+                    f"(×{_ratio(hi / mu)} к среднему)",
+                    value=round(hi, 1),
+                    subject=hi_label,
+                ),
             )
-    return out
+        )
+    if 0 < lo < mu - _ANOMALY_SIGMA * sigma and lo * _ANOMALY_MIN_RATIO <= mu:
+        cands.append(
+            (
+                mu / lo,
+                Observation(
+                    chart.id,
+                    "anomaly",
+                    f"«{chart.title}» — аномальный провал {lo_label}: {_compact(lo)} "
+                    f"(×{_ratio(mu / lo)} ниже среднего)",
+                    value=round(lo, 1),
+                    subject=lo_label,
+                ),
+            )
+        )
+    cands.sort(key=lambda c: c[0], reverse=True)
+    return [o for _, o in cands]
 
 
 def _observe_bar(
@@ -209,6 +286,16 @@ def _observe_bar(
                         chart.id,
                         "concentration",
                         f"«{chart.title}» — топ-3 дают {_pct(top3)} видимой суммы",
+                        value=round(top3, 1),
+                    )
+                )
+            elif len(pts) >= _SPREAD_MIN_CATEGORIES and top3 <= _SPREAD_MAX_PCT:
+                out.append(
+                    Observation(
+                        chart.id,
+                        "spread",
+                        f"«{chart.title}» — распределение ровное: топ-3 лишь {_pct(top3)} "
+                        f"видимой суммы",
                         value=round(top3, 1),
                     )
                 )
@@ -255,7 +342,7 @@ _SEP = " "
 def _num(value: object) -> float | None:
     if isinstance(value, bool):
         return None  # a bool is a flag, not a measurement (and is a subclass of int)
-    if isinstance(value, (int, float, Decimal)):
+    if isinstance(value, int | float | Decimal):
         return float(value)
     if isinstance(value, str):
         try:

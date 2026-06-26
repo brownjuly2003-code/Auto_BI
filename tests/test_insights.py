@@ -96,15 +96,17 @@ def test_analyze_real_auto_overview_produces_expected_observations() -> None:
     )
 
 
-def test_diffuse_ranking_emits_leader_but_no_concentration() -> None:
-    # category is ten equal rows: top-3 = 30% < 50% -> "concentration" is not a finding
+def test_diffuse_ranking_emits_leader_and_spread_not_concentration() -> None:
+    # category is ten equal rows: top-3 = 30% (< 50%, > nothing) -> not "concentration"
+    # but a genuine "spread" finding (the complement: no category dominates)
     model = SemanticModel.load(MODEL)
     spec = build_auto_spec(model, "dm.sales_daily")
     per = _by_chart(analyze_spec(spec, model, _fake_run_query).observations)
 
     category = per["auto6"]
-    assert [o.kind for o in category] == ["leader"]
+    assert [o.kind for o in category] == ["leader", "spread"]
     assert category[0].subject == "cat1"
+    assert "распределение ровное" in category[1].text and "30%" in category[1].text
 
 
 def test_structure_chart_reports_largest_share() -> None:
@@ -178,18 +180,68 @@ def test_line_too_short_and_no_anomaly() -> None:
     assert [o.kind for o in obs] == ["trend"]
 
 
-def test_bar_total_non_positive_skips_share() -> None:
+def test_line_reports_a_deep_dip_as_an_anomaly() -> None:
+    # a flat ~200 series with one collapse day -> a "провал" anomaly (symmetric to the spike)
+    rows = [{"d": i, "sum_x": (5.0 if i == 10 else 200.0)} for i in range(30)]
+    obs = _line(rows)
+    dip = next(o for o in obs if o.kind == "anomaly")
+    assert dip.subject == "10" and dip.value == pytest.approx(5.0)
+    assert "провал" in dip.text and "ниже среднего" in dip.text
+
+
+def test_line_reports_a_reversal_when_the_second_half_turns() -> None:
+    # rises for 15 days then falls back: the overall trend is ~flat, but the inflection is
+    # the real story -> a "разворот" with a positive first half and a negative second half
+    rows = [
+        {"d": i, "sum_x": float(100 + 10 * i if i < 15 else 240 - 10 * (i - 15))} for i in range(30)
+    ]
+    obs = _line(rows)
+    rev = next(o for o in obs if o.kind == "reversal")
+    assert rev.value is not None and rev.value < 0  # second half is falling
+    assert "разворот" in rev.text and "+" in rev.text and "−" in rev.text
+
+
+def test_line_no_reversal_when_both_halves_move_together() -> None:
+    # a steady climb has no opposite-direction halves -> trend only, no reversal
+    obs = _line([{"d": i, "sum_x": float(100 + 5 * i)} for i in range(30)])
+    assert "reversal" not in [o.kind for o in obs]
+
+
+def _bar(rows: list[dict]) -> list[Observation]:
     chart = ChartSpec(
         id="c",
-        title="Bar",
+        title="Разрез",
         viz=Viz.BAR,
         query=ChartQuery(
             table="t", dimensions=["d"], measures=[Measure(column="x", agg=Aggregation.SUM)]
         ),
     )
-    rows = [{"d": "a", "sum_x": 0.0}, {"d": "b", "sum_x": 0.0}]
-    obs = I._observe_bar(chart, rows, "sum_x", "d")
+    return I._observe_bar(chart, rows, "sum_x", "d")
+
+
+def test_bar_total_non_positive_skips_share() -> None:
+    obs = _bar([{"d": "a", "sum_x": 0.0}, {"d": "b", "sum_x": 0.0}])
     assert [o.kind for o in obs] == ["leader"] and "видимой суммы" not in obs[0].text
+
+
+def test_bar_diffuse_distribution_reports_spread() -> None:
+    # eight equal categories: top-3 = 37.5% (< 40%, ≥ 5 categories) -> "spread", not concentration
+    obs = _bar([{"d": f"c{i}", "sum_x": 10.0} for i in range(8)])
+    assert [o.kind for o in obs] == ["leader", "spread"]
+    assert "распределение ровное" in obs[1].text and "37,5%" in obs[1].text
+
+
+def test_bar_concentrated_distribution_reports_concentration_not_spread() -> None:
+    # one category carries most of the total -> top-3 ≥ 50% -> "concentration"
+    obs = _bar([{"d": "a", "sum_x": 90.0}] + [{"d": f"c{i}", "sum_x": 2.0} for i in range(5)])
+    assert [o.kind for o in obs] == ["leader", "concentration"]
+    assert "spread" not in [o.kind for o in obs]
+
+
+def test_bar_few_categories_emit_neither_spread_nor_concentration() -> None:
+    # three equal rows: below the 4-row floor for concentration and the 5-row floor for spread
+    obs = _bar([{"d": "a", "sum_x": 10.0}, {"d": "b", "sum_x": 10.0}, {"d": "c", "sum_x": 10.0}])
+    assert [o.kind for o in obs] == ["leader"]
 
 
 def test_observe_chart_skips_table_viz() -> None:

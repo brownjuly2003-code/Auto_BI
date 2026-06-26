@@ -226,22 +226,26 @@ class DevAdvisor:
 def dev_run_query(sql):
     """Crafted rows so the «Что видно» insight panel populates without a DWH.
 
-    Routes a chart's generated SQL by the column it selects: a rising daily revenue series
-    with a mid-series spike, a concentrated region ranking, a city ranking, a 3-way format
-    share. Large numbers exercise the compact RU formatting (млрд / млн)."""
+    Routes a chart's generated SQL by the column it selects, and is shaped to exercise every
+    observation kind: the daily revenue series climbs through the first half then turns down
+    (a reversal the overall trend hides) with one anomalous spike day; the region ranking is
+    concentrated (leader + top-3 concentration); the city ranking is evenly spread (leader +
+    spread, the complement); the format chart is a 3-way share. Large numbers exercise the
+    compact RU formatting (млрд / млн)."""
     if "share_of_total" in sql:
         return [
             {"format": f, "share_of_total_sum_revenue": v}
             for f, v in [("магазин у дома", 0.41), ("супермаркет", 0.35), ("гипермаркет", 0.24)]
         ]
     if '"date"' in sql:
-        return [
-            {
-                "date": f"2026-01-{i:02d}",
-                "sum_revenue": (1.8e9 if i == 16 else float(2.0e8 + 6e6 * i)),
-            }
-            for i in range(1, 31)
-        ]
+
+        def _rev(i: int) -> float:
+            if i == 8:
+                return 1.8e9  # an anomalous spike day
+            ramp = i if i <= 15 else (30 - i)  # up to day 15, then back down → a reversal
+            return 2.0e8 + 1.2e7 * ramp
+
+        return [{"date": f"2026-01-{i:02d}", "sum_revenue": _rev(i)} for i in range(1, 31)]
     if "region" in sql:
         return [
             {"region": r, "sum_revenue": float(v)}
@@ -256,7 +260,17 @@ def dev_run_query(sql):
     if "city" in sql:
         return [
             {"city": c, "sum_revenue": float(v)}
-            for c, v in [("Самара", 4.4e8), ("Ижевск", 4.2e8), ("Пермь", 4.1e8), ("Омск", 3.9e8)]
+            for c, v in [
+                ("Самара", 4.2e8),
+                ("Ижевск", 4.1e8),
+                ("Пермь", 4.0e8),
+                ("Омск", 3.9e8),
+                ("Уфа", 3.8e8),
+                ("Казань", 3.7e8),
+                ("Тверь", 3.6e8),
+                ("Тула", 3.5e8),
+                ("Сочи", 3.4e8),
+            ]
         ]
     return []
 

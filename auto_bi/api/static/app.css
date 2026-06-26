@@ -507,7 +507,7 @@ body { display: flex; flex-direction: column; }
   color: var(--accent);
   white-space: nowrap;
 }
-.insight-anomaly .insight-kind { color: var(--warn); }
+.insight-anomaly .insight-kind, .insight-reversal .insight-kind { color: var(--warn); }
 .insight-text { color: var(--text-2); font-variant-numeric: tabular-nums; }
 
 /* ---------- dm change requests ---------- */
