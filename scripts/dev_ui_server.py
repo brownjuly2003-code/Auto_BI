@@ -223,6 +223,44 @@ class DevAdvisor:
         ]
 
 
+def dev_run_query(sql):
+    """Crafted rows so the «Что видно» insight panel populates without a DWH.
+
+    Routes a chart's generated SQL by the column it selects: a rising daily revenue series
+    with a mid-series spike, a concentrated region ranking, a city ranking, a 3-way format
+    share. Large numbers exercise the compact RU formatting (млрд / млн)."""
+    if "share_of_total" in sql:
+        return [
+            {"format": f, "share_of_total_sum_revenue": v}
+            for f, v in [("магазин у дома", 0.41), ("супермаркет", 0.35), ("гипермаркет", 0.24)]
+        ]
+    if '"date"' in sql:
+        return [
+            {
+                "date": f"2026-01-{i:02d}",
+                "sum_revenue": (1.8e9 if i == 16 else float(2.0e8 + 6e6 * i)),
+            }
+            for i in range(1, 31)
+        ]
+    if "region" in sql:
+        return [
+            {"region": r, "sum_revenue": float(v)}
+            for r, v in [
+                ("Центр", 5.0e9),
+                ("Приволжье", 1.2e9),
+                ("Урал", 9.0e8),
+                ("Сибирь", 7.0e8),
+                ("Юг", 5.0e8),
+            ]
+        ]
+    if "city" in sql:
+        return [
+            {"city": c, "sum_revenue": float(v)}
+            for c, v in [("Самара", 4.4e8), ("Ижевск", 4.2e8), ("Пермь", 4.1e8), ("Омск", 3.9e8)]
+        ]
+    return []
+
+
 def dev_builder(spec, log, session_id):
     bi = spec.target_bi.value  # reflects the UI BI selector (F8)
     for step in (
@@ -256,6 +294,7 @@ if __name__ == "__main__":
         model=MODEL,
         llm=DevLLM(store=store),
         advisor=DevAdvisor(),
+        run_query=dev_run_query,
         store=store,
         builder=dev_builder,
         model_path=model_path,

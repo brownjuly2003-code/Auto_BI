@@ -234,6 +234,7 @@ function approve() {
   $("build").hidden = false;
   $("build-log").replaceChildren();
   $("build-result").hidden = true;
+  $("insights").hidden = true; // stale observations from the previous build
   setChip("сборка…", "active");
 
   api(`/api/v1/sessions/${state.sessionId}/approve`, { method: "POST" })
@@ -265,6 +266,7 @@ function approve() {
         $("approve-btn").textContent = "Пересобрать дашборд";
         refreshDcr();
         refreshObservability();
+        refreshInsights();
       });
       events.addEventListener("error", (e) => {
         if (!e.data) return; // transport-level noise, EventSource ретраится сам
@@ -312,6 +314,44 @@ async function refreshDcr() {
     rule.className = "dcr-rule";
     rule.textContent = `— ${row.rule}`;
     li.append(sev, table, rule);
+    list.appendChild(li);
+  }
+}
+
+/* ---------- insights ("Что видно"): deterministic observations over the build ---------- */
+
+const INSIGHT_KIND_LABELS = {
+  trend: "тренд",
+  anomaly: "аномалия",
+  leader: "лидер",
+  concentration: "концентрация",
+  share_lead: "доля",
+};
+
+async function refreshInsights() {
+  if (!state.sessionId) return;
+  let data;
+  try {
+    data = await api(`/api/v1/sessions/${state.sessionId}/insights`);
+  } catch {
+    $("insights").hidden = true; // 503 (no DWH) — hide silently, it is advisory
+    return;
+  }
+  const obs = data.observations || [];
+  $("insights").hidden = obs.length === 0;
+  $("insights-count").textContent = obs.length;
+  const list = $("insights-list");
+  list.replaceChildren();
+  for (const o of obs) {
+    const li = document.createElement("li");
+    li.className = `insight insight-${o.kind}`;
+    const tag = document.createElement("span");
+    tag.className = "insight-kind";
+    tag.textContent = INSIGHT_KIND_LABELS[o.kind] || o.kind;
+    const text = document.createElement("span");
+    text.className = "insight-text";
+    text.textContent = o.text; // textContent = no HTML injection from data
+    li.append(tag, text);
     list.appendChild(li);
   }
 }

@@ -36,9 +36,16 @@ def fake_builder(spec, log, session_id):
 
 
 def make_client(
-    llm, demo_model, *, store=None, builder=fake_builder, model_path=None
+    llm, demo_model, *, store=None, builder=fake_builder, model_path=None, run_query=None
 ) -> TestClient:
-    app = create_app(model=demo_model, llm=llm, store=store, builder=builder, model_path=model_path)
+    app = create_app(
+        model=demo_model,
+        llm=llm,
+        store=store,
+        builder=builder,
+        model_path=model_path,
+        run_query=run_query,
+    )
     return TestClient(app)
 
 
@@ -603,3 +610,39 @@ def test_auto_session_max_charts_capped(demo_model) -> None:
         "/api/v1/sessions/auto", json={"table": "dm.sales_daily", "max_charts": 2}
     ).json()
     assert len(turn["spec"]["charts"]) == 2
+
+
+# --- insight layer ("Что видно") over the session's spec --------------------------
+
+
+def test_session_insights_reports_observations() -> None:
+    # the committed model carries physical cardinality, so the auto spec has bars + a
+    # share chart (the fixture model has none) -> the full set of observation types
+    from auto_bi.semantic.model import SemanticModel
+    from tests.test_insights import _fake_run_query
+
+    model = SemanticModel.load("semantic/model.yaml")
+    client = make_client(ScriptedLLM([]), model, run_query=_fake_run_query)
+    sid = client.post("/api/v1/sessions/auto", json={"table": "dm.sales_daily"}).json()[
+        "session_id"
+    ]
+    response = client.get(f"/api/v1/sessions/{sid}/insights")
+    assert response.status_code == 200, response.text
+    obs = response.json()["observations"]
+    kinds = {o["kind"] for o in obs}
+    assert {"trend", "leader", "share_lead"} <= kinds  # the headline observation types
+    assert all(o["text"] for o in obs)  # every observation carries rendered prose
+
+
+def test_session_insights_503_without_run_query(demo_model) -> None:
+    # no run_query configured -> the layer cannot read the DWH, honest 503 (not a fake answer)
+    client = make_client(ScriptedLLM([]), demo_model)
+    sid = client.post("/api/v1/sessions/auto", json={"table": "dm.sales_daily"}).json()[
+        "session_id"
+    ]
+    assert client.get(f"/api/v1/sessions/{sid}/insights").status_code == 503
+
+
+def test_session_insights_unknown_session_404(demo_model) -> None:
+    client = make_client(ScriptedLLM([]), demo_model, run_query=lambda sql: [])
+    assert client.get("/api/v1/sessions/nope/insights").status_code == 404

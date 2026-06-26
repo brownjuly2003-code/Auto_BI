@@ -383,6 +383,7 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
         model=model,
         llm=make_llm(settings, store=store),
         advisor=Advisor(model, run_query),
+        run_query=run_query,  # "Что видно" insight layer reads charts read-only
         store=store,
         builder=builder,
         include_samples=settings.send_samples,

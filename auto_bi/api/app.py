@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from auto_bi.adapters.base import DashboardRef
 from auto_bi.advisor.core import Advisor
 from auto_bi.agent.autospec import build_auto_spec
+from auto_bi.agent.insights import analyze_spec
 from auto_bi.agent.machine import AgentPhase, AgentTurn
 from auto_bi.agent.propose import SpecValidationError
 from auto_bi.agent.seed import validate_seed
@@ -55,6 +56,7 @@ from auto_bi.auth import (
     verify_password,
 )
 from auto_bi.dmcr import DCR_STATUSES, render_dm_change_request
+from auto_bi.introspect.base import RunQuery
 from auto_bi.introspect.gaps import find_gaps
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
@@ -73,6 +75,7 @@ def create_app(
     model: SemanticModel,
     llm: LLMClient,
     advisor: Advisor | None = None,
+    run_query: RunQuery | None = None,  # read-only seam for the "Что видно" insight layer
     store: Store | None = None,
     builder: Builder | None = None,
     include_samples: bool = True,
@@ -554,6 +557,36 @@ def create_app(
         """Global LLM-usage aggregates. GraceKelly exposes no token/cost usage, so
         char volumes are size proxies (not tokens or money) — see the schema docs."""
         return _store().llm_usage_summary()
+
+    @app.get("/api/v1/sessions/{session_id}/insights")
+    def session_insights(session_id: str, request: Request) -> dict:
+        """Deterministic 'Что видно' observations over the session's current spec.
+
+        Runs each chart read-only and reports trend / leader+concentration / largest
+        share / anomaly (auto_bi.agent.insights). A separate surface from the dashboard,
+        best-effort: a chart that fails to run is skipped. 503 when no DWH connection is
+        configured; empty list when the session has no spec yet."""
+        managed = _owned(session_id, request)
+        spec = managed.agent.spec
+        if spec is None:
+            return {"session_id": session_id, "observations": []}
+        if run_query is None:
+            raise HTTPException(status_code=503, detail="insights need a DWH connection")
+        ins = analyze_spec(spec, model, run_query)
+        return {
+            "session_id": session_id,
+            "table": ins.table,
+            "observations": [
+                {
+                    "chart_id": o.chart_id,
+                    "kind": o.kind,
+                    "text": o.text,
+                    "value": o.value,
+                    "subject": o.subject,
+                }
+                for o in ins.observations
+            ],
+        }
 
     @app.get("/api/v1/sessions/{session_id}/events")
     def build_events(session_id: str, request: Request) -> StreamingResponse:
