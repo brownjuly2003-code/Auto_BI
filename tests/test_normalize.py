@@ -5,7 +5,11 @@ already order by a measure; it sets `order_by = [first measure desc]` and tighte
 limit. Everything else is left byte-for-byte unchanged. It is pure and idempotent.
 """
 
-from auto_bi.agent.normalize import apply_chart_defaults, is_horizontal_bar
+from auto_bi.agent.normalize import (
+    apply_chart_defaults,
+    compact_decimals,
+    is_horizontal_bar,
+)
 from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.ir.spec import (
     ChartQuery,
@@ -80,6 +84,33 @@ def test_is_horizontal_bar_false_for_non_bar_viz(demo_model) -> None:
 
 def test_is_horizontal_bar_false_without_dimension(demo_model) -> None:
     assert is_horizontal_bar(_chart(Viz.BAR, dimensions=[]), demo_model) is False
+
+
+# --- compact_decimals: integer counts drop the ",0" noise ("115M" not "115,0M") ----
+
+
+def test_compact_decimals_keeps_one_for_money(demo_model) -> None:
+    # SUM over a Decimal column (revenue) keeps a decimal — it can be meaningful (236,1B)
+    m = Measure(column="revenue", agg=Aggregation.SUM)
+    assert compact_decimals(m, "dm.sales_daily", demo_model) == 1
+
+
+def test_compact_decimals_drops_for_integer_sum(demo_model) -> None:
+    # SUM over an integer column (orders, UInt32) -> a count of orders, 115M not 115,0M
+    m = Measure(column="orders", agg=Aggregation.SUM)
+    assert compact_decimals(m, "dm.sales_daily", demo_model) == 0
+
+
+def test_compact_decimals_zero_for_count_distinct(demo_model) -> None:
+    # COUNT/COUNT_DISTINCT count rows -> integer regardless of the underlying column type
+    m = Measure(column="revenue", agg=Aggregation.COUNT_DISTINCT)
+    assert compact_decimals(m, "dm.sales_daily", demo_model) == 0
+
+
+def test_compact_decimals_safe_default_for_unknown_column(demo_model) -> None:
+    # an unresolvable column keeps a decimal — never strip a digit on a bad spec
+    m = Measure(column="nonexistent", agg=Aggregation.SUM)
+    assert compact_decimals(m, "dm.sales_daily", demo_model) == 1
 
 
 def test_stacked_bar_over_dimension_gets_topn(demo_model) -> None:

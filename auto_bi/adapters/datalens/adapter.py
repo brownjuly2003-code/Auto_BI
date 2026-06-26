@@ -35,7 +35,7 @@ from auto_bi.adapters.datalens.dataset import (
     safe_entry_name,
 )
 from auto_bi.adapters.superset.native_filters import participating_chart_ids
-from auto_bi.agent.normalize import is_horizontal_bar
+from auto_bi.agent.normalize import compact_decimals, is_horizontal_bar
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
@@ -44,6 +44,8 @@ from auto_bi.ir.spec import (
     LayoutHint,
     Viz,
     column_alias,
+    is_compact_number,
+    measure_alias,
 )
 from auto_bi.semantic.model import ColumnRole, SemanticModel
 
@@ -464,7 +466,23 @@ class DataLensAdapter:
     ) -> ChartRef:
         ds_name, fields = self._datasets[str(ds.id)]
         horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
-        shared = build_chart_shared(chart, str(ds.id), ds_name, fields, horizontal=horizontal)
+        # integer-typed compact measures (orders/items counts) show 0 decimals -> 115M not
+        # 115,0M; resolved from the model's column types (agent.normalize.compact_decimals)
+        decimals_by_alias: dict[str, int] = {}
+        if self._model is not None:
+            decimals_by_alias = {
+                measure_alias(m): compact_decimals(m, chart.query.table, self._model)
+                for m in chart.query.measures
+                if is_compact_number(m)
+            }
+        shared = build_chart_shared(
+            chart,
+            str(ds.id),
+            ds_name,
+            fields,
+            horizontal=horizontal,
+            decimals_by_alias=decimals_by_alias,
+        )
         if chart.viz in DEGRADED:
             logger.warning("chart %r: %s", chart.title, DEGRADED[chart.viz])
         # charts-engine validates the entry-name charset. `name` (a pre-sanitized temp name)

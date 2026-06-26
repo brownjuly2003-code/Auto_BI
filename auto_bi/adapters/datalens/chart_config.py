@@ -29,8 +29,12 @@ from auto_bi.ir.spec import (
 # widget shows the figure at a fixed large font and CLIPS a raw billions-scale number; an
 # abbreviated number ("236,1B") fits. `unit: "auto"` lets DataLens pick the magnitude (the
 # stand renders SI suffixes B/M, not "млрд/млн" — locale-bound); SQL/values are unchanged
-# (display only). Live-verified on the self-hosted stand: KPI 236,1B / 115,0M / 210,0M, bar
-# and pie value labels abbreviated too, console clean (screenshot autobi_auto_datalens_compact).
+# (display only). `precision` is the DEFAULT (money keeps one decimal, 236,1B); the adapter
+# overrides it per measure via `decimals_by_alias` so integer counts drop the ",0" noise
+# (orders -> 115M, items -> 210M, not 115,0M). DataLens has no trim-trailing-zeros mode (unlike
+# Superset d3 `.3~s`), hence the explicit per-measure precision. Live-verified on the stand:
+# KPI 236,1B / 115M / 210M, bar/pie value labels abbreviated, console clean (screenshot
+# autobi_decimals_datalens).
 _COMPACT_FORMATTING = {
     "format": "number",
     "showRankDelimiter": True,
@@ -153,17 +157,24 @@ def build_chart_shared(
     fields_by_alias: dict[str, dict],
     *,
     horizontal: bool = False,
+    decimals_by_alias: dict[str, int] | None = None,
 ) -> dict:
     """IR chart -> DataLens `shared` config. `fields_by_alias` maps a bare alias to its
     dataset result_schema descriptor (guid/avatar_id/data_type/type/aggregation/cast).
 
     `horizontal` swaps a categorical bar's viz id "column" -> "bar" (DataLens horizontal
-    bar); the adapter computes it from the model (agent.normalize.is_horizontal_bar)."""
+    bar); the adapter computes it from the model (agent.normalize.is_horizontal_bar).
+
+    `decimals_by_alias` overrides the compact-format precision per measure alias (integer
+    counts -> 0 so 115M not 115,0M; see agent.normalize.compact_decimals); aliases absent
+    from the map keep the default precision."""
     q = chart.query
     viz_id = VIZ_ID[chart.viz]
     if horizontal and chart.viz in (Viz.BAR, Viz.STACKED_BAR):
         # DataLens "bar" = horizontal bars (vs "column" vertical) so long RU category labels
-        # get the full row width; same x/y placeholders + B2 discretization. Live-verify pending.
+        # get the full row width; same x/y placeholders + B2 discretization. Live-verified on
+        # the stand 2026-06-26: Регион/Категория/Город render horizontally, labels readable
+        # (screenshot autobi_hbars_datalens_01), console clean.
         viz_id = "bar"
 
     # stable per-field id within the chart: the same field keeps one id across placeholders
@@ -183,6 +194,7 @@ def build_chart_shared(
     compact_aliases = {measure_alias(m) for m in q.measures if is_compact_number(m)}
     # ratio-transform aliases (pop_pct, share) that display as a percent
     percent_aliases = {measure_alias(m) for m in q.measures if is_percent_measure(m)}
+    decimals = decimals_by_alias or {}
 
     def item(alias: str, *, discrete: bool = False) -> dict:
         used.setdefault(alias, None)
@@ -193,7 +205,10 @@ def build_chart_shared(
         if alias in percent_aliases:
             out["formatting"] = dict(_PERCENT_FORMATTING)
         elif alias in compact_aliases:
-            out["formatting"] = dict(_COMPACT_FORMATTING)
+            fmt = dict(_COMPACT_FORMATTING)
+            # integer counts (orders/items) have no meaningful fraction -> drop the ",0"
+            fmt["precision"] = decimals.get(alias, fmt["precision"])
+            out["formatting"] = fmt
         return out
 
     def dims(refs: list[str], *, discrete: bool = False) -> list[dict]:
