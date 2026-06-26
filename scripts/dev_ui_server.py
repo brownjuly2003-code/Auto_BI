@@ -13,6 +13,7 @@ Fields-first: режим «Полями» строит панель из MODEL
 import os
 import sys
 import time
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -227,25 +228,32 @@ def dev_run_query(sql):
     """Crafted rows so the «Что видно» insight panel populates without a DWH.
 
     Routes a chart's generated SQL by the column it selects, and is shaped to exercise every
-    observation kind: the daily revenue series climbs through the first half then turns down
-    (a reversal the overall trend hides) with one anomalous spike day; the region ranking is
-    concentrated (leader + top-3 concentration); the city ranking is evenly spread (leader +
-    spread, the complement); the format chart is a 3-way share. Large numbers exercise the
-    compact RU formatting (млрд / млн)."""
+    observation kind: the daily revenue series spans twelve weeks, climbing through the first
+    half then turning down (a reversal the overall trend hides), with a clear weekend lift (a
+    day-of-week seasonality) and one anomalous spike day; the region ranking is concentrated
+    (leader + top-3 concentration); the city ranking is evenly spread (leader + spread, the
+    complement); the format chart is a 3-way share. Large numbers exercise the compact RU
+    formatting (млрд / млн)."""
     if "share_of_total" in sql:
         return [
             {"format": f, "share_of_total_sum_revenue": v}
             for f, v in [("магазин у дома", 0.41), ("супермаркет", 0.35), ("гипермаркет", 0.24)]
         ]
     if '"date"' in sql:
+        start = date(2026, 1, 5)  # a Monday → twelve whole weeks of daily coverage
 
         def _rev(i: int) -> float:
-            if i == 8:
-                return 1.8e9  # an anomalous spike day
-            ramp = i if i <= 15 else (30 - i)  # up to day 15, then back down → a reversal
-            return 2.0e8 + 1.2e7 * ramp
+            d = start + timedelta(days=i)
+            ramp = i if i <= 42 else (84 - i)  # up to week 6, then back down → a reversal
+            base = 2.0e8 + 6.0e6 * ramp
+            if d.weekday() >= 5:  # Saturday/Sunday run higher → weekday seasonality
+                base *= 1.4
+            return 1.8e9 if i == 23 else base  # one anomalous spike (a Wednesday)
 
-        return [{"date": f"2026-01-{i:02d}", "sum_revenue": _rev(i)} for i in range(1, 31)]
+        return [
+            {"date": (start + timedelta(days=i)).isoformat(), "sum_revenue": _rev(i)}
+            for i in range(84)
+        ]
     if "region" in sql:
         return [
             {"region": r, "sum_revenue": float(v)}

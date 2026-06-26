@@ -2,10 +2,10 @@
 
 A read-only pass that runs each chart's SQL once and turns the *real* aggregates into a
 few plain observations: a time series' trend (% change over the period), a reversal of that
-trend in the second half, and its single most extreme spike or dip; a ranking's leader and
-either its top-3 concentration or — the complement — its even spread; a structure chart's
-largest share. It answers "what does this dashboard actually say?" without the reader having
-to eyeball every chart.
+trend in the second half, a standing day-of-week pattern, and its single most extreme spike
+or dip; a ranking's leader and either its top-3 concentration or — the complement — its even
+spread; a structure chart's largest share. It answers "what does this dashboard actually
+say?" without the reader having to eyeball every chart.
 
 It is a SEPARATE surface from the dashboard, never rendered inside it — an operational
 dashboard shows the numbers and the filters; the narrative belongs on its own layer
@@ -24,8 +24,9 @@ the same normalized spec the dashboard is built from and runs read-only SELECTs)
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
-from statistics import fmean, pstdev
+from statistics import fmean, median, pstdev
 
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.sqlgen import generate_chart_sql
@@ -60,6 +61,24 @@ _ANOMALY_MIN_RATIO = 2.0  # ... and be ≥2× / ≤½ the mean to read as a real
 _REVERSAL_MIN_POINTS = 8
 _REVERSAL_MIN_PCT = 8.0
 
+# a weekday-seasonality observation needs many weeks so each weekday's MEDIAN is stable (a
+# median over few samples can still be shifted a rank by one spike); below this the weekly
+# profile is read off too little data to trust. The peak/trough weekday must clear this gap
+# from the overall median to be worth stating.
+_SEASON_MIN_SAMPLES = 6  # ≥6 of each weekday → ~6+ weeks of daily coverage
+_SEASON_MIN_WEEKDAYS = 5  # enough distinct weekdays for a "profile" to mean anything
+_SEASON_MIN_PCT = 12.0  # a weekday's median gap from the overall median to count as a pattern
+
+_WEEKDAYS_RU = (
+    "понедельник",
+    "вторник",
+    "среда",
+    "четверг",
+    "пятница",
+    "суббота",
+    "воскресенье",
+)
+
 
 @dataclass(frozen=True)
 class Observation:
@@ -70,7 +89,8 @@ class Observation:
     """
 
     chart_id: str
-    kind: str  # trend | reversal | anomaly | leader | concentration | spread | share_lead
+    # trend | reversal | seasonality | anomaly | leader | concentration | spread | share_lead
+    kind: str
     text: str
     value: float | None = None
     subject: str | None = None
@@ -99,7 +119,7 @@ def analyze_spec(
     model: SemanticModel,
     run_query: RunQuery,
     *,
-    max_per_chart: int = 3,
+    max_per_chart: int = 4,
 ) -> Insights:
     """Run each chart of `spec` read-only and collect deterministic observations.
 
@@ -144,8 +164,9 @@ def _observe_line(
     chart: ChartSpec, rows: list[dict], m_alias: str, t_alias: str
 ) -> list[Observation]:
     """The headline story of a time series: its trend, a reversal of that trend in the
-    second half, and the single most extreme spike or dip — ordered by importance so the
-    per-chart cap keeps the headlines.
+    second half, a standing day-of-week pattern, and the single most extreme spike or dip —
+    ordered by importance (trend, reversal, seasonality, then extremes) so the per-chart cap
+    keeps the headlines.
 
     Rows arrive ordered by time ascending. Every comparison is the mean of a small window
     (a tenth of the series), not a single endpoint, so one noisy day never drives it.
@@ -185,6 +206,8 @@ def _observe_line(
             )
         )
 
+    out.extend(_seasonality(chart, rows, m_alias, t_alias))
+
     if n >= _ANOMALY_MIN_POINTS:
         out.extend(_extreme(chart, pts, vals))
     return out
@@ -207,6 +230,73 @@ def _reversal(vals: list[float], n: int, k: int) -> tuple[float, float] | None:
     opposite = (first_pct > 0) != (second_pct > 0)
     material = abs(first_pct) >= _REVERSAL_MIN_PCT and abs(second_pct) >= _REVERSAL_MIN_PCT
     return (first_pct, second_pct) if opposite and material else None
+
+
+def _parse_date(value: object) -> date | None:
+    """Best-effort parse of a time-dimension value into a date, for weekday grouping.
+
+    Accepts date/datetime objects (as ClickHouse/psycopg hand back Date/DateTime columns)
+    and ISO strings ('2026-01-15' or '2026-01-15 00:00:00'); anything else → None. `datetime`
+    is checked first because it subclasses `date`.
+    """
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _seasonality(
+    chart: ChartSpec, rows: list[dict], m_alias: str, t_alias: str
+) -> list[Observation]:
+    """A standing day-of-week pattern: the weekday whose MEDIAN most exceeds the overall
+    median (e.g. weekends run higher), plus the weakest weekday when it too is material.
+
+    Robust by construction: a median per weekday over many weeks shrugs off a single spike,
+    and roughly uniform weekday sampling across the period keeps the trend from biasing the
+    profile. Silent unless every row carries a parseable date, enough weeks cover each
+    weekday, and the gap clears `_SEASON_MIN_PCT` — otherwise the weekly read is noise.
+    """
+    by_wd: dict[int, list[float]] = {}
+    for r in rows:
+        v = _num(r.get(m_alias))
+        d = _parse_date(r.get(t_alias))
+        if v is None or d is None:
+            return []  # a non-date dimension or an unreadable value → no weekly story
+        by_wd.setdefault(d.weekday(), []).append(v)
+    kept = {wd: vals for wd, vals in by_wd.items() if len(vals) >= _SEASON_MIN_SAMPLES}
+    if len(kept) < _SEASON_MIN_WEEKDAYS:
+        return []
+    overall = median([v for vals in kept.values() for v in vals])
+    if overall <= 0:
+        return []
+    meds = {wd: median(vals) for wd, vals in kept.items()}
+    peak_wd = max(meds, key=lambda wd: meds[wd])
+    peak_pct = (meds[peak_wd] - overall) / overall * 100.0
+    if peak_pct < _SEASON_MIN_PCT:
+        return []  # no weekday stands out enough to call it a pattern
+    trough_wd = min(meds, key=lambda wd: meds[wd])
+    trough_pct = (meds[trough_wd] - overall) / overall * 100.0
+    text = (
+        f"«{chart.title}» — по дням недели: выше всего {_WEEKDAYS_RU[peak_wd]} "
+        f"({_signed_pct(peak_pct)} к медианному дню)"
+    )
+    if trough_pct <= -_SEASON_MIN_PCT:
+        text += f", ниже всего {_WEEKDAYS_RU[trough_wd]} ({_signed_pct(trough_pct)})"
+    return [
+        Observation(
+            chart.id,
+            "seasonality",
+            text,
+            value=round(peak_pct, 1),
+            subject=_WEEKDAYS_RU[peak_wd],
+        )
+    ]
 
 
 def _extreme(

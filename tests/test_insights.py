@@ -7,6 +7,8 @@ branch and the RU number formatting. No stand needed.
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
+
 import pytest
 
 from auto_bi.agent import insights as I
@@ -205,6 +207,75 @@ def test_line_no_reversal_when_both_halves_move_together() -> None:
     # a steady climb has no opposite-direction halves -> trend only, no reversal
     obs = _line([{"d": i, "sum_x": float(100 + 5 * i)} for i in range(30)])
     assert "reversal" not in [o.kind for o in obs]
+
+
+# --- day-of-week seasonality ----------------------------------------------------------
+
+_MONDAY = date(2026, 1, 5)  # twelve whole weeks from here → 12 samples per weekday
+
+
+def _weekly(value, *, days: int = 84) -> list[dict]:
+    """A dated daily series; `value(d)` maps each date to its measure."""
+    dates = [_MONDAY + timedelta(days=i) for i in range(days)]
+    return [{"d": d.isoformat(), "sum_x": value(d)} for d in dates]
+
+
+def test_line_reports_weekday_seasonality_with_a_weekend_lift() -> None:
+    # weekends run 40% above weekdays over twelve weeks -> a "сезонность" naming the peak day
+    rows = _weekly(lambda d: 280.0 if d.weekday() >= 5 else 200.0)
+    season = next(o for o in _line(rows) if o.kind == "seasonality")
+    assert season.subject in ("суббота", "воскресенье")
+    assert season.value is not None and season.value > 0
+    assert "по дням недели" in season.text and "выше всего" in season.text
+
+
+def test_line_seasonality_names_the_weakest_weekday_when_material() -> None:
+    # weekends high, Monday low -> the peak AND a material trough are both named
+    def value(d: date) -> float:
+        if d.weekday() >= 5:
+            return 300.0
+        return 120.0 if d.weekday() == 0 else 200.0
+
+    season = next(o for o in _line(_weekly(value)) if o.kind == "seasonality")
+    assert "суббота" in season.text and "понедельник" in season.text
+    assert "ниже всего" in season.text
+
+
+def test_line_no_seasonality_without_a_weekday_signal() -> None:
+    # a flat series has no weekday that stands out -> no seasonality
+    assert "seasonality" not in [o.kind for o in _line(_weekly(lambda d: 200.0))]
+
+
+def test_line_seasonality_is_robust_to_a_single_spike() -> None:
+    # one huge spike day cannot manufacture a weekly pattern: the median over twelve weeks
+    # ignores it (the spike still surfaces as an anomaly, just not as seasonality)
+    rows = [
+        {"d": (_MONDAY + timedelta(days=i)).isoformat(), "sum_x": (9000.0 if i == 20 else 200.0)}
+        for i in range(84)
+    ]
+    assert "seasonality" not in [o.kind for o in _line(rows)]
+
+
+def test_line_no_seasonality_when_too_few_weeks() -> None:
+    # four weeks gives each weekday only four samples (< the stability floor) -> silent
+    rows = _weekly(lambda d: 280.0 if d.weekday() >= 5 else 200.0, days=28)
+    assert "seasonality" not in [o.kind for o in _line(rows)]
+
+
+def test_line_no_seasonality_for_a_non_date_dimension() -> None:
+    # integer x-labels are not dates -> the weekly story cannot be read, no seasonality
+    rows = [{"d": i, "sum_x": float(200 + (80 if i % 7 >= 5 else 0))} for i in range(84)]
+    assert "seasonality" not in [o.kind for o in _line(rows)]
+
+
+def test_parse_date_accepts_dates_datetimes_and_iso_strings() -> None:
+    assert I._parse_date(date(2026, 1, 15)).weekday() == 3  # a Thursday
+    assert I._parse_date(datetime(2026, 1, 15, 9, 30)) == date(2026, 1, 15)
+    assert I._parse_date("2026-01-15") == date(2026, 1, 15)
+    assert I._parse_date("2026-01-15 00:00:00") == date(2026, 1, 15)  # trailing time tolerated
+    assert I._parse_date(15) is None
+    assert I._parse_date("nope") is None
+    assert I._parse_date(None) is None
 
 
 def _bar(rows: list[dict]) -> list[Observation]:
