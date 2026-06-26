@@ -221,6 +221,14 @@ def test_form_data_bar_forces_categorical_axis() -> None:
     assert "xAxisForceCategorical" not in line  # lines keep the time/value axis
 
 
+def test_form_data_bar_horizontal_orientation() -> None:
+    # a categorical ranking renders horizontally so long RU labels get the full row width
+    # (the adapter computes the flag via is_horizontal_bar; build_form_data just honors it)
+    bar = _chart(Viz.BAR, dimensions=["store_id"])
+    assert build_form_data(bar, dataset_id=1, horizontal=True)["orientation"] == "horizontal"
+    assert "orientation" not in build_form_data(bar, dataset_id=1)  # default vertical
+
+
 def test_form_data_bar_top_n_sorts_by_the_ordering_measure() -> None:
     top = _chart(
         Viz.BAR,

@@ -5,7 +5,7 @@ already order by a measure; it sets `order_by = [first measure desc]` and tighte
 limit. Everything else is left byte-for-byte unchanged. It is pure and idempotent.
 """
 
-from auto_bi.agent.normalize import apply_chart_defaults
+from auto_bi.agent.normalize import apply_chart_defaults, is_horizontal_bar
 from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.ir.spec import (
     ChartQuery,
@@ -58,6 +58,28 @@ def test_pie_caps_limit_at_12(demo_model) -> None:
     q = _only(out)
     assert q.order_by == [OrderBy(by="sum_revenue", dir="desc")]
     assert q.limit == 12
+
+
+# --- horizontal bars: categorical rankings render horizontally (chart-quality #1) --
+
+
+def test_is_horizontal_bar_true_for_categorical_bar(demo_model) -> None:
+    assert is_horizontal_bar(_chart(Viz.BAR, dimensions=["store_id"]), demo_model) is True
+    assert is_horizontal_bar(_chart(Viz.STACKED_BAR, dimensions=["store_id"]), demo_model) is True
+
+
+def test_is_horizontal_bar_false_for_time_bar(demo_model) -> None:
+    # a column time-series reads left-to-right by time; never flipped horizontal
+    assert is_horizontal_bar(_chart(Viz.BAR, dimensions=["date"]), demo_model) is False
+
+
+def test_is_horizontal_bar_false_for_non_bar_viz(demo_model) -> None:
+    assert is_horizontal_bar(_chart(Viz.LINE, dimensions=["store_id"]), demo_model) is False
+    assert is_horizontal_bar(_chart(Viz.PIE, dimensions=["store_id"]), demo_model) is False
+
+
+def test_is_horizontal_bar_false_without_dimension(demo_model) -> None:
+    assert is_horizontal_bar(_chart(Viz.BAR, dimensions=[]), demo_model) is False
 
 
 def test_stacked_bar_over_dimension_gets_topn(demo_model) -> None:

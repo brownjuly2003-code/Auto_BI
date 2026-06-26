@@ -143,6 +143,16 @@ def test_shared_bar_is_column() -> None:
     assert shared["visualization"]["id"] == "column"
 
 
+def test_shared_bar_horizontal_is_bar_viz() -> None:
+    # horizontal=True flips a categorical bar's viz id "column" -> "bar" (DataLens horizontal)
+    fields = _fields(("store_id", "integer", "DIMENSION"), ("rev", "float", "MEASURE"))
+    chart = _chart(Viz.BAR, dimensions=["store_id"])
+    horiz = build_chart_shared(chart, DS_ID, DS_NAME, fields, horizontal=True)
+    assert horiz["visualization"]["id"] == "bar"
+    vert = build_chart_shared(chart, DS_ID, DS_NAME, fields)
+    assert vert["visualization"]["id"] == "column"
+
+
 def test_shared_bar_numeric_dimension_x_is_string_cast() -> None:
     # B2: a numeric dimension on a column chart's X is cast to string -> discrete category
     # axis (live-verified: returns highcharts `categories`, not raw-numeric x points). The

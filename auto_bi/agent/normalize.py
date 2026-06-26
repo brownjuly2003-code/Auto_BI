@@ -105,6 +105,29 @@ def apply_chart_defaults(spec: DashboardSpec, model: SemanticModel) -> Dashboard
     return spec.model_copy(update={"charts": charts})
 
 
+def is_horizontal_bar(chart: ChartSpec, model: SemanticModel) -> bool:
+    """Whether a bar chart should render horizontally (categorical ranking) vs vertically.
+
+    A ``bar``/``stacked_bar`` over a categorical (non-time) primary dimension is the
+    canonical horizontal-bar case: long category labels (RU product/category names) get the
+    full row width instead of truncating/rotating on a vertical x-axis. Convention
+    (Cleveland/Few): a ranked *bar* chart is horizontal, a time *column* chart is vertical.
+
+    Display-only and deterministic — no IR field (invariant 1: the LLM still emits only IR,
+    orientation is decided here), no data probe. Both adapters call this with their model to
+    choose orientation (Superset ``orientation``, DataLens ``bar`` vs ``column`` viz id),
+    mirroring how B1/B2/B3 inherit a normalization from one place.
+
+    Vertical is kept for a time x-axis (a column time-series reads left-to-right) and for any
+    non-bar viz.
+    """
+    if chart.viz not in (Viz.BAR, Viz.STACKED_BAR):
+        return False
+    if not chart.query.dimensions:
+        return False
+    return not _is_time_dimension(chart.query.dimensions[0], chart.query.table, model)
+
+
 # --- B3: label joins (raw FK id dimension -> human-readable name) -------------------
 #
 # A dimension that is a raw foreign key (`store_id`) renders as opaque integers. When the

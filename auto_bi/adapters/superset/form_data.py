@@ -80,8 +80,13 @@ def _chart_format(measures: list[Measure]) -> str:
     return _measure_d3(measures[0]) if measures else ""
 
 
-def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
-    """Superset chart params for the pinned 4.1, on top of a virtual dataset."""
+def build_form_data(chart: ChartSpec, dataset_id: int, *, horizontal: bool = False) -> dict:
+    """Superset chart params for the pinned 4.1, on top of a virtual dataset.
+
+    `horizontal` orients a categorical bar chart horizontally (see
+    `agent.normalize.is_horizontal_bar`); the adapter computes it from the model and the
+    flag is ignored for non-bar viz.
+    """
     q = chart.query
     metrics = [_adhoc_metric(m, chart.id, i) for i, m in enumerate(q.measures)]
     fmt = _chart_format(q.measures)
@@ -172,6 +177,10 @@ def build_form_data(chart: ChartSpec, dataset_id: int) -> dict:
         # a numeric dimension (store_id) otherwise lands on a continuous value
         # axis: thin bars at their numeric positions instead of categories
         form_data["xAxisForceCategorical"] = True
+        if horizontal:
+            # categorical ranking -> horizontal bars so long RU labels get the full row
+            # width instead of truncating/rotating on a vertical x-axis (Cleveland/Few)
+            form_data["orientation"] = "horizontal"
         ordering_measure = _ordering_measure(q.measures, q.order_by)
         if ordering_measure is not None and len(metrics) == 1 and not breakdown:
             # the spec asked for top-N by this measure; superset honors the sort

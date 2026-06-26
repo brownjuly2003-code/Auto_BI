@@ -35,6 +35,7 @@ from auto_bi.adapters.datalens.dataset import (
     safe_entry_name,
 )
 from auto_bi.adapters.superset.native_filters import participating_chart_ids
+from auto_bi.agent.normalize import is_horizontal_bar
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
@@ -462,7 +463,8 @@ class DataLensAdapter:
         self, chart: ChartSpec, ds: DatasetRef, *, name: str | None = None
     ) -> ChartRef:
         ds_name, fields = self._datasets[str(ds.id)]
-        shared = build_chart_shared(chart, str(ds.id), ds_name, fields)
+        horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
+        shared = build_chart_shared(chart, str(ds.id), ds_name, fields, horizontal=horizontal)
         if chart.viz in DEGRADED:
             logger.warning("chart %r: %s", chart.title, DEGRADED[chart.viz])
         # charts-engine validates the entry-name charset. `name` (a pre-sanitized temp name)

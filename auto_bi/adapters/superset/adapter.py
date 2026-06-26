@@ -27,6 +27,7 @@ from auto_bi.adapters.superset.native_filters import (
     build_native_filter_configuration,
     participating_chart_ids,
 )
+from auto_bi.agent.normalize import is_horizontal_bar
 from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.ir.spec import ChartQuery, ChartSpec, DashboardSpec
 from auto_bi.semantic.model import SemanticModel
@@ -118,6 +119,8 @@ class SupersetAdapter:
         return DatasetRef(id=created["id"], name=table_name)
 
     def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef:
+        horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
+        form_data = build_form_data(chart, _int_id(ds.id), horizontal=horizontal)
         created = self._client.post(
             "/api/v1/chart/",
             json={
@@ -125,7 +128,7 @@ class SupersetAdapter:
                 "viz_type": VIZ_TYPE[chart.viz],
                 "datasource_id": ds.id,
                 "datasource_type": "table",
-                "params": json.dumps(build_form_data(chart, _int_id(ds.id)), ensure_ascii=False),
+                "params": json.dumps(form_data, ensure_ascii=False),
             },
         )
         logger.info("chart %r created: id=%s", chart.title, created["id"])

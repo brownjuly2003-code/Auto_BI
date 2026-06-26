@@ -151,11 +151,20 @@ def build_chart_shared(
     dataset_id: str,
     dataset_name: str,
     fields_by_alias: dict[str, dict],
+    *,
+    horizontal: bool = False,
 ) -> dict:
     """IR chart -> DataLens `shared` config. `fields_by_alias` maps a bare alias to its
-    dataset result_schema descriptor (guid/avatar_id/data_type/type/aggregation/cast)."""
+    dataset result_schema descriptor (guid/avatar_id/data_type/type/aggregation/cast).
+
+    `horizontal` swaps a categorical bar's viz id "column" -> "bar" (DataLens horizontal
+    bar); the adapter computes it from the model (agent.normalize.is_horizontal_bar)."""
     q = chart.query
     viz_id = VIZ_ID[chart.viz]
+    if horizontal and chart.viz in (Viz.BAR, Viz.STACKED_BAR):
+        # DataLens "bar" = horizontal bars (vs "column" vertical) so long RU category labels
+        # get the full row width; same x/y placeholders + B2 discretization. Live-verify pending.
+        viz_id = "bar"
 
     # stable per-field id within the chart: the same field keeps one id across placeholders
     # (Wizard convention). Number dimensions and measures independently.
