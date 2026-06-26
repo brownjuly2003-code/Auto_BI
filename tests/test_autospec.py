@@ -110,6 +110,16 @@ def test_kpi_per_measure(model) -> None:
         assert len(c.query.measures) == 1 and not c.query.dimensions
 
 
+def test_kpi_cards_are_identical_and_fill_their_row(model) -> None:
+    # dashboard-craft §3: KPI cards are identical (same width AND height) and their row spans
+    # one full aligned width (2 cards -> 6+6 = 12), not a ragged partial row
+    spec = build_auto_spec(model, "dm.sales_daily")
+    kpis = [c for c in spec.charts if c.viz == Viz.BIG_NUMBER]
+    assert len({c.layout_hint.w for c in kpis}) == 1  # one width
+    assert len({c.layout_hint.h for c in kpis}) == 1  # one height
+    assert sum(c.layout_hint.w for c in kpis) == 12  # the row is exactly filled
+
+
 def test_dynamics_line_over_time_ordered_by_time(model) -> None:
     spec = build_auto_spec(model, "dm.sales_daily")
     lines = [c for c in spec.charts if c.viz == Viz.LINE]

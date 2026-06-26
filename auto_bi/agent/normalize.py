@@ -23,12 +23,10 @@ Skips (left untouched):
 from __future__ import annotations
 
 from auto_bi.ir.spec import (
-    Aggregation,
     ChartQuery,
     ChartSpec,
     DashboardSpec,
     JoinSpec,
-    Measure,
     OrderBy,
     Viz,
     column_alias,
@@ -128,33 +126,6 @@ def is_horizontal_bar(chart: ChartSpec, model: SemanticModel) -> bool:
     if not chart.query.dimensions:
         return False
     return not _is_time_dimension(chart.query.dimensions[0], chart.query.table, model)
-
-
-def compact_decimals(measure: Measure, base_table: str, model: SemanticModel) -> int:
-    """How many decimals a compact-formatted measure should display (0 or 1).
-
-    An integer-typed aggregate is a count of rows/items/orders — its fractional digit is
-    always ``,0`` noise (``115M``, not ``115,0M``). A money-like decimal/float sum keeps one
-    decimal, where it can be meaningful (``236,1B``). ``COUNT``/``COUNT_DISTINCT`` count rows
-    and are integer regardless of the underlying column.
-
-    Display-only and deterministic (resolves the column type from the model, like
-    ``is_horizontal_bar``/``_is_time_dimension``). Superset needs no equivalent: its d3
-    ``.3~s`` already trims insignificant trailing zeros (``115M``); DataLens compact
-    ``formatting`` has no trim mode, only a fixed ``precision``, so the adapter passes this.
-
-    Safe default of 1 (keep a decimal) when the column type is unknown — never strips a
-    digit on an unresolvable spec.
-    """
-    if measure.agg in (Aggregation.COUNT, Aggregation.COUNT_DISTINCT):
-        return 0
-    table = model.table(base_table)
-    column = table.column(measure.column) if table is not None else None
-    if column is None:
-        return 1
-    # ClickHouse/GP integer families never carry a meaningful fraction: Int8/16/32/64,
-    # UInt*, "integer". Decimal/Numeric/Float*/Double/Real keep one decimal.
-    return 0 if "int" in column.type.lower() else 1
 
 
 # --- B3: label joins (raw FK id dimension -> human-readable name) -------------------

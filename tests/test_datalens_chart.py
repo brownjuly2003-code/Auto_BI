@@ -115,27 +115,8 @@ def test_shared_compact_formatting_for_large_aggregate() -> None:
     )
     fmt = _y_item(chart, fields)["formatting"]
     assert fmt["format"] == "number" and fmt["unit"] == "auto"
-    # default compact precision is one decimal (money like revenue keeps 236,1B)
-    assert fmt["precision"] == 1
-
-
-def test_shared_compact_precision_override_drops_decimal() -> None:
-    # an integer-count measure passes decimals_by_alias={alias: 0} -> precision 0 (115M, not 115,0M)
-    fields = _fields(("date", "date", "DIMENSION"), ("sum_orders", "integer", "MEASURE"))
-    chart = ChartSpec(
-        id="c",
-        title="c",
-        viz=Viz.LINE,
-        query=ChartQuery(
-            table="dm.sales_daily",
-            dimensions=["date"],
-            measures=[Measure(column="orders", agg=Aggregation.SUM)],
-        ),
-    )
-    shared = build_chart_shared(chart, DS_ID, DS_NAME, fields, decimals_by_alias={"sum_orders": 0})
-    ph = {p["id"]: p for p in shared["visualization"]["placeholders"]}
-    fmt = ph["y"]["items"][0]["formatting"]
-    assert fmt["format"] == "number" and fmt["precision"] == 0
+    # compact precision is 0 — a round headline figure (236B, not 236,1B)
+    assert fmt["precision"] == 0
 
 
 def test_shared_percent_formatting_for_ratio_transform() -> None:

@@ -213,7 +213,12 @@ def build_auto_spec(
     charts: list[ChartSpec] = []
 
     # P1 — KPI per measure (when there are no real measures, a single synthetic COUNT
-    # pairs with a None column -> the "Количество" title)
+    # pairs with a None column -> the "Количество" title). The KPI cards are identical (same
+    # viz, same height) and fill their row evenly: a uniform width 12 // n so 3 cards span the
+    # grid as 4+4+4, not 3+3+3 with a ragged gap — every dashboard row is one full aligned width
+    # (dashboard-craft §3: identical KPI cards). n in 1..4 all divide 12, so the row is exact.
+    n_kpis = min(len(measure_objs), _MAX_KPIS)
+    kpi_w = 12 // n_kpis
     cols: list[Column | None] = list(measures) if measures else [None]
     for col, m in zip(cols, measure_objs, strict=True):
         title = _short(col) if col is not None else "Количество"
@@ -223,7 +228,7 @@ def build_auto_spec(
                 title=title,
                 viz=Viz.BIG_NUMBER,
                 query=ChartQuery(table=table_name, measures=[m]),
-                layout_hint=LayoutHint(w=3, h=4),
+                layout_hint=LayoutHint(w=kpi_w, h=4),
             )
         )
         if len(charts) >= _MAX_KPIS:

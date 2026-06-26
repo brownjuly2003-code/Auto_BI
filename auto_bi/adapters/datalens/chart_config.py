@@ -27,21 +27,19 @@ from auto_bi.ir.spec import (
 
 # Compact display for large additive aggregates (dashboard-craft §4): the DataLens `metric`
 # widget shows the figure at a fixed large font and CLIPS a raw billions-scale number; an
-# abbreviated number ("236,1B") fits. `unit: "auto"` lets DataLens pick the magnitude (the
+# abbreviated number ("236B") fits. `unit: "auto"` lets DataLens pick the magnitude (the
 # stand renders SI suffixes B/M, not "млрд/млн" — locale-bound); SQL/values are unchanged
-# (display only). `precision` is the DEFAULT (money keeps one decimal, 236,1B); the adapter
-# overrides it per measure via `decimals_by_alias` so integer counts drop the ",0" noise
-# (orders -> 115M, items -> 210M, not 115,0M). DataLens has no trim-trailing-zeros mode (unlike
-# Superset d3 `.3~s`), hence the explicit per-measure precision. Live-verified on the stand:
-# KPI 236,1B / 115M / 210M, bar/pie value labels abbreviated, console clean (screenshot
-# autobi_decimals_datalens).
+# (display only). `precision: 0` — a compact KPI is a round headline figure: a fractional digit
+# at the millions/billions scale is noise and reads inconsistently next to integer counts
+# ("236B" alongside "115M"/"210M", not "236,1B"). Precision belongs only where it is meaningful
+# (an average check is not a compact number — `is_compact_number`). Live-verified on the stand.
 _COMPACT_FORMATTING = {
     "format": "number",
     "showRankDelimiter": True,
     "prefix": "",
     "postfix": "",
     "unit": "auto",
-    "precision": 1,
+    "precision": 0,
     "labelMode": "absolute",
 }
 
@@ -157,17 +155,12 @@ def build_chart_shared(
     fields_by_alias: dict[str, dict],
     *,
     horizontal: bool = False,
-    decimals_by_alias: dict[str, int] | None = None,
 ) -> dict:
     """IR chart -> DataLens `shared` config. `fields_by_alias` maps a bare alias to its
     dataset result_schema descriptor (guid/avatar_id/data_type/type/aggregation/cast).
 
     `horizontal` swaps a categorical bar's viz id "column" -> "bar" (DataLens horizontal
-    bar); the adapter computes it from the model (agent.normalize.is_horizontal_bar).
-
-    `decimals_by_alias` overrides the compact-format precision per measure alias (integer
-    counts -> 0 so 115M not 115,0M; see agent.normalize.compact_decimals); aliases absent
-    from the map keep the default precision."""
+    bar); the adapter computes it from the model (agent.normalize.is_horizontal_bar)."""
     q = chart.query
     viz_id = VIZ_ID[chart.viz]
     if horizontal and chart.viz in (Viz.BAR, Viz.STACKED_BAR):
@@ -190,11 +183,10 @@ def build_chart_shared(
             ids[alias] = f"dimension-{d_n}"
 
     used: dict[str, None] = {}  # aliases referenced by this chart, order-preserving
-    # measure aliases whose figure should display abbreviated (236,1 млрд, not 236149963687)
+    # measure aliases whose figure should display abbreviated (236B, not 236149963687)
     compact_aliases = {measure_alias(m) for m in q.measures if is_compact_number(m)}
     # ratio-transform aliases (pop_pct, share) that display as a percent
     percent_aliases = {measure_alias(m) for m in q.measures if is_percent_measure(m)}
-    decimals = decimals_by_alias or {}
 
     def item(alias: str, *, discrete: bool = False) -> dict:
         used.setdefault(alias, None)
@@ -205,10 +197,7 @@ def build_chart_shared(
         if alias in percent_aliases:
             out["formatting"] = dict(_PERCENT_FORMATTING)
         elif alias in compact_aliases:
-            fmt = dict(_COMPACT_FORMATTING)
-            # integer counts (orders/items) have no meaningful fraction -> drop the ",0"
-            fmt["precision"] = decimals.get(alias, fmt["precision"])
-            out["formatting"] = fmt
+            out["formatting"] = dict(_COMPACT_FORMATTING)
         return out
 
     def dims(refs: list[str], *, discrete: bool = False) -> list[dict]:

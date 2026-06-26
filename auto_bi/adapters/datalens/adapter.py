@@ -35,7 +35,7 @@ from auto_bi.adapters.datalens.dataset import (
     safe_entry_name,
 )
 from auto_bi.adapters.superset.native_filters import participating_chart_ids
-from auto_bi.agent.normalize import compact_decimals, is_horizontal_bar
+from auto_bi.agent.normalize import is_horizontal_bar
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
@@ -44,8 +44,6 @@ from auto_bi.ir.spec import (
     LayoutHint,
     Viz,
     column_alias,
-    is_compact_number,
-    measure_alias,
 )
 from auto_bi.semantic.model import ColumnRole, SemanticModel
 
@@ -247,14 +245,18 @@ def build_dashboard_data(
     items: list[dict] = []
     layout: list[dict] = []
 
+    # controls fill their row evenly (a lone period selector spans the full width) so the top
+    # row aligns to the same grid as the KPI / chart rows below — uniform tile widths per row
+    per_row = min(len(controls), _CTRLS_PER_ROW) or 1
+    ctrl_w = max(_CTRL_W, _DL_GRID_COLS // per_row)
     for j, control in enumerate(controls):
         items.append(control)
         layout.append(
             {
                 "i": control["id"],
-                "x": (j % _CTRLS_PER_ROW) * _CTRL_W,
+                "x": (j % _CTRLS_PER_ROW) * ctrl_w,
                 "y": (j // _CTRLS_PER_ROW) * _CTRL_H,
-                "w": _CTRL_W,
+                "w": ctrl_w,
                 "h": _CTRL_H,
             }
         )
@@ -466,22 +468,12 @@ class DataLensAdapter:
     ) -> ChartRef:
         ds_name, fields = self._datasets[str(ds.id)]
         horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
-        # integer-typed compact measures (orders/items counts) show 0 decimals -> 115M not
-        # 115,0M; resolved from the model's column types (agent.normalize.compact_decimals)
-        decimals_by_alias: dict[str, int] = {}
-        if self._model is not None:
-            decimals_by_alias = {
-                measure_alias(m): compact_decimals(m, chart.query.table, self._model)
-                for m in chart.query.measures
-                if is_compact_number(m)
-            }
         shared = build_chart_shared(
             chart,
             str(ds.id),
             ds_name,
             fields,
             horizontal=horizontal,
-            decimals_by_alias=decimals_by_alias,
         )
         if chart.viz in DEGRADED:
             logger.warning("chart %r: %s", chart.title, DEGRADED[chart.viz])
