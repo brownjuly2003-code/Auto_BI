@@ -92,6 +92,9 @@ def test_shared_big_number() -> None:
     assert shared["visualization"]["id"] == "metric"
     ph = shared["visualization"]["placeholders"]
     assert ph[0]["id"] == "measures" and ph[0]["items"][0]["source"] == "rev"
+    # the metric field caption is blanked: the tile header is the KPI label, so the raw alias
+    # is not repeated beneath the human title (dashboard-craft §3 — label / value, no noise)
+    assert ph[0]["items"][0]["title"] == ""
 
 
 def _y_item(chart: ChartSpec, fields: dict[str, dict]) -> dict:

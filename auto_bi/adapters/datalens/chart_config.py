@@ -107,14 +107,21 @@ def _is_numeric_dimension(field: dict) -> bool:
 
 
 def _field_item(
-    field: dict, field_id: str, dataset_id: str, dataset_name: str, *, as_string: bool = False
+    field: dict,
+    field_id: str,
+    dataset_id: str,
+    dataset_name: str,
+    *,
+    as_string: bool = False,
+    title: str | None = None,
 ) -> dict:
     """One placeholder item: a dataset field bound into a chart section.
 
     Shape reversed from the demo Wizard charts (reversal §5.2); the chart binds to the
     dataset by `guid` + `avatar_id`, both produced by build_dataset_payload. `as_string`
     casts this placeholder's field to a string (data_type + cast) for a discrete category
-    axis — see `_NUMERIC_DATA_TYPES`.
+    axis — see `_NUMERIC_DATA_TYPES`. `title` overrides the item caption (default = the
+    field's dataset title); a big-number metric blanks it so the tile header is the sole label.
     """
     data_type = "string" if as_string else field["data_type"]
     cast = "string" if as_string else field["cast"]
@@ -127,7 +134,7 @@ def _field_item(
         "aggregation": field["aggregation"],
         "source": field["source"],
         "guid": field["guid"],
-        "title": field["title"],
+        "title": field["title"] if title is None else title,
         "avatar_id": field["avatar_id"],
         "datasetId": dataset_id,
         "datasetName": dataset_name,
@@ -188,12 +195,14 @@ def build_chart_shared(
     # ratio-transform aliases (pop_pct, share) that display as a percent
     percent_aliases = {measure_alias(m) for m in q.measures if is_percent_measure(m)}
 
-    def item(alias: str, *, discrete: bool = False) -> dict:
+    def item(alias: str, *, discrete: bool = False, title: str | None = None) -> dict:
         used.setdefault(alias, None)
         field = fields_by_alias[alias]
         # on a column chart, a numeric dimension must be string-cast to render as categories
         as_string = discrete and _is_numeric_dimension(field)
-        out = _field_item(field, ids[alias], dataset_id, dataset_name, as_string=as_string)
+        out = _field_item(
+            field, ids[alias], dataset_id, dataset_name, as_string=as_string, title=title
+        )
         if alias in percent_aliases:
             out["formatting"] = dict(_PERCENT_FORMATTING)
         elif alias in compact_aliases:
@@ -211,7 +220,10 @@ def build_chart_shared(
     labels: list[dict] = []
 
     if chart.viz == Viz.BIG_NUMBER:
-        placeholders = [{"id": "measures", "items": measures()[:1]}]
+        # the tile header already names the KPI (the widget title is chart.title), so blank the
+        # metric field caption — the card shows one human label + the value, not the raw alias
+        # "sum_revenue" beneath it (dashboard-craft §3: a KPI card is label / value, no noise).
+        placeholders = [{"id": "measures", "items": [item(measure_alias(q.measures[0]), title="")]}]
     elif chart.viz in (Viz.LINE, Viz.AREA, Viz.BAR, Viz.STACKED_BAR):
         # series + any extra dimensions become the color breakdown (deduped, order kept)
         breakdown: dict[str, None] = {}
