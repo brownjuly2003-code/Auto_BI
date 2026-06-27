@@ -248,12 +248,27 @@ def _safe_div(num: exp.Expression, den: exp.Expression) -> exp.Expression:
     )
 
 
+_PERIODS_PER_YEAR = {
+    TimeGrain.WEEK: 52,
+    TimeGrain.MONTH: 12,
+    TimeGrain.QUARTER: 4,
+    TimeGrain.YEAR: 1,
+}
+
+
+def _periods_per_year(grain: TimeGrain | None) -> int:
+    """Rows to lag for a year-over-year comparison at `grain` (validation guarantees a non-day
+    grain when yoy_pct is used; a 1 fallback degrades yoy to period-over-period, never crashes)."""
+    return _PERIODS_PER_YEAR.get(grain, 1) if grain is not None else 1
+
+
 def _window_expr(
     transform: MeasureTransform,
     src: exp.Column,
     order_col: exp.Column | None,
     *,
     dialect: str,
+    yoy_lag: int = 1,
 ) -> exp.Expression:
     """Window expression over the inner base aggregate referenced by `src` (its alias).
 
@@ -290,18 +305,27 @@ def _window_expr(
         )
         return exp.Window(this=exp.func("sum", src.copy()), order=order, spec=spec)
 
-    # pop_abs / pop_pct: lag with an explicit ROWS frame so ClickHouse's frame-bounded
-    # lagInFrame reads exactly the previous row (Postgres LAG ignores the frame clause)
-    def lag() -> exp.Expression:
-        spec = exp.WindowSpec(kind="ROWS", start="1", start_side="PRECEDING", end="CURRENT ROW")
-        return exp.Window(this=exp.Lag(this=lag_source()), order=order.copy(), spec=spec)
+    # pop_* / yoy_pct: lag by k rows with an explicit ROWS frame so ClickHouse's frame-bounded
+    # lagInFrame reads exactly the k-th previous row (Postgres LAG ignores the frame clause).
+    # k = 1 for period-over-period; k = periods-per-year for yoy. At k = 1 the offset arg is
+    # omitted so the pop SQL is byte-for-byte unchanged.
+    def lag(k: int) -> exp.Expression:
+        spec = exp.WindowSpec(kind="ROWS", start=str(k), start_side="PRECEDING", end="CURRENT ROW")
+        call = (
+            exp.Lag(this=lag_source())
+            if k == 1
+            else exp.Lag(this=lag_source(), offset=exp.Literal.number(k))
+        )
+        return exp.Window(this=call, order=order.copy(), spec=spec)
 
     if transform == MeasureTransform.POP_ABS:
-        return exp.Sub(this=src.copy(), expression=lag())
-    # pop_pct: (src - lag) / lag — the numerator MUST be parenthesized, else `/` binds
+        return exp.Sub(this=src.copy(), expression=lag(1))
+    # pop_pct / yoy_pct: (src - lag) / lag — the numerator MUST be parenthesized, else `/` binds
     # tighter than `-` and ClickHouse computes `src - (lag / lag)` (Postgres is saved only
-    # by an incidental CAST wrapper, so don't rely on the dialect adding parens)
-    return _safe_div(exp.paren(exp.Sub(this=src.copy(), expression=lag())), lag())
+    # by an incidental CAST wrapper, so don't rely on the dialect adding parens). yoy lags a
+    # full year of periods instead of one.
+    k = yoy_lag if transform == MeasureTransform.YOY_PCT else 1
+    return _safe_div(exp.paren(exp.Sub(this=src.copy(), expression=lag(k))), lag(k))
 
 
 def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) -> str:
@@ -327,6 +351,7 @@ def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool
     order_col = (
         exp.column(column_alias(query.dimensions[0]), quoted=True) if query.dimensions else None
     )
+    yoy_lag = _periods_per_year(query.time_grain)  # rows to lag for a yoy_pct measure
 
     outer_dims: list[exp.Expression] = [
         exp.column(column_alias(c), quoted=True) for c in query.group_columns()
@@ -338,7 +363,7 @@ def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool
         if m.denominator is not None:
             body = _safe_div(src, exp.column(den_aliases[i], quoted=True))
         elif m.transform is not None:
-            body = _window_expr(m.transform, src, order_col, dialect=dialect)
+            body = _window_expr(m.transform, src, order_col, dialect=dialect, yoy_lag=yoy_lag)
         else:
             body = src
         # sqlglot types alias_ as Expr (an Expression subclass at runtime), as in _measure_expr

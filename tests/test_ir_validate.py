@@ -416,3 +416,29 @@ def test_time_grain_on_big_number_without_time_axis_rejected(demo_model) -> None
     bad = chart(viz=Viz.BIG_NUMBER, dimensions=[], time_grain=TimeGrain.YEAR)
     errors = validate_spec(spec(bad), demo_model)
     assert any("time_grain" in e for e in errors)
+
+
+# --- yoy_pct (year-over-year, needs a grain to size the lag) -----------------
+
+
+def test_yoy_with_month_grain_is_valid(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform, TimeGrain
+
+    ok = _t_chart(MeasureTransform.YOY_PCT, time_grain=TimeGrain.MONTH)
+    assert validate_spec(spec(ok), demo_model) == []
+
+
+def test_yoy_without_grain_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    bad = _t_chart(MeasureTransform.YOY_PCT)  # no time_grain -> lag size undefined
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("yoy_pct" in e and "time_grain" in e for e in errors)
+
+
+def test_yoy_with_day_grain_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform, TimeGrain
+
+    bad = _t_chart(MeasureTransform.YOY_PCT, time_grain=TimeGrain.DAY)
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("yoy_pct" in e and "time_grain" in e for e in errors)

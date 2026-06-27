@@ -9,6 +9,7 @@ from auto_bi.ir.spec import (
     DashboardSpec,
     FilterOp,
     MeasureTransform,
+    TimeGrain,
     Viz,
     column_alias,
     measure_alias,
@@ -23,7 +24,12 @@ _NUMERIC_AGGS = frozenset({Aggregation.SUM, Aggregation.AVG, Aggregation.MIN, Ag
 # transforms whose window orders by the chart's first dimension — that dimension must be a
 # TIME column (a period-over-period / running total is only meaningful along a time axis)
 _ORDERED_TRANSFORMS = frozenset(
-    {MeasureTransform.POP_ABS, MeasureTransform.POP_PCT, MeasureTransform.RUNNING_TOTAL}
+    {
+        MeasureTransform.POP_ABS,
+        MeasureTransform.POP_PCT,
+        MeasureTransform.YOY_PCT,
+        MeasureTransform.RUNNING_TOTAL,
+    }
 )
 # viz with no single ordered category axis the SQL_GEN window can sort by
 _TRANSFORM_UNSUPPORTED_VIZ = frozenset({Viz.BIG_NUMBER, Viz.PIVOT, Viz.HEATMAP})
@@ -232,6 +238,14 @@ def _validate_transforms(chart: ChartSpec, model: SemanticModel, prefix: str) ->
             errors.append(
                 f"{prefix}: преобразование 'share_of_total' требует хотя бы одно измерение"
             )
+    grain = chart.query.time_grain
+    if any(m.transform == MeasureTransform.YOY_PCT for m in transformed) and (
+        grain is None or grain == TimeGrain.DAY
+    ):
+        errors.append(
+            f"{prefix}: преобразование 'yoy_pct' требует time_grain "
+            "(week/month/quarter/year), чтобы определить сдвиг на год"
+        )
     return errors
 
 

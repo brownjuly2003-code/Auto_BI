@@ -52,15 +52,21 @@ class MeasureTransform(StrEnum):
     window over that result in an outer SELECT (deterministic, no LLM — invariant 1/D5):
     - `pop_abs`  — period-over-period absolute change: `agg - lag(agg) OVER (ORDER BY time)`;
     - `pop_pct`  — period-over-period relative change: `(agg - lag(agg)) / lag(agg)`;
+    - `yoy_pct`  — year-over-year relative change vs the same period a year back: lags by the
+      number of periods in a year for the chart's `time_grain` (month=12, quarter=4, week=52,
+      year=1), so it REQUIRES a non-day `time_grain`. (mom = `pop_pct` at month grain — no
+      separate transform needed.)
     - `share_of_total` — share of the column total: `agg / sum(agg) OVER ()`;
     - `running_total`  — cumulative sum over time: `sum(agg) OVER (ORDER BY time ROWS …)`.
 
-    pop_* / running_total order by the chart's first (time) dimension; share_of_total needs
-    none. Validation enforces the required shape (a time x-axis for the ordered transforms).
+    pop_* / yoy_pct / running_total order by the chart's first (time) dimension; share_of_total
+    needs none. Validation enforces the required shape (a time x-axis for the ordered transforms;
+    a non-day time_grain for yoy_pct).
     """
 
     POP_ABS = "pop_abs"
     POP_PCT = "pop_pct"
+    YOY_PCT = "yoy_pct"
     SHARE_OF_TOTAL = "share_of_total"
     RUNNING_TOTAL = "running_total"
 
@@ -124,12 +130,16 @@ def measure_alias(measure: Measure) -> str:
 
 
 def is_percent_measure(measure: Measure) -> bool:
-    """Whether a measure's value is a ratio/share to DISPLAY as a percent (pop_pct, share).
+    """Whether a measure's value is a ratio/share to DISPLAY as a percent (pop_pct, yoy_pct, share).
 
     pop_abs / running_total keep the base measure's number family (a cumulative sum is still
     rubles), so they are not percents. The adapters map this to the native percent format
     (Superset d3 `.1%`, DataLens `formatting` percent)."""
-    return measure.transform in (MeasureTransform.POP_PCT, MeasureTransform.SHARE_OF_TOTAL)
+    return measure.transform in (
+        MeasureTransform.POP_PCT,
+        MeasureTransform.YOY_PCT,
+        MeasureTransform.SHARE_OF_TOTAL,
+    )
 
 
 def is_ratio_measure(measure: Measure) -> bool:
