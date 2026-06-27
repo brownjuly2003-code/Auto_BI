@@ -115,6 +115,11 @@ def _apply_order_and_limit(
     return select
 
 
+def _is_derived(measure: Measure) -> bool:
+    """A measure needing the two-level SELECT: a window transform or a ratio denominator."""
+    return measure.transform is not None or measure.denominator is not None
+
+
 def generate_chart_sql(
     query: ChartQuery, *, dialect: str = DIALECT, apply_limit: bool = True
 ) -> str:
@@ -131,11 +136,12 @@ def generate_chart_sql(
     select filter's options would be capped to that pre-filter top-N). The dataset is
     already aggregated, so the row count stays small regardless.
 
-    When any measure carries a `transform` (period-over-period, share, running total) the
-    query becomes two-level: an inner GROUP BY computes the base aggregates and an outer
-    SELECT applies the window functions over them (see `_generate_windowed_sql`).
+    When any measure is *derived* — carries a `transform` (period-over-period, share, running
+    total) or a `denominator` (a ratio num/den) — the query becomes two-level: an inner GROUP BY
+    computes the base aggregates and an outer SELECT applies the window / division over them
+    (see `_generate_windowed_sql`).
     """
-    if any(m.transform is not None for m in query.measures):
+    if any(_is_derived(m) for m in query.measures):
         return _generate_windowed_sql(query, dialect=dialect, apply_limit=apply_limit)
     return _generate_flat_sql(query, dialect=dialect, apply_limit=apply_limit)
 
@@ -261,15 +267,21 @@ def _window_expr(
 
 
 def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) -> str:
-    """Two-level SELECT for transform measures: inner GROUP BY of base aggregates, outer
-    window functions over them. Plain measures pass through the outer SELECT unchanged."""
+    """Two-level SELECT for derived measures: inner GROUP BY of base aggregates, outer
+    window functions / ratio divisions over them. Plain measures pass through the outer
+    SELECT unchanged. A ratio measure also emits its denominator aggregate in the inner
+    query (private `__den_i` alias) and divides `__src_i / __den_i` in the outer."""
     resolve = _resolve_for(query)
-    # inner: every measure's base aggregate under a private alias (measure order preserved)
+    # inner: every measure's base aggregate under a private alias (measure order preserved);
+    # a ratio measure additionally contributes its denominator aggregate under __den_i
     src_aliases = [f"__src_{i}" for i in range(len(query.measures))]
-    inner_measures = [
-        _measure_expr(m, resolve(m.column), alias=src_aliases[i])
-        for i, m in enumerate(query.measures)
-    ]
+    den_aliases = [f"__den_{i}" for i in range(len(query.measures))]
+    inner_measures: list[exp.Expression] = []
+    for i, m in enumerate(query.measures):
+        inner_measures.append(_measure_expr(m, resolve(m.column), alias=src_aliases[i]))
+        if m.denominator is not None:
+            d = m.denominator
+            inner_measures.append(_measure_expr(d, resolve(d.column), alias=den_aliases[i]))
     inner = _grouped_select(query, measure_exprs=inner_measures)
 
     # window order column = the chart's first dimension (validate proves it is TIME for the
@@ -284,11 +296,13 @@ def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool
     outer_measures: list[exp.Expression] = []
     for i, m in enumerate(query.measures):
         src = exp.column(src_aliases[i], quoted=True)
-        body = (
-            src
-            if m.transform is None
-            else _window_expr(m.transform, src, order_col, dialect=dialect)
-        )
+        body: exp.Expression
+        if m.denominator is not None:
+            body = _safe_div(src, exp.column(den_aliases[i], quoted=True))
+        elif m.transform is not None:
+            body = _window_expr(m.transform, src, order_col, dialect=dialect)
+        else:
+            body = src
         # sqlglot types alias_ as Expr (an Expression subclass at runtime), as in _measure_expr
         outer_measures.append(exp.alias_(body, measure_alias(m), quoted=True))  # type: ignore[arg-type]
 

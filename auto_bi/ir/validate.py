@@ -143,16 +143,24 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
         if j.table in joined and j.table not in used_tables:
             errors.append(f"{prefix}: join to {j.table} is declared but no column of it is used")
 
-    for measure in chart.query.measures:
-        mcol = table.column(measure.column)
-        if mcol is None:
-            errors.append(_unknown(measure.column, "measure column"))
-        elif mcol.role == ColumnRole.TIME:
-            errors.append(f"{prefix}: time column {measure.column!r} cannot be a measure")
-        elif measure.agg in _NUMERIC_AGGS and mcol.role != ColumnRole.MEASURE:
+    def _check_measure_col(col_name: str, agg: Aggregation, what: str) -> None:
+        # column/role rules shared by a measure and (for a ratio) its denominator
+        col = table.column(col_name)
+        if col is None:
+            errors.append(_unknown(col_name, what))
+        elif col.role == ColumnRole.TIME:
+            errors.append(f"{prefix}: time column {col_name!r} cannot be a measure")
+        elif agg in _NUMERIC_AGGS and col.role != ColumnRole.MEASURE:
             errors.append(
-                f"{prefix}: {measure.agg.value} over {mcol.role.value} column "
-                f"{measure.column!r} — для неё допустимы только count/count_distinct"
+                f"{prefix}: {agg.value} over {col.role.value} column "
+                f"{col_name!r} — для неё допустимы только count/count_distinct"
+            )
+
+    for measure in chart.query.measures:
+        _check_measure_col(measure.column, measure.agg, "measure column")
+        if measure.denominator is not None:
+            _check_measure_col(
+                measure.denominator.column, measure.denominator.agg, "denominator column"
             )
 
     for qf in chart.query.filters:
@@ -174,6 +182,7 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
             )
 
     errors.extend(_validate_transforms(chart, model, prefix))
+    errors.extend(_validate_ratios(chart, prefix))
     errors.extend(_validate_viz_shape(chart, prefix))
     return errors
 
@@ -222,6 +231,33 @@ def _validate_transforms(chart: ChartSpec, model: SemanticModel, prefix: str) ->
             errors.append(
                 f"{prefix}: преобразование 'share_of_total' требует хотя бы одно измерение"
             )
+    return errors
+
+
+def _validate_ratios(chart: ChartSpec, prefix: str) -> list[str]:
+    """Structural rules for ratio measures (`Measure.denominator`).
+
+    A ratio is `agg(num) / agg(den)`, both aggregated in the same GROUP BY (SQL_GEN divides
+    them in floating point). It is mutually exclusive with a window transform, and the
+    denominator is a plain aggregate — no nested ratio and no transform of its own (neither
+    has a defined meaning here). Column/role of the denominator is checked with the numerator
+    in `_validate_chart`; ratio is allowed on every viz (it is just a measure value).
+    """
+    errors: list[str] = []
+    for m in chart.query.measures:
+        if m.denominator is None:
+            continue
+        if m.transform is not None:
+            errors.append(
+                f"{prefix}: мера-отношение не может одновременно иметь transform "
+                f"({m.transform.value}) и denominator"
+            )
+        if m.denominator.denominator is not None:
+            errors.append(
+                f"{prefix}: вложенные отношения не поддерживаются (denominator у denominator)"
+            )
+        if m.denominator.transform is not None:
+            errors.append(f"{prefix}: знаменатель отношения не может иметь transform")
     return errors
 
 

@@ -321,3 +321,72 @@ def test_transform_on_pivot_is_rejected(demo_model) -> None:
     )
     errors = validate_spec(spec(bad), demo_model)
     assert any("не поддерживаются" in e for e in errors)
+
+
+# --- ratio measures (Measure.denominator) -----------------------------------
+
+
+def _ratio_measure(num="revenue", num_agg=Aggregation.SUM, den="orders", den_agg=Aggregation.SUM):
+    return Measure(column=num, agg=num_agg, denominator=Measure(column=den, agg=den_agg))
+
+
+def test_ratio_over_time_is_valid(demo_model) -> None:
+    assert validate_spec(spec(chart(measures=[_ratio_measure()])), demo_model) == []
+
+
+def test_ratio_on_big_number_is_valid(demo_model) -> None:
+    # a ratio needs no ordered axis (unlike a window transform), so a single-KPI ratio is fine
+    ok = chart(viz=Viz.BIG_NUMBER, dimensions=[], measures=[_ratio_measure()])
+    assert validate_spec(spec(ok), demo_model) == []
+
+
+def test_ratio_unknown_denominator_column_rejected(demo_model) -> None:
+    bad = chart(measures=[_ratio_measure(den="nope_col")])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("nope_col" in e and "denominator" in e for e in errors)
+
+
+def test_ratio_denominator_sum_over_dimension_rejected(demo_model) -> None:
+    bad = chart(measures=[_ratio_measure(den="store_id", den_agg=Aggregation.SUM)])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("store_id" in e and "count" in e for e in errors)
+
+
+def test_ratio_denominator_count_over_dimension_allowed(demo_model) -> None:
+    ok = chart(measures=[_ratio_measure(den="store_id", den_agg=Aggregation.COUNT_DISTINCT)])
+    assert validate_spec(spec(ok), demo_model) == []
+
+
+def test_ratio_with_transform_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    bad = chart(
+        measures=[
+            Measure(
+                column="revenue",
+                agg=Aggregation.SUM,
+                transform=MeasureTransform.POP_PCT,
+                denominator=Measure(column="orders", agg=Aggregation.SUM),
+            )
+        ]
+    )
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("не может одновременно иметь transform" in e for e in errors)
+
+
+def test_nested_ratio_rejected(demo_model) -> None:
+    bad = chart(
+        measures=[
+            Measure(
+                column="revenue",
+                agg=Aggregation.SUM,
+                denominator=Measure(
+                    column="orders",
+                    agg=Aggregation.SUM,
+                    denominator=Measure(column="orders", agg=Aggregation.SUM),
+                ),
+            )
+        ]
+    )
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("вложенные отношения" in e for e in errors)

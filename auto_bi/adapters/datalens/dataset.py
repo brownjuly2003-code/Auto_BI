@@ -26,7 +26,14 @@ import uuid
 from auto_bi.adapters.base import DWHConfig
 from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.engine import sqlglot_dialect
-from auto_bi.ir.spec import ChartQuery, Measure, column_alias, is_percent_measure, measure_alias
+from auto_bi.ir.spec import (
+    ChartQuery,
+    Measure,
+    column_alias,
+    is_percent_measure,
+    is_ratio_measure,
+    measure_alias,
+)
 from auto_bi.semantic.model import Aggregation, SemanticModel, Table
 
 # physical.engine / DWHConfig.engine -> DataLens connection `type` (input field).
@@ -121,9 +128,9 @@ def _user_type(native_type: str) -> str:
 
 def _measure_user_type(measure: Measure, base_table: Table | None) -> str:
     """Result type of an aggregated (and optionally transformed) measure column."""
-    # a percent transform (pop_pct, share) is a ratio -> always float, regardless of the
-    # base aggregate; pop_abs / running_total keep the base aggregate's number family below
-    if is_percent_measure(measure):
+    # a percent transform (pop_pct, share) or a ratio measure (num/den) is fractional -> always
+    # float, regardless of the base aggregate; pop_abs / running_total keep the base family below
+    if is_percent_measure(measure) or is_ratio_measure(measure):
         return "float"
     if measure.agg in (Aggregation.COUNT, Aggregation.COUNT_DISTINCT):
         return "integer"

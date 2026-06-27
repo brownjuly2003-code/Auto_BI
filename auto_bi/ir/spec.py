@@ -78,6 +78,13 @@ class Measure(BaseModel):
     # optional analytical transform (period-over-period, share, running total) computed
     # as a window over the base aggregate; None => a plain aggregate (the common case)
     transform: MeasureTransform | None = None
+    # optional ratio: this measure becomes agg(column) / denominator.agg(denominator.column),
+    # both aggregated in the same GROUP BY and divided in floating point (SQL_GEN). A
+    # domain-neutral primitive — margin = profit/revenue, conversion = converted/sessions,
+    # defect rate = defects/output, error rate = errors/requests, avg duration = sum/count.
+    # None => not a ratio. Mutually exclusive with `transform`; the denominator is itself a
+    # plain Measure (no nested denominator, no transform) — enforced by validation.
+    denominator: Measure | None = None
 
 
 def measure_alias(measure: Measure) -> str:
@@ -86,12 +93,18 @@ def measure_alias(measure: Measure) -> str:
     Single source of truth shared by SQL_GEN, the adapters, and validation so the
     alias a chart is ordered/aggregated by always matches the column SQL_GEN emits.
     A transformed measure with no explicit label gets the transform in its default alias
-    (`pop_pct_sum_revenue`) so it cannot collide with the same chart's base aggregate.
+    (`pop_pct_sum_revenue`); a ratio gets `_per_<den>` (`sum_revenue_per_count_orders`) — so
+    neither collides with the same chart's plain base aggregate.
     """
     if measure.label:
         return measure.label
     base = f"{measure.agg.value}_{measure.column}"
-    return f"{measure.transform.value}_{base}" if measure.transform is not None else base
+    if measure.transform is not None:
+        return f"{measure.transform.value}_{base}"
+    if measure.denominator is not None:
+        d = measure.denominator
+        return f"{base}_per_{d.agg.value}_{d.column}"
+    return base
 
 
 def is_percent_measure(measure: Measure) -> bool:
@@ -103,6 +116,11 @@ def is_percent_measure(measure: Measure) -> bool:
     return measure.transform in (MeasureTransform.POP_PCT, MeasureTransform.SHARE_OF_TOTAL)
 
 
+def is_ratio_measure(measure: Measure) -> bool:
+    """Whether a measure is a ratio of two aggregates (`num / den`) — see `Measure.denominator`."""
+    return measure.denominator is not None
+
+
 def is_compact_number(measure: Measure) -> bool:
     """Whether a measure should DISPLAY abbreviated (236G / 236,1 млрд) rather than in full
     (236149963687). Additive aggregates over a fact table reach millions/billions and overflow
@@ -111,9 +129,10 @@ def is_compact_number(measure: Measure) -> bool:
     The adapters map it to the native format (Superset d3 `~s`, DataLens compact `formatting`).
 
     A percent transform (pop_pct, share) is never compact — it renders as a percent, not an
-    SI-abbreviated count. pop_abs / running_total keep the underlying aggregate's rule.
+    SI-abbreviated count. pop_abs / running_total keep the underlying aggregate's rule. A ratio
+    measure (num/den) is a small exact figure (a rate, an average), never compact.
     """
-    if is_percent_measure(measure):
+    if is_percent_measure(measure) or is_ratio_measure(measure):
         return False
     return measure.agg in (Aggregation.SUM, Aggregation.COUNT, Aggregation.COUNT_DISTINCT)
 
