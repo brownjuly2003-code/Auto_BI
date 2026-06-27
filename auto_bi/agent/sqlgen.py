@@ -12,6 +12,7 @@ from auto_bi.ir.spec import (
     Measure,
     MeasureTransform,
     QueryFilter,
+    TimeGrain,
     column_alias,
     measure_alias,
 )
@@ -57,6 +58,29 @@ def _dim_column(ref: str) -> exp.Expression:
     db_table, _, col = ref.rpartition(".")
     db, _, table = db_table.rpartition(".")
     return exp.column(col, table=table, db=db or None)
+
+
+_CH_GRAIN_FUNC = {
+    TimeGrain.MONTH: "toStartOfMonth",
+    TimeGrain.QUARTER: "toStartOfQuarter",
+    TimeGrain.YEAR: "toStartOfYear",
+}
+
+
+def _time_grain_expr(col: exp.Expression, grain: TimeGrain, *, dialect: str) -> exp.Expression:
+    """Truncate a time column to `grain`. day -> unchanged; week starts Monday in both dialects.
+
+    ClickHouse uses toStartOf* (toStartOfWeek mode 1 = Monday); other dialects use
+    date_trunc(unit, col), whose Postgres week is already Monday-based. sqlglot renders the
+    function name per output dialect; we pick the ClickHouse spelling explicitly for parity."""
+    if grain == TimeGrain.DAY:
+        return col
+    if dialect == "clickhouse":
+        if grain == TimeGrain.WEEK:
+            # mode 1 => week starts Monday, matching Postgres date_trunc('week')
+            return exp.func("toStartOfWeek", col, exp.Literal.number(1))  # type: ignore[return-value]
+        return exp.func(_CH_GRAIN_FUNC[grain], col)  # type: ignore[return-value]
+    return exp.func("date_trunc", exp.Literal.string(grain.value), col)  # type: ignore[return-value]
 
 
 def _filter_expr(qf: QueryFilter) -> exp.Expression:
@@ -158,21 +182,35 @@ def _resolve_for(query: ChartQuery):
     return resolve
 
 
-def _grouped_select(query: ChartQuery, *, measure_exprs: list[exp.Expression]) -> exp.Select:
+def _grouped_select(
+    query: ChartQuery, *, measure_exprs: list[exp.Expression], dialect: str
+) -> exp.Select:
     """FROM + JOINs + WHERE + GROUP BY with the given measure SELECT expressions.
 
     Shared by the flat path (measures aliased to their final names) and the windowed
-    path's inner query (measures aliased to private `__src_i` names).
+    path's inner query (measures aliased to private `__src_i` names). When `time_grain`
+    is set, the time x-axis (first dimension) is truncated to that grain in BOTH the
+    SELECT and the GROUP BY, aliased back to its bare name so the dataset column is stable.
     """
     resolve = _resolve_for(query)
     group_cols = query.group_columns()  # dimensions + series + rows + columns, deduped
-    group_exprs = [_dim_column(resolve(c)) for c in group_cols]
-    # qualified columns get their bare name as the SELECT alias, so the dataset exposes
-    # plain column names regardless of the source table (validation rejects collisions)
-    select_dims = [
-        exp.alias_(e, column_alias(c), quoted=True) if "." in resolve(c) else e
-        for c, e in zip(group_cols, group_exprs, strict=True)
-    ]
+    # the time x-axis (first dimension) is bucketed when time_grain is set (day = raw)
+    grain = query.time_grain if query.time_grain != TimeGrain.DAY else None
+    grained_col = query.dimensions[0] if grain is not None and query.dimensions else None
+    group_exprs: list[exp.Expression] = []
+    # qualified columns (and a truncated time column) get their bare name as the SELECT alias,
+    # so the dataset exposes plain column names regardless of source table / truncation
+    select_dims: list[exp.Expression] = []
+    for c in group_cols:
+        e: exp.Expression = _dim_column(resolve(c))
+        if grain is not None and c == grained_col:
+            e = _time_grain_expr(e, grain, dialect=dialect)
+        group_exprs.append(e)
+        if "." in resolve(c) or c == grained_col:
+            # sqlglot types alias_ as Expr (an Expression subclass at runtime), as elsewhere
+            select_dims.append(exp.alias_(e, column_alias(c), quoted=True))  # type: ignore[arg-type]
+        else:
+            select_dims.append(e)
     select = exp.select(*select_dims, *measure_exprs).from_(exp.to_table(query.table))
     for j in query.joins:
         select = select.join(
@@ -190,7 +228,7 @@ def _grouped_select(query: ChartQuery, *, measure_exprs: list[exp.Expression]) -
 def _generate_flat_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) -> str:
     resolve = _resolve_for(query)
     measure_exprs = [_measure_expr(m, resolve(m.column)) for m in query.measures]
-    select = _grouped_select(query, measure_exprs=measure_exprs)
+    select = _grouped_select(query, measure_exprs=measure_exprs, dialect=dialect)
     select = _apply_order_and_limit(select, query, apply_limit=apply_limit)
     return select.sql(dialect=dialect, identify=True)
 
@@ -282,7 +320,7 @@ def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool
         if m.denominator is not None:
             d = m.denominator
             inner_measures.append(_measure_expr(d, resolve(d.column), alias=den_aliases[i]))
-    inner = _grouped_select(query, measure_exprs=inner_measures)
+    inner = _grouped_select(query, measure_exprs=inner_measures, dialect=dialect)
 
     # window order column = the chart's first dimension (validate proves it is TIME for the
     # ordered transforms); None when the chart has no dimension (share_of_total only)

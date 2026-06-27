@@ -390,3 +390,29 @@ def test_nested_ratio_rejected(demo_model) -> None:
     )
     errors = validate_spec(spec(bad), demo_model)
     assert any("вложенные отношения" in e for e in errors)
+
+
+# --- time_grain (truncated time x-axis) -------------------------------------
+
+
+def test_time_grain_over_time_is_valid(demo_model) -> None:
+    from auto_bi.ir.spec import TimeGrain
+
+    assert validate_spec(spec(chart(time_grain=TimeGrain.MONTH)), demo_model) == []
+
+
+def test_time_grain_on_non_time_first_dim_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import TimeGrain
+
+    bad = chart(viz=Viz.BAR, dimensions=["store_id"], time_grain=TimeGrain.MONTH)
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("time_grain" in e and "колонкой времени" in e for e in errors)
+
+
+def test_time_grain_on_big_number_without_time_axis_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import TimeGrain
+
+    # big_number has no dimensions -> there is no time x-axis to truncate
+    bad = chart(viz=Viz.BIG_NUMBER, dimensions=[], time_grain=TimeGrain.YEAR)
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("time_grain" in e for e in errors)

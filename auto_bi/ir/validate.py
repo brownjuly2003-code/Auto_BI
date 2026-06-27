@@ -183,6 +183,7 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
 
     errors.extend(_validate_transforms(chart, model, prefix))
     errors.extend(_validate_ratios(chart, prefix))
+    errors.extend(_validate_time_grain(chart, model, prefix))
     errors.extend(_validate_viz_shape(chart, prefix))
     return errors
 
@@ -259,6 +260,19 @@ def _validate_ratios(chart: ChartSpec, prefix: str) -> list[str]:
         if m.denominator.transform is not None:
             errors.append(f"{prefix}: знаменатель отношения не может иметь transform")
     return errors
+
+
+def _validate_time_grain(chart: ChartSpec, model: SemanticModel, prefix: str) -> list[str]:
+    """time_grain truncates the time x-axis (the first dimension), so that dimension must be a
+    TIME column — bucketing a categorical or absent axis to a period is meaningless."""
+    if chart.query.time_grain is None:
+        return []
+    if not _first_dimension_is_time(chart, model):
+        return [
+            f"{prefix}: time_grain ({chart.query.time_grain.value}) требует, чтобы первое "
+            "измерение было колонкой времени (ось x по времени)"
+        ]
+    return []
 
 
 def _validate_viz_shape(chart: ChartSpec, prefix: str) -> list[str]:

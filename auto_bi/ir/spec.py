@@ -65,6 +65,22 @@ class MeasureTransform(StrEnum):
     RUNNING_TOTAL = "running_total"
 
 
+class TimeGrain(StrEnum):
+    """Truncation grain for the chart's time x-axis (`ChartQuery.time_grain`).
+
+    Buckets a date/datetime dimension to a coarser period so a long daily series reads as a
+    trend instead of noise (730 days -> 24 months). Domain-neutral and deterministic (SQL_GEN,
+    no LLM). `day` is the raw column (no truncation); the rest compile per-dialect — ClickHouse
+    `toStartOf*` / Postgres `date_trunc` — with weeks starting Monday in both.
+    """
+
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+    QUARTER = "quarter"
+    YEAR = "year"
+
+
 class QueryFilter(BaseModel):
     column: str
     op: FilterOp
@@ -176,6 +192,9 @@ class ChartQuery(BaseModel):
     joins: list[JoinSpec] = Field(default_factory=list)
     order_by: list[OrderBy] = Field(default_factory=list)
     limit: int = Field(default=5000, ge=1, le=50000)
+    # optional truncation of the time x-axis (the first dimension): buckets a date series to
+    # week/month/quarter/year so a long daily run reads as a trend. None => raw dimension.
+    time_grain: TimeGrain | None = None
 
     def group_columns(self) -> list[str]:
         """All dimension-like columns to GROUP BY, deduped, order preserved.
