@@ -87,6 +87,7 @@ uv run ruff check .                                  # линтер
 uv run black --check auto_bi tests                   # формат
 uv run pytest -q                                     # тесты (integration-сьюты со стендом — deselected)
 uv run --with pytest-cov pytest --cov=auto_bi --cov-report=term-missing   # покрытие
+uv run python scripts/verify_live_clickhouse.py      # числа CH-путей на ЖИВОМ стенде (ratio/grain/yoy/авто-обзор)
 ```
 
 Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Текущее покрытие — **93 %** (369 unit/API-тестов; сьюты с пометкой `integration` требуют живого стенда ClickHouse/Superset/DataLens и в CI не запускаются).
