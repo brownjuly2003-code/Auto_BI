@@ -126,17 +126,42 @@ def _order_targets(query: ChartQuery) -> dict[str, str]:
 
 
 def _apply_order_and_limit(
-    select: exp.Select, query: ChartQuery, *, apply_limit: bool
+    select: exp.Select,
+    query: ChartQuery,
+    *,
+    apply_limit: bool,
+    order_exprs: dict[str, exp.Expression] | None = None,
 ) -> exp.Select:
     targets = _order_targets(query)
+    order_exprs = order_exprs or {}
     for ob in query.order_by:
         target = targets.get(ob.by, ob.by)
-        select = select.order_by(
-            exp.Ordered(this=exp.column(target, quoted=True), desc=ob.dir == "desc")
-        )
+        # a grain-truncated time dim sorts by its truncation expression, not the alias
+        # (see _grain_order_exprs); everything else sorts by the SELECT alias column
+        override = order_exprs.get(target)
+        sort_on = override.copy() if override is not None else exp.column(target, quoted=True)
+        select = select.order_by(exp.Ordered(this=sort_on, desc=ob.dir == "desc"))
     if apply_limit:
         select = select.limit(query.limit)
     return select
+
+
+def _grain_order_exprs(query: ChartQuery, dialect: str) -> dict[str, exp.Expression]:
+    """Flat path only: ORDER BY a grain-truncated time dim by its truncation EXPRESSION.
+
+    The grained dimension is aliased back to its bare name (`toStartOfMonth("date") AS "date"`)
+    so the dataset column is stable. But on the flat path the SELECT reads from the physical
+    table, where a column named `date` also exists: ClickHouse binds `ORDER BY "date"` to that
+    physical column (not the grouped expression) and fails with NOT_AN_AGGREGATE (live-verified
+    2026-06-28). Ordering by the truncation expression — itself a GROUP BY key — is unambiguous
+    in ClickHouse, Postgres and DuckDB alike. The windowed path is unaffected: it selects from a
+    subquery where `date` is an output column with no physical shadow, so it keeps the alias."""
+    grain = query.time_grain if query.time_grain != TimeGrain.DAY else None
+    if grain is None or not query.dimensions:
+        return {}
+    grained = query.dimensions[0]
+    target = column_alias(grained) if "." in grained else grained
+    return {target: _time_grain_expr(_grained_source(query, grained), grain, dialect=dialect)}
 
 
 def _is_derived(measure: Measure) -> bool:
@@ -182,6 +207,18 @@ def _resolve_for(query: ChartQuery):
     return resolve
 
 
+def _grained_source(query: ChartQuery, col: str) -> exp.Expression:
+    """Base-table-qualified column for a grain-truncated time dim (e.g. dm.sales_daily.date).
+
+    Qualifying stops the truncation's inner reference from binding to the SELECT alias of the
+    same bare name: ClickHouse otherwise raises NOT_AN_AGGREGATE on `toStartOfMonth(date) AS
+    date ... GROUP BY toStartOfMonth(date)` (live-verified 2026-06-28). Joined queries already
+    qualify every bare reference with the base table, so this only changes the no-join case; the
+    qualified reference is valid in ClickHouse, Postgres and DuckDB alike."""
+    ref = col if "." in col else f"{query.table}.{col}"
+    return _dim_column(ref)
+
+
 def _grouped_select(
     query: ChartQuery, *, measure_exprs: list[exp.Expression], dialect: str
 ) -> exp.Select:
@@ -202,9 +239,14 @@ def _grouped_select(
     # so the dataset exposes plain column names regardless of source table / truncation
     select_dims: list[exp.Expression] = []
     for c in group_cols:
-        e: exp.Expression = _dim_column(resolve(c))
         if grain is not None and c == grained_col:
-            e = _time_grain_expr(e, grain, dialect=dialect)
+            # qualify the truncated time column with the base table so neither GROUP BY nor
+            # ORDER BY can bind its bare name to the SELECT alias of the same name (ClickHouse
+            # raises NOT_AN_AGGREGATE on `toStartOfMonth(date) AS date GROUP BY toStartOfMonth(
+            # date)`; live-verified 2026-06-28). See _grained_source.
+            e: exp.Expression = _time_grain_expr(_grained_source(query, c), grain, dialect=dialect)
+        else:
+            e = _dim_column(resolve(c))
         group_exprs.append(e)
         if "." in resolve(c) or c == grained_col:
             # sqlglot types alias_ as Expr (an Expression subclass at runtime), as elsewhere
@@ -229,7 +271,9 @@ def _generate_flat_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) ->
     resolve = _resolve_for(query)
     measure_exprs = [_measure_expr(m, resolve(m.column)) for m in query.measures]
     select = _grouped_select(query, measure_exprs=measure_exprs, dialect=dialect)
-    select = _apply_order_and_limit(select, query, apply_limit=apply_limit)
+    select = _apply_order_and_limit(
+        select, query, apply_limit=apply_limit, order_exprs=_grain_order_exprs(query, dialect)
+    )
     return select.sql(dialect=dialect, identify=True)
 
 

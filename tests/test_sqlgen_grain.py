@@ -27,41 +27,83 @@ def _grain_q(grain: TimeGrain, **kwargs) -> ChartQuery:
     return ChartQuery(**defaults)
 
 
+# the grain-truncated time column is qualified with its base table to avoid the ClickHouse
+# alias-shadow: `toStartOfMonth(date) AS date ... GROUP BY toStartOfMonth(date)` makes CH bind
+# the inner `date` to the alias and raise NOT_AN_AGGREGATE (live-verified 2026-06-28).
+_DATE = '"dm"."sales_daily"."date"'
+
+
 # --- SQL shape -------------------------------------------------------------
 
 
 def test_month_grain_clickhouse() -> None:
     sql = generate_chart_sql(_grain_q(TimeGrain.MONTH))
     # truncated in BOTH the SELECT (aliased back to the bare name) and the GROUP BY
-    assert 'toStartOfMonth("date") AS "date"' in sql
-    assert 'GROUP BY toStartOfMonth("date")' in sql
+    assert f'toStartOfMonth({_DATE}) AS "date"' in sql
+    assert f"GROUP BY toStartOfMonth({_DATE})" in sql
     guard_sql(sql)
 
 
 def test_month_grain_postgres() -> None:
     sql = generate_chart_sql(_grain_q(TimeGrain.MONTH), dialect="postgres")
     low = sql.lower()
-    assert "date_trunc('month', \"date\")" in low
-    assert "group by date_trunc('month', \"date\")" in low
+    assert f"date_trunc('month', {_DATE})" in low
+    assert f"group by date_trunc('month', {_DATE})" in low
     guard_sql(sql, dialect="postgres")
 
 
 def test_quarter_and_year_grain_clickhouse() -> None:
-    assert 'toStartOfQuarter("date")' in generate_chart_sql(_grain_q(TimeGrain.QUARTER))
-    assert 'toStartOfYear("date")' in generate_chart_sql(_grain_q(TimeGrain.YEAR))
+    assert f"toStartOfQuarter({_DATE})" in generate_chart_sql(_grain_q(TimeGrain.QUARTER))
+    assert f"toStartOfYear({_DATE})" in generate_chart_sql(_grain_q(TimeGrain.YEAR))
 
 
 def test_week_grain_starts_monday_both_dialects() -> None:
     ch = generate_chart_sql(_grain_q(TimeGrain.WEEK))
-    assert 'toStartOfWeek("date", 1)' in ch  # mode 1 => Monday, matching Postgres
+    assert f"toStartOfWeek({_DATE}, 1)" in ch  # mode 1 => Monday, matching Postgres
     pg = generate_chart_sql(_grain_q(TimeGrain.WEEK), dialect="postgres").lower()
-    assert "date_trunc('week', \"date\")" in pg
+    assert f"date_trunc('week', {_DATE})" in pg
 
 
 def test_day_grain_is_raw_no_truncation() -> None:
     sql = generate_chart_sql(_grain_q(TimeGrain.DAY))
     assert "toStartOf" not in sql and "date_trunc" not in sql.lower()
     assert '"date"' in sql  # the raw date dimension is still selected
+
+
+def test_grain_orders_by_expression_not_alias_clickhouse() -> None:
+    # the grained dim is aliased back to its bare name (toStartOfMonth(...) AS "date"). The column
+    # is qualified so the flat path orders by the grouped expression; ordering by the bare alias
+    # "date" would bind to the PHYSICAL column and fail NOT_AN_AGGREGATE on the live stand.
+    sql = generate_chart_sql(_grain_q(TimeGrain.MONTH, order_by=[OrderBy(by="date", dir="asc")]))
+    assert f"ORDER BY toStartOfMonth({_DATE})" in sql
+    assert 'ORDER BY "date"' not in sql
+    guard_sql(sql)
+
+
+def test_grain_orders_by_expression_postgres() -> None:
+    sql = generate_chart_sql(
+        _grain_q(TimeGrain.MONTH, order_by=[OrderBy(by="date", dir="asc")]), dialect="postgres"
+    )
+    assert f"order by date_trunc('month', {_DATE})" in sql.lower()
+    guard_sql(sql, dialect="postgres")
+
+
+def test_windowed_grain_keeps_alias_order() -> None:
+    # the windowed path selects FROM the subquery, where "date" is an output column with no
+    # physical shadow -> it MUST keep ordering by the alias (the truncation expression isn't in
+    # the outer scope). Guards against the flat-path fix leaking into the windowed path.
+    q = _grain_q(TimeGrain.MONTH, order_by=[OrderBy(by="date", dir="asc")])
+    q = q.model_copy(
+        update={
+            "measures": [
+                Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.YOY_PCT)
+            ]
+        }
+    )
+    sql = generate_chart_sql(q)
+    assert 'ORDER BY "date"' in sql  # outer orders by the subquery's date column
+    assert "ORDER BY toStartOfMonth" not in sql
+    guard_sql(sql)
 
 
 def test_grain_composes_with_transform_month_over_month() -> None:
@@ -75,7 +117,7 @@ def test_grain_composes_with_transform_month_over_month() -> None:
         }
     )
     sql = generate_chart_sql(q)
-    assert 'toStartOfMonth("date") AS "date"' in sql  # inner truncates
+    assert f'toStartOfMonth({_DATE}) AS "date"' in sql  # inner truncates
     assert "lagInFrame(" in sql  # window over the monthly series
     guard_sql(sql)
 
@@ -93,7 +135,7 @@ def test_grain_composes_with_ratio() -> None:
         ],
     )
     sql = generate_chart_sql(q)
-    assert 'GROUP BY toStartOfMonth("date")' in sql
+    assert f"GROUP BY toStartOfMonth({_DATE})" in sql
     assert 'SUM("orders") AS "__den_0"' in sql
     guard_sql(sql)
 

@@ -29,12 +29,17 @@ def _yoy_q(grain: TimeGrain = TimeGrain.MONTH, **kwargs) -> ChartQuery:
     return ChartQuery(**defaults)
 
 
+# the grained time column is qualified with its base table (ClickHouse alias-shadow fix, see
+# test_sqlgen_grain / sqlgen._grained_source)
+_DATE = '"dm"."sales_daily"."date"'
+
+
 # --- SQL shape -------------------------------------------------------------
 
 
 def test_yoy_month_clickhouse() -> None:
     sql = generate_chart_sql(_yoy_q())
-    assert 'toStartOfMonth("date") AS "date"' in sql  # inner truncates to month
+    assert f'toStartOfMonth({_DATE}) AS "date"' in sql  # inner truncates to month
     assert 'lagInFrame(toNullable("__src_0"), 12)' in sql  # lag a full year of months
     assert "ROWS BETWEEN 12 PRECEDING AND CURRENT ROW" in sql
     assert 'AS "yoy_pct_sum_revenue"' in sql
@@ -44,7 +49,7 @@ def test_yoy_month_clickhouse() -> None:
 def test_yoy_month_postgres() -> None:
     sql = generate_chart_sql(_yoy_q(), dialect="postgres")
     assert 'LAG("__src_0", 12)' in sql
-    assert "date_trunc('month', \"date\")" in sql.lower()
+    assert f"date_trunc('month', {_DATE})" in sql.lower()
     guard_sql(sql, dialect="postgres")
 
 
