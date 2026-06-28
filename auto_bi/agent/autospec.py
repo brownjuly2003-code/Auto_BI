@@ -45,6 +45,7 @@ from auto_bi.ir.spec import (
     MeasureTransform,
     OrderBy,
     TargetBI,
+    TimeGrain,
     Viz,
     measure_alias,
 )
@@ -108,6 +109,35 @@ def _cardinality(table: Table, col: str) -> int | None:
     if table.physical is None:
         return None
     return table.physical.cardinality.get(col)
+
+
+# a line chart reads as a trend with roughly 12-60 points, not 730 noisy days. The dynamics
+# line is bucketed to a coarser grain when the time axis carries many distinct values, chosen
+# from the time column's recorded distinct-count (model cardinality): a short series stays raw.
+_GRAIN_WEEK_MIN = 62  # > ~2 months of daily points -> weekly buckets read better
+_GRAIN_MONTH_MIN = 365  # > ~a year of daily points -> monthly buckets
+
+_DYNAMICS_TITLE = {
+    TimeGrain.DAY: "Динамика",
+    TimeGrain.WEEK: "Динамика по неделям",
+    TimeGrain.MONTH: "Динамика по месяцам",
+}
+
+
+def _auto_time_grain(table: Table, time_col: Column) -> TimeGrain:
+    """Pick a readable bucket for the dynamics line from the time column's distinct-value count.
+
+    A long daily series (e.g. 730 days) reads as noise on a line; bucketing to week/month makes
+    it a trend (time_grain, deterministic — no LLM). The count comes from the model's recorded
+    cardinality (an introspected distinct count), so this stays model-driven. Idempotent on an
+    already-coarse axis (toStartOfMonth of monthly dates is a no-op) and falls back to raw day
+    when the cardinality is unknown — never guesses a grain it cannot justify."""
+    card = _cardinality(table, time_col.name)
+    if card is None or card <= _GRAIN_WEEK_MIN:
+        return TimeGrain.DAY
+    if card <= _GRAIN_MONTH_MIN:
+        return TimeGrain.WEEK
+    return TimeGrain.MONTH
 
 
 def _to_measure(col: Column) -> Measure:
@@ -243,19 +273,25 @@ def build_auto_spec(
     )
     bar_breaks = [b for b in breakdowns if b is not share_break][:_MAX_BAR_BREAKDOWNS]
 
-    # P2 — dynamics over time (ordered by time, never top-N'd)
+    # P2 — dynamics over time (ordered by time, never top-N'd). A long daily series is bucketed
+    # to a readable grain so the line shows a trend, not 730 noisy points (time_grain). DAY is
+    # left unset so a short series' SQL is unchanged.
     if time_col is not None:
+        grain = _auto_time_grain(table, time_col)
+        dyn_query = ChartQuery(
+            table=table_name,
+            dimensions=[time_col.name],
+            measures=[primary],
+            order_by=[OrderBy(by=time_col.name, dir="asc")],
+        )
+        if grain != TimeGrain.DAY:
+            dyn_query = dyn_query.model_copy(update={"time_grain": grain})
         charts.append(
             ChartSpec(
                 id="",
-                title=f"Динамика: {primary_title}",
+                title=f"{_DYNAMICS_TITLE[grain]}: {primary_title}",
                 viz=Viz.LINE,
-                query=ChartQuery(
-                    table=table_name,
-                    dimensions=[time_col.name],
-                    measures=[primary],
-                    order_by=[OrderBy(by=time_col.name, dir="asc")],
-                ),
+                query=dyn_query,
                 layout_hint=LayoutHint(w=12, h=6),
             )
         )

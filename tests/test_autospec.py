@@ -10,7 +10,7 @@ import pytest
 
 from auto_bi.agent.autospec import build_auto_spec
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
-from auto_bi.ir.spec import MeasureTransform, Viz
+from auto_bi.ir.spec import MeasureTransform, TimeGrain, Viz
 from auto_bi.ir.validate import validate_spec
 from auto_bi.semantic.model import (
     Aggregation,
@@ -127,6 +127,46 @@ def test_dynamics_line_over_time_ordered_by_time(model) -> None:
     q = lines[0].query
     assert q.dimensions == ["date"]
     assert q.order_by and q.order_by[0].by == "date" and q.order_by[0].dir == "asc"
+    # the fixture records no `date` cardinality -> the line stays at raw day (unset grain)
+    assert q.time_grain is None
+
+
+def _with_date_card(model: SemanticModel, card: int | None) -> SemanticModel:
+    """Return the model with the fact's `date` cardinality overridden (None removes it)."""
+    fact = model.table("dm.sales_daily")
+    assert fact is not None and fact.physical is not None
+    card_map = dict(fact.physical.cardinality)
+    if card is None:
+        card_map.pop("date", None)
+    else:
+        card_map["date"] = card
+    new_fact = fact.model_copy(
+        update={"physical": fact.physical.model_copy(update={"cardinality": card_map})}
+    )
+    others = [t for t in model.tables if t.name != "dm.sales_daily"]
+    return model.model_copy(update={"tables": [new_fact, *others]})
+
+
+@pytest.mark.parametrize(
+    "card,grain,title_hint",
+    [
+        (730, TimeGrain.MONTH, "по месяцам"),  # ~2 years of days -> monthly
+        (300, TimeGrain.WEEK, "по неделям"),  # ~a year of days -> weekly
+        (40, TimeGrain.DAY, None),  # a short series stays raw day
+        (None, TimeGrain.DAY, None),  # unknown cardinality -> raw day
+    ],
+)
+def test_dynamics_grain_from_time_cardinality(model, card, grain, title_hint) -> None:
+    m = _with_date_card(model, card)
+    spec = build_auto_spec(m, "dm.sales_daily")
+    line = next(c for c in spec.charts if c.viz == Viz.LINE)
+    if grain == TimeGrain.DAY:
+        assert line.query.time_grain is None  # DAY left unset -> SQL unchanged for short series
+        assert line.title.startswith("Динамика:")
+    else:
+        assert line.query.time_grain == grain
+        assert title_hint in line.title
+    assert validate_spec(spec, m) == []  # still a first-class, valid spec
 
 
 def test_breakdowns_use_joined_attributes_not_raw_ids(model) -> None:

@@ -125,6 +125,7 @@ tables:
       store_id: 4200
       product_id: 2000
       manager_id: 16825
+      date: 730
 - name: dm.stores
   description: Справочник магазинов
   grain:

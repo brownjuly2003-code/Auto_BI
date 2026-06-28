@@ -146,11 +146,24 @@ class ClickHouseIntrospector:
     def _profile_cardinality(
         self, db: str, table: str, columns: list[Column], rows: int
     ) -> dict[str, int]:
-        dims = [c.name for c in columns if c.role == ColumnRole.DIMENSION]
-        if not dims or rows == 0:
+        if rows == 0:
             return {}
-        exprs = ", ".join(f"uniqCombined({_ident(d)}) AS {_ident(d)}" for d in dims)
-        result = self._run(f"SELECT {exprs} FROM {self._source(db, table, rows)}")
+        out: dict[str, int] = {}
+        # dimensions are profiled on the LIMIT-ed sample (cheap, good enough for a top-N cap)
+        dims = [c.name for c in columns if c.role == ColumnRole.DIMENSION]
+        if dims:
+            out.update(self._uniq(self._source(db, table, rows), dims))
+        # TIME columns are profiled on the FULL table: a fact is usually sorted by time, so a
+        # leading-rows sample would see only the first few periods and badly undercount the
+        # distinct count the auto-overview uses to pick a readable line grain.
+        times = [c.name for c in columns if c.role == ColumnRole.TIME]
+        if times:
+            out.update(self._uniq(f"{_ident(db)}.{_ident(table)}", times))
+        return out
+
+    def _uniq(self, source: str, cols: list[str]) -> dict[str, int]:
+        exprs = ", ".join(f"uniqCombined({_ident(c)}) AS {_ident(c)}" for c in cols)
+        result = self._run(f"SELECT {exprs} FROM {source}")
         if not result:
             return {}
         # uniqCombined yields NULL on degenerate columns (e.g. Nullable(Nothing)

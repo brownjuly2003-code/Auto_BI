@@ -40,7 +40,9 @@ def fake_run_query(sql: str) -> list[dict]:
     if "system.columns" in sql:
         return COLUMNS
     if "uniqCombined" in sql and "sales_daily" in sql:
-        return [{"store_id": 4200, "product_id": 2000}]
+        if "store_id" in sql:  # sampled dimension profile
+            return [{"store_id": 4200, "product_id": 2000}]
+        return [{"date": 730}]  # full-table TIME-column profile
     if "uniqCombined" in sql and "stores" in sql:
         return [{"id": 4200, "city": 20}]
     if "GROUP BY" in sql and "city" in sql:
@@ -60,7 +62,7 @@ def test_tables_and_physical() -> None:
     assert fact.physical.sorting_key == ["date", "store_id", "product_id"]
     assert fact.physical.partition_key == "toYYYYMM(date)"
     assert fact.physical.rows == 100_000_000
-    assert fact.physical.cardinality == {"store_id": 4200, "product_id": 2000}
+    assert fact.physical.cardinality == {"store_id": 4200, "product_id": 2000, "date": 730}
     assert fact.grain == ["date", "store_id", "product_id"]
     assert fact.description == "Дневные продажи"
 
@@ -134,3 +136,23 @@ def test_cardinality_profile_tolerates_null_uniq() -> None:
     table = model.table("dm.degenerate")
     assert table is not None
     assert table.physical.cardinality["pii_source"] == 0
+
+
+def test_time_column_profiled_on_full_table_not_sample() -> None:
+    """A fact sorted by time would undercount distinct dates from a leading-rows sample, so the
+    TIME column is profiled on the full table (no LIMIT), unlike the LIMIT-ed dimension profile."""
+    seen: list[str] = []
+
+    def run(sql: str) -> list[dict]:
+        seen.append(sql)
+        return fake_run_query(sql)
+
+    fact = ClickHouseIntrospector(run).introspect("dm").table("dm.sales_daily")
+    assert fact is not None
+    assert fact.physical.cardinality["date"] == 730  # full count, not the ~first-days sample
+    date_q = next(
+        s for s in seen if "uniqCombined" in s and "sales_daily" in s and "store_id" not in s
+    )
+    dim_q = next(s for s in seen if "uniqCombined" in s and "store_id" in s)
+    assert "LIMIT" not in date_q  # time column: full scan
+    assert "LIMIT" in dim_q  # dimensions: sampled (100M rows > SAMPLE_LIMIT)
