@@ -28,6 +28,14 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 **B1** yoy-KPI · **B2** eval-кейс авто-обзора · **B3** percent-aware нарратив yoy · **D1** advisor-правило ·
 **H1** флейк-харден — ниже помечены 🟢.
 
+> **АУДИТ ПОСТ-cont.16 (2026-06-29, `6d0c8da`):** на вопрос «всё ли возможное реализовано» —
+> роадмап ФИЧ исчерпан, но адверсариальный аудит самого кода нашёл реальные баги в недавних
+> примитивах A3/A4 (0 HIGH · 3 MED · 3 LOW). Исправлено 5 offline-верифицируемых багфиксов
+> (running_share reversed Pareto в normalize · histogram NULL dialect-split в sqlgen · histogram+join
+> валидация · insights running_share/share_of_total · measure-alias uniqueness), CH live-verify 11/11.
+> Осталось стенд-gated: **C7** DataLens histogram bucket sort (ниже). **Урок: «фичи исчерпаны» ≠
+> «код без багов» — адверсариальный аудит обязателен перед выводом «брать нечего».**
+
 ## Гейт-легенда
 
 - 🟢 **АВТО** — детерминированно, offline- или stand-optional-верифицируемо, без правки
@@ -83,6 +91,7 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 | C4 | 🔵 СТЕНД | **Luxms-адаптер** — GO-with-stand (полный REST/CRUD source→cube→dashlet→dashboard, JWT, нативный CH). Реализация по зеркалу DataLens-трека. **Gate:** демо-креды `sandbox.demo.luxmsbi.com` ИЛИ self-hosted Docker-стенд на Mac. | `docs/plans/2026-06-14-luxms-adapter-plan.md`. L |
 | C5 | 🔵 ЛИЦЕНЗИЯ | **Visiology-адаптер** — NO-GO автономно (нет public REST для авторинга, только UI-Designer). **Gate:** лицензионный стенд v3 от заказчика. | `docs/plans/2026-06-14-visiology-spike.md` |
 | C6 | 🟣 ВЛАДЕЛЕЦ | **Новый BI-движок** (Metabase / Apache Superset Cloud / …) — по запросу, через фабрику `adapters/factory`. | — |
+| C7 | 🔵 СТЕНД | **DataLens histogram bucket sort** (аудит пост-cont.16) — корзины гистограммы рендерятся ЛЕКСИКОГРАФИЧЕСКИ («50» после «350»): категориальная ось без `sort`-поля (`is_horizontal_bar`=False для HISTOGRAM → ветка `sort` не ставится). SQL корректен (`ORDER BY bucket`), Superset ОК → adapter-инконсистентность. Фикс (sort по числовой корзине, ASC) требует проверки sort-семантики DataLens на живом стенде — не реверсить вслепую (`autobi-bi-engine-limits`). | `adapters/datalens/chart_config.py`; verify: стенд. S |
 
 ## Трек D — Advisor / Feasibility (ров)
 
