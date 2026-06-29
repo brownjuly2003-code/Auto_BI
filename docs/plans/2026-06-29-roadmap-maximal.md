@@ -32,7 +32,7 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 > роадмап ФИЧ исчерпан, но адверсариальный аудит самого кода нашёл реальные баги в недавних
 > примитивах A3/A4 (0 HIGH · 3 MED · 3 LOW). Исправлено 5 offline-верифицируемых багфиксов
 > (running_share reversed Pareto в normalize · histogram NULL dialect-split в sqlgen · histogram+join
-> валидация · insights running_share/share_of_total · measure-alias uniqueness), CH live-verify 11/11.
+> валидация · insights running_share/share_of_total · measure-alias uniqueness), CH live-verify все проверки PASS.
 > Осталось стенд-gated: **C7** DataLens histogram bucket sort (ниже). **Урок: «фичи исчерпаны» ≠
 > «код без багов» — адверсариальный аудит обязателен перед выводом «брать нечего».**
 
