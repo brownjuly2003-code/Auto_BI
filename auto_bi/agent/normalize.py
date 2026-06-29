@@ -27,6 +27,7 @@ from auto_bi.ir.spec import (
     ChartSpec,
     DashboardSpec,
     JoinSpec,
+    MeasureTransform,
     OrderBy,
     Viz,
     column_alias,
@@ -86,9 +87,17 @@ def _normalize_chart(chart: ChartSpec, model: SemanticModel) -> ChartSpec:
         return chart
 
     cap = _PIE_TOP_N if chart.viz == Viz.PIE else _DEFAULT_TOP_N
+    primary = query.measures[0]
+    # running_share is a CUMULATIVE share: the window ranks categories by contribution
+    # descending, so the largest contributor carries the SMALLEST value and the smallest
+    # reaches 1.0. Ranking the display by it DESCENDING (the usual top-N) would keep the tail —
+    # the smallest contributors near 100% — and reverse the Pareto. Its correct top-N is the
+    # share ASCENDING: the biggest contributors (the Pareto head) first. Every other measure
+    # ranks biggest-first as usual.
+    desc = primary.transform != MeasureTransform.RUNNING_SHARE
     new_query = query.model_copy(
         update={
-            "order_by": [OrderBy(by=measure_alias(query.measures[0]), dir="desc")],
+            "order_by": [OrderBy(by=measure_alias(primary), dir="desc" if desc else "asc")],
             "limit": min(query.limit, cap),  # tighten only; never widen an explicit small limit
         }
     )

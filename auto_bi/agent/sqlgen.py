@@ -460,8 +460,16 @@ def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: boo
     inside the bucket expression so its inner reference cannot bind to the SELECT alias of the
     same bare name (ClickHouse alias-shadow; see _grained_source). Filters apply to BOTH the
     bucket-width subquery and the outer query so the bins reflect exactly the filtered range.
+    Rows whose binned value is NULL are excluded from both: a NULL belongs to no bucket, and the
+    dialects otherwise disagree on where it lands — ClickHouse isolates it in a NULL bucket
+    (least propagates NULL) while Postgres/Greenplum `least` ignores NULL and folds it into the
+    top bucket (silent skew). Excluding it up front makes the histogram dialect-stable.
     """
     assert query.bins is not None  # validate guarantees this on the histogram path
+
+    def _not_null(col: exp.Expression) -> exp.Expression:
+        return exp.Not(this=exp.Is(this=col, expression=exp.Null()))
+
     dim = query.dimensions[0]
     bare = column_alias(dim) if "." in dim else dim
     col_q = _grained_source(query, dim)  # base-table-qualified binned column (anti alias-shadow)
@@ -486,6 +494,7 @@ def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: boo
     ).from_(exp.to_table(query.table))
     for qf in query.filters:
         sub = sub.where(_filter_expr(qf))
+    sub = sub.where(_not_null(col_bare.copy()))  # min/width over non-NULL values only
 
     mn = exp.column("mn", table="b", quoted=True)
     w = exp.column("w", table="b", quoted=True)
@@ -509,6 +518,10 @@ def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: boo
     )
     for qf in query.filters:
         select = select.where(_filter_expr(qf))
+    # drop NULL-valued rows: a NULL is in no bucket and the dialects disagree on where it lands
+    # (CH → NULL bucket, Postgres least() → top bucket). Qualified by the base table so it cannot
+    # bind to the bucket SELECT alias of the same bare name (alias-shadow; see _grained_source).
+    select = select.where(_not_null(_grained_source(query, dim)))
     select = select.group_by(bucket.copy())
     # order by the bucket EXPRESSION (not the alias) so it cannot bind to the physical column
     select = select.order_by(exp.Ordered(this=bucket.copy()))

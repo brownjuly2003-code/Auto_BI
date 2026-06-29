@@ -141,6 +141,17 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
             f"{prefix}: dimension columns collide by bare name {dupes} — "
             "одинаковые имена из разных таблиц в одном чарте не поддерживаются"
         )
+    # measures must also resolve to distinct SELECT aliases: two measures sharing a
+    # measure_alias (e.g. two unlabeled count(id), or a label colliding with another's
+    # default alias) emit duplicate aliases in both the flat and windowed SQL → a ClickHouse
+    # "duplicate alias" at EXPLAIN. Mirror the dimension collision check for measures.
+    m_aliases = [measure_alias(m) for m in chart.query.measures]
+    if len(m_aliases) != len(set(m_aliases)):
+        m_dupes = sorted({a for a in m_aliases if m_aliases.count(a) > 1})
+        errors.append(
+            f"{prefix}: measures collide by alias {m_dupes} — "
+            "две меры дают одинаковый SELECT-алиас (задайте label одной из них)"
+        )
     used_tables = {c.rpartition(".")[0] for c in group_cols if "." in c}
     used_tables.update(
         qf.column.rpartition(".")[0] for qf in chart.query.filters if "." in qf.column
@@ -338,6 +349,14 @@ def _validate_histogram(chart: ChartSpec, model: SemanticModel, prefix: str) -> 
             )
     if q.time_grain is not None:
         errors.append(f"{prefix}: histogram несовместима с time_grain")
+    if q.joins:
+        # _generate_histogram_sql bins a column of the BASE table (FROM table CROSS JOIN <width>);
+        # it never emits query.joins, so any joined-table reference would produce broken SQL.
+        # Reject at validation (a clear repair-loop error) instead of a late EXPLAIN failure.
+        errors.append(
+            f"{prefix}: histogram не поддерживает join — бинирование идёт по колонке базовой "
+            "таблицы (вынесите join-измерение в отдельный чарт)"
+        )
     return errors
 
 

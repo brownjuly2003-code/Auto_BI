@@ -18,6 +18,7 @@ from auto_bi.ir.spec import (
     Aggregation,
     ChartQuery,
     ChartSpec,
+    DashboardSpec,
     Measure,
     MeasureTransform,
     Viz,
@@ -124,6 +125,37 @@ def test_structure_chart_reports_largest_share() -> None:
     assert [o.kind for o in share] == ["share_lead"]
     assert share[0].subject == "магазин у дома" and share[0].value == pytest.approx(41.0)
     assert "41%" in share[0].text
+
+
+def test_running_share_bar_emits_no_share_lead() -> None:
+    # a running_share bar is a CUMULATIVE Pareto: its max value is ~1.0 at the SMALLEST category,
+    # so _observe_share would report a confidently-wrong "largest share: <smallest>, 100%". The
+    # dispatcher skips it — the chart is itself the Pareto insight (audit LOW).
+    model = SemanticModel.load(MODEL)
+    chart = ChartSpec(
+        id="rs",
+        title="Парето по магазинам",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["store_id"],
+            measures=[
+                Measure(
+                    column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.RUNNING_SHARE
+                )
+            ],
+        ),
+    )
+
+    def rq(sql: str) -> list[dict]:
+        # non-empty so the dispatch is reached; cumulative share rising to 1.0 at the smallest
+        return [
+            {"store_id": s, "running_share_sum_revenue": v}
+            for s, v in [(1, 0.6), (2, 0.85), (3, 1.0)]
+        ]
+
+    ins = analyze_spec(DashboardSpec(title="d", charts=[chart]), model, rq)
+    assert all(o.chart_id != "rs" for o in ins.observations)
 
 
 def test_render_lists_each_observation_under_a_header() -> None:

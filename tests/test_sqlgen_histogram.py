@@ -90,3 +90,28 @@ def test_histogram_all_equal_values_one_bucket() -> None:
     rows = con.execute(generate_chart_sql(_hist_q(4), dialect="postgres")).fetchall()
     assert sum(r[1] for r in rows) == 10
     assert len(rows) == 1
+
+
+# --- NULL handling (a NULL belongs to no bucket; dialect-stable exclusion) --------------
+
+
+def test_histogram_excludes_null_both_dialects() -> None:
+    # a NOT NULL guard on BOTH the width subquery and the outer count, in each dialect
+    for dialect in ("clickhouse", "postgres"):
+        sql = generate_chart_sql(_hist_q(5), dialect=dialect)
+        assert sql.count("IS NULL") == 2
+
+
+def test_histogram_null_values_excluded_not_folded_into_top_bucket() -> None:
+    duckdb = pytest.importorskip("duckdb")
+    con = duckdb.connect()
+    con.execute("CREATE SCHEMA dm; CREATE TABLE dm.products (price DOUBLE)")
+    con.executemany("INSERT INTO dm.products VALUES (?)", [(float(i),) for i in range(100)])
+    con.executemany("INSERT INTO dm.products VALUES (?)", [(None,)] * 7)  # NULLs -> no bucket
+    rows = con.execute(generate_chart_sql(_hist_q(5), dialect="postgres")).fetchall()
+    counts = [r[1] for r in rows]
+    # Postgres LEAST() ignores NULL and would otherwise fold the 7 NULLs into the top bucket;
+    # the guard excludes them, so each bucket keeps exactly 20 and the total stays 100
+    assert counts == [20, 20, 20, 20, 20]
+    assert sum(counts) == 100
+    assert all(r[0] is not None for r in rows)  # no NULL-bound bucket

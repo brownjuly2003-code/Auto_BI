@@ -220,3 +220,26 @@ def test_pop_on_line_is_left_untouched(demo_model) -> None:
     out = apply_chart_defaults(_spec(chart), demo_model).charts[0].query
     assert out.order_by == []  # unchanged
     assert "OVER" in generate_chart_sql(out).upper()
+
+
+def test_running_share_bar_orders_by_share_ascending(demo_model) -> None:
+    # running_share is a CUMULATIVE Pareto: the largest contributor carries the SMALLEST value
+    # and the smallest reaches ~1.0. The top-N must keep the biggest contributors via the share
+    # ASCENDING — DESC (the usual rank) would keep the tail and reverse the chart (audit MED).
+    from auto_bi.ir.spec import MeasureTransform, measure_alias
+
+    rs = Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.RUNNING_SHARE)
+    chart = _chart(Viz.BAR, dimensions=["store_id"], measures=[rs])
+    q = _only(apply_chart_defaults(_spec(chart), demo_model))
+    assert q.order_by == [OrderBy(by=measure_alias(rs), dir="asc")]
+    assert q.limit == 25
+
+
+def test_share_of_total_bar_still_orders_descending(demo_model) -> None:
+    # regression: ONLY running_share flips to asc; a per-category share still ranks biggest-first
+    from auto_bi.ir.spec import MeasureTransform, measure_alias
+
+    sot = Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL)
+    chart = _chart(Viz.BAR, dimensions=["store_id"], measures=[sot])
+    q = _only(apply_chart_defaults(_spec(chart), demo_model))
+    assert q.order_by == [OrderBy(by=measure_alias(sot), dir="desc")]

@@ -585,3 +585,44 @@ def test_histogram_two_dimensions_is_rejected(demo_model) -> None:
     bad = _hist_chart(dimensions=["price", "category"])
     errors = validate_spec(spec(bad), demo_model)
     assert any("exactly one dimension" in e for e in errors)
+
+
+def test_histogram_with_join_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import JoinSpec
+
+    # the generator bins a base-table column and never emits query.joins, so a join would
+    # silently produce broken SQL — reject at validation with a clear hint (audit LOW)
+    bad = _hist_chart(
+        joins=[
+            JoinSpec(table="dm.stores", on_left="dm.sales_daily.store_id", on_right="dm.stores.id")
+        ]
+    )
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("histogram не поддерживает join" in e for e in errors)
+
+
+# --- measure alias uniqueness (two measures must not share a SELECT alias) ---------------------
+
+
+def test_measures_colliding_by_alias_rejected(demo_model) -> None:
+    # two unlabeled sum(revenue) both resolve to "sum_revenue" -> a duplicate SELECT alias ->
+    # a ClickHouse "duplicate alias" at EXPLAIN; reject early like the dimension check (audit LOW)
+    bad = chart(
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM),
+            Measure(column="revenue", agg=Aggregation.SUM),
+        ]
+    )
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("collide by alias" in e for e in errors)
+
+
+def test_distinct_measure_aliases_ok(demo_model) -> None:
+    # the check must not false-positive on two measures with different aliases
+    ok = chart(
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM),
+            Measure(column="orders", agg=Aggregation.SUM),
+        ]
+    )
+    assert validate_spec(spec(ok), demo_model) == []

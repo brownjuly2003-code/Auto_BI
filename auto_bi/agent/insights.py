@@ -36,6 +36,7 @@ from auto_bi.introspect.base import RunQuery
 from auto_bi.ir.spec import (
     ChartSpec,
     DashboardSpec,
+    MeasureTransform,
     Viz,
     column_alias,
     is_percent_measure,
@@ -168,6 +169,12 @@ def _observe_chart(chart: ChartSpec, run_query: RunQuery, dialect: str) -> list[
             return []
         return _observe_line(chart, rows, m_alias, d_alias)
     if chart.viz in (Viz.BAR, Viz.STACKED_BAR, Viz.PIE):
+        if primary.transform == MeasureTransform.RUNNING_SHARE:
+            # a running_share bar is a cumulative Pareto ranking: its values rise to ~100% at the
+            # SMALLEST category, so "the largest part" (what _observe_share reports) is always the
+            # tail at ~100% — meaningless. The chart itself is the Pareto insight; emit nothing
+            # rather than a confidently-wrong "largest share" line (mirrors the percent-line skip).
+            return []
         if is_percent_measure(primary):
             return _observe_share(chart, rows, m_alias, d_alias)
         return _observe_bar(chart, rows, m_alias, d_alias)
