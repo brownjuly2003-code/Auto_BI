@@ -190,6 +190,8 @@ def generate_chart_sql(
     computes the base aggregates and an outer SELECT applies the window / division over them
     (see `_generate_windowed_sql`).
     """
+    if query.bins is not None:
+        return _generate_histogram_sql(query, dialect=dialect, apply_limit=apply_limit)
     if any(_is_derived(m) for m in query.measures):
         return _generate_windowed_sql(query, dialect=dialect, apply_limit=apply_limit)
     return _generate_flat_sql(query, dialect=dialect, apply_limit=apply_limit)
@@ -443,3 +445,73 @@ def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool
     outer = exp.select(*outer_dims, *outer_measures).from_(inner.subquery(alias="t"))
     outer = _apply_order_and_limit(outer, query, apply_limit=apply_limit)
     return outer.sql(dialect=dialect, identify=True)
+
+
+def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) -> str:
+    """Equal-width histogram of the numeric x-dimension (validate guarantees exactly one + bins).
+
+    Bins `query.dimensions[0]` into `query.bins` equal-width buckets and counts rows per bucket.
+    A one-row subquery `b` computes the min and the bucket width over the (filtered) table; the
+    outer query maps each row to its bucket's lower bound `mn + idx*w` (idx = floor((x-mn)/w),
+    clamped to bins-1 so the maximum value joins the last bucket instead of a singleton one past
+    it; a zero width — all values equal — yields a single NULL bucket via NULLIF). The bucket is
+    aliased back to the dimension's bare name so adapters address it like any x-axis (a histogram
+    renders as a bar over ordered buckets). The binned column is qualified with the base table
+    inside the bucket expression so its inner reference cannot bind to the SELECT alias of the
+    same bare name (ClickHouse alias-shadow; see _grained_source). Filters apply to BOTH the
+    bucket-width subquery and the outer query so the bins reflect exactly the filtered range.
+    """
+    assert query.bins is not None  # validate guarantees this on the histogram path
+    dim = query.dimensions[0]
+    bare = column_alias(dim) if "." in dim else dim
+    col_q = _grained_source(query, dim)  # base-table-qualified binned column (anti alias-shadow)
+    col_bare = _dim_column(bare)
+
+    # The binned column is cast to double for all bucket arithmetic: ClickHouse does Decimal
+    # division/floor at the dividend's scale (a Decimal price would bucket at boundaries
+    # differently than float), so equal-width binning must run in floating point — the same
+    # Decimal-vs-float lesson as _safe_div (live-verified: a Decimal-path histogram mis-binned
+    # boundary rows vs the float hand calc). Postgres double is exact; the cast only normalises.
+    col_bare_d = exp.cast(col_bare.copy(), "DOUBLE")
+    col_q_d = exp.cast(col_q, "DOUBLE")
+
+    # one-row subquery b: min + equal-bucket width over the (filtered) table
+    span = exp.Sub(
+        this=exp.func("max", col_bare_d.copy()), expression=exp.func("min", col_bare_d.copy())
+    )
+    width = exp.Div(this=exp.paren(span), expression=exp.Literal.number(query.bins))
+    sub = exp.select(
+        exp.alias_(exp.func("min", col_bare_d.copy()), "mn", quoted=True),  # type: ignore[arg-type]
+        exp.alias_(width, "w", quoted=True),  # type: ignore[arg-type]
+    ).from_(exp.to_table(query.table))
+    for qf in query.filters:
+        sub = sub.where(_filter_expr(qf))
+
+    mn = exp.column("mn", table="b", quoted=True)
+    w = exp.column("w", table="b", quoted=True)
+    idx = exp.func(
+        "floor",
+        exp.Div(
+            this=exp.paren(exp.Sub(this=col_q_d, expression=mn.copy())),
+            expression=exp.Nullif(this=w.copy(), expression=exp.Literal.number(0)),
+        ),
+    )
+    idx_clamped = exp.func("least", idx, exp.Literal.number(query.bins - 1))
+    bucket = exp.Add(
+        this=mn.copy(), expression=exp.Mul(this=exp.paren(idx_clamped), expression=w.copy())
+    )
+
+    measure_expr = _measure_expr(query.measures[0], query.measures[0].column)
+    select = (
+        exp.select(exp.alias_(bucket, bare, quoted=True), measure_expr)  # type: ignore[arg-type]
+        .from_(exp.to_table(query.table))
+        .join(sub.subquery(alias="b"), join_type="cross")
+    )
+    for qf in query.filters:
+        select = select.where(_filter_expr(qf))
+    select = select.group_by(bucket.copy())
+    # order by the bucket EXPRESSION (not the alias) so it cannot bind to the physical column
+    select = select.order_by(exp.Ordered(this=bucket.copy()))
+    if apply_limit:
+        select = select.limit(query.limit)
+    return select.sql(dialect=dialect, identify=True)

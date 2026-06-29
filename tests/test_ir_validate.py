@@ -535,3 +535,53 @@ def test_running_share_does_not_require_time_axis(demo_model) -> None:
     ok = _t_chart(MeasureTransform.RUNNING_SHARE, viz=Viz.BAR, dimensions=["store_id"])
     errors = validate_spec(spec(ok), demo_model)
     assert not any("колонкой времени" in e for e in errors)
+
+
+# --- histogram (equal-width binning of a numeric measure column) ------------------------------
+
+
+def _hist_chart(bins=5, dim="revenue", agg=Aggregation.COUNT, viz=Viz.HISTOGRAM, **q):
+    defaults = dict(
+        table="dm.sales_daily",
+        dimensions=[dim],
+        measures=[Measure(column="revenue", agg=agg)],
+        bins=bins,
+    )
+    defaults.update(q)
+    return ChartSpec(id="c1", title="t", viz=viz, query=ChartQuery(**defaults))
+
+
+def test_histogram_over_numeric_measure_is_valid(demo_model) -> None:
+    # revenue is a numeric measure column in dm.sales_daily -> a histogram of it is valid
+    assert validate_spec(spec(_hist_chart()), demo_model) == []
+
+
+def test_histogram_without_bins_is_rejected(demo_model) -> None:
+    bad = _hist_chart(bins=None)
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("histogram требует bins" in e for e in errors)
+
+
+def test_bins_without_histogram_viz_is_rejected(demo_model) -> None:
+    bad = _hist_chart(viz=Viz.BAR)
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("bins задаётся только для viz=histogram" in e for e in errors)
+
+
+def test_histogram_over_non_measure_dimension_is_rejected(demo_model) -> None:
+    # store_id is a role=dimension column -> not a numeric quantity to bin
+    bad = _hist_chart(dim="store_id")
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("role=measure" in e for e in errors)
+
+
+def test_histogram_non_count_measure_is_rejected(demo_model) -> None:
+    bad = _hist_chart(agg=Aggregation.SUM)
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("простым count" in e for e in errors)
+
+
+def test_histogram_two_dimensions_is_rejected(demo_model) -> None:
+    bad = _hist_chart(dimensions=["price", "category"])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("exactly one dimension" in e for e in errors)

@@ -49,6 +49,7 @@ VIZ_TYPE = {
     Viz.TABLE: "table",
     Viz.PIVOT: "pivot_table_v2",
     Viz.HEATMAP: "heatmap_v2",
+    Viz.HISTOGRAM: "echarts_timeseries_bar",  # vertical bars over the SQL-computed buckets
 }
 
 ROW_HEIGHT_UNITS = 12  # layout_hint.h (1..12) -> superset grid height units
@@ -173,10 +174,11 @@ def build_form_data(chart: ChartSpec, dataset_id: int, *, horizontal: bool = Fal
     }
     if fmt:
         form_data["y_axis_format"] = fmt
-    if chart.viz in (Viz.BAR, Viz.STACKED_BAR):
-        # a numeric dimension (store_id) otherwise lands on a continuous value
-        # axis: thin bars at their numeric positions instead of categories
+    if chart.viz in (Viz.BAR, Viz.STACKED_BAR, Viz.HISTOGRAM):
+        # a numeric dimension (store_id) / a histogram's numeric bucket bounds otherwise land on
+        # a continuous value axis: thin bars at their numeric positions instead of labeled buckets
         form_data["xAxisForceCategorical"] = True
+    if chart.viz in (Viz.BAR, Viz.STACKED_BAR):
         if horizontal:
             # categorical ranking -> horizontal bars so long RU labels get the full row
             # width instead of truncating/rotating on a vertical x-axis (Cleveland/Few)

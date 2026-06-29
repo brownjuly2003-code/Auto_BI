@@ -108,6 +108,7 @@ _VIZ_MIN_H: dict[Viz, int] = {
     Viz.AREA: 9,
     Viz.BAR: 9,
     Viz.STACKED_BAR: 9,
+    Viz.HISTOGRAM: 9,
 }
 _DEFAULT_MIN_H = 9
 _HINT_DEFAULT_H = LayoutHint().h  # hint.h above this default bumps the floor up

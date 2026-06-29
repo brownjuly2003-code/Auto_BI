@@ -35,6 +35,7 @@ class Viz(StrEnum):
     TABLE = "table"
     PIVOT = "pivot"
     HEATMAP = "heatmap"
+    HISTOGRAM = "histogram"
 
 
 class FilterOp(StrEnum):
@@ -226,6 +227,12 @@ class ChartQuery(BaseModel):
     # optional truncation of the time x-axis (the first dimension): buckets a date series to
     # week/month/quarter/year so a long daily run reads as a trend. None => raw dimension.
     time_grain: TimeGrain | None = None
+    # optional histogram: bins the numeric x-dimension (the first dimension) into this many
+    # equal-width buckets and counts rows per bucket (a distribution view). When set, SQL_GEN
+    # takes the histogram path: the x-dimension is replaced by each bucket's lower bound and the
+    # single measure becomes the per-bucket count. None => not a histogram (the common case).
+    # Used only with viz=HISTOGRAM (enforced by validation).
+    bins: int | None = Field(default=None, ge=2, le=200)
 
     def group_columns(self) -> list[str]:
         """All dimension-like columns to GROUP BY, deduped, order preserved.

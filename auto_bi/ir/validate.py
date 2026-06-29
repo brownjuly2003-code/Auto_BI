@@ -190,6 +190,7 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
     errors.extend(_validate_transforms(chart, model, prefix))
     errors.extend(_validate_ratios(chart, prefix))
     errors.extend(_validate_time_grain(chart, model, prefix))
+    errors.extend(_validate_histogram(chart, model, prefix))
     errors.extend(_validate_viz_shape(chart, prefix))
     return errors
 
@@ -305,6 +306,41 @@ def _validate_time_grain(chart: ChartSpec, model: SemanticModel, prefix: str) ->
     return []
 
 
+def _validate_histogram(chart: ChartSpec, model: SemanticModel, prefix: str) -> list[str]:
+    """A histogram (`bins` set) bins the numeric x-dimension into equal-width buckets and counts
+    rows per bucket. `bins` and viz=HISTOGRAM imply each other; the binned dimension must be a
+    numeric MEASURE column (a quantity to distribute, not an id/category); the single measure is
+    a plain COUNT (count of rows per bucket — no transform/ratio/other aggregate). Shape (exactly
+    one dimension + one measure, no other roles) is enforced in `_validate_viz_shape`."""
+    q = chart.query
+    is_hist = chart.viz == Viz.HISTOGRAM
+    if (q.bins is not None) != is_hist:
+        if is_hist:
+            return [f"{prefix}: histogram требует bins (число корзин)"]
+        return [f"{prefix}: bins задаётся только для viz=histogram (получено {chart.viz.value})"]
+    if not is_hist:
+        return []
+    errors: list[str] = []
+    table = model.table(q.table)
+    if q.dimensions and table is not None:
+        ref = q.dimensions[0]
+        col = table.column(ref.rpartition(".")[2] if "." in ref else ref)
+        if col is not None and col.role != ColumnRole.MEASURE:
+            errors.append(
+                f"{prefix}: histogram бинирует числовую меру — измерение {ref!r} имеет роль "
+                f"{col.role.value}, нужна колонка role=measure (количественная)"
+            )
+    for m in q.measures:
+        if m.agg != Aggregation.COUNT or m.transform is not None or m.denominator is not None:
+            errors.append(
+                f"{prefix}: мера гистограммы должна быть простым count (число строк в корзине), "
+                "без transform/denominator"
+            )
+    if q.time_grain is not None:
+        errors.append(f"{prefix}: histogram несовместима с time_grain")
+    return errors
+
+
 def _validate_viz_shape(chart: ChartSpec, prefix: str) -> list[str]:
     """Compile-level shape rules so adapters never meet impossible charts.
 
@@ -351,6 +387,14 @@ def _validate_viz_shape(chart: ChartSpec, prefix: str) -> list[str]:
             )
         if len(q.measures) != 1:
             errors.append(f"{prefix}: heatmap needs exactly one measure (got {len(q.measures)})")
+        forbid(series, rows, cols)
+    elif chart.viz == Viz.HISTOGRAM:
+        if len(q.dimensions) != 1:
+            errors.append(
+                f"{prefix}: histogram needs exactly one dimension to bin (got {len(q.dimensions)})"
+            )
+        if len(q.measures) != 1:
+            errors.append(f"{prefix}: histogram needs exactly one measure (got {len(q.measures)})")
         forbid(series, rows, cols)
 
     return errors

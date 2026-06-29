@@ -75,6 +75,7 @@ VIZ_ID: dict[Viz, str] = {
     Viz.TABLE: "flatTable",
     Viz.PIVOT: "pivotTable",
     Viz.HEATMAP: "pivotTable",
+    Viz.HISTOGRAM: "column",  # vertical bars over the SQL-computed buckets (binning is in SQL_GEN)
 }
 
 # viz that degrade from their IR intent (callers should surface this in the build log,
@@ -224,15 +225,16 @@ def build_chart_shared(
         # metric field caption — the card shows one human label + the value, not the raw alias
         # "sum_revenue" beneath it (dashboard-craft §3: a KPI card is label / value, no noise).
         placeholders = [{"id": "measures", "items": [item(measure_alias(q.measures[0]), title="")]}]
-    elif chart.viz in (Viz.LINE, Viz.AREA, Viz.BAR, Viz.STACKED_BAR):
+    elif chart.viz in (Viz.LINE, Viz.AREA, Viz.BAR, Viz.STACKED_BAR, Viz.HISTOGRAM):
         # series + any extra dimensions become the color breakdown (deduped, order kept)
         breakdown: dict[str, None] = {}
         for r in (*q.series, *q.dimensions[1:]):
             breakdown.setdefault(r, None)
-        # bar/stacked_bar -> "column" viz: a numeric dimension on the categorical X / color
-        # would land on a continuous axis (a wall of thin bars) / a color gradient, so discretize
-        # it (B2). line/area keep a continuous axis (time / number) — they read along it.
-        discrete = chart.viz in (Viz.BAR, Viz.STACKED_BAR)
+        # bar/stacked_bar/histogram -> "column" viz: a numeric dimension on the categorical X /
+        # color would land on a continuous axis (a wall of thin bars) / a color gradient, so
+        # discretize it (B2; a histogram's bucket bounds are numeric -> each bucket a category).
+        # line/area keep a continuous axis (time / number) — they read along it.
+        discrete = chart.viz in (Viz.BAR, Viz.STACKED_BAR, Viz.HISTOGRAM)
         colors = dims(list(breakdown), discrete=discrete)
         placeholders = [
             {"id": "x", "items": dims(q.dimensions[:1], discrete=discrete)},

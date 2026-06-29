@@ -18,8 +18,9 @@ non-interactive ssh PATH. Exits non-zero on any mismatch and exits 2 when the st
 
 Covers: ratio measure (num/den), time_grain (month buckets, week = Monday), yoy_pct, mom
 (grain + pop), lag_periods (pop_pct vs N periods back), running_share (Pareto cumulative share,
-window ordered by the measure), and the auto-overview (real model.yaml -> build_auto_spec -> the
-dynamics line is a readable monthly trend whose totals match the live data).
+window ordered by the measure), histogram (equal-width binning of a numeric column), and the
+auto-overview (real model.yaml -> build_auto_spec -> the dynamics line is a readable monthly
+trend whose totals match the live data).
 """
 
 from __future__ import annotations
@@ -220,6 +221,46 @@ def _verify_running_share(ch: Runner, failures: list[str]) -> None:
     )
 
 
+def _verify_histogram(ch: Runner, failures: list[str]) -> None:
+    print("\n[histogram] equal-width binning of dm.products.price")
+    # bin product prices into 8 buckets; the generated SQL uses a CROSS JOIN to a min/max
+    # subquery + a bucket expression with the binned column qualified by the base table — a NEW
+    # SQL shape (least/floor/NULLIF, alias-shadow risk), so it needs its own live check.
+    bins = 8
+    q = ChartQuery(
+        table="dm.products",
+        dimensions=["price"],
+        measures=[Measure(column="price", agg=Aggregation.COUNT)],
+        bins=bins,
+    )
+    gen = ch(generate_chart_sql(q, apply_limit=False))  # (bucket_lower_bound, count) rows
+    # independent: recompute buckets in Python from the raw prices
+    prices = [float(r[0]) for r in ch('SELECT toFloat64("price") FROM dm.products')]
+    mn, mx = min(prices), max(prices)
+    width = (mx - mn) / bins
+    counts: dict[float, int] = {}
+    for p in prices:
+        idx = min(int((p - mn) // width), bins - 1) if width else 0
+        lb = mn + idx * width
+        counts[round(lb, 6)] = counts.get(round(lb, 6), 0) + 1
+    exp_sorted = sorted(counts.items())
+    ok = (
+        len(gen) == len(exp_sorted)
+        # CH returns UInt64 counts as strings in JSON -> int() before summing
+        and sum(int(r[1]) for r in gen) == len(prices)  # every product lands in one bucket
+        and all(
+            _approx(g[0], e[0]) and int(g[1]) == e[1]
+            for g, e in zip(sorted(gen, key=lambda r: float(r[0])), exp_sorted, strict=True)
+        )
+    )
+    _check(
+        failures,
+        "histogram: bucket bounds + counts match hand calc, all rows binned",
+        ok,
+        f"{len(gen)} buckets / {len(prices)} products",
+    )
+
+
 def _verify_autospec(ch: Runner, failures: list[str]) -> None:
     print("\n[autospec] auto-overview time-views (real model.yaml)")
     model = SemanticModel.load(REPO / "semantic" / "model.yaml")
@@ -275,6 +316,7 @@ def main() -> int:
     failures: list[str] = []
     _verify_trio(ch, failures)
     _verify_running_share(ch, failures)
+    _verify_histogram(ch, failures)
     _verify_autospec(ch, failures)
 
     print("\n" + "=" * 60)
