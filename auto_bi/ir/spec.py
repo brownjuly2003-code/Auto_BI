@@ -58,10 +58,15 @@ class MeasureTransform(StrEnum):
       separate transform needed.)
     - `share_of_total` — share of the column total: `agg / sum(agg) OVER ()`;
     - `running_total`  — cumulative sum over time: `sum(agg) OVER (ORDER BY time ROWS …)`.
+    - `running_share`  — Pareto / ABC cumulative share: categories ranked by the measure
+      descending, the cumulative share of the grand total — `sum(agg) OVER (ORDER BY agg DESC
+      ROWS …) / sum(agg) OVER ()`. Unlike the other ordered transforms it orders by the AGGREGATE
+      VALUE, not a time axis, so it needs a (categorical) dimension but NOT a time one.
 
-    pop_* / yoy_pct / running_total order by the chart's first (time) dimension; share_of_total
-    needs none. Validation enforces the required shape (a time x-axis for the ordered transforms;
-    a non-day time_grain for yoy_pct).
+    pop_* / yoy_pct / running_total order by the chart's first (time) dimension; share_of_total /
+    running_share need a dimension but no time axis. Validation enforces the required shape (a time
+    x-axis for the time-ordered transforms; a non-day time_grain for yoy_pct; ≥1 dimension for the
+    shares).
     """
 
     POP_ABS = "pop_abs"
@@ -69,6 +74,7 @@ class MeasureTransform(StrEnum):
     YOY_PCT = "yoy_pct"
     SHARE_OF_TOTAL = "share_of_total"
     RUNNING_TOTAL = "running_total"
+    RUNNING_SHARE = "running_share"
 
 
 class TimeGrain(StrEnum):
@@ -142,15 +148,18 @@ def measure_alias(measure: Measure) -> str:
 
 
 def is_percent_measure(measure: Measure) -> bool:
-    """Whether a measure's value is a ratio/share to DISPLAY as a percent (pop_pct, yoy_pct, share).
+    """Whether a measure's value is a ratio/share to DISPLAY as a percent (pop_pct, yoy_pct,
+    share_of_total, running_share).
 
     pop_abs / running_total keep the base measure's number family (a cumulative sum is still
-    rubles), so they are not percents. The adapters map this to the native percent format
-    (Superset d3 `.1%`, DataLens `formatting` percent)."""
+    rubles), so they are not percents; running_share IS a percent (a cumulative share of the
+    total). The adapters map this to the native percent format (Superset d3 `.1%`, DataLens
+    `formatting` percent)."""
     return measure.transform in (
         MeasureTransform.POP_PCT,
         MeasureTransform.YOY_PCT,
         MeasureTransform.SHARE_OF_TOTAL,
+        MeasureTransform.RUNNING_SHARE,
     )
 
 

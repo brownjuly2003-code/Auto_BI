@@ -17,8 +17,9 @@ AUTO_BI_VERIFY_CH_CONTAINER. The docker binary is addressed by full path because
 non-interactive ssh PATH. Exits non-zero on any mismatch and exits 2 when the stand is unreachable.
 
 Covers: ratio measure (num/den), time_grain (month buckets, week = Monday), yoy_pct, mom
-(grain + pop), lag_periods (pop_pct vs N periods back), and the auto-overview (real model.yaml ->
-build_auto_spec -> the dynamics line is a readable monthly trend whose totals match the live data).
+(grain + pop), lag_periods (pop_pct vs N periods back), running_share (Pareto cumulative share,
+window ordered by the measure), and the auto-overview (real model.yaml -> build_auto_spec -> the
+dynamics line is a readable monthly trend whose totals match the live data).
 """
 
 from __future__ import annotations
@@ -183,6 +184,42 @@ def _verify_trio(ch: Runner, failures: list[str]) -> None:
     )
 
 
+def _verify_running_share(ch: Runner, failures: list[str]) -> None:
+    print(f"\n[running_share] Pareto / ABC cumulative share over store_id on {TABLE}")
+    # cumulative share of revenue by store, ranked by the measure descending; the generated
+    # window orders by the aggregate value, NOT a time axis — a NEW SQL construct (not the yoy
+    # lag), so it needs its own live check.
+    q = ChartQuery(
+        table=TABLE,
+        dimensions=["store_id"],
+        measures=[_sum_revenue(transform=MeasureTransform.RUNNING_SHARE)],
+    )
+    gen = {r[0]: r[1] for r in ch(generate_chart_sql(q, apply_limit=False))}
+    # independent: per-store revenue, ranked desc, cumulative / grand total (store sums are
+    # large distinct figures over 20M rows -> no ties to make the ROWS-frame order ambiguous)
+    ind = ch(
+        'SELECT "store_id", toFloat64(SUM("revenue")) AS r '
+        'FROM dm.sales_daily GROUP BY "store_id" ORDER BY r DESC'
+    )
+    total = sum(float(r[1]) for r in ind)
+    running = 0.0
+    expected: dict[object, float] = {}
+    for store_id, rev in ind:
+        running += float(rev)
+        expected[store_id] = running / total
+    ok = (
+        len(gen) == len(expected)
+        and all(_approx(gen.get(k), v) for k, v in expected.items())
+        and _approx(max(gen.values()), 1.0)  # the cumulative share closes at exactly 1.0
+    )
+    _check(
+        failures,
+        "running_share: cumulative share by store matches, closes at 1.0",
+        ok,
+        f"{len(gen)} stores",
+    )
+
+
 def _verify_autospec(ch: Runner, failures: list[str]) -> None:
     print("\n[autospec] auto-overview time-views (real model.yaml)")
     model = SemanticModel.load(REPO / "semantic" / "model.yaml")
@@ -237,6 +274,7 @@ def main() -> int:
 
     failures: list[str] = []
     _verify_trio(ch, failures)
+    _verify_running_share(ch, failures)
     _verify_autospec(ch, failures)
 
     print("\n" + "=" * 60)

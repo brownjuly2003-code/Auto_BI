@@ -245,9 +245,14 @@ def _validate_transforms(chart: ChartSpec, model: SemanticModel, prefix: str) ->
                 f"{prefix}: преобразование {m.transform.value!r} требует, чтобы первое "
                 "измерение было колонкой времени (ось x по времени)"
             )
-        elif m.transform == MeasureTransform.SHARE_OF_TOTAL and not chart.query.dimensions:
+        elif (
+            m.transform in (MeasureTransform.SHARE_OF_TOTAL, MeasureTransform.RUNNING_SHARE)
+            and not chart.query.dimensions
+        ):
+            # both are a share *of* something — without a grouping dimension a share is a
+            # trivial 100% (and a Pareto cumulative share has nothing to rank)
             errors.append(
-                f"{prefix}: преобразование 'share_of_total' требует хотя бы одно измерение"
+                f"{prefix}: преобразование {m.transform.value!r} требует хотя бы одно измерение"
             )
     grain = chart.query.time_grain
     if any(m.transform == MeasureTransform.YOY_PCT for m in transformed) and (

@@ -507,3 +507,31 @@ def test_lag_periods_on_plain_measure_is_rejected(demo_model) -> None:
     )
     errors = validate_spec(spec(bad), demo_model)
     assert any("lag_periods" in e and "обычной меры" in e for e in errors)
+
+
+# --- running_share (Pareto / ABC cumulative share; ranked by measure, no time axis) ---------
+
+
+def test_running_share_over_category_is_valid(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    # ranked by the measure, not time -> a categorical bar is fine, no time axis required
+    ok = _t_chart(MeasureTransform.RUNNING_SHARE, viz=Viz.BAR, dimensions=["store_id"])
+    assert validate_spec(spec(ok), demo_model) == []
+
+
+def test_running_share_without_dimension_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    bad = _t_chart(MeasureTransform.RUNNING_SHARE, viz=Viz.BIG_NUMBER, dimensions=[])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("running_share" in e or "не поддерживаются" in e for e in errors)
+
+
+def test_running_share_does_not_require_time_axis(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    # a non-time first dimension must NOT trigger the time-axis error (unlike pop/yoy/running_total)
+    ok = _t_chart(MeasureTransform.RUNNING_SHARE, viz=Viz.BAR, dimensions=["store_id"])
+    errors = validate_spec(spec(ok), demo_model)
+    assert not any("колонкой времени" in e for e in errors)

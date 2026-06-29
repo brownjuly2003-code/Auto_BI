@@ -341,6 +341,21 @@ def _window_expr(
         total = exp.Window(this=exp.func("sum", src.copy()))  # SUM(src) OVER ()
         return _safe_div(src.copy(), total)
 
+    if transform == MeasureTransform.RUNNING_SHARE:
+        # Pareto / ABC: categories ranked by the measure DESCENDING, the cumulative share of the
+        # grand total — SUM(src) OVER (ORDER BY src DESC ROWS UNBOUNDED PRECEDING) / SUM(src) OVER
+        # (). Orders by the aggregate value itself, not a time axis, so it ignores `order_col`.
+        # Each row's value is its rank-based cumulative share regardless of the final display
+        # order; the last (smallest) category reaches 1.0. (Exact ties order arbitrarily within
+        # the ROWS frame — immaterial for a ranking view; rare for real aggregates.)
+        order_desc = exp.Order(expressions=[exp.Ordered(this=src.copy(), desc=True)])
+        spec = exp.WindowSpec(
+            kind="ROWS", start="UNBOUNDED", start_side="PRECEDING", end="CURRENT ROW"
+        )
+        running = exp.Window(this=exp.func("sum", src.copy()), order=order_desc, spec=spec)
+        total = exp.Window(this=exp.func("sum", src.copy()))  # SUM(src) OVER ()
+        return _safe_div(running, total)
+
     # ordered transforms (pop_*, running_total) sort by the chart's time x-axis, which
     # validate guarantees exists; defensive guard keeps the failure local and clear
     if order_col is None:
