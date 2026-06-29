@@ -442,3 +442,68 @@ def test_yoy_with_day_grain_is_rejected(demo_model) -> None:
     bad = _t_chart(MeasureTransform.YOY_PCT, time_grain=TimeGrain.DAY)
     errors = validate_spec(spec(bad), demo_model)
     assert any("yoy_pct" in e and "time_grain" in e for e in errors)
+
+
+# --- lag_periods (period-over-period offset; only pop_abs/pop_pct) -----------
+
+
+def _lag_chart(transform, lag_periods, **query_kwargs):
+    defaults = dict(
+        table="dm.sales_daily",
+        dimensions=["date"],
+        measures=[
+            Measure(
+                column="revenue",
+                agg=Aggregation.SUM,
+                transform=transform,
+                lag_periods=lag_periods,
+            )
+        ],
+    )
+    defaults.update(query_kwargs)
+    return ChartSpec(id="c1", title="t", viz=Viz.LINE, query=ChartQuery(**defaults))
+
+
+def test_lag_periods_with_pop_pct_is_valid(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    assert validate_spec(spec(_lag_chart(MeasureTransform.POP_PCT, 3)), demo_model) == []
+
+
+def test_lag_periods_with_pop_abs_is_valid(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    assert validate_spec(spec(_lag_chart(MeasureTransform.POP_ABS, 2)), demo_model) == []
+
+
+def test_lag_periods_on_yoy_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform, TimeGrain
+
+    # yoy derives its own year lag from the grain; an explicit lag_periods is a contradiction
+    bad = _lag_chart(MeasureTransform.YOY_PCT, 3, time_grain=TimeGrain.MONTH)
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("lag_periods" in e and "pop_abs/pop_pct" in e for e in errors)
+
+
+def test_lag_periods_on_share_is_rejected(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform
+
+    bad = _lag_chart(MeasureTransform.SHARE_OF_TOTAL, 2, viz=Viz.PIE, dimensions=["store_id"])
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("lag_periods" in e and "pop_abs/pop_pct" in e for e in errors)
+
+
+def test_lag_periods_on_plain_measure_is_rejected(demo_model) -> None:
+    # a measure with no transform has no period to lag against
+    bad = ChartSpec(
+        id="c1",
+        title="t",
+        viz=Viz.LINE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM, lag_periods=2)],
+        ),
+    )
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("lag_periods" in e and "обычной меры" in e for e in errors)

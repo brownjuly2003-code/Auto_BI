@@ -107,6 +107,14 @@ class Measure(BaseModel):
     # None => not a ratio. Mutually exclusive with `transform`; the denominator is itself a
     # plain Measure (no nested denominator, no transform) — enforced by validation.
     denominator: Measure | None = None
+    # optional lag for a period-over-period transform: pop_abs/pop_pct compare against the value
+    # `lag_periods` periods back instead of the adjacent one (e.g. lag_periods=3 at month grain =
+    # "vs 3 months ago"). Generalises the fixed year lag of yoy_pct to an arbitrary offset. None
+    # => 1 (adjacent period; SQL byte-for-byte unchanged). Only meaningful with pop_abs/pop_pct —
+    # yoy_pct derives its own year lag, share_of_total/running_total have no period offset, and a
+    # plain measure has no lag — enforced by validation. The window machinery already lags by k
+    # rows (SQL_GEN `_window_expr`), so this only routes a different k.
+    lag_periods: int | None = Field(default=None, ge=1)
 
 
 def measure_alias(measure: Measure) -> str:
@@ -115,14 +123,18 @@ def measure_alias(measure: Measure) -> str:
     Single source of truth shared by SQL_GEN, the adapters, and validation so the
     alias a chart is ordered/aggregated by always matches the column SQL_GEN emits.
     A transformed measure with no explicit label gets the transform in its default alias
-    (`pop_pct_sum_revenue`); a ratio gets `_per_<den>` (`sum_revenue_per_count_orders`) — so
-    neither collides with the same chart's plain base aggregate.
+    (`pop_pct_sum_revenue`); a non-adjacent lag adds `_lag<N>` (`pop_pct_sum_revenue_lag3`); a
+    ratio gets `_per_<den>` (`sum_revenue_per_count_orders`) — so none collides with the same
+    chart's plain base aggregate (or its adjacent-period counterpart).
     """
     if measure.label:
         return measure.label
     base = f"{measure.agg.value}_{measure.column}"
     if measure.transform is not None:
-        return f"{measure.transform.value}_{base}"
+        alias = f"{measure.transform.value}_{base}"
+        if measure.lag_periods is not None:
+            alias = f"{alias}_lag{measure.lag_periods}"
+        return alias
     if measure.denominator is not None:
         d = measure.denominator
         return f"{base}_per_{d.agg.value}_{d.column}"

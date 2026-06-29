@@ -217,16 +217,27 @@ def _validate_transforms(chart: ChartSpec, model: SemanticModel, prefix: str) ->
     ordered axis (not a KPI / pivot / heatmap). share_of_total needs at least one dimension
     to be a share *of* — without grouping the share is a trivial 100%.
     """
+    errors: list[str] = []
+    # lag_periods is a period-over-period offset, only meaningful for pop_abs/pop_pct: yoy_pct
+    # derives its own year lag, share_of_total/running_total have no period offset, and a plain
+    # measure has no lag. Checked across ALL measures (a lag on any other measure is a spec slip).
+    for m in chart.query.measures:
+        if m.lag_periods is not None and m.transform not in (
+            MeasureTransform.POP_ABS,
+            MeasureTransform.POP_PCT,
+        ):
+            kind = m.transform.value if m.transform is not None else "обычной меры (без transform)"
+            errors.append(f"{prefix}: lag_periods применим только к pop_abs/pop_pct, не к {kind}")
     transformed = [m for m in chart.query.measures if m.transform is not None]
     if not transformed:
-        return []
+        return errors
     if chart.viz in _TRANSFORM_UNSUPPORTED_VIZ:
         names = ", ".join(sorted({m.transform.value for m in transformed if m.transform}))
-        return [
+        errors.append(
             f"{prefix}: преобразования мер ({names}) не поддерживаются для {chart.viz.value} — "
             "нужен график с одной упорядоченной осью (line/area/bar/pie/table)"
-        ]
-    errors: list[str] = []
+        )
+        return errors
     first_is_time = _first_dimension_is_time(chart, model)
     for m in transformed:
         if m.transform in _ORDERED_TRANSFORMS and not first_is_time:

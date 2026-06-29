@@ -17,8 +17,8 @@ AUTO_BI_VERIFY_CH_CONTAINER. The docker binary is addressed by full path because
 non-interactive ssh PATH. Exits non-zero on any mismatch and exits 2 when the stand is unreachable.
 
 Covers: ratio measure (num/den), time_grain (month buckets, week = Monday), yoy_pct, mom
-(grain + pop), and the auto-overview (real model.yaml -> build_auto_spec -> the dynamics line is a
-readable monthly trend whose totals match the live data).
+(grain + pop), lag_periods (pop_pct vs N periods back), and the auto-overview (real model.yaml ->
+build_auto_spec -> the dynamics line is a readable monthly trend whose totals match the live data).
 """
 
 from __future__ import annotations
@@ -162,6 +162,25 @@ def _verify_trio(ch: Runner, failures: list[str]) -> None:
         and all(_approx(g[1], e) for g, e in zip(gmom, exp_m, strict=True))
     )
     _check(failures, "mom (grain+pop_pct): first NULL, rest match", ok, f"{len(gmom)} months")
+
+    # lag_periods (vs N periods back): pop_pct at month grain, lag 3 -> (v - v_-3) / v_-3, first
+    # 3 NULL. Same frame-bounded lagInFrame as yoy but a caller-chosen offset (Measure.lag_periods)
+    lag3 = base.model_copy(
+        update={"measures": [_sum_revenue(transform=MeasureTransform.POP_PCT, lag_periods=3)]}
+    )
+    glag = ch(generate_chart_sql(lag3, apply_limit=False))
+    exp_l = [None] * 3 + [(months[k] - months[k - 3]) / months[k - 3] for k in range(3, n)]
+    ok = (
+        len(glag) == len(exp_l)
+        and all(g[1] is None for g in glag[:3])
+        and all(_approx(g[1], e) for g, e in zip(glag, exp_l, strict=True))
+    )
+    _check(
+        failures,
+        "lag_periods=3 (pop_pct vs 3 months back): first 3 NULL, rest match",
+        ok,
+        f"{len(glag)} months",
+    )
 
 
 def _verify_autospec(ch: Runner, failures: list[str]) -> None:

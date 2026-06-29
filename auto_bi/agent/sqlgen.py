@@ -313,6 +313,7 @@ def _window_expr(
     *,
     dialect: str,
     yoy_lag: int = 1,
+    pop_lag: int = 1,
 ) -> exp.Expression:
     """Window expression over the inner base aggregate referenced by `src` (its alias).
 
@@ -324,6 +325,9 @@ def _window_expr(
     the source type's default (0) for an out-of-frame row, while Postgres `LAG` returns NULL.
     The lag source is wrapped in `toNullable` on ClickHouse so the first PoP row is NULL,
     matching the live-verified Postgres path.
+
+    `pop_lag` is the row offset for pop_abs/pop_pct (a measure's `lag_periods`, default 1 =
+    adjacent period); `yoy_lag` is the year offset for yoy_pct. Both flow into the same `lag(k)`.
     """
 
     def lag_source() -> exp.Expression:
@@ -351,8 +355,9 @@ def _window_expr(
 
     # pop_* / yoy_pct: lag by k rows with an explicit ROWS frame so ClickHouse's frame-bounded
     # lagInFrame reads exactly the k-th previous row (Postgres LAG ignores the frame clause).
-    # k = 1 for period-over-period; k = periods-per-year for yoy. At k = 1 the offset arg is
-    # omitted so the pop SQL is byte-for-byte unchanged.
+    # k = pop_lag for period-over-period (1 = adjacent, or a measure's lag_periods for "vs N
+    # periods ago"); k = periods-per-year for yoy. At k = 1 the offset arg is omitted so the
+    # adjacent-period pop SQL is byte-for-byte unchanged.
     def lag(k: int) -> exp.Expression:
         spec = exp.WindowSpec(kind="ROWS", start=str(k), start_side="PRECEDING", end="CURRENT ROW")
         call = (
@@ -363,12 +368,12 @@ def _window_expr(
         return exp.Window(this=call, order=order.copy(), spec=spec)
 
     if transform == MeasureTransform.POP_ABS:
-        return exp.Sub(this=src.copy(), expression=lag(1))
+        return exp.Sub(this=src.copy(), expression=lag(pop_lag))
     # pop_pct / yoy_pct: (src - lag) / lag — the numerator MUST be parenthesized, else `/` binds
     # tighter than `-` and ClickHouse computes `src - (lag / lag)` (Postgres is saved only
     # by an incidental CAST wrapper, so don't rely on the dialect adding parens). yoy lags a
-    # full year of periods instead of one.
-    k = yoy_lag if transform == MeasureTransform.YOY_PCT else 1
+    # full year of periods; pop lags pop_lag (1 by default).
+    k = yoy_lag if transform == MeasureTransform.YOY_PCT else pop_lag
     return _safe_div(exp.paren(exp.Sub(this=src.copy(), expression=lag(k))), lag(k))
 
 
@@ -407,7 +412,14 @@ def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool
         if m.denominator is not None:
             body = _safe_div(src, exp.column(den_aliases[i], quoted=True))
         elif m.transform is not None:
-            body = _window_expr(m.transform, src, order_col, dialect=dialect, yoy_lag=yoy_lag)
+            body = _window_expr(
+                m.transform,
+                src,
+                order_col,
+                dialect=dialect,
+                yoy_lag=yoy_lag,
+                pop_lag=m.lag_periods or 1,
+            )
         else:
             body = src
         # sqlglot types alias_ as Expr (an Expression subclass at runtime), as in _measure_expr
