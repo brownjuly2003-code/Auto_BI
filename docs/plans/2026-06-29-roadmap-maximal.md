@@ -46,13 +46,16 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 | ID | Гейт | Что | Точки входа · verify · оценка |
 |----|------|-----|-------------------------------|
 | A1 | ✅ готово | **mom/wow** — month/week-over-month уже работает композицией `time_grain`+`pop_pct` (отдельный примитив НЕ нужен; mom покрыт live-verify cont.9). | — |
-| A2 | 🟠 S4/IR | **Лаг на произвольные N периодов** (обобщение yoy: «vs N периодов назад»). Расширяет `MeasureTransform`/новый параметр. | `ir/spec.py`, `agent/sqlgen._window_expr`; verify: DuckDB + CH live. M |
+| A2 | ✅ готово (cont.14) | **Лаг на произвольные N периодов** — `Measure.lag_periods: int\|None` (pop_abs/pop_pct vs N периодов назад). Переиспользует frame-bounded `lag(k)` (k=1 → SQL байт-в-байт); валидация только pop_abs/pop_pct; alias `_lag<N>`. CH live-verified (lag3 на 24 мес). Дизайн: `docs/plans/2026-06-29-core-deepening-a2-a5.md`. | `ir/spec.py`, `sqlgen._window_expr`, `ir/validate.py`. M |
 | A3 | 🟠 S4/IR | **Кумулятивная доля / Pareto** (running-share для ABC-анализа) — новый transform или композиция running+share. | `ir/spec.py`, `sqlgen`; verify: CH live. M |
 | A4 | 🟠 S4/IR | **Гистограмма/распределение** (бакетинг меры в корзины) — новый viz + bin-логика. | `ir/spec.py` (Viz), `sqlgen`, оба адаптера. L |
 | A5 | 🟠 S4/IR | **Когортный/retention** анализ — самый сложный, доменно-чувствительный. | новый модуль; verify: стенд. L |
 
-> Все A2–A5 = изменение контракта → НЕ автономно. Брать только по «предложи варианты» с
+> A3–A5 = изменение контракта → НЕ автономно. Брать только по «предложи варианты» с
 > владельцем (как трио cont.9). Приоритет низкий — ядро уже покрывает 90% паттернов.
+> **A2 закрыт cont.14** (owner «решай сам» по треку A2–A5 → реализован самый лёгкий/безопасный
+> инкремент `lag_periods`; дизайн остальных — `docs/plans/2026-06-29-core-deepening-a2-a5.md`,
+> рекомендация: A3 Pareto следующим, A4 гистограмма тяжелее, A5 когорты отложить — нет entity в демо).
 
 ## Трек B — Авто-обзор (`autospec`) + insight-слой (display-only)
 
