@@ -150,6 +150,9 @@ class DevLLM:
 
     Логирует каждый вызов в Store с полями step/completion_chars, как это делает
     GraceKellyClient — чтобы панель «Наблюдаемость» показывала ненулевые расходы.
+    Дополнительно эмитит input_tokens/output_tokens (грубая оценка симв.//4), имитируя
+    Anthropic-провайдера, который отдаёт реальный usage — так панель показывает и
+    токен-ячейки (E2), а не только символьный прокси.
     """
 
     def __init__(self, store=None) -> None:
@@ -186,6 +189,7 @@ class DevLLM:
                 }
             )
         if self._store is not None:
+            completion = result.model_dump_json()
             self._store.log_llm_call(
                 session_id=session_id,
                 model="dev-scripted",
@@ -195,7 +199,9 @@ class DevLLM:
                 status="completed",
                 latency_ms=round((time.monotonic() - started) * 1000),
                 step=step,
-                completion_chars=len(result.model_dump_json()),
+                completion_chars=len(completion),
+                input_tokens=len(prompt) // 4,
+                output_tokens=len(completion) // 4,
             )
         return result
 

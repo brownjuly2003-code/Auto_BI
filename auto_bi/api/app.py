@@ -554,8 +554,9 @@ def create_app(
 
     @app.get("/api/v1/observability/llm")
     def observability_llm() -> dict:
-        """Global LLM-usage aggregates. GraceKelly exposes no token/cost usage, so
-        char volumes are size proxies (not tokens or money) — see the schema docs."""
+        """Global LLM-usage aggregates. Char volumes are a universal size proxy; real
+        input/output tokens are summed where the provider reports usage (Anthropic) and
+        stay NULL on GraceKelly (`token_calls` counts the rows that carry real tokens)."""
         return _store().llm_usage_summary()
 
     @app.get("/api/v1/sessions/{session_id}/insights")

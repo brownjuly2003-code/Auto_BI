@@ -60,6 +60,17 @@ def _extract_text(response: Any) -> str:
     return "".join(parts)
 
 
+def _extract_usage(response: Any) -> tuple[int | None, int | None]:
+    """Real (input_tokens, output_tokens) from a Messages API response, or (None, None).
+
+    The Anthropic SDK exposes `response.usage.input_tokens/output_tokens`; defending with
+    getattr keeps the parser robust to a fake/old response object that omits usage."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None, None
+    return getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None)
+
+
 class AnthropicClient:
     """LLMClient backed by the Anthropic Messages API (sync, text-in/JSON-out)."""
 
@@ -100,6 +111,8 @@ class AnthropicClient:
         started = time.monotonic()
         status = "transport_error"
         completion_chars = 0
+        input_tokens: int | None = None
+        output_tokens: int | None = None
         try:
             # reasoning -> adaptive thinking on GROUNDING/PROPOSE; mechanical steps run without it
             # (Sonnet 4.6 supports both; mirrors the GraceKelly reasoning flag, llm/policy.py).
@@ -111,6 +124,9 @@ class AnthropicClient:
                 messages=[{"role": "user", "content": prompt}],
             )
             status = getattr(response, "stop_reason", None) or "unknown"
+            # capture usage before the refusal/empty guards so even a refused or empty
+            # response records the input tokens it actually spent
+            input_tokens, output_tokens = _extract_usage(response)
             if status == "refusal":
                 raise LLMError("Anthropic declined the request (stop_reason=refusal)")
             text = _extract_text(response)
@@ -134,4 +150,6 @@ class AnthropicClient:
                 session_id=session_id,
                 step=step,
                 completion_chars=completion_chars,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )

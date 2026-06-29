@@ -18,9 +18,16 @@ class Answer(BaseModel):
     count: int
 
 
-def fake_response(text: str | None, stop_reason: str = "end_turn") -> SimpleNamespace:
+def fake_response(
+    text: str | None,
+    stop_reason: str = "end_turn",
+    usage: SimpleNamespace | None = None,
+) -> SimpleNamespace:
     blocks = [] if text is None else [SimpleNamespace(type="text", text=text)]
-    return SimpleNamespace(content=blocks, stop_reason=stop_reason)
+    ns = SimpleNamespace(content=blocks, stop_reason=stop_reason)
+    if usage is not None:  # the real SDK always attaches usage; omit it to test the None path
+        ns.usage = usage
+    return ns
 
 
 def make_client(create, tmp_path, store=None) -> AnthropicClient:
@@ -109,6 +116,40 @@ def test_logs_step_and_completion_chars_to_store(tmp_path) -> None:
     assert call["step"] == "propose_spec"
     assert call["completion_chars"] == len(output)
     assert call["model"] == "claude-sonnet-4-6"
+    store.close()
+
+
+def test_captures_token_usage_to_store_and_log(tmp_path) -> None:
+    import json
+
+    from auto_bi.store import Store
+
+    output = '{"title": "ok", "count": 5}'
+    usage = SimpleNamespace(input_tokens=120, output_tokens=45)
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("r")
+    client = make_client(lambda **kw: fake_response(output, usage=usage), tmp_path, store=store)
+    client.complete("сделай", Answer, session_id=sid, step="propose_spec")
+    (call,) = store.llm_calls(sid)
+    assert call["input_tokens"] == 120 and call["output_tokens"] == 45
+    # the jsonl log carries the same real usage
+    record = json.loads((tmp_path / "llm_calls.jsonl").read_text(encoding="utf-8").strip())
+    assert record["input_tokens"] == 120 and record["output_tokens"] == 45
+    store.close()
+
+
+def test_missing_usage_records_null_tokens(tmp_path) -> None:
+    from auto_bi.store import Store
+
+    # a response without a usage attribute (older SDK / fake) stores NULL, not a fake 0
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("r")
+    client = make_client(
+        lambda **kw: fake_response('{"title": "ok", "count": 1}'), tmp_path, store=store
+    )
+    client.complete("сделай", Answer, session_id=sid)
+    (call,) = store.llm_calls(sid)
+    assert call["input_tokens"] is None and call["output_tokens"] is None
     store.close()
 
 

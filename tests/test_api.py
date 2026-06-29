@@ -169,7 +169,11 @@ def test_observability_llm_endpoint(demo_model, tmp_path) -> None:
     store = Store(tmp_path / "api.sqlite")
     client = make_client(ScriptedLLM([]), demo_model, store=store)
     sid = store.create_session("r")
-    for step, status in (("grounding", "completed"), ("propose_spec", "transport_error")):
+    # the completed (Anthropic-style) call reports usage; the failed one has none
+    for step, status, itok, otok in (
+        ("grounding", "completed", 300, 90),
+        ("propose_spec", "transport_error", None, None),
+    ):
         store.log_llm_call(
             session_id=sid,
             model="claude-sonnet-4-6",
@@ -180,11 +184,16 @@ def test_observability_llm_endpoint(demo_model, tmp_path) -> None:
             latency_ms=100,
             step=step,
             completion_chars=120,
+            input_tokens=itok,
+            output_tokens=otok,
         )
     glob = client.get("/api/v1/observability/llm").json()
     assert glob["totals"]["calls"] == 2
     assert glob["totals"]["ok"] == 1 and glob["totals"]["failed"] == 1
     assert {r["step"] for r in glob["by_step"]} == {"grounding", "propose_spec"}
+    # real tokens surface through the endpoint; only the call that reported usage is counted
+    assert glob["totals"]["input_tokens"] == 300 and glob["totals"]["output_tokens"] == 90
+    assert glob["totals"]["token_calls"] == 1
     # the per-session trace endpoint surfaces the same calls + a per-session summary
     trace = client.get(f"/api/v1/sessions/{sid}/trace").json()
     assert len(trace["llm_calls"]) == 2

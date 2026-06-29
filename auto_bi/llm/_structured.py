@@ -117,10 +117,14 @@ def append_llm_log(
     session_id: str | None,
     step: str,
     completion_chars: int,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
 ) -> None:
     """Append one LLM-call record to the jsonl log and (if present) the durable Store.
 
     The prompt itself is NEVER logged — only its sha256 prefix and length (security §4).
+    `input_tokens`/`output_tokens` are real usage from providers that report it (Anthropic);
+    None where the provider returns no usage (GraceKelly) or the call failed before a response.
     Logging is best-effort: a failure here must never kill the pipeline.
     """
     prompt_sha256 = hashlib.sha256(prompt.encode()).hexdigest()[:16]
@@ -135,6 +139,8 @@ def append_llm_log(
         "latency_ms": latency_ms,
         "step": step,
         "completion_chars": completion_chars,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
     }
     path = Path(log_path)
     try:
@@ -155,6 +161,8 @@ def append_llm_log(
                 latency_ms=latency_ms,
                 step=step,
                 completion_chars=completion_chars,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
         except Exception:  # logging must never kill the pipeline
             logger.exception("failed to write llm call to the store")

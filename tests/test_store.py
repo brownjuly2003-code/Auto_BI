@@ -105,7 +105,7 @@ def test_foreign_keys_enforced(store: Store) -> None:
 
 def test_schema_version_stamped(store: Store) -> None:
     version = store._db.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 4
+    assert version == 5
 
 
 def test_trace_events_ordered_by_seq(store: Store) -> None:
@@ -183,8 +183,44 @@ def test_llm_usage_summary_empty_is_zero(store: Store) -> None:
         "latency_ms_max": 0,
         "prompt_chars": 0,
         "completion_chars": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "token_calls": 0,
         "reasoning_calls": 0,
     }
+
+
+def test_llm_usage_summary_counts_real_tokens(store: Store) -> None:
+    # Two Anthropic-style calls report usage; one GraceKelly-style call reports none.
+    # The token sums ignore the NULL row, and token_calls counts only the rows with usage,
+    # so the proxy-only provider never dilutes the real-token figures.
+    sid = store.create_session("r")
+
+    def _log(input_tokens: int | None, output_tokens: int | None) -> None:
+        store.log_llm_call(
+            session_id=sid,
+            model="claude-sonnet-4-6",
+            prompt_sha256="x",
+            prompt_chars=1000,
+            reasoning=False,
+            status="completed",
+            latency_ms=100,
+            step="propose",
+            completion_chars=500,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
+    _log(1200, 340)
+    _log(800, 110)
+    _log(None, None)  # GraceKelly-style: no usage reported
+    totals = store.llm_usage_summary()["totals"]
+    assert totals["input_tokens"] == 2000
+    assert totals["output_tokens"] == 450
+    assert totals["token_calls"] == 2  # the NULL row is not counted
+    assert totals["calls"] == 3
+    by_model = {r["model"]: r for r in store.llm_usage_summary()["by_model"]}
+    assert by_model["claude-sonnet-4-6"]["input_tokens"] == 2000
 
 
 def test_migrates_v1_db_to_v2(tmp_path) -> None:
@@ -208,7 +244,7 @@ def test_migrates_v1_db_to_v2(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 5
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the pre-existing row survived and back-fills with defaults
@@ -241,7 +277,7 @@ def test_migrates_legacy_v0_db_with_old_llm_calls(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 5
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the first observability-aware write no longer crashes with "no such column: step"
@@ -286,12 +322,67 @@ def test_migrates_v3_db_adds_remediation_column(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 5
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(dm_change_requests)")}
     assert "remediation" in cols
     # the pre-existing row survived and back-fills the new column with its default
     (row,) = store.dm_change_requests()
     assert row["narrative"] == "legacy request" and row["remediation"] == ""
+    store.close()
+
+
+def test_migrates_v4_db_adds_token_columns(tmp_path) -> None:
+    # a v4 DB: llm_calls has the v2 observability columns but predates the token columns.
+    # CREATE TABLE IF NOT EXISTS leaves it untouched, so the v5 migration must ALTER it in
+    # place; the new columns are nullable, so the old row back-fills to NULL (no usage data).
+    import sqlite3
+
+    path = tmp_path / "v4.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, created_at TEXT, request TEXT, status TEXT);"
+        "CREATE TABLE llm_calls ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, created_at TEXT,"
+        " model TEXT NOT NULL, prompt_sha256 TEXT NOT NULL, prompt_chars INTEGER NOT NULL,"
+        " reasoning INTEGER NOT NULL, status TEXT NOT NULL, latency_ms INTEGER NOT NULL,"
+        " step TEXT NOT NULL DEFAULT '', completion_chars INTEGER NOT NULL DEFAULT 0);"
+    )
+    db.execute(
+        "INSERT INTO llm_calls"
+        " (model, prompt_sha256, prompt_chars, reasoning, status, latency_ms, step,"
+        " completion_chars)"
+        " VALUES ('claude-sonnet-4-6', 'h', 10, 0, 'completed', 5, 'propose', 200)"
+    )
+    db.execute("PRAGMA user_version = 4")
+    db.commit()
+    db.close()
+
+    store = Store(path)
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 5
+    cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
+    assert {"input_tokens", "output_tokens"} <= cols
+    # the pre-existing row survived; its token columns back-fill to NULL (not a fake 0)
+    (row,) = store.llm_calls()
+    assert row["completion_chars"] == 200
+    assert row["input_tokens"] is None and row["output_tokens"] is None
+    # the NULL row is excluded from token_calls; a fresh write with usage is summed
+    sid = store.create_session("r")
+    store.log_llm_call(
+        session_id=sid,
+        model="claude-sonnet-4-6",
+        prompt_sha256="h",
+        prompt_chars=1,
+        reasoning=False,
+        status="completed",
+        latency_ms=1,
+        step="grounding",
+        completion_chars=7,
+        input_tokens=42,
+        output_tokens=9,
+    )
+    totals = store.llm_usage_summary()["totals"]
+    assert totals["input_tokens"] == 42 and totals["output_tokens"] == 9
+    assert totals["token_calls"] == 1
     store.close()
 
 

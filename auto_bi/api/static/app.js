@@ -402,6 +402,14 @@ function renderUsage(usage) {
     statCell("промпт, симв.", t.prompt_chars.toLocaleString("ru")),
     statCell("ответ, симв.", t.completion_chars.toLocaleString("ru"))
   );
+  // real tokens only where the provider reports usage (Anthropic); chars stay the
+  // universal proxy, so a GraceKelly-only store simply shows no token cells
+  if (t.token_calls > 0) {
+    grid.append(
+      statCell("вход, токенов", t.input_tokens.toLocaleString("ru")),
+      statCell("выход, токенов", t.output_tokens.toLocaleString("ru"))
+    );
+  }
 
   const byStep = $("obs-by-step");
   byStep.replaceChildren();

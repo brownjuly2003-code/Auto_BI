@@ -9,6 +9,12 @@ Schema v2 (observability, Phase 4): `llm_calls` gained `step` (which agent step 
 call served) and `completion_chars` (answer size — GraceKelly returns no token usage,
 so chars are the honest size proxy); `trace_events` is a durable per-session timeline
 of agent steps (grounding/propose/advisor/approve) and build phases.
+
+Schema v5 (token accounting, E2): `llm_calls` gained nullable `input_tokens` /
+`output_tokens`. The Anthropic Messages API returns `usage.input_tokens/output_tokens`,
+so calls on that provider carry real tokens; GraceKelly reports no usage and a transport
+error has no response, so those rows stay NULL (NULL = "no usage reported", distinct from
+a real zero — `completion_chars` remains the universal size proxy for every call).
 """
 
 from __future__ import annotations
@@ -28,7 +34,7 @@ def _row_id(cur: sqlite3.Cursor) -> int:
     return cur.lastrowid
 
 
-_SCHEMA_VERSION = 4  # bump together with a migration when the schema changes
+_SCHEMA_VERSION = 5  # bump together with a migration when the schema changes
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -72,7 +78,9 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     status        TEXT NOT NULL,
     latency_ms    INTEGER NOT NULL,
     step          TEXT NOT NULL DEFAULT '',
-    completion_chars INTEGER NOT NULL DEFAULT 0
+    completion_chars INTEGER NOT NULL DEFAULT 0,
+    input_tokens  INTEGER,  -- NULL = provider reported no usage (GraceKelly / transport error)
+    output_tokens INTEGER   -- real tokens only where the provider returns usage (Anthropic)
 );
 CREATE TABLE IF NOT EXISTS trace_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,7 +158,9 @@ class Store:
         IF NOT EXISTS left untouched — this covers both a v1 DB and a pre-versioning v0
         DB whose old llm_calls lacks the columns (so we must NOT early-return on version
         0). v3 added only new tables (no ALTER), so the version bump below suffices. v4
-        adds dm_change_requests.remediation (guarded ALTER, no-op on a fresh DB).
+        adds dm_change_requests.remediation; v5 adds llm_calls.input_tokens/output_tokens
+        (both guarded ALTERs, no-op on a fresh DB; the new columns are nullable so legacy
+        rows back-fill to NULL = "no usage reported").
         Idempotent — guarded by the column check, so it is safe to run on any schema.
         """
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
@@ -160,6 +170,11 @@ class Store:
         if version < 4:
             # v4: dm_change_requests carries the advisor's concrete fix artifact (DDL)
             self._add_column("dm_change_requests", "remediation", "TEXT NOT NULL DEFAULT ''")
+        if version < 5:
+            # v5: real token usage on providers that report it (Anthropic); nullable so
+            # legacy/GraceKelly rows stay NULL rather than a misleading zero
+            self._add_column("llm_calls", "input_tokens", "INTEGER")
+            self._add_column("llm_calls", "output_tokens", "INTEGER")
         if version < _SCHEMA_VERSION:
             self._db.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
 
@@ -252,13 +267,15 @@ class Store:
         latency_ms: int,
         step: str = "",
         completion_chars: int = 0,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> int:
         with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO llm_calls"
                 " (session_id, model, prompt_sha256, prompt_chars, reasoning, status,"
-                " latency_ms, step, completion_chars)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " latency_ms, step, completion_chars, input_tokens, output_tokens)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     session_id,
                     model,
@@ -269,6 +286,8 @@ class Store:
                     latency_ms,
                     step,
                     completion_chars,
+                    input_tokens,
+                    output_tokens,
                 ),
             )
         return _row_id(cur)
@@ -309,9 +328,12 @@ class Store:
         )
 
     def llm_usage_summary(self, session_id: str | None = None) -> dict[str, Any]:
-        """Aggregates for the LLM-usage dashboard. GraceKelly exposes no token/cost
-        usage, so this is built on measured signals only: call counts, latency, and
-        char volumes (size proxies — never presented as tokens or money)."""
+        """Aggregates for the LLM-usage dashboard. Char volumes are a universal size
+        proxy (every call has them). Real `input_tokens`/`output_tokens` are summed
+        NULL-ignoring — they are populated only on providers that report usage (Anthropic);
+        GraceKelly reports none, so its rows stay NULL. `token_calls` counts the rows that
+        carry real tokens, so callers can show token figures only when they exist rather
+        than presenting a NULL-driven 0 as if it were measured."""
         where = "WHERE session_id = ?" if session_id is not None else ""
         params: tuple[Any, ...] = (session_id,) if session_id is not None else ()
         totals_row = self._db_one(
@@ -322,6 +344,10 @@ class Store:
             " COALESCE(MAX(latency_ms), 0) AS latency_ms_max,"
             " COALESCE(SUM(prompt_chars), 0) AS prompt_chars,"
             " COALESCE(SUM(completion_chars), 0) AS completion_chars,"
+            " COALESCE(SUM(input_tokens), 0) AS input_tokens,"
+            " COALESCE(SUM(output_tokens), 0) AS output_tokens,"
+            " COALESCE(SUM(CASE WHEN input_tokens IS NOT NULL THEN 1 ELSE 0 END), 0)"
+            " AS token_calls,"
             " COALESCE(SUM(reasoning), 0) AS reasoning_calls"
             f" FROM llm_calls {where}",
             params,
@@ -334,7 +360,9 @@ class Store:
                 f"SELECT {column} AS {column}, COUNT(*) AS calls,"
                 " COALESCE(SUM(latency_ms), 0) AS latency_ms_total,"
                 " COALESCE(SUM(prompt_chars), 0) AS prompt_chars,"
-                " COALESCE(SUM(completion_chars), 0) AS completion_chars"
+                " COALESCE(SUM(completion_chars), 0) AS completion_chars,"
+                " COALESCE(SUM(input_tokens), 0) AS input_tokens,"
+                " COALESCE(SUM(output_tokens), 0) AS output_tokens"
                 f" FROM llm_calls {where} GROUP BY {column} ORDER BY calls DESC",
                 *params,
             )
