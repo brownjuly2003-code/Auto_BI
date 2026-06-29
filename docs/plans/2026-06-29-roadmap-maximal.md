@@ -23,8 +23,10 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 - **Продукт:** web UI (3 режима + observability-панель), auth/RBAC (opt-in), Store v3,
   CLI, eval-сьют (55 кейсов), live-verify репо-скрипт `scripts/verify_live_clickhouse.py`.
 
-**Чистая автономная code-линия АВТО-ОБЗОРА исчерпана.** Остаются автономные кандидаты в
-ДРУГИХ треках (observability, eval, hardening) — ниже помечены 🟢.
+**Чистая автономная code-линия АВТО-ОБЗОРА исчерпана; observability-трек закрыт (E2 ✅ cont.12 —
+реальный токен-учёт по Anthropic-пути).** Остаются автономные 🟢-кандидаты в eval/insight/hardening:
+**B1** yoy-KPI · **B2** eval-кейс авто-обзора · **B3** percent-aware нарратив yoy · **D1** advisor-правило ·
+**H1** флейк-харден — ниже помечены 🟢.
 
 ## Гейт-легенда
 
@@ -88,7 +90,7 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 | ID | Гейт | Что | Точки входа · оценка |
 |----|------|-----|----------------------|
 | E1 | 🔴 НАРУЖУ | **Деплой публичного демо** на синтетике (Render/Fly/VPS) — закрывает PMF-разрыв BCG-аудита (delivery=D). Anthropic-клиент влит (снимает GraceKelly-SPOF) + Dockerfile есть → технически разблокировано. **Gate:** «деплой» + Anthropic-ключ. | `llm/anthropic.py`, Dockerfile. M |
-| E2 | 🟢 АВТО | **Token/$-учёт по Anthropic-пути** — `llm/anthropic.py` сейчас пишет только `completion_chars` (size-прокси), хотя Anthropic API возвращает `usage.input_tokens/output_tokens`. Захватить usage из ответа → колонки `llm_calls` (Store v3→v4, идемпотентная миграция как v2) → реальные токены в observability-панели (вместо size-прокси) на Anthropic-провайдере. GraceKelly usage не отдаёт → там остаётся прокси. **Закрывает задокументированный отложенный gap** (ARCHITECTURE §3.9). | `llm/anthropic.py`, `llm/_structured.py`, `store.py`, `api` observability; verify: mock-ответ с usage + offline-тест. M |
+| E2 | ✅ готово | **Token-учёт по Anthropic-пути** — реальные `usage.input_tokens/output_tokens` захвачены в nullable-колонки `llm_calls.input_tokens/output_tokens` (Store v4→v5, идемпотентная миграция как v2); `llm_usage_summary` суммирует NULL-игнорируя + `token_calls`; панель «Наблюдаемость» показывает токен-ячейки при наличии данных, символы остаются универсальным прокси; GraceKelly usage не отдаёт → его строки NULL. **$-стоимость = осознанный non-goal** (нужна поддерживаемая таблица цен; токены — дрейф-устойчивая правда). Закрыл gap ARCHITECTURE §3.9. Смержено cont.12 (`6a19002`), гейт 0/66·555·9/9 + UI live-verified. | done |
 | E3 | 🟣 ВЛАДЕЛЕЦ | **Демо-GIF/видео** для README/landing — owner/asset-gated. | — |
 | E4 | 🟣 по запросу | **Auth/RBAC продуктизация** — реализована (opt-in `AUTO_BI_AUTH_ENABLED`); дальше только по спросу (single-user — осознанное решение). | `auth.py`, USER_GUIDE §7 |
 
@@ -119,9 +121,8 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 ## Рекомендованная последовательность
 
 **Если «продолжай автономно» (Opus/auto), по убыванию ценности:**
-1. **E2 token/$-учёт по Anthropic-пути** — закрывает реальный gap observability, детерминир.,
-   offline-верифицируемо. Самый весомый из оставшихся 🟢.
-2. **B1 yoy-KPI** + **B2 eval-кейс авто-обзора** — мелкие, доводят авто-обзор.
+1. ~~**E2 token-учёт по Anthropic-пути**~~ — ✅ **СДЕЛАНО cont.12** (`6a19002`), gap observability закрыт.
+2. **B1 yoy-KPI** + **B2 eval-кейс авто-обзора** — мелкие, доводят авто-обзор. ← следующий 🟢.
 3. **B3 percent-aware нарратив yoy** — реальная фича в insight-слое.
 4. **D1** новое advisor-правило — только под конкретный реальный кейс.
 5. **H1** флейк-харден.
