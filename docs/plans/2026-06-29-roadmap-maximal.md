@@ -48,16 +48,17 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 | A1 | ✅ готово | **mom/wow** — month/week-over-month уже работает композицией `time_grain`+`pop_pct` (отдельный примитив НЕ нужен; mom покрыт live-verify cont.9). | — |
 | A2 | ✅ готово (cont.14) | **Лаг на произвольные N периодов** — `Measure.lag_periods: int\|None` (pop_abs/pop_pct vs N периодов назад). Переиспользует frame-bounded `lag(k)` (k=1 → SQL байт-в-байт); валидация только pop_abs/pop_pct; alias `_lag<N>`. CH live-verified (lag3 на 24 мес). Дизайн: `docs/plans/2026-06-29-core-deepening-a2-a5.md`. | `ir/spec.py`, `sqlgen._window_expr`, `ir/validate.py`. M |
 | A3 | ✅ готово (cont.15) | **Кумулятивная доля / Pareto** — `MeasureTransform.RUNNING_SHARE` (категории ранжир. по мере убыв., накопл. доля от итога: `SUM(src) OVER (ORDER BY src DESC ROWS …) / SUM(src) OVER ()`). Окно по МЕРЕ, не по времени → НЕ в `_ORDERED_TRANSFORMS`; требует измерение, не time-ось. CH live-verified (4200 магазинов, закрывается на 1.0). | `ir/spec.py`, `sqlgen._window_expr`, `ir/validate.py`. M |
-| A4 | 🟠 S4/IR | **Гистограмма/распределение** (бакетинг меры в корзины) — новый viz + bin-логика. | `ir/spec.py` (Viz), `sqlgen`, оба адаптера. L |
+| A4 | ✅ готово (cont.16) | **Гистограмма/распределение** — `Viz.HISTOGRAM` + `ChartQuery.bins`: числовая колонка role=measure бьётся на `bins` равноширинных корзин, мера=COUNT строк. Отдельный `_generate_histogram_sql` (min/width-подзапрос + CROSS JOIN + bucket-выражение, Float64-каст против Decimal-мисбиннинга, квалиф. против alias-shadow); рендер=бар по корзинам в обоих адаптерах (бинирование в SQL, без реверса движка). CH live-verified (8 корзин по products.price, все 2000 строк). | `ir/spec.py`, `sqlgen`, `validate`, оба адаптера. L |
 | A5 | 🟠 S4/IR | **Когортный/retention** анализ — самый сложный, доменно-чувствительный. | новый модуль; verify: стенд. L |
 
-> A4–A5 = изменение контракта → НЕ автономно. Брать только по «предложи варианты» с
+> A5 = изменение контракта → НЕ автономно. Брать только по «предложи варианты» с
 > владельцем (как трио cont.9). Приоритет низкий — ядро уже покрывает 90% паттернов.
-> **A2 закрыт cont.14** (`lag_periods`), **A3 закрыт cont.15** (`running_share`/Pareto) — owner
-> открыл трек A2–A5 «решай сам», реализованы два безопасных инкремента по design-доку
-> `docs/plans/2026-06-29-core-deepening-a2-a5.md`. Осталось: **A4 гистограмма** (тяжелее — новый
-> `Viz.HISTOGRAM` + bins + оба адаптера, частично стенд) · **A5 когорты** отложить (нет
-> клиентской сущности в демо → невериф + риск universal-not-retail).
+> **A2 (`lag_periods`, cont.14) + A3 (`running_share`/Pareto, cont.15) + A4 (`Viz.HISTOGRAM`,
+> cont.16) закрыты** — owner открыл трек A2–A5 «решай сам», реализованы три инкремента по
+> design-доку `docs/plans/2026-06-29-core-deepening-a2-a5.md`, все CH live-verified. Histogram
+> рендерится баром по корзинам (бинирование в SQL → без стенд-gated реверса движка, как
+> опасались). Осталось: **A5 когорты** — отложить (нет клиентской сущности в демо → невериф +
+> риск universal-not-retail). **Трек A автономно ИСЧЕРПАН** (A2–A4 done, A5 нужна модель с entity).
 
 ## Трек B — Авто-обзор (`autospec`) + insight-слой (display-only)
 
