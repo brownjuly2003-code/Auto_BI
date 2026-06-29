@@ -165,20 +165,46 @@ def _verify_trio(ch: Runner, failures: list[str]) -> None:
 
 
 def _verify_autospec(ch: Runner, failures: list[str]) -> None:
-    print("\n[autospec] auto-overview dynamics line (real model.yaml)")
+    print("\n[autospec] auto-overview time-views (real model.yaml)")
     model = SemanticModel.load(REPO / "semantic" / "model.yaml")
     spec = build_auto_spec(model, TABLE)
-    line = next(c for c in spec.charts if c.viz == Viz.LINE)
-    print(f"  line: {line.title!r}  time_grain={line.query.time_grain}")
-    rows = ch(generate_chart_sql(line.query, apply_limit=False))
+    lines = [c for c in spec.charts if c.viz == Viz.LINE]
     ind = ch(_MONTHLY_SQL)
+    months = [float(r[1]) for r in ind]
+
+    # the absolute dynamics line: the hero measure as a readable monthly trend
+    dyn = next(c for c in lines if not any(m.transform for m in c.query.measures))
+    print(f"  dynamics: {dyn.title!r}  time_grain={dyn.query.time_grain}")
+    rows = ch(generate_chart_sql(dyn.query, apply_limit=False))
     ok = (
-        line.query.time_grain == TimeGrain.MONTH
+        dyn.query.time_grain == TimeGrain.MONTH
         and len(rows) == len(ind)
         and all(date.fromisoformat(r[0]).day == 1 for r in rows)
         and all(_approx(g[1], i[1]) for g, i in zip(rows, ind, strict=True))
     )
     _check(failures, "dynamics line is a monthly trend matching live CH", ok, f"{len(rows)} points")
+
+    # the year-over-year line (added when there are 2+ years of history): same hero measure, but
+    # each month vs the same month a year back — first year NULL, the rest a hand-checkable ratio
+    yoy = None
+    for c in lines:
+        if any(m.transform == MeasureTransform.YOY_PCT for m in c.query.measures):
+            yoy = c
+            break
+    if yoy is None:
+        _check(failures, "auto-overview emits a year-over-year line", False, "no yoy line built")
+        return
+    print(f"  yoy: {yoy.title!r}  time_grain={yoy.query.time_grain}")
+    gy = ch(generate_chart_sql(yoy.query, apply_limit=False))
+    n = len(months)
+    exp = [None] * 12 + [(months[k] - months[k - 12]) / months[k - 12] for k in range(12, n)]
+    ok = (
+        yoy.query.time_grain == TimeGrain.MONTH
+        and len(gy) == len(exp)
+        and all(g[1] is None for g in gy[:12])
+        and all(_approx(g[1], e) for g, e in zip(gy, exp, strict=True))
+    )
+    _check(failures, "auto-overview yoy line matches hand calc on live CH", ok, f"{len(gy)} months")
 
 
 def main() -> int:

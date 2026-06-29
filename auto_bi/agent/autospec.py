@@ -14,7 +14,11 @@ top-N caps). Invariants 1-8 are untouched.
 
 Recipe (truncated to `max_charts` by priority P1..P5):
   P1 KPI        — one big_number per measure
-  P2 dynamics   — primary measure as a line over the time column (if any)
+  P2 dynamics   — primary measure as a line over the time column (if any), bucketed to a
+                  readable grain (day/week/month) when the daily series is long
+  P2b yoy       — a SECOND line: the hero measure's year-over-year % change, only when there is
+                  2+ years of history (a non-day grain with enough periods). Prioritised above
+                  the third breakdown so the structure (share) view still survives the cut.
   P3 breakdowns — primary measure as a bar over each "good breakdown" (a dimension whose
                   cardinality is in [2..CARD_MAX], including attributes of adjacent dim
                   tables reached by a model-edge JOIN: city / region / format / ...)
@@ -140,6 +144,26 @@ def _auto_time_grain(table: Table, time_col: Column) -> TimeGrain:
     return TimeGrain.MONTH
 
 
+# a year-over-year line lags a full year of periods, so it needs a non-day grain (to know how many
+# periods make a year) and more than a year of them — the first year is the null baseline. Autospec
+# buckets to month at most, so yoy fires only at month grain with >= ~13 months: 13 guarantees one
+# real point, the demo's 24 months give a full year of them.
+_YOY_MIN_PERIODS = 13
+
+
+def _yoy_applicable(grain: TimeGrain, time_card: int | None) -> bool:
+    """Whether a year-over-year dynamics line is worth adding for this time axis.
+
+    Needs the month grain autospec picks for long series and enough of those months that the
+    year-back lag yields real comparison points (not an all-null first year). The month count is
+    estimated from the time column's distinct-day count — the same model-recorded cardinality the
+    grain itself is chosen from — so this stays deterministic and model-driven (no LLM)."""
+    if time_card is None or grain != TimeGrain.MONTH:
+        return False
+    est_months = time_card * 12 // 365
+    return est_months >= _YOY_MIN_PERIODS
+
+
 def _to_measure(col: Column) -> Measure:
     # empty label => SQL alias is "<agg>_<column>" (measure_alias); chart titles are human
     return Measure(column=col.name, agg=col.agg or Aggregation.SUM, label="")
@@ -238,6 +262,9 @@ def build_auto_spec(
     measure_objs = [_to_measure(c) for c in measures] or [_synthetic_count(table)]
     primary = measure_objs[0]
     time_col = _time_column(table)
+    time_grain = _auto_time_grain(table, time_col) if time_col is not None else TimeGrain.DAY
+    time_card = _cardinality(table, time_col.name) if time_col is not None else None
+    yoy_on = time_col is not None and _yoy_applicable(time_grain, time_card)
     breakdowns = _good_breakdowns(table, model)
 
     charts: list[ChartSpec] = []
@@ -271,30 +298,56 @@ def build_auto_spec(
     share_break = (
         breakdowns[0] if breakdowns and breakdowns[0].card <= _STRUCTURE_CARD_MAX else None
     )
-    bar_breaks = [b for b in breakdowns if b is not share_break][:_MAX_BAR_BREAKDOWNS]
+    # the year-over-year time-view (P2b) is prioritised above the third breakdown bar: when it is
+    # present it takes that slot, so the structure (share) view still survives the max_charts cut
+    max_bars = _MAX_BAR_BREAKDOWNS - 1 if yoy_on else _MAX_BAR_BREAKDOWNS
+    bar_breaks = [b for b in breakdowns if b is not share_break][:max_bars]
 
     # P2 — dynamics over time (ordered by time, never top-N'd). A long daily series is bucketed
     # to a readable grain so the line shows a trend, not 730 noisy points (time_grain). DAY is
     # left unset so a short series' SQL is unchanged.
     if time_col is not None:
-        grain = _auto_time_grain(table, time_col)
         dyn_query = ChartQuery(
             table=table_name,
             dimensions=[time_col.name],
             measures=[primary],
             order_by=[OrderBy(by=time_col.name, dir="asc")],
         )
-        if grain != TimeGrain.DAY:
-            dyn_query = dyn_query.model_copy(update={"time_grain": grain})
+        if time_grain != TimeGrain.DAY:
+            dyn_query = dyn_query.model_copy(update={"time_grain": time_grain})
         charts.append(
             ChartSpec(
                 id="",
-                title=f"{_DYNAMICS_TITLE[grain]}: {primary_title}",
+                title=f"{_DYNAMICS_TITLE[time_grain]}: {primary_title}",
                 viz=Viz.LINE,
                 query=dyn_query,
                 layout_hint=LayoutHint(w=12, h=6),
             )
         )
+
+        # P2b — year-over-year change of the hero measure, when there is 2+ years of history.
+        # A second time-view beside the absolute trend: same hero measure, but each period vs the
+        # same period a year back (yoy_pct, a percent — `is_percent_measure`). The non-day grain
+        # `yoy_pct` requires is the month grain `yoy_on` already implies. Display-only, no LLM.
+        if yoy_on:
+            yoy_measure = primary.model_copy(
+                update={"transform": MeasureTransform.YOY_PCT, "label": ""}
+            )
+            charts.append(
+                ChartSpec(
+                    id="",
+                    title=f"Динамика г/г: {primary_title}",
+                    viz=Viz.LINE,
+                    query=ChartQuery(
+                        table=table_name,
+                        dimensions=[time_col.name],
+                        measures=[yoy_measure],
+                        order_by=[OrderBy(by=time_col.name, dir="asc")],
+                        time_grain=time_grain,
+                    ),
+                    layout_hint=LayoutHint(w=12, h=6),
+                )
+            )
 
     # P3 — bar breakdowns (low-card categorical axes)
     for b in bar_breaks:

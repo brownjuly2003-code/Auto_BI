@@ -160,6 +160,12 @@ def _observe_chart(chart: ChartSpec, run_query: RunQuery, dialect: str) -> list[
     d_alias = column_alias(q.dimensions[0])
 
     if chart.viz in (Viz.LINE, Viz.AREA):
+        if is_percent_measure(primary):
+            # a percent line (yoy_pct / pop_pct) is already a derived rate; the trend / anomaly
+            # machinery reads a LEVEL series and formats magnitudes (rubles), not percents, so
+            # narrating "the trend of a year-over-year rate" would be muddled — that chart is
+            # itself the insight. (A share BAR differs: its single largest part is a clean lead.)
+            return []
         return _observe_line(chart, rows, m_alias, d_alias)
     if chart.viz in (Viz.BAR, Viz.STACKED_BAR, Viz.PIE):
         if is_percent_measure(primary):

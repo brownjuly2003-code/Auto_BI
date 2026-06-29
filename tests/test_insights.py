@@ -80,7 +80,7 @@ def test_analyze_real_auto_overview_produces_expected_observations() -> None:
     # KPIs (auto1..auto3, big_number, no dimension) carry no trend/ranking story
     assert "auto1" not in per and "auto2" not in per and "auto3" not in per
 
-    # line: a smoothed rising trend + the mid-series spike as an anomaly
+    # the absolute dynamics line (auto4): a smoothed rising trend + the mid-series spike anomaly
     line = per["auto4"]
     trend = next(o for o in line if o.kind == "trend")
     assert trend.value == pytest.approx(122.7, abs=0.1) and "рост" in trend.text
@@ -88,8 +88,12 @@ def test_analyze_real_auto_overview_produces_expected_observations() -> None:
     anomaly = next(o for o in line if o.kind == "anomaly")
     assert anomaly.subject == "2026-01-15" and anomaly.value == pytest.approx(2000.0)
 
-    # concentrated ranking (region): leader + a top-3 concentration line
-    region = per["auto5"]
+    # the year-over-year line (auto5) is a percent rate — the chart is itself the insight, so the
+    # layer adds no (muddled) "trend of a rate" observation for it
+    assert "auto5" not in per
+
+    # concentrated ranking (region, auto6): leader + a top-3 concentration line
+    region = per["auto6"]
     leader = next(o for o in region if o.kind == "leader")
     assert leader.subject == "Центр" and leader.value == pytest.approx(500.0)
     assert "64,1% видимой суммы" in leader.text
@@ -105,7 +109,7 @@ def test_diffuse_ranking_emits_leader_and_spread_not_concentration() -> None:
     spec = build_auto_spec(model, "dm.sales_daily")
     per = _by_chart(analyze_spec(spec, model, _fake_run_query).observations)
 
-    category = per["auto6"]
+    category = per["auto7"]
     assert [o.kind for o in category] == ["leader", "spread"]
     assert category[0].subject == "cat1"
     assert "распределение ровное" in category[1].text and "30%" in category[1].text
