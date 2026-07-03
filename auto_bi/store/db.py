@@ -15,11 +15,20 @@ Schema v5 (token accounting, E2): `llm_calls` gained nullable `input_tokens` /
 so calls on that provider carry real tokens; GraceKelly reports no usage and a transport
 error has no response, so those rows stay NULL (NULL = "no usage reported", distinct from
 a real zero — `completion_chars` remains the universal size proxy for every call).
+
+Schema v6 (B-4 hardening): `auth_tokens.token` now stores sha256(raw token) hex, not the
+raw bearer token — a stolen SQLite file no longer yields live sessions directly. The
+column keeps its name (no ALTER ... RENAME) to avoid a migration that touches the primary
+key's identity; only its content changed meaning. `create_token`/`token_user`/
+`delete_token` hash the caller-supplied raw token before every read/write, so callers are
+unaffected.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import sqlite3
 import threading
 import uuid
@@ -34,7 +43,14 @@ def _row_id(cur: sqlite3.Cursor) -> int:
     return cur.lastrowid
 
 
-_SCHEMA_VERSION = 5  # bump together with a migration when the schema changes
+_SCHEMA_VERSION = 6  # bump together with a migration when the schema changes
+
+_TOKEN_HASH_RE = re.compile(r"^[0-9a-f]{64}$")  # sha256 hex digest shape
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -113,7 +129,7 @@ CREATE TABLE IF NOT EXISTS users (
     allowed_schemas TEXT NOT NULL DEFAULT '[]'  -- JSON array; ["*"] = all schemas
 );
 CREATE TABLE IF NOT EXISTS auth_tokens (
-    token       TEXT PRIMARY KEY,
+    token       TEXT PRIMARY KEY,  -- sha256(raw bearer token) hex, not the raw token (v6)
     user_id     INTEGER NOT NULL REFERENCES users(id),
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     expires_at  TEXT NOT NULL
@@ -160,7 +176,11 @@ class Store:
         0). v3 added only new tables (no ALTER), so the version bump below suffices. v4
         adds dm_change_requests.remediation; v5 adds llm_calls.input_tokens/output_tokens
         (both guarded ALTERs, no-op on a fresh DB; the new columns are nullable so legacy
-        rows back-fill to NULL = "no usage reported").
+        rows back-fill to NULL = "no usage reported"). v6 rewrites existing plaintext
+        `auth_tokens.token` values to their sha256 hex digest in place (B-4) — guarded by
+        shape (`_TOKEN_HASH_RE`), not just the version check, so re-entering this branch
+        (e.g. a v6 DB that somehow re-runs it) can never double-hash an already-hashed
+        value.
         Idempotent — guarded by the column check, so it is safe to run on any schema.
         """
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
@@ -175,8 +195,22 @@ class Store:
             # legacy/GraceKelly rows stay NULL rather than a misleading zero
             self._add_column("llm_calls", "input_tokens", "INTEGER")
             self._add_column("llm_calls", "output_tokens", "INTEGER")
+        if version < 6:
+            self._hash_legacy_tokens()
         if version < _SCHEMA_VERSION:
             self._db.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
+
+    def _hash_legacy_tokens(self) -> None:
+        tables = {r["name"] for r in self._db.execute("SELECT name FROM sqlite_master")}
+        if "auth_tokens" not in tables:
+            return
+        for row in self._db.execute("SELECT token FROM auth_tokens").fetchall():
+            raw = row["token"]
+            if _TOKEN_HASH_RE.match(raw):
+                continue  # already a hash — never re-hash
+            self._db.execute(
+                "UPDATE auth_tokens SET token = ? WHERE token = ?", (_hash_token(raw), raw)
+            )
 
     def _add_column(self, table: str, column: str, decl: str) -> None:
         existing = {r["name"] for r in self._db.execute(f"PRAGMA table_info({table})")}
@@ -438,11 +472,13 @@ class Store:
         return [_decode_user(r) for r in self._rows("SELECT * FROM users ORDER BY username")]
 
     def create_token(self, token: str, user_id: int, ttl_hours: int) -> str:
+        """Store sha256(token), return the raw token (B-4: the raw value never touches
+        disk — a stolen store file cannot be replayed as a live bearer token)."""
         with self._lock, self._db:
             self._db.execute(
                 "INSERT INTO auth_tokens (token, user_id, expires_at)"
                 f" VALUES (?, ?, datetime('now', '+{int(ttl_hours)} hours'))",
-                (token, user_id),
+                (_hash_token(token), user_id),
             )
         return token
 
@@ -451,13 +487,13 @@ class Store:
         rows = self._rows(
             "SELECT u.* FROM auth_tokens t JOIN users u ON u.id = t.user_id"
             " WHERE t.token = ? AND t.expires_at > datetime('now')",
-            token,
+            _hash_token(token),
         )
         return _decode_user(rows[0]) if rows else None
 
     def delete_token(self, token: str) -> None:
         with self._lock, self._db:
-            self._db.execute("DELETE FROM auth_tokens WHERE token = ?", (token,))
+            self._db.execute("DELETE FROM auth_tokens WHERE token = ?", (_hash_token(token),))
 
     def purge_expired_tokens(self) -> int:
         with self._lock, self._db:

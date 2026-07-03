@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     admin_user: str = "admin"
     admin_password: str = ""
     auth_token_ttl_hours: int = 24
+    # `secure` flag on the login cookie: None = auto (on unless serving on a loopback
+    # host — see cli.py::_serve); set true/false to force it regardless of bind host.
+    auth_cookie_secure: bool | None = None
 
     # SQLite store (sessions, specs, builds, llm_calls, dm_change_requests, users)
     store_path: str = "data/auto_bi.sqlite"

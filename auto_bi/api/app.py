@@ -33,6 +33,7 @@ from auto_bi.agent.insights import analyze_spec
 from auto_bi.agent.machine import AgentPhase, AgentTurn
 from auto_bi.agent.propose import SpecValidationError
 from auto_bi.agent.seed import validate_seed
+from auto_bi.api.ratelimit import LoginRateLimiter
 from auto_bi.api.schemas import (
     AutoSessionRequest,
     BuildEvent,
@@ -82,6 +83,7 @@ def create_app(
     model_path: str | Path | None = None,  # enables enrichment writes (task 2.7)
     auth_enabled: bool = False,  # Phase 4 auth/RBAC, opt-in (default: open, single-user)
     auth_token_ttl_hours: int = 24,
+    cookie_secure: bool = False,  # force `Secure` on the login cookie (B-2); see cli.py::_serve
 ) -> FastAPI:
     manager = SessionManager(
         model=model,
@@ -94,6 +96,7 @@ def create_app(
 
     # paths reachable without a token even when auth is on (login issues the token)
     _open_paths = {"/api/v1/health", "/api/v1/auth/login"}
+    _login_limiter = LoginRateLimiter()
 
     def _bearer(header: str | None) -> str | None:
         if header and header.lower().startswith("bearer "):
@@ -178,22 +181,32 @@ def create_app(
         return {"username": user.username, "role": user.role, "schemas": user.allowed_schemas}
 
     @app.post("/api/v1/auth/login")
-    def login(body: LoginRequest, response: Response) -> dict:
+    def login(body: LoginRequest, request: Request, response: Response) -> dict:
         if not auth_enabled:
             raise HTTPException(status_code=404, detail="auth is disabled")
+        client_ip = request.client.host if request.client else "unknown"
+        wait = _login_limiter.check(client_ip)
+        if wait > 0:
+            raise HTTPException(
+                status_code=429,
+                detail="too many login attempts, try again later",
+                headers={"Retry-After": str(int(wait) + 1)},
+            )
         row = _store().get_user(body.username)
         # one opaque 401 whether the username or the password is wrong (don't leak which)
         if row is None or not verify_password(body.password, row["password_hash"]):
             raise HTTPException(status_code=401, detail="invalid username or password")
         token = _store().create_token(new_token(), row["id"], auth_token_ttl_hours)
         # cookie for the browser (HttpOnly so JS can't read it; SameSite=Lax + the CSRF
-        # Origin guard mitigate cross-site use). The token is also returned for CLI clients.
+        # Origin guard mitigate cross-site use; Secure per cookie_secure — forced on for
+        # non-loopback deploys, see cli.py::_serve). The token is also returned for CLI clients.
         response.set_cookie(
             "auth_token",
             token,
             max_age=auth_token_ttl_hours * 3600,
             httponly=True,
             samesite="lax",
+            secure=cookie_secure,
         )
         user = AuthUser(
             username=row["username"], role=row["role"], allowed_schemas=row["allowed_schemas"]

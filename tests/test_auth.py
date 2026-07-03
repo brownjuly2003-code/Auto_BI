@@ -30,6 +30,7 @@ from auto_bi.ir.spec import (
 from auto_bi.semantic.model import Aggregation, ColumnRole, Join, SemanticModel, Table
 from auto_bi.semantic.model import Column as Col
 from auto_bi.store import Store
+from auto_bi.store.db import _hash_token
 
 # --- passwords + tokens -------------------------------------------------------
 
@@ -207,12 +208,24 @@ def test_expired_token_not_resolved(tmp_path) -> None:
     store.upsert_user("alice", hash_password("pw"), "analyst", ["dm"])
     uid = store.get_user("alice")["id"]
     token = store.create_token(new_token(), uid, ttl_hours=24)
-    # force expiry into the past, deterministically
+    # force expiry into the past, deterministically. auth_tokens.token stores sha256(token)
+    # (B-4), not the raw value, so the WHERE clause must match on the hash too.
     with store._lock, store._db:
         store._db.execute(
             "UPDATE auth_tokens SET expires_at = datetime('now', '-1 hour') WHERE token = ?",
-            (token,),
+            (_hash_token(token),),
         )
     assert store.token_user(token) is None
     assert store.purge_expired_tokens() == 1
+    store.close()
+
+
+def test_token_stored_as_sha256_hash_not_plaintext(tmp_path) -> None:
+    store = Store(tmp_path / "s.sqlite")
+    store.upsert_user("alice", hash_password("pw"), "analyst", ["dm"])
+    uid = store.get_user("alice")["id"]
+    token = store.create_token(new_token(), uid, ttl_hours=24)
+    (row,) = store._rows("SELECT token FROM auth_tokens")
+    assert row["token"] == _hash_token(token)
+    assert row["token"] != token
     store.close()

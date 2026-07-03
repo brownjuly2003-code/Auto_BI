@@ -365,6 +365,14 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
 
         n = seed_users(store, settings)
         print(f"auth enabled: seeded {n} user(s)")
+        _start_token_purge_thread(store)
+    # B-2: Secure cookie on by default unless bound to a loopback host (local dev), or
+    # forced either way via AUTO_BI_AUTH_COOKIE_SECURE.
+    cookie_secure = (
+        settings.auth_cookie_secure
+        if settings.auth_cookie_secure is not None
+        else host not in {"127.0.0.1", "localhost", "::1"}
+    )
     # the build target is dispatched per-spec (spec.target_bi); the API/UI selector sets it
     adapter_for = partial(make_adapter, settings=settings, model=model)
 
@@ -390,9 +398,32 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
         model_path=model_path,  # enrichment UI пишет правки обратно в model.yaml
         auth_enabled=settings.auth_enabled,
         auth_token_ttl_hours=settings.auth_token_ttl_hours,
+        cookie_secure=cookie_secure,
     )
     uvicorn.run(app, host=host, port=port)
     return 0
+
+
+def _start_token_purge_thread(  # pragma: no cover — wiring only
+    store, interval_seconds: float = 3600.0
+) -> None:
+    """Daemon thread that sweeps expired `auth_tokens` rows once an hour (B-4 follow-up):
+    `token_user` already filters expired rows out, so this is just housekeeping against
+    unbounded growth of a table that otherwise never shrinks. `Store.purge_expired_tokens`
+    carries the tested logic; this loop is pure wiring, like the build thread above."""
+    import logging
+    import threading
+    import time
+
+    def _loop() -> None:
+        while True:
+            time.sleep(interval_seconds)
+            try:
+                store.purge_expired_tokens()
+            except Exception:
+                logging.getLogger(__name__).exception("token purge sweep failed")
+
+    threading.Thread(target=_loop, name="auth-token-purge", daemon=True).start()
 
 
 def _render_turn(console, turn) -> None:  # pragma: no cover — presentation only

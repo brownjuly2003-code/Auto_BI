@@ -18,7 +18,7 @@ def _fake_builder(spec, log, session_id):
     return DashboardRef(id=7, title=spec.title, url="/superset/dashboard/7/")
 
 
-def _auth_client(llm, demo_model, store, users, model_path=None) -> TestClient:
+def _auth_client(llm, demo_model, store, users, model_path=None, **create_app_kwargs) -> TestClient:
     for username, password, role, schemas in users:
         store.upsert_user(username, hash_password(password), role, schemas)
     app = create_app(
@@ -28,6 +28,7 @@ def _auth_client(llm, demo_model, store, users, model_path=None) -> TestClient:
         builder=_fake_builder,
         auth_enabled=True,
         model_path=model_path,
+        **create_app_kwargs,
     )
     return TestClient(app)
 
@@ -167,6 +168,38 @@ def test_enrichment_patch_requires_schema_access(demo_model, tmp_path) -> None:
         ).status_code
         == 200
     )
+
+
+def test_login_rate_limited_after_repeated_attempts(demo_model, tmp_path) -> None:
+    # B-3: 5 attempts/min/IP — the TestClient's requests all share one client "IP", so
+    # the 6th call in a burst must be refused with a Retry-After hint, whether the prior
+    # attempts succeeded or failed.
+    client = _auth_client(
+        ScriptedLLM([]),
+        demo_model,
+        Store(tmp_path / "s.sqlite"),
+        [("alice", "pw", "analyst", ["dm"])],
+    )
+    for _ in range(5):
+        client.post("/api/v1/auth/login", json={"username": "alice", "password": "wrong"})
+    r = client.post("/api/v1/auth/login", json={"username": "alice", "password": "pw"})
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+
+
+def test_login_cookie_secure_flag_reflects_config(demo_model, tmp_path) -> None:
+    # B-2: the cookie's Secure attribute is caller-configured (default False here, as
+    # cli.py::_serve derives it from the bind host), not hardcoded either way.
+    client = _auth_client(
+        ScriptedLLM([]),
+        demo_model,
+        Store(tmp_path / "s.sqlite"),
+        [("alice", "pw", "analyst", ["dm"])],
+        cookie_secure=True,
+    )
+    r = client.post("/api/v1/auth/login", json={"username": "alice", "password": "pw"})
+    assert r.status_code == 200
+    assert "secure" in r.headers["set-cookie"].lower()
 
 
 def test_authorized_user_completes_full_flow(demo_model, tmp_path) -> None:

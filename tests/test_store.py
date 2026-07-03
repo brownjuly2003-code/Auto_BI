@@ -105,7 +105,7 @@ def test_foreign_keys_enforced(store: Store) -> None:
 
 def test_schema_version_stamped(store: Store) -> None:
     version = store._db.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 5
+    assert version == 6
 
 
 def test_trace_events_ordered_by_seq(store: Store) -> None:
@@ -244,7 +244,7 @@ def test_migrates_v1_db_to_v2(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the pre-existing row survived and back-fills with defaults
@@ -277,7 +277,7 @@ def test_migrates_legacy_v0_db_with_old_llm_calls(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the first observability-aware write no longer crashes with "no such column: step"
@@ -322,7 +322,7 @@ def test_migrates_v3_db_adds_remediation_column(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(dm_change_requests)")}
     assert "remediation" in cols
     # the pre-existing row survived and back-fills the new column with its default
@@ -358,7 +358,7 @@ def test_migrates_v4_db_adds_token_columns(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"input_tokens", "output_tokens"} <= cols
     # the pre-existing row survived; its token columns back-fill to NULL (not a fake 0)
@@ -383,6 +383,41 @@ def test_migrates_v4_db_adds_token_columns(tmp_path) -> None:
     totals = store.llm_usage_summary()["totals"]
     assert totals["input_tokens"] == 42 and totals["output_tokens"] == 9
     assert totals["token_calls"] == 1
+    store.close()
+
+
+def test_migrates_v5_db_hashes_plaintext_tokens(tmp_path) -> None:
+    # a v5 DB: auth_tokens exists (created by the initial schema, back when tokens were
+    # stored raw). The v6 migration must rewrite the plaintext value to its sha256 hex
+    # digest in place (B-4) without losing the row (user_id/expires_at survive).
+    import sqlite3
+
+    from auto_bi.store.db import _hash_token
+
+    path = tmp_path / "v5.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT,"
+        " username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,"
+        " role TEXT NOT NULL DEFAULT 'analyst', allowed_schemas TEXT NOT NULL DEFAULT '[]');"
+        "INSERT INTO users (username, password_hash, allowed_schemas) VALUES"
+        " ('alice', 'h', '[\"dm\"]');"
+        "CREATE TABLE auth_tokens (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL,"
+        " created_at TEXT, expires_at TEXT NOT NULL);"
+        "INSERT INTO auth_tokens (token, user_id, expires_at)"
+        " VALUES ('plaintext-raw-token-value', 1, datetime('now', '+1 hour'));"
+    )
+    db.execute("PRAGMA user_version = 5")
+    db.commit()
+    db.close()
+
+    store = Store(path)
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
+    (row,) = store._rows("SELECT token, user_id FROM auth_tokens")
+    assert row["token"] == _hash_token("plaintext-raw-token-value")
+    assert row["user_id"] == 1
+    # the row is resolvable through the normal API with the original raw token
+    assert store.token_user("plaintext-raw-token-value")["username"] == "alice"
     store.close()
 
 
