@@ -68,6 +68,31 @@ def test_prompt_contains_model_request_and_schema(demo_model) -> None:
     assert '"DashboardSpec"' in prompt or "properties" in prompt  # JSON schema embedded
 
 
+def test_spec_rules_document_the_analytical_core() -> None:
+    # drift guard (S01/F1): every analytical primitive of the IR must be explained to
+    # the LLM — a new MeasureTransform/TimeGrain member fails here until SPEC_RULES
+    # teaches it (text-first is the promise, not just the schema)
+    from auto_bi.agent.propose import SPEC_RULES
+    from auto_bi.ir.spec import MeasureTransform, TimeGrain
+
+    for t in MeasureTransform:
+        assert t.value in SPEC_RULES, f"transform {t.value!r} is not documented in SPEC_RULES"
+    for g in TimeGrain:
+        if g is TimeGrain.DAY:  # day = raw axis, deliberately not suggested
+            continue
+        assert g.value in SPEC_RULES, f"time grain {g.value!r} is not documented in SPEC_RULES"
+    for field in ("denominator", "time_grain", "lag_periods", "bins", "histogram"):
+        assert field in SPEC_RULES, f"IR field {field!r} is not documented in SPEC_RULES"
+
+
+def test_prompt_renders_core_examples(demo_model) -> None:
+    # the JSON examples survive .format() (escaped braces render to real JSON)
+    prompt = build_propose_prompt("средний чек по дням", demo_model)
+    assert '"denominator": {"column": "orders", "agg": "sum"}' in prompt
+    assert '"transform": "yoy_pct"' in prompt
+    assert '"bins": 20' in prompt
+
+
 def test_happy_path_first_try(demo_model) -> None:
     llm = FakeLLM([GOOD_SPEC])
     spec = propose_spec(llm, demo_model, "выручка по дням")

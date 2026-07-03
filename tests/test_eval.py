@@ -15,15 +15,33 @@ REPO_MODEL = SemanticModel.load("semantic/model.yaml")
 
 
 def test_case_inventory_matches_plan() -> None:
-    # PLAN 2.8: 25 golden cases including fields-first and iterations (+1 joins)
+    # PLAN 2.8: 25 golden cases including fields-first and iterations (+1 joins);
+    # S01 adds 12 analytical-core cases and converts a3_avg_ticket to clear (ratio)
     # (PLAN 1.11 base: clear/ambiguous/infeasible + >=5 seeded anti-patterns)
-    assert len(GOLDEN_CASES) == 26
+    assert len(GOLDEN_CASES) == 37
     kinds = {k: sum(c.kind == k for c in GOLDEN_CASES) for k in CaseKind}
     assert kinds[CaseKind.CLEAR] >= 8
-    assert kinds[CaseKind.AMBIGUOUS] >= 4
+    assert kinds[CaseKind.AMBIGUOUS] >= 3
     assert kinds[CaseKind.INFEASIBLE] >= 4
     assert sum(c.seed is not None for c in GOLDEN_CASES) >= 3  # fields-first entries
-    assert sum(bool(c.edit) for c in GOLDEN_CASES) >= 4  # iteration entries
+    assert sum(bool(c.edit) for c in GOLDEN_CASES) >= 5  # iteration entries
+    # S01 coverage: every analytical primitive of the IR is exercised by some case
+    core = [c for c in GOLDEN_CASES if c.kind == CaseKind.CLEAR]
+    exercised = {t for c in core for t in c.expect_transforms}
+    from auto_bi.ir.spec import MeasureTransform
+
+    assert exercised >= {
+        MeasureTransform.YOY_PCT,
+        MeasureTransform.POP_PCT,
+        MeasureTransform.RUNNING_TOTAL,
+        MeasureTransform.RUNNING_SHARE,
+        MeasureTransform.SHARE_OF_TOTAL,
+    }
+    assert any(c.expect_ratio for c in core)
+    assert any(c.expect_time_grain for c in core)
+    assert any(c.expect_bins for c in core)
+    assert any(c.expect_lag for c in core)
+    assert any(c.edit_expect_transforms for c in GOLDEN_CASES)
     seeded = [c for c in ADVISOR_CASES if not c.expect_clean]
     clean = [c for c in ADVISOR_CASES if c.expect_clean]
     assert len(seeded) >= 5
@@ -164,6 +182,169 @@ def test_golden_case_calls_end_case_hook_even_on_failure(demo_model) -> None:
     report = run_golden_suite(demo_model, llm, cases=[case])
     assert not report.results[0].passed
     assert llm.ended
+
+
+# --- S01: analytical-core expectations (ratio / grain / transforms / bins) ----------
+
+MONTHLY_SPEC = {
+    "title": "Выручка по месяцам",
+    "charts": [
+        {
+            "id": "c1",
+            "title": "Выручка по месяцам",
+            "viz": "line",
+            "query": {
+                "table": "dm.sales_daily",
+                "dimensions": ["date"],
+                "measures": [{"column": "revenue", "agg": "sum", "label": "Выручка"}],
+                "time_grain": "month",
+            },
+        }
+    ],
+}
+
+
+def _core_case(**kwargs):
+    from auto_bi.eval.cases import GoldenCase
+
+    defaults = dict(id="t", request="t", kind=CaseKind.CLEAR)
+    defaults.update(kwargs)
+    return GoldenCase(**defaults)
+
+
+def _one_chart_spec(query: dict, viz: str = "line"):
+    from auto_bi.ir.spec import DashboardSpec
+
+    return DashboardSpec.model_validate(
+        {
+            "title": "t",
+            "charts": [{"id": "c1", "title": "t", "viz": viz, "query": query}],
+        }
+    )
+
+
+def test_core_check_requires_the_ratio_primitive() -> None:
+    from auto_bi.eval.runner import _check_core, _spec_columns
+
+    case = _core_case(expect_ratio=True, expect_columns={"revenue", "orders"})
+    plain = _one_chart_spec(
+        {
+            "table": "dm.sales_daily",
+            "dimensions": ["date"],
+            "measures": [{"column": "revenue", "agg": "sum"}],
+        }
+    )
+    assert "no ratio measure" in _check_core(case, plain)
+    ratio = _one_chart_spec(
+        {
+            "table": "dm.sales_daily",
+            "dimensions": ["date"],
+            "measures": [
+                {
+                    "column": "revenue",
+                    "agg": "sum",
+                    "label": "Средний чек",
+                    "denominator": {"column": "orders", "agg": "sum"},
+                }
+            ],
+        }
+    )
+    assert _check_core(case, ratio) == ""
+    # the denominator's column counts as present («средний чек» carries orders)
+    assert {"revenue", "orders"} <= _spec_columns(ratio)
+
+
+def test_core_check_requires_transform_grain_and_lag() -> None:
+    from auto_bi.eval.runner import _check_core
+    from auto_bi.ir.spec import MeasureTransform, TimeGrain
+
+    case = _core_case(
+        expect_transforms={MeasureTransform.YOY_PCT},
+        expect_time_grain={TimeGrain.MONTH},
+    )
+    from auto_bi.ir.spec import DashboardSpec
+
+    plain_monthly = DashboardSpec.model_validate(MONTHLY_SPEC)
+    assert "expected transforms missing" in _check_core(case, plain_monthly)
+    yoy = _one_chart_spec(
+        {
+            "table": "dm.sales_daily",
+            "dimensions": ["date"],
+            "measures": [{"column": "revenue", "agg": "sum", "transform": "yoy_pct"}],
+            "time_grain": "month",
+        }
+    )
+    assert _check_core(case, yoy) == ""
+    lag_case = _core_case(expect_lag=3)
+    assert "lag_periods=3" in _check_core(lag_case, yoy)
+    lagged = _one_chart_spec(
+        {
+            "table": "dm.sales_daily",
+            "dimensions": ["date"],
+            "measures": [
+                {"column": "revenue", "agg": "sum", "transform": "pop_pct", "lag_periods": 3}
+            ],
+            "time_grain": "month",
+        }
+    )
+    assert _check_core(lag_case, lagged) == ""
+
+
+def test_core_check_requires_histogram_bins() -> None:
+    from auto_bi.eval.runner import _check_core
+
+    case = _core_case(expect_bins=True)
+    bar = _one_chart_spec(
+        {
+            "table": "dm.products",
+            "dimensions": ["category"],
+            "measures": [{"column": "price", "agg": "avg"}],
+        },
+        viz="bar",
+    )
+    assert "bins" in _check_core(case, bar)
+    hist = _one_chart_spec(
+        {
+            "table": "dm.products",
+            "dimensions": ["price"],
+            "measures": [{"column": "price", "agg": "count"}],
+            "bins": 10,
+        },
+        viz="histogram",
+    )
+    assert _check_core(case, hist) == ""
+
+
+def test_golden_edit_checks_added_transform(demo_model) -> None:
+    case = next(c for c in GOLDEN_CASES if c.id == "it4_add_yoy")
+    with_yoy = {
+        **MONTHLY_SPEC,
+        "charts": MONTHLY_SPEC["charts"]
+        + [
+            {
+                "id": "c2",
+                "title": "Выручка г/г",
+                "viz": "line",
+                "query": {
+                    "table": "dm.sales_daily",
+                    "dimensions": ["date"],
+                    "measures": [{"column": "revenue", "agg": "sum", "transform": "yoy_pct"}],
+                    "time_grain": "month",
+                },
+            }
+        ],
+    }
+    llm = ScriptedLLM([CLEAR_REPORT, MONTHLY_SPEC, with_yoy])
+    report = run_golden_suite(demo_model, llm, cases=[case])
+    (result,) = report.results
+    assert result.passed, result.detail
+
+    # an edit that comes back without the transform -> fail with the reason
+    llm = ScriptedLLM([CLEAR_REPORT, MONTHLY_SPEC, {**MONTHLY_SPEC, "title": "Другое"}])
+    report = run_golden_suite(demo_model, llm, cases=[case])
+    (result,) = report.results
+    assert not result.passed
+    assert "did not add expected transforms" in result.detail
 
 
 def test_eval_survives_broken_case(demo_model) -> None:

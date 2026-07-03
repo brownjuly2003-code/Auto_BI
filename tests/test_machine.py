@@ -161,6 +161,20 @@ def test_clarify_questions_capped_at_three() -> None:
     assert len(clarify_questions(report)) == 3
 
 
+def test_grounding_prompt_teaches_ratio_metrics() -> None:
+    # drift guard (S01): the IR expresses ratio measures since cont.9 — grounding must
+    # match a derived metric whose parts exist («средний чек» = revenue/orders), not
+    # flag it unmatched with the stale «дашборд не умеет» claim
+    from auto_bi.agent.grounding import GROUNDING_PROMPT
+
+    assert "средний чек" in GROUNDING_PROMPT
+    assert "делить одну меру на другую" in GROUNDING_PROMPT
+    assert "не умеет" not in GROUNDING_PROMPT
+    # analytics phrasing is presentation, not a data entity — no stray unmatched
+    for phrase in ("год к году", "Парето", "распределение", "нарастающим итогом"):
+        assert phrase in GROUNDING_PROMPT
+
+
 # --- advisor narration (1.7) ------------------------------------------------------
 
 

@@ -1,9 +1,11 @@
-"""Eval cases (task 1.11): 15 golden dialogue cases + seeded advisor anti-patterns.
+"""Eval cases (task 1.11): golden dialogue cases + seeded advisor anti-patterns.
 
-Golden cases run against the live GraceKelly on the demo-DM model; advisor cases are
+Golden cases run against the live LLM on the demo-DM model; advisor cases are
 fully deterministic (metadata-driven rules, no LLM) — anti-patterns are SEEDED: the
 case may transform the model (boosted cardinality, Collapsing engine) the same way
-a real DM would expose them.
+a real DM would expose them. The S01 block exercises the analytical core in
+text-first: ratio (denominator), time_grain, window transforms and histogram bins
+must actually appear in the proposed spec, not just the right columns.
 """
 
 from __future__ import annotations
@@ -15,7 +17,17 @@ from pydantic import BaseModel, Field
 
 from auto_bi.agent.seed import FieldsSeed, SeedGroup
 from auto_bi.engine import GREENPLUM
-from auto_bi.ir.spec import ChartQuery, ChartSpec, FilterOp, JoinSpec, Measure, QueryFilter, Viz
+from auto_bi.ir.spec import (
+    ChartQuery,
+    ChartSpec,
+    FilterOp,
+    JoinSpec,
+    Measure,
+    MeasureTransform,
+    QueryFilter,
+    TimeGrain,
+    Viz,
+)
 from auto_bi.semantic.model import Aggregation, Physical, SemanticModel
 
 
@@ -37,6 +49,13 @@ class GoldenCase(BaseModel):
     # column, e.g. "магазин" -> store_id | dm.stores.name)
     expect_columns_any: list[set[str]] = Field(default_factory=list)
     expect_viz: set[Viz] = Field(default_factory=set)  # clear: at least one chart of these
+    # clear, analytical core (S01/F1): the spec must actually USE the IR primitive the
+    # request words imply — a plain aggregate chart with the right columns is a miss
+    expect_transforms: set[MeasureTransform] = Field(default_factory=set)  # ALL must appear
+    expect_ratio: bool = False  # at least one measure carries a denominator
+    expect_time_grain: set[TimeGrain] = Field(default_factory=set)  # at least one chart of these
+    expect_bins: bool = False  # at least one chart is a binned histogram
+    expect_lag: int | None = None  # some pop_* measure compares this many periods back
     expect_phrase: str = ""  # ambiguous/infeasible: a question must mention this
     # iteration (task 2.8): a word edit applied AFTER the clear checks pass; the
     # patched spec is then checked against the edit_* expectations below
@@ -44,6 +63,7 @@ class GoldenCase(BaseModel):
     edit_expect_columns: set[str] = Field(default_factory=set)  # must appear after the edit
     edit_expect_gone: set[str] = Field(default_factory=set)  # must DISAPPEAR after the edit
     edit_expect_viz: set[Viz] = Field(default_factory=set)  # at least one chart of these
+    edit_expect_transforms: set[MeasureTransform] = Field(default_factory=set)  # after the edit
 
 
 GOLDEN_CASES: list[GoldenCase] = [
@@ -150,6 +170,115 @@ GOLDEN_CASES: list[GoldenCase] = [
         expect_columns={"date", "items"},
         expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
     ),
+    # --- analytical core in text-first (S01/F1): ratio / grain / transforms / bins ---
+    GoldenCase(
+        # was a3_avg_ticket (AMBIGUOUS): with ratio measures in the IR the canonical
+        # retail reading (revenue/orders) beats a clarifying question — S01 decision
+        id="g13_avg_ticket_ratio",
+        request="Средний чек по дням за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue", "orders"},
+        expect_ratio=True,
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="g14_ratio_by_store",
+        request="Средняя выручка на заказ по магазинам за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"revenue", "orders"},
+        expect_columns_any=[{"store_id", "dm.stores.name"}],
+        expect_ratio=True,
+        expect_viz={Viz.BAR, Viz.TABLE},
+    ),
+    GoldenCase(
+        id="g15_monthly_trend",
+        request="Выручка по месяцам за весь период",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_time_grain={TimeGrain.MONTH},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="g16_weekly_trend",
+        request="Выручка по неделям за 2026 год",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_time_grain={TimeGrain.WEEK},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="g17_yoy_monthly",
+        request="Динамика выручки год к году по месяцам",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_transforms={MeasureTransform.YOY_PCT},
+        expect_time_grain={TimeGrain.MONTH},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="g18_mom_pct",
+        request="Изменение выручки месяц к месяцу в процентах",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_transforms={MeasureTransform.POP_PCT},
+        expect_time_grain={TimeGrain.MONTH},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="g19_lag3_pct",
+        request="Выручка по месяцам в сравнении с уровнем три месяца назад, в процентах",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_transforms={MeasureTransform.POP_PCT},
+        expect_time_grain={TimeGrain.MONTH},
+        expect_lag=3,
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="g20_running_total",
+        request="Выручка нарастающим итогом по дням за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_transforms={MeasureTransform.RUNNING_TOTAL},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="g21_share_of_total",
+        request="Таблица: магазины и доля каждого в общей выручке за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"revenue"},
+        expect_columns_any=[{"store_id", "dm.stores.name"}],
+        expect_transforms={MeasureTransform.SHARE_OF_TOTAL},
+        expect_viz={Viz.TABLE, Viz.BAR},
+    ),
+    GoldenCase(
+        id="g22_pareto_stores",
+        request="Парето по магазинам: накопленная доля выручки за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"revenue"},
+        expect_columns_any=[{"store_id", "dm.stores.name"}],
+        expect_transforms={MeasureTransform.RUNNING_SHARE},
+        expect_viz={Viz.BAR, Viz.LINE, Viz.TABLE},
+    ),
+    GoldenCase(
+        id="g23_price_histogram",
+        request="Распределение цен товаров",
+        kind=CaseKind.CLEAR,
+        table="dm.products",
+        expect_columns={"price"},
+        expect_bins=True,
+        expect_viz={Viz.HISTOGRAM},
+    ),
     # --- iterations (task 2.8 / 2.4): clear request -> word edit -> patched spec ----
     GoldenCase(
         id="it1_add_orders",
@@ -182,6 +311,18 @@ GOLDEN_CASES: list[GoldenCase] = [
         expect_viz={Viz.LINE},
         edit="Замени линию на area (с заливкой)",
         edit_expect_viz={Viz.AREA},
+    ),
+    GoldenCase(
+        # PATCH shares SPEC_RULES with PROPOSE — a word edit must reach the analytical
+        # core too (add a yoy line to an existing monthly trend)
+        id="it4_add_yoy",
+        request="Выручка по месяцам за весь период",
+        kind=CaseKind.CLEAR,
+        table="dm.sales_daily",
+        expect_columns={"date", "revenue"},
+        expect_time_grain={TimeGrain.MONTH},
+        edit="Добавь рядом график изменения выручки год к году",
+        edit_expect_transforms={MeasureTransform.YOY_PCT},
     ),
     # --- fields-first (task 2.3): the seed is the request, same checks as clear -----
     GoldenCase(
@@ -238,12 +379,8 @@ GOLDEN_CASES: list[GoldenCase] = [
         kind=CaseKind.AMBIGUOUS,
         expect_phrase="назван",
     ),
-    GoldenCase(
-        id="a3_avg_ticket",
-        request="Средний чек по дням за июнь 2026",
-        kind=CaseKind.AMBIGUOUS,
-        expect_phrase="чек",
-    ),
+    # a3_avg_ticket moved to the clear set (g13_avg_ticket_ratio): ratio measures made
+    # «средний чек» expressible, so asking became the wrong behavior (S01)
     GoldenCase(
         id="a4_quantity_dynamics",
         request="Динамика количества за июнь 2026",
@@ -570,6 +707,47 @@ GP_GOLDEN_CASES: list[GoldenCase] = [
         expect_columns={"format"},
         expect_viz={Viz.PIE, Viz.BAR},
     ),
+    # --- analytical core in text-first (S01/F1), GP mirrors ----------------------
+    GoldenCase(
+        # was gp_a2_avg_ticket (AMBIGUOUS): ratio measures made «средний чек»
+        # expressible (revenue/orders), same S01 decision as g13
+        id="gp_g9_avg_ticket_ratio",
+        request="Средний чек по дням за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"date", "revenue", "orders"},
+        expect_ratio=True,
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="gp_g10_monthly_trend",
+        request="Выручка по месяцам за весь период",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"date", "revenue"},
+        expect_time_grain={TimeGrain.MONTH},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="gp_g11_yoy_monthly",
+        request="Динамика выручки год к году по месяцам",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"date", "revenue"},
+        expect_transforms={MeasureTransform.YOY_PCT},
+        expect_time_grain={TimeGrain.MONTH},
+        expect_viz={Viz.LINE, Viz.AREA, Viz.BAR},
+    ),
+    GoldenCase(
+        id="gp_g12_pareto_stores",
+        request="Парето по магазинам: накопленная доля выручки за июнь 2026",
+        kind=CaseKind.CLEAR,
+        table="dm.sales",
+        expect_columns={"revenue"},
+        expect_columns_any=[{"store_id", "dm.stores.city"}],
+        expect_transforms={MeasureTransform.RUNNING_SHARE},
+        expect_viz={Viz.BAR, Viz.LINE, Viz.TABLE},
+    ),
     # --- iteration: clear request -> word edit -> patched spec -------------------
     GoldenCase(
         id="gp_it1_add_orders",
@@ -588,14 +766,7 @@ GP_GOLDEN_CASES: list[GoldenCase] = [
         kind=CaseKind.AMBIGUOUS,
         expect_phrase="количеств",
     ),
-    GoldenCase(
-        # «средний» metric is not directly available in the DM (no average measure)
-        # and is ambiguous: average revenue per order? per day? — agent should ask
-        id="gp_a2_avg_ticket",
-        request="Средний чек по дням за июнь 2026",
-        kind=CaseKind.AMBIGUOUS,
-        expect_phrase="чек",
-    ),
+    # gp_a2_avg_ticket moved to the clear set (gp_g9_avg_ticket_ratio) — see g13
     # --- infeasible: not in the DM at all -> flagged ----------------------------
     GoldenCase(
         id="gp_i1_salaries",

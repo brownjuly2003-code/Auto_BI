@@ -103,6 +103,29 @@ def _check_clear(case: GoldenCase, phase: AgentPhase, spec: DashboardSpec | None
             return f"none of the alternative columns present: {sorted(group)}"
     if case.expect_viz and not ({c.viz for c in spec.charts} & case.expect_viz):
         return f"no chart of expected viz {sorted(v.value for v in case.expect_viz)}"
+    return _check_core(case, spec)
+
+
+def _check_core(case: GoldenCase, spec: DashboardSpec) -> str:
+    """Analytical-core expectations (S01): the IR primitive itself must be used —
+    a plain aggregate over the right columns does not answer «год к году» / «Парето» /
+    «средний чек» / «по месяцам» / «распределение»."""
+    measures = [m for c in spec.charts for m in c.query.measures]
+    missing_t = case.expect_transforms - {m.transform for m in measures if m.transform}
+    if missing_t:
+        return f"expected transforms missing: {sorted(t.value for t in missing_t)}"
+    if case.expect_ratio and not any(m.denominator is not None for m in measures):
+        return "no ratio measure (denominator) in the spec"
+    grains = {c.query.time_grain for c in spec.charts if c.query.time_grain}
+    if case.expect_time_grain and not (grains & case.expect_time_grain):
+        wanted = sorted(g.value for g in case.expect_time_grain)
+        return f"no chart with time_grain in {wanted} (got {sorted(g.value for g in grains)})"
+    if case.expect_bins and not any(c.query.bins for c in spec.charts):
+        return "no histogram chart with bins in the spec"
+    if case.expect_lag is not None and case.expect_lag not in {
+        m.lag_periods for m in measures if m.lag_periods
+    }:
+        return f"no measure compares lag_periods={case.expect_lag} back"
     return ""
 
 
@@ -111,6 +134,11 @@ def _spec_columns(spec: DashboardSpec) -> set[str]:
     for chart in spec.charts:
         columns.update(chart.query.group_columns())
         columns.update(m.column for m in chart.query.measures)
+        # a ratio's denominator references a real model column too («средний чек»
+        # carries orders even though it is not a standalone measure)
+        columns.update(
+            m.denominator.column for m in chart.query.measures if m.denominator is not None
+        )
         columns.update(f.column for f in chart.query.filters)
     return columns
 
@@ -137,6 +165,12 @@ def _check_edit(case: GoldenCase, agent: AgentSession) -> str:
     if case.edit_expect_viz and not ({c.viz for c in turn.spec.charts} & case.edit_expect_viz):
         wanted = sorted(v.value for v in case.edit_expect_viz)
         return f"no chart of expected viz {wanted} after edit"
+    edit_transforms = {
+        m.transform for c in turn.spec.charts for m in c.query.measures if m.transform
+    }
+    missing_t = case.edit_expect_transforms - edit_transforms
+    if missing_t:
+        return f"edit did not add expected transforms: {sorted(t.value for t in missing_t)}"
     return ""
 
 

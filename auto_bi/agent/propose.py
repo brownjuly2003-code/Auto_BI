@@ -42,13 +42,56 @@ SPEC_RULES = """Правила:
    - heatmap — ровно два dimensions (x,y) и одна мера.
 3. measures — только колонки с ролью measure; dimensions/series/rows/columns — колонки с ролью
    dimension или time. Не клади одну и ту же колонку в несколько ролей.
-   Имена колонок везде — БЕЗ префикса таблицы: "revenue", НЕ "dm.sales_daily.revenue"
-   (полное имя только в query.table; исключение — dashboard-фильтры верхнего уровня,
-   там колонка полная: "dm.sales_daily.date").
+   Имена колонок базовой таблицы ВЕЗДЕ — БЕЗ префикса таблицы: "revenue",
+   НЕ "dm.sales_daily.revenue" — в dimensions, series, measures, denominator и фильтрах
+   чарта одинаково (полное имя только в query.table, в джойн-колонках из п.1 и в
+   dashboard-фильтрах верхнего уровня: "dm.sales_daily.date").
 4. Для line/area первым в dimensions ставь колонку с ролью time.
-5. Для bar/stacked_bar/pie/table ограничивай выдачу: order_by по мере desc + разумный limit (10–50).
-6. layout_hint: сетка 12 колонок; big_number — w=4 h=2; остальные — w=6..12 h=4; row нумеруй с 0.
-7. Заголовки дашборда и чартов — по-русски, кратко и по делу."""
+5. Для bar/stacked_bar/pie/table ограничивай выдачу: order_by по мере desc + разумный limit
+   (10–50). Исключение — мера с transform="running_share": order_by НЕ указывай (порядок
+   Парето выставится автоматически).
+6. Метрика-отношение двух мер — поле "denominator" у меры: значение = agg(column) /
+   agg(denominator.column). Используй, когда просят производную метрику, ОБЕ составляющие
+   которой есть в модели: «средний чек» → {{"column": "revenue", "agg": "sum",
+   "denominator": {{"column": "orders", "agg": "sum"}}, "label": "Средний чек"}}.
+   Тот же приём: маржа = прибыль/выручка, конверсия = целевые/все, средняя цена позиции =
+   выручка/позиции. Знаменатель — простая мера (без своих transform/denominator);
+   у ratio-меры transform запрещён. Допустима на любом viz, включая big_number.
+7. time_grain — огрубление оси времени ("week" | "month" | "quarter" | "year"; первое
+   измерение чарта при этом — колонка времени): «по месяцам» → time_grain="month",
+   «по неделям» → "week". Длинный дневной ряд (сотни точек) укрупняй до "month".
+   Для дневной детализации time_grain не указывай.
+8. transform на мере — аналитическое преобразование агрегата (несовместимо с denominator;
+   недоступно на big_number/pivot/heatmap):
+   - "pop_abs" / "pop_pct" — изменение к предыдущему периоду (абсолютное / в долях);
+     первое измерение чарта — колонка времени. «Месяц к месяцу» → time_grain="month" +
+     transform="pop_pct". Опционально "lag_periods": N — сравнение со значением N периодов
+     назад: «к уровню три месяца назад» → {{"transform": "pop_pct", "lag_periods": 3}}
+     при time_grain="month".
+   - "yoy_pct" — год к году, в долях; ОБЯЗАТЕЛЕН time_grain week/month/quarter/year
+     (обычно "month"). «Динамика год к году» → line: dimensions=[<time>],
+     time_grain="month", measures=[{{"column": "revenue", "agg": "sum",
+     "transform": "yoy_pct", "label": "Выручка г/г"}}].
+   - "running_total" — накопительный итог (нарастающим итогом) по времени;
+     первое измерение — колонка времени.
+   - "share_of_total" — доля строки от общего итога («доля каждого магазина в общей
+     выручке» таблицей или баром); нужно хотя бы одно измерение.
+   - "running_share" — Парето/ABC: накопленная доля итога по категориям, ранжированным
+     по мере убывающе. «Парето по магазинам» → bar: dimensions=["store_id"],
+     measures=[{{"column": "revenue", "agg": "sum", "transform": "running_share"}}];
+     измерение категориальное (НЕ время), order_by не указывай (см. п.5).
+   Клади transform только туда, где он осмыслен: pop_*/yoy_pct/running_total — на
+   временнЫе чарты (первое измерение — время); соседние категориальные разрезы того же
+   дашборда оставляй с ОБЫЧНЫМИ мерами (для категорий уместны только
+   share_of_total/running_share).
+9. Распределение значений числовой колонки — viz="histogram": ровно одно измерение = сама
+   числовая колонка (роль measure), ровно одна мера-счётчик той же колонки с agg="count",
+   плюс "bins" (число корзин, обычно 10–30). «Распределение цен товаров» →
+   {{"viz": "histogram", "query": {{"table": "dm.products", "dimensions": ["price"],
+   "measures": [{{"column": "price", "agg": "count", "label": "Товаров"}}],
+   "bins": 20}}}}. Несовместимо с time_grain, joins и transform/denominator.
+10. layout_hint: сетка 12 колонок; big_number — w=4 h=2; остальные — w=6..12 h=4; row нумеруй с 0.
+11. Заголовки дашборда и чартов — по-русски, кратко и по делу."""
 
 PROPOSE_SPEC_PROMPT = (
     """Ты — аналитик, который проектирует BI-дашборды по витринам данных.
