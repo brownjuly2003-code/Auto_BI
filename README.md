@@ -1,6 +1,6 @@
 # Auto_BI
 
-[![CI](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml/badge.svg)](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/badge/coverage-93%25-success) ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![BI targets](https://img.shields.io/badge/BI-Superset_+_DataLens-1FA8C9) ![DWH](https://img.shields.io/badge/DWH-ClickHouse_+_Greenplum-FACC15) ![License](https://img.shields.io/badge/license-MIT-blue)
+[![CI](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml/badge.svg)](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/badge/coverage-95%25-success) ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![BI targets](https://img.shields.io/badge/BI-Superset_+_DataLens-1FA8C9) ![DWH](https://img.shields.io/badge/DWH-ClickHouse_+_Greenplum-FACC15) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом, drag&drop-раскладкой полей витрин или авто-обзором витрины** (детерминированный курируемый дашборд без LLM), уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
 
@@ -85,12 +85,12 @@ LLM никогда не генерирует нативные форматы BI.
 uv sync                                              # окружение из uv.lock (вкл. dev-инструменты)
 uv run ruff check .                                  # линтер
 uv run black --check auto_bi tests                   # формат
-uv run pytest -q                                     # тесты (integration-сьюты со стендом — deselected)
-uv run --with pytest-cov pytest --cov=auto_bi --cov-report=term-missing   # покрытие
+uv run --with duckdb pytest -q                       # тесты (integration-сьюты со стендом — deselected)
+uv run --with duckdb --with pytest-cov pytest --cov=auto_bi --cov-report=term-missing   # покрытие
 uv run python scripts/verify_live_clickhouse.py      # числа CH-путей на ЖИВОМ стенде (ratio/grain/yoy/авто-обзор)
 ```
 
-Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Текущее покрытие — **93 %** (369 unit/API-тестов; сьюты с пометкой `integration` требуют живого стенда ClickHouse/Superset/DataLens и в CI не запускаются).
+`--with duckdb` — эфемерная test-dep (проверяет numeric-корректность transform-SQL под postgres-семантикой окон; без неё те тесты `importorskip`). Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Текущее покрытие — **95 %** (592 unit/API-теста; сьюты с пометкой `integration` требуют живого стенда ClickHouse/Superset/DataLens и в CI не запускаются).
 
 ## License
 
