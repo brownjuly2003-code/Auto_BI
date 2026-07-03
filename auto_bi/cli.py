@@ -471,13 +471,21 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
         )
     elif suite in ("golden", "all"):
         from auto_bi.llm.factory import make_llm
+        from auto_bi.store import Store
 
         settings = get_settings()
-        llm = make_llm(settings)
+        store = Store(settings.store_path)
+        llm = make_llm(settings, store=store)
         golden_selected = [c for c in golden_cases if not wanted or c.id in wanted]
+        provider = settings.llm_provider.strip().lower()
+        provider_detail = (
+            f"{settings.gracekelly_url}, {settings.gracekelly_model}"
+            if provider == "gracekelly"
+            else settings.anthropic_model
+        )
         console.print(
-            f"[dim]golden: {len(golden_selected)} cases через GraceKelly "
-            f"({settings.gracekelly_url}, {settings.gracekelly_model})…[/dim]"
+            f"[dim]golden: {len(golden_selected)} cases через {provider} "
+            f"({provider_detail})…[/dim]"
         )
         report = run_golden_suite(
             model,

@@ -12,9 +12,16 @@ from auto_bi.llm.gracekelly import GraceKellyClient
 ANTHROPIC_INSTALLED = importlib.util.find_spec("anthropic") is not None
 
 
-def test_default_provider_is_gracekelly() -> None:
-    llm = make_llm(Settings(_env_file=None))
-    assert isinstance(llm, GraceKellyClient)
+def test_default_provider_is_anthropic() -> None:
+    assert Settings(_env_file=None).llm_provider == "anthropic"
+
+
+@pytest.mark.skipif(not ANTHROPIC_INSTALLED, reason="anthropic branch requires the SDK installed")
+def test_default_provider_routes_to_anthropic_client() -> None:
+    from auto_bi.llm.anthropic import AnthropicClient
+
+    llm = make_llm(Settings(_env_file=None, anthropic_api_key="test-key"))
+    assert isinstance(llm, AnthropicClient)
 
 
 def test_explicit_gracekelly() -> None:

@@ -14,7 +14,8 @@
   сделайте интроспекцию DWH (см. [ONBOARDING_DWH.md](ONBOARDING_DWH.md) или быстрый старт ниже).
 - **DWH** (ClickHouse — v1) с read-only ролью, доступный с машины, где запускается Auto_BI.
 - **BI** — Apache Superset (v1) или self-hosted Yandex DataLens (v2).
-- **LLM** — сервис GraceKelly на `http://127.0.0.1:8011` (Sonnet 4.6 thinking). Нужен для
+- **LLM** — по умолчанию прямой **Anthropic API** (`ANTHROPIC_API_KEY`), опционально —
+  локальный сервис **GraceKelly** (`AUTO_BI_LLM_PROVIDER=gracekelly`, §6). Нужен для
   диалога/предложения spec'а; детерминированные шаги (валидация, advisor, сборка) от него не зависят.
 
 Все секреты и адреса — через переменные окружения с префиксом `AUTO_BI_` или файл `.env`
@@ -25,14 +26,16 @@
 ## 2. Быстрый старт (ClickHouse + Superset)
 
 ```bash
-# 1. установка
-pip install -e .
+# 1. установка (extra "anthropic" ставит SDK для прямого LLM-провайдера, дефолт)
+pip install -e '.[anthropic]'
 
 # 2. настройка доступа (пример .env — значения свои)
 #    AUTO_BI_CH_HOST=localhost   AUTO_BI_CH_USER=auto_bi_ro   AUTO_BI_CH_PASSWORD=...
 #    AUTO_BI_CH_DATABASE=dm
 #    AUTO_BI_SUPERSET_URL=http://localhost:8088   AUTO_BI_SUPERSET_PASSWORD=...
-#    AUTO_BI_GRACEKELLY_URL=http://127.0.0.1:8011
+#    ANTHROPIC_API_KEY=sk-ant-...
+#    (или ANTHROPIC_API_KEY отсутствует, но задан AUTO_BI_LLM_PROVIDER=gracekelly +
+#    AUTO_BI_GRACEKELLY_URL=http://127.0.0.1:8011 — локальный сервис-опция, см. §6)
 
 # 3. интроспекция DWH -> черновик модели
 auto_bi introspect --output semantic/model.yaml
@@ -66,7 +69,7 @@ auto_bi serve            # http://127.0.0.1:8200
 | `serve` | HTTP API + web UI (FastAPI/uvicorn). `--host` (def `127.0.0.1`), `--port` (def `8200`). |
 | `introspect` | Интроспекция DWH → черновик `model.yaml`. `--engine clickhouse\|greenplum` (def `clickhouse`; GP использует `AUTO_BI_GP_*`), `--database`, `--output`. |
 | `gaps` | Детерминированный отчёт «что в модели не заполнено / неоднозначно». `--offline` без подключения к DWH, `--output file.md` в файл. |
-| `eval` | Прогон eval-сьютов. `--suite advisor\|golden\|all`, `--cases id1,id2` (подмножество). advisor — офлайн; golden — через живой GraceKelly. |
+| `eval` | Прогон eval-сьютов. `--suite advisor\|golden\|all`, `--cases id1,id2` (подмножество). advisor — офлайн; golden — через живой LLM (провайдер из `AUTO_BI_LLM_PROVIDER`). |
 | `dbt-import` | Обогащение `model.yaml` из dbt-артефактов (описания, связи). `--manifest` (обяз.), `--catalog`, `--dry-run`. Заполняет ТОЛЬКО пустые значения — ручные правки всегда выигрывают. |
 
 ### build
@@ -98,7 +101,7 @@ auto_bi build --auto dm.sales_daily --max-charts 6 --target datalens
 ### eval
 ```bash
 auto_bi eval --suite advisor                     # офлайн, без LLM/DWH
-auto_bi eval --suite golden                       # через GraceKelly (живой)
+auto_bi eval --suite golden                       # через живой LLM (Anthropic по умолчанию)
 auto_bi eval --suite all --cases g1,g12_revenue_by_city_join
 ```
 Движок берётся из модели (`physical.engine`), сьюты выбираются под него (CH-набор vs GP-набор).
@@ -165,7 +168,9 @@ vs Greenplum/Greengage).
 | `AUTO_BI_SUPERSET_URL` / `_USER` / `_PASSWORD` | Apache Superset | `http://localhost:8088` / `admin` / `` |
 | `AUTO_BI_DATALENS_URL` / `_USER` / `_PASSWORD` / `_WORKBOOK_ID` | self-hosted DataLens (v2) | `http://localhost:8090` / `admin` / `admin` / `ra7f79yirtumb` |
 | `AUTO_BI_CH_HOST_FROM_DATALENS` | CH-хост, как его достаёт DataLens-коннекшн | `host.docker.internal` |
-| `AUTO_BI_GRACEKELLY_URL` / `_MODEL` | LLM-сервис | `http://127.0.0.1:8011` / `claude-sonnet-4-6` |
+| `AUTO_BI_LLM_PROVIDER` | LLM-провайдер: `anthropic` (прямой Messages API) или `gracekelly` (локальный сервис) | `anthropic` |
+| `ANTHROPIC_API_KEY` / `AUTO_BI_ANTHROPIC_MODEL` / `_MAX_TOKENS` | Прямой Anthropic API (провайдер `anthropic`). Ключ — стандартная переменная SDK, без префикса `AUTO_BI_`; `AUTO_BI_ANTHROPIC_API_KEY` тоже работает, если ключ нужно держать рядом с остальным `.env` | `` / `claude-sonnet-4-6` / `16000` |
+| `AUTO_BI_GRACEKELLY_URL` / `_MODEL` | Локальный LLM-сервис (провайдер `gracekelly`) | `http://127.0.0.1:8011` / `claude-sonnet-4-6` |
 | `AUTO_BI_SEND_SAMPLES` | слать ли примеры значений в grounding | `true` |
 | `AUTO_BI_STORE_PATH` | SQLite-стор (сессии, spec'ы, сборки, llm_calls, заявки DM, users) | `data/auto_bi.sqlite` |
 | `AUTO_BI_AUTH_ENABLED` | включить аутентификацию + RBAC (см. §8) | `false` |

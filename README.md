@@ -5,7 +5,7 @@
 Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом, drag&drop-раскладкой полей витрин или авто-обзором витрины** (детерминированный курируемый дашборд без LLM), уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
 
 **Скоуп v1 (RU-рынок):** ClickHouse (DM) + Apache Superset (BI). v2: Greengage/Greenplum + Yandex DataLens (self-hosted OSS-стенд). Универсальность — в швах (IR, адаптеры), не в имплементации.
-**LLM:** Sonnet 4.6 thinking через GraceKelly API (`http://127.0.0.1:8011/api/v1/orchestrate`).
+**LLM:** прямой Anthropic Messages API (по умолчанию — нужен только `ANTHROPIC_API_KEY`); локальный сервис GraceKelly — документированная опция (`AUTO_BI_LLM_PROVIDER=gracekelly`, см. [USER_GUIDE §6](docs/USER_GUIDE.md#6-конфигурация-переменные-окружения)).
 
 ## Демо
 

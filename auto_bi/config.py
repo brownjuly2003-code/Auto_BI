@@ -46,9 +46,10 @@ class Settings(BaseSettings):
     # self-hosted compose stand); port reuses ch_port.
     ch_host_from_datalens: str = "host.docker.internal"
 
-    # LLM provider seam (llm/factory.py): "gracekelly" (default, local service) or
-    # "anthropic" (direct Anthropic Messages API — removes the GraceKelly SPOF, ARCHITECTURE §3.6).
-    llm_provider: str = "gracekelly"
+    # LLM provider seam (llm/factory.py): "anthropic" (default — direct Anthropic Messages
+    # API, works out of the box with just an API key) or "gracekelly" (local orchestration
+    # service, documented opt-in — ARCHITECTURE §3.6).
+    llm_provider: str = "anthropic"
 
     # GraceKelly LLM service
     gracekelly_url: str = "http://127.0.0.1:8011"
