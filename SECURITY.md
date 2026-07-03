@@ -22,15 +22,13 @@ Auto_BI sits between an LLM, a read-only DWH connection, and a BI platform's adm
 - **The BI service account should be scoped** to a dedicated workspace/folder (e.g. the "Auto_BI" workbook in DataLens), not a shared or production one.
 - **Auth is opt-in** (`AUTO_BI_AUTH_ENABLED`); when enabled, sessions are schema-scoped by RBAC (see [USER_GUIDE §7](docs/USER_GUIDE.md#7-аутентификация-и-rbac-опционально)) and tokens are stored server-side.
 
-## Known Hardening Gaps (tracked, not yet closed)
+## Auth Hardening (closed)
 
-Transparency over surprise — these are open roadmap items, not hidden defects:
+- Auth tokens are stored as `sha256(token)` in the local SQLite store, not plaintext — a stolen store file does not yield a live bearer token directly.
+- The login endpoint (`/api/v1/auth/login`) is rate-limited in-process: 5 attempts/minute per client IP, with a lockout that grows exponentially on repeated violations (capped at 15 minutes).
+- The session cookie's `Secure` flag is forced on by default for any non-loopback bind host (`AUTO_BI_AUTH_COOKIE_SECURE` overrides either way — see `docs/USER_GUIDE.md` §6/§7).
 
-- Auth tokens are currently stored as plaintext in the local SQLite store (sha256-hash storage planned).
-- No rate-limiting on the login endpoint yet.
-- The session cookie's `secure` flag is not yet forced for non-localhost deployments.
-
-Until these land, avoid exposing `auto_bi serve` directly to the public internet without a reverse proxy adding TLS and basic rate-limiting in front of it.
+Still recommended: run `auto_bi serve` behind a reverse proxy that terminates TLS — the app itself does not speak HTTPS (see `docs/DEPLOYMENT.md`, planned).
 
 ## Dependencies
 

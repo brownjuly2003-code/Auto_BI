@@ -177,6 +177,7 @@ vs Greenplum/Greengage).
 | `AUTO_BI_AUTH_USERS_FILE` | YAML с пользователями (если пусто — бутстрап-админ) | `` |
 | `AUTO_BI_ADMIN_USER` / `_PASSWORD` | бутстрап-админ, когда auth включён и нет users-файла | `admin` / `` |
 | `AUTO_BI_AUTH_TOKEN_TTL_HOURS` | срок жизни токена/сессии | `24` |
+| `AUTO_BI_AUTH_COOKIE_SECURE` | `Secure`-флаг login-cookie: пусто = авто (вкл., если сервер не на loopback-хосте); `true`/`false` форсирует | (авто) |
 
 ---
 
@@ -211,6 +212,13 @@ users:
 **Эндпоинты:** `POST /api/v1/auth/login {username,password}` → токен + HttpOnly-cookie;
 `POST /api/v1/auth/logout`; `GET /api/v1/auth/me`. Программный/CLI-клиент шлёт
 `Authorization: Bearer <token>`; web UI использует cookie (вход через форму логина).
+
+**Хардening логина (S06):** `/api/v1/auth/login` лимитирован in-process — 5 попыток/мин
+на IP, при превышении 429 + `Retry-After`, лок-аут растёт экспоненциально при повторных
+нарушениях (потолок 15 мин). Cookie получает `Secure` автоматически, если сервер не
+забинжен на loopback (`127.0.0.1`/`localhost`/`::1`) — форсировать в любую сторону:
+`AUTO_BI_AUTH_COOKIE_SECURE`. Токены в SQLite хранятся как `sha256(token)`, не сырым
+значением; протухшие строки подчищаются фоновым потоком раз в час.
 
 > Ограничение MVP: сессии не привязаны к владельцу (RBAC защищает **данные**, а не адресацию
 > сессии по id) — это следующий шаг.
