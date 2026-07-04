@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from auto_bi.agent.autospec import build_auto_spec
+from auto_bi.adapters.superset.native_filters import _time_default_mask, superset_time_range
+from auto_bi.agent.autospec import _OVERVIEW_PERIOD, build_auto_spec
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.ir.spec import (
     ChartQuery,
@@ -307,6 +308,21 @@ def test_idempotent_and_valid_under_normalize(model) -> None:
 def test_default_time_filter_present_on_fact(model) -> None:
     spec = build_auto_spec(model, "dm.sales_daily")
     assert [f.column for f in spec.filters] == ["dm.sales_daily.date"]
+
+
+def test_auto_overview_period(model) -> None:
+    # B5: the overview opens preset to a recent window, not the full history. The time filter
+    # must carry _OVERVIEW_PERIOD as its default, and that default must be a token the Superset
+    # native-filter layer can normalize into a real defaultDataMask (a preset that actually
+    # re-scopes the queries) — a malformed period would compile to an empty/no-op mask.
+    spec = build_auto_spec(model, "dm.sales_daily")
+    (time_filter,) = (f for f in spec.filters if f.type == "time_range")
+    assert time_filter.default == _OVERVIEW_PERIOD
+    assert time_filter.default.strip()  # non-empty => the dashboard actually opens narrowed
+
+    mask = _time_default_mask(time_filter.default)
+    assert mask["extraFormData"]["time_range"] == superset_time_range(_OVERVIEW_PERIOD)
+    assert mask["filterState"]["value"] == "Last 12 months"
 
 
 def _yoy_kpis(spec) -> list:

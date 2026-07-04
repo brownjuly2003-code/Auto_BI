@@ -74,6 +74,12 @@ _DEFAULT_MAX_CHARTS = 8
 _MAX_KPIS = 4
 _MAX_BAR_BREAKDOWNS = 3
 
+# the overview opens preset to this recent window (B5): recent enough to read as "now",
+# but a full year so the year-over-year hero KPI has its comparison in view. Relative token
+# parsed natively by the BI (see native_filters.superset_time_range); user widens to full
+# history on the dashboard. Change here => tests/test_autospec.py::test_auto_overview_period.
+_OVERVIEW_PERIOD = "last 12 months"
+
 
 @dataclass(frozen=True)
 class _Breakdown:
@@ -420,11 +426,18 @@ def build_auto_spec(
 
     # an interactive period control for the overview: the Superset/DataLens adapters compile
     # spec.filters into a native time filter scoped to the charts that expose the time column
-    # (KPIs/breakdowns over the fact). No preset range — the adapter applies no default value,
-    # so claiming one here would be misleading; the user picks the period on the dashboard.
+    # (KPIs/breakdowns over the fact). It opens preset to a recent window (_OVERVIEW_PERIOD) so
+    # the overview reads as current while keeping a full year in view for the yoy KPI; the user
+    # widens it to full history on the dashboard (B5 — DashboardFilter.default -> defaultDataMask).
     filters: list[DashboardFilter] = []
     if time_col is not None:
-        filters.append(DashboardFilter(column=f"{table_name}.{time_col.name}", type="time_range"))
+        filters.append(
+            DashboardFilter(
+                column=f"{table_name}.{time_col.name}",
+                type="time_range",
+                default=_OVERVIEW_PERIOD,
+            )
+        )
 
     return DashboardSpec(
         title=_clean_title(f"Обзор: {table.description or table_name}"),
