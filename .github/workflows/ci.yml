@@ -56,3 +56,55 @@ jobs:
       # change that regresses the golden anti-patterns).
       - name: Eval — advisor suite (offline)
         run: uv run auto_bi eval --suite advisor --model-path semantic/model.yaml
+
+  integration:
+    name: Integration (ClickHouse + Superset stand)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Superset runs in its own container and reaches ClickHouse via the compose network
+      # alias, not localhost; the RO/admin passwords below match the docker-compose.yml
+      # dev defaults (AUTO_BI_CH_PASSWORD/AUTO_BI_SUPERSET_PASSWORD unset -> "change_me")
+      # — fine for an ephemeral, non-published CI stand.
+      AUTO_BI_CH_HOST_FROM_BI: clickhouse
+      AUTO_BI_CH_PASSWORD: change_me
+      AUTO_BI_SUPERSET_PASSWORD: change_me
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      # 1e6 rows (vs the Mac stand's 100M default) is plenty to exercise every
+      # viz_type/adapter code path without blowing the runner's time/RAM budget.
+      # `--wait --wait-timeout` is the retry logic for Superset's slow first-boot
+      # (db upgrade + admin bootstrap + init) — it polls the compose healthchecks
+      # already defined in docker-compose.yml instead of a fixed sleep.
+      - name: Bring up the stand (ClickHouse + Superset)
+        env:
+          DEMO_FACT_ROWS: "1000000"
+        run: docker compose up -d --build --wait --wait-timeout 900
+
+      - name: Integration tests — Superset contract suite
+        run: uv run pytest -m integration tests/test_superset_contract.py
+
+      # --auto is the deterministic auto-overview path (no LLM, ARCHITECTURE §auto-overview)
+      # — a real end-to-end build against the live stand needs no API key.
+      - name: Live end-to-end build (auto-overview, no LLM)
+        run: uv run auto_bi build --auto dm.sales_daily --target superset --model-path semantic/model.yaml
+
+      - name: Stand logs (on failure, for debugging)
+        if: failure()
+        run: docker compose logs --tail=300
+
+      - name: Tear down the stand
+        if: always()
+        run: docker compose down -v

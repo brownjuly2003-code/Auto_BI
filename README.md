@@ -91,7 +91,7 @@ uv run --with duckdb --with pytest-cov pytest --cov=auto_bi --cov-report=term-mi
 uv run python scripts/verify_live_clickhouse.py      # числа CH-путей на ЖИВОМ стенде (ratio/grain/yoy/авто-обзор)
 ```
 
-`--with duckdb` — эфемерная test-dep (проверяет numeric-корректность transform-SQL под postgres-семантикой окон; без неё те тесты `importorskip`). Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Текущее покрытие — **95 %** (592 unit/API-теста; сьюты с пометкой `integration` требуют живого стенда ClickHouse/Superset/DataLens и в CI не запускаются).
+`--with duckdb` — эфемерная test-dep (проверяет numeric-корректность transform-SQL под postgres-семантикой окон; без неё те тесты `importorskip`). Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Текущее покрытие — **95 %** (592 unit/API-теста; сьюты с пометкой `integration` требуют живого стенда и по умолчанию deselected). Superset-контрактный сьют (`tests/test_superset_contract.py`) + живой `auto_bi build --auto` дополнительно гоняются в CI отдельным job'ом (`integration`) на одноразовом docker-compose стенде ClickHouse+Superset; DataLens-сьют (`tests/test_datalens_contract.py`) остаётся Mac-only (self-hosted стенд, не докеризован).
 
 ## License
 
