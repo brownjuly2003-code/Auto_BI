@@ -114,6 +114,18 @@ auto_bi eval --suite all --cases g1,g12_revenue_by_city_join
 Открывается на `http://<host>:<port>/` (по умолчанию `127.0.0.1:8200`). Без сборочной
 цепочки — статика отдаётся FastAPI.
 
+**Логи (S07):** `--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}` (по умолчанию `INFO`) и
+`--log-format {text,json}` (по умолчанию `text`). `text` держит собственный цветной консольный
+вывод uvicorn; `json` даёт один объект на строку (для ELK/Loki/CloudWatch) и подчиняет ему же
+и логи uvicorn (`--log-format json` отключает собственный dictConfig uvicorn). Пример:
+`auto_bi serve --log-format json --log-level WARNING`.
+
+**Готовность (S07):** `GET /api/v1/ready` (открыт даже при включённом auth, как `/health`) —
+глубокая проверка для оркестратора (compose healthcheck, Fly checks): store + DWH
+(`SELECT 1`) + BI (`healthcheck()` на Superset) гейтят `{"ok": false}`/503; LLM-доступность
+репортится в том же ответе, но **не** гейтит `ok` (транзиентный сбой GraceKelly/Anthropic не
+должен ронять готовность уже собранных дашбордов). Подробнее — ARCHITECTURE §3.11.
+
 **Три режима ввода:**
 - **Текстом** — опишите дашборд словами; агент задаёт уточнения только при реальных
   расхождениях с данными.
