@@ -269,6 +269,36 @@ def test_form_data_bar_top_n_sorts_by_the_ordering_measure() -> None:
     assert "x_axis_sort" not in fd
 
 
+def test_form_data_bar_sort_targets_the_humanized_metric_label() -> None:
+    # superset matches x_axis_sort against the metric LABEL; once the legend is humanized the
+    # sort key must be the display name too, or superset silently falls back to alphabetical
+    # (the regression the human-legends change introduced)
+    bar = _chart(
+        Viz.BAR,
+        dimensions=["store_id"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM)],  # no label -> alias sum_revenue
+        order_by=[OrderBy(by="sum_revenue", dir="desc")],
+    )
+    fd = build_form_data(bar, dataset_id=1, metric_labels={"sum_revenue": "Выручка"})
+    assert fd["metrics"][0]["label"] == "Выручка"
+    assert fd["x_axis_sort"] == "Выручка"  # matches the humanized legend, not "sum_revenue"
+    # no humanization -> the alias is both the legend and the sort key (unchanged)
+    assert build_form_data(bar, dataset_id=1)["x_axis_sort"] == "sum_revenue"
+
+
+def test_form_data_horizontal_bar_inverts_sort_direction() -> None:
+    # echarts renders a horizontal bar's category[0] at the BOTTOM, so a desc spec must sort
+    # ascending to put the largest bar at the TOP (dashboard-craft §5 "крупнейший первый")
+    bar = _chart(
+        Viz.BAR,
+        dimensions=["store_id"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM, label="Выручка")],
+        order_by=[OrderBy(by="Выручка", dir="desc")],
+    )
+    assert build_form_data(bar, dataset_id=1, horizontal=True)["x_axis_sort_asc"] is True
+    assert build_form_data(bar, dataset_id=1)["x_axis_sort_asc"] is False  # vertical: desc as-is
+
+
 def test_form_data_area_stacks_only_with_series() -> None:
     plain = build_form_data(_chart(Viz.AREA, dimensions=["date"]), dataset_id=1)
     assert plain["viz_type"] == "echarts_area"

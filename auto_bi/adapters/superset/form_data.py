@@ -246,8 +246,17 @@ def build_form_data(
         if ordering_measure is not None and len(metrics) == 1 and not breakdown:
             # the spec asked for top-N by this measure; superset honors the sort
             # control only for single-metric charts without a series breakdown
-            form_data["x_axis_sort"] = measure_alias(ordering_measure[0])
-            form_data["x_axis_sort_asc"] = ordering_measure[1] == "asc"
+            measure, direction = ordering_measure
+            # sort by the metric's DISPLAY label: superset matches x_axis_sort against the
+            # metric label, which is humanized ("Выручка") when metric_labels resolves one, so
+            # the raw alias ("sum_revenue") would no longer match and the sort would silently
+            # fall back to alphabetical order
+            form_data["x_axis_sort"] = _label(measure) or measure_alias(measure)
+            asc = direction == "asc"
+            # a horizontal bar renders category[0] at the BOTTOM (echarts origin), so to place
+            # the largest bar at the TOP (dashboard-craft §5 "крупнейший первый") the sort
+            # direction is inverted relative to the vertical case
+            form_data["x_axis_sort_asc"] = (not asc) if horizontal else asc
     if chart.viz == Viz.STACKED_BAR or (chart.viz == Viz.AREA and q.series):
         form_data["stack"] = "Stack"  # echarts "Stacked Style" select: None/Stack/Stream
     return form_data
