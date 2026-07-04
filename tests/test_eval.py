@@ -126,6 +126,46 @@ def test_golden_iteration_case_checks_patched_spec(demo_model) -> None:
     assert "did not add" in result.detail
 
 
+def test_golden_case_drives_begin_end_case_hooks_when_present(demo_model) -> None:
+    # eval/runner.py duck-types begin_case/end_case (llm/fixture.py record/replay clients);
+    # ScriptedLLM has neither, so ordinary golden tests above never exercise this path.
+    class HookedLLM(ScriptedLLM):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.hook_calls: list[str] = []
+
+        def begin_case(self, case_id: str) -> None:
+            self.hook_calls.append(f"begin:{case_id}")
+
+        def end_case(self) -> None:
+            self.hook_calls.append("end")
+
+    case = next(c for c in GOLDEN_CASES if c.id == "g1_revenue_by_day")
+    llm = HookedLLM([CLEAR_REPORT, GOOD_SPEC])
+    report = run_golden_suite(demo_model, llm, cases=[case])
+    assert report.results[0].passed
+    assert llm.hook_calls == ["begin:g1_revenue_by_day", "end"]
+
+
+def test_golden_case_calls_end_case_hook_even_on_failure(demo_model) -> None:
+    class HookedLLM(ScriptedLLM):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.ended = False
+
+        def begin_case(self, case_id: str) -> None:
+            pass
+
+        def end_case(self) -> None:
+            self.ended = True
+
+    case = next(c for c in GOLDEN_CASES if c.id == "g1_revenue_by_day")
+    llm = HookedLLM([AMBIGUOUS_REPORT])  # clear case, but agent asks -> fails
+    report = run_golden_suite(demo_model, llm, cases=[case])
+    assert not report.results[0].passed
+    assert llm.ended
+
+
 def test_eval_survives_broken_case(demo_model) -> None:
     class ExplodingLLM:
         def complete(self, *a, **kw):

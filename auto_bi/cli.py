@@ -85,6 +85,19 @@ def main(argv: list[str] | None = None) -> int:
     ev.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
     ev.add_argument("--suite", choices=["advisor", "golden", "all"], default="all")
     ev.add_argument("--cases", default="", help="Comma-separated case ids to run (subset)")
+    ev.add_argument(
+        "--llm-mode",
+        choices=["live", "replay", "record"],
+        default="live",
+        help="golden suite only: 'live' calls the configured provider (default); "
+        "'replay' answers from recorded fixtures, offline, no provider/key needed "
+        "(CI); 'record' calls the configured provider and writes fixtures for later replay",
+    )
+    ev.add_argument(
+        "--fixtures-dir",
+        default="tests/fixtures/golden_llm",
+        help="Directory of per-case fixture files for --llm-mode replay/record",
+    )
 
     dbt = sub.add_parser(
         "dbt-import",
@@ -115,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "gaps":
         return _gaps(args.model_path, args.output, args.offline)
     if args.command == "eval":
-        return _eval(args.model_path, args.suite, args.cases)
+        return _eval(args.model_path, args.suite, args.cases, args.llm_mode, args.fixtures_dir)
     if args.command == "dbt-import":
         return _dbt_import(args.manifest, args.catalog, args.model_path, args.dry_run)
     return 0
@@ -506,7 +519,13 @@ def _render_turn(console, turn) -> None:  # pragma: no cover — presentation on
         )
 
 
-def _eval(model_path: str, suite: str, cases_csv: str) -> int:
+def _eval(
+    model_path: str,
+    suite: str,
+    cases_csv: str,
+    llm_mode: str = "live",
+    fixtures_dir: str = "tests/fixtures/golden_llm",
+) -> int:
     from pathlib import Path
 
     from rich.console import Console
@@ -560,23 +579,46 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
             f"is a separate (S2) task; the advisor suite covers the {engine} rule pack.[/yellow]"
         )
     elif suite in ("golden", "all"):
-        from auto_bi.llm.factory import make_llm
-        from auto_bi.store import Store
+        from auto_bi.llm.base import LLMClient
 
-        settings = get_settings()
-        store = Store(settings.store_path)
-        llm = make_llm(settings, store=store)
         golden_selected = [c for c in golden_cases if not wanted or c.id in wanted]
-        provider = settings.llm_provider.strip().lower()
-        provider_detail = (
-            f"{settings.gracekelly_url}, {settings.gracekelly_model}"
-            if provider == "gracekelly"
-            else settings.anthropic_model
-        )
-        console.print(
-            f"[dim]golden: {len(golden_selected)} cases через {provider} "
-            f"({provider_detail})…[/dim]"
-        )
+
+        llm: LLMClient
+        if llm_mode == "replay":
+            from auto_bi.llm.fixture import FixtureLLMClient
+
+            llm = FixtureLLMClient(fixtures_dir)
+            console.print(
+                f"[dim]golden: {len(golden_selected)} cases, replay из {fixtures_dir}"
+                " (офлайн, без провайдера/ключа)…[/dim]"
+            )
+        else:
+            from auto_bi.llm.factory import make_llm
+            from auto_bi.store import Store
+
+            settings = get_settings()
+            store = Store(settings.store_path)
+            live_llm = make_llm(settings, store=store)
+            provider = settings.llm_provider.strip().lower()
+            provider_detail = (
+                f"{settings.gracekelly_url}, {settings.gracekelly_model}"
+                if provider == "gracekelly"
+                else settings.anthropic_model
+            )
+            if llm_mode == "record":
+                from auto_bi.llm.fixture import RecordingLLMClient
+
+                llm = RecordingLLMClient(live_llm, fixtures_dir)
+                console.print(
+                    f"[dim]golden: {len(golden_selected)} cases через {provider} "
+                    f"({provider_detail}), запись фикстур в {fixtures_dir}…[/dim]"
+                )
+            else:
+                llm = live_llm
+                console.print(
+                    f"[dim]golden: {len(golden_selected)} cases через {provider} "
+                    f"({provider_detail})…[/dim]"
+                )
         report = run_golden_suite(
             model,
             llm,
@@ -586,7 +628,10 @@ def _eval(model_path: str, suite: str, cases_csv: str) -> int:
                 + ("[green]PASS[/green]" if r.passed else f"[red]FAIL[/red] {r.detail}")
             ),
         )
-        _render("Golden dialogue suite (live LLM)", report)
+        mode_label = {"live": "live LLM", "replay": "offline replay", "record": "recording"}[
+            llm_mode
+        ]
+        _render(f"Golden dialogue suite ({mode_label})", report)
         if not wanted:  # thresholds only make sense on the full set
             ok &= golden_suite_ok(report)
 

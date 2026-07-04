@@ -157,19 +157,29 @@ def run_golden_case(
     advisor: Advisor | None = None,
     session_id: str | None = None,
 ) -> CaseResult:
-    agent = AgentSession(model, llm, advisor, session_id=session_id)
+    # Duck-typed hook (llm/fixture.py): record/replay clients key their fixture file by
+    # case id; GraceKellyClient/AnthropicClient don't have these attrs and are unaffected.
+    begin_case = getattr(llm, "begin_case", None)
+    if begin_case is not None:
+        begin_case(case.id)
     try:
-        turn = agent.start(case.request, seed=case.seed)
-    except Exception as exc:  # an eval run must survive a single broken case
-        return CaseResult(case_id=case.id, kind=case.kind.value, passed=False, detail=str(exc))
+        agent = AgentSession(model, llm, advisor, session_id=session_id)
+        try:
+            turn = agent.start(case.request, seed=case.seed)
+        except Exception as exc:  # an eval run must survive a single broken case
+            return CaseResult(case_id=case.id, kind=case.kind.value, passed=False, detail=str(exc))
 
-    if case.kind == CaseKind.CLEAR:
-        detail = _check_clear(case, turn.phase, turn.spec)
-        if not detail and case.edit:
-            detail = _check_edit(case, agent)
-    else:  # ambiguous and infeasible both require the agent to flag, not hallucinate
-        detail = _check_flagged(case, turn.phase, turn.questions)
-    return CaseResult(case_id=case.id, kind=case.kind.value, passed=not detail, detail=detail)
+        if case.kind == CaseKind.CLEAR:
+            detail = _check_clear(case, turn.phase, turn.spec)
+            if not detail and case.edit:
+                detail = _check_edit(case, agent)
+        else:  # ambiguous and infeasible both require the agent to flag, not hallucinate
+            detail = _check_flagged(case, turn.phase, turn.questions)
+        return CaseResult(case_id=case.id, kind=case.kind.value, passed=not detail, detail=detail)
+    finally:
+        end_case = getattr(llm, "end_case", None)
+        if end_case is not None:
+            end_case()
 
 
 def run_golden_suite(
