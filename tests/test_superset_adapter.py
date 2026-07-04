@@ -63,7 +63,7 @@ class FakeSuperset:
         self.datasets: list[dict] = []
         self.next_id = 100
         # value the /chart/data probe returns for the KPI-magnitude measurement (None => no rows,
-        # so _kpi_magnitude yields None and the KPI keeps its default format)
+        # so _measure_magnitude yields None and the chart keeps its default format)
         self.kpi_value = kpi_value
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -391,6 +391,29 @@ def test_form_data_table_column_config_keyed_by_human_label() -> None:
     assert cfg["Выручка"]["d3NumberFormat"] == ".3~s"
 
 
+def test_form_data_axis_scale_puts_ru_unit_on_the_value_axis_title() -> None:
+    # d3 SI only speaks k/M/G/T, so the value axis is scaled and the RU unit goes on its title
+    line = _chart(Viz.LINE, dimensions=["date"])
+    fd = build_form_data(line, dataset_id=1, axis_scale=(1e9, "млрд ₽"))
+    assert fd["metrics"][0]["sqlExpression"] == '(SUM("sum_revenue")) / 1000000000'
+    assert fd["y_axis_format"] == ",.1f"  # plain scaled number, not the d3 SI ".3~s"
+    assert fd["y_axis_title"] == "млрд ₽"  # y_axis_title is the measure axis (Y here)
+    # a horizontal bar flips the value axis to the bottom visually, but superset still models it
+    # as y_axis_title (x_axis_title would land on the category axis)
+    bar = build_form_data(
+        _chart(Viz.BAR, dimensions=["store_id"]),
+        dataset_id=1,
+        horizontal=True,
+        axis_scale=(1e9, "млрд ₽"),
+    )
+    assert bar["y_axis_title"] == "млрд ₽"
+    assert "x_axis_title" not in bar
+    # no axis_scale -> the d3 SI compact format, unscaled metric (unchanged behavior)
+    plain = build_form_data(line, dataset_id=1)
+    assert plain["y_axis_format"] == ".3~s"
+    assert "/ 1000000000" not in plain["metrics"][0]["sqlExpression"]
+
+
 # --- position_json ----------------------------------------------------------
 
 
@@ -578,12 +601,28 @@ def test_kpi_scale_none_for_percent_or_non_bignumber() -> None:
     assert adapter._kpi_scale(line, ds) is None
 
 
-def test_kpi_magnitude_best_effort_returns_none_on_no_rows() -> None:
-    # the probe finds no data (or fails) -> None, and the KPI silently keeps its default format
+def test_measure_magnitude_best_effort_returns_none_on_no_rows() -> None:
+    # the probe finds no data (or fails) -> None, and the chart silently keeps its default format
     adapter = make_adapter(FakeSuperset(kpi_value=None), model=MODEL)
     measure = Measure(column="revenue", agg=Aggregation.SUM)
-    assert adapter._kpi_magnitude(DatasetRef(id=42, name="t"), measure) is None
+    assert adapter._measure_magnitude(DatasetRef(id=42, name="t"), measure) is None
     assert adapter._kpi_scale(_bignum(measure), DatasetRef(id=42, name="t")) is None
+
+
+def test_axis_scale_large_ruble_line_but_not_percent_or_kpi() -> None:
+    adapter = make_adapter(FakeSuperset(kpi_value=14e9), model=MODEL)
+    ds = DatasetRef(id=42, name="t")
+    line = _chart(Viz.LINE, dimensions=["date"])  # compact revenue line -> scaled
+    assert adapter._axis_scale(line, ds) == (1e9, "млрд ₽")
+    # a percent share bar renders as % on the axis -> never magnitude-scaled
+    share = Measure(
+        column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL
+    )
+    assert (
+        adapter._axis_scale(_chart(Viz.BAR, dimensions=["store_id"], measures=[share]), ds) is None
+    )
+    # big_number is handled by _kpi_scale, not the axis path
+    assert adapter._axis_scale(_bignum(Measure(column="revenue", agg=Aggregation.SUM)), ds) is None
 
 
 def test_build_full_flow_scales_ruble_kpi_and_humanizes_legend() -> None:

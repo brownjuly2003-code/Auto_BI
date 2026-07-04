@@ -58,6 +58,10 @@ _MONEY_MARKERS = ("руб", "₽", "rub")
 # first of these separators ("Выручка, руб" -> "Выручка"), mirroring autospec._short.
 _LABEL_SEPS = (",", "(", ":", " —", " -")
 
+# cartesian charts whose value axis gets RU magnitude units (scaled metric + unit on the axis
+# title) instead of the d3 SI "15G" — big_number scales its headline separately (_kpi_scale).
+_AXIS_SCALE_VIZ = (Viz.LINE, Viz.BAR, Viz.STACKED_BAR, Viz.AREA)
+
 
 def _slug(text: str, max_len: int = 40) -> str:
     return re.sub(r"\W+", "_", text.lower()).strip("_")[:max_len] or "dataset"
@@ -140,10 +144,12 @@ class SupersetAdapter:
         logger.info("dataset %s created: id=%s", table_name, created["id"])
         return DatasetRef(id=created["id"], name=table_name)
 
-    def _kpi_magnitude(self, ds: DatasetRef, measure: Measure) -> float | None:
-        """The big_number's single scalar value, measured live so its RU magnitude unit
-        (млрд/млн/тыс) can be chosen. Best-effort: any failure returns None, and the KPI
-        falls back to the default format — a display nicety must never break a build."""
+    def _measure_magnitude(self, ds: DatasetRef, measure: Measure) -> float | None:
+        """The measure's peak aggregated value, measured live so its RU magnitude unit
+        (млрд/млн/тыс) can be chosen: for a big_number the dataset is one row (MAX = the scalar),
+        for a line/bar it is grouped (MAX = the tallest series point). Best-effort: any failure
+        returns None and the chart falls back to the default format — a display nicety must never
+        break a build."""
         try:
             result = self._client.post(
                 "/api/v1/chart/data",
@@ -208,22 +214,35 @@ class SupersetAdapter:
         text = f"{col.description if col else ''} {measure.label or ''}".lower()
         return "₽" if any(m in text for m in _MONEY_MARKERS) else ""
 
-    def _kpi_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
-        """(divisor, RU unit line) for a large ruble big_number, or None to keep the default
-        format. Only large additive aggregates (is_compact_number) are scaled; a percent/average
-        KPI or a magnitude below 1e3 keeps its raw value. The unit line is 'млрд ₽' for money,
-        just 'млрд' for a count."""
-        measure = chart.query.measures[0]
-        if chart.viz != Viz.BIG_NUMBER or not is_compact_number(measure):
+    def _ru_scale(self, measure: Measure, table: str, ds: DatasetRef) -> tuple[float, str] | None:
+        """(divisor, RU unit line) for a large compact measure, measured live, or None to keep
+        the default format. Only additive aggregates (is_compact_number) with a magnitude ≥ 1e3
+        scale; the unit line is 'млрд ₽' for money, just 'млрд' for a count. Shared by the KPI
+        headline (_kpi_scale) and the cartesian value axis (_axis_scale)."""
+        if not is_compact_number(measure):
             return None
-        magnitude = self._kpi_magnitude(ds, measure)
+        magnitude = self._measure_magnitude(ds, measure)
         if magnitude is None:
             return None
         divisor, unit = ru_kpi_scale(magnitude)
         if divisor <= 1:
             return None
-        currency = self._measure_currency(measure, chart.query.table)
+        currency = self._measure_currency(measure, table)
         return divisor, f"{unit} {currency}".strip()
+
+    def _kpi_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
+        """(divisor, RU unit line) for a large ruble big_number headline, or None (default fmt)."""
+        if chart.viz != Viz.BIG_NUMBER:
+            return None
+        return self._ru_scale(chart.query.measures[0], chart.query.table, ds)
+
+    def _axis_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
+        """(divisor, RU unit line) for a large-magnitude line/bar/area value axis, or None to
+        keep d3 SI. Same rule as the KPI: d3's SI axis format only speaks k/M/G/T, so RU units
+        ("15 млрд ₽" vs "15G") need the metric scaled and the unit on the value-axis title."""
+        if chart.viz not in _AXIS_SCALE_VIZ or not chart.query.measures:
+            return None
+        return self._ru_scale(chart.query.measures[0], chart.query.table, ds)
 
     def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef:
         horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
@@ -232,6 +251,7 @@ class SupersetAdapter:
             _int_id(ds.id),
             horizontal=horizontal,
             kpi_scale=self._kpi_scale(chart, ds),
+            axis_scale=self._axis_scale(chart, ds),
             metric_labels=self._metric_labels(chart),
         )
         created = self._client.post(

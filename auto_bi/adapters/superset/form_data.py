@@ -117,6 +117,7 @@ def build_form_data(
     *,
     horizontal: bool = False,
     kpi_scale: tuple[float, str] | None = None,
+    axis_scale: tuple[float, str] | None = None,
     metric_labels: dict[str, str] | None = None,
 ) -> dict:
     """Superset chart params for the pinned 4.1, on top of a virtual dataset.
@@ -128,6 +129,10 @@ def build_form_data(
     `kpi_scale` (divisor, unit word) applies only to big_number: the adapter measures the KPI's
     magnitude and passes e.g. (1e9, "млрд") so the headline reads "236" with "млрд" on the
     subheader line, instead of the d3 SI "236G". None => the old raw/compact format.
+
+    `axis_scale` (divisor, unit line) is the cartesian-axis analog of `kpi_scale` for line/bar/
+    area: d3's SI is hard-coded to k/M/G/T, so to read "15 млрд ₽" instead of "15G" the metric is
+    scaled and the RU unit goes on the value-axis TITLE. None => the d3 SI (~s) axis format.
 
     `metric_labels` maps a measure alias -> human name ("sum_revenue" -> "Выручка") so legends,
     tooltips and table columns read human instead of the raw alias. The adapter resolves it from
@@ -259,6 +264,19 @@ def build_form_data(
             form_data["x_axis_sort_asc"] = (not asc) if horizontal else asc
     if chart.viz == Viz.STACKED_BAR or (chart.viz == Viz.AREA and q.series):
         form_data["stack"] = "Stack"  # echarts "Stacked Style" select: None/Stack/Stream
+    if axis_scale is not None and axis_scale[0] > 1:
+        # RU magnitude units on the value axis (the kpi_scale analog): scale the metric and put
+        # the RU unit on the value-axis TITLE, since d3's SI axis format only speaks k/M/G/T. The
+        # value axis is Y for a vertical chart, X for a horizontal bar.
+        divisor, unit = axis_scale
+        form_data["metrics"] = [
+            {**m, "sqlExpression": f"({m['sqlExpression']}) / {divisor:.0f}"} for m in metrics
+        ]
+        form_data["y_axis_format"] = ",.1f"
+        # y_axis_title is the MEASURE (value) axis in superset's echarts family regardless of
+        # orientation — a horizontal bar only flips it visually to the bottom, so the RU unit
+        # always goes here (x_axis_title would land on the category axis)
+        form_data["y_axis_title"] = unit
     return form_data
 
 
