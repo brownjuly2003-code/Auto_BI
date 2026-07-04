@@ -71,7 +71,7 @@ auto_bi serve            # http://127.0.0.1:8200
 | `serve` | HTTP API + web UI (FastAPI/uvicorn). `--host` (def `127.0.0.1`), `--port` (def `8200`). |
 | `introspect` | Интроспекция DWH → черновик `model.yaml`. `--engine clickhouse\|greenplum` (def `clickhouse`; GP использует `AUTO_BI_GP_*`), `--database`, `--output`. |
 | `gaps` | Детерминированный отчёт «что в модели не заполнено / неоднозначно». `--offline` без подключения к DWH, `--output file.md` в файл. |
-| `eval` | Прогон eval-сьютов. `--suite advisor\|golden\|all`, `--cases id1,id2` (подмножество). advisor — офлайн; golden — через живой LLM (провайдер из `AUTO_BI_LLM_PROVIDER`). |
+| `eval` | Прогон eval-сьютов. `--suite advisor\|golden\|all`, `--cases id1,id2` (подмножество). advisor — офлайн; golden — `--llm-mode live` (деф., живой LLM) \| `replay` (офлайн по записанным фикстурам) \| `record` (живой LLM + запись фикстур), `--fixtures-dir DIR` (деф. `tests/fixtures/golden_llm`). |
 | `dbt-import` | Обогащение `model.yaml` из dbt-артефактов (описания, связи). `--manifest` (обяз.), `--catalog`, `--dry-run`. Заполняет ТОЛЬКО пустые значения — ручные правки всегда выигрывают. |
 
 ### build
@@ -105,9 +105,20 @@ auto_bi build --auto dm.sales_daily --max-charts 6 --target datalens
 auto_bi eval --suite advisor                     # офлайн, без LLM/DWH
 auto_bi eval --suite golden                       # через живой LLM (Anthropic по умолчанию)
 auto_bi eval --suite all --cases g1,g12_revenue_by_city_join
+auto_bi eval --suite golden --llm-mode replay --fixtures-dir tests/fixtures/golden_llm   # офлайн, без провайдера/ключа
+auto_bi eval --suite golden --llm-mode record --fixtures-dir tests/fixtures/golden_llm   # живой LLM + запись фикстур
 ```
 Движок берётся из модели (`physical.engine`), сьюты выбираются под него (CH-набор vs GP-набор).
 Прогонять перед любым изменением промптов.
+
+`--llm-mode` управляет только golden-сьютом (advisor всегда офлайн). `record` гоняет настроенный
+провайдер (`AUTO_BI_LLM_PROVIDER`) и на каждый кейс пишет `<fixtures_dir>/<case_id>.json` —
+последовательность вызовов `complete()`, которые сделал кейс (grounding → propose_spec →
+опционально patch). `replay` читает эти файлы и вообще не создаёт LLM-клиент — можно гонять
+golden-сьют в CI/локально без ключа и без сетевых вызовов. Если код/промпт с момента записи
+фикстуры стал звать LLM иначе (другой шаг/схема, лишний или недостающий вызов) — `replay`
+падает явной ошибкой на этом кейсе, а не тихо подставляет чужой ответ; фикстуры этого кейса
+нужно перезаписать `--llm-mode record`. См. ARCHITECTURE §3.14.
 
 ---
 
