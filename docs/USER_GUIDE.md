@@ -60,6 +60,8 @@ auto_bi serve            # http://127.0.0.1:8200
 ## 3. Команды CLI
 
 Запуск: `auto_bi <команда> [опции]`. Везде `--model-path` по умолчанию `semantic/model.yaml`.
+`auto_bi --version` печатает версию пакета и выходит (совпадает с полем `version` в
+`GET /api/v1/health`).
 
 | Команда | Назначение |
 |---|---|

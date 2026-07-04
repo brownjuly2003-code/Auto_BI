@@ -39,9 +39,11 @@ uv run --with pytest-cov --with duckdb pytest -q --cov=auto_bi --cov-report=term
 uv run auto_bi eval --suite advisor --model-path semantic/model.yaml
 ```
 
-This mirrors `.github/workflows/ci.yml` exactly — if it's green locally, CI will be green too. `pytest-cov` and `duckdb` are pulled in ephemerally (not in `uv.lock`) to keep the lockfile lean; same for `types-PyYAML`.
+This mirrors the `quality` job in `.github/workflows/ci.yml` — if it's green locally, that job will be green too. `pytest-cov` and `duckdb` are pulled in ephemerally (not in `uv.lock`) to keep the lockfile lean; same for `types-PyYAML`.
 
-Integration tests (marked `@pytest.mark.integration`) require a live ClickHouse/Superset/DataLens stand and are deselected by default (`pytest -m integration` to run them if you have a stand). They are not part of the standard gate for a contribution without stand access.
+Two more CI jobs are **not** part of the local gate above and don't need Docker installed to contribute:
+- `integration` — requires a live ClickHouse/Superset/DataLens stand; its tests (marked `@pytest.mark.integration`) are deselected by default (`pytest -m integration` to run them if you have a stand).
+- `docker` — just builds the image (`docker build -t auto_bi .`) to catch Dockerfile drift; only relevant if your PR touches `Dockerfile`, `pyproject.toml`, or `uv.lock`.
 
 If you touched anything under `agent/` that affects prompts or spec generation, also run the golden-eval suite against a live LLM before proposing the change is complete:
 

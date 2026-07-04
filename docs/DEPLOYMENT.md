@@ -35,10 +35,18 @@ USER_GUIDE.md отвечает на «как пользоваться», ARCHITE
 
 ## 2. Запуск процесса
 
-**Docker (образ уже собран, см. `Dockerfile`):**
+**Docker — готовый образ из GHCR (после того, как вырезан хотя бы один тег `vX.Y.Z` —
+`release.yml`, S10) или сборка локально:**
 
 ```bash
+# вариант A: тег уже опубликован в GHCR — просто стянуть (замените версию на нужный тег)
+docker pull ghcr.io/brownjuly2003-code/auto_bi:X.Y.Z   # или :latest — последний тег
+
+# вариант B: собрать образ самому из текущего дерева (до первого тега или с локальными патчами)
 docker build -t auto_bi .
+```
+
+```bash
 docker run -d --name auto_bi \
   -p 8200:8200 \
   --env-file .env \
@@ -48,9 +56,11 @@ docker run -d --name auto_bi \
   auto_bi serve --host 0.0.0.0 --port 8200 --log-format json --log-level INFO
 ```
 
+(Замените `auto_bi` на `ghcr.io/brownjuly2003-code/auto_bi:X.Y.Z`, если тянули по варианту A.)
 Дефолтный `CMD` в образе (`auto_bi serve --host 0.0.0.0 --port 8200`) уже подходит для
 контейнера — переопределяйте команду только чтобы добавить `--log-format json` (см. §7) или
-сменить `--log-level`.
+сменить `--log-level`. Версия запущенного образа проверяется без входа в контейнер: `GET
+/api/v1/health` возвращает поле `version`.
 
 **Без Docker (`uv`):**
 
