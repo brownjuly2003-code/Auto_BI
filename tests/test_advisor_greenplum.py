@@ -236,7 +236,8 @@ def test_gp_advisor_suite_passes_on_committed_gp_model() -> None:
 
     # engine dispatch picks the GP set for a GP model, CH set otherwise
     assert advisor_cases_for_engine("greenplum") is GP_ADVISOR_CASES
-    # GP golden authored in Phase 3.5; S01 adds 4 analytical-core mirrors and converts
-    # gp_a2_avg_ticket to clear (ratio)
-    assert len(golden_cases_for_engine("greenplum")) == 17
+    # GP golden authored in Phase 3.5; S01 adds 4 analytical-core mirrors, converts
+    # gp_a2_avg_ticket to clear (ratio) and retires the gp_a1 ambiguity case (see the
+    # comment in cases.py — CLARIFY coverage lives in the CH suite)
+    assert len(golden_cases_for_engine("greenplum")) == 16
     assert advisor_cases_for_engine("clickhouse") is not GP_ADVISOR_CASES

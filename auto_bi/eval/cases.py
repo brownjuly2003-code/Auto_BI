@@ -94,11 +94,13 @@ GOLDEN_CASES: list[GoldenCase] = [
         expect_viz={Viz.BIG_NUMBER},
     ),
     GoldenCase(
+        # «магазин»: с joins LLM законно выбирает читаемое имя вместо id (как gp_g3)
         id="g3_top_stores",
         request="Топ-10 магазинов по выручке за июнь 2026",
         kind=CaseKind.CLEAR,
         table="dm.sales_daily",
-        expect_columns={"store_id", "revenue"},
+        expect_columns={"revenue"},
+        expect_columns_any=[{"store_id", "dm.stores.name"}],
         expect_viz={Viz.BAR, Viz.TABLE},
     ),
     GoldenCase(
@@ -759,13 +761,13 @@ GP_GOLDEN_CASES: list[GoldenCase] = [
         edit_expect_columns={"orders"},
     ),
     # --- ambiguous: a clarifying question is REQUIRED ----------------------------
-    GoldenCase(
-        # «количество» is ambiguous: qty (units shipped) vs orders (count of orders)
-        id="gp_a1_quantity_ambiguous",
-        request="Количество по магазинам за июнь 2026",
-        kind=CaseKind.AMBIGUOUS,
-        expect_phrase="количеств",
-    ),
+    # NO ambiguous case in the GP set (S01): the former gp_a1 «количество» stopped being
+    # a fair test — GP's column is literally named qty, so resolving to it is a
+    # defensible read, not a hallucination (probed live: «объём продаж» and «по типу»
+    # also resolve by business convention on this schema). The CLARIFY machinery is
+    # engine-independent (same prompt and question code) and stays covered by CH
+    # a1/a2/a4, where items-vs-orders is a real 50/50; the GP suite's distinct value is
+    # schema-specific grounding (gp_g*) and infeasible flagging (gp_i*).
     # gp_a2_avg_ticket moved to the clear set (gp_g9_avg_ticket_ratio) — see g13
     # --- infeasible: not in the DM at all -> flagged ----------------------------
     GoldenCase(
