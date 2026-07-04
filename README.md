@@ -89,7 +89,7 @@ uv run ruff check .                                  # линтер
 uv run black --check auto_bi tests                   # формат
 uv run --with duckdb pytest -q                       # тесты (integration-сьюты со стендом — deselected)
 uv run --with duckdb --with pytest-cov pytest --cov=auto_bi --cov-report=term-missing   # покрытие
-uv run python scripts/verify_live_clickhouse.py      # числа CH-путей на ЖИВОМ стенде (ratio/grain/yoy/авто-обзор)
+uv run python scripts/verify_live_clickhouse.py      # числа CH-путей на ЖИВОМ стенде (ratio/grain/yoy/compare-KPI/авто-обзор)
 ```
 
 `--with duckdb` — эфемерная test-dep (проверяет numeric-корректность transform-SQL под postgres-семантикой окон; без неё те тесты `importorskip`). Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Покрытие в бейдже выше генерируется самим CI на каждый push в main (`.github/badges/coverage.json`, из `coverage report --format=total`) — не статичное число. Superset-контрактный сьют (`tests/test_superset_contract.py`) + живой `auto_bi build --auto` дополнительно гоняются в CI отдельным job'ом (`integration`) на одноразовом docker-compose стенде ClickHouse+Superset; DataLens-сьют (`tests/test_datalens_contract.py`) остаётся Mac-only (self-hosted стенд, не докеризован). Job `docker` собирает образ на каждый PR (только сборка, ловит дрейф `Dockerfile`); на тег `vX.Y.Z` — `.github/workflows/release.yml` публикует образ в GHCR (`ghcr.io/brownjuly2003-code/auto_bi`) и создаёт GitHub Release из [CHANGELOG.md](CHANGELOG.md).
