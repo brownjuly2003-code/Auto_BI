@@ -18,9 +18,10 @@ non-interactive ssh PATH. Exits non-zero on any mismatch and exits 2 when the st
 
 Covers: ratio measure (num/den), time_grain (month buckets, week = Monday), yoy_pct, mom
 (grain + pop), lag_periods (pop_pct vs N periods back), running_share (Pareto cumulative share,
-window ordered by the measure), histogram (equal-width binning of a numeric column), and the
-auto-overview (real model.yaml -> build_auto_spec -> the dynamics line is a readable monthly
-trend whose totals match the live data).
+window ordered by the measure), histogram (equal-width binning of a numeric column), the scalar
+period-compare KPI (yoy big_number — conditional aggregation over two buckets, not the window
+lag), and the auto-overview (real model.yaml -> build_auto_spec -> the dynamics line is a readable
+monthly trend whose totals match the live data).
 """
 
 from __future__ import annotations
@@ -261,13 +262,44 @@ def _verify_histogram(ch: Runner, failures: list[str]) -> None:
     )
 
 
+def _verify_compare_kpi(ch: Runner, failures: list[str]) -> None:
+    print(f"\n[compare] scalar year-over-year KPI on {TABLE}")
+    # a big_number whose single value is the hero measure's latest-month vs same-month-a-year-back
+    # % change — a NEW SQL shape (conditional aggregation over two buckets + INTERVAL date
+    # arithmetic on ClickHouse, not the window lag yoy_pct uses), so it needs its own live check.
+    from auto_bi.ir.spec import ScalarCompare, ScalarCompareKind
+
+    months = [float(r[1]) for r in ch(_MONTHLY_SQL)]
+    n = len(months)
+    q = ChartQuery(
+        table=TABLE,
+        measures=[
+            _sum_revenue(
+                compare=ScalarCompare(
+                    column="date", grain=TimeGrain.MONTH, kind=ScalarCompareKind.YOY
+                )
+            )
+        ],
+    )
+    gen = ch(generate_chart_sql(q, apply_limit=False))  # exactly one row: the yoy %
+    # independent: the latest present month vs the same month a year back, from the monthly series
+    expected = (months[n - 1] - months[n - 13]) / months[n - 13]
+    got = float(gen[0][0]) if gen and gen[0][0] is not None else None
+    ok = len(gen) == 1 and _approx(got, expected)
+    _check(
+        failures,
+        "compare yoy KPI: latest month vs a year back matches hand calc",
+        ok,
+        f"got={got!r} exp={expected:.6g}",
+    )
+
+
 def _verify_autospec(ch: Runner, failures: list[str]) -> None:
     print("\n[autospec] auto-overview time-views (real model.yaml)")
     model = SemanticModel.load(REPO / "semantic" / "model.yaml")
     spec = build_auto_spec(model, TABLE)
     lines = [c for c in spec.charts if c.viz == Viz.LINE]
     ind = ch(_MONTHLY_SQL)
-    months = [float(r[1]) for r in ind]
 
     # the absolute dynamics line: the hero measure as a readable monthly trend
     dyn = next(c for c in lines if not any(m.transform for m in c.query.measures))
@@ -281,27 +313,16 @@ def _verify_autospec(ch: Runner, failures: list[str]) -> None:
     )
     _check(failures, "dynamics line is a monthly trend matching live CH", ok, f"{len(rows)} points")
 
-    # the year-over-year line (added when there are 2+ years of history): same hero measure, but
-    # each month vs the same month a year back — first year NULL, the rest a hand-checkable ratio
-    yoy = None
-    for c in lines:
-        if any(m.transform == MeasureTransform.YOY_PCT for m in c.query.measures):
-            yoy = c
-            break
-    if yoy is None:
-        _check(failures, "auto-overview emits a year-over-year line", False, "no yoy line built")
-        return
-    print(f"  yoy: {yoy.title!r}  time_grain={yoy.query.time_grain}")
-    gy = ch(generate_chart_sql(yoy.query, apply_limit=False))
-    n = len(months)
-    exp = [None] * 12 + [(months[k] - months[k - 12]) / months[k - 12] for k in range(12, n)]
-    ok = (
-        yoy.query.time_grain == TimeGrain.MONTH
-        and len(gy) == len(exp)
-        and all(g[1] is None for g in gy[:12])
-        and all(_approx(g[1], e) for g, e in zip(gy, exp, strict=True))
+    # the year-over-year view is now the scalar hero KPI (Measure.compare, a big_number), verified
+    # numerically in _verify_compare_kpi; here we only assert the auto-overview still emits it
+    kpi = [
+        c
+        for c in spec.charts
+        if c.viz == Viz.BIG_NUMBER and any(m.compare is not None for m in c.query.measures)
+    ]
+    _check(
+        failures, "auto-overview emits a scalar yoy KPI (2+ years)", len(kpi) == 1, f"{len(kpi)}"
     )
-    _check(failures, "auto-overview yoy line matches hand calc on live CH", ok, f"{len(gy)} months")
 
 
 def main() -> int:
@@ -317,6 +338,7 @@ def main() -> int:
     _verify_trio(ch, failures)
     _verify_running_share(ch, failures)
     _verify_histogram(ch, failures)
+    _verify_compare_kpi(ch, failures)
     _verify_autospec(ch, failures)
 
     print("\n" + "=" * 60)

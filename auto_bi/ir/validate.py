@@ -200,6 +200,7 @@ def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
 
     errors.extend(_validate_transforms(chart, model, prefix))
     errors.extend(_validate_ratios(chart, prefix))
+    errors.extend(_validate_compare(chart, model, prefix))
     errors.extend(_validate_time_grain(chart, model, prefix))
     errors.extend(_validate_histogram(chart, model, prefix))
     errors.extend(_validate_viz_shape(chart, prefix))
@@ -301,6 +302,49 @@ def _validate_ratios(chart: ChartSpec, prefix: str) -> list[str]:
             )
         if m.denominator.transform is not None:
             errors.append(f"{prefix}: знаменатель отношения не может иметь transform")
+    return errors
+
+
+def _validate_compare(chart: ChartSpec, model: SemanticModel, prefix: str) -> list[str]:
+    """Rules for a scalar period-compare KPI (`Measure.compare`).
+
+    Only on big_number (a scalar tile — SQL_GEN reduces it to one row by conditional aggregation);
+    the compare column must be a TIME column of the chart's table and the grain a real period (not
+    day); mutually exclusive with a window transform or a ratio denominator (a compare IS the
+    derived value). The one-measure / no-dimension shape is enforced by `_validate_viz_shape`.
+    """
+    compared = [m for m in chart.query.measures if m.compare is not None]
+    if not compared:
+        return []
+    errors: list[str] = []
+    if chart.viz != Viz.BIG_NUMBER:
+        errors.append(
+            f"{prefix}: сравнение периодов (compare) поддерживается только для big_number "
+            f"(получено {chart.viz.value})"
+        )
+    base_table = model.table(chart.query.table)
+    for m in compared:
+        c = m.compare
+        assert c is not None  # filtered above; keeps mypy happy on c.column/c.grain
+        if m.transform is not None or m.denominator is not None:
+            errors.append(
+                f"{prefix}: мера со сравнением периодов (compare) не может одновременно иметь "
+                "transform или denominator"
+            )
+        if c.grain == TimeGrain.DAY:
+            errors.append(
+                f"{prefix}: compare.grain должен задавать период "
+                "(week/month/quarter/year), не day"
+            )
+        col_name = c.column.rpartition(".")[2] if "." in c.column else c.column
+        ref_table = model.table(c.column.rpartition(".")[0]) if "." in c.column else base_table
+        column = ref_table.column(col_name) if ref_table is not None else None
+        if column is None:
+            errors.append(f"{prefix}: compare.column {c.column!r} — неизвестная колонка")
+        elif column.role != ColumnRole.TIME:
+            errors.append(
+                f"{prefix}: compare.column {c.column!r} должна быть колонкой времени (role=time)"
+            )
     return errors
 
 

@@ -78,20 +78,21 @@ def test_analyze_real_auto_overview_produces_expected_observations() -> None:
 
     per = _by_chart(ins.observations)
 
-    # KPIs (auto1..auto3, big_number, no dimension) carry no trend/ranking story
-    assert "auto1" not in per and "auto2" not in per and "auto3" not in per
+    # KPIs (auto1..auto4, big_number, no dimension — incl. the hero yoy KPI auto2) carry no
+    # trend/ranking story
+    for kpi in ("auto1", "auto2", "auto3", "auto4"):
+        assert kpi not in per
 
-    # the absolute dynamics line (auto4): a smoothed rising trend + the mid-series spike anomaly
-    line = per["auto4"]
+    # the absolute dynamics line (auto5): a smoothed rising trend + the mid-series spike anomaly
+    line = per["auto5"]
     trend = next(o for o in line if o.kind == "trend")
     assert trend.value == pytest.approx(122.7, abs=0.1) and "рост" in trend.text
     assert "+" in trend.text
     anomaly = next(o for o in line if o.kind == "anomaly")
     assert anomaly.subject == "2026-01-15" and anomaly.value == pytest.approx(2000.0)
 
-    # the year-over-year line (auto5) is a percent rate — the chart is itself the insight, so the
-    # layer adds no (muddled) "trend of a rate" observation for it
-    assert "auto5" not in per
+    # the year-over-year view is now the compact hero KPI (auto2, a big_number skipped above), not
+    # a percent line — so the layer never adds a muddled "trend of a rate" observation for it
 
     # concentrated ranking (region, auto6): leader + a top-3 concentration line
     region = per["auto6"]

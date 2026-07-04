@@ -626,3 +626,70 @@ def test_distinct_measure_aliases_ok(demo_model) -> None:
         ]
     )
     assert validate_spec(spec(ok), demo_model) == []
+
+
+# --- scalar period-compare KPI (Measure.compare) ---------------------------
+
+
+def _cmp_chart(viz=Viz.BIG_NUMBER, **compare_kwargs):
+    from auto_bi.ir.spec import ScalarCompare
+
+    ck = dict(column="date", grain="month", kind="yoy", output="pct")
+    ck.update(compare_kwargs)
+    m = Measure(column="revenue", agg=Aggregation.SUM, compare=ScalarCompare(**ck))
+    return ChartSpec(
+        id="c1", title="t", viz=viz, query=ChartQuery(table="dm.sales_daily", measures=[m])
+    )
+
+
+def test_compare_on_big_number_is_valid(demo_model) -> None:
+    assert validate_spec(spec(_cmp_chart()), demo_model) == []
+
+
+def test_compare_abs_on_big_number_is_valid(demo_model) -> None:
+    assert validate_spec(spec(_cmp_chart(output="abs")), demo_model) == []
+
+
+def test_compare_pop_on_big_number_is_valid(demo_model) -> None:
+    assert validate_spec(spec(_cmp_chart(kind="pop")), demo_model) == []
+
+
+def test_compare_on_non_big_number_is_rejected(demo_model) -> None:
+    # a scalar compare needs a scalar tile; a line has a time axis and would use yoy_pct instead
+    bad = _cmp_chart(viz=Viz.LINE)
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("только для big_number" in e for e in errors)
+
+
+def test_compare_day_grain_is_rejected(demo_model) -> None:
+    errors = validate_spec(spec(_cmp_chart(grain="day")), demo_model)
+    assert any("не day" in e for e in errors)
+
+
+def test_compare_over_non_time_column_is_rejected(demo_model) -> None:
+    errors = validate_spec(spec(_cmp_chart(column="store_id")), demo_model)
+    assert any("колонкой времени" in e for e in errors)
+
+
+def test_compare_over_unknown_column_is_rejected(demo_model) -> None:
+    errors = validate_spec(spec(_cmp_chart(column="nope_col")), demo_model)
+    assert any("неизвестная колонка" in e for e in errors)
+
+
+def test_compare_with_transform_is_mutually_exclusive(demo_model) -> None:
+    from auto_bi.ir.spec import MeasureTransform, ScalarCompare
+
+    m = Measure(
+        column="revenue",
+        agg=Aggregation.SUM,
+        transform=MeasureTransform.YOY_PCT,
+        compare=ScalarCompare(column="date", grain="month"),
+    )
+    bad = ChartSpec(
+        id="c1",
+        title="t",
+        viz=Viz.BIG_NUMBER,
+        query=ChartQuery(table="dm.sales_daily", measures=[m]),
+    )
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("не может одновременно" in e for e in errors)

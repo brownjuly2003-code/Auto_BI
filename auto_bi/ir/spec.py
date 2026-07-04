@@ -94,6 +94,50 @@ class TimeGrain(StrEnum):
     YEAR = "year"
 
 
+class ScalarCompareKind(StrEnum):
+    """Direction of a scalar period-compare KPI (`Measure.compare`).
+
+    - `yoy` — the latest period vs the SAME period one year back (year-over-year);
+    - `pop` — the latest period vs the immediately PREVIOUS period (period-over-period).
+    """
+
+    YOY = "yoy"
+    POP = "pop"
+
+
+class ScalarCompareOutput(StrEnum):
+    """What a scalar period-compare KPI DISPLAYS.
+
+    - `pct` — the relative change `(current - prior) / prior` (a percent — `is_percent_measure`);
+    - `abs` — the absolute change `current - prior` (keeps the base aggregate's number family).
+    """
+
+    PCT = "pct"
+    ABS = "abs"
+
+
+class ScalarCompare(BaseModel):
+    """A scalar period-compare KPI: one number = how the measure changed vs a period back.
+
+    Unlike `MeasureTransform.YOY_PCT` (a windowed SERIES, one point per period along a time axis),
+    this reduces to a SINGLE scalar for a `big_number` tile — the latest period's value against the
+    same period a year back (`yoy`) or the previous period (`pop`). SQL_GEN computes it by
+    conditional aggregation over two buckets (no window, no displayed dimension), so a big_number
+    stays a true scalar (one row, zero dimensions).
+
+    `column` is the chart table's TIME column; `grain` defines "the period" (week/month/quarter/
+    year — not day); "the latest period" is the latest bucket PRESENT in the (filtered) data, and
+    the compare bucket is the matching one a year / a period back (a missing compare bucket yields
+    NULL, never a crash). Only valid on `big_number` with exactly one measure; mutually exclusive
+    with `transform` / `denominator` — enforced by validation.
+    """
+
+    column: str
+    grain: TimeGrain
+    kind: ScalarCompareKind = ScalarCompareKind.YOY
+    output: ScalarCompareOutput = ScalarCompareOutput.PCT
+
+
 class QueryFilter(BaseModel):
     column: str
     op: FilterOp
@@ -122,6 +166,12 @@ class Measure(BaseModel):
     # plain measure has no lag — enforced by validation. The window machinery already lags by k
     # rows (SQL_GEN `_window_expr`), so this only routes a different k.
     lag_periods: int | None = Field(default=None, ge=1)
+    # optional scalar period-compare KPI: this measure becomes a SINGLE number — the latest period
+    # vs a period back (yoy/pop), as a percent or absolute change (see ScalarCompare). Only for a
+    # big_number tile; mutually exclusive with `transform`/`denominator` — enforced by validation.
+    # Unlike the yoy_pct transform (a windowed series) this reduces to one row via conditional
+    # aggregation (SQL_GEN `_generate_compare_kpi_sql`), so the big_number stays a true scalar.
+    compare: ScalarCompare | None = None
 
 
 def measure_alias(measure: Measure) -> str:
@@ -137,6 +187,10 @@ def measure_alias(measure: Measure) -> str:
     if measure.label:
         return measure.label
     base = f"{measure.agg.value}_{measure.column}"
+    if measure.compare is not None:
+        # a scalar period-compare KPI: yoy_sum_revenue / pop_sum_revenue — distinct from the plain
+        # base aggregate so a level KPI and its yoy KPI never share a dataset column
+        return f"{measure.compare.kind.value}_{base}"
     if measure.transform is not None:
         alias = f"{measure.transform.value}_{base}"
         if measure.lag_periods is not None:
@@ -154,8 +208,11 @@ def is_percent_measure(measure: Measure) -> bool:
 
     pop_abs / running_total keep the base measure's number family (a cumulative sum is still
     rubles), so they are not percents; running_share IS a percent (a cumulative share of the
-    total). The adapters map this to the native percent format (Superset d3 `.1%`, DataLens
-    `formatting` percent)."""
+    total). A scalar period-compare KPI is a percent when its output is `pct` (the abs delta keeps
+    the base family). The adapters map this to the native percent format (Superset d3 `.1%`,
+    DataLens `formatting` percent)."""
+    if measure.compare is not None:
+        return measure.compare.output == ScalarCompareOutput.PCT
     return measure.transform in (
         MeasureTransform.POP_PCT,
         MeasureTransform.YOY_PCT,

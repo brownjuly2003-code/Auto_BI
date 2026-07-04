@@ -12,6 +12,8 @@ from auto_bi.ir.spec import (
     Measure,
     MeasureTransform,
     QueryFilter,
+    ScalarCompareKind,
+    ScalarCompareOutput,
     TimeGrain,
     column_alias,
     measure_alias,
@@ -192,6 +194,8 @@ def generate_chart_sql(
     """
     if query.bins is not None:
         return _generate_histogram_sql(query, dialect=dialect, apply_limit=apply_limit)
+    if any(m.compare is not None for m in query.measures):
+        return _generate_compare_kpi_sql(query, dialect=dialect, apply_limit=apply_limit)
     if any(_is_derived(m) for m in query.measures):
         return _generate_windowed_sql(query, dialect=dialect, apply_limit=apply_limit)
     return _generate_flat_sql(query, dialect=dialect, apply_limit=apply_limit)
@@ -445,6 +449,91 @@ def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool
     outer = exp.select(*outer_dims, *outer_measures).from_(inner.subquery(alias="t"))
     outer = _apply_order_and_limit(outer, query, apply_limit=apply_limit)
     return outer.sql(dialect=dialect, identify=True)
+
+
+# (unit, step) to subtract for ONE period at each grain; a yoy compare multiplies step by the
+# periods-per-year. WEEK/QUARTER are expressed in DAY/MONTH so the shifted bucket lands exactly on
+# a toStartOf* boundary in both dialects (a week = 7 days, a quarter = 3 months); DAY/MONTH/YEAR
+# are the interval units both ClickHouse and Postgres accept uniformly.
+_GRAIN_STEP = {
+    TimeGrain.WEEK: ("DAY", 7),
+    TimeGrain.MONTH: ("MONTH", 1),
+    TimeGrain.QUARTER: ("MONTH", 3),
+    TimeGrain.YEAR: ("YEAR", 1),
+}
+
+
+def _compare_offset(grain: TimeGrain, kind: ScalarCompareKind) -> tuple[str, int]:
+    """Interval (unit, count) to shift the latest bucket back for a scalar compare: one period for
+    pop, a full year of periods for yoy (validation guarantees a non-day grain)."""
+    unit, step = _GRAIN_STEP[grain]
+    periods = _PERIODS_PER_YEAR[grain] if kind == ScalarCompareKind.YOY else 1
+    return unit, step * periods
+
+
+def _agg_if(measure: Measure, col_ref: str, cond: exp.Expression) -> exp.Expression:
+    """Conditional aggregate `agg(CASE WHEN cond THEN col END)` — portable across ClickHouse and
+    Postgres (both fold the NULL of an unmatched row out of the aggregate). Lets the scalar compare
+    KPI aggregate one time bucket without a GROUP BY."""
+    col = _dim_column(col_ref)
+    case = exp.Case(ifs=[exp.If(this=cond, true=col)])
+    if measure.agg == Aggregation.COUNT_DISTINCT:
+        return exp.Count(this=exp.Distinct(expressions=[case]))
+    # sqlglot types func() as Func (an Expression subclass at runtime), as in _measure_expr
+    return exp.func(_AGG_FUNC[measure.agg], case)  # type: ignore[return-value]
+
+
+def _generate_compare_kpi_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) -> str:
+    """Scalar period-compare KPI (validate guarantees big_number + one measure carrying `compare`).
+
+    Reduces to ONE row by conditional aggregation over two time buckets — the latest bucket present
+    in the (filtered) data and the matching bucket a year / a period back — so a big_number stays a
+    true scalar (no window, no displayed dimension). A one-row subquery `b` computes those buckets
+    (`max` of the truncated time column, and that `max` minus the yoy/pop interval); the outer query
+    aggregates the measure over each bucket via `agg(CASE WHEN bucket = b.p_* THEN col END)` and
+    forms `(cur - prior)/prior` (output=pct) or `cur - prior` (output=abs). A missing prior bucket
+    yields NULL (NULLIF), never a crash. Filters apply to BOTH the subquery and the outer aggregate
+    so the comparison reflects exactly the filtered range. The truncated time column is base-table-
+    qualified (see _grained_source) so its inner reference cannot bind to a SELECT alias of the same
+    bare name (alias-shadow). The pct numerator is cast to Float64 in _safe_div (ClickHouse keeps a
+    Decimal quotient's scale — the same lesson as the other derived measures)."""
+    measure = query.measures[0]
+    c = measure.compare
+    assert c is not None  # validate guarantees this on the compare path
+
+    resolve = _resolve_for(query)  # identity with no joins (compare has no dimensions to join on)
+    unit, count = _compare_offset(c.grain, c.kind)
+    interval = exp.Interval(this=exp.Literal.number(count), unit=exp.Var(this=unit))
+    bucket_b = _time_grain_expr(_grained_source(query, c.column), c.grain, dialect=dialect)
+    p_cur = exp.alias_(exp.func("max", bucket_b.copy()), "p_cur", quoted=True)  # type: ignore[arg-type]
+    p_prev = exp.alias_(  # type: ignore[arg-type]
+        exp.Sub(this=exp.func("max", bucket_b.copy()), expression=interval), "p_prev", quoted=True
+    )
+    sub = exp.select(p_cur, p_prev).from_(exp.to_table(query.table))
+    for qf in query.filters:
+        sub = sub.where(_filter_expr(qf.model_copy(update={"column": resolve(qf.column)})))
+
+    bucket_outer = _time_grain_expr(_grained_source(query, c.column), c.grain, dialect=dialect)
+    col_ref = resolve(measure.column)
+    cur = _agg_if(
+        measure, col_ref, bucket_outer.copy().eq(exp.column("p_cur", table="b", quoted=True))
+    )
+    prev = _agg_if(
+        measure, col_ref, bucket_outer.copy().eq(exp.column("p_prev", table="b", quoted=True))
+    )
+    if c.output == ScalarCompareOutput.PCT:
+        # (cur - prev) / prev — numerator parenthesized so `/` cannot bind tighter than `-`
+        body: exp.Expression = _safe_div(exp.paren(exp.Sub(this=cur, expression=prev)), prev.copy())
+    else:
+        body = exp.Sub(this=cur, expression=prev)
+    select = (
+        exp.select(exp.alias_(body, measure_alias(measure), quoted=True))  # type: ignore[arg-type]
+        .from_(exp.to_table(query.table))
+        .join(sub.subquery(alias="b"), join_type="cross")
+    )
+    for qf in query.filters:
+        select = select.where(_filter_expr(qf.model_copy(update={"column": resolve(qf.column)})))
+    return select.sql(dialect=dialect, identify=True)
 
 
 def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) -> str:

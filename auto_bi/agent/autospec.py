@@ -13,12 +13,13 @@ same validate → normalize → SQL-guard → adapter path; `apply_label_joins` 
 top-N caps). Invariants 1-8 are untouched.
 
 Recipe (truncated to `max_charts` by priority P1..P5):
-  P1 KPI        — one big_number per measure
+  P1 KPI        — one big_number per measure, plus a scalar year-over-year KPI for the hero
+                  measure when there is 2+ years of history (the latest period vs the same period
+                  a year back, `Measure.compare` — a percent tile "Выручка, г/г: +12,4 %"). It
+                  spends one dashboard slot, so the third breakdown bar is trimmed and the
+                  structure (share) view still survives the max_charts cut.
   P2 dynamics   — primary measure as a line over the time column (if any), bucketed to a
                   readable grain (day/week/month) when the daily series is long
-  P2b yoy       — a SECOND line: the hero measure's year-over-year % change, only when there is
-                  2+ years of history (a non-day grain with enough periods). Prioritised above
-                  the third breakdown so the structure (share) view still survives the cut.
   P3 breakdowns — primary measure as a bar over each "good breakdown" (a dimension whose
                   cardinality is in [2..CARD_MAX], including attributes of adjacent dim
                   tables reached by a model-edge JOIN: city / region / format / ...)
@@ -48,6 +49,8 @@ from auto_bi.ir.spec import (
     Measure,
     MeasureTransform,
     OrderBy,
+    ScalarCompare,
+    ScalarCompareKind,
     TargetBI,
     TimeGrain,
     Viz,
@@ -268,17 +271,32 @@ def build_auto_spec(
     breakdowns = _good_breakdowns(table, model)
 
     charts: list[ChartSpec] = []
+    primary_title = _short(measures[0]) if measures else "Количество"
 
-    # P1 — KPI per measure (when there are no real measures, a single synthetic COUNT
-    # pairs with a None column -> the "Количество" title). The KPI cards are identical (same
-    # viz, same height) and fill their row evenly: a uniform width 12 // n so 3 cards span the
-    # grid as 4+4+4, not 3+3+3 with a ragged gap — every dashboard row is one full aligned width
-    # (dashboard-craft §3: identical KPI cards). n in 1..4 all divide 12, so the row is exact.
-    n_kpis = min(len(measure_objs), _MAX_KPIS)
-    kpi_w = 12 // n_kpis
+    # P1 — KPI per measure (when there are no real measures, a single synthetic COUNT pairs with a
+    # None column -> the "Количество" title), plus a year-over-year KPI for the hero measure when
+    # there is 2+ years of history (S14): the hero's yoy % tile sits right after its level so the
+    # pair reads "Выручка: 236 млрд" + "Выручка, г/г: +12,4 %" (a scalar period-compare — the
+    # latest month vs the same month a year back, `Measure.compare`; display-only, no LLM). The KPI
+    # cards are identical (same viz, same height) and fill their row evenly: a uniform width 12 // n
+    # so the cards span the grid without a ragged gap (dashboard-craft §3). n in 1..4 all divide 12.
+    kpi_cells: list[tuple[str, Measure]] = []
     cols: list[Column | None] = list(measures) if measures else [None]
     for col, m in zip(cols, measure_objs, strict=True):
-        title = _short(col) if col is not None else "Количество"
+        kpi_cells.append((_short(col) if col is not None else "Количество", m))
+    if yoy_on and time_col is not None:
+        hero_yoy = primary.model_copy(
+            update={
+                "compare": ScalarCompare(
+                    column=time_col.name, grain=time_grain, kind=ScalarCompareKind.YOY
+                ),
+                "label": "",
+            }
+        )
+        kpi_cells.insert(1, (f"{primary_title}, г/г", hero_yoy))
+    kpi_cells = kpi_cells[:_MAX_KPIS]
+    kpi_w = 12 // len(kpi_cells)
+    for title, m in kpi_cells:
         charts.append(
             ChartSpec(
                 id="",
@@ -288,18 +306,14 @@ def build_auto_spec(
                 layout_hint=LayoutHint(w=kpi_w, h=4),
             )
         )
-        if len(charts) >= _MAX_KPIS:
-            break
-
-    primary_title = _short(measures[0]) if measures else "Количество"
 
     # the lowest-cardinality breakdown becomes a part-to-whole SHARE bar (structure), the rest
     # absolute bars — so the same column is never both (`breakdowns` is sorted card asc)
     share_break = (
         breakdowns[0] if breakdowns and breakdowns[0].card <= _STRUCTURE_CARD_MAX else None
     )
-    # the year-over-year time-view (P2b) is prioritised above the third breakdown bar: when it is
-    # present it takes that slot, so the structure (share) view still survives the max_charts cut
+    # the year-over-year view spends one dashboard slot (the hero yoy KPI in P1) — trade the third
+    # breakdown bar for it so the structure (share) view still survives the max_charts cut
     max_bars = _MAX_BAR_BREAKDOWNS - 1 if yoy_on else _MAX_BAR_BREAKDOWNS
     bar_breaks = [b for b in breakdowns if b is not share_break][:max_bars]
 
@@ -324,30 +338,11 @@ def build_auto_spec(
                 layout_hint=LayoutHint(w=12, h=6),
             )
         )
-
-        # P2b — year-over-year change of the hero measure, when there is 2+ years of history.
-        # A second time-view beside the absolute trend: same hero measure, but each period vs the
-        # same period a year back (yoy_pct, a percent — `is_percent_measure`). The non-day grain
-        # `yoy_pct` requires is the month grain `yoy_on` already implies. Display-only, no LLM.
-        if yoy_on:
-            yoy_measure = primary.model_copy(
-                update={"transform": MeasureTransform.YOY_PCT, "label": ""}
-            )
-            charts.append(
-                ChartSpec(
-                    id="",
-                    title=f"Динамика г/г: {primary_title}",
-                    viz=Viz.LINE,
-                    query=ChartQuery(
-                        table=table_name,
-                        dimensions=[time_col.name],
-                        measures=[yoy_measure],
-                        order_by=[OrderBy(by=time_col.name, dir="asc")],
-                        time_grain=time_grain,
-                    ),
-                    layout_hint=LayoutHint(w=12, h=6),
-                )
-            )
+        # NB: the year-over-year view is now the compact hero yoy KPI in P1 (S14), not a second
+        # full-width line — it delivers the same headline vs-a-year-back insight in one tile and
+        # frees the slot for the structure (share) view. The yoy_pct LINE remains available via
+        # fields-first / an explicit spec; the curated overview just no longer spends a full row on
+        # it (dashboard-not-presentation: a curated overview, not every chartable view).
 
     # P3 — bar breakdowns (low-card categorical axes)
     for b in bar_breaks:

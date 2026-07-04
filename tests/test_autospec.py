@@ -12,7 +12,13 @@ import pytest
 
 from auto_bi.agent.autospec import build_auto_spec
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
-from auto_bi.ir.spec import MeasureTransform, TimeGrain, Viz
+from auto_bi.ir.spec import (
+    MeasureTransform,
+    ScalarCompareKind,
+    TimeGrain,
+    Viz,
+    is_percent_measure,
+)
 from auto_bi.ir.validate import validate_spec
 from auto_bi.semantic.model import (
     Aggregation,
@@ -257,7 +263,17 @@ def test_default_time_filter_present_on_fact(model) -> None:
     assert [f.column for f in spec.filters] == ["dm.sales_daily.date"]
 
 
-def _yoy_charts(spec) -> list:
+def _yoy_kpis(spec) -> list:
+    # S14: the year-over-year view is a compact scalar KPI (Measure.compare, a big_number), not a
+    # full-width line
+    return [
+        c
+        for c in spec.charts
+        if c.viz == Viz.BIG_NUMBER and any(m.compare is not None for m in c.query.measures)
+    ]
+
+
+def _yoy_lines(spec) -> list:
     return [
         c
         for c in spec.charts
@@ -265,37 +281,41 @@ def _yoy_charts(spec) -> list:
     ]
 
 
-def test_yoy_line_added_for_two_plus_years_of_history(model) -> None:
-    # with 2+ years of daily history the dynamics grain is monthly, and a SECOND line shows the
-    # hero measure's year-over-year change — a percent, ordered by time, at a non-day grain
+def test_yoy_kpi_added_for_two_plus_years_of_history(model) -> None:
+    # with 2+ years of daily history the dynamics grain is monthly, and the hero measure gets a
+    # scalar year-over-year KPI (latest month vs the same month a year back) — a percent big_number
     m = _with_date_card(model, 730)
     spec = build_auto_spec(m, "dm.sales_daily")
-    yoy = _yoy_charts(spec)
+    yoy = _yoy_kpis(spec)
     assert len(yoy) == 1
     chart = yoy[0]
-    assert chart.viz == Viz.LINE
-    assert chart.query.dimensions == ["date"]
-    assert chart.query.time_grain == TimeGrain.MONTH  # yoy_pct requires a non-day grain
-    assert chart.query.order_by and chart.query.order_by[0].by == "date"
-    assert chart.title.startswith("Динамика г/г")
-    assert validate_spec(spec, m) == []  # the yoy chart is a first-class, valid spec member
+    assert chart.viz == Viz.BIG_NUMBER
+    assert not chart.query.dimensions  # a scalar tile, no axis
+    cmp = chart.query.measures[0].compare
+    assert cmp is not None and cmp.kind == ScalarCompareKind.YOY
+    assert cmp.grain == TimeGrain.MONTH  # a real period, not day
+    assert cmp.column == "date"
+    assert chart.title.endswith(", г/г")
+    assert is_percent_measure(chart.query.measures[0])  # renders as a percent
+    assert _yoy_lines(spec) == []  # the yoy KPI replaces the full-width yoy line
+    assert validate_spec(spec, m) == []  # the yoy KPI is a first-class, valid spec member
 
 
 @pytest.mark.parametrize("card", [366, 300, 40, None])
-def test_no_yoy_line_without_two_years(model, card) -> None:
+def test_no_yoy_kpi_without_two_years(model, card) -> None:
     # a non-day grain alone is not enough: yoy lags a full year, so it needs MORE than ~12 months
     # or every point is the null baseline. 366 days buckets monthly but is only ~12 months (no
     # yoy); 300 is weekly, 40 daily, None unknown — none qualify.
     m = _with_date_card(model, card)
     spec = build_auto_spec(m, "dm.sales_daily")
-    assert _yoy_charts(spec) == []
+    assert _yoy_kpis(spec) == []
     assert validate_spec(spec, m) == []
 
 
 def test_yoy_keeps_share_view_within_budget_on_real_model() -> None:
     # on the committed demo model (2 years of daily sales, 3 breakdowns + a format share) the
-    # year-over-year line is prioritised above the third breakdown bar, so the structure (share)
-    # view still fits the default 8-chart budget instead of being truncated away
+    # hero yoy KPI spends one dashboard slot, so the third breakdown bar is trimmed and the
+    # structure (share) view still fits the default 8-chart budget instead of being truncated away
     real = SemanticModel.load(Path(__file__).resolve().parents[1] / "semantic" / "model.yaml")
     spec = build_auto_spec(real, "dm.sales_daily")  # default max_charts == 8
     assert len(spec.charts) == 8
@@ -310,7 +330,8 @@ def test_yoy_keeps_share_view_within_budget_on_real_model() -> None:
         for c in spec.charts
         if c.viz == Viz.BAR and not any(m.transform for m in c.query.measures)
     ]
-    assert len(_yoy_charts(spec)) == 1  # the yoy line is present...
+    assert len(_yoy_kpis(spec)) == 1  # the yoy KPI is present...
+    assert _yoy_lines(spec) == []  # ...as a KPI, not a line
     assert len(share) == 1  # ...and it did not evict the structure / share view
     assert len(abs_bars) == 2  # trimmed from 3 breakdown bars to make room for yoy
     assert validate_spec(spec, real) == []
