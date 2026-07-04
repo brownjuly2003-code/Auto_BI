@@ -13,6 +13,10 @@ import pytest
 from auto_bi.agent.autospec import build_auto_spec
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.ir.spec import (
+    ChartQuery,
+    ChartSpec,
+    LayoutHint,
+    Measure,
     MeasureTransform,
     ScalarCompareKind,
     TimeGrain,
@@ -233,6 +237,48 @@ def test_respects_max_charts(model) -> None:
     spec = build_auto_spec(model, "dm.sales_daily", max_charts=4)
     assert len(spec.charts) == 4
     assert validate_spec(spec, model) == []
+
+
+def test_last_row_has_no_ragged_right_edge(model) -> None:
+    # dashboard-craft §5: the overview never ends with a half-empty row. The default max_charts
+    # cut drops the detail table and would leave a lone share bar at w=6 -> it is widened to 12.
+    spec = build_auto_spec(model, "dm.sales_daily")
+    rows, used = [], 0
+    for c in spec.charts:
+        w = c.layout_hint.w
+        if used and used + w > 12:
+            rows.append(used)
+            used = w
+        else:
+            used += w
+    rows.append(used)
+    assert rows[-1] == 12  # the final physical row exactly fills the 12-column grid
+
+
+def test_fill_trailing_row_widens_only_a_lone_last_chart() -> None:
+    from auto_bi.agent.autospec import _fill_trailing_row
+
+    def _bar(w: int) -> ChartSpec:
+        return ChartSpec(
+            id="",
+            title="t",
+            viz=Viz.BAR,
+            query=ChartQuery(
+                table="dm.sales_daily",
+                dimensions=["store_id"],
+                measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            ),
+            layout_hint=LayoutHint(w=w, h=6),
+        )
+
+    # rows pack to [12] | [6+6] | [6 alone] -> the lone trailing bar fills its row
+    lone = [_bar(12), _bar(6), _bar(6), _bar(6)]
+    _fill_trailing_row(lone)
+    assert [c.layout_hint.w for c in lone] == [12, 6, 6, 12]
+    # two charts already share the last row -> left untouched
+    paired = [_bar(12), _bar(6), _bar(6)]
+    _fill_trailing_row(paired)
+    assert [c.layout_hint.w for c in paired] == [12, 6, 6]
 
 
 def test_unknown_table_raises(model) -> None:

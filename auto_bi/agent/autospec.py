@@ -189,6 +189,25 @@ def _synthetic_count(table: Table) -> Measure:
     return Measure(column=anchor, agg=Aggregation.COUNT, label="cnt")
 
 
+_GRID_COLS = 12  # dashboard grid width (mirrors form_data.GRID_WIDTH)
+
+
+def _fill_trailing_row(charts: list[ChartSpec]) -> None:
+    """Widen a chart left ALONE on the final row to full width, so the overview has no ragged
+    right edge (dashboard-craft §5 "единая ширина рядов"). Common after the max_charts cut drops
+    the detail table and leaves a lone share bar. Mirrors the adapters' left-to-right 12-column
+    packing; autospec sets no row hints, so packing is purely by width."""
+    row_start, used = 0, 0
+    for i, chart in enumerate(charts):
+        w = chart.layout_hint.w
+        if used and used + w > _GRID_COLS:
+            row_start, used = i, w
+        else:
+            used += w
+    if len(charts) - row_start == 1 and charts[-1].layout_hint.w < _GRID_COLS:
+        charts[-1].layout_hint.w = _GRID_COLS
+
+
 def _good_breakdowns(table: Table, model: SemanticModel) -> list[_Breakdown]:
     """Categorical axes worth charting: base low-card dims + joined dim-table attributes.
 
@@ -395,6 +414,7 @@ def build_auto_spec(
         raise ValueError(f"table {table_name!r} has no chartable columns")
 
     charts = charts[:max_charts]
+    _fill_trailing_row(charts)  # no ragged right edge on the last row (§5)
     for i, chart in enumerate(charts, start=1):
         chart.id = f"auto{i}"
 
