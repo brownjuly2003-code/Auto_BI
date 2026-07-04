@@ -2,8 +2,9 @@
 
 import pytest
 
-from auto_bi.agent.pipeline import build_dashboard
+from auto_bi.agent.pipeline import build_dashboard, compile_and_build
 from auto_bi.agent.sql_guard import LiveSQLValidator, SQLGuardError
+from auto_bi.ir.spec import DashboardSpec
 from tests.test_propose import GOOD_SPEC, FakeLLM
 from tests.test_superset_adapter import FakeSuperset, make_adapter
 
@@ -67,6 +68,67 @@ def test_build_dashboard_records_spec_and_build_in_store(tmp_path) -> None:
     assert build_row["spec_id"] == spec_row["id"]
     assert build_row["url"] == ref.url
     assert build_row["status"] == "ok"
+    store.close()
+
+
+def test_compile_and_build_marks_session_building_then_failed_on_sql_error(tmp_path) -> None:
+    # B-7: before this fix, a SQL-guard failure (as opposed to an adapter.build() failure)
+    # never wrote a builds-table row or flipped the session to 'failed' — it just vanished.
+    from auto_bi.store import Store
+
+    def failing_run(sql: str) -> list[dict]:
+        raise RuntimeError("Unknown column")
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
+    fake_superset = FakeSuperset()
+
+    with pytest.raises(SQLGuardError):
+        compile_and_build(
+            spec,
+            demo_model_fixtureless(),
+            LiveSQLValidator(failing_run),
+            adapter_for=lambda _target: make_adapter(fake_superset),
+            store=store,
+            session_id=sid,
+            spec_id=spec_id,
+        )
+
+    assert store.session_status(sid) == "failed"
+    (build,) = store.builds(sid)
+    assert build["status"] == "failed"
+    assert not any(m == "POST" and "chart" in p for m, p, _ in fake_superset.requests)
+    store.close()
+
+
+def test_compile_and_build_marks_session_failed_on_healthcheck_failure(tmp_path) -> None:
+    from auto_bi.adapters.base import AdapterHealth
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+
+    class DeadAdapter:
+        def healthcheck(self) -> AdapterHealth:
+            return AdapterHealth(ok=False, message="superset unreachable")
+
+    with pytest.raises(RuntimeError, match="healthcheck failed"):
+        compile_and_build(
+            spec,
+            demo_model_fixtureless(),
+            LiveSQLValidator(stub_run_query),
+            adapter_for=lambda _target: DeadAdapter(),
+            store=store,
+            session_id=sid,
+        )
+
+    assert store.session_status(sid) == "failed"
+    (build,) = store.builds(sid)
+    assert build["status"] == "failed"
+    assert "healthcheck failed" in build["error"]
     store.close()
 
 

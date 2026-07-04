@@ -20,13 +20,14 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from auto_bi.adapters.base import DashboardRef
+from auto_bi.adapters.base import AdapterHealth, DashboardRef
 from auto_bi.advisor.core import Advisor
 from auto_bi.agent.autospec import build_auto_spec
 from auto_bi.agent.insights import analyze_spec
@@ -79,6 +80,8 @@ def create_app(
     run_query: RunQuery | None = None,  # read-only seam for the "Что видно" insight layer
     store: Store | None = None,
     builder: Builder | None = None,
+    bi_healthcheck: Callable[[], AdapterHealth] | None = None,  # B-6: /ready BI reachability
+    llm_healthcheck: Callable[[], AdapterHealth] | None = None,  # B-6: /ready LLM reachability
     include_samples: bool = True,
     model_path: str | Path | None = None,  # enables enrichment writes (task 2.7)
     auth_enabled: bool = False,  # Phase 4 auth/RBAC, opt-in (default: open, single-user)
@@ -95,7 +98,7 @@ def create_app(
     app = FastAPI(title="Auto_BI API", version="0.1.0")
 
     # paths reachable without a token even when auth is on (login issues the token)
-    _open_paths = {"/api/v1/health", "/api/v1/auth/login"}
+    _open_paths = {"/api/v1/health", "/api/v1/ready", "/api/v1/auth/login"}
     _login_limiter = LoginRateLimiter()
 
     def _bearer(header: str | None) -> str | None:
@@ -174,6 +177,49 @@ def create_app(
     @app.get("/api/v1/health")
     def health() -> dict:
         return {"ok": True, "auth": auth_enabled}
+
+    @app.get("/api/v1/ready")
+    def ready() -> JSONResponse:
+        """Deep readiness (B-6): `/health` only proves the process is up; an orchestrator
+        (compose healthcheck, Fly checks) needs to know the store, DWH and BI account are
+        actually reachable before routing traffic here. LLM reachability is reported but
+        never gates `ok` — a transient LLM/GraceKelly outage still lets an already-built
+        dashboard serve traffic (ARCHITECTURE §3.11)."""
+
+        def _probe(fn: Callable[[], Any]) -> dict:
+            try:
+                fn()
+                return {"ok": True}
+            except Exception as exc:
+                return {"ok": False, "message": str(exc)}
+
+        def _adapter_probe(fn: Callable[[], AdapterHealth]) -> dict:
+            try:
+                health_result = fn()
+                return {"ok": health_result.ok, "message": health_result.message}
+            except Exception as exc:
+                return {"ok": False, "message": str(exc)}
+
+        checks: dict[str, dict] = {
+            "store": _probe(store.ping) if store is not None else {"ok": True, "configured": False},
+            "dwh": (
+                _probe(lambda: run_query("SELECT 1"))
+                if run_query is not None
+                else {"ok": True, "configured": False}
+            ),
+            "bi": (
+                _adapter_probe(bi_healthcheck)
+                if bi_healthcheck is not None
+                else {"ok": True, "configured": False}
+            ),
+            "llm": (
+                _adapter_probe(llm_healthcheck)
+                if llm_healthcheck is not None
+                else {"ok": True, "configured": False}
+            ),
+        }
+        ok = checks["store"]["ok"] and checks["dwh"]["ok"] and checks["bi"]["ok"]
+        return JSONResponse(status_code=200 if ok else 503, content={"ok": ok, "checks": checks})
 
     # --- auth (Phase 4, opt-in) ----------------------------------------------------
 

@@ -75,44 +75,61 @@ def compile_and_build(
     session_id: str | None = None,
     spec_id: int | None = None,
 ) -> DashboardRef:
-    """SQL_GEN -> VALIDATE -> BUILD for an already-produced spec (chat APPROVE path)."""
-    # deterministic dashboard-adequacy normalization, before SQL_GEN + adapter so BOTH the
-    # validated SQL and the built dashboard see one normalized spec. Both passes are pure
-    # and idempotent. The preview/advisor see the pre-normalization spec, so log changes.
-    # B3 (label joins) runs first — it swaps raw FK id dimensions for their human-readable
-    # name via a safe LEFT JOIN; B1 (top-N) then ranks the now-named categorical axis.
-    labeled = apply_label_joins(spec, model)
-    relabeled = [
-        c.id for o, c in zip(spec.charts, labeled.charts, strict=True) if c.query != o.query
-    ]
-    if relabeled:
-        log(f"нормализация: id-измерения заменены на названия через join в чартах {relabeled}")
-    normalized = apply_chart_defaults(labeled, model)
-    topn_changed = [
-        c.id for o, c in zip(labeled.charts, normalized.charts, strict=True) if c.query != o.query
-    ]
-    if topn_changed:
-        log(f"нормализация: дефолтный top-N применён к категориальным чартам {topn_changed}")
-    spec = normalized
-    # invariant 2 at the BI boundary: never let an unvalidated spec reach the adapter,
-    # regardless of how `spec` was produced (defense-in-depth; no-op on the happy path).
-    errors = validate_spec(spec, model)
-    if errors:
-        raise SpecValidationError(errors)
+    """SQL_GEN -> VALIDATE -> BUILD for an already-produced spec (chat APPROVE path).
 
-    for chart in spec.charts:
-        sql = generate_chart_sql(chart.query)
-        sql_validator.validate(sql)
-        log(f"SQL ok ({chart.id}): EXPLAIN + LIMIT-прогон прошли")
-
-    # dispatch on the spec's declared target so a "datalens" spec never silently builds in
-    # Superset (invariant 2 at the BI boundary; Phase 4 F1)
-    adapter = adapter_for(spec.target_bi)
-    health = adapter.healthcheck()
-    if not health.ok:
-        raise RuntimeError(f"{spec.target_bi.value} healthcheck failed: {health.message}")
-
+    The whole sequence below runs under one try/except (B-7): a session is marked
+    'building' before it starts, and ANY exception — spec validation, SQL guard,
+    adapter healthcheck, or the build call itself — records a 'failed' build row and
+    flips the session to 'failed'. Previously only `adapter.build()` failures were
+    recorded, so a SpecValidationError or a healthcheck failure vanished without a
+    trace. A process killed mid-build (SIGKILL/OOM) still leaves the session stuck at
+    'building' — `Store.reap_stuck_builds()` cleans those up on the next server start.
+    """
+    if store is not None and session_id is not None:
+        store.set_session_status(session_id, "building")
     try:
+        # deterministic dashboard-adequacy normalization, before SQL_GEN + adapter so BOTH
+        # the validated SQL and the built dashboard see one normalized spec. Both passes are
+        # pure and idempotent. The preview/advisor see the pre-normalization spec, so log
+        # changes. B3 (label joins) runs first — it swaps raw FK id dimensions for their
+        # human-readable name via a safe LEFT JOIN; B1 (top-N) then ranks the now-named
+        # categorical axis.
+        labeled = apply_label_joins(spec, model)
+        relabeled = [
+            c.id for o, c in zip(spec.charts, labeled.charts, strict=True) if c.query != o.query
+        ]
+        if relabeled:
+            log(
+                f"нормализация: id-измерения заменены на названия через join в чартах "
+                f"{relabeled}"
+            )
+        normalized = apply_chart_defaults(labeled, model)
+        topn_changed = [
+            c.id
+            for o, c in zip(labeled.charts, normalized.charts, strict=True)
+            if c.query != o.query
+        ]
+        if topn_changed:
+            log(f"нормализация: дефолтный top-N применён к категориальным чартам {topn_changed}")
+        spec = normalized
+        # invariant 2 at the BI boundary: never let an unvalidated spec reach the adapter,
+        # regardless of how `spec` was produced (defense-in-depth; no-op on the happy path).
+        errors = validate_spec(spec, model)
+        if errors:
+            raise SpecValidationError(errors)
+
+        for chart in spec.charts:
+            sql = generate_chart_sql(chart.query)
+            sql_validator.validate(sql)
+            log(f"SQL ok ({chart.id}): EXPLAIN + LIMIT-прогон прошли")
+
+        # dispatch on the spec's declared target so a "datalens" spec never silently builds
+        # in Superset (invariant 2 at the BI boundary; Phase 4 F1)
+        adapter = adapter_for(spec.target_bi)
+        health = adapter.healthcheck()
+        if not health.ok:
+            raise RuntimeError(f"{spec.target_bi.value} healthcheck failed: {health.message}")
+
         ref = adapter.build(spec)
     except Exception as exc:
         if store is not None and session_id is not None:

@@ -220,6 +220,11 @@ class Store:
     def close(self) -> None:
         self._db.close()
 
+    def ping(self) -> None:
+        """Cheapest possible liveness probe (B-6 readiness): raises if the connection is
+        closed or the file is unreadable, returns nothing otherwise."""
+        self._rows("SELECT 1")
+
     # --- sessions / messages --------------------------------------------------
 
     def create_session(self, request: str) -> str:
@@ -233,6 +238,10 @@ class Store:
     def set_session_status(self, session_id: str, status: str) -> None:
         with self._lock, self._db:
             self._db.execute("UPDATE sessions SET status = ? WHERE id = ?", (status, session_id))
+
+    def session_status(self, session_id: str) -> str | None:
+        rows = self._rows("SELECT status FROM sessions WHERE id = ?", session_id)
+        return rows[0]["status"] if rows else None
 
     def add_message(self, session_id: str, role: str, content: str) -> int:
         with self._lock, self._db:
@@ -286,6 +295,37 @@ class Store:
 
     def builds(self, session_id: str) -> list[dict[str, Any]]:
         return self._rows("SELECT * FROM builds WHERE session_id = ? ORDER BY id", session_id)
+
+    def reap_stuck_builds(self) -> list[str]:
+        """Sessions left at status='building' by a process that died mid-build (kill/OOM/
+        crash) have no builds-table row and no 'failed' status — a daemon build thread
+        dying with the process leaves no trace of its own (B-7). Call once at server
+        startup, before any new build starts: gives each orphan a synthetic 'failed'
+        build row and flips it to 'failed' so a restart never silently loses the fact
+        that a build was interrupted."""
+        with self._lock, self._db:
+            stuck = [
+                r["id"]
+                for r in self._db.execute("SELECT id FROM sessions WHERE status = 'building'")
+            ]
+            for session_id in stuck:
+                spec_row = self._db.execute(
+                    "SELECT id FROM specs WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+                    (session_id,),
+                ).fetchone()
+                self._db.execute(
+                    "INSERT INTO builds (session_id, spec_id, status, error)"
+                    " VALUES (?, ?, 'failed', ?)",
+                    (
+                        session_id,
+                        spec_row["id"] if spec_row else None,
+                        "interrupted: process restarted while build was in-flight",
+                    ),
+                )
+                self._db.execute(
+                    "UPDATE sessions SET status = 'failed' WHERE id = ?", (session_id,)
+                )
+        return stuck
 
     # --- llm calls ----------------------------------------------------------------
 

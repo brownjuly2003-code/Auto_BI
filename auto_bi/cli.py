@@ -1,7 +1,10 @@
 """CLI entrypoint: `auto_bi build "<description>"` (Phase 0 happy path, no dialogue)."""
 
 import argparse
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -61,6 +64,19 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8200)
+    serve.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Root logger level (default: INFO)",
+    )
+    serve.add_argument(
+        "--log-format",
+        default="text",
+        choices=["text", "json"],
+        help="'text' (default) keeps uvicorn's own colored console output; 'json' emits "
+        "structured JSON logs (incl. uvicorn's) for a log aggregator",
+    )
 
     ev = sub.add_parser("eval", help="Run the eval suites (advisor: offline; golden: live LLM)")
     ev.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
@@ -90,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "chat":
         return _chat(args.model_path)
     if args.command == "serve":
-        return _serve(args.model_path, args.host, args.port)
+        return _serve(args.model_path, args.host, args.port, args.log_level, args.log_format)
     if args.command == "introspect":
         return _introspect(args.database, args.output, args.engine)
     if args.command == "gaps":
@@ -334,12 +350,15 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
             store.set_session_status(session_id, "failed")
 
 
-def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover — wiring only
+def _serve(  # pragma: no cover — wiring only
+    model_path: str, host: str, port: int, log_level: str = "INFO", log_format: str = "text"
+) -> int:
     from functools import partial
     from pathlib import Path
 
     import uvicorn
 
+    from auto_bi.adapters.base import AdapterHealth
     from auto_bi.adapters.factory import make_adapter
     from auto_bi.advisor.core import Advisor
     from auto_bi.agent.pipeline import compile_and_build
@@ -347,9 +366,13 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
     from auto_bi.api import create_app
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
+    from auto_bi.ir.spec import TargetBI
     from auto_bi.llm.factory import make_llm
+    from auto_bi.logging_setup import configure_logging
     from auto_bi.semantic.model import SemanticModel
     from auto_bi.store import Store
+
+    configure_logging(log_level, log_format)
 
     if not Path(model_path).exists():
         print(f"Semantic model not found: {model_path}")
@@ -360,11 +383,18 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
     model = SemanticModel.load(model_path)
     run_query = make_run_query(settings)
     store = Store(settings.store_path)
+    reaped = store.reap_stuck_builds()  # B-7: trace for builds a previous crash/restart lost
+    if reaped:
+        logger.info(
+            "reaped %d orphaned build(s) interrupted by a previous restart: %s",
+            len(reaped),
+            reaped,
+        )
     if settings.auth_enabled:
         from auto_bi.auth import seed_users
 
         n = seed_users(store, settings)
-        print(f"auth enabled: seeded {n} user(s)")
+        logger.info("auth enabled: seeded %d user(s)", n)
         _start_token_purge_thread(store)
     # B-2: Secure cookie on by default unless bound to a loopback host (local dev), or
     # forced either way via AUTO_BI_AUTH_COOKIE_SECURE.
@@ -387,6 +417,26 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
             session_id=session_id,
         )
 
+    def bi_healthcheck() -> AdapterHealth:
+        # v1 scope is ClickHouse+Superset (CLAUDE.md "Скоуп"); DataLens is the v2/stand-only
+        # target, so readiness checks the BI that's actually deployed.
+        return adapter_for(TargetBI.SUPERSET).healthcheck()
+
+    def llm_healthcheck() -> AdapterHealth:
+        if settings.llm_provider.strip().lower() != "gracekelly":
+            # Anthropic is a hosted API with no separate process to be "up/down" locally,
+            # and an actual completion call would cost tokens on every readiness probe —
+            # report configured-and-constructible (already proven by make_llm below).
+            return AdapterHealth(ok=True, message="anthropic: no live check (avoids token cost)")
+        import httpx
+
+        try:
+            resp = httpx.get(f"{settings.gracekelly_url.rstrip('/')}/health", timeout=3.0)
+            resp.raise_for_status()
+            return AdapterHealth(ok=True)
+        except Exception as exc:
+            return AdapterHealth(ok=False, message=f"gracekelly unreachable: {exc}")
+
     app = create_app(
         model=model,
         llm=make_llm(settings, store=store),
@@ -394,13 +444,20 @@ def _serve(model_path: str, host: str, port: int) -> int:  # pragma: no cover �
         run_query=run_query,  # "Что видно" insight layer reads charts read-only
         store=store,
         builder=builder,
+        bi_healthcheck=bi_healthcheck,
+        llm_healthcheck=llm_healthcheck,
         include_samples=settings.send_samples,
         model_path=model_path,  # enrichment UI пишет правки обратно в model.yaml
         auth_enabled=settings.auth_enabled,
         auth_token_ttl_hours=settings.auth_token_ttl_hours,
         cookie_secure=cookie_secure,
     )
-    uvicorn.run(app, host=host, port=port)
+    uvicorn_kwargs: dict = {"host": host, "port": port, "log_level": log_level.lower()}
+    if log_format == "json":
+        # skip uvicorn's own dictConfig so its "uvicorn"/"uvicorn.access" loggers propagate
+        # to the root logger configure_logging() just set up — one consistent JSON stream.
+        uvicorn_kwargs["log_config"] = None
+    uvicorn.run(app, **uvicorn_kwargs)
     return 0
 
 
@@ -411,7 +468,6 @@ def _start_token_purge_thread(  # pragma: no cover — wiring only
     `token_user` already filters expired rows out, so this is just housekeeping against
     unbounded growth of a table that otherwise never shrinks. `Store.purge_expired_tokens`
     carries the tested logic; this loop is pure wiring, like the build thread above."""
-    import logging
     import threading
     import time
 
@@ -421,7 +477,7 @@ def _start_token_purge_thread(  # pragma: no cover — wiring only
             try:
                 store.purge_expired_tokens()
             except Exception:
-                logging.getLogger(__name__).exception("token purge sweep failed")
+                logger.exception("token purge sweep failed")
 
     threading.Thread(target=_loop, name="auth-token-purge", daemon=True).start()
 

@@ -96,6 +96,53 @@ def test_session_status(store: Store) -> None:
     store2.close()
 
 
+def test_session_status_getter(store: Store) -> None:
+    sid = store.create_session("r")
+    assert store.session_status(sid) == "open"
+    store.set_session_status(sid, "built")
+    assert store.session_status(sid) == "built"
+    assert store.session_status("no-such-session") is None
+
+
+def test_ping_succeeds_on_open_store(store: Store) -> None:
+    store.ping()  # must not raise
+
+
+def test_ping_raises_on_closed_store(tmp_path) -> None:
+    import sqlite3
+
+    s = Store(tmp_path / "closed.sqlite")
+    s.close()
+    with pytest.raises(sqlite3.ProgrammingError):
+        s.ping()
+
+
+def test_reap_stuck_builds_is_noop_when_nothing_is_building(store: Store) -> None:
+    sid = store.create_session("r")
+    store.set_session_status(sid, "built")
+    assert store.reap_stuck_builds() == []
+    assert store.session_status(sid) == "built"
+
+
+def test_reap_stuck_builds_records_interrupted_build_and_fails_session(store: Store) -> None:
+    # simulates a process killed mid-build (B-7): compile_and_build marked the session
+    # 'building' and never got to write a builds-table row before the process died.
+    sid = store.create_session("r")
+    spec_id = store.save_spec(sid, {"title": "Продажи"})
+    store.set_session_status(sid, "building")
+
+    reaped = store.reap_stuck_builds()
+
+    assert reaped == [sid]
+    assert store.session_status(sid) == "failed"
+    (build,) = store.builds(sid)
+    assert build["spec_id"] == spec_id
+    assert build["status"] == "failed"
+    assert "interrupted" in build["error"]
+    # idempotent: a second reap on an already-failed session finds nothing new
+    assert store.reap_stuck_builds() == []
+
+
 def test_foreign_keys_enforced(store: Store) -> None:
     import sqlite3
 
