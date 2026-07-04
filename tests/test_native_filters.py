@@ -5,8 +5,11 @@ The live round-trip against the pinned 4.1 stand lives in test_superset_contract
 """
 
 from auto_bi.adapters.superset.native_filters import (
+    _select_default_mask,
+    _time_default_mask,
     build_native_filter_configuration,
     participating_chart_ids,
+    superset_time_range,
 )
 from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.ir.spec import (
@@ -107,6 +110,63 @@ def test_participating_charts_are_those_in_some_filter_scope() -> None:
         ]
     )
     assert participating_chart_ids(spec, MODEL) == {"by_store", "by_day"}
+
+
+# --- B5: preconfigured period / default value (defaultDataMask) ---------------
+
+
+def test_superset_time_range_titlecases_only_leading_last() -> None:
+    # the LLM/CLI emits relative tokens lower-cased; Superset wants "Last …" title-cased
+    assert superset_time_range("last quarter") == "Last quarter"
+    assert superset_time_range("last 90 days") == "Last 90 days"
+    # an already-valid token or an ISO range passes through untouched
+    assert superset_time_range("Last quarter") == "Last quarter"
+    assert superset_time_range("2026-01-01 : 2026-06-30") == "2026-01-01 : 2026-06-30"
+    assert superset_time_range("  last month  ") == "Last month"
+
+
+def test_time_default_mask_empty_is_neutral() -> None:
+    # no default => the same empty mask as before (no preset, unchanged behavior)
+    assert _time_default_mask("") == {"filterState": {}, "extraFormData": {}}
+    assert _time_default_mask("   ") == {"filterState": {}, "extraFormData": {}}
+
+
+def test_time_default_mask_preset_seeds_range_and_control() -> None:
+    mask = _time_default_mask("last quarter")
+    # extraFormData.time_range actually re-scopes the queries; filterState.value shows selected
+    assert mask["extraFormData"] == {"time_range": "Last quarter"}
+    assert mask["filterState"] == {"value": "Last quarter"}
+
+
+def test_select_default_mask_empty_is_neutral() -> None:
+    assert _select_default_mask("", "store_id") == {"filterState": {}, "extraFormData": {}}
+
+
+def test_select_default_mask_preset_pins_single_value() -> None:
+    mask = _select_default_mask("12", "store_id")
+    assert mask["extraFormData"] == {"filters": [{"col": "store_id", "op": "IN", "val": ["12"]}]}
+    assert mask["filterState"] == {"value": ["12"]}
+
+
+def test_time_filter_default_populates_default_mask_end_to_end() -> None:
+    # a DashboardFilter.default flows through build_native_filter_configuration into the wired
+    # time filter's defaultDataMask (was an empty {} before B5)
+    spec = _spec(
+        [DashboardFilter(column="dm.sales_daily.date", type="time_range", default="last quarter")]
+    )
+    config, _ = build_native_filter_configuration(spec, _placements(spec), MODEL)
+    assert config[0]["defaultDataMask"] == {
+        "extraFormData": {"time_range": "Last quarter"},
+        "filterState": {"value": "Last quarter"},
+    }
+
+
+def test_select_filter_default_populates_default_mask_end_to_end() -> None:
+    spec = _spec([DashboardFilter(column="dm.sales_daily.store_id", type="value", default="12")])
+    config, _ = build_native_filter_configuration(spec, _placements(spec), MODEL)
+    assert config[0]["defaultDataMask"]["extraFormData"] == {
+        "filters": [{"col": "store_id", "op": "IN", "val": ["12"]}]
+    }
 
 
 def test_apply_limit_false_drops_trailing_limit() -> None:

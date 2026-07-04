@@ -56,7 +56,9 @@ ROW_HEIGHT_UNITS = 12  # layout_hint.h (1..12) -> superset grid height units
 GRID_WIDTH = 12  # superset dashboard grid is 12 columns wide
 
 
-def _adhoc_metric(measure: Measure, chart_id: str, index: int, agg: str = "SUM") -> dict:
+def _adhoc_metric(
+    measure: Measure, chart_id: str, index: int, agg: str = "SUM", *, label: str | None = None
+) -> dict:
     alias = measure_alias(measure)
     # alias is LLM-controlled (measure.label) -> escape it as a quoted identifier the
     # same way SQL_GEN does (double the quote), so it cannot break out of SUM("...")
@@ -65,9 +67,37 @@ def _adhoc_metric(measure: Measure, chart_id: str, index: int, agg: str = "SUM")
     return {
         "expressionType": "SQL",
         "sqlExpression": f'{agg}("{quoted_alias}")',
-        "label": alias,
+        # `label` is the legend / tooltip / result-column name: a human measure name ("Выручка")
+        # when the caller resolves one from the model, else the bare alias ("sum_revenue"). The
+        # SQL still addresses the dataset by `alias`, so the display name and the column are
+        # decoupled — autospec leaves measure.label empty (alias) yet the chart still reads human.
+        "label": label or alias,
         "optionName": f"metric_auto_bi_{chart_id}_{index}",
     }
+
+
+# KPI scale dictionary (dashboard-craft §5 "Числа"): a large ruble aggregate must read as
+# "236 млрд" (a scaled headline + the unit on a smaller, separate line), never "236G" (d3's
+# SI giga suffix, unreadable for money) nor the raw 12-digit number. The engine cannot render
+# Russian magnitude words (d3 SI is hard-coded k/M/G/T), so we scale the metric ourselves and
+# put the RU unit in the big_number *subheader* (smaller font, its own line — the unit is not
+# glued to the figure at the same size). Tiers mirror agent.insights._compact.
+_RU_KPI_SCALE: list[tuple[float, str]] = [
+    (1e12, "трлн"),
+    (1e9, "млрд"),
+    (1e6, "млн"),
+    (1e3, "тыс"),
+]
+
+
+def ru_kpi_scale(value: float) -> tuple[float, str]:
+    """(divisor, unit word) for a big-number headline: 236e9 -> (1e9, "млрд"). Below 1e3 the
+    figure is small enough to show in full -> (1, "") (no scaling, no unit line)."""
+    a = abs(value)
+    for divisor, word in _RU_KPI_SCALE:
+        if a >= divisor:
+            return divisor, word
+    return 1.0, ""
 
 
 def _chart_format(measures: list[Measure]) -> str:
@@ -81,15 +111,35 @@ def _chart_format(measures: list[Measure]) -> str:
     return _measure_d3(measures[0]) if measures else ""
 
 
-def build_form_data(chart: ChartSpec, dataset_id: int, *, horizontal: bool = False) -> dict:
+def build_form_data(
+    chart: ChartSpec,
+    dataset_id: int,
+    *,
+    horizontal: bool = False,
+    kpi_scale: tuple[float, str] | None = None,
+    metric_labels: dict[str, str] | None = None,
+) -> dict:
     """Superset chart params for the pinned 4.1, on top of a virtual dataset.
 
     `horizontal` orients a categorical bar chart horizontally (see
     `agent.normalize.is_horizontal_bar`); the adapter computes it from the model and the
     flag is ignored for non-bar viz.
+
+    `kpi_scale` (divisor, unit word) applies only to big_number: the adapter measures the KPI's
+    magnitude and passes e.g. (1e9, "млрд") so the headline reads "236" with "млрд" on the
+    subheader line, instead of the d3 SI "236G". None => the old raw/compact format.
+
+    `metric_labels` maps a measure alias -> human name ("sum_revenue" -> "Выручка") so legends,
+    tooltips and table columns read human instead of the raw alias. The adapter resolves it from
+    the model (autospec leaves measure.label empty). Absent => the alias is the display name.
     """
     q = chart.query
-    metrics = [_adhoc_metric(m, chart.id, i) for i, m in enumerate(q.measures)]
+    labels = metric_labels or {}
+
+    def _label(m: Measure) -> str | None:
+        return labels.get(measure_alias(m))
+
+    metrics = [_adhoc_metric(m, chart.id, i, label=_label(m)) for i, m in enumerate(q.measures)]
     fmt = _chart_format(q.measures)
     base = {
         "datasource": f"{dataset_id}__table",
@@ -99,7 +149,14 @@ def build_form_data(chart: ChartSpec, dataset_id: int, *, horizontal: bool = Fal
 
     if chart.viz == Viz.BIG_NUMBER:
         # the dataset is a single already-aggregated row -> MAX is the identity
-        metric = _adhoc_metric(q.measures[0], chart.id, 0, agg="MAX")
+        metric = _adhoc_metric(q.measures[0], chart.id, 0, agg="MAX", label=_label(q.measures[0]))
+        if kpi_scale is not None and kpi_scale[0] > 1:
+            # scale the headline into RU magnitude units: divide the metric and round to a whole
+            # number ("236"), with the unit ("млрд") on the smaller subheader line. Grouped
+            # thousands (",") stay readable if the scaled figure is itself in the thousands.
+            divisor, unit = kpi_scale
+            metric = {**metric, "sqlExpression": f"({metric['sqlExpression']}) / {divisor:.0f}"}
+            return {**base, "metric": metric, "subheader": unit, "y_axis_format": ",.0f"}
         fd = {**base, "metric": metric, "subheader": ""}
         if fmt:
             fd["y_axis_format"] = fmt
@@ -124,9 +181,11 @@ def build_form_data(chart: ChartSpec, dataset_id: int, *, horizontal: bool = Fal
             "groupby": [column_alias(c) for c in q.group_columns()],
             "metrics": metrics,
         }
-        # per-metric format (a table can mix a big sum, a small average, and a percent share)
+        # per-metric format (a table can mix a big sum, a small average, and a percent share),
+        # keyed by the column's DISPLAY name (the metric label) so the format lands on the right
+        # column when the legend is humanized
         column_config = {
-            measure_alias(m): {"d3NumberFormat": _measure_d3(m)}
+            (_label(m) or measure_alias(m)): {"d3NumberFormat": _measure_d3(m)}
             for m in q.measures
             if _measure_d3(m)
         }

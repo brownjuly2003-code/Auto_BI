@@ -9,22 +9,24 @@ import json
 import httpx
 import pytest
 
-from auto_bi.adapters.base import DWHConfig
+from auto_bi.adapters.base import DatasetRef, DWHConfig
 from auto_bi.adapters.superset.adapter import SupersetAdapter
 from auto_bi.adapters.superset.client import SupersetClient
-from auto_bi.adapters.superset.form_data import build_form_data, build_position_json
+from auto_bi.adapters.superset.form_data import build_form_data, build_position_json, ru_kpi_scale
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
     DashboardSpec,
     LayoutHint,
     Measure,
+    MeasureTransform,
     OrderBy,
     Viz,
 )
-from auto_bi.semantic.model import Aggregation
+from auto_bi.semantic.model import Aggregation, SemanticModel
 
 DWH = DWHConfig(host="ch", port=8123, database="dm", user="ro", password="pw")
+MODEL = SemanticModel.load("semantic/model.yaml")
 
 
 def make_spec() -> DashboardSpec:
@@ -53,11 +55,16 @@ def make_spec() -> DashboardSpec:
 class FakeSuperset:
     """Just enough of the 4.1 REST API; records every mutating request."""
 
-    def __init__(self, existing_databases: list[dict] | None = None) -> None:
+    def __init__(
+        self, existing_databases: list[dict] | None = None, kpi_value: float | None = None
+    ) -> None:
         self.requests: list[tuple[str, str, dict | None]] = []
         self.databases = existing_databases or []
         self.datasets: list[dict] = []
         self.next_id = 100
+        # value the /chart/data probe returns for the KPI-magnitude measurement (None => no rows,
+        # so _kpi_magnitude yields None and the KPI keeps its default format)
+        self.kpi_value = kpi_value
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -74,6 +81,10 @@ class FakeSuperset:
             return httpx.Response(200, json={"result": self.databases})
         if path == "/api/v1/dataset/" and request.method == "GET":
             return httpx.Response(200, json={"result": self.datasets})
+        if path == "/api/v1/chart/data" and request.method == "POST":
+            alias = body["queries"][0]["metrics"][0]["label"]
+            rows = [] if self.kpi_value is None else [{alias: self.kpi_value}]
+            return httpx.Response(200, json={"result": [{"data": rows}]})
         if request.method == "POST":
             self.next_id += 1
             return httpx.Response(201, json={"id": self.next_id, "result": body})
@@ -82,9 +93,11 @@ class FakeSuperset:
         return httpx.Response(404, json={"message": f"unexpected {request.method} {path}"})
 
 
-def make_adapter(fake: FakeSuperset) -> SupersetAdapter:
+def make_adapter(fake: FakeSuperset, model: SemanticModel | None = None) -> SupersetAdapter:
     http = httpx.Client(base_url="http://superset.test", transport=httpx.MockTransport(fake))
-    return SupersetAdapter(SupersetClient("http://superset.test", "admin", "pw", http=http), DWH)
+    return SupersetAdapter(
+        SupersetClient("http://superset.test", "admin", "pw", http=http), DWH, model=model
+    )
 
 
 # --- form_data templates ----------------------------------------------------
@@ -290,6 +303,64 @@ def test_form_data_bar_extra_dims_go_to_groupby() -> None:
     assert fd["groupby"] == ["format"]
 
 
+# --- RU KPI scale + humanized legends (build_form_data knobs) ----------------
+
+
+def test_ru_kpi_scale_tiers() -> None:
+    # a large ruble headline scales to a whole figure + its RU magnitude word (§5 "Числа")
+    assert ru_kpi_scale(2.3e12) == (1e12, "трлн")
+    assert ru_kpi_scale(236e9) == (1e9, "млрд")
+    assert ru_kpi_scale(115e6) == (1e6, "млн")
+    assert ru_kpi_scale(5_000) == (1e3, "тыс")
+    # below 1e3 the figure is small enough to show in full -> no scaling, no unit line
+    assert ru_kpi_scale(500) == (1.0, "")
+    # magnitude is chosen on the absolute value (a negative delta scales the same)
+    assert ru_kpi_scale(-236e9) == (1e9, "млрд")
+
+
+def test_form_data_big_number_ru_scale() -> None:
+    # kpi_scale divides the metric and moves the RU unit to the (smaller) subheader line, so the
+    # tile reads "236" / "млрд ₽" instead of the d3 SI "236G"
+    fd = build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1, kpi_scale=(1e9, "млрд ₽"))
+    assert fd["metric"]["sqlExpression"] == '(MAX("sum_revenue")) / 1000000000'
+    assert fd["subheader"] == "млрд ₽"
+    assert fd["y_axis_format"] == ",.0f"
+
+
+def test_form_data_big_number_scale_absent_or_trivial_keeps_default() -> None:
+    # no kpi_scale => the old compact format, unscaled metric, empty subheader
+    plain = build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1)
+    assert plain["metric"]["sqlExpression"] == 'MAX("sum_revenue")'
+    assert plain["subheader"] == ""
+    assert plain["y_axis_format"] == ".3~s"
+    # a divisor of 1 (figure below 1e3) is ignored -> default format, no subheader unit
+    trivial = build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1, kpi_scale=(1.0, ""))
+    assert trivial["metric"]["sqlExpression"] == 'MAX("sum_revenue")'
+    assert trivial["subheader"] == ""
+
+
+def test_form_data_metric_labels_humanize_legend_but_keep_sql_alias() -> None:
+    # a measure with no explicit label keeps its technical alias in SQL, but the legend/tooltip
+    # reads the human name passed in metric_labels (display and column decoupled)
+    line = _chart(Viz.LINE, dimensions=["date"])
+    fd = build_form_data(line, dataset_id=1, metric_labels={"sum_revenue": "Выручка"})
+    assert fd["metrics"][0]["label"] == "Выручка"
+    assert fd["metrics"][0]["sqlExpression"] == 'SUM("sum_revenue")'  # SQL still by alias
+    # absent mapping => the alias is the display name (unchanged behavior)
+    assert build_form_data(line, dataset_id=1)["metrics"][0]["label"] == "sum_revenue"
+
+
+def test_form_data_table_column_config_keyed_by_human_label() -> None:
+    # the per-column format must land on the DISPLAY column name when the legend is humanized
+    table = _chart(Viz.TABLE, dimensions=["store_id"])
+    cfg = build_form_data(table, dataset_id=1, metric_labels={"sum_revenue": "Выручка"})[
+        "column_config"
+    ]
+    assert "Выручка" in cfg
+    assert "sum_revenue" not in cfg
+    assert cfg["Выручка"]["d3NumberFormat"] == ".3~s"
+
+
 # --- position_json ----------------------------------------------------------
 
 
@@ -396,3 +467,103 @@ def test_assemble_rejects_ref_mismatch() -> None:
     adapter = make_adapter(FakeSuperset())
     with pytest.raises(ValueError, match="chart refs"):
         adapter.assemble_dashboard(make_spec(), charts=[])
+
+
+# --- KPI magnitude + humanized legends + currency (model-backed) -------------
+
+
+def _bignum(measure: Measure) -> ChartSpec:
+    return ChartSpec(
+        id="kpi",
+        title="Итог",
+        viz=Viz.BIG_NUMBER,
+        query=ChartQuery(table="dm.sales_daily", measures=[measure]),
+    )
+
+
+def test_human_label_prefers_explicit_then_short_description() -> None:
+    adapter = make_adapter(FakeSuperset(), model=MODEL)
+    labeled = Measure(column="revenue", agg=Aggregation.SUM, label="Итоговая выручка")
+    assert adapter._human_label(labeled, "dm.sales_daily") == "Итоговая выручка"
+    # no label -> short form of the model description ("Выручка, руб" -> "Выручка")
+    bare = Measure(column="revenue", agg=Aggregation.SUM)
+    assert adapter._human_label(bare, "dm.sales_daily") == "Выручка"
+    # a description with no separator is used whole ("Число заказов")
+    orders = Measure(column="orders", agg=Aggregation.SUM)
+    assert adapter._human_label(orders, "dm.sales_daily") == "Число заказов"
+
+
+def test_human_label_none_without_model() -> None:
+    adapter = make_adapter(FakeSuperset())  # no model
+    assert (
+        adapter._human_label(Measure(column="revenue", agg=Aggregation.SUM), "dm.sales_daily")
+        is None
+    )
+
+
+def test_metric_labels_maps_alias_to_human_name() -> None:
+    adapter = make_adapter(FakeSuperset(), model=MODEL)
+    chart = _chart(Viz.LINE, dimensions=["date"])  # revenue measure, no label -> alias sum_revenue
+    assert adapter._metric_labels(chart) == {"sum_revenue": "Выручка"}
+
+
+def test_measure_currency_money_vs_count() -> None:
+    adapter = make_adapter(FakeSuperset(), model=MODEL)
+    # revenue reads as money in the model ("Выручка, руб") -> ₽
+    assert (
+        adapter._measure_currency(Measure(column="revenue", agg=Aggregation.SUM), "dm.sales_daily")
+        == "₽"
+    )
+    # a count ("Число заказов") gets no spurious currency sign
+    assert (
+        adapter._measure_currency(Measure(column="orders", agg=Aggregation.SUM), "dm.sales_daily")
+        == ""
+    )
+
+
+def test_kpi_scale_large_ruble_measures_magnitude_and_unit() -> None:
+    adapter = make_adapter(FakeSuperset(kpi_value=236e9), model=MODEL)
+    scale = adapter._kpi_scale(
+        _bignum(Measure(column="revenue", agg=Aggregation.SUM)), DatasetRef(id=42, name="t")
+    )
+    assert scale == (1e9, "млрд ₽")
+
+
+def test_kpi_scale_count_has_no_currency() -> None:
+    adapter = make_adapter(FakeSuperset(kpi_value=115e6), model=MODEL)
+    scale = adapter._kpi_scale(
+        _bignum(Measure(column="orders", agg=Aggregation.SUM)), DatasetRef(id=42, name="t")
+    )
+    assert scale == (1e6, "млн")  # count -> unit word only, no ₽
+
+
+def test_kpi_scale_none_for_percent_or_non_bignumber() -> None:
+    adapter = make_adapter(FakeSuperset(kpi_value=236e9), model=MODEL)
+    ds = DatasetRef(id=42, name="t")
+    # a percent transform is never SI-compacted -> no RU scaling
+    pct = Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL)
+    assert adapter._kpi_scale(_bignum(pct), ds) is None
+    # not a big_number -> no scaling
+    line = _chart(Viz.LINE, dimensions=["date"])
+    assert adapter._kpi_scale(line, ds) is None
+
+
+def test_kpi_magnitude_best_effort_returns_none_on_no_rows() -> None:
+    # the probe finds no data (or fails) -> None, and the KPI silently keeps its default format
+    adapter = make_adapter(FakeSuperset(kpi_value=None), model=MODEL)
+    measure = Measure(column="revenue", agg=Aggregation.SUM)
+    assert adapter._kpi_magnitude(DatasetRef(id=42, name="t"), measure) is None
+    assert adapter._kpi_scale(_bignum(measure), DatasetRef(id=42, name="t")) is None
+
+
+def test_build_full_flow_scales_ruble_kpi_and_humanizes_legend() -> None:
+    fake = FakeSuperset(kpi_value=236e9)
+    make_adapter(fake, model=MODEL).build(make_spec())
+    chart_posts = [b for m, p, b in fake.requests if m == "POST" and p == "/api/v1/chart/"]
+    kpi_params = json.loads(chart_posts[0]["params"])
+    # the KPI headline is scaled to млрд with the RU unit on the subheader line
+    assert kpi_params["subheader"] == "млрд ₽"
+    assert "/ 1000000000" in kpi_params["metric"]["sqlExpression"]
+    # the line chart legend reads the human measure name resolved from the model
+    line_params = json.loads(chart_posts[1]["params"])
+    assert line_params["metrics"][0]["label"] == "Выручка"

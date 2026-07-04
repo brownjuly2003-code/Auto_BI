@@ -109,6 +109,45 @@ def _scope(excluded: list[int]) -> dict:
     return {"rootPath": ["ROOT_ID"], "excluded": excluded}
 
 
+def superset_time_range(default: str) -> str:
+    """Normalize a DashboardFilter.default period phrase to a Superset time_range token.
+
+    Superset parses relative tokens natively ("Last quarter", "Last 90 days"); the LLM/CLI
+    emits them lower-cased ("last 90 days"), so we only title-case the leading "last ". An
+    already-valid token or an ISO range ("2026-01-01 : 2026-06-30") passes through unchanged.
+    """
+    s = default.strip()
+    if s.lower().startswith("last "):
+        return "Last " + s[5:].strip()
+    return s
+
+
+def _time_default_mask(default: str) -> dict:
+    """defaultDataMask for a time filter: preset the dashboard's time_range (B5).
+
+    Empty default => the neutral empty mask (no preset, unchanged behavior). A non-empty
+    default seeds both extraFormData.time_range (what actually re-scopes the queries) and
+    filterState.value (what the filter control shows as selected)."""
+    if not default.strip():
+        return {"filterState": {}, "extraFormData": {}}
+    tr = superset_time_range(default)
+    return {"extraFormData": {"time_range": tr}, "filterState": {"value": tr}}
+
+
+def _select_default_mask(default: str, alias: str) -> dict:
+    """defaultDataMask for a select filter: preset a single categorical value (B5).
+
+    extraFormData.filters is what re-scopes the in-scope charts (a WHERE alias IN [value]);
+    filterState.value is the control's shown selection. Empty default => neutral mask."""
+    if not default.strip():
+        return {"filterState": {}, "extraFormData": {}}
+    value = [default.strip()]
+    return {
+        "extraFormData": {"filters": [{"col": alias, "op": "IN", "val": value}]},
+        "filterState": {"value": value},
+    }
+
+
 def _select_filter(
     filter_: DashboardFilter,
     name: str,
@@ -123,7 +162,7 @@ def _select_filter(
         "filterType": "filter_select",
         "type": "NATIVE_FILTER",
         "targets": [{"datasetId": dataset_id, "column": {"name": alias}}],
-        "defaultDataMask": {"filterState": {}, "extraFormData": {}},
+        "defaultDataMask": _select_default_mask(filter_.default, alias),
         "cascadeParentIds": [],
         "scope": _scope(excluded),
         "controlValues": {
@@ -151,7 +190,7 @@ def _time_filter(
         "filterType": "filter_time",
         "type": "NATIVE_FILTER",
         "targets": [{}],
-        "defaultDataMask": {"filterState": {}, "extraFormData": {}},
+        "defaultDataMask": _time_default_mask(filter_.default),
         "cascadeParentIds": [],
         "scope": _scope(excluded),
         "controlValues": {},

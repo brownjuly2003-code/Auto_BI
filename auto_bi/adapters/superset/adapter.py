@@ -21,20 +21,42 @@ from auto_bi.adapters.base import (
     DatasetRef,
     DWHConfig,
 )
-from auto_bi.adapters.superset.client import SupersetClient, rison_eq_filter
-from auto_bi.adapters.superset.form_data import VIZ_TYPE, build_form_data, build_position_json
+from auto_bi.adapters.superset.client import SupersetAPIError, SupersetClient, rison_eq_filter
+from auto_bi.adapters.superset.form_data import (
+    VIZ_TYPE,
+    _adhoc_metric,
+    build_form_data,
+    build_position_json,
+    ru_kpi_scale,
+)
 from auto_bi.adapters.superset.native_filters import (
     build_native_filter_configuration,
     participating_chart_ids,
 )
 from auto_bi.agent.normalize import is_horizontal_bar
 from auto_bi.agent.sqlgen import generate_chart_sql
-from auto_bi.ir.spec import ChartQuery, ChartSpec, DashboardSpec
+from auto_bi.ir.spec import (
+    ChartQuery,
+    ChartSpec,
+    DashboardSpec,
+    Measure,
+    Viz,
+    is_compact_number,
+    measure_alias,
+)
 from auto_bi.semantic.model import SemanticModel
 
 logger = logging.getLogger(__name__)
 
 DATABASE_NAME = "Auto_BI ClickHouse"
+
+# a measure is money (KPI unit gets a "₽") when its model description says so — kept as
+# markers, not a hard-coded currency, so a count/qty KPI never gets a spurious ruble sign.
+_MONEY_MARKERS = ("руб", "₽", "rub")
+
+# a measure's human legend name is the short form of its column description: text up to the
+# first of these separators ("Выручка, руб" -> "Выручка"), mirroring autospec._short.
+_LABEL_SEPS = (",", "(", ":", " —", " -")
 
 
 def _slug(text: str, max_len: int = 40) -> str:
@@ -118,9 +140,100 @@ class SupersetAdapter:
         logger.info("dataset %s created: id=%s", table_name, created["id"])
         return DatasetRef(id=created["id"], name=table_name)
 
+    def _kpi_magnitude(self, ds: DatasetRef, measure: Measure) -> float | None:
+        """The big_number's single scalar value, measured live so its RU magnitude unit
+        (млрд/млн/тыс) can be chosen. Best-effort: any failure returns None, and the KPI
+        falls back to the default format — a display nicety must never break a build."""
+        try:
+            result = self._client.post(
+                "/api/v1/chart/data",
+                json={
+                    "datasource": {"id": _int_id(ds.id), "type": "table"},
+                    "force": True,
+                    "queries": [
+                        {
+                            "metrics": [_adhoc_metric(measure, "kpimag", 0, agg="MAX")],
+                            "row_limit": 1,
+                        }
+                    ],
+                    "result_format": "json",
+                    "result_type": "full",
+                },
+            )
+            rows = result["result"][0]["data"]
+            if not rows:
+                return None
+            value = rows[0].get(measure_alias(measure))
+            return float(value) if value is not None else None
+        except (SupersetAPIError, KeyError, IndexError, TypeError, ValueError):
+            return None
+
+    def _human_label(self, measure: Measure, table: str) -> str | None:
+        """Human display name for a measure's legend/tooltip: its explicit label, else the short
+        form of the model column's description ("Выручка, руб" -> "Выручка"), else None (the
+        adapter then falls back to the raw alias). Autospec deliberately leaves measure.label
+        empty (technical SQL alias) — this recovers the human name for display only."""
+        if measure.label:
+            return measure.label
+        if self._model is None:
+            return None
+        tbl = self._model.table(table)
+        col = tbl.column(measure.column.rpartition(".")[2]) if tbl else None
+        desc = col.description.strip() if col and col.description else ""
+        if not desc:
+            return None
+        for sep in _LABEL_SEPS:
+            idx = desc.find(sep)
+            if idx > 0:
+                desc = desc[:idx]
+        return desc.strip() or None
+
+    def _metric_labels(self, chart: ChartSpec) -> dict[str, str]:
+        """alias -> human legend name for each measure that resolves one (see `_human_label`)."""
+        out: dict[str, str] = {}
+        for m in chart.query.measures:
+            human = self._human_label(m, chart.query.table)
+            if human:
+                out[measure_alias(m)] = human
+        return out
+
+    def _measure_currency(self, measure: Measure, table: str) -> str:
+        """'₽' when the measure reads as money in the model (its column description mentions
+        rubles), else '' — so a count/qty KPI ('236 млн') gets no spurious currency. No model
+        (bare protocol) => no currency."""
+        if self._model is None:
+            return ""
+        tbl = self._model.table(table)
+        col = tbl.column(measure.column.rpartition(".")[2]) if tbl else None
+        text = f"{col.description if col else ''} {measure.label or ''}".lower()
+        return "₽" if any(m in text for m in _MONEY_MARKERS) else ""
+
+    def _kpi_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
+        """(divisor, RU unit line) for a large ruble big_number, or None to keep the default
+        format. Only large additive aggregates (is_compact_number) are scaled; a percent/average
+        KPI or a magnitude below 1e3 keeps its raw value. The unit line is 'млрд ₽' for money,
+        just 'млрд' for a count."""
+        measure = chart.query.measures[0]
+        if chart.viz != Viz.BIG_NUMBER or not is_compact_number(measure):
+            return None
+        magnitude = self._kpi_magnitude(ds, measure)
+        if magnitude is None:
+            return None
+        divisor, unit = ru_kpi_scale(magnitude)
+        if divisor <= 1:
+            return None
+        currency = self._measure_currency(measure, chart.query.table)
+        return divisor, f"{unit} {currency}".strip()
+
     def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef:
         horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
-        form_data = build_form_data(chart, _int_id(ds.id), horizontal=horizontal)
+        form_data = build_form_data(
+            chart,
+            _int_id(ds.id),
+            horizontal=horizontal,
+            kpi_scale=self._kpi_scale(chart, ds),
+            metric_labels=self._metric_labels(chart),
+        )
         created = self._client.post(
             "/api/v1/chart/",
             json={
