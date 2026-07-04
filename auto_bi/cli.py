@@ -4,11 +4,14 @@ import argparse
 import logging
 import sys
 
+from auto_bi import __version__
+
 logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="auto_bi", description=__doc__)
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     build = sub.add_parser("build", help="Build a dashboard from a text description")

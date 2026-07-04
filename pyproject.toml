@@ -1,6 +1,6 @@
 [project]
 name = "auto-bi"
-version = "0.1.0"
+version = "0.2.0"
 description = "Agent: text / field layout -> dashboard in selected BI on top of DWH DM layer"
 readme = "README.md"
 requires-python = ">=3.12"

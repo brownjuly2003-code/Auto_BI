@@ -5,6 +5,7 @@ and the approve RBAC gate. Auth-off behaviour is covered by the rest of test_api
 
 from fastapi.testclient import TestClient
 
+from auto_bi import __version__
 from auto_bi.adapters.base import DashboardRef
 from auto_bi.api import create_app
 from auto_bi.auth import hash_password
@@ -45,7 +46,11 @@ def _bearer(token: str) -> dict:
 
 def test_health_is_open_and_reports_auth(demo_model, tmp_path) -> None:
     client = _auth_client(ScriptedLLM([]), demo_model, Store(tmp_path / "s.sqlite"), [])
-    assert client.get("/api/v1/health").json() == {"ok": True, "auth": True}
+    assert client.get("/api/v1/health").json() == {
+        "ok": True,
+        "auth": True,
+        "version": __version__,
+    }
 
 
 def test_protected_route_requires_token(demo_model, tmp_path) -> None:

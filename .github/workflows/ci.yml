@@ -16,6 +16,10 @@ jobs:
   quality:
     name: Lint, format & tests (offline)
     runs-on: ubuntu-latest
+    # contents:write only used by the coverage-badge commit-back step below, which
+    # itself only runs on push to main (never on PRs, incl. forked ones).
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
 
@@ -56,6 +60,52 @@ jobs:
       # change that regresses the golden anti-patterns).
       - name: Eval — advisor suite (offline)
         run: uv run auto_bi eval --suite advisor --model-path semantic/model.yaml
+
+      # T-3 (S10): the README badge used to be a hand-edited static number that drifted
+      # from the real coverage (D-3). `coverage report --format=total` reads the same
+      # .coverage data the pytest step above just wrote, so the badge always reflects
+      # what CI actually measured, not what someone last remembered to update.
+      - name: Coverage badge data
+        run: |
+          pct=$(uv run --with coverage coverage report --format=total)
+          if [ "$pct" -ge 90 ]; then color=success
+          elif [ "$pct" -ge 75 ]; then color=yellow
+          else color=critical
+          fi
+          mkdir -p .github/badges
+          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' \
+            "$pct" "$color" > .github/badges/coverage.json
+
+      # Only push+main (not PRs, incl. forked ones without write access) commits the
+      # badge back — a stale badge on an in-progress PR is fine, main must stay current.
+      - name: Commit coverage badge (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet -- .github/badges/coverage.json; then
+            echo "Badge unchanged, nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/coverage.json
+          git commit -m "chore(ci): update coverage badge [skip ci]"
+          git push
+
+  docker:
+    name: Docker image build (drift check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Build-only (no push, no registry login): catches Dockerfile drift (D-2 — the
+      # image had never once been built) on every PR. Publishing on tag is a separate
+      # job in release.yml.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: auto_bi:ci
 
   integration:
     name: Integration (ClickHouse + Superset stand)

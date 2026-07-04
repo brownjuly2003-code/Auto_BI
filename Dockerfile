@@ -1,8 +1,9 @@
 # Container image for the Auto_BI web app (`auto_bi serve`).
 #
-# NOTE: the image BUILD has not been run in the dev environment (no Docker on Windows —
-# container builds run on the Mac stand). The entrypoint and its --host/--port flags are
-# verified against the CLI; build and run on a Docker host before relying on this:
+# Built on every push/PR by the `docker` job in `.github/workflows/ci.yml` (build-only,
+# catches Dockerfile drift) and published to GHCR on tagged releases by
+# `.github/workflows/release.yml` (`ghcr.io/<repo>:<version>` + `:latest`). Local dev on
+# Windows has no Docker (container builds/runs happen on CI or the Mac stand):
 #
 #   docker build -t auto_bi .
 #   docker run --rm -p 8200:8200 --env-file .env auto_bi

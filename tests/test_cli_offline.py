@@ -12,9 +12,22 @@ stand (integration markers), not in the hermetic offline suite.
 
 from pathlib import Path
 
+import pytest
+
+from auto_bi import __version__
 from auto_bi.cli import main
 
 MODEL = "semantic/model.yaml"
+
+
+# --- --version (D-1: `auto_bi --version`) ------------------------------------------
+
+
+def test_version_flag_prints_version_and_exits_0(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    assert __version__ in capsys.readouterr().out
 
 
 # --- eval --suite advisor (deterministic, offline) ---------------------------------

@@ -27,6 +27,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from auto_bi import __version__
 from auto_bi.adapters.base import AdapterHealth, DashboardRef
 from auto_bi.advisor.core import Advisor
 from auto_bi.agent.autospec import build_auto_spec
@@ -176,7 +177,7 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health() -> dict:
-        return {"ok": True, "auth": auth_enabled}
+        return {"ok": True, "auth": auth_enabled, "version": __version__}
 
     @app.get("/api/v1/ready")
     def ready() -> JSONResponse:

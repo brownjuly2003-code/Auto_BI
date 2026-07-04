@@ -9,6 +9,7 @@ import time
 
 from fastapi.testclient import TestClient
 
+from auto_bi import __version__
 from auto_bi.adapters.base import DashboardRef
 from auto_bi.api import create_app
 from auto_bi.api.schemas import BuildEvent
@@ -69,7 +70,11 @@ def collect_events(client: TestClient, session_id: str) -> list[dict]:
 
 def test_health(demo_model) -> None:
     client = make_client(ScriptedLLM([]), demo_model)
-    assert client.get("/api/v1/health").json() == {"ok": True, "auth": False}
+    assert client.get("/api/v1/health").json() == {
+        "ok": True,
+        "auth": False,
+        "version": __version__,
+    }
 
 
 def test_clear_request_proposes_spec(demo_model) -> None:

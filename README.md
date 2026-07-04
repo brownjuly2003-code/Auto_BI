@@ -1,6 +1,6 @@
 # Auto_BI
 
-[![CI](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml/badge.svg)](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/badge/coverage-95%25-success) ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![BI targets](https://img.shields.io/badge/BI-Superset_+_DataLens-1FA8C9) ![DWH](https://img.shields.io/badge/DWH-ClickHouse_+_Greenplum-FACC15) ![License](https://img.shields.io/badge/license-MIT-blue)
+[![CI](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml/badge.svg)](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/brownjuly2003-code/Auto_BI/main/.github/badges/coverage.json) ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![BI targets](https://img.shields.io/badge/BI-Superset_+_DataLens-1FA8C9) ![DWH](https://img.shields.io/badge/DWH-ClickHouse_+_Greenplum-FACC15) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом, drag&drop-раскладкой полей витрин или авто-обзором витрины** (детерминированный курируемый дашборд без LLM), уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
 
@@ -73,6 +73,7 @@ uv run python scripts/demo_golden_path.py
 | [docs/ONBOARDING_DWH.md](docs/ONBOARDING_DWH.md) | Подключение нового DWH за ≤ 1 ч: доступы, `.env`, интроспекция, обогащение, проверка (ClickHouse + Greenplum) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура: скоуп, IR-first, семантическая модель с физическим слоем, агент, Feasibility Advisor, адаптеры, LLM-слой, решения D1–D10, риски |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Деплой в проде: workers=1, reverse-proxy/TLS, готовность, docker-compose, бэкап SQLite, ротация логов, чеклист секретов |
+| [CHANGELOG.md](CHANGELOG.md) | История версий по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/) — что вошло в каждый релиз |
 | [docs/PLAN.md](docs/PLAN.md) | План: Phase 0–4, задачи, exit criteria; полезный продукт после Phase 2 (~2.5–3 мес FTE) |
 | [docs/MARKET.md](docs/MARKET.md) | Рынок на 06.2026: RU (СУБД, BI, AI-фичи конкурентов, статус Superset) + глобальный контекст |
 
@@ -91,7 +92,7 @@ uv run --with duckdb --with pytest-cov pytest --cov=auto_bi --cov-report=term-mi
 uv run python scripts/verify_live_clickhouse.py      # числа CH-путей на ЖИВОМ стенде (ratio/grain/yoy/авто-обзор)
 ```
 
-`--with duckdb` — эфемерная test-dep (проверяет numeric-корректность transform-SQL под postgres-семантикой окон; без неё те тесты `importorskip`). Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Текущее покрытие — **95 %** (592 unit/API-теста; сьюты с пометкой `integration` требуют живого стенда и по умолчанию deselected). Superset-контрактный сьют (`tests/test_superset_contract.py`) + живой `auto_bi build --auto` дополнительно гоняются в CI отдельным job'ом (`integration`) на одноразовом docker-compose стенде ClickHouse+Superset; DataLens-сьют (`tests/test_datalens_contract.py`) остаётся Mac-only (self-hosted стенд, не докеризован).
+`--with duckdb` — эфемерная test-dep (проверяет numeric-корректность transform-SQL под postgres-семантикой окон; без неё те тесты `importorskip`). Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Покрытие в бейдже выше генерируется самим CI на каждый push в main (`.github/badges/coverage.json`, из `coverage report --format=total`) — не статичное число. Superset-контрактный сьют (`tests/test_superset_contract.py`) + живой `auto_bi build --auto` дополнительно гоняются в CI отдельным job'ом (`integration`) на одноразовом docker-compose стенде ClickHouse+Superset; DataLens-сьют (`tests/test_datalens_contract.py`) остаётся Mac-only (self-hosted стенд, не докеризован). Job `docker` собирает образ на каждый PR (только сборка, ловит дрейф `Dockerfile`); на тег `vX.Y.Z` — `.github/workflows/release.yml` публикует образ в GHCR (`ghcr.io/brownjuly2003-code/auto_bi`) и создаёт GitHub Release из [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

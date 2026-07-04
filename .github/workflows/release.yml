@@ -1,0 +1,67 @@
+name: Release
+
+# Fires only on a version tag push (git tag vX.Y.Z && git push origin vX.Y.Z), never on
+# ordinary commits — cutting a release is a deliberate, separate act from merging to main
+# (S10, closes D-1/D-2).
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Derive version and image name
+        id: meta
+        run: |
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          # GHCR requires a lowercase image path; github.repository preserves the repo's case.
+          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.image }}:latest
+
+      # Pulls the section between "## [<version>]" and the next "## [" heading out of
+      # CHANGELOG.md so the GitHub Release body is the same text, not a duplicate to
+      # keep in sync by hand.
+      - name: Extract changelog section
+        run: |
+          awk -v ver="${{ steps.meta.outputs.version }}" '
+            BEGIN { found = 0 }
+            /^## \[/ {
+              if (found) exit
+              if ($0 ~ ("\\[" ver "\\]")) { found = 1; next }
+              next
+            }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.meta.outputs.version }}
+          body_path: release_notes.md
+          generate_release_notes: false
