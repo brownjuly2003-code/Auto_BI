@@ -240,10 +240,20 @@ def build_chart_shared(
             {"id": "x", "items": dims(q.dimensions[:1], discrete=discrete)},
             {"id": "y", "items": measures()},
         ]
-        # a categorical bar ranks by its measure: DataLens orders a categorical axis
+        # a categorical bar ranks by its measure: DataLens orders a *string* categorical axis
         # alphabetically unless a `sort` field is set, so the biggest bar would not come first
         # even though the SQL orders by the measure. Mirror the measure order (the sorted-bar
         # rule) for a horizontal (categorical) bar; a time/continuous bar keeps its axis order.
+        #
+        # HISTOGRAM intentionally gets NO sort (C7, live-verified S12 2026-07-04): its bucket
+        # bounds are a NUMERIC dimension string-cast to a discrete axis (B2 above), and DataLens
+        # sorts a numeric-string-cast categorical axis NUMERICALLY by default — buckets render
+        # 50,100,…,350 (not lexicographic "50" after "350"), even when the subselect returns them
+        # out of order (verified with a deliberately scrambled SQL order). The audit's C7 concern
+        # ("categorical axis → alphabetical") holds only for genuine string categories (city
+        # names → the measure sort above), NOT for numeric buckets. Do NOT add a sort here: a
+        # measure/dimension sort with no explicit direction resorts the bars DESC (verified), which
+        # would BREAK the ascending bucket order that DataLens already gives for free.
         if horizontal and q.measures:
             sort = [item(measure_alias(q.measures[0]))]
     elif chart.viz == Viz.PIE:

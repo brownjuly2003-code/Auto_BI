@@ -204,6 +204,35 @@ def test_chart_compiles_and_renders(adapter: DataLensAdapter, chart: ChartSpec) 
     assert _rendered_with_data(run), f"{chart.id} rendered no data: keys={sorted(run)}"
 
 
+def test_histogram_buckets_render_in_numeric_order(adapter: DataLensAdapter) -> None:
+    """C7 regression: a histogram's numeric buckets render on the discrete axis in NUMERIC
+    order (50,100,…,350 — NOT lexicographic '50' after '350'). DataLens sorts a
+    numeric-string-cast categorical axis numerically by default, so the adapter sets no `sort`
+    for a histogram (chart_config, live-verified S12 2026-07-04). This guards against a
+    DataLens version drift (the self-hosted stand tracks a floating image tag) reintroducing a
+    lexicographic axis order, and against a future change that adds a (direction-less) sort
+    here — which would flip the buckets to DESC."""
+    chart = ChartSpec(
+        id="dl_histogram",
+        title="[dl-contract] histogram",
+        viz=Viz.HISTOGRAM,
+        query=ChartQuery(
+            table="dm.products",
+            dimensions=["price"],
+            measures=[Measure(column="price", agg=Aggregation.COUNT, label="Товаров")],
+            bins=8,
+        ),
+    )
+    ds = adapter.ensure_dataset(chart.query, name="auto_bi__dl_histogram")
+    ref = adapter.create_chart(chart, ds)
+    run = adapter._client.post("/api/run", {"id": str(ref.id), "workbookId": adapter._workbook_id})
+    assert _rendered_with_data(run), f"histogram rendered no data: keys={sorted(run)}"
+    categories = run["data"]["categories"]  # the highcharts x-axis order as rendered
+    values = [float(c) for c in categories]
+    assert len(values) >= 2, f"expected multiple buckets, got {categories}"
+    assert values == sorted(values), f"buckets not in ascending numeric order: {categories}"
+
+
 def test_build_dashboard_with_selector_is_idempotent(adapter: DataLensAdapter) -> None:
     """Full build() of a multi-chart spec with a dashboard selector creates a dash entry;
     re-building the same (constant-title) spec succeeds — idempotency via delete-then-

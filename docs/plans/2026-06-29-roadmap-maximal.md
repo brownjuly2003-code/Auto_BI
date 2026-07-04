@@ -33,8 +33,11 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 > примитивах A3/A4 (0 HIGH · 3 MED · 3 LOW). Исправлено 5 offline-верифицируемых багфиксов
 > (running_share reversed Pareto в normalize · histogram NULL dialect-split в sqlgen · histogram+join
 > валидация · insights running_share/share_of_total · measure-alias uniqueness), CH live-verify все проверки PASS.
-> Осталось стенд-gated: **C7** DataLens histogram bucket sort (ниже). **Урок: «фичи исчерпаны» ≠
-> «код без багов» — адверсариальный аудит обязателен перед выводом «брать нечего».**
+> C7 (DataLens histogram bucket sort) закрыт S12 (2026-07-04) как НЕ-баг — live-verify показал,
+> что DataLens сортирует numeric-string-cast ось численно, «50 после 350» не воспроизводится (ниже).
+> **Урок: «фичи исчерпаны» ≠ «код без багов» — адверсариальный аудит обязателен перед выводом
+> «брать нечего». И зеркальный урок S12: code-inspection-гипотеза о баге движка ОБЯЗАНА быть
+> live-verified до фикса — иначе «фикс» вслепую сам вносит регресс (`autobi-bi-engine-limits`).**
 
 ## Гейт-легенда
 
@@ -86,12 +89,12 @@ origin/main = `8415afa`, CI зелёный. Закрыто и в main:
 | ID | Гейт | Что | Заметка |
 |----|------|-----|---------|
 | C1 | 🔵 СТЕНД (hard) | **DataLens percent на оси** — известное ограничение движка (charts-engine не применяет percent к рендеру оси; числа верны, Superset % работает). Нужен сетевой перехват chart-config payload на стенде. **НЕ реверсить заново вслепую** (память `autobi-bi-engine-limits`). | план §6.3 derived-metrics |
-| C2 | 🔵 СТЕНД | **DataLens B2** — форс категориальной оси числового измерения (Superset решает через `xAxisForceCategorical`; DataLens — нет). Реверс механизма на стенде. | `adapters/datalens/chart_config.py` |
+| C2 | ✅ готово (S12, live-verified 2026-07-04) | **DataLens B2** — форс категориальной оси числового измерения (Superset решает через `xAxisForceCategorical`; DataLens — нет). Механизм = string-cast поля в placeholder'е (`_is_numeric_dimension`→`as_string`), уже реализован; **live-verified на стенде S12**: числовое измерение (bucket/store_id) рендерится дискретными категориями (широкие бары), не непрерывной осью. | `adapters/datalens/chart_config.py` |
 | C3 | 🟣/✋ | **DataLens B4** — косметика осей (шрифт/локаль/SI-суффикс «B/M» vs «млрд») = тема/локаль инстанса движка, **НЕ наш код**. Преимущественно non-actionable. | память `autobi-bi-engine-limits` |
 | C4 | 🔵 СТЕНД | **Luxms-адаптер** — GO-with-stand (полный REST/CRUD source→cube→dashlet→dashboard, JWT, нативный CH). Реализация по зеркалу DataLens-трека. **Gate:** демо-креды `sandbox.demo.luxmsbi.com` ИЛИ self-hosted Docker-стенд на Mac. | `docs/plans/2026-06-14-luxms-adapter-plan.md`. L |
 | C5 | 🔵 ЛИЦЕНЗИЯ | **Visiology-адаптер** — NO-GO автономно (нет public REST для авторинга, только UI-Designer). **Gate:** лицензионный стенд v3 от заказчика. | `docs/plans/2026-06-14-visiology-spike.md` |
 | C6 | 🟣 ВЛАДЕЛЕЦ | **Новый BI-движок** (Metabase / Apache Superset Cloud / …) — по запросу, через фабрику `adapters/factory`. | — |
-| C7 | 🔵 СТЕНД | **DataLens histogram bucket sort** (аудит пост-cont.16) — корзины гистограммы рендерятся ЛЕКСИКОГРАФИЧЕСКИ («50» после «350»): категориальная ось без `sort`-поля (`is_horizontal_bar`=False для HISTOGRAM → ветка `sort` не ставится). SQL корректен (`ORDER BY bucket`), Superset ОК → adapter-инконсистентность. Фикс (sort по числовой корзине, ASC) требует проверки sort-семантики DataLens на живом стенде — не реверсить вслепую (`autobi-bi-engine-limits`). | `adapters/datalens/chart_config.py`; verify: стенд. S |
+| C7 | ✅ закрыто НЕ-БАГОМ (S12, live-verified 2026-07-04) | **DataLens histogram bucket sort** — гипотеза аудита («корзины рендерятся ЛЕКСИКОГРАФИЧЕСКИ, „50“ после „350“») **НЕ подтвердилась на живом стенде**. Была code-inspection-догадка, не live-verified. Факт: DataLens сортирует numeric-string-cast категориальную ось **ЧИСЛЕННО** по умолчанию → корзины рендерятся 50,100,…,350 без всякого `sort`-поля, даже если subselect вернул их в перемешанном порядке (проверено скрамбл-тестом + скрин `s12_histogram_numeric_order_verified.png`, 3 варианта: float/int/scrambled — все numeric). Догадка «категориальная ось→alphabetical» верна только для НАСТОЯЩИХ строк (имена городов → measure-sort у horizontal bar), не для числовых корзин. **Фикс НЕ нужен и вреден** (sort без direction → бары DESC, проверено). Зафиксировано: dated-комментарий в `chart_config.py` + integration-guard `test_histogram_buckets_render_in_numeric_order` (защита от дрейфа версии стенда). | `adapters/datalens/chart_config.py`; verify: стенд. S |
 
 ## Трек D — Advisor / Feasibility (ров)
 
