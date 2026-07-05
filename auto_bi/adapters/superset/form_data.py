@@ -119,6 +119,7 @@ def build_form_data(
     kpi_scale: tuple[float, str] | None = None,
     axis_scale: tuple[float, str] | None = None,
     metric_labels: dict[str, str] | None = None,
+    time_column: str | None = None,
 ) -> dict:
     """Superset chart params for the pinned 4.1, on top of a virtual dataset.
 
@@ -137,6 +138,11 @@ def build_form_data(
     `metric_labels` maps a measure alias -> human name ("sum_revenue" -> "Выручка") so legends,
     tooltips and table columns read human instead of the raw alias. The adapter resolves it from
     the model (autospec leaves measure.label empty). Absent => the alias is the display name.
+
+    `time_column` is the alias of the chart's temporal x-axis, set only for a timeseries chart
+    over a TIME column. A dashboard native time filter delivers a time_range, but Superset's
+    ECharts query names no time column, so without granularity_sqla the range binds to nothing
+    and the preset period (B5) silently fails to re-scope the chart. None => no time binding.
     """
     q = chart.query
     labels = metric_labels or {}
@@ -236,6 +242,13 @@ def build_form_data(
         "metrics": metrics,
         "groupby": [column_alias(c) for c in breakdown],
     }
+    if time_column:
+        # designate the temporal column so a dashboard native time filter's time_range binds to
+        # it (the ECharts query sets no granularity otherwise -> the preset period never applies).
+        # Harmless without a filter: no chart-level time_range => no WHERE (see B5, ARCHITECTURE
+        # §3.5). Superset must also mark this column is_dttm on the dataset (auto on a fresh Date
+        # column); this pairs with that.
+        form_data["granularity_sqla"] = time_column
     if fmt:
         form_data["y_axis_format"] = fmt
     if chart.viz in (Viz.BAR, Viz.STACKED_BAR, Viz.HISTOGRAM):

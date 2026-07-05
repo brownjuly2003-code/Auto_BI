@@ -296,3 +296,48 @@ def test_native_filter_configuration_roundtrip(adapter: SupersetAdapter) -> None
     dataset_id = json.loads(chart["params"])["datasource"].split("__")[0]
     ds_full = adapter._client.get(f"/api/v1/dataset/{dataset_id}")["result"]
     assert "LIMIT" not in ds_full["sql"].upper()
+
+
+def test_time_filter_actually_narrows_timeseries(adapter: SupersetAdapter) -> None:
+    """B5 end-to-end: the previous mechanism only proved the filter *config* round-trips, so a
+    time preset that never re-scoped the data still passed. This asserts the real guarantee — a
+    freshly built timeseries chart names its temporal column (granularity_sqla) and its freshly
+    introspected virtual dataset marks that column is_dttm, so a dashboard time_range genuinely
+    narrows the series instead of silently no-op'ing (24 months -> ~12)."""
+    day = ChartSpec(
+        id="contract_narrow_day",
+        title="[contract] narrow day",
+        viz=Viz.LINE,
+        query=ChartQuery(table="dm.sales_daily", dimensions=["date"], measures=[REVENUE]),
+    )
+    ds = adapter.ensure_dataset(day.query, name="auto_bi__contract_narrow_day")
+    ref = adapter.create_chart(day, ds)
+    form_data = json.loads(adapter._client.get(f"/api/v1/chart/{ref.id}")["result"]["params"])
+    gran = form_data.get("granularity_sqla")
+    assert gran == "date", "the timeseries chart must name its temporal column for a time filter"
+    metrics = form_data.get("metrics") or [form_data["metric"]]
+
+    def rowcount(time_range: str) -> int:
+        result = adapter._client.post(
+            "/api/v1/chart/data",
+            json={
+                "datasource": {"id": ds.id, "type": "table"},
+                "force": True,
+                "queries": [
+                    {
+                        "columns": ["date"],
+                        "metrics": metrics,
+                        "granularity": gran,
+                        "time_range": time_range,
+                        "row_limit": 50000,
+                    }
+                ],
+                "result_format": "json",
+                "result_type": "full",
+            },
+        )
+        return result["result"][0]["rowcount"]
+
+    full = rowcount("No filter")
+    narrowed = rowcount("2025-01-01 : 2026-01-01")  # one calendar year of a two-year fact
+    assert 0 < narrowed < full, f"time_range must re-scope the series (got {narrowed} vs {full})"

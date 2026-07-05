@@ -41,10 +41,11 @@ from auto_bi.ir.spec import (
     DashboardSpec,
     Measure,
     Viz,
+    column_alias,
     is_compact_number,
     measure_alias,
 )
-from auto_bi.semantic.model import SemanticModel
+from auto_bi.semantic.model import ColumnRole, SemanticModel
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +245,21 @@ class SupersetAdapter:
             return None
         return self._ru_scale(chart.query.measures[0], chart.query.table, ds)
 
+    def _temporal_alias(self, query: ChartQuery) -> str | None:
+        """Alias of the query's temporal group column (model role=TIME), else None. Passed to
+        build_form_data as granularity_sqla so a dashboard native time filter's time_range binds
+        to it — the ECharts query names no time column on its own, so the preset period (B5)
+        would otherwise not re-scope the chart."""
+        if self._model is None:
+            return None
+        for col in query.group_columns():
+            table_name, _, name = col.rpartition(".")
+            table = self._model.table(table_name or query.table)
+            column = table.column(name) if table else None
+            if column is not None and column.role == ColumnRole.TIME:
+                return column_alias(col)
+        return None
+
     def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef:
         horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
         form_data = build_form_data(
@@ -253,6 +269,7 @@ class SupersetAdapter:
             kpi_scale=self._kpi_scale(chart, ds),
             axis_scale=self._axis_scale(chart, ds),
             metric_labels=self._metric_labels(chart),
+            time_column=self._temporal_alias(chart.query),
         )
         created = self._client.post(
             "/api/v1/chart/",

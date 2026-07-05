@@ -111,6 +111,31 @@ def test_form_data_line() -> None:
     assert fd["x_axis"] == "date"
     assert fd["metrics"][0]["sqlExpression"] == 'SUM("Выручка")'
     assert fd["groupby"] == []
+    assert "granularity_sqla" not in fd  # no time_column => no time binding
+
+
+def test_form_data_time_column_sets_granularity() -> None:
+    # B5: a timeseries chart passed its temporal column names it as granularity_sqla so a
+    # dashboard native time filter's time_range binds to it (else the ECharts query names no
+    # time column and the preset period silently fails to re-scope the chart)
+    chart = make_spec().charts[1]
+    fd = build_form_data(chart, dataset_id=42, time_column="date")
+    assert fd["granularity_sqla"] == "date"
+    # a categorical bar has no temporal column, so the adapter passes time_column=None -> unset
+    bar = build_form_data(_chart(Viz.BAR, dimensions=["store_id"]), dataset_id=42)
+    assert "granularity_sqla" not in bar
+
+
+def test_temporal_alias_resolves_time_role() -> None:
+    adapter = make_adapter(FakeSuperset(), model=MODEL)
+    # the line groups by `date` (role=TIME in the model) -> its bare alias
+    line = make_spec().charts[1]
+    assert adapter._temporal_alias(line.query) == "date"
+    # a KPI (no dimensions) and a categorical breakdown have no temporal column
+    assert adapter._temporal_alias(make_spec().charts[0].query) is None
+    assert adapter._temporal_alias(_chart(Viz.BAR, dimensions=["store_id"]).query) is None
+    # without a model the adapter can't judge column roles -> None (no spurious binding)
+    assert make_adapter(FakeSuperset())._temporal_alias(line.query) is None
 
 
 def test_form_data_big_number() -> None:
@@ -636,3 +661,7 @@ def test_build_full_flow_scales_ruble_kpi_and_humanizes_legend() -> None:
     # the line chart legend reads the human measure name resolved from the model
     line_params = json.loads(chart_posts[1]["params"])
     assert line_params["metrics"][0]["label"] == "Выручка"
+    # B5: the line over `date` names its temporal column so a dashboard time filter binds; the
+    # KPI (no temporal group column) does not, so it stays a full-history single number
+    assert line_params["granularity_sqla"] == "date"
+    assert "granularity_sqla" not in kpi_params
