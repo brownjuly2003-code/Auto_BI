@@ -1,7 +1,14 @@
-"""In-process login rate limiter (B-3): a single-worker deployment (workers=1 — S08
+"""In-process sliding-window rate limiter: a single-worker deployment (workers=1 — S08
 rationale is in-memory sessions/SSE) can hold this as plain process memory, no Redis
-needed. pbkdf2 already slows one password check; this throttles the *series* of
-requests an online brute-force sends.
+needed.
+
+Two call sites reuse the same mechanism with different parameters:
+- `LoginRateLimiter` (B-3): 5 attempts/60s/IP on `/api/v1/auth/login`. pbkdf2 already
+  slows one password check; this throttles the *series* of requests an online
+  brute-force sends.
+- the O-2 session-quota gate (`auto_bi.api.app`): a much larger, day-scale window that
+  protects the LLM budget from runaway per-IP usage on the session-creating endpoints,
+  not from a fast brute-force script — see `app.py` for the construction.
 """
 
 from __future__ import annotations
@@ -12,13 +19,19 @@ from collections.abc import Callable
 
 
 class LoginRateLimiter:
-    """Sliding window of `RATE_LIMIT` attempts per `WINDOW_SECONDS` per key (client IP).
+    """Sliding window of `rate_limit` attempts per `window_seconds` per key (e.g. client
+    IP). Defaults match the original login-hardening policy (B-3); pass explicit
+    parameters to reuse the same mechanism for a different window/lockout scale (e.g. a
+    per-day LLM-call quota).
 
     Once a key exceeds the window, it is locked out; each further call while still
     locked out grows the *next* lockout (doubling per strike, capped at
-    `LOCKOUT_CAP_SECONDS`), so a scripted retry-loop gets throttled progressively harder
+    `lockout_cap_seconds`), so a scripted retry-loop gets throttled progressively harder
     while a one-off accidental burst only waits out the base lockout. Strikes are never
-    reset, so an attacker cannot wait once and reset back to a short lockout.
+    reset, so an attacker cannot wait once and reset back to a short lockout. Passing a
+    `lockout_cap_seconds` equal to `base_lockout_seconds` disables the escalation (every
+    violation gets the same flat lockout) — appropriate for a budget quota, where the
+    point is a hard cap, not deterring a repeat attacker.
     """
 
     RATE_LIMIT = 5
@@ -26,7 +39,23 @@ class LoginRateLimiter:
     BASE_LOCKOUT_SECONDS = 30.0
     LOCKOUT_CAP_SECONDS = 900.0  # 15 minutes
 
-    def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        *,
+        rate_limit: int | None = None,
+        window_seconds: float | None = None,
+        base_lockout_seconds: float | None = None,
+        lockout_cap_seconds: float | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.rate_limit = self.RATE_LIMIT if rate_limit is None else rate_limit
+        self.window_seconds = self.WINDOW_SECONDS if window_seconds is None else window_seconds
+        self.base_lockout_seconds = (
+            self.BASE_LOCKOUT_SECONDS if base_lockout_seconds is None else base_lockout_seconds
+        )
+        self.lockout_cap_seconds = (
+            self.LOCKOUT_CAP_SECONDS if lockout_cap_seconds is None else lockout_cap_seconds
+        )
         self._clock = clock
         self._lock = threading.Lock()
         self._attempts: dict[str, list[float]] = {}
@@ -40,13 +69,13 @@ class LoginRateLimiter:
             locked_until = self._lockout_until.get(key, 0.0)
             if now < locked_until:
                 return locked_until - now
-            recent = [t for t in self._attempts.get(key, []) if now - t < self.WINDOW_SECONDS]
+            recent = [t for t in self._attempts.get(key, []) if now - t < self.window_seconds]
             recent.append(now)
-            if len(recent) > self.RATE_LIMIT:
+            if len(recent) > self.rate_limit:
                 strikes = self._strikes.get(key, 0) + 1
                 self._strikes[key] = strikes
                 lockout = min(
-                    self.BASE_LOCKOUT_SECONDS * (2 ** (strikes - 1)), self.LOCKOUT_CAP_SECONDS
+                    self.base_lockout_seconds * (2 ** (strikes - 1)), self.lockout_cap_seconds
                 )
                 self._lockout_until[key] = now + lockout
                 self._attempts[key] = []

@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     # host — see cli.py::_serve); set true/false to force it regardless of bind host.
     auth_cookie_secure: bool | None = None
 
+    # LLM-call quota on session-creating endpoints (O-2) — OPT-IN, off by default: local
+    # dev/tests/CLI are unaffected unless explicitly enabled ahead of a public demo. Gates
+    # POST /api/v1/sessions and /sessions/{id}/reply (both trigger LLM calls) per-IP,
+    # per rolling day, protecting the LLM budget from runaway usage; POST
+    # /sessions/auto stays ungated (deterministic, no LLM — ARCHITECTURE "auto-overview").
+    session_rate_enabled: bool = False
+    session_rate_per_day: int = 100
+
     # SQLite store (sessions, specs, builds, llm_calls, dm_change_requests, users)
     store_path: str = "data/auto_bi.sqlite"
 

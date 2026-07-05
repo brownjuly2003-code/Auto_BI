@@ -72,6 +72,8 @@ logger = logging.getLogger(__name__)
 # builder(spec, log, session_id) -> DashboardRef; production wraps compile_and_build
 Builder = Callable[[DashboardSpec, Callable[[str], None], str], DashboardRef]
 
+_DAY_SECONDS = 86400.0
+
 
 def create_app(
     *,
@@ -88,6 +90,8 @@ def create_app(
     auth_enabled: bool = False,  # Phase 4 auth/RBAC, opt-in (default: open, single-user)
     auth_token_ttl_hours: int = 24,
     cookie_secure: bool = False,  # force `Secure` on the login cookie (B-2); see cli.py::_serve
+    session_rate_enabled: bool = False,  # O-2 LLM-call quota, opt-in; see config.py
+    session_rate_per_day: int = 100,
 ) -> FastAPI:
     manager = SessionManager(
         model=model,
@@ -101,6 +105,33 @@ def create_app(
     # paths reachable without a token even when auth is on (login issues the token)
     _open_paths = {"/api/v1/health", "/api/v1/ready", "/api/v1/auth/login"}
     _login_limiter = LoginRateLimiter()
+    # O-2: per-IP/per-day LLM-call quota on the LLM-triggering session endpoints (opt-in,
+    # config.py::session_rate_enabled). Reuses the same sliding-window mechanism as the
+    # login limiter above, just at day scale with a flat (non-escalating) lockout equal
+    # to the window itself — this is a budget cap, not brute-force deterrence, so once a
+    # key trips it, it's simply locked out for the rest of the rolling day.
+    _session_limiter = (
+        LoginRateLimiter(
+            rate_limit=session_rate_per_day,
+            window_seconds=_DAY_SECONDS,
+            base_lockout_seconds=_DAY_SECONDS,
+            lockout_cap_seconds=_DAY_SECONDS,
+        )
+        if session_rate_enabled
+        else None
+    )
+
+    def _check_session_quota(request: Request) -> None:
+        if _session_limiter is None:
+            return
+        client_ip = request.client.host if request.client else "unknown"
+        wait = _session_limiter.check(client_ip)
+        if wait > 0:
+            raise HTTPException(
+                status_code=429,
+                detail="LLM session quota exceeded for this IP, try again later",
+                headers={"Retry-After": str(int(wait) + 1)},
+            )
 
     def _bearer(header: str | None) -> str | None:
         if header and header.lower().startswith("bearer "):
@@ -273,6 +304,7 @@ def create_app(
 
     @app.post("/api/v1/sessions", response_model=TurnResponse, response_model_exclude_none=True)
     def start_session(body: StartSessionRequest, request: Request) -> TurnResponse:
+        _check_session_quota(request)  # O-2: gate before any LLM call is made
         # RBAC: the agent grounds only on the caller's allowed schemas (auth off -> all)
         scoped_model = filter_model_by_schemas(model, _user(request).allowed_schemas)
         if body.seed is not None:
@@ -301,8 +333,10 @@ def create_app(
     )
     def start_auto_session(body: AutoSessionRequest, request: Request) -> TurnResponse:
         # Auto-overview: a curated dashboard built deterministically from one datamart
-        # (no text, no LLM). RBAC: scope to allowed schemas, then hard-gate the table the
-        # build runs over (auto builds over exactly this table; auth off -> always allowed).
+        # (no text, no LLM) — intentionally NOT gated by the O-2 session quota above,
+        # which exists to protect LLM spend and this path makes no LLM call. RBAC: scope
+        # to allowed schemas, then hard-gate the table the build runs over (auto builds
+        # over exactly this table; auth off -> always allowed).
         scoped_model = filter_model_by_schemas(model, _user(request).allowed_schemas)
         if scoped_model.table(body.table) is None:
             raise HTTPException(status_code=404, detail=f"unknown table {body.table!r}")
@@ -450,6 +484,7 @@ def create_app(
         response_model_exclude_none=True,
     )
     def reply(session_id: str, body: ReplyRequest, request: Request) -> TurnResponse:
+        _check_session_quota(request)  # O-2: gate before any LLM call is made
         managed = _owned(session_id, request)
         with managed.lock:
             agent = managed.agent

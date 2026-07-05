@@ -412,6 +412,11 @@ def _serve(  # pragma: no cover — wiring only
         n = seed_users(store, settings)
         logger.info("auth enabled: seeded %d user(s)", n)
         _start_token_purge_thread(store)
+    if settings.session_rate_enabled:  # O-2: LLM-call quota, opt-in
+        logger.info(
+            "session rate limit enabled: %d LLM session call(s)/day/IP",
+            settings.session_rate_per_day,
+        )
     # B-2: Secure cookie on by default unless bound to a loopback host (local dev), or
     # forced either way via AUTO_BI_AUTH_COOKIE_SECURE.
     cookie_secure = (
@@ -467,6 +472,8 @@ def _serve(  # pragma: no cover — wiring only
         auth_enabled=settings.auth_enabled,
         auth_token_ttl_hours=settings.auth_token_ttl_hours,
         cookie_secure=cookie_secure,
+        session_rate_enabled=settings.session_rate_enabled,
+        session_rate_per_day=settings.session_rate_per_day,
     )
     uvicorn_kwargs: dict = {"host": host, "port": port, "log_level": log_level.lower()}
     if log_format == "json":

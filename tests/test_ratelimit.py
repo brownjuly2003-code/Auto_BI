@@ -1,5 +1,6 @@
-"""Unit tests for the login rate limiter (B-3). A fake clock makes the sliding window
-and the exponential backoff deterministic — no real sleeping."""
+"""Unit tests for the sliding-window rate limiter (B-3 login lockout, generalized for the
+O-2 per-day LLM-call quota — see auto_bi.api.ratelimit / auto_bi.api.app). A fake clock
+makes the sliding window and the exponential backoff deterministic — no real sleeping."""
 
 from auto_bi.api.ratelimit import LoginRateLimiter
 
@@ -91,3 +92,84 @@ def test_lockout_caps_and_never_exceeds_it() -> None:
         wait = limiter.check("1.2.3.4")
         clock.advance(wait + 0.01)
     assert wait == LoginRateLimiter.LOCKOUT_CAP_SECONDS
+
+
+# --- generalized construction (O-2: reused at day scale for the session-quota gate) ----
+
+
+def test_custom_parameters_scale_the_window_and_lockout() -> None:
+    # a day-scale quota: 3 calls/day/key instead of the login defaults
+    clock = FakeClock()
+    limiter = LoginRateLimiter(
+        rate_limit=3,
+        window_seconds=86400.0,
+        base_lockout_seconds=86400.0,
+        lockout_cap_seconds=86400.0,
+        clock=clock,
+    )
+    for _ in range(3):
+        assert limiter.check("1.2.3.4") == 0.0
+    wait = limiter.check("1.2.3.4")
+    assert wait == 86400.0  # locked out for the rest of the day, not the login 30s base
+
+
+def test_custom_parameters_default_to_login_values_when_omitted() -> None:
+    # omitting a parameter still falls back to the original login-hardening constants,
+    # so the existing login call site (LoginRateLimiter()) is unaffected by generalizing.
+    clock = FakeClock()
+    limiter = LoginRateLimiter(clock=clock)
+    assert limiter.rate_limit == LoginRateLimiter.RATE_LIMIT
+    assert limiter.window_seconds == LoginRateLimiter.WINDOW_SECONDS
+    assert limiter.base_lockout_seconds == LoginRateLimiter.BASE_LOCKOUT_SECONDS
+    assert limiter.lockout_cap_seconds == LoginRateLimiter.LOCKOUT_CAP_SECONDS
+
+
+def test_flat_lockout_never_escalates_when_cap_equals_base() -> None:
+    # a budget quota (unlike brute-force deterrence) has no reason to grow the lockout on
+    # repeated violations: base == cap means every violation gets the same flat wait,
+    # however many times the key trips it.
+    clock = FakeClock()
+    limiter = LoginRateLimiter(
+        rate_limit=2,
+        window_seconds=1000.0,
+        base_lockout_seconds=1000.0,
+        lockout_cap_seconds=1000.0,
+        clock=clock,
+    )
+    waits = []
+    for _ in range(4):
+        for _ in range(2):
+            limiter.check("1.2.3.4")
+        wait = limiter.check("1.2.3.4")
+        waits.append(wait)
+        clock.advance(wait + 0.01)
+    assert waits == [1000.0, 1000.0, 1000.0, 1000.0]
+
+
+def test_custom_parameters_keep_keys_independent() -> None:
+    clock = FakeClock()
+    limiter = LoginRateLimiter(rate_limit=1, window_seconds=86400.0, clock=clock)
+    assert limiter.check("1.2.3.4") == 0.0
+    assert limiter.check("1.2.3.4") > 0  # this IP's daily quota is used up
+    assert limiter.check("5.6.7.8") == 0.0  # a different IP has its own quota
+
+
+def test_day_window_rolls_over_after_a_full_day() -> None:
+    # a per-day quota (O-2): the window slides on a 24h scale instead of 60s, and the
+    # lockout (base == cap) doesn't grow across the reset — the key simply gets its
+    # quota back once the rolling day window clears.
+    clock = FakeClock()
+    limiter = LoginRateLimiter(
+        rate_limit=3,
+        window_seconds=86400.0,
+        base_lockout_seconds=86400.0,
+        lockout_cap_seconds=86400.0,
+        clock=clock,
+    )
+    for _ in range(3):
+        limiter.check("1.2.3.4")
+    assert limiter.check("1.2.3.4") == 86400.0  # quota exhausted for today
+    clock.advance(86400.0 + 1.0)  # a full day (+ a hair) later
+    assert limiter.check("1.2.3.4") == 0.0  # fresh day, fresh quota
+    for _ in range(2):
+        assert limiter.check("1.2.3.4") == 0.0  # 2 more calls still within today's 3
