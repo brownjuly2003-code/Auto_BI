@@ -458,8 +458,10 @@ class DataLensAdapter:
         created = self._client.gateway("bi", "createDataset", payload)
         ds_id = created["id"]
         # createDataset preserves our supplied guids/avatar_id, so the chart binds to the
-        # payload's result_schema fields directly (live-verified 2026-06-14)
-        fields = {f["title"]: f for f in payload["dataset"]["result_schema"]}
+        # payload's result_schema fields directly (live-verified 2026-06-14). Key by `source`
+        # (the bare SQL alias) — the field `title` now carries the human display name, so keying
+        # by title would no longer match chart_config's alias lookups.
+        fields = {f["source"]: f for f in payload["dataset"]["result_schema"]}
         self._datasets[ds_id] = (ds_name, fields)
         logger.info("datalens dataset created: id=%s name=%s", ds_id, ds_name)
         return DatasetRef(id=ds_id, name=ds_name)

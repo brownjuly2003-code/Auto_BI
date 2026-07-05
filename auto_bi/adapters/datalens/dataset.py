@@ -65,6 +65,32 @@ def _slug(text: str, max_len: int = 40) -> str:
     return re.sub(r"\W+", "_", text.lower()).strip("_")[:max_len] or "dataset"
 
 
+# a dataset field's human display title (legend / axis caption) is a measure's explicit label,
+# else the short form of the model column's description ("Выручка, руб" -> "Выручка"), mirroring
+# the Superset legend humanization (adapter._human_label) so a DataLens line/bar legend reads
+# "Выручка", not the raw SQL alias "sum_revenue". Falls back to the alias when the model is silent.
+_LABEL_SEPS = (",", "(", ":", " —", " -")
+
+
+def _human_field_title(
+    model: SemanticModel, table: str, ref: str, alias: str, measure: Measure | None = None
+) -> str:
+    if measure is not None and measure.label:
+        return measure.label
+    col_ref = measure.column if measure is not None else ref
+    tbl_name, _, col_name = col_ref.rpartition(".")
+    tbl = model.table(tbl_name or table)
+    col = tbl.column(col_name) if tbl else None
+    desc = col.description.strip() if col and col.description else ""
+    if not desc:
+        return alias
+    for sep in _LABEL_SEPS:
+        idx = desc.find(sep)
+        if idx > 0:
+            desc = desc[:idx]
+    return desc.strip() or alias
+
+
 def dataset_name(title: str, chart_id: str) -> str:
     """Readable, collision-free dataset name (mirrors SupersetAdapter._dataset_name).
 
@@ -227,11 +253,27 @@ def build_dataset_payload(
     base_table = model.table(query.table)
     # SELECT-order columns: dimension-like group columns first, then measures — the same
     # order generate_chart_sql emits, addressed by their bare aliases (column_alias).
-    fields: list[tuple[str, str, bool]] = []  # (alias, user_type, is_measure)
+    fields: list[tuple[str, str, bool, str]] = []  # (alias, user_type, is_measure, human_title)
     for ref in query.group_columns():
-        fields.append((column_alias(ref), _resolve_column_type(model, query.table, ref), False))
+        alias = column_alias(ref)
+        fields.append(
+            (
+                alias,
+                _resolve_column_type(model, query.table, ref),
+                False,
+                _human_field_title(model, query.table, ref, alias),
+            )
+        )
     for measure in query.measures:
-        fields.append((measure_alias(measure), _measure_user_type(measure, base_table), True))
+        alias = measure_alias(measure)
+        fields.append(
+            (
+                alias,
+                _measure_user_type(measure, base_table),
+                True,
+                _human_field_title(model, query.table, measure.column, alias, measure=measure),
+            )
+        )
 
     source_id = _stable_uuid(name, "source")
     avatar_id = _stable_uuid(name, "avatar")
@@ -239,17 +281,17 @@ def build_dataset_payload(
     raw_schema = [
         {
             "name": alias,
-            "title": alias,
+            "title": alias,  # source column keeps its SQL alias; display name lives on the field
             "user_type": user_type,
             "native_type": None,
             "nullable": True,
         }
-        for alias, user_type, _ in fields
+        for alias, user_type, _, _ in fields
     ]
     result_schema = [
         {
             "guid": _stable_uuid(name, "field", alias),
-            "title": alias,
+            "title": title,  # human display name (legend/axis), not the raw SQL alias
             "source": alias,
             "data_type": user_type,
             "cast": user_type,
@@ -263,7 +305,7 @@ def build_dataset_payload(
             "formula": "",
             "valid": True,
         }
-        for alias, user_type, is_measure in fields
+        for alias, user_type, is_measure, title in fields
     ]
 
     return {

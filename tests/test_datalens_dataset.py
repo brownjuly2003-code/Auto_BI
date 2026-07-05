@@ -162,6 +162,26 @@ def test_dataset_result_schema_roles_and_types(demo_model: SemanticModel) -> Non
     assert fields["n_stores"]["data_type"] == "integer"  # count_distinct
 
 
+def test_dataset_field_title_humanized_when_label_empty(demo_model: SemanticModel) -> None:
+    # autospec leaves measure.label empty (technical SQL alias), so a DataLens legend would read
+    # the raw alias "sum_revenue"; the field title is humanized from the model description
+    # ("Выручка, руб" -> "Выручка") while the field stays KEYED by its source alias (chart_config
+    # binds by alias, not title). Mirrors the Superset legend humanization.
+    query = ChartQuery(
+        table="dm.sales_daily",
+        dimensions=["date"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM)],  # no explicit label
+    )
+    body = build_dataset_payload(query, demo_model, workbook_id="wb", connection_id="c", name="ds")
+    by_source = {f["source"]: f for f in body["dataset"]["result_schema"]}
+    assert by_source["sum_revenue"]["title"] == "Выручка"  # humanized display name
+    assert by_source["sum_revenue"]["source"] == "sum_revenue"  # bind key stays the alias
+    assert by_source["date"]["title"] == "date"  # no model description -> alias fallback
+    # the SQL source column keeps the alias as its name (display name lives only on the field)
+    raw_names = [c["name"] for c in body["dataset"]["sources"][0]["raw_schema"]]
+    assert raw_names == ["date", "sum_revenue"]
+
+
 def test_dataset_transform_measure_is_float_and_windowed(demo_model: SemanticModel) -> None:
     from auto_bi.ir.spec import MeasureTransform
 
