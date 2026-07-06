@@ -92,3 +92,81 @@ cd ~/datalens_dl && HC=1 /usr/local/bin/docker compose up -d temporal meta-manag
 createDataset → **createEditorChart (Highcharts)** → createDashboard; auth локальной сессии;
 сверить с capability-matrix в `2026-06-13-phase3-prep.md` (§A) и go/no-go (§A.0). Затем адаптер
 `adapters/datalens/` (editor_config.py + adapter.py), шов ref `id: int|str` уже готов (S4-2).
+
+---
+
+## Аутентифицированная headless-сессия для render-verify (P3, 2026-07-06)
+
+**Задача:** скриншотить/читать глазами дашборды DataLens из headless-браузера (для P4 render-verify,
+P7 демо-записи). Ранее (N1) считалось, что headless к 8090 не аутентифицируется: SPA-shell грузится,
+data-API → 403. **Это оказалось НЕ auth-багом.** Форм-логин admin/admin работает end-to-end,
+data-API отдаёт 200, чарты рендерятся с данными. Реальный блокер был инфраструктурный —
+конкуренция за persistent-профиль браузера (ниже). Метод ниже воспроизводим и переиспользуем P4/P7.
+
+### Рабочий метод (Playwright-MCP, persistent Edge-профиль `D:/edge-headless/Default`)
+
+1. **Туннель** (один, не плодить — см. `mac-stand-ssh-saturation`): проверить
+   `netstat -ano -p tcp | grep 8090`; если пусто — `ssh -f -N -L 8090:localhost:8080 deproject-mac`.
+2. **Навигация:** `browser_navigate http://127.0.0.1:8090/`. Если сессия жива (cookie не истёк) —
+   сразу `/collections`. Если нет — редирект на `/auth/signin`.
+3. **Форм-логин (только если попал на `/auth/signin`):** `browser_type` в поля Username/Password
+   значением `admin`/`admin` → `browser_click` кнопку «Sign in» → редирект на `/collections`.
+4. **Открыть дашборд:** `browser_navigate` на `http://127.0.0.1:8090/<entryId>-<slug>` (или кликом из
+   workbook). `browser_wait_for time:6` (чарты грузятся async). Верификация = скриншот + чтение
+   глазами (числа/бары/линии), НЕ только отсутствие 403 в network (`dont-claim-unverified`).
+
+### Почему persistent-профиль решает задачу (не нужен re-login каждую сессию)
+
+Auth-cookie DataLens `auth` — **персистентный** (httpOnly, `secure=false` → работает по plain-http
+127.0.0.1, `sameSite=Strict`, TTL ~240 ч ≈ **10 дней**), плюс `auth_exp` (маркер, не-httpOnly).
+Persistent-профиль (`--user-data-dir=D:/edge-headless/Default` в конфиге Playwright-MCP) пишет
+cookie на диск ⇒ следующая headless-сессия по тому же профилю УЖЕ залогинена, пока cookie жив.
+Истёк (>10 дней) → тривиальный повтор форм-логина (шаг 3) обновляет. `sameSite=Strict` проблем не
+создаёт: все data-API-вызовы (`/api/run`, `/api/dash/v1/...`, `/gateway/root/...`) same-origin.
+Отдельный save/reload `storageState`-файла НЕ нужен — persistent-профиль и есть хранилище.
+
+### ⚠️ Реальный блокер N1 — оркестровка orphan MCP-серверов за профиль (а не auth)
+
+Симптом при `browser_navigate`/`browser_close`:
+`Error: Browser is already in use for D:/edge-headless/Default, use --isolated to run multiple instances`.
+Причина: от прошлых сессий остаются **живые orphan-процессы Playwright-MCP** (пары `cmd.exe → npx →
+node @playwright/mcp/cli.js --user-data-dir=D:/edge-headless/Default`) + их дочерние браузеры,
+держащие lock профиля (`D:/edge-headless/Default/lockfile`). Мой live MCP-сервер не может взять
+профиль → любой browser-tool падает. **Это и был «403»** прошлой сессии: логин не завершался
+в состоянии залоченного профиля, а не cookie/CSRF.
+
+**Диагностика (какие node — orphan, какой — мой live):**
+```bash
+# все MCP-node с временем старта; самая свежая пара (по CreationDate) — обычно текущая live-сессия
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like '*@playwright*' -and \$_.Name -eq 'node.exe' } | Select-Object ProcessId,ParentProcessId,CreationDate | Sort-Object CreationDate | Format-Table -AutoSize"
+```
+Процессы идут парами (npx-wrapper node → cli.js node; gparent второго = PID первого). Каждая пара =
+один MCP-инстанс. Свежайшая пара по времени = текущая сессия; более старые = orphan прошлых сессий.
+
+**Уборка (килль ТОЛЬКО старые пары, НЕ трогай свою свежую — иначе потеряешь browser-tools):**
+kill по верхнему `cmd.exe` каждой orphan-цепочки с `//T` (снимет и дочерний браузер):
+```bash
+taskkill //F //T //PID <top_cmd_of_orphan_chain>   # top_cmd = ParentProcessId самого старого node в паре
+```
+После — `lockfile` исчезает (убитый браузер отпустил профиль), `browser_navigate` работает.
+Если `lockfile` завис при мёртвом владельце — удалить руками: `rm D:/edge-headless/Default/lockfile`.
+⚠️ Различай `msedge.exe`/`chrome.exe` (браузер MCP) от `msedgewebview2.exe` (чужой WebView2 рантайм —
+не трогать). Дефолтный браузер Playwright-MCP = Chromium (`chrome.exe`), несмотря на имя папки.
+
+### Гигиена завершения сессии
+
+Закрывать свой браузер в конце (`browser_close`) — освобождает lock профиля для следующей сессии
+(cookie уже на диске, ничего не теряется). Туннель 8090 можно оставить ОДИН живой для follow-on
+(P4/P7). Прерванные python/node от пробников к стенду = zombie, вешают git/стенд —
+`taskkill //F //IM node.exe` / `//IM python.exe //T` при явных зависаниях (плановая грабля P3).
+
+### Верифицировано (2026-07-06)
+
+Дашборд `zlgn1i1cug3wi` «Обзор legend-verify : Дневные продажи» (workbook Auto_BI `ra7f79yirtumb`):
+все 9 `/api/run` → 200, скриншот `D:\.playwright-mcp\datalens_p3_legend_verify.png` читается глазами —
+4 KPI (Выручка 236B, г/г 0,0%, Число заказов 115M, Число позиций 210M), line «Динамика по месяцам»
+(Sep'24→May'26, 6–16B), bars Регион (8 ФО, 0–35B) / Категория (13 позиций, 0–20B) / Доля Формат
+(3 бара, 0–0.4). Data-API 200 end-to-end, никаких 403. (Дашборд `h3y22qrn77cw0` того же workbook —
+все чарты «Not found»/404: его widget/dataset-entry вычищены прошлыми сессиями; это НЕ auth и НЕ CH —
+`auto_bi_clickhouse` healthy — а стейл-entry. Для render-verify брать дашборд с живыми чартами.)
+Побочно виден кандидат N2: KPI «236B» = SI-локаль-единица (RU-единицы — предмет P4(c)).
