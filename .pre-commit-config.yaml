@@ -6,6 +6,9 @@ repos:
       - id: trailing-whitespace
       - id: check-yaml
       - id: check-added-large-files
+        # 500 KB default would reject README demo media (docs/screenshots/demo.gif);
+        # still low enough to catch accidental data/artifact commits.
+        args: ["--maxkb=4000"]
       - id: detect-private-key
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

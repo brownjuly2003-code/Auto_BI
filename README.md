@@ -9,6 +9,10 @@
 
 ## Демо
 
+![Auto_BI — полный цикл: текст → уточнение → спецификация + advisor → сборка → дашборд Superset](docs/screenshots/demo.gif)
+
+Живой цикл (сжаты только паузы ожидания LLM): запрос «средний чек по месяцам, Парето по магазинам, динамика количества» → агент уточняет неоднозначное «количество» (orders vs items) → превью спецификации с вердиктом Feasibility Advisor (CRITICAL: запрос сканирует 100% витрины в 20 млн строк — предложение сузить период) → сборка → готовый дашборд Superset на реальных данных ClickHouse: средний чек как производная метрика `sum(revenue)/sum(orders)` по месяцам, Парето — накопленная доля выручки по магазинам. Видео в лучшем качестве — [docs/screenshots/demo.mp4](docs/screenshots/demo.mp4).
+
 | Веб-UI: запрос → спецификация + Feasibility Advisor | Собранный дашборд (Superset) |
 |:--:|:--:|
 | ![Auto_BI web UI — превью спецификации с вердиктами advisor](docs/screenshots/web-ui-spec.png) | ![Auto_BI дашборд — топ-10 городов по выручке, Superset](docs/screenshots/dashboard-superset.png) |
