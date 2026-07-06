@@ -233,6 +233,109 @@ def test_histogram_buckets_render_in_numeric_order(adapter: DataLensAdapter) -> 
     assert values == sorted(values), f"buckets not in ascending numeric order: {categories}"
 
 
+def test_percent_axis_formats_by_field(adapter: DataLensAdapter) -> None:
+    """C1: a share-transform chart's VALUE axis renders as percent. The placeholder-item
+    `formatting` alone is not enough — the engine reads it into the axis ONLY under
+    `settings.axisFormatMode="by-field"` (chart_config._AXIS_FORMAT_BY_FIELD): the run's
+    highchartsConfig must carry chartKitFormat="percent" in axesFormatting.yAxis (the
+    un-flagged baseline returns an empty axesFormatting — the pre-fix raw 0..1 axis)."""
+    import json
+
+    from auto_bi.ir.spec import MeasureTransform
+
+    chart = ChartSpec(
+        id="dl_pct_axis",
+        title="[dl-contract] percent axis",
+        viz=Viz.LINE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date"],
+            measures=[
+                Measure(
+                    column="revenue",
+                    agg=Aggregation.SUM,
+                    transform=MeasureTransform.SHARE_OF_TOTAL,
+                )
+            ],
+        ),
+    )
+    ds = adapter.ensure_dataset(chart.query, name="auto_bi__dl_pct_axis")
+    ref = adapter.create_chart(chart, ds)
+    run = adapter._client.post("/api/run", {"id": str(ref.id), "workbookId": adapter._workbook_id})
+    assert _rendered_with_data(run), f"percent chart rendered no data: keys={sorted(run)}"
+    hc = run["highchartsConfig"]
+    if isinstance(hc, str):
+        hc = json.loads(hc)
+    y_formats = hc["axesFormatting"]["yAxis"]
+    assert y_formats, "axesFormatting.yAxis is empty — the by-field flag was not honored"
+    assert y_formats[0]["chartKitFormat"] == "percent"
+
+
+def test_kpi_ru_units_scale_headline(adapter: DataLensAdapter) -> None:
+    """N2: a billions-scale ruble KPI builds with the measure scaled in the dataset SQL and
+    the RU unit glued as a formatting postfix — the run returns the scaled scalar (a round
+    figure < 1000) with " млрд ₽", not the raw 12-digit number the SI locale would show as
+    "236B". The scaling decision lives in build() (live magnitude probe), so the whole
+    spec is built."""
+    spec = DashboardSpec(
+        title="[dl-contract] ru units",
+        charts=[
+            ChartSpec(
+                id="dlru_kpi",
+                title="[dl-contract] ru kpi",
+                viz=Viz.BIG_NUMBER,
+                query=ChartQuery(table="dm.sales_daily", measures=[REVENUE]),
+            )
+        ],
+    )
+    adapter.build(spec)
+    wid = adapter._find_entry_id("widget", safe_entry_name("[dl-contract] ru kpi"))
+    assert wid is not None
+    run = adapter._client.post("/api/run", {"id": wid, "workbookId": adapter._workbook_id})
+    current = run["data"][0]["content"]["current"]
+    assert current["postfix"] == " млрд ₽"
+    assert 0 < float(current["value"]) < 1000  # scaled headline, not the raw aggregate
+
+
+def test_selector_default_period_narrows_chart_data(adapter: DataLensAdapter) -> None:
+    """B5: a DashboardFilter.default period phrase must narrow the in-scope chart's DATA,
+    not just show a badge (the Superset B5 lesson). Two assertions: (1) the built dash
+    control carries the relative-interval token in BOTH source.defaultValue and the item
+    `defaults` (the charts' initial params); (2) running the built line chart with that
+    same param (as the dashboard does on open) returns strictly fewer rows than without."""
+    token = "__interval___relative_-3M___relative_+0d"
+    spec = DashboardSpec(
+        title="[dl-contract] b5 period",
+        filters=[DashboardFilter(column="dm.sales_daily.date", default="last 3 months")],
+        charts=[
+            ChartSpec(
+                id="dlb5_line",
+                title="[dl-contract] b5 line",
+                viz=Viz.LINE,
+                query=ChartQuery(table="dm.sales_daily", dimensions=["date"], measures=[REVENUE]),
+            )
+        ],
+    )
+    dash = adapter.build(spec)
+    entry = adapter._client.gateway("us", "getEntry", {"entryId": str(dash.id)})
+    tab = entry["data"]["tabs"][0]
+    control = next(it for it in tab["items"] if it["type"] == "control")
+    assert control["data"]["source"]["defaultValue"] == token
+    assert list(control["defaults"].values()) == [token]
+    (guid,) = control["defaults"].keys()
+
+    widget = next(it for it in tab["items"] if it["type"] == "widget")
+    wid = widget["data"]["tabs"][0]["chartId"]
+    full = adapter._client.post("/api/run", {"id": wid, "workbookId": adapter._workbook_id})
+    narrowed = adapter._client.post(
+        "/api/run", {"id": wid, "workbookId": adapter._workbook_id, "params": {guid: token}}
+    )
+    n_full = len(full["data"]["graphs"][0]["data"])
+    n_narrowed = len(narrowed["data"]["graphs"][0]["data"])
+    assert 0 < n_narrowed < n_full, f"period param did not narrow: {n_narrowed} vs {n_full}"
+    assert n_narrowed <= 100  # ~3 months of daily points, not the full history
+
+
 def test_build_dashboard_with_selector_is_idempotent(adapter: DataLensAdapter) -> None:
     """Full build() of a multi-chart spec with a dashboard selector creates a dash entry;
     re-building the same (constant-title) spec succeeds — idempotency via delete-then-

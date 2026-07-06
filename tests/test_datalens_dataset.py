@@ -137,6 +137,38 @@ def test_dataset_payload_shape_and_subselect(demo_model: SemanticModel) -> None:
     assert avatar["is_root"] is True
 
 
+def test_dataset_measure_scale_wraps_subselect(demo_model: SemanticModel) -> None:
+    # N2 RU units: (divisor, aliases) wraps the subselect so the listed measures are divided
+    # for display; dimensions and unlisted measures pass through under their own aliases.
+    query = ChartQuery(
+        table="dm.sales_daily",
+        dimensions=["date"],
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM),  # alias sum_revenue -> scaled
+            Measure(column="orders", agg=Aggregation.SUM),  # alias sum_orders -> untouched
+        ],
+    )
+    body = build_dataset_payload(
+        query,
+        demo_model,
+        workbook_id="wb1",
+        connection_id="conn1",
+        name="auto_bi__ds",
+        measure_scale=(1e9, ["sum_revenue"]),
+    )
+    sql = body["dataset"]["sources"][0]["parameters"]["subsql"]
+    assert sql.startswith('SELECT "date", ')
+    assert '"sum_revenue" / 1000000000 AS "sum_revenue"' in sql
+    assert ', "sum_orders" FROM (' in sql  # unlisted measure passes through unscaled
+    assert sql.rstrip().endswith(") AS auto_bi_scaled")
+    # the wrapped inner subselect is the plain one — same dataset otherwise
+    plain = build_dataset_payload(
+        query, demo_model, workbook_id="wb1", connection_id="conn1", name="auto_bi__ds"
+    )
+    assert plain["dataset"]["sources"][0]["parameters"]["subsql"] in sql
+    assert plain["dataset"]["result_schema"] == body["dataset"]["result_schema"]
+
+
 def test_dataset_result_schema_roles_and_types(demo_model: SemanticModel) -> None:
     query = ChartQuery(
         table="dm.sales_daily",

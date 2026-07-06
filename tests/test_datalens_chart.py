@@ -158,6 +158,117 @@ def test_shared_bar_horizontal_is_bar_viz() -> None:
     assert vert["visualization"]["id"] == "column"
 
 
+def test_shared_horizontal_bar_uses_wizard_placeholder_ids() -> None:
+    # bar-y (horizontal): the engine's DATA preparers are positional (category first,
+    # values second) but its AXIS paths are id-based and swapped — the wizard convention is
+    # dimension -> id "y" (vertical category axis), measures -> id "x" (value axis). A
+    # vertical column keeps x=dimension / y=measures. Without the swap, value-axis
+    # formatting (C1) would be looked up on the category axis and dropped.
+    fields = _fields(("store_id", "integer", "DIMENSION"), ("rev", "float", "MEASURE"))
+    chart = _chart(Viz.BAR, dimensions=["store_id"])
+    horiz = build_chart_shared(chart, DS_ID, DS_NAME, fields, horizontal=True)
+    ph = horiz["visualization"]["placeholders"]
+    assert [p["id"] for p in ph] == ["y", "x"]  # positional order stays: category, values
+    assert [i["source"] for i in ph[0]["items"]] == ["store_id"]
+    assert [i["source"] for i in ph[1]["items"]] == ["rev"]
+    vert = build_chart_shared(chart, DS_ID, DS_NAME, fields)
+    assert [p["id"] for p in vert["visualization"]["placeholders"]] == ["x", "y"]
+
+
+def _share_chart(viz: Viz) -> ChartSpec:
+    from auto_bi.ir.spec import MeasureTransform
+
+    return ChartSpec(
+        id="c",
+        title="c",
+        viz=viz,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["category"],
+            measures=[
+                Measure(
+                    column="revenue",
+                    agg=Aggregation.SUM,
+                    transform=MeasureTransform.SHARE_OF_TOTAL,
+                )
+            ],
+        ),
+    )
+
+
+def test_shared_percent_primary_sets_axis_format_by_field() -> None:
+    # C1: the value axis renders the percent `formatting` ONLY when the values placeholder
+    # carries settings.axisFormatMode="by-field" (live-verified 2026-07-06; without it the
+    # axis shows the raw 0..1 ratio while the item formatting sits unread).
+    fields = _fields(
+        ("category", "string", "DIMENSION"), ("share_of_total_sum_revenue", "float", "MEASURE")
+    )
+    vert = build_chart_shared(_share_chart(Viz.BAR), DS_ID, DS_NAME, fields)
+    ph = {p["id"]: p for p in vert["visualization"]["placeholders"]}
+    assert ph["y"]["settings"] == {"axisFormatMode": "by-field"}
+    assert ph["y"]["items"][0]["formatting"]["format"] == "percent"
+    assert "settings" not in ph["x"]
+    # horizontal: the measures live in placeholder "x" — the flag must follow them
+    horiz = build_chart_shared(_share_chart(Viz.BAR), DS_ID, DS_NAME, fields, horizontal=True)
+    ph = {p["id"]: p for p in horiz["visualization"]["placeholders"]}
+    assert ph["x"]["settings"] == {"axisFormatMode": "by-field"}
+    assert "settings" not in ph["y"]
+
+
+def test_shared_plain_measure_gets_no_axis_settings() -> None:
+    # a non-percent measure keeps the placeholder settings-free (the pre-C1 default shape)
+    fields = _fields(("date", "date", "DIMENSION"), ("rev", "float", "MEASURE"))
+    shared = build_chart_shared(_chart(Viz.LINE, dimensions=["date"]), DS_ID, DS_NAME, fields)
+    for p in shared["visualization"]["placeholders"]:
+        assert "settings" not in p
+
+
+def test_shared_big_number_ru_unit_postfix_and_font() -> None:
+    # N2: with kpi_unit the (already SQL-scaled) headline formats as "236 млрд ₽" — round
+    # figure + the RU unit as a postfix; the KPI font is "s" so the longer figure fits the
+    # standard 6-col tile (the default font clips it, live-verified 2026-07-06).
+    fields = _fields(("sum_revenue", "float", "MEASURE"))
+    chart = ChartSpec(
+        id="c",
+        title="c",
+        viz=Viz.BIG_NUMBER,
+        query=ChartQuery(
+            table="dm.sales_daily", measures=[Measure(column="revenue", agg=Aggregation.SUM)]
+        ),
+    )
+    shared = build_chart_shared(chart, DS_ID, DS_NAME, fields, kpi_unit="млрд ₽")
+    fmt = shared["visualization"]["placeholders"][0]["items"][0]["formatting"]
+    assert fmt["postfix"] == " млрд ₽" and fmt["precision"] == 0 and fmt["unit"] is None
+    assert shared["extraSettings"]["metricFontSize"] == "s"
+    # without a unit the compact formatting stays; the KPI font is uniformly "s"
+    plain = build_chart_shared(chart, DS_ID, DS_NAME, fields)
+    assert plain["visualization"]["placeholders"][0]["items"][0]["formatting"]["unit"] == "auto"
+    assert plain["extraSettings"]["metricFontSize"] == "s"
+    # non-KPI charts keep the default extraSettings (no metric font key)
+    line_fields = _fields(("date", "date", "DIMENSION"), ("rev", "float", "MEASURE"))
+    line = build_chart_shared(_chart(Viz.LINE, dimensions=["date"]), DS_ID, DS_NAME, line_fields)
+    assert "metricFontSize" not in line["extraSettings"]
+
+
+def test_shared_axis_unit_sets_manual_axis_title() -> None:
+    # N2: with axis_unit the (already SQL-scaled) value axis is titled with the RU unit
+    # ("млрд ₽") so ticks read "15" instead of the SI "15B" (Superset y_axis_title analog).
+    fields = _fields(("date", "date", "DIMENSION"), ("sum_revenue", "float", "MEASURE"))
+    chart = ChartSpec(
+        id="c",
+        title="c",
+        viz=Viz.LINE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        ),
+    )
+    shared = build_chart_shared(chart, DS_ID, DS_NAME, fields, axis_unit="млрд ₽")
+    ph = {p["id"]: p for p in shared["visualization"]["placeholders"]}
+    assert ph["y"]["settings"] == {"title": "manual", "titleValue": "млрд ₽"}
+
+
 def test_shared_categorical_bar_sorts_by_measure() -> None:
     # a categorical (horizontal) bar ranks by its measure: DataLens orders a categorical axis
     # alphabetically unless a `sort` field is set (the sorted-bar rule), so set it
@@ -310,13 +421,20 @@ def test_shared_full_shape_pins_service_blocks() -> None:
 
 
 class FakeClient:
-    def __init__(self, wb_entries: dict[str, list[dict]] | None = None) -> None:
+    def __init__(
+        self,
+        wb_entries: dict[str, list[dict]] | None = None,
+        run_value: float | None = None,
+    ) -> None:
         self.gateway_calls: list[tuple[str, str, dict]] = []
         self.posts: list[tuple[str, dict]] = []
         self.deletes: list[tuple[str, str]] = []  # (entryId, scope) from mix/deleteEntry
         self.renames: list[tuple[str, str]] = []  # (entryId, new name) from us/renameEntry
         self._wb_entries = wb_entries or {}  # scope -> entries (idempotency lookup)
         self._n = 0
+        # scalar served to the N2 magnitude probe (inline /api/run); None => a non-metric
+        # response, degrading the probe to "no scaling" (the best-effort path)
+        self._run_value = run_value
 
     def gateway(self, service: str, method: str, body: dict) -> dict:
         self.gateway_calls.append((service, method, body))
@@ -336,6 +454,8 @@ class FakeClient:
     def post(self, path: str, body: dict) -> dict:
         self.posts.append((path, body))
         self._n += 1
+        if path == "/api/run" and self._run_value is not None:
+            return {"data": [{"content": {"current": {"value": self._run_value}}}]}
         return {"entryId": f"widget-{self._n}"}
 
     def health(self) -> bool:
@@ -431,10 +551,14 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
         "trend",  # widget canonical (safe_entry_name of chart title)
         "dash",  # dashboard canonical (safe_entry_name of spec title)
     ]
+    # the N2 magnitude probe (inline /api/run) precedes the chart create; the fake's
+    # non-metric response degrades it gracefully to "no scaling" (best-effort probe)
+    assert [p for p, _ in fake.posts] == ["/api/run", "/api/charts/v1/charts"]
+    assert fake.posts[0][1]["config"]["meta"] == {"stype": "metric_wizard_node"}
     # chart posted to the charts engine with template=datalens + shared
-    assert fake.posts[0][0] == "/api/charts/v1/charts"
-    assert fake.posts[0][1]["template"] == "datalens"
-    assert fake.posts[0][1]["data"]["visualization"]["id"] == "line"
+    assert fake.posts[1][0] == "/api/charts/v1/charts"
+    assert fake.posts[1][1]["template"] == "datalens"
+    assert fake.posts[1][1]["data"]["visualization"]["id"] == "line"
     # build returns a dashboard ref; its blob links the created widget by entryId
     from auto_bi.adapters.base import DashboardRef
 
@@ -443,6 +567,121 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
     dash_body = next(c[2] for c in fake.gateway_calls if c[1] == "createDashboardV1")
     linked = dash_body["entry"]["data"]["tabs"][0]["items"][0]["data"]["tabs"][0]["chartId"]
     assert linked.startswith("widget-")
+
+
+def _money_model() -> SemanticModel:
+    """_model() with the revenue column marked as money ("руб") for the ₽ unit line."""
+    from auto_bi.semantic.model import Column, ColumnRole, Physical, Table
+
+    return SemanticModel(
+        tables=[
+            Table(
+                name="dm.sales_daily",
+                columns=[
+                    Column(name="date", type="Date", role=ColumnRole.TIME),
+                    Column(
+                        name="revenue",
+                        type="Decimal(18,2)",
+                        role=ColumnRole.MEASURE,
+                        agg=Aggregation.SUM,
+                        description="Выручка, руб",
+                    ),
+                ],
+                physical=Physical(engine="clickhouse"),
+            )
+        ]
+    )
+
+
+def test_build_scales_large_ruble_kpi_to_ru_units() -> None:
+    # N2: a billions-scale ruble KPI — the magnitude probe (inline /api/run) answers
+    # 236e9, so build re-creates the dataset with the measure scaled (/1e9) and formats
+    # the chart headline as a round figure + " млрд ₽" postfix.
+    fake = FakeClient(run_value=236_149_963_687.42)
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="k",
+                title="Выручка",
+                viz=Viz.BIG_NUMBER,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+                ),
+            )
+        ],
+    )
+    DataLensAdapter(fake, DWH, _money_model(), workbook_id="wb1").build(spec)
+    ds_creates = [c[2] for c in fake.gateway_calls if c[1] == "createDataset"]
+    assert len(ds_creates) == 2  # the unscaled probe target, then the scaled rebuild
+    sql_scaled = ds_creates[1]["dataset"]["sources"][0]["parameters"]["subsql"]
+    assert '"sum_revenue" / 1000000000 AS "sum_revenue"' in sql_scaled
+    chart_post = next(b for p, b in fake.posts if p == "/api/charts/v1/charts")
+    fmt = chart_post["data"]["visualization"]["placeholders"][0]["items"][0]["formatting"]
+    assert fmt["postfix"] == " млрд ₽" and fmt["precision"] == 0 and fmt["unit"] is None
+
+
+def test_build_scales_large_axis_to_ru_unit_title() -> None:
+    # N2 axis analog: a line chart whose tallest monthly point is ~13.9e9 — the dataset is
+    # re-created scaled and the value axis gets a manual "млрд ₽" title (no unit postfix on
+    # every tick). The probe re-aggregates the grouped subselect with MAX.
+    fake = FakeClient(run_value=13_900_000_000)
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="t",
+                title="Динамика",
+                viz=Viz.LINE,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    dimensions=["date"],
+                    measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+                ),
+            )
+        ],
+    )
+    DataLensAdapter(fake, DWH, _money_model(), workbook_id="wb1").build(spec)
+    probe = next(b for p, b in fake.posts if p == "/api/run")
+    import json as _json
+
+    probe_shared = _json.loads(probe["config"]["data"]["shared"])
+    assert probe_shared["visualization"]["placeholders"][0]["items"][0]["aggregation"] == "max"
+    ds_creates = [c[2] for c in fake.gateway_calls if c[1] == "createDataset"]
+    assert len(ds_creates) == 2
+    scaled_sql = ds_creates[1]["dataset"]["sources"][0]["parameters"]["subsql"]
+    assert '"sum_revenue" / 1000000000' in scaled_sql
+    chart_post = next(b for p, b in fake.posts if p == "/api/charts/v1/charts")
+    ph = {p["id"]: p for p in chart_post["data"]["visualization"]["placeholders"]}
+    assert ph["y"]["settings"] == {"title": "manual", "titleValue": "млрд ₽"}
+    fmt = ph["y"]["items"][0]["formatting"]
+    assert fmt["postfix"] == ""  # ticks stay bare numbers; the unit lives on the axis title
+
+
+def test_build_small_magnitude_keeps_default_format() -> None:
+    # below the 1e3 tier nothing scales: one dataset create, no unit postfix/title
+    fake = FakeClient(run_value=420.0)
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="k",
+                title="KPI",
+                viz=Viz.BIG_NUMBER,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+                ),
+            )
+        ],
+    )
+    DataLensAdapter(fake, DWH, _money_model(), workbook_id="wb1").build(spec)
+    ds_creates = [c[2] for c in fake.gateway_calls if c[1] == "createDataset"]
+    assert len(ds_creates) == 1
+    chart_post = next(b for p, b in fake.posts if p == "/api/charts/v1/charts")
+    fmt = chart_post["data"]["visualization"]["placeholders"][0]["items"][0]["formatting"]
+    assert fmt["postfix"] == "" and fmt["unit"] == "auto"  # the compact default, unchanged
 
 
 def test_ensure_database_reuses_existing_connection() -> None:
@@ -887,6 +1126,50 @@ def test_build_selectors_time_column_is_date_range() -> None:
     controls, _, _ = build_selectors(spec, [(line, "wl", "ds_l")], fields, _model())
     src = controls[0]["data"]["source"]
     assert src["elementType"] == "date" and src["isRange"] is True and "multiselectable" not in src
+
+
+def test_datalens_interval_default_parses_period_phrases() -> None:
+    # B5: token grammar reversed from datalens-ui 0.3831.0 (charts-shared resolveIntervalDate)
+    from auto_bi.adapters.datalens.adapter import datalens_interval_default as f
+
+    assert f("last 12 months") == "__interval___relative_-12M___relative_+0d"
+    assert f("Last 90 Days") == "__interval___relative_-90d___relative_+0d"
+    assert f("last quarter") == "__interval___relative_-1Q___relative_+0d"
+    assert f("last year") == "__interval___relative_-1y___relative_+0d"
+    assert f("last 2 weeks") == "__interval___relative_-2w___relative_+0d"
+    assert f("2026-01-01 : 2026-06-30") == "__interval_2026-01-01_2026-06-30"
+    assert f("") == ""
+    assert f("весь период") == ""  # unrecognized -> no preset, selector opens unset
+
+
+def test_build_selectors_time_default_becomes_relative_interval() -> None:
+    # B5: a period phrase presets the date-range selector AND the dash item defaults (the
+    # charts' initial params) — live-verified to narrow the in-scope chart's DATA, not just
+    # the control badge (screenshot 2026-07-06: the monthly line shrank 21 -> ~12 points).
+    line = _bar("line", ["date"])
+    spec = DashboardSpec(
+        title="dash",
+        filters=[DashboardFilter(column="dm.sales_daily.date", default="last 12 months")],
+        charts=[line],
+    )
+    fields = {"ds_l": {"date": _ds_field("gd", data_type="genericdatetime")}}
+    controls, _, _ = build_selectors(spec, [(line, "wl", "ds_l")], fields, _model())
+    token = "__interval___relative_-12M___relative_+0d"
+    assert controls[0]["data"]["source"]["defaultValue"] == token
+    assert controls[0]["defaults"] == {"gd": token}
+
+
+def test_build_selectors_select_default_preselects_value() -> None:
+    bar = _bar("bar", ["store_id"])
+    spec = DashboardSpec(
+        title="dash",
+        filters=[DashboardFilter(column="dm.sales_daily.store_id", default="5")],
+        charts=[bar],
+    )
+    fields = {"ds_bar": {"store_id": _ds_field("g_bar")}}
+    controls, _, _ = build_selectors(spec, [(bar, "w", "ds_bar")], fields, _model())
+    assert controls[0]["data"]["source"]["defaultValue"] == ["5"]
+    assert controls[0]["defaults"] == {"g_bar": ["5"]}
 
 
 def test_build_selectors_skips_unscoped_filter() -> None:

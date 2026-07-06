@@ -15,7 +15,9 @@ gathers chart links and runs Dash.validateData server-side, then calls us._creat
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import re
 import uuid
 
 from auto_bi.adapters.base import (
@@ -34,6 +36,7 @@ from auto_bi.adapters.datalens.dataset import (
     dataset_name,
     safe_entry_name,
 )
+from auto_bi.adapters.superset.form_data import ru_kpi_scale
 from auto_bi.adapters.superset.native_filters import participating_chart_ids
 from auto_bi.agent.normalize import is_horizontal_bar
 from auto_bi.ir.spec import (
@@ -42,8 +45,11 @@ from auto_bi.ir.spec import (
     DashboardFilter,
     DashboardSpec,
     LayoutHint,
+    Measure,
     Viz,
     column_alias,
+    is_compact_number,
+    measure_alias,
 )
 from auto_bi.semantic.model import ColumnRole, SemanticModel
 
@@ -70,6 +76,22 @@ _CONNECTION_ENGINE_LABEL = {
 def connection_name(engine: str) -> str:
     return f"Auto_BI {_CONNECTION_ENGINE_LABEL.get(engine, engine)}"
 
+
+# a measure is money (KPI unit gets a "₽") when its model description says so — kept as
+# markers, not a hard-coded currency, so a count/qty KPI never gets a spurious ruble sign
+# (mirrors adapters/superset/adapter.py `_MONEY_MARKERS`).
+_MONEY_MARKERS = ("руб", "₽", "rub")
+
+# charts-engine config stype for an inline (unsaved) /api/run of a metric chart — the
+# wizard runner is `safeConfig: true`, so a body `config` is allowed (datalens-ui 0.3831.0
+# `charts-engine/runners/index.js`; live-verified 2026-07-06: an inline metric run returns
+# the same value blob as a saved chart's run).
+_METRIC_STYPE = "metric_wizard_node"
+
+# cartesian charts whose value axis gets RU magnitude units (scaled metric + the unit as a
+# manual axis title) instead of the SI "15B" — mirrors adapters/superset/adapter.py
+# `_AXIS_SCALE_VIZ`; big_number scales its headline separately (`_kpi_ru_scale`).
+_AXIS_SCALE_VIZ = (Viz.LINE, Viz.BAR, Viz.STACKED_BAR, Viz.AREA)
 
 # Atomic-rebuild temp-name suffix (F2): a fully-built entry lives under <canonical>__wip
 # until the whole build succeeds, then is renamed to its canonical name. `_` is allowed
@@ -129,6 +151,38 @@ def _chart_tile(chart: ChartSpec) -> tuple[int, int]:
     return w, h
 
 
+# DashboardFilter.default period phrase -> DataLens relative-interval token (B5).
+# Token grammar reversed from datalens-ui 0.3831.0: `shared/modules/charts-shared.js`
+# (`resolveIntervalDate` accepts `__interval_<from>_<to>` where each endpoint may be a
+# relative `__relative_[+-]N(y|Q|M|w|d|h|m|s|ms)`), and the dash control plugin
+# (`plugins/control/js/index.js`) resolves a range-date selector's string
+# `source.defaultValue` through `ChartEditor.resolveInterval` into the dashboard param.
+_RELATIVE_UNIT = {"day": "d", "week": "w", "month": "M", "quarter": "Q", "year": "y"}
+_LAST_N_RE = re.compile(r"^last\s+(?:(\d+)\s+)?(day|week|month|quarter|year)s?$", re.IGNORECASE)
+_ISO_RANGE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s*:\s*(\d{4}-\d{2}-\d{2})$")
+
+
+def datalens_interval_default(default: str) -> str:
+    """Normalize a DashboardFilter.default period phrase to a DataLens interval token.
+
+    "last 12 months" -> "__interval___relative_-12M___relative_+0d" (a relative range the
+    engine re-resolves on every dashboard open, so the preset stays current); an ISO range
+    "2026-01-01 : 2026-06-30" passes through as a fixed "__interval_<from>_<to>". Empty or
+    unrecognized -> "" (no preset — the selector opens unset, the previous behavior)."""
+    s = default.strip()
+    if not s:
+        return ""
+    iso = _ISO_RANGE_RE.match(s)
+    if iso:
+        return f"__interval_{iso.group(1)}_{iso.group(2)}"
+    last = _LAST_N_RE.match(s)
+    if last:
+        n = int(last.group(1) or 1)
+        unit = _RELATIVE_UNIT[last.group(2).lower()]
+        return f"__interval___relative_-{n}{unit}___relative_+0d"
+    return ""
+
+
 def _filter_is_time(filter_: DashboardFilter, model: SemanticModel) -> bool:
     table_name, _, col = filter_.column.rpartition(".")
     table = model.table(table_name)
@@ -184,6 +238,16 @@ def build_selectors(
         is_time = _filter_is_time(filter_, model)
         digest = hashlib.sha1(filter_.column.encode()).hexdigest()[:6]
         control_id = f"auto_bi_sel_{alias}_{digest}"
+        # B5 preset default: a period phrase becomes a relative-interval token the control
+        # resolves on open ("last 12 months" -> last 12 months of DATA, re-scoping the
+        # in-scope charts, not just a badge); a categorical default becomes the initial
+        # selection list. `defaults` (the dash item's initial params) must mirror
+        # `source.defaultValue`, so the charts are narrowed on first render, before the
+        # control itself has run. Empty/unparseable default => "" (unset, as before).
+        if is_time:
+            preset: str | list[str] = datalens_interval_default(filter_.default)
+        else:
+            preset = [filter_.default.strip()] if filter_.default.strip() else ""
         source = {
             "datasetId": first_ds,
             "datasetFieldId": field0["guid"],
@@ -191,7 +255,7 @@ def build_selectors(
             "datasetFieldType": field0["type"],
             "showTitle": True,
             "elementType": "date" if is_time else "select",
-            "defaultValue": "",
+            "defaultValue": preset,
         }
         if is_time:
             source["isRange"] = True
@@ -209,7 +273,7 @@ def build_selectors(
                     "sourceType": "dataset",
                     "source": source,
                 },
-                "defaults": {field0["guid"]: ""},
+                "defaults": {field0["guid"]: preset},
             }
         )
         if len(guids) > 1:  # tie the column's field across the in-scope datasets
@@ -439,7 +503,12 @@ class DataLensAdapter:
             )
 
     def ensure_dataset(
-        self, query: ChartQuery, name: str | None = None, *, apply_limit: bool = True
+        self,
+        query: ChartQuery,
+        name: str | None = None,
+        *,
+        apply_limit: bool = True,
+        measure_scale: tuple[float, list[str]] | None = None,
     ) -> DatasetRef:
         if self._connection_id is None:
             self.ensure_database()
@@ -454,6 +523,7 @@ class DataLensAdapter:
             connection_id=connection_id,
             name=ds_name,
             apply_limit=apply_limit,
+            measure_scale=measure_scale,
         )
         created = self._client.gateway("bi", "createDataset", payload)
         ds_id = created["id"]
@@ -467,7 +537,13 @@ class DataLensAdapter:
         return DatasetRef(id=ds_id, name=ds_name)
 
     def create_chart(
-        self, chart: ChartSpec, ds: DatasetRef, *, name: str | None = None
+        self,
+        chart: ChartSpec,
+        ds: DatasetRef,
+        *,
+        name: str | None = None,
+        kpi_unit: str | None = None,
+        axis_unit: str | None = None,
     ) -> ChartRef:
         ds_name, fields = self._datasets[str(ds.id)]
         horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
@@ -477,6 +553,8 @@ class DataLensAdapter:
             ds_name,
             fields,
             horizontal=horizontal,
+            kpi_unit=kpi_unit,
+            axis_unit=axis_unit,
         )
         if chart.viz in DEGRADED:
             logger.warning("chart %r: %s", chart.title, DEGRADED[chart.viz])
@@ -585,6 +663,84 @@ class DataLensAdapter:
                 "datalens %s promoted to canonical: name=%s id=%s", scope, canonical, temp_id
             )
 
+    # --- N2: RU magnitude units on a large KPI headline / value axis ---------
+
+    def _measure_currency(self, measure: Measure, table: str) -> str:
+        """ "₽" when the model marks the measure's column as money, else "" (mirrors
+        SupersetAdapter._measure_currency)."""
+        tbl = self._model.table(table)
+        col = tbl.column(measure.column.rpartition(".")[2]) if tbl else None
+        text = f"{col.description if col else ''} {measure.label or ''}".lower()
+        return "₽" if any(m in text for m in _MONEY_MARKERS) else ""
+
+    def _measure_magnitude(self, measure: Measure, ds: DatasetRef, *, agg: str) -> float | None:
+        """The measure's peak aggregated value over the chart's dataset, measured live via an
+        inline (unsaved) /api/run of a metric probe config — the DataLens analogue of
+        SupersetAdapter._measure_magnitude (`/api/v1/chart/data`). `agg` re-aggregates the
+        pre-grouped subselect rows: "sum" for a one-row KPI dataset (the identity = the
+        scalar), "max" for a grouped line/bar dataset (= the tallest series point).
+        Best-effort: any failure returns None and the chart keeps the default format — a
+        display nicety must never break a build."""
+        try:
+            ds_name, fields = self._datasets[str(ds.id)]
+            probe = ChartSpec(
+                id="auto_bi_magnitude_probe",
+                title="auto_bi magnitude probe",
+                viz=Viz.BIG_NUMBER,
+                query=ChartQuery(table="probe", measures=[measure]),
+            )
+            shared = build_chart_shared(probe, str(ds.id), ds_name, fields)
+            shared["visualization"]["placeholders"][0]["items"][0]["aggregation"] = agg
+            run = self._client.post(
+                "/api/run",
+                {
+                    "config": {
+                        "data": {"shared": json.dumps(shared, ensure_ascii=False)},
+                        "meta": {"stype": _METRIC_STYPE},
+                    },
+                    "workbookId": self._workbook_id,
+                },
+            )
+            # metric run data: [{"content": {"current": {"value": <scalar>, ...}}, ...}]
+            value = run["data"][0]["content"]["current"]["value"]
+            return abs(float(value))
+        except Exception:
+            logger.warning("magnitude probe failed; keeping default format", exc_info=True)
+            return None
+
+    def _ru_scale(self, chart: ChartSpec, ds: DatasetRef, *, agg: str) -> tuple[float, str] | None:
+        """(divisor, RU unit line) for the chart's primary measure, measured live, or None to
+        keep the default format. Same tiers/rules as the Superset adapter (`_ru_scale`): only
+        compact (additive, non-percent) measures with a magnitude >= 1e3 scale; the unit line
+        is "млрд ₽" for money, just "млрд" for a count."""
+        measure = chart.query.measures[0]
+        if not is_compact_number(measure):
+            return None
+        magnitude = self._measure_magnitude(measure, ds, agg=agg)
+        if magnitude is None:
+            return None
+        divisor, unit = ru_kpi_scale(magnitude)
+        if divisor <= 1:
+            return None
+        currency = self._measure_currency(measure, chart.query.table)
+        return divisor, f"{unit} {currency}".strip()
+
+    def _kpi_ru_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
+        """(divisor, RU unit line) for a large additive big_number headline ("236 млрд ₽"
+        instead of the SI "236B"), or None. The KPI dataset is one row -> "sum" identity."""
+        if chart.viz != Viz.BIG_NUMBER or not chart.query.measures:
+            return None
+        return self._ru_scale(chart, ds, agg="sum")
+
+    def _axis_ru_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
+        """(divisor, RU unit line) for a large-magnitude line/bar/area VALUE axis, or None to
+        keep the SI default. Mirrors SupersetAdapter._axis_scale: the axis unit tier comes
+        from the tallest series point ("max" over the grouped subselect rows), the scaled
+        metric reads "15" against an axis titled "млрд ₽" instead of "15B"."""
+        if chart.viz not in _AXIS_SCALE_VIZ or not chart.query.measures:
+            return None
+        return self._ru_scale(chart, ds, agg="max")
+
     # --- happy path ----------------------------------------------------------
 
     def build(self, spec: DashboardSpec) -> DashboardRef:
@@ -620,15 +776,48 @@ class DataLensAdapter:
             for chart in spec.charts:
                 ds_canonical = dataset_name(spec.title, chart.id)
                 wip_created.append(("dataset", _wip_name(ds_canonical)))
+                apply_limit = chart.id not in in_filter_scope
                 ds = self.ensure_dataset(
                     chart.query,
                     name=_wip_name(ds_canonical),
-                    apply_limit=chart.id not in in_filter_scope,
+                    apply_limit=apply_limit,
                 )
+                # N2: RU magnitude units for large additive measures — a KPI reads
+                # "236 млрд ₽" (unit glued to the figure), a line/bar value axis reads "15"
+                # ticks against a "млрд ₽" axis title, instead of the SI "236B"/"15B".
+                # Measure the magnitude live, then rebuild the dataset (same wip name) with
+                # the compact measures scaled.
+                kpi_unit: str | None = None
+                axis_unit: str | None = None
+                scale = self._kpi_ru_scale(chart, ds)
+                if scale is not None:
+                    kpi_unit = scale[1]
+                else:
+                    scale = self._axis_ru_scale(chart, ds)
+                    if scale is not None:
+                        axis_unit = scale[1]
+                if scale is not None:
+                    # scale every compact measure (the shared axis unit must fit them all);
+                    # a percent/ratio co-measure keeps its raw 0..1 value
+                    aliases = [
+                        measure_alias(m) for m in chart.query.measures if is_compact_number(m)
+                    ]
+                    ds = self.ensure_dataset(
+                        chart.query,
+                        name=_wip_name(ds_canonical),
+                        apply_limit=apply_limit,
+                        measure_scale=(scale[0], aliases),
+                    )
                 to_promote.append(("dataset", ds_canonical, str(ds.id)))
                 chart_canonical = safe_entry_name(chart.title)
                 wip_created.append(("widget", _wip_name(chart_canonical)))
-                ref = self.create_chart(chart, ds, name=_wip_name(chart_canonical))
+                ref = self.create_chart(
+                    chart,
+                    ds,
+                    name=_wip_name(chart_canonical),
+                    kpi_unit=kpi_unit,
+                    axis_unit=axis_unit,
+                )
                 to_promote.append(("widget", chart_canonical, str(ref.id)))
                 refs.append(ref)
                 placements.append((chart, str(ref.id), str(ds.id)))

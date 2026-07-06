@@ -214,6 +214,36 @@ def build_connection_payload(
     }
 
 
+def _quote_ident(ident: str) -> str:
+    """ANSI-quoted identifier (ClickHouse and PostgreSQL/Greenplum both accept it); the
+    quote is doubled so an LLM-controlled alias cannot break out of the identifier."""
+    return '"' + ident.replace('"', '""') + '"'
+
+
+def _scale_measure_sql(sql: str, query: ChartQuery, measure_scale: tuple[float, list[str]]) -> str:
+    """Wrap the chart subselect so the listed measures are divided for display (N2 RU units).
+
+    Mirrors the Superset adapter's display scaling (`form_data.py`: the adhoc metric becomes
+    `SUM(...) / divisor`) at the equivalent DataLens layer — the per-chart dataset subselect
+    (deterministic adapter code, invariant 1). Dimensions and unlisted measures (e.g. a
+    percent co-measure) pass through under their own aliases, so field guids/bindings are
+    unchanged; only the scaled measures' values shrink ("236149963687" -> "236.15",
+    displayed as "236 млрд ₽" / a "млрд ₽"-titled axis by the chart)."""
+    divisor, target_aliases = measure_scale
+    targets = set(target_aliases)
+    cols: list[str] = []
+    for ref in query.group_columns():
+        cols.append(_quote_ident(column_alias(ref)))
+    for measure in query.measures:
+        alias = measure_alias(measure)
+        quoted = _quote_ident(alias)
+        if alias in targets:
+            cols.append(f"{quoted} / {divisor:.0f} AS {quoted}")
+        else:
+            cols.append(quoted)
+    return f"SELECT {', '.join(cols)} FROM ({sql}) AS auto_bi_scaled"
+
+
 def _field_aggregation(is_measure: bool) -> str:
     """DataLens dataset-field aggregation.
 
@@ -236,18 +266,24 @@ def build_dataset_payload(
     name: str,
     source_title: str | None = None,
     apply_limit: bool = True,
+    measure_scale: tuple[float, list[str]] | None = None,
 ) -> dict:
     """`bi/createDataset` body (reversal §4): one subselect source, columns + roles from
     the IR. No DB introspection / validateDataset needed.
 
     `apply_limit=False` drops the subselect's top-N LIMIT for charts in a dashboard
     selector's scope, so the selector re-ranks after filtering and its option list isn't
-    capped to the pre-filter top-N (mirrors the Superset native-filter limit semantics)."""
+    capped to the pre-filter top-N (mirrors the Superset native-filter limit semantics).
+
+    `measure_scale` (divisor, aliases) divides those measures in a wrapper SELECT for RU
+    magnitude display (N2, see `_scale_measure_sql`); None => the plain subselect."""
     engine = _engine_of(model, query.table)
     source_type = _SOURCE_TYPE.get(engine)
     if source_type is None:
         raise ValueError(f"no DataLens source_type for engine {engine!r}")
     sql = generate_chart_sql(query, dialect=sqlglot_dialect(engine), apply_limit=apply_limit)
+    if measure_scale is not None:
+        sql = _scale_measure_sql(sql, query, measure_scale)
     src_title = source_title or name
 
     base_table = model.table(query.table)

@@ -43,15 +43,11 @@ _COMPACT_FORMATTING = {
     "labelMode": "absolute",
 }
 
-# percent display for ratio transforms (pop_pct, share): a 0..1 ratio renders as "50,0 %".
+# percent display for ratio transforms (pop_pct, share): a 0..1 ratio renders as "50,0%".
 # DataLens `format: "percent"` scales by 100 and appends the sign; no SI unit. Display only.
-# NB: the exact `formatting` shape for percent is reversed from the demo Wizard and must be
-# live-verified on the stand (the field is otherwise asserted only by unit tests here).
-# LIVE FINDING (2026-06-26): this placeholder-level `formatting` does NOT switch the axis to
-# percent on the self-hosted stand (the axis stays at the raw 0..1 ratio); the compact
-# `format: "number"` variant DOES apply at placeholder level. Switching the format *type* to
-# percent likely has to live on the dataset field (result_schema), not the chart placeholder —
-# open item, see docs/plans/2026-06-25-derived-metrics-pop.md §6.
+# NB: this item-level `formatting` alone does NOT reformat the value AXIS — see
+# `_AXIS_FORMAT_BY_FIELD` below (C1 fix, live-verified 2026-07-06); the 2026-06-26 "percent
+# does not work at placeholder level" finding was missing that flag, not a wrong key.
 _PERCENT_FORMATTING = {
     "format": "percent",
     "showRankDelimiter": True,
@@ -61,6 +57,35 @@ _PERCENT_FORMATTING = {
     "precision": 1,
     "labelMode": "absolute",
 }
+
+
+# RU magnitude units for a large ruble/count KPI (N2, mirrors superset form_data.ru_kpi_scale):
+# the metric widget's own `unit: "auto"` is locale-bound (the stand renders SI "236B", never
+# "млрд"), so the adapter scales the measure in the dataset subselect (dataset.py
+# `measure_scale`) and glues the Russian unit word to the figure via the formatting `postfix`
+# ("236 млрд ₽"). Display-only: the scaled headline is a round figure (precision 0), no SI unit.
+def _ru_kpi_formatting(unit: str) -> dict:
+    return {
+        "format": "number",
+        "showRankDelimiter": True,
+        "prefix": "",
+        "postfix": f" {unit}",
+        "unit": None,
+        "precision": 0,
+        "labelMode": "absolute",
+    }
+
+
+# Placeholder `settings` that make the value axis read the bound field's `formatting`.
+# The charts engine populates axis formatting ONLY when `placeholder.settings.axisFormatMode`
+# is "by-field" (read the first item's `formatting`) or "manual"; the default (no settings) is
+# null -> no axis formatting -> a share/ratio axis shows the raw 0..1 number (C1). Reversed
+# from datalens-ui 0.3831.0 (`preparers/helpers/axis/get-axis-formatting.js`:
+# `getFormatOptions(field)` reads `field.formatting`, `getFormatOptionsFromFieldFormatting`
+# carries `format: "percent"` through as `chartKitFormat`) and confirmed on the live stand:
+# an inline /api/run with this flag returns `axesFormatting.yAxis[0].chartKitFormat=="percent"`
+# while the un-flagged baseline returns an empty axesFormatting (2026-07-06).
+_AXIS_FORMAT_BY_FIELD = {"axisFormatMode": "by-field"}
 
 # IR Viz -> DataLens visualization.id (reversal §5.2). bar/stacked_bar -> "column"
 # (vertical bars, mirrors Superset echarts_timeseries_bar). heatmap has no cartesian
@@ -163,12 +188,23 @@ def build_chart_shared(
     fields_by_alias: dict[str, dict],
     *,
     horizontal: bool = False,
+    kpi_unit: str | None = None,
+    axis_unit: str | None = None,
 ) -> dict:
     """IR chart -> DataLens `shared` config. `fields_by_alias` maps a bare alias to its
     dataset result_schema descriptor (guid/avatar_id/data_type/type/aggregation/cast).
 
     `horizontal` swaps a categorical bar's viz id "column" -> "bar" (DataLens horizontal
-    bar); the adapter computes it from the model (agent.normalize.is_horizontal_bar)."""
+    bar); the adapter computes it from the model (agent.normalize.is_horizontal_bar).
+
+    `kpi_unit` (big_number only) is the RU magnitude unit line ("млрд ₽") for a headline the
+    adapter has already scaled in the dataset subselect (N2): the metric formatting becomes
+    round-figure + the unit as a postfix ("236 млрд ₽" instead of the SI "236B"). None =>
+    the compact/percent formatting as before.
+
+    `axis_unit` (line/bar/area) is the same unit line for a scaled VALUE axis: it becomes a
+    manual axis title ("млрд ₽") on the values placeholder, so the scaled ticks read "15"
+    against the titled axis instead of "15B" (mirrors Superset's y_axis_title)."""
     q = chart.query
     viz_id = VIZ_ID[chart.viz]
     if horizontal and chart.viz in (Viz.BAR, Viz.STACKED_BAR):
@@ -220,11 +256,20 @@ def build_chart_shared(
     sort: list[dict] = []
     labels: list[dict] = []
 
+    extra_settings = dict(_EXTRA_SETTINGS)
     if chart.viz == Viz.BIG_NUMBER:
         # the tile header already names the KPI (the widget title is chart.title), so blank the
         # metric field caption — the card shows one human label + the value, not the raw alias
         # "sum_revenue" beneath it (dashboard-craft §3: a KPI card is label / value, no noise).
-        placeholders = [{"id": "measures", "items": [item(measure_alias(q.measures[0]), title="")]}]
+        kpi_item = item(measure_alias(q.measures[0]), title="")
+        if kpi_unit:
+            # N2: the adapter scaled the measure in the dataset SQL; show "236 млрд ₽"
+            kpi_item["formatting"] = _ru_kpi_formatting(kpi_unit)
+        placeholders = [{"id": "measures", "items": [kpi_item]}]
+        # the default metric font ('' == "m") CLIPS a figure with a RU unit line at the
+        # standard 6-col KPI tile ("236 млрд ₽" lost its currency; live-verified 2026-07-06);
+        # "s" fits with room to spare and is set uniformly so the KPI row reads as one size.
+        extra_settings["metricFontSize"] = "s"
     elif chart.viz in (Viz.LINE, Viz.AREA, Viz.BAR, Viz.STACKED_BAR, Viz.HISTOGRAM):
         # series + any extra dimensions become the color breakdown (deduped, order kept)
         breakdown: dict[str, None] = {}
@@ -236,9 +281,27 @@ def build_chart_shared(
         # line/area keep a continuous axis (time / number) — they read along it.
         discrete = chart.viz in (Viz.BAR, Viz.STACKED_BAR, Viz.HISTOGRAM)
         colors = dims(list(breakdown), discrete=discrete)
+        # Placeholder ids per orientation. The engine's DATA preparers are positional
+        # (placeholders[0] = category, placeholders[1] = values), but the AXIS paths are
+        # id-based, and the horizontal "bar" (bar-y preparer) swaps them: the value axis
+        # reads placeholder id "x", the category axis id "y" ("for some reason, the vertical
+        # axis for the horizontal bar is considered the X axis" — datalens-ui 0.3831.0
+        # preparers/bar-y/highcharts.js). So a horizontal bar must carry the wizard's ids
+        # (dimension -> "y", measures -> "x") in the same positional order, or axis
+        # formatting (C1 percent) would land on the category axis and be dropped.
+        dim_ph_id, values_ph_id = ("y", "x") if viz_id == "bar" else ("x", "y")
+        values_placeholder: dict = {"id": values_ph_id, "items": measures()}
+        if q.measures and measure_alias(q.measures[0]) in percent_aliases:
+            # C1: the value axis reads the primary measure's percent `formatting` only with
+            # this flag (the engine takes placeholder.items[0], so the primary measure decides).
+            values_placeholder["settings"] = dict(_AXIS_FORMAT_BY_FIELD)
+        elif axis_unit:
+            # N2: the adapter scaled the measures in the dataset SQL; name the unit on the
+            # value axis ("млрд ₽") so the scaled ticks read "15", not the SI "15B".
+            values_placeholder["settings"] = {"title": "manual", "titleValue": axis_unit}
         placeholders = [
-            {"id": "x", "items": dims(q.dimensions[:1], discrete=discrete)},
-            {"id": "y", "items": measures()},
+            {"id": dim_ph_id, "items": dims(q.dimensions[:1], discrete=discrete)},
+            values_placeholder,
         ]
         # a categorical bar ranks by its measure: DataLens orders a *string* categorical axis
         # alphabetically unless a `sort` field is set, so the biggest bar would not come first
@@ -284,7 +347,7 @@ def build_chart_shared(
         "colorsConfig": dict(_COLORS_CONFIG),
         "datasetsIds": [dataset_id],
         "datasetsPartialFields": [partial],
-        "extraSettings": dict(_EXTRA_SETTINGS),
+        "extraSettings": extra_settings,
         "filters": [],
         "geopointsConfig": {},
         "hierarchies": [],
