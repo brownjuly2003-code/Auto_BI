@@ -4,8 +4,64 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-06
+
+Первый версионированный релиз. До него проект жил без тегов/CHANGELOG/GHCR-публикации
+(`version = "0.1.0"` с основания репозитория) — этот релиз фиксирует накопленный функционал
+Phase 0–4 и последующего hardening-трека и вводит сам процесс релизов.
+
 ### Added
 
+- **Сборка дашборда из естественного языка** (текст → уточнения по расхождениям с
+  DM → `DashboardSpec` (IR) → сборка) поверх ClickHouse/Greenplum, с engine-aware
+  **Feasibility Advisor** (детерминированные вердикты `ok`/`spec_adjustment`/`dm_change_request`).
+- **Fields-first режим** (drag&drop полей витрины) и **auto-overview** (курируемый
+  дашборд по одной витрине без LLM) — второй и третий вход в тот же пайплайн.
+- Аналитическое ядро IR: ratio-меры, произвольный `time_grain`, `yoy`/`pop`/лаг-N,
+  `running_share` (Pareto/ABC), `histogram`.
+- Два движка DWH (ClickHouse, Greenplum/Greengage) и два BI-адаптера (Apache Superset,
+  Yandex DataLens self-hosted) за одним BI-агностичным IR.
+- Web UI: чат, превью спецификации, вердикты advisor'а, режим итераций (патч-правки
+  словами), заявки владельцу DM (`dm_change_request`), панель наблюдаемости (токены/
+  латентность по шагам агента), панель «Что видно» (детерминированные инсайты без LLM).
+- Прямой Anthropic Messages API как дефолтный LLM-провайдер (`ANTHROPIC_API_KEY`);
+  GraceKelly — документированная опция.
+- Auth/RBAC по схемам DWH (opt-in), с security-hardening: secure-cookie, rate-limit на
+  login с растущим бэкоффом, токены хранятся как sha256-хэш, периодический purge.
+- Ops-hardening: `GET /api/v1/ready` (store + DWH + BI healthcheck), структурные логи
+  (`--log-format json`), устойчивая запись оборванных билдов после рестарта процесса.
+- CI: офлайн-сьют (ruff/black/mypy/pytest/advisor-eval) + отдельный `integration`-job,
+  поднимающий живой ClickHouse+Superset стенд в GitHub Actions на каждый push/PR.
+- `docs/DEPLOYMENT.md` — гайд по продакшен-развёртыванию (reverse-proxy/TLS, бэкап
+  SQLite, ротация логов, чеклист секретов).
+- Релизный конвейер (этот релиз): `docker build` на каждый PR (job `docker` в
+  `ci.yml`), публикация образа в GHCR по тегу `vX.Y.Z` (`.github/workflows/release.yml`),
+  `auto_bi --version`, поле `version` в `/api/v1/health`, coverage-бейдж, генерируемый CI.
+- **Аналитическое ядро в text-first** (S01): ratio/`time_grain`/`yoy`/`pop`/лаг-N/
+  `running_share` (Парето)/`histogram` теперь запрашиваются и подтверждаются словами, а не
+  только через fields-first spec — `SPEC_RULES` документирует каждый примитив few-shot
+  JSON-примерами дословно согласованными с `ir/validate.py`; grounding распознаёт
+  производные ratio-меры (обе составляющие есть в модели → matched) и держит аналитические
+  обороты («год к году», «Парето», «нарастающим итогом», «распределение») как форму подачи,
+  не отдельные сущности. Golden-eval расширен 16 новыми кейсами на сами примитивы
+  (`g13`–`g23` + `it4` на CH, `gp_g9`–`gp_g12` на GP).
+- **Скалярный period-compare KPI** (`Measure.compare`): плитка `big_number`, значение
+  которой = одно число — последний период vs год/период назад (`yoy`/`pop`), как процент
+  или абсолютная дельта. Считается условной агрегацией по двум бакетам (без окна) → форма
+  скаляра сохраняется; авто-обзор при ≥2 годах истории добавляет плитку «‹мера›, г/г»
+  рядом с уровнем главной меры. CH live-verified.
+- `auto_bi eval --llm-mode {live,replay,record}` — record/replay-фикстуры для вызовов LLM
+  в golden-сьюте (`auto_bi/llm/fixture.py`): сьют можно перегонять офлайн по ранее записанным
+  ответам вместо живого провайдера. Фикстуры записаны для всего текущего сьюта (37 CH + 16 GP
+  кейсов, 53 файла в `tests/fixtures/golden_llm/`) и подключены как офлайн шаг CI
+  (`quality`-job, сразу после advisor-сьюта) — golden-регрессии ловятся на каждый push/PR без
+  сети и секретов.
+- **Per-IP/per-day лимит на LLM-сессии** (`POST /api/v1/sessions` и `/sessions/{id}/reply`):
+  защита LLM-бюджета от неконтролируемого расхода перед публичным демо, тот же
+  sliding-window+lockout механизм, что и `LoginRateLimiter`, конфигурируемый
+  (`AUTO_BI_SESSION_RATE_ENABLED`/`AUTO_BI_SESSION_RATE_PER_DAY`, выключено по умолчанию —
+  без изменений в локальном/dev-поведении) — 429 + `Retry-After`. `POST /sessions/auto`
+  (детерминированный auto-overview, без LLM) не гейтуется.
 - **Преднастроенный период дашборда (Superset, B5)**: `DashboardFilter.default`
   теперь наполняет `defaultDataMask` — дашборд открывается уже суженным на период
   («Last quarter») или значение фильтра, а не с пустым выбором.
@@ -42,52 +98,6 @@
 - **Ровный правый край раскладки** (auto-overview): чарт, оставшийся один в последнем ряду
   (после отсечения детальной таблицы по `max_charts`), растягивается на всю ширину — нет
   «рваного» полупустого ряда.
-
-### Added
-
-- **Скалярный period-compare KPI** (`Measure.compare`): плитка `big_number`, значение
-  которой = одно число — последний период vs год/период назад (`yoy`/`pop`), как процент
-  или абсолютная дельта. Считается условной агрегацией по двум бакетам (без окна) → форма
-  скаляра сохраняется; авто-обзор при ≥2 годах истории добавляет плитку «‹мера›, г/г»
-  рядом с уровнем главной меры. CH live-verified.
-- `auto_bi eval --llm-mode {live,replay,record}` — record/replay-фикстуры для
-  вызовов LLM в golden-сьюте (`auto_bi/llm/fixture.py`): сьют можно перегонять
-  офлайн по ранее записанным ответам вместо живого провайдера. Механизм для
-  golden-eval в CI (T-2); сам CI-шаг пока не подключён (фикстуры не записаны).
-
-## [0.2.0] - 2026-07-04
-
-Первый версионированный релиз. До него проект жил без тегов/CHANGELOG/GHCR-публикации
-(`version = "0.1.0"` с основания репозитория) — этот релиз фиксирует накопленный функционал
-Phase 0–4 и последующего hardening-трека и вводит сам процесс релизов.
-
-### Added
-
-- **Сборка дашборда из естественного языка** (текст → уточнения по расхождениям с
-  DM → `DashboardSpec` (IR) → сборка) поверх ClickHouse/Greenplum, с engine-aware
-  **Feasibility Advisor** (детерминированные вердикты `ok`/`spec_adjustment`/`dm_change_request`).
-- **Fields-first режим** (drag&drop полей витрины) и **auto-overview** (курируемый
-  дашборд по одной витрине без LLM) — второй и третий вход в тот же пайплайн.
-- Аналитическое ядро IR: ratio-меры, произвольный `time_grain`, `yoy`/`pop`/лаг-N,
-  `running_share` (Pareto/ABC), `histogram`.
-- Два движка DWH (ClickHouse, Greenplum/Greengage) и два BI-адаптера (Apache Superset,
-  Yandex DataLens self-hosted) за одним BI-агностичным IR.
-- Web UI: чат, превью спецификации, вердикты advisor'а, режим итераций (патч-правки
-  словами), заявки владельцу DM (`dm_change_request`), панель наблюдаемости (токены/
-  латентность по шагам агента), панель «Что видно» (детерминированные инсайты без LLM).
-- Прямой Anthropic Messages API как дефолтный LLM-провайдер (`ANTHROPIC_API_KEY`);
-  GraceKelly — документированная опция.
-- Auth/RBAC по схемам DWH (opt-in), с security-hardening: secure-cookie, rate-limit на
-  login с растущим бэкоффом, токены хранятся как sha256-хэш, периодический purge.
-- Ops-hardening: `GET /api/v1/ready` (store + DWH + BI healthcheck), структурные логи
-  (`--log-format json`), устойчивая запись оборванных билдов после рестарта процесса.
-- CI: офлайн-сьют (ruff/black/mypy/pytest/advisor-eval) + отдельный `integration`-job,
-  поднимающий живой ClickHouse+Superset стенд в GitHub Actions на каждый push/PR.
-- `docs/DEPLOYMENT.md` — гайд по продакшен-развёртыванию (reverse-proxy/TLS, бэкап
-  SQLite, ротация логов, чеклист секретов).
-- Релизный конвейер (этот релиз): `docker build` на каждый PR (job `docker` в
-  `ci.yml`), публикация образа в GHCR по тегу `vX.Y.Z` (`.github/workflows/release.yml`),
-  `auto_bi --version`, поле `version` в `/api/v1/health`, coverage-бейдж, генерируемый CI.
 
 [Unreleased]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/brownjuly2003-code/Auto_BI/releases/tag/v0.2.0
