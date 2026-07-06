@@ -163,6 +163,20 @@ chart-field, не на placeholder) → реплицировать в `build_cha
 DataLens charts-engine на чтение dataset-field `ui_settings` (вне нашего кода). До этого DataLens
 percent = known-limitation (числа верны; Superset % работает).
 
+## 6.4 РЕШЕНО (2026-07-06, P4/C1): ось читает formatting только при `axisFormatMode="by-field"`
+
+Ключ был всё это время ПРАВИЛЬНЫЙ (placeholder-item `formatting: {format: "percent"}` из §6.2) —
+не хватало **флага на плейсхолдере**. Реверс серверного кода datalens-ui 0.3831.0
+(`preparers/helpers/axis/get-axis-formatting.js`): axis formatting наполняется ТОЛЬКО когда
+`placeholder.settings.axisFormatMode` = `"by-field"` (читает `items[0].formatting`) или
+`"manual"`; дефолт (нет settings) → `null` → ось остаётся сырой 0..1. Плюс для горизонтального
+bar (bar-y) плейсхолдеры должны нести wizard-конвенцию id: dimension→`y`, measures→`x` при том же
+позиционном порядке (data-препаратор позиционный, axis-путь id-based и «перевёрнут»), иначе
+формат ищется на категорийной оси. Реализация: `chart_config._AXIS_FORMAT_BY_FIELD` + swap id
+для `viz_id=="bar"`; live-верифицировано скриншотом («Доля: Формат» — ось 0,0%/20,0%/40,0%) и
+контракт-тестом `test_percent_axis_formats_by_field` (axesFormatting.yAxis.chartKitFormat ==
+"percent" в `/api/run`). «Стена» §6.3 снята; dataset-`ui_settings`-путь так и не нужен.
+
 ## 7. Дальше (по фазам, не в этой сессии)
 
 - `yoy`/`mom` (lag по календарю на N периодов, не lag(1)) — нужен period-matching по дате; отдельный
