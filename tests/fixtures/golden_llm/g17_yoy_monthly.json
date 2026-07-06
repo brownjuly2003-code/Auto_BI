@@ -1,0 +1,211 @@
+{
+  "case_id": "g17_yoy_monthly",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily"
+        ],
+        "matched": [
+          {
+            "phrase": "выручка",
+            "candidates": [
+              "dm.sales_daily.revenue"
+            ],
+            "note": "мера выручки"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Динамика выручки год к году по месяцам",
+        "target_bi": "superset",
+        "filters": [
+          {
+            "column": "dm.sales_daily.date",
+            "type": "time_range",
+            "default": "last_24_months"
+          }
+        ],
+        "charts": [
+          {
+            "id": "kpi_yoy_latest",
+            "title": "Выручка: г/г за последний месяц",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка г/г",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": {
+                    "column": "date",
+                    "grain": "month",
+                    "kind": "yoy",
+                    "output": "pct"
+                  }
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "revenue_yoy_monthly",
+            "title": "Выручка г/г по месяцам",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка г/г",
+                  "transform": "yoy_pct",
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": "month",
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "revenue_by_region",
+            "title": "Выручка по регионам",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "dm.stores.region"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales_daily.store_id",
+                  "on_right": "dm.stores.id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 4
+            }
+          },
+          {
+            "id": "revenue_by_category",
+            "title": "Выручка по категориям",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "dm.products.category"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [
+                {
+                  "table": "dm.products",
+                  "on_left": "dm.sales_daily.product_id",
+                  "on_right": "dm.products.id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 4
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

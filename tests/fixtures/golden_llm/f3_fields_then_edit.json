@@ -1,0 +1,501 @@
+{
+  "case_id": "f3_fields_then_edit",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily"
+        ],
+        "matched": [
+          {
+            "phrase": "date",
+            "candidates": [
+              "dm.sales_daily.date"
+            ],
+            "note": "Временная колонка для анализа динамики"
+          },
+          {
+            "phrase": "revenue",
+            "candidates": [
+              "dm.sales_daily.revenue"
+            ],
+            "note": "Метрика выручки (sum)"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Выручка за июнь 2026",
+        "target_bi": "superset",
+        "filters": [
+          {
+            "column": "dm.sales_daily.date",
+            "type": "time_range",
+            "default": "2026-06-01/2026-06-30"
+          }
+        ],
+        "charts": [
+          {
+            "id": "chart_1",
+            "title": "Выручка по дням",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "chart_2",
+            "title": "Выручка за месяц",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "chart_3",
+            "title": "Накопительная выручка",
+            "viz": "area",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Накопительная выручка, руб",
+                  "transform": "running_total",
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 4
+            }
+          },
+          {
+            "id": "chart_4",
+            "title": "Средний чек по дням",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Средний чек, руб",
+                  "transform": null,
+                  "denominator": {
+                    "column": "orders",
+                    "agg": "sum",
+                    "label": "",
+                    "transform": null,
+                    "denominator": null,
+                    "lag_periods": null,
+                    "compare": null
+                  },
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 4,
+              "row": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": "patch_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Выручка за июнь 2026",
+        "target_bi": "superset",
+        "filters": [
+          {
+            "column": "dm.sales_daily.date",
+            "type": "time_range",
+            "default": "2026-06-01/2026-06-30"
+          }
+        ],
+        "charts": [
+          {
+            "id": "chart_1",
+            "title": "Выручка по дням",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "chart_2",
+            "title": "Выручка за месяц",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "chart_3",
+            "title": "Накопительная выручка",
+            "viz": "area",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Накопительная выручка, руб",
+                  "transform": "running_total",
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 4
+            }
+          },
+          {
+            "id": "chart_4",
+            "title": "Средний чек по дням",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Средний чек, руб",
+                  "transform": null,
+                  "denominator": {
+                    "column": "orders",
+                    "agg": "sum",
+                    "label": "",
+                    "transform": null,
+                    "denominator": null,
+                    "lag_periods": null,
+                    "compare": null
+                  },
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 4,
+              "row": 4
+            }
+          },
+          {
+            "id": "chart_5",
+            "title": "Число заказов по дням",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "orders",
+                  "agg": "sum",
+                  "label": "Число заказов",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 8
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,212 @@
+{
+  "case_id": "g19_lag3_pct",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily"
+        ],
+        "matched": [
+          {
+            "phrase": "Выручка",
+            "candidates": [
+              "dm.sales_daily.revenue"
+            ],
+            "note": "Сумма выручки"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Выручка по месяцам и сравнение с уровнем 3 месяца назад",
+        "target_bi": "superset",
+        "filters": [
+          {
+            "column": "dm.sales_daily.date",
+            "type": "time_range",
+            "default": "last 12 months"
+          }
+        ],
+        "charts": [
+          {
+            "id": "kpi_revenue_vs_3m",
+            "title": "Выручка vs 3 месяца назад",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Изменение выручки, %",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": {
+                    "column": "date",
+                    "grain": "month",
+                    "kind": "pop",
+                    "output": "pct"
+                  }
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "line_monthly_pop_3m",
+            "title": "Динамика к уровню 3 месяца назад",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, % к 3 месяцам назад",
+                  "transform": "pop_pct",
+                  "denominator": null,
+                  "lag_periods": 3,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": "month",
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "bar_city_latest_month",
+            "title": "Города по выручке за последний месяц",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "dm.stores.city"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales_daily.store_id",
+                  "on_right": "dm.stores.id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 4
+            }
+          },
+          {
+            "id": "table_format_monthly",
+            "title": "Форматы магазинов по месяцам",
+            "viz": "table",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date",
+                "dm.stores.format"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales_daily.store_id",
+                  "on_right": "dm.stores.id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 24,
+              "time_grain": "month",
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 4
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

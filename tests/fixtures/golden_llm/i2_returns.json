@@ -1,0 +1,19 @@
+{
+  "case_id": "i2_returns",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily"
+        ],
+        "matched": [],
+        "ambiguous": [],
+        "unmatched": [
+          "возвратов"
+        ]
+      }
+    }
+  ]
+}

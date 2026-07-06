@@ -1,0 +1,206 @@
+{
+  "case_id": "gp_g8_store_format_share",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.stores"
+        ],
+        "matched": [
+          {
+            "phrase": "магазинов",
+            "candidates": [
+              "dm.stores.store_id"
+            ],
+            "note": "подсчёт количества магазинов"
+          },
+          {
+            "phrase": "формату",
+            "candidates": [
+              "dm.stores.format"
+            ],
+            "note": ""
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Доля магазинов по формату",
+        "target_bi": "superset",
+        "filters": [],
+        "charts": [
+          {
+            "id": "stores_total",
+            "title": "Всего магазинов",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.stores",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "store_id",
+                  "agg": "count_distinct",
+                  "label": "Магазинов",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "format_share_pie",
+            "title": "Доля магазинов по формату",
+            "viz": "pie",
+            "query": {
+              "table": "dm.stores",
+              "dimensions": [
+                "format"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "store_id",
+                  "agg": "count_distinct",
+                  "label": "Магазинов",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "Магазинов",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "format_share_bar",
+            "title": "Форматы магазинов",
+            "viz": "bar",
+            "query": {
+              "table": "dm.stores",
+              "dimensions": [
+                "format"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "store_id",
+                  "agg": "count_distinct",
+                  "label": "Магазинов",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                },
+                {
+                  "column": "store_id",
+                  "agg": "count_distinct",
+                  "label": "Доля магазинов",
+                  "transform": "share_of_total",
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "Магазинов",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 2
+            }
+          },
+          {
+            "id": "format_region_pivot",
+            "title": "Формат по регионам",
+            "viz": "pivot",
+            "query": {
+              "table": "dm.stores",
+              "dimensions": [],
+              "series": [],
+              "rows": [
+                "format"
+              ],
+              "columns": [
+                "region"
+              ],
+              "measures": [
+                {
+                  "column": "store_id",
+                  "agg": "count_distinct",
+                  "label": "Магазинов",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 2
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

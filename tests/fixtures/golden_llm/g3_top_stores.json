@@ -1,0 +1,297 @@
+{
+  "case_id": "g3_top_stores",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily",
+          "dm.stores"
+        ],
+        "matched": [
+          {
+            "phrase": "выручке",
+            "candidates": [
+              "dm.sales_daily.revenue"
+            ],
+            "note": "Мера выручки"
+          },
+          {
+            "phrase": "магазинов",
+            "candidates": [
+              "dm.stores.id"
+            ],
+            "note": "Агрегация по магазинам через связь sales_daily.store_id -> stores.id"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Топ-10 магазинов по выручке за июнь 2026",
+        "target_bi": "superset",
+        "filters": [
+          {
+            "column": "dm.sales_daily.date",
+            "type": "time_range",
+            "default": "2026-06-01:2026-06-30"
+          }
+        ],
+        "charts": [
+          {
+            "id": "kpi_total_revenue_top10",
+            "title": "Выручка топ-10 магазинов",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "bar_top10_stores_revenue",
+            "title": "Топ-10 магазинов по выручке",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "dm.stores.name"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales_daily.store_id",
+                  "on_right": "dm.stores.id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "table_top10_stores_details",
+            "title": "Топ-10 магазинов: выручка и показатели",
+            "viz": "table",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "dm.stores.name",
+                "dm.stores.city",
+                "dm.stores.format"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                },
+                {
+                  "column": "orders",
+                  "agg": "sum",
+                  "label": "Заказы",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                },
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Средний чек",
+                  "transform": null,
+                  "denominator": {
+                    "column": "orders",
+                    "agg": "sum",
+                    "label": "",
+                    "transform": null,
+                    "denominator": null,
+                    "lag_periods": null,
+                    "compare": null
+                  },
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales_daily.store_id",
+                  "on_right": "dm.stores.id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 1
+            }
+          },
+          {
+            "id": "bar_top10_store_share",
+            "title": "Доля магазинов в выручке топ-10",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "dm.stores.name"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Доля выручки",
+                  "transform": "share_of_total",
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales_daily.store_id",
+                  "on_right": "dm.stores.id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

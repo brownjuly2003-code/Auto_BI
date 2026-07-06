@@ -1,0 +1,17 @@
+{
+  "case_id": "i4_weather",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [],
+        "matched": [],
+        "ambiguous": [],
+        "unmatched": [
+          "Прогноз погоды по дням за июнь 2026"
+        ]
+      }
+    }
+  ]
+}

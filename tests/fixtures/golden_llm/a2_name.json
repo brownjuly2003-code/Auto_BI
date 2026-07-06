@@ -1,0 +1,36 @@
+{
+  "case_id": "a2_name",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily",
+          "dm.products",
+          "dm.stores"
+        ],
+        "matched": [
+          {
+            "phrase": "Выручка",
+            "candidates": [
+              "dm.sales_daily.revenue"
+            ],
+            "note": "Мера выручки"
+          }
+        ],
+        "ambiguous": [
+          {
+            "phrase": "по названию",
+            "candidates": [
+              "dm.products.name",
+              "dm.stores.name"
+            ],
+            "note": "Название может относиться к товарам или магазинам"
+          }
+        ],
+        "unmatched": []
+      }
+    }
+  ]
+}

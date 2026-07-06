@@ -1,0 +1,209 @@
+{
+  "case_id": "g9_city_share",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.stores"
+        ],
+        "matched": [
+          {
+            "phrase": "городов",
+            "candidates": [
+              "dm.stores.city"
+            ],
+            "note": ""
+          },
+          {
+            "phrase": "числу магазинов",
+            "candidates": [
+              "dm.stores.id"
+            ],
+            "note": "подсчет количества магазинов (count по id)"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Доли городов по числу магазинов",
+        "target_bi": "superset",
+        "filters": [],
+        "charts": [
+          {
+            "id": "kpi_total_stores",
+            "title": "Всего магазинов",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.stores",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "id",
+                  "agg": "count",
+                  "label": "Число магазинов",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "pie_city_share",
+            "title": "Доли городов",
+            "viz": "pie",
+            "query": {
+              "table": "dm.stores",
+              "dimensions": [
+                "city"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "id",
+                  "agg": "count",
+                  "label": "Число магазинов",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "Число магазинов",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "bar_city_stores",
+            "title": "Города по числу магазинов",
+            "viz": "bar",
+            "query": {
+              "table": "dm.stores",
+              "dimensions": [
+                "city"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "id",
+                  "agg": "count",
+                  "label": "Число магазинов",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "Число магазинов",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 2
+            }
+          },
+          {
+            "id": "table_city_share",
+            "title": "Города: число магазинов и доля",
+            "viz": "table",
+            "query": {
+              "table": "dm.stores",
+              "dimensions": [
+                "city"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "id",
+                  "agg": "count",
+                  "label": "Число магазинов",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                },
+                {
+                  "column": "id",
+                  "agg": "count",
+                  "label": "Доля магазинов",
+                  "transform": "share_of_total",
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "Число магазинов",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 2
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "case_id": "i1_salaries",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily",
+          "dm.stores",
+          "dm.products"
+        ],
+        "matched": [
+          {
+            "phrase": "по месяцам",
+            "candidates": [
+              "dm.sales_daily.date"
+            ],
+            "note": "агрегация по календарным месяцам по time-колонке date"
+          },
+          {
+            "phrase": "за 2026 год",
+            "candidates": [
+              "dm.sales_daily.date"
+            ],
+            "note": "фильтр по периоду на time-колонке date"
+          }
+        ],
+        "ambiguous": [
+          {
+            "phrase": "Зарплата сотрудников",
+            "candidates": [
+              "dm.sales_daily.revenue",
+              "dm.sales_daily.orders",
+              "dm.sales_daily.items",
+              "dm.sales_daily.manager_id",
+              "dm.stores.name",
+              "dm.products.name"
+            ],
+            "note": "в модели нет явной колонки зарплаты; 'зарплата' не соответствует ни одной measure в модели — нельзя однозначно сопоставить. Возможные приближения: использовать manager_id для группировки по сотрудникам, но сама метрика отсутствует."
+          }
+        ],
+        "unmatched": [
+          "Зарплата"
+        ]
+      }
+    }
+  ]
+}

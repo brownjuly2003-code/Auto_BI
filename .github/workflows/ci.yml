@@ -61,6 +61,20 @@ jobs:
       - name: Eval — advisor suite (offline)
         run: uv run auto_bi eval --suite advisor --model-path semantic/model.yaml
 
+      # T-2 (S11): golden dialogue suite replayed from recorded fixtures — pure
+      # offline replay (llm/fixture.py::FixtureLLMClient), no provider/key needed, so
+      # it stays in the secret-free `quality` job. Catches regressions in everything
+      # around the LLM call (spec validation, SQL generation, advisor, adapters) on
+      # every PR; it does NOT catch live prompt/model drift (docs/ARCHITECTURE.md
+      # §3.14) — that still needs an occasional live run against a real provider.
+      # Case ids don't collide between the CH (g*/it*/f*/a*/i*) and GP (gp_*) sets,
+      # so both engines' fixtures share one directory.
+      - name: Eval — golden suite replay (offline, ClickHouse fixtures)
+        run: uv run auto_bi eval --suite golden --llm-mode replay --fixtures-dir tests/fixtures/golden_llm --model-path semantic/model.yaml
+
+      - name: Eval — golden suite replay (offline, Greenplum fixtures)
+        run: uv run auto_bi eval --suite golden --llm-mode replay --fixtures-dir tests/fixtures/golden_llm --model-path semantic/model_gp.yaml
+
       # T-3 (S10): the README badge used to be a hand-edited static number that drifted
       # from the real coverage (D-3). `coverage report --format=total` reads the same
       # .coverage data the pytest step above just wrote, so the badge always reflects

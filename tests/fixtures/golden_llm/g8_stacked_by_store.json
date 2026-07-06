@@ -1,0 +1,328 @@
+{
+  "case_id": "g8_stacked_by_store",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily",
+          "dm.stores"
+        ],
+        "matched": [
+          {
+            "phrase": "выручка",
+            "candidates": [
+              "dm.sales_daily.revenue"
+            ],
+            "note": "measure"
+          },
+          {
+            "phrase": "по дням",
+            "candidates": [
+              "dm.sales_daily.date"
+            ],
+            "note": "time grain / daily trend"
+          },
+          {
+            "phrase": "магазинам 1, 2, 3",
+            "candidates": [
+              "dm.sales_daily.store_id"
+            ],
+            "note": "фильтр по магазинам"
+          },
+          {
+            "phrase": "июнь 2026",
+            "candidates": [
+              "dm.sales_daily.date"
+            ],
+            "note": "period filter on time column"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Динамика выручки по магазинам 1, 2, 3 — июнь 2026",
+        "target_bi": "superset",
+        "filters": [
+          {
+            "column": "dm.sales_daily.date",
+            "type": "time_range",
+            "default": "2026-06-01 to 2026-06-30"
+          }
+        ],
+        "charts": [
+          {
+            "id": "chart_1",
+            "title": "Выручка по дням, магазины 1–3",
+            "viz": "stacked_bar",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [
+                "store_id"
+              ],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                },
+                {
+                  "column": "store_id",
+                  "op": "in",
+                  "value": [
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 12,
+              "h": 5,
+              "row": 0
+            }
+          },
+          {
+            "id": "chart_2",
+            "title": "Накопительная выручка по дням",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "date"
+              ],
+              "series": [
+                "store_id"
+              ],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Накопительная выручка, руб",
+                  "transform": "running_total",
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                },
+                {
+                  "column": "store_id",
+                  "op": "in",
+                  "value": [
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 5
+            }
+          },
+          {
+            "id": "chart_3",
+            "title": "Доля магазинов в выручке за июнь",
+            "viz": "pie",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "store_id"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                },
+                {
+                  "column": "store_id",
+                  "op": "in",
+                  "value": [
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              ],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 5
+            }
+          },
+          {
+            "id": "chart_4",
+            "title": "Итоги по магазинам за июнь",
+            "viz": "table",
+            "query": {
+              "table": "dm.sales_daily",
+              "dimensions": [
+                "store_id"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                },
+                {
+                  "column": "orders",
+                  "agg": "sum",
+                  "label": "Заказы",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                },
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Средний чек",
+                  "transform": null,
+                  "denominator": {
+                    "column": "orders",
+                    "agg": "sum",
+                    "label": "",
+                    "transform": null,
+                    "denominator": null,
+                    "lag_periods": null,
+                    "compare": null
+                  },
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                },
+                {
+                  "column": "store_id",
+                  "op": "in",
+                  "value": [
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              ],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 12,
+              "h": 4,
+              "row": 9
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

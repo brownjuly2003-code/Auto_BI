@@ -1,0 +1,250 @@
+{
+  "case_id": "gp_g5_orders_by_day",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales"
+        ],
+        "matched": [
+          {
+            "phrase": "Число заказов",
+            "candidates": [
+              "dm.sales.orders"
+            ],
+            "note": "orders"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Число заказов по дням за июнь 2026",
+        "target_bi": "superset",
+        "filters": [
+          {
+            "column": "dm.sales.date",
+            "type": "time_range",
+            "default": "2026-06-01 : 2026-06-30"
+          }
+        ],
+        "charts": [
+          {
+            "id": "kpi_orders_total",
+            "title": "Заказы за июнь",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "orders",
+                  "agg": "sum",
+                  "label": "Заказы",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "line_orders_by_day",
+            "title": "Заказы по дням",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "orders",
+                  "agg": "sum",
+                  "label": "Заказы",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "bar_orders_by_city",
+            "title": "Заказы по городам",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [
+                "dm.stores.city"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "orders",
+                  "agg": "sum",
+                  "label": "Заказы",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales.store_id",
+                  "on_right": "dm.stores.store_id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "orders",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 1
+            }
+          },
+          {
+            "id": "bar_orders_by_format",
+            "title": "Заказы по форматам магазинов",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [
+                "dm.stores.format"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "orders",
+                  "agg": "sum",
+                  "label": "Заказы",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales.store_id",
+                  "on_right": "dm.stores.store_id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "orders",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

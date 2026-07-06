@@ -1,0 +1,253 @@
+{
+  "case_id": "gp_g1_revenue_by_day",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales"
+        ],
+        "matched": [
+          {
+            "phrase": "Выручка",
+            "candidates": [
+              "dm.sales.revenue"
+            ],
+            "note": "measure sum"
+          },
+          {
+            "phrase": "по дням",
+            "candidates": [
+              "dm.sales.date"
+            ],
+            "note": "time grouping"
+          },
+          {
+            "phrase": "за июнь 2026",
+            "candidates": [
+              "dm.sales.date"
+            ],
+            "note": "time filter"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Выручка по дням за июнь 2026",
+        "target_bi": "superset",
+        "filters": [
+          {
+            "column": "dm.sales.date",
+            "type": "time_range",
+            "default": "2026-06-01:2026-06-30"
+          }
+        ],
+        "charts": [
+          {
+            "id": "kpi_total_revenue",
+            "title": "Выручка за июнь",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "line_daily_revenue",
+            "title": "Выручка по дням",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "area_running_revenue",
+            "title": "Накопительная выручка",
+            "viz": "area",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Накопительная выручка, руб",
+                  "transform": "running_total",
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 2
+            }
+          },
+          {
+            "id": "bar_top_cities",
+            "title": "Топ-10 городов по выручке",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [
+                "dm.stores.city"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "revenue",
+                  "agg": "sum",
+                  "label": "Выручка, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales.store_id",
+                  "on_right": "dm.stores.store_id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "revenue",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 2
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "case_id": "gp_i3_weather",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.products",
+          "dm.sales",
+          "dm.stores"
+        ],
+        "matched": [
+          {
+            "phrase": "по дням",
+            "candidates": [
+              "dm.sales.date"
+            ],
+            "note": "time-granularity filter applies to time column 'date' in dm.sales"
+          }
+        ],
+        "ambiguous": [
+          {
+            "phrase": "прогноз погоды",
+            "candidates": [
+              "dm.sales.revenue",
+              "dm.sales.qty",
+              "dm.sales.orders",
+              "dm.products.product_id",
+              "dm.products.name",
+              "dm.products.category",
+              "dm.stores.store_id",
+              "dm.stores.city",
+              "dm.stores.region",
+              "dm.stores.format"
+            ],
+            "note": "No weather-related fields in the model; request does not map to any measure or dimension unambiguously"
+          }
+        ],
+        "unmatched": [
+          "прогноз погоды",
+          "июнь 2026"
+        ]
+      }
+    }
+  ]
+}

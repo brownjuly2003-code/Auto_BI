@@ -1,0 +1,258 @@
+{
+  "case_id": "gp_g7_qty_by_day",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales",
+          "dm.products"
+        ],
+        "matched": [
+          {
+            "phrase": "количество товаров (qty)",
+            "candidates": [
+              "dm.sales.qty"
+            ],
+            "note": "явно указана мера qty"
+          },
+          {
+            "phrase": "за июнь 2026",
+            "candidates": [
+              "dm.sales.date"
+            ],
+            "note": "фильтр по времени"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Динамика количества товаров по дням за июнь 2026",
+        "target_bi": "superset",
+        "filters": [
+          {
+            "column": "dm.sales.date",
+            "type": "time_range",
+            "default": "2026-06-01 : 2026-06-30"
+          }
+        ],
+        "charts": [
+          {
+            "id": "kpi_qty_total_june",
+            "title": "Количество товаров за июнь",
+            "viz": "big_number",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "qty",
+                  "agg": "sum",
+                  "label": "Количество товаров",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 2,
+              "row": 0
+            }
+          },
+          {
+            "id": "line_qty_daily",
+            "title": "Динамика qty по дням",
+            "viz": "line",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [
+                "date"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "qty",
+                  "agg": "sum",
+                  "label": "Количество товаров",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "bar_qty_by_city",
+            "title": "Qty по городам",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [
+                "dm.stores.city"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "qty",
+                  "agg": "sum",
+                  "label": "Количество товаров",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [
+                {
+                  "table": "dm.stores",
+                  "on_left": "dm.sales.store_id",
+                  "on_right": "dm.stores.store_id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "qty",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 4
+            }
+          },
+          {
+            "id": "bar_qty_by_category",
+            "title": "Qty по категориям",
+            "viz": "bar",
+            "query": {
+              "table": "dm.sales",
+              "dimensions": [
+                "dm.products.category"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "qty",
+                  "agg": "sum",
+                  "label": "Количество товаров",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [
+                {
+                  "column": "date",
+                  "op": ">=",
+                  "value": "2026-06-01"
+                },
+                {
+                  "column": "date",
+                  "op": "<=",
+                  "value": "2026-06-30"
+                }
+              ],
+              "joins": [
+                {
+                  "table": "dm.products",
+                  "on_left": "dm.sales.product_id",
+                  "on_right": "dm.products.product_id"
+                }
+              ],
+              "order_by": [
+                {
+                  "by": "qty",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 4
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

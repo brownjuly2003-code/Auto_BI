@@ -1,0 +1,17 @@
+{
+  "case_id": "gp_i1_salaries",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [],
+        "matched": [],
+        "ambiguous": [],
+        "unmatched": [
+          "Зарплата сотрудников по месяцам за 2026 год"
+        ]
+      }
+    }
+  ]
+}

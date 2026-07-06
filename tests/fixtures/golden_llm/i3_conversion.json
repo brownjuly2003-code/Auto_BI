@@ -1,0 +1,27 @@
+{
+  "case_id": "i3_conversion",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily"
+        ],
+        "matched": [
+          {
+            "phrase": "по неделям",
+            "candidates": [
+              "dm.sales_daily.date"
+            ],
+            "note": "агрегация по неделям из даты"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": [
+          "Конверсия сайта"
+        ]
+      }
+    }
+  ]
+}

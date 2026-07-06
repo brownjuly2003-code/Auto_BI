@@ -1,0 +1,28 @@
+{
+  "case_id": "gp_i2_returns",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales",
+          "dm.stores"
+        ],
+        "matched": [
+          {
+            "phrase": "возвратов товаров",
+            "candidates": [
+              "dm.sales.revenue"
+            ],
+            "note": "в модели нет явной метрики возвратов; ближайшая доступная мера — revenue, но это не возвраты"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": [
+          "возвратов товаров"
+        ]
+      }
+    }
+  ]
+}

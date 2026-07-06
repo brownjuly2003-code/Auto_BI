@@ -1,0 +1,26 @@
+{
+  "case_id": "a4_quantity_dynamics",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily"
+        ],
+        "matched": [],
+        "ambiguous": [
+          {
+            "phrase": "количество",
+            "candidates": [
+              "dm.sales_daily.orders",
+              "dm.sales_daily.items"
+            ],
+            "note": "заказы или штуки"
+          }
+        ],
+        "unmatched": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,195 @@
+{
+  "case_id": "g23_price_histogram",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.products"
+        ],
+        "matched": [
+          {
+            "phrase": "цен товаров",
+            "candidates": [
+              "dm.products.price"
+            ],
+            "note": "Базовая цена товара"
+          }
+        ],
+        "ambiguous": [],
+        "unmatched": []
+      }
+    },
+    {
+      "step": "propose_spec",
+      "schema": "DashboardSpec",
+      "response": {
+        "title": "Распределение цен товаров",
+        "target_bi": "superset",
+        "filters": [],
+        "charts": [
+          {
+            "id": "price_histogram",
+            "title": "Распределение цен",
+            "viz": "histogram",
+            "query": {
+              "table": "dm.products",
+              "dimensions": [
+                "price"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "price",
+                  "agg": "count",
+                  "label": "Товаров",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [],
+              "limit": 5000,
+              "time_grain": null,
+              "bins": 20
+            },
+            "layout_hint": {
+              "w": 8,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "avg_price_by_category",
+            "title": "Средняя цена по категориям",
+            "viz": "bar",
+            "query": {
+              "table": "dm.products",
+              "dimensions": [
+                "category"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "price",
+                  "agg": "avg",
+                  "label": "Средняя цена, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "Средняя цена, руб",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 4,
+              "h": 4,
+              "row": 0
+            }
+          },
+          {
+            "id": "price_share_by_category",
+            "title": "Доля товаров по категориям",
+            "viz": "pie",
+            "query": {
+              "table": "dm.products",
+              "dimensions": [
+                "category"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "id",
+                  "agg": "count",
+                  "label": "Товаров",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "Товаров",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 4
+            }
+          },
+          {
+            "id": "top_brands_by_avg_price",
+            "title": "Бренды с самой высокой средней ценой",
+            "viz": "bar",
+            "query": {
+              "table": "dm.products",
+              "dimensions": [
+                "brand"
+              ],
+              "series": [],
+              "rows": [],
+              "columns": [],
+              "measures": [
+                {
+                  "column": "price",
+                  "agg": "avg",
+                  "label": "Средняя цена, руб",
+                  "transform": null,
+                  "denominator": null,
+                  "lag_periods": null,
+                  "compare": null
+                }
+              ],
+              "filters": [],
+              "joins": [],
+              "order_by": [
+                {
+                  "by": "Средняя цена, руб",
+                  "dir": "desc"
+                }
+              ],
+              "limit": 10,
+              "time_grain": null,
+              "bins": null
+            },
+            "layout_hint": {
+              "w": 6,
+              "h": 4,
+              "row": 4
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

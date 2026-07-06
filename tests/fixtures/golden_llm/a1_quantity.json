@@ -1,0 +1,34 @@
+{
+  "case_id": "a1_quantity",
+  "calls": [
+    {
+      "step": "grounding",
+      "schema": "GroundingReport",
+      "response": {
+        "tables": [
+          "dm.sales_daily"
+        ],
+        "matched": [
+          {
+            "phrase": "по магазинам",
+            "candidates": [
+              "dm.sales_daily.store_id"
+            ],
+            "note": "агрегация по магазинам через store_id"
+          }
+        ],
+        "ambiguous": [
+          {
+            "phrase": "Количество",
+            "candidates": [
+              "dm.sales_daily.orders",
+              "dm.sales_daily.items"
+            ],
+            "note": "заказы или штуки"
+          }
+        ],
+        "unmatched": []
+      }
+    }
+  ]
+}
