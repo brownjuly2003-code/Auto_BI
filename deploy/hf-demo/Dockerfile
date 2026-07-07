@@ -30,12 +30,17 @@ RUN ln -s /usr/bin/clickhouse /usr/bin/clickhouse-server \
 RUN pip install --no-cache-dir "clickhouse-connect>=0.8,<1"
 
 # --- auto_bi in its own Python 3.12 venv (uv-managed interpreter) -------------------
+# The managed interpreter must live on a world-readable path: the build runs as root
+# but the container runs as UID 1000 — uv's default ~/.local/... under /root is 0700,
+# which made the venv shebang unlaunchable (exit 126).
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 COPY pyproject.toml README.md LICENSE /opt/autobi-src/
 COPY auto_bi /opt/autobi-src/auto_bi
 RUN uv venv --python 3.12 /opt/autobi \
     && uv pip install --python /opt/autobi/bin/python /opt/autobi-src \
-    && /opt/autobi/bin/auto_bi --version
+    && /opt/autobi/bin/auto_bi --version \
+    && chmod -R a+rX /opt/uv-python /opt/autobi
 
 # --- demo assets: DM init scripts, semantic model, service configs ------------------
 COPY docker/clickhouse/initdb /opt/demo/initdb
