@@ -222,6 +222,12 @@ volumes:
 клиентов (F-2, §3); `*` здесь безопасен, потому что у сервиса `auto_bi` нет published
 port — до него дотягивается только Caddy.
 
+**Публичное игровое демо (P8)** живёт отдельным вариантом упаковки —
+`deploy/hf-demo/` (один контейнер CH+Superset+auto_bi+nginx под Hugging Face Space,
+режим `AUTO_BI_DEMO_AUTO_ONLY=true`: только авто-обзор, без LLM/ключей; Superset отдаёт
+дашборды анонимно через Public-роль). Подробности и smoke-процедура —
+`deploy/hf-demo/README.md`; это ДЕМО-упаковка, для прода используйте схему выше.
+
 Альтернатива compose — systemd-юнит на голом хосте:
 
 ```ini

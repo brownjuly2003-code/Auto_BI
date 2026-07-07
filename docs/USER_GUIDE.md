@@ -219,6 +219,8 @@ vs Greenplum/Greengage).
 | `AUTO_BI_SESSION_RATE_ENABLED` | включить per-IP/per-day квоту на LLM-эндпоинты сессий (см. §7) | `false` |
 | `AUTO_BI_SESSION_RATE_PER_DAY` | лимит вызовов в сутки на IP, когда квота включена | `100` |
 | `AUTO_BI_FORWARDED_ALLOW_IPS` | каким прокси доверять `X-Forwarded-For` (реальные IP для квот за reverse-proxy; DEPLOYMENT §3): адреса через запятую или `*`, пусто = только loopback | (пусто) |
+| `AUTO_BI_DEMO_AUTO_ONLY` | режим публичного демо: открыт только авто-обзор, text/fields/правки/enrichment → 403, LLM не подключается вовсе | `false` |
+| `AUTO_BI_SUPERSET_PUBLIC_URL` | публичная база для ССЫЛОК на дашборд, когда она отличается от `AUTO_BI_SUPERSET_URL`, по которому ходит адаптер (деплой за прокси/демо) | (= superset_url) |
 
 ---
 

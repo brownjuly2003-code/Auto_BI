@@ -14,6 +14,15 @@
   сохраняется (владелец и скоуп схем восстанавливаются; legacy-сессии без владельца
   при включённом auth видит только админ). `DELETE /sessions/{id}` теперь ставит
   tombstone (`status='deleted'`), иначе гидрация воскрешала бы удалённую сессию.
+- Режим публичного демо (P8): `AUTO_BI_DEMO_AUTO_ONLY=true` открывает только
+  детерминированный авто-обзор — text/fields-сессии, правки словами и enrichment
+  отвечают 403 (человеческим сообщением), LLM-провайдер не подключается вовсе
+  (`DisabledLLM`), UI дизейблит вкладки по флагу в `/health`;
+  `AUTO_BI_SUPERSET_PUBLIC_URL` разводит публичную базу ссылок на дашборд и
+  внутренний Superset-URL адаптера. Упаковка демо — `deploy/hf-demo/`
+  (один контейнер CH+Superset+auto_bi+nginx для HF Space; фронт переведён на
+  относительные пути и работает за префиксом `/agent/`), smoke — workflow
+  `demo-image.yml`.
 - Прокси-wiring per-IP квот (F-2, предпосылка публичного деплоя): `auto_bi serve`
   явно включает uvicorn `proxy_headers` и принимает `AUTO_BI_FORWARDED_ALLOW_IPS`
   (каким прокси доверять `X-Forwarded-For`) — за reverse-proxy login-лимитер и

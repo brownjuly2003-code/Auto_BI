@@ -50,6 +50,7 @@ def test_health_is_open_and_reports_auth(demo_model, tmp_path) -> None:
         "ok": True,
         "auth": True,
         "version": __version__,
+        "demo_auto_only": False,
     }
 
 

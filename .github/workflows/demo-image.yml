@@ -1,0 +1,76 @@
+name: Demo image (HF Space)
+
+# P8: builds the single-container public demo (deploy/hf-demo) and smokes the full
+# viewer path — routing, demo gates, an anonymous auto-overview build with a public
+# dashboard link. Manual trigger only: the image is heavy and changes rarely; run it
+# before pushing to the Space.
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -f deploy/hf-demo/Dockerfile -t auto-bi-demo .
+
+      - name: Run container
+        run: docker run -d --name demo -p 7860:7860 -e DEMO_FACT_ROWS=200000 auto-bi-demo
+
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 120); do
+            if curl -fsS http://localhost:7860/agent/api/v1/ready >/dev/null 2>&1; then
+              echo "ready after ~$((i*5))s"; exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::not ready in 600s"; docker logs demo; exit 1
+
+      - name: Smoke — routing and demo gates
+        run: |
+          set -euxo pipefail
+          # root redirects to the agent UI; the UI serves with relative asset paths
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:7860/)" = "302" ]
+          curl -fsS http://localhost:7860/agent/ | grep -q 'src="static/app.js"'
+          curl -fsS http://localhost:7860/agent/static/app.js >/dev/null
+          # text sessions are 403-gated in the demo; health carries the flag for the UI
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+              http://localhost:7860/agent/api/v1/sessions \
+              -H 'Content-Type: application/json' -d '{"request":"revenue"}')" = "403" ]
+          curl -fsS http://localhost:7860/agent/api/v1/health \
+            | python3 -c 'import json,sys; assert json.load(sys.stdin)["demo_auto_only"] is True'
+
+      - name: Smoke — anonymous auto-overview builds a public dashboard
+        run: |
+          set -euxo pipefail
+          SID=$(curl -fsS -X POST http://localhost:7860/agent/api/v1/sessions/auto \
+            -H 'Content-Type: application/json' -d '{"table":"dm.sales_daily"}' \
+            | python3 -c 'import json,sys;print(json.load(sys.stdin)["session_id"])')
+          curl -fsS -X POST "http://localhost:7860/agent/api/v1/sessions/$SID/approve"
+          STATUS=building
+          for i in $(seq 1 60); do
+            STATUS=$(curl -fsS "http://localhost:7860/agent/api/v1/sessions/$SID" \
+              | python3 -c 'import json,sys;print(json.load(sys.stdin)["build_status"])')
+            [ "$STATUS" = "built" ] && break
+            if [ "$STATUS" = "failed" ]; then docker logs demo | tail -150; exit 1; fi
+            sleep 5
+          done
+          [ "$STATUS" = "built" ]
+          URL=$(curl -fsS "http://localhost:7860/agent/api/v1/sessions/$SID" \
+            | python3 -c 'import json,sys;print(json.load(sys.stdin)["dashboard_url"])')
+          echo "dashboard: $URL"
+          # absolute against the public base (DEMO_PUBLIC_URL fallback in start-autobi.sh)
+          echo "$URL" | grep -q '^http://localhost:7860/'
+          # the anonymous viewer must land on the dashboard, not on a login redirect
+          FINAL=$(curl -s -o /dev/null -w '%{url_effective}' -L "$URL")
+          echo "final url: $FINAL"
+          case "$FINAL" in *login*) echo "::error::anonymous view redirected to login"; exit 1;; esac
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -L "$URL")" = "200" ]
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs demo || true

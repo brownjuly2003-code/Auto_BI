@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     superset_url: str = "http://localhost:8088"
     superset_user: str = "admin"
     superset_password: str = ""
+    # Public base for the dashboard LINKS shown to the user, when it differs from the
+    # API URL the adapter calls (P8 demo: the adapter talks to 127.0.0.1:8088 inside
+    # the container, the viewer needs https://<space>.hf.space). None = superset_url.
+    superset_public_url: str | None = None
 
     # DataLens (self-hosted OSS stand, v2 BI target)
     datalens_url: str = "http://localhost:8090"
@@ -85,6 +89,11 @@ class Settings(BaseSettings):
     # /sessions/auto stays ungated (deterministic, no LLM — ARCHITECTURE "auto-overview").
     session_rate_enabled: bool = False
     session_rate_per_day: int = 100
+    # Public demo mode (P8): the deterministic auto-overview path becomes the ONLY
+    # entry — text/fields sessions and word edits (both call the LLM) and enrichment
+    # writes (mutate the shared model.yaml) return 403; the UI greys those tabs out.
+    # The server is wired with DisabledLLM, so no provider/key is needed at all.
+    demo_auto_only: bool = False
     # F-2: behind a reverse proxy request.client is the PROXY address, so the per-IP
     # login limiter (B-3) and session quota (O-2) above would degrade into one shared
     # bucket. uvicorn rewrites request.client from X-Forwarded-For, but only when the

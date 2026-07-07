@@ -93,6 +93,7 @@ def create_app(
     session_rate_enabled: bool = False,  # O-2 LLM-call quota, opt-in; see config.py
     session_rate_per_day: int = 100,
     bi_base_urls: Mapping[TargetBI, str] | None = None,  # target -> BI host, absolutizes ref.url
+    demo_auto_only: bool = False,  # P8 public demo: auto-overview only; see config.py
 ) -> FastAPI:
     manager = SessionManager(
         model=model,
@@ -133,6 +134,17 @@ def create_app(
                 status_code=429,
                 detail="LLM session quota exceeded for this IP, try again later",
                 headers={"Retry-After": str(int(wait) + 1)},
+            )
+
+    def _check_demo_gate(what: str) -> None:
+        # P8 public demo: every LLM-triggering path (text/fields sessions, word edits)
+        # and every shared-state write (enrichment) is closed. 403, not 503 — the
+        # feature is deliberately off, not temporarily unavailable.
+        if demo_auto_only:
+            raise HTTPException(
+                status_code=403,
+                detail=f"{what} отключено в публичном демо — доступен режим «Авто» "
+                "(авто-обзор витрины); полный текстовый цикл показан в видео в README",
             )
 
     def _bearer(header: str | None) -> str | None:
@@ -210,7 +222,14 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health() -> dict:
-        return {"ok": True, "auth": auth_enabled, "version": __version__}
+        # demo_auto_only rides on /health so the UI can grey out the text/fields tabs
+        # without a dedicated endpoint
+        return {
+            "ok": True,
+            "auth": auth_enabled,
+            "version": __version__,
+            "demo_auto_only": demo_auto_only,
+        }
 
     @app.get("/api/v1/ready")
     def ready() -> JSONResponse:
@@ -306,6 +325,7 @@ def create_app(
 
     @app.post("/api/v1/sessions", response_model=TurnResponse, response_model_exclude_none=True)
     def start_session(body: StartSessionRequest, request: Request) -> TurnResponse:
+        _check_demo_gate("Диалог текстом/полями")  # P8: this path always calls the LLM
         _check_session_quota(request)  # O-2: gate before any LLM call is made
         # RBAC: the agent grounds only on the caller's allowed schemas (auth off -> all)
         scoped_model = filter_model_by_schemas(model, _user(request).allowed_schemas)
@@ -401,6 +421,7 @@ def create_app(
 
     @app.patch("/api/v1/model/tables/{table_name}")
     def update_table(table_name: str, body: TableUpdate, request: Request) -> dict:
+        _check_demo_gate("Правка модели")  # P8: enrichment mutates the shared model.yaml
         _require_table_access(table_name, request)  # RBAC before anything else (403 > 503)
         path = _model_path()
         with model_write_lock:
@@ -413,6 +434,7 @@ def create_app(
     def update_column(
         table_name: str, column_name: str, body: ColumnUpdate, request: Request
     ) -> dict:
+        _check_demo_gate("Правка модели")  # P8: enrichment mutates the shared model.yaml
         _require_table_access(table_name, request)  # RBAC before anything else (403 > 503)
         path = _model_path()
         with model_write_lock:
@@ -488,6 +510,7 @@ def create_app(
         response_model_exclude_none=True,
     )
     def reply(session_id: str, body: ReplyRequest, request: Request) -> TurnResponse:
+        _check_demo_gate("Правка словами")  # P8: word edits call the LLM too
         _check_session_quota(request)  # O-2: gate before any LLM call is made
         managed = _owned(session_id, request)
         with managed.lock:

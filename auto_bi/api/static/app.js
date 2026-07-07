@@ -189,8 +189,15 @@ function handleTurn(turn) {
   }
 }
 
+// Strip the leading slash so every request resolves RELATIVE to the page URL:
+// at the root "/" nothing changes, and behind a path prefix (/agent/ in the
+// public demo — DEPLOYMENT) the prefix is picked up automatically.
+function apiUrl(path) {
+  return path.replace(/^\//, "");
+}
+
 async function api(path, options) {
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -239,7 +246,7 @@ function approve() {
 
   api(`/api/v1/sessions/${state.sessionId}/approve`, { method: "POST" })
     .then(() => {
-      const events = new EventSource(`/api/v1/sessions/${state.sessionId}/events`);
+      const events = new EventSource(apiUrl(`/api/v1/sessions/${state.sessionId}/events`));
       const logLine = (text) => {
         const li = document.createElement("li");
         li.textContent = text;
@@ -934,6 +941,21 @@ function onAuthed(me) {
   startApp();
 }
 
+function applyDemoMode(health) {
+  // P8 public demo: text/fields call the LLM and are 403-gated server-side —
+  // grey the tabs out and land on «Авто» instead of letting users hit the 403.
+  if (!health.demo_auto_only) return;
+  for (const tab of document.querySelectorAll(".mode-tab")) {
+    if (tab.dataset.mode !== "auto") {
+      tab.disabled = true;
+      tab.title =
+        "В публичном демо доступен только режим «Авто» — " +
+        "полный текстовый цикл показан в видео в README";
+    }
+  }
+  setMode("auto");
+}
+
 async function initAuth() {
   let health = {};
   try {
@@ -941,6 +963,7 @@ async function initAuth() {
   } catch {
     /* health is open; if it fails the API is down — startApp surfaces errors */
   }
+  applyDemoMode(health);
   if (!health.auth) {
     startApp(); // auth disabled -> behave as the single-user app
     return;

@@ -27,3 +27,21 @@ class LLMClient(Protocol):
         narrate) so the observability dashboard can break LLM usage down by step.
         """
         ...
+
+
+class DisabledLLM:
+    """LLMClient that refuses every call — wired when the deployment deliberately has
+    no LLM at all (public auto-overview-only demo, P8). The API returns 403 on every
+    LLM-triggering path before a call can happen, so reaching this is a wiring bug
+    surfaced as a clear LLMError instead of a hang or a confusing provider error."""
+
+    def complete(
+        self,
+        prompt: str,
+        schema: type[T],
+        *,
+        reasoning: bool = False,
+        session_id: str | None = None,
+        step: str = "",
+    ) -> T:
+        raise LLMError("LLM is disabled in this deployment (AUTO_BI_DEMO_AUTO_ONLY)")

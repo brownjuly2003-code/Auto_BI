@@ -199,6 +199,9 @@ body { display: flex; flex-direction: column; }
 }
 .mode-tab:hover { color: var(--text-2); }
 .mode-tab.active { background: var(--surface-dim); color: var(--text); }
+/* P8 демо: text/fields выключены сервером — вкладки видны, но неактивны */
+.mode-tab:disabled { opacity: 0.45; cursor: not-allowed; }
+.mode-tab:disabled:hover { color: var(--text-3); }
 
 /* ---------- fields-first builder ---------- */
 

@@ -458,9 +458,19 @@ def _serve(  # pragma: no cover — wiring only
         except Exception as exc:
             return AdapterHealth(ok=False, message=f"gracekelly unreachable: {exc}")
 
+    from auto_bi.llm.base import DisabledLLM, LLMClient
+
+    llm: LLMClient
+    if settings.demo_auto_only:
+        # P8 public demo: no LLM provider/key at all — the API 403-gates every
+        # LLM-triggering path, DisabledLLM is the wiring-bug backstop behind it.
+        llm = DisabledLLM()
+        logger.info("demo_auto_only: text/fields/enrichment disabled, LLM not wired")
+    else:
+        llm = make_llm(settings, store=store)
     app = create_app(
         model=model,
-        llm=make_llm(settings, store=store),
+        llm=llm,
         advisor=Advisor(model, run_query),
         run_query=run_query,  # "Что видно" insight layer reads charts read-only
         store=store,
@@ -474,11 +484,14 @@ def _serve(  # pragma: no cover — wiring only
         cookie_secure=cookie_secure,
         session_rate_enabled=settings.session_rate_enabled,
         session_rate_per_day=settings.session_rate_per_day,
-        # F-1: the UI link must point at the BI host, not the Auto_BI host serving the page
+        # F-1: the UI link must point at the BI host, not the Auto_BI host serving the
+        # page. The PUBLIC url wins when it differs from the API url the adapter calls
+        # (P8 demo: adapter -> 127.0.0.1:8088, viewer -> https://<space>.hf.space).
         bi_base_urls={
-            TargetBI.SUPERSET: settings.superset_url,
+            TargetBI.SUPERSET: settings.superset_public_url or settings.superset_url,
             TargetBI.DATALENS: settings.datalens_url,
         },
+        demo_auto_only=settings.demo_auto_only,
     )
     uvicorn_kwargs: dict = {
         "host": host,
