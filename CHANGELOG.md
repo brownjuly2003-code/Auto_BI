@@ -14,6 +14,9 @@
   сохраняется (владелец и скоуп схем восстанавливаются; legacy-сессии без владельца
   при включённом auth видит только админ). `DELETE /sessions/{id}` теперь ставит
   tombstone (`status='deleted'`), иначе гидрация воскрешала бы удалённую сессию.
+- Живое публичное демо: <https://juliome20-auto-bi-demo.hf.space> (Hugging Face
+  Space, один контейнер ClickHouse + Superset + Auto_BI + nginx) — анонимный
+  auto-overview до готового дашборда в Superset без логина.
 - Режим публичного демо (P8): `AUTO_BI_DEMO_AUTO_ONLY=true` открывает только
   детерминированный авто-обзор — text/fields-сессии, правки словами и enrichment
   отвечают 403 (человеческим сообщением), LLM-провайдер не подключается вовсе
