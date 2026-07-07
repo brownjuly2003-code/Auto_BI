@@ -376,10 +376,18 @@ def test_ru_kpi_scale_tiers() -> None:
 def test_form_data_big_number_ru_scale() -> None:
     # kpi_scale divides the metric and moves the RU unit to the (smaller) subheader line, so the
     # tile reads "236" / "млрд ₽" instead of the d3 SI "236G"
-    fd = build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1, kpi_scale=(1e9, "млрд ₽"))
+    fd = build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1, kpi_scale=(1e9, "млрд ₽", 236.1))
     assert fd["metric"]["sqlExpression"] == '(MAX("sum_revenue")) / 1000000000'
     assert fd["subheader"] == "млрд ₽"
     assert fd["y_axis_format"] == ",.0f"
+
+
+def test_form_data_big_number_keeps_a_decimal_in_the_1_10_band() -> None:
+    # L-1: a whole-number headline in the 1–10 band loses up to a third of the figure
+    # (1,5 млрд -> "2 млрд") -> one decimal there; from 10 up the round figure is fine
+    band = build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1, kpi_scale=(1e9, "млрд ₽", 1.5))
+    assert band["y_axis_format"] == ",.1f"
+    assert band["subheader"] == "млрд ₽"
 
 
 def test_form_data_big_number_scale_absent_or_trivial_keeps_default() -> None:
@@ -389,7 +397,7 @@ def test_form_data_big_number_scale_absent_or_trivial_keeps_default() -> None:
     assert plain["subheader"] == ""
     assert plain["y_axis_format"] == ".3~s"
     # a divisor of 1 (figure below 1e3) is ignored -> default format, no subheader unit
-    trivial = build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1, kpi_scale=(1.0, ""))
+    trivial = build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1, kpi_scale=(1.0, "", 500.0))
     assert trivial["metric"]["sqlExpression"] == 'MAX("sum_revenue")'
     assert trivial["subheader"] == ""
 
@@ -419,7 +427,7 @@ def test_form_data_table_column_config_keyed_by_human_label() -> None:
 def test_form_data_axis_scale_puts_ru_unit_on_the_value_axis_title() -> None:
     # d3 SI only speaks k/M/G/T, so the value axis is scaled and the RU unit goes on its title
     line = _chart(Viz.LINE, dimensions=["date"])
-    fd = build_form_data(line, dataset_id=1, axis_scale=(1e9, "млрд ₽"))
+    fd = build_form_data(line, dataset_id=1, axis_scale=(1e9, "млрд ₽", 14.0))
     assert fd["metrics"][0]["sqlExpression"] == '(SUM("sum_revenue")) / 1000000000'
     assert fd["y_axis_format"] == ",.1f"  # plain scaled number, not the d3 SI ".3~s"
     assert fd["y_axis_title"] == "млрд ₽"  # y_axis_title is the measure axis (Y here)
@@ -429,7 +437,7 @@ def test_form_data_axis_scale_puts_ru_unit_on_the_value_axis_title() -> None:
         _chart(Viz.BAR, dimensions=["store_id"]),
         dataset_id=1,
         horizontal=True,
-        axis_scale=(1e9, "млрд ₽"),
+        axis_scale=(1e9, "млрд ₽", 14.0),
     )
     assert bar["y_axis_title"] == "млрд ₽"
     assert "x_axis_title" not in bar
@@ -604,7 +612,7 @@ def test_kpi_scale_large_ruble_measures_magnitude_and_unit() -> None:
     scale = adapter._kpi_scale(
         _bignum(Measure(column="revenue", agg=Aggregation.SUM)), DatasetRef(id=42, name="t")
     )
-    assert scale == (1e9, "млрд ₽")
+    assert scale == (1e9, "млрд ₽", 236.0)
 
 
 def test_kpi_scale_count_has_no_currency() -> None:
@@ -612,7 +620,7 @@ def test_kpi_scale_count_has_no_currency() -> None:
     scale = adapter._kpi_scale(
         _bignum(Measure(column="orders", agg=Aggregation.SUM)), DatasetRef(id=42, name="t")
     )
-    assert scale == (1e6, "млн")  # count -> unit word only, no ₽
+    assert scale == (1e6, "млн", 115.0)  # count -> unit word only, no ₽
 
 
 def test_kpi_scale_none_for_percent_or_non_bignumber() -> None:
@@ -638,7 +646,7 @@ def test_axis_scale_large_ruble_line_but_not_percent_or_kpi() -> None:
     adapter = make_adapter(FakeSuperset(kpi_value=14e9), model=MODEL)
     ds = DatasetRef(id=42, name="t")
     line = _chart(Viz.LINE, dimensions=["date"])  # compact revenue line -> scaled
-    assert adapter._axis_scale(line, ds) == (1e9, "млрд ₽")
+    assert adapter._axis_scale(line, ds) == (1e9, "млрд ₽", 14.0)
     # a percent share bar renders as % on the axis -> never magnitude-scaled
     share = Measure(
         column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL
@@ -648,6 +656,22 @@ def test_axis_scale_large_ruble_line_but_not_percent_or_kpi() -> None:
     )
     # big_number is handled by _kpi_scale, not the axis path
     assert adapter._axis_scale(_bignum(Measure(column="revenue", agg=Aggregation.SUM)), ds) is None
+
+
+def test_axis_scale_none_for_multi_measure_chart() -> None:
+    # F-3: the divisor is tiered from one measure but would divide EVERY metric, so a
+    # "revenue (billions) + orders (millions)" line would render orders in ruble-billions
+    # units. Multi-measure charts keep the d3 SI default instead.
+    adapter = make_adapter(FakeSuperset(kpi_value=14e9), model=MODEL)
+    two_measures = _chart(
+        Viz.LINE,
+        dimensions=["date"],
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM),
+            Measure(column="orders", agg=Aggregation.SUM),
+        ],
+    )
+    assert adapter._axis_scale(two_measures, DatasetRef(id=42, name="t")) is None
 
 
 def test_build_full_flow_scales_ruble_kpi_and_humanizes_legend() -> None:

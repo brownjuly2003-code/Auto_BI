@@ -116,8 +116,8 @@ def build_form_data(
     dataset_id: int,
     *,
     horizontal: bool = False,
-    kpi_scale: tuple[float, str] | None = None,
-    axis_scale: tuple[float, str] | None = None,
+    kpi_scale: tuple[float, str, float] | None = None,
+    axis_scale: tuple[float, str, float] | None = None,
     metric_labels: dict[str, str] | None = None,
     time_column: str | None = None,
 ) -> dict:
@@ -127,13 +127,16 @@ def build_form_data(
     `agent.normalize.is_horizontal_bar`); the adapter computes it from the model and the
     flag is ignored for non-bar viz.
 
-    `kpi_scale` (divisor, unit word) applies only to big_number: the adapter measures the KPI's
-    magnitude and passes e.g. (1e9, "млрд") so the headline reads "236" with "млрд" on the
-    subheader line, instead of the d3 SI "236G". None => the old raw/compact format.
+    `kpi_scale` (divisor, unit word, scaled magnitude) applies only to big_number: the adapter
+    measures the KPI's magnitude and passes e.g. (1e9, "млрд", 236.1) so the headline reads
+    "236" with "млрд" on the subheader line, instead of the d3 SI "236G". In the 1–10 band the
+    headline keeps one decimal ("1,5 млрд", not "2 млрд" — L-1). None => the old raw/compact
+    format.
 
-    `axis_scale` (divisor, unit line) is the cartesian-axis analog of `kpi_scale` for line/bar/
-    area: d3's SI is hard-coded to k/M/G/T, so to read "15 млрд ₽" instead of "15G" the metric is
-    scaled and the RU unit goes on the value-axis TITLE. None => the d3 SI (~s) axis format.
+    `axis_scale` (divisor, unit line, scaled magnitude) is the cartesian-axis analog of
+    `kpi_scale` for line/bar/area: d3's SI is hard-coded to k/M/G/T, so to read "15 млрд ₽"
+    instead of "15G" the metric is scaled and the RU unit goes on the value-axis TITLE.
+    None => the d3 SI (~s) axis format.
 
     `metric_labels` maps a measure alias -> human name ("sum_revenue" -> "Выручка") so legends,
     tooltips and table columns read human instead of the raw alias. The adapter resolves it from
@@ -165,9 +168,12 @@ def build_form_data(
             # scale the headline into RU magnitude units: divide the metric and round to a whole
             # number ("236"), with the unit ("млрд") on the smaller subheader line. Grouped
             # thousands (",") stay readable if the scaled figure is itself in the thousands.
-            divisor, unit = kpi_scale
+            # In the 1–10 band whole-number rounding would lose up to a third of the figure
+            # (1,5 млрд -> "2 млрд"), so the headline keeps one decimal there (L-1).
+            divisor, unit, scaled = kpi_scale
             metric = {**metric, "sqlExpression": f"({metric['sqlExpression']}) / {divisor:.0f}"}
-            return {**base, "metric": metric, "subheader": unit, "y_axis_format": ",.0f"}
+            headline_fmt = ",.1f" if scaled < 10 else ",.0f"
+            return {**base, "metric": metric, "subheader": unit, "y_axis_format": headline_fmt}
         fd = {**base, "metric": metric, "subheader": ""}
         if fmt:
             fd["y_axis_format"] = fmt
@@ -281,7 +287,7 @@ def build_form_data(
         # RU magnitude units on the value axis (the kpi_scale analog): scale the metric and put
         # the RU unit on the value-axis TITLE, since d3's SI axis format only speaks k/M/G/T. The
         # value axis is Y for a vertical chart, X for a horizontal bar.
-        divisor, unit = axis_scale
+        divisor, unit, _ = axis_scale
         form_data["metrics"] = [
             {**m, "sqlExpression": f"({m['sqlExpression']}) / {divisor:.0f}"} for m in metrics
         ]

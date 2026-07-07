@@ -659,6 +659,63 @@ def test_build_scales_large_axis_to_ru_unit_title() -> None:
     assert fmt["postfix"] == ""  # ticks stay bare numbers; the unit lives on the axis title
 
 
+def test_build_kpi_in_1_10_band_keeps_a_decimal() -> None:
+    # L-1: a 1,5-млрд KPI rounded to a whole number would read "2 млрд" — a third off.
+    # In the 1–10 band the headline keeps one decimal; the tier/unit stay the same.
+    fake = FakeClient(run_value=1_530_000_000)
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="k",
+                title="Выручка",
+                viz=Viz.BIG_NUMBER,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+                ),
+            )
+        ],
+    )
+    DataLensAdapter(fake, DWH, _money_model(), workbook_id="wb1").build(spec)
+    chart_post = next(b for p, b in fake.posts if p == "/api/charts/v1/charts")
+    fmt = chart_post["data"]["visualization"]["placeholders"][0]["items"][0]["formatting"]
+    assert fmt["postfix"] == " млрд ₽" and fmt["precision"] == 1
+
+
+def test_build_multi_measure_line_is_never_axis_scaled() -> None:
+    # F-3: the RU divisor is tiered from one measure but the dataset rebuild would divide
+    # every compact measure by it, so a two-measure line keeps the SI default — no magnitude
+    # probe (the guard short-circuits before /api/run), no scaled dataset rebuild.
+    fake = FakeClient(run_value=13_900_000_000)  # would scale to млрд if probed
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="t",
+                title="Динамика",
+                viz=Viz.LINE,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    dimensions=["date"],
+                    measures=[
+                        Measure(column="revenue", agg=Aggregation.SUM),
+                        Measure(column="revenue", agg=Aggregation.AVG),
+                    ],
+                ),
+            )
+        ],
+    )
+    DataLensAdapter(fake, DWH, _money_model(), workbook_id="wb1").build(spec)
+    assert "/api/run" not in [p for p, _ in fake.posts]
+    ds_creates = [c[2] for c in fake.gateway_calls if c[1] == "createDataset"]
+    assert len(ds_creates) == 1  # no scaled rebuild
+    assert "/ 1000000000" not in ds_creates[0]["dataset"]["sources"][0]["parameters"]["subsql"]
+    chart_post = next(b for p, b in fake.posts if p == "/api/charts/v1/charts")
+    ph = {p["id"]: p for p in chart_post["data"]["visualization"]["placeholders"]}
+    assert ph["y"].get("settings", {}).get("title") != "manual"  # no RU axis title
+
+
 def test_build_small_magnitude_keeps_default_format() -> None:
     # below the 1e3 tier nothing scales: one dataset create, no unit postfix/title
     fake = FakeClient(run_value=420.0)

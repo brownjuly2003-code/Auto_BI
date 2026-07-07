@@ -13,6 +13,7 @@ from auto_bi import __version__
 from auto_bi.adapters.base import DashboardRef
 from auto_bi.api import create_app
 from auto_bi.api.schemas import BuildEvent
+from auto_bi.ir.spec import TargetBI
 from auto_bi.llm.base import LLMError
 from auto_bi.store import Store
 from tests.test_machine import AMBIGUOUS_REPORT, CLEAR_REPORT, PATCHED_SPEC, ScriptedLLM
@@ -37,7 +38,14 @@ def fake_builder(spec, log, session_id):
 
 
 def make_client(
-    llm, demo_model, *, store=None, builder=fake_builder, model_path=None, run_query=None
+    llm,
+    demo_model,
+    *,
+    store=None,
+    builder=fake_builder,
+    model_path=None,
+    run_query=None,
+    bi_base_urls=None,
 ) -> TestClient:
     app = create_app(
         model=demo_model,
@@ -46,6 +54,7 @@ def make_client(
         builder=builder,
         model_path=model_path,
         run_query=run_query,
+        bi_base_urls=bi_base_urls,
     )
     return TestClient(app)
 
@@ -75,6 +84,8 @@ def test_health(demo_model) -> None:
         "auth": False,
         "version": __version__,
     }
+    # L-3: the OpenAPI/docs page reports the package version, not a hardcoded drifting one
+    assert client.get("/openapi.json").json()["info"]["version"] == __version__
 
 
 def test_clear_request_proposes_spec(demo_model) -> None:
@@ -140,6 +151,23 @@ def test_approve_builds_and_streams_events(demo_model, tmp_path) -> None:
     (spec_row,) = store.specs(sid)
     assert spec_row["status"] == "approved"
     store.close()
+
+
+def test_done_url_is_absolute_when_bi_base_is_configured(demo_model) -> None:
+    # F-1: the adapter's BI-relative url would resolve against the Auto_BI host in the UI
+    # (:8200 vs :8088 -> 404); with the base configured the done event and the session state
+    # carry a clickable absolute link. The trailing slash on the base must not double.
+    client = make_client(
+        ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]),
+        demo_model,
+        bi_base_urls={TargetBI.SUPERSET: "http://localhost:8088/"},
+    )
+    sid = start(client)["session_id"]
+    assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 202
+    events = collect_events(client, sid)
+    assert events[-1]["url"] == "http://localhost:8088/superset/dashboard/7/"
+    state = client.get(f"/api/v1/sessions/{sid}").json()
+    assert state["dashboard_url"] == "http://localhost:8088/superset/dashboard/7/"
 
 
 def test_session_trace_timeline(demo_model, tmp_path) -> None:

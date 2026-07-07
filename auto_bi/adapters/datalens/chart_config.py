@@ -63,15 +63,17 @@ _PERCENT_FORMATTING = {
 # the metric widget's own `unit: "auto"` is locale-bound (the stand renders SI "236B", never
 # "млрд"), so the adapter scales the measure in the dataset subselect (dataset.py
 # `measure_scale`) and glues the Russian unit word to the figure via the formatting `postfix`
-# ("236 млрд ₽"). Display-only: the scaled headline is a round figure (precision 0), no SI unit.
-def _ru_kpi_formatting(unit: str) -> dict:
+# ("236 млрд ₽"). Display-only: the scaled headline is a round figure (precision 0) — except
+# in the 1–10 band, where whole-number rounding would lose up to a third of the figure
+# ("1,5 млрд" -> "2 млрд"), so one decimal is kept there (L-1). No SI unit either way.
+def _ru_kpi_formatting(unit: str, precision: int = 0) -> dict:
     return {
         "format": "number",
         "showRankDelimiter": True,
         "prefix": "",
         "postfix": f" {unit}",
         "unit": None,
-        "precision": 0,
+        "precision": precision,
         "labelMode": "absolute",
     }
 
@@ -189,6 +191,7 @@ def build_chart_shared(
     *,
     horizontal: bool = False,
     kpi_unit: str | None = None,
+    kpi_precision: int = 0,
     axis_unit: str | None = None,
 ) -> dict:
     """IR chart -> DataLens `shared` config. `fields_by_alias` maps a bare alias to its
@@ -200,7 +203,8 @@ def build_chart_shared(
     `kpi_unit` (big_number only) is the RU magnitude unit line ("млрд ₽") for a headline the
     adapter has already scaled in the dataset subselect (N2): the metric formatting becomes
     round-figure + the unit as a postfix ("236 млрд ₽" instead of the SI "236B"). None =>
-    the compact/percent formatting as before.
+    the compact/percent formatting as before. `kpi_precision` is the headline's decimal
+    places: 1 when the scaled figure sits in the 1–10 band (L-1), else 0.
 
     `axis_unit` (line/bar/area) is the same unit line for a scaled VALUE axis: it becomes a
     manual axis title ("млрд ₽") on the values placeholder, so the scaled ticks read "15"
@@ -264,7 +268,7 @@ def build_chart_shared(
         kpi_item = item(measure_alias(q.measures[0]), title="")
         if kpi_unit:
             # N2: the adapter scaled the measure in the dataset SQL; show "236 млрд ₽"
-            kpi_item["formatting"] = _ru_kpi_formatting(kpi_unit)
+            kpi_item["formatting"] = _ru_kpi_formatting(kpi_unit, kpi_precision)
         placeholders = [{"id": "measures", "items": [kpi_item]}]
         # the default metric font ('' == "m") CLIPS a figure with a RU unit line at the
         # standard 6-col KPI tile ("236 млрд ₽" lost its currency; live-verified 2026-07-06);

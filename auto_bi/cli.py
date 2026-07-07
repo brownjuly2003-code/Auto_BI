@@ -474,6 +474,11 @@ def _serve(  # pragma: no cover — wiring only
         cookie_secure=cookie_secure,
         session_rate_enabled=settings.session_rate_enabled,
         session_rate_per_day=settings.session_rate_per_day,
+        # F-1: the UI link must point at the BI host, not the Auto_BI host serving the page
+        bi_base_urls={
+            TargetBI.SUPERSET: settings.superset_url,
+            TargetBI.DATALENS: settings.datalens_url,
+        },
     )
     uvicorn_kwargs: dict = {"host": host, "port": port, "log_level": log_level.lower()}
     if log_format == "json":

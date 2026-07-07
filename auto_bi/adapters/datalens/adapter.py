@@ -543,6 +543,7 @@ class DataLensAdapter:
         *,
         name: str | None = None,
         kpi_unit: str | None = None,
+        kpi_precision: int = 0,
         axis_unit: str | None = None,
     ) -> ChartRef:
         ds_name, fields = self._datasets[str(ds.id)]
@@ -554,6 +555,7 @@ class DataLensAdapter:
             fields,
             horizontal=horizontal,
             kpi_unit=kpi_unit,
+            kpi_precision=kpi_precision,
             axis_unit=axis_unit,
         )
         if chart.viz in DEGRADED:
@@ -708,11 +710,14 @@ class DataLensAdapter:
             logger.warning("magnitude probe failed; keeping default format", exc_info=True)
             return None
 
-    def _ru_scale(self, chart: ChartSpec, ds: DatasetRef, *, agg: str) -> tuple[float, str] | None:
-        """(divisor, RU unit line) for the chart's primary measure, measured live, or None to
-        keep the default format. Same tiers/rules as the Superset adapter (`_ru_scale`): only
-        compact (additive, non-percent) measures with a magnitude >= 1e3 scale; the unit line
-        is "млрд ₽" for money, just "млрд" for a count."""
+    def _ru_scale(
+        self, chart: ChartSpec, ds: DatasetRef, *, agg: str
+    ) -> tuple[float, str, float] | None:
+        """(divisor, RU unit line, scaled magnitude) for the chart's primary measure, measured
+        live, or None to keep the default format. Same tiers/rules as the Superset adapter
+        (`_ru_scale`): only compact (additive, non-percent) measures with a magnitude >= 1e3
+        scale; the unit line is "млрд ₽" for money, just "млрд" for a count. The scaled
+        magnitude (1 ≤ x < 1000) drives the headline precision in the 1–10 band (L-1)."""
         measure = chart.query.measures[0]
         if not is_compact_number(measure):
             return None
@@ -723,21 +728,24 @@ class DataLensAdapter:
         if divisor <= 1:
             return None
         currency = self._measure_currency(measure, chart.query.table)
-        return divisor, f"{unit} {currency}".strip()
+        return divisor, f"{unit} {currency}".strip(), magnitude / divisor
 
-    def _kpi_ru_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
-        """(divisor, RU unit line) for a large additive big_number headline ("236 млрд ₽"
-        instead of the SI "236B"), or None. The KPI dataset is one row -> "sum" identity."""
+    def _kpi_ru_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str, float] | None:
+        """(divisor, RU unit line, scaled magnitude) for a large additive big_number headline
+        ("236 млрд ₽" instead of the SI "236B"), or None. One row -> "sum" identity."""
         if chart.viz != Viz.BIG_NUMBER or not chart.query.measures:
             return None
         return self._ru_scale(chart, ds, agg="sum")
 
-    def _axis_ru_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
-        """(divisor, RU unit line) for a large-magnitude line/bar/area VALUE axis, or None to
-        keep the SI default. Mirrors SupersetAdapter._axis_scale: the axis unit tier comes
-        from the tallest series point ("max" over the grouped subselect rows), the scaled
-        metric reads "15" against an axis titled "млрд ₽" instead of "15B"."""
-        if chart.viz not in _AXIS_SCALE_VIZ or not chart.query.measures:
+    def _axis_ru_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str, float] | None:
+        """(divisor, RU unit line, scaled magnitude) for a large-magnitude line/bar/area VALUE
+        axis, or None to keep the SI default. Mirrors SupersetAdapter._axis_scale: the axis
+        unit tier comes from the tallest series point ("max" over the grouped subselect rows),
+        the scaled metric reads "15" against an axis titled "млрд ₽" instead of "15B".
+
+        Single-measure charts only (mirrors the Superset guard): one measure's divisor would
+        divide every compact co-measure, rendering it in the wrong units."""
+        if chart.viz not in _AXIS_SCALE_VIZ or len(chart.query.measures) != 1:
             return None
         return self._ru_scale(chart, ds, agg="max")
 
@@ -788,17 +796,23 @@ class DataLensAdapter:
                 # Measure the magnitude live, then rebuild the dataset (same wip name) with
                 # the compact measures scaled.
                 kpi_unit: str | None = None
+                kpi_precision = 0
                 axis_unit: str | None = None
                 scale = self._kpi_ru_scale(chart, ds)
                 if scale is not None:
                     kpi_unit = scale[1]
+                    # L-1: in the 1–10 band a whole-number headline loses up to a third of
+                    # the figure ("1,5 млрд" -> "2 млрд") -> keep one decimal there
+                    kpi_precision = 1 if scale[2] < 10 else 0
                 else:
                     scale = self._axis_ru_scale(chart, ds)
                     if scale is not None:
                         axis_unit = scale[1]
                 if scale is not None:
-                    # scale every compact measure (the shared axis unit must fit them all);
-                    # a percent/ratio co-measure keeps its raw 0..1 value
+                    # a scaled chart is single-measure by construction (big_number by
+                    # validation, the axis path by the _axis_ru_scale guard), so this scales
+                    # exactly the measure the divisor was tiered from; a percent/ratio
+                    # measure keeps its raw 0..1 value
                     aliases = [
                         measure_alias(m) for m in chart.query.measures if is_compact_number(m)
                     ]
@@ -816,6 +830,7 @@ class DataLensAdapter:
                     ds,
                     name=_wip_name(chart_canonical),
                     kpi_unit=kpi_unit,
+                    kpi_precision=kpi_precision,
                     axis_unit=axis_unit,
                 )
                 to_promote.append(("widget", chart_canonical, str(ref.id)))

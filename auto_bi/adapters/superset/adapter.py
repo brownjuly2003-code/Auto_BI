@@ -215,11 +215,15 @@ class SupersetAdapter:
         text = f"{col.description if col else ''} {measure.label or ''}".lower()
         return "₽" if any(m in text for m in _MONEY_MARKERS) else ""
 
-    def _ru_scale(self, measure: Measure, table: str, ds: DatasetRef) -> tuple[float, str] | None:
-        """(divisor, RU unit line) for a large compact measure, measured live, or None to keep
-        the default format. Only additive aggregates (is_compact_number) with a magnitude ≥ 1e3
-        scale; the unit line is 'млрд ₽' for money, just 'млрд' for a count. Shared by the KPI
-        headline (_kpi_scale) and the cartesian value axis (_axis_scale)."""
+    def _ru_scale(
+        self, measure: Measure, table: str, ds: DatasetRef
+    ) -> tuple[float, str, float] | None:
+        """(divisor, RU unit line, scaled magnitude) for a large compact measure, measured
+        live, or None to keep the default format. Only additive aggregates (is_compact_number)
+        with a magnitude ≥ 1e3 scale; the unit line is 'млрд ₽' for money, just 'млрд' for a
+        count. The scaled magnitude (1 ≤ x < 1000) lets the formatter keep a decimal in the
+        1–10 band ("1,5 млрд", not "2 млрд" — L-1). Shared by the KPI headline (_kpi_scale)
+        and the cartesian value axis (_axis_scale)."""
         if not is_compact_number(measure):
             return None
         magnitude = self._measure_magnitude(ds, measure)
@@ -229,19 +233,25 @@ class SupersetAdapter:
         if divisor <= 1:
             return None
         currency = self._measure_currency(measure, table)
-        return divisor, f"{unit} {currency}".strip()
+        return divisor, f"{unit} {currency}".strip(), magnitude / divisor
 
-    def _kpi_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
-        """(divisor, RU unit line) for a large ruble big_number headline, or None (default fmt)."""
+    def _kpi_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str, float] | None:
+        """(divisor, RU unit line, scaled magnitude) for a large ruble big_number headline,
+        or None (default fmt)."""
         if chart.viz != Viz.BIG_NUMBER:
             return None
         return self._ru_scale(chart.query.measures[0], chart.query.table, ds)
 
-    def _axis_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str] | None:
-        """(divisor, RU unit line) for a large-magnitude line/bar/area value axis, or None to
-        keep d3 SI. Same rule as the KPI: d3's SI axis format only speaks k/M/G/T, so RU units
-        ("15 млрд ₽" vs "15G") need the metric scaled and the unit on the value-axis title."""
-        if chart.viz not in _AXIS_SCALE_VIZ or not chart.query.measures:
+    def _axis_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str, float] | None:
+        """(divisor, RU unit line, scaled magnitude) for a large-magnitude line/bar/area value
+        axis, or None to keep d3 SI. Same rule as the KPI: d3's SI axis format only speaks
+        k/M/G/T, so RU units ("15 млрд ₽" vs "15G") need the metric scaled and the unit on the
+        value-axis title.
+
+        Single-measure charts only: the divisor comes from one measure but would divide every
+        metric on the chart, so on "revenue + order count" the second measure would render in
+        the first one's units (billions) — off by orders of magnitude."""
+        if chart.viz not in _AXIS_SCALE_VIZ or len(chart.query.measures) != 1:
             return None
         return self._ru_scale(chart.query.measures[0], chart.query.table, ds)
 

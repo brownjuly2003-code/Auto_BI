@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -92,6 +92,7 @@ def create_app(
     cookie_secure: bool = False,  # force `Secure` on the login cookie (B-2); see cli.py::_serve
     session_rate_enabled: bool = False,  # O-2 LLM-call quota, opt-in; see config.py
     session_rate_per_day: int = 100,
+    bi_base_urls: Mapping[TargetBI, str] | None = None,  # target -> BI host, absolutizes ref.url
 ) -> FastAPI:
     manager = SessionManager(
         model=model,
@@ -100,7 +101,7 @@ def create_app(
         store=store,
         include_samples=include_samples,
     )
-    app = FastAPI(title="Auto_BI API", version="0.1.0")
+    app = FastAPI(title="Auto_BI API", version=__version__)
 
     # paths reachable without a token even when auth is on (login issues the token)
     _open_paths = {"/api/v1/health", "/api/v1/ready", "/api/v1/auth/login"}
@@ -580,8 +581,14 @@ def create_app(
                 )
                 return
             managed.build_status = "built"
-            managed.dashboard_url = ref.url
-            managed.add_event(BuildEvent(kind="done", text=ref.title, url=ref.url))
+            # F-1: adapters return a BI-relative url; a relative href in the UI would resolve
+            # against the Auto_BI host (:8200), not the BI host (:8088) -> 404 on click. Glue
+            # the configured BI base here (same convention as the CLI: base.rstrip("/") + url).
+            base = (bi_base_urls or {}).get(spec.target_bi, "").rstrip("/")
+            absolute = bool(base) and not ref.url.startswith(("http://", "https://"))
+            url = base + ref.url if absolute else ref.url
+            managed.dashboard_url = url
+            managed.add_event(BuildEvent(kind="done", text=ref.title, url=url))
             _trace_build(
                 "build_done",
                 latency_ms=round((time.monotonic() - started) * 1000),
