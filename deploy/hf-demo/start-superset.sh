@@ -3,6 +3,16 @@
 # on this disk) -> bootstrap Superset metadata -> grant the Public role -> serve.
 set -euo pipefail
 
+# ONE secret key per container lifetime (all gunicorn workers + supervisord restarts
+# of this program must share it — see superset_config.py); a Space restart wipes the
+# metadata DB anyway, so regenerating there is fine.
+SECRET_FILE=/tmp/superset_secret_key
+if [ -z "${SUPERSET_SECRET_KEY:-}" ]; then
+    [ -f "$SECRET_FILE" ] || python3 -c 'import secrets; print(secrets.token_hex(32))' > "$SECRET_FILE"
+    SUPERSET_SECRET_KEY="$(cat "$SECRET_FILE")"
+fi
+export SUPERSET_SECRET_KEY
+
 echo "[superset] waiting for clickhouse..."
 until clickhouse-client --query "SELECT 1" >/dev/null 2>&1; do sleep 2; done
 

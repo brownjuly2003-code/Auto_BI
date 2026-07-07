@@ -6,14 +6,18 @@ superset_public_role.py grants it datasource access after `superset init`
 (datasets are created later, at build time — a blanket grant is the only option).
 
 The whole stack is a synthetic, ephemeral, read-only playground: the metadata DB
-is SQLite on container-local disk and the SECRET_KEY is generated per start —
-nothing here outlives a restart on purpose.
+is SQLite on container-local disk — nothing here outlives a restart on purpose.
+
+SECRET_KEY comes strictly from the environment (start-superset.sh generates one
+per container): a per-import fallback would give every gunicorn worker its OWN
+key, so a session/JWT signed by one worker reads as anonymous on another — and
+with the Gamma-like Public role that anonymous request got far enough to crash
+chart creation ('AnonymousUserMixin' has no '_sa_instance_state').
 """
 
 import os
-import secrets
 
-SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY") or secrets.token_hex(32)
+SECRET_KEY = os.environ["SUPERSET_SECRET_KEY"]
 
 PUBLIC_ROLE_LIKE = "Gamma"
 
