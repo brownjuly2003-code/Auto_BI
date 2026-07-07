@@ -480,7 +480,22 @@ def _serve(  # pragma: no cover — wiring only
             TargetBI.DATALENS: settings.datalens_url,
         },
     )
-    uvicorn_kwargs: dict = {"host": host, "port": port, "log_level": log_level.lower()}
+    uvicorn_kwargs: dict = {
+        "host": host,
+        "port": port,
+        "log_level": log_level.lower(),
+        # F-2: rewrite request.client from X-Forwarded-For so the per-IP quotas (B-3
+        # login limiter, O-2 session quota) see real client IPs behind a reverse proxy
+        # instead of collapsing into one shared bucket. Explicit although it is
+        # uvicorn's default — the quotas' correctness depends on it.
+        "proxy_headers": True,
+    }
+    if settings.forwarded_allow_ips is not None:
+        # which peers are trusted to SET those headers; uvicorn's default trusts
+        # loopback only — enough for a same-host proxy, must be widened for a
+        # containerized one (DEPLOYMENT §3/§5).
+        uvicorn_kwargs["forwarded_allow_ips"] = settings.forwarded_allow_ips
+        logger.info("trusting proxy headers from: %s", settings.forwarded_allow_ips)
     if log_format == "json":
         # skip uvicorn's own dictConfig so its "uvicorn"/"uvicorn.access" loggers propagate
         # to the root logger configure_logging() just set up — one consistent JSON stream.

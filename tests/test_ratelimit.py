@@ -173,3 +173,51 @@ def test_day_window_rolls_over_after_a_full_day() -> None:
     assert limiter.check("1.2.3.4") == 0.0  # fresh day, fresh quota
     for _ in range(2):
         assert limiter.check("1.2.3.4") == 0.0  # 2 more calls still within today's 3
+
+
+# --- L-4: stale-key purge (memory hygiene on public exposure) -----------------------
+
+
+def test_purge_forgets_keys_idle_past_retention() -> None:
+    clock = FakeClock()
+    limiter = LoginRateLimiter(clock=clock)
+    # key A earns a strike (escalation state worth remembering)
+    for _ in range(LoginRateLimiter.RATE_LIMIT + 1):
+        limiter.check("1.2.3.4")
+    assert "1.2.3.4" in limiter._strikes
+    # idle past max(window, lockout cap); another key's check triggers the purge
+    clock.advance(max(LoginRateLimiter.WINDOW_SECONDS, LoginRateLimiter.LOCKOUT_CAP_SECONDS) + 1)
+    limiter.check("5.6.7.8")
+    assert "1.2.3.4" not in limiter._last_seen
+    assert "1.2.3.4" not in limiter._attempts
+    assert "1.2.3.4" not in limiter._lockout_until
+    assert "1.2.3.4" not in limiter._strikes
+    # forgotten = escalation restarts from the base lockout, not from strike #2
+    for _ in range(LoginRateLimiter.RATE_LIMIT):
+        limiter.check("1.2.3.4")
+    assert limiter.check("1.2.3.4") == LoginRateLimiter.BASE_LOCKOUT_SECONDS
+
+
+def test_purge_spares_recent_and_locked_keys() -> None:
+    clock = FakeClock()
+    limiter = LoginRateLimiter(clock=clock)
+    for _ in range(LoginRateLimiter.RATE_LIMIT + 1):
+        limiter.check("1.2.3.4")  # locked out now
+    # past the purge interval but well inside the retention window
+    clock.advance(LoginRateLimiter.PURGE_INTERVAL_SECONDS + 1)
+    limiter.check("5.6.7.8")  # triggers a purge scan
+    assert "1.2.3.4" in limiter._strikes  # recent key survives the scan
+    # surviving = the escalation continues from strike #2, it does not restart
+    for _ in range(LoginRateLimiter.RATE_LIMIT):
+        limiter.check("1.2.3.4")
+    assert limiter.check("1.2.3.4") == LoginRateLimiter.BASE_LOCKOUT_SECONDS * 2
+
+
+def test_purge_is_amortized_not_per_call() -> None:
+    clock = FakeClock()
+    limiter = LoginRateLimiter(clock=clock)
+    limiter.check("1.2.3.4")
+    stamp = limiter._last_purge
+    clock.advance(1.0)  # under the purge interval: check() must not rescan
+    limiter.check("5.6.7.8")
+    assert limiter._last_purge == stamp

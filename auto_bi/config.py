@@ -85,6 +85,14 @@ class Settings(BaseSettings):
     # /sessions/auto stays ungated (deterministic, no LLM — ARCHITECTURE "auto-overview").
     session_rate_enabled: bool = False
     session_rate_per_day: int = 100
+    # F-2: behind a reverse proxy request.client is the PROXY address, so the per-IP
+    # login limiter (B-3) and session quota (O-2) above would degrade into one shared
+    # bucket. uvicorn rewrites request.client from X-Forwarded-For, but only when the
+    # direct peer is a trusted proxy — 127.0.0.1 by default. When the proxy is NOT on
+    # loopback (docker compose, k8s), set this to its address(es): comma-separated
+    # IPs/CIDRs, or "*" if the app port is reachable ONLY from the proxy (compose
+    # internal network). None = uvicorn's default (trust loopback only).
+    forwarded_allow_ips: str | None = None
 
     # SQLite store (sessions, specs, builds, llm_calls, dm_change_requests, users)
     store_path: str = "data/auto_bi.sqlite"
