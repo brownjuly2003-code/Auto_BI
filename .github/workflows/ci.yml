@@ -115,7 +115,7 @@ jobs:
       # image had never once been built) on every PR. Publishing on tag is a separate
       # job in release.yml.
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
