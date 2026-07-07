@@ -65,3 +65,23 @@ jobs:
           name: v${{ steps.meta.outputs.version }}
           body_path: release_notes.md
           generate_release_notes: false
+
+  # X-2: PyPI publication via Trusted Publishing (OIDC) — no long-lived token in secrets.
+  # ONE-TIME owner prerequisite before the first tag that should publish: on pypi.org →
+  # "Publishing" → add a (pending) trusted publisher for project `auto-bi` with
+  # owner `brownjuly2003-code`, repo `Auto_BI`, workflow `release.yml`, environment `pypi`.
+  # Until that is configured this job fails with an OIDC error while the docker/GH-release
+  # job above still completes (the jobs are independent).
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # OIDC token for PyPI; nothing else
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1

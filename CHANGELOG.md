@@ -14,6 +14,11 @@
   сохраняется (владелец и скоуп схем восстанавливаются; legacy-сессии без владельца
   при включённом auth видит только админ). `DELETE /sessions/{id}` теперь ставит
   tombstone (`status='deleted'`), иначе гидрация воскрешала бы удалённую сессию.
+- Release-конвейер: job `pypi` (X-2) — публикация sdist+wheel на PyPI через Trusted
+  Publishing (OIDC, без токена в секретах) на каждый тег `vX.Y.Z`; метаданные пакета
+  (license/authors/classifiers/urls) дополнены в `pyproject.toml`, дистрибутив проверен
+  `twine check` и установкой в чистое окружение. Первая публикация требует одноразовой
+  настройки trusted publisher владельцем (инструкция — комментарий в `release.yml`).
 - DataLens: пресет периода на дашборд-селекторе (B5) — `DashboardFilter.default`
   («last 12 months» / ISO-диапазон) компилируется в relative-interval токен
   (`__interval___relative_-12M___relative_+0d`) в `defaultValue`+`defaults` контрола;

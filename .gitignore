@@ -33,3 +33,6 @@ data/
 Thumbs.db
 .idea/
 .vscode/
+
+# build artifacts (uv build)
+dist/
