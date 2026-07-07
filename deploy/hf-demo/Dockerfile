@@ -7,21 +7,24 @@
 # Base: the SAME pinned Superset the contract tests run against (invariant 7).
 # auto_bi needs Python >=3.12 while Superset 4.1.2 ships 3.10 — uv installs a managed
 # 3.12 into an isolated venv, the two runtimes never mix.
+# ClickHouse comes from ITS pinned official image (same 24.8 as the compose stand) —
+# one static binary; apt/packages.clickhouse.com is not reachable from every network.
+FROM clickhouse/clickhouse-server:24.8 AS clickhouse
+
 FROM apache/superset:4.1.2
 
 USER root
 
-# --- system deps + ClickHouse server (same major as the stand: 24.8) ---------------
+# --- system deps -------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates gnupg supervisor nginx \
-    && curl -fsSL https://packages.clickhouse.com/gpg/KEY.gpg \
-        | gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" \
-        > /etc/apt/sources.list.d/clickhouse.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        clickhouse-server=24.8.* clickhouse-client=24.8.* clickhouse-common-static=24.8.* \
+        curl ca-certificates supervisor nginx \
     && rm -rf /var/lib/apt/lists/*
+
+# --- ClickHouse server: the single static binary + stock configs from the image -----
+COPY --from=clickhouse /usr/bin/clickhouse /usr/bin/clickhouse
+COPY --from=clickhouse /etc/clickhouse-server /etc/clickhouse-server
+RUN ln -s /usr/bin/clickhouse /usr/bin/clickhouse-server \
+    && ln -s /usr/bin/clickhouse /usr/bin/clickhouse-client
 
 # Superset talks to ClickHouse through clickhouse-connect (mirrors docker/superset)
 RUN pip install --no-cache-dir "clickhouse-connect>=0.8,<1"
