@@ -22,6 +22,13 @@ column keeps its name (no ALTER ... RENAME) to avoid a migration that touches th
 key's identity; only its content changed meaning. `create_token`/`token_user`/
 `delete_token` hash the caller-supplied raw token before every read/write, so callers are
 unaffected.
+
+Schema v7 (X-4 session-resume): `sessions` gained `owner` (username when auth is on,
+NULL otherwise), `target_bi` (the per-session BI choice, previously in-memory only) and
+`pinned` (JSON array of seed-pinned tables) — the three pieces of session state that
+cannot be reconstructed from messages/specs/builds after a restart. Legacy rows get
+owner=NULL / target_bi='superset' / pinned='[]', which hydration treats as "admin-only
+when auth is on, Superset, no pins".
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ import re
 import sqlite3
 import threading
 import uuid
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +51,7 @@ def _row_id(cur: sqlite3.Cursor) -> int:
     return cur.lastrowid
 
 
-_SCHEMA_VERSION = 6  # bump together with a migration when the schema changes
+_SCHEMA_VERSION = 7  # bump together with a migration when the schema changes
 
 _TOKEN_HASH_RE = re.compile(r"^[0-9a-f]{64}$")  # sha256 hex digest shape
 
@@ -57,7 +65,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     id          TEXT PRIMARY KEY,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     request     TEXT NOT NULL DEFAULT '',
-    status      TEXT NOT NULL DEFAULT 'open'
+    status      TEXT NOT NULL DEFAULT 'open',
+    owner       TEXT,                                    -- v7: username when auth is on
+    target_bi   TEXT NOT NULL DEFAULT 'superset',        -- v7: per-session BI choice
+    pinned      TEXT NOT NULL DEFAULT '[]'               -- v7: JSON array of seed tables
 );
 CREATE TABLE IF NOT EXISTS messages (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -180,7 +191,8 @@ class Store:
         `auth_tokens.token` values to their sha256 hex digest in place (B-4) — guarded by
         shape (`_TOKEN_HASH_RE`), not just the version check, so re-entering this branch
         (e.g. a v6 DB that somehow re-runs it) can never double-hash an already-hashed
-        value.
+        value. v7 adds sessions.owner/target_bi/pinned (guarded ALTERs, defaults cover
+        legacy rows).
         Idempotent — guarded by the column check, so it is safe to run on any schema.
         """
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
@@ -197,6 +209,11 @@ class Store:
             self._add_column("llm_calls", "output_tokens", "INTEGER")
         if version < 6:
             self._hash_legacy_tokens()
+        if version < 7:
+            # v7: durable session identity for restart-resume (X-4) — see module docstring
+            self._add_column("sessions", "owner", "TEXT")
+            self._add_column("sessions", "target_bi", "TEXT NOT NULL DEFAULT 'superset'")
+            self._add_column("sessions", "pinned", "TEXT NOT NULL DEFAULT '[]'")
         if version < _SCHEMA_VERSION:
             self._db.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
 
@@ -227,13 +244,36 @@ class Store:
 
     # --- sessions / messages --------------------------------------------------
 
-    def create_session(self, request: str) -> str:
+    def create_session(
+        self,
+        request: str,
+        *,
+        owner: str | None = None,
+        target_bi: str = "superset",
+        pinned: Iterable[str] = (),
+    ) -> str:
+        """owner/target_bi/pinned (v7) persist the session state that hydration cannot
+        reconstruct from messages/specs after a restart (X-4)."""
         session_id = uuid.uuid4().hex
         with self._lock, self._db:
             self._db.execute(
-                "INSERT INTO sessions (id, request) VALUES (?, ?)", (session_id, request)
+                "INSERT INTO sessions (id, request, owner, target_bi, pinned)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (session_id, request, owner, target_bi, json.dumps(sorted(pinned))),
             )
         return session_id
+
+    def session_row(self, session_id: str) -> dict[str, Any] | None:
+        """Full session row for restart-resume (X-4); `pinned` decoded from JSON."""
+        rows = self._rows("SELECT * FROM sessions WHERE id = ?", session_id)
+        if not rows:
+            return None
+        row = rows[0]
+        try:
+            row["pinned"] = json.loads(row.get("pinned") or "[]")
+        except (TypeError, ValueError):
+            row["pinned"] = []
+        return row
 
     def set_session_status(self, session_id: str, status: str) -> None:
         with self._lock, self._db:
@@ -472,6 +512,12 @@ class Store:
         if status is None:
             return self._rows("SELECT * FROM dm_change_requests ORDER BY id")
         return self._rows("SELECT * FROM dm_change_requests WHERE status = ? ORDER BY id", status)
+
+    def dm_change_requests_for_session(self, session_id: str) -> list[dict[str, Any]]:
+        """One session's DCRs — hydration rebuilds the agent's dedup set from these (X-4)."""
+        return self._rows(
+            "SELECT * FROM dm_change_requests WHERE session_id = ? ORDER BY id", session_id
+        )
 
     def dm_change_request(self, request_id: int) -> dict[str, Any] | None:
         """One DCR with its session context (what the user was trying to build)."""

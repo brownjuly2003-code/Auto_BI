@@ -4,19 +4,22 @@ One ManagedSession per dialogue: the AgentSession itself, a per-session lock tha
 serializes turns (LLM calls are long; two concurrent replies on one session would
 corrupt the machine), and the build event buffer. Events are buffered, not only
 streamed: an SSE client that connects after the build started replays the history
-and then follows live. Process-local by design — the durable record lives in Store.
+and then follows live. Process-local, but no longer process-bound (X-4): a registry
+miss falls back to rehydrating the session from its durable Store record, so a server
+restart (or eviction past MAX_SESSIONS) does not lose dialogues — see `get`/`_hydrate`.
 """
 
 from __future__ import annotations
 
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 
 from auto_bi.advisor.core import Advisor
-from auto_bi.agent.machine import AgentSession, AgentTurn
-from auto_bi.agent.seed import FieldsSeed
+from auto_bi.agent.machine import AgentPhase, AgentSession, AgentTurn
+from auto_bi.agent.seed import FieldsSeed, seed_tables
 from auto_bi.api.schemas import BuildEvent
+from auto_bi.auth import filter_model_by_schemas
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
@@ -101,12 +104,16 @@ class SessionManager:
         advisor: Advisor | None = None,
         store: Store | None = None,
         include_samples: bool = True,
+        # target -> BI host (same mapping create_app gets, F-1): hydration re-absolutizes
+        # the dashboard url stored by the build pipeline, which is BI-relative
+        bi_base_urls: Mapping[TargetBI, str] | None = None,
     ) -> None:
         self._model = model
         self._llm = llm
         self._advisor = advisor
         self._store = store
         self._include_samples = include_samples
+        self._bi_base_urls = bi_base_urls or {}
         self._sessions: dict[str, ManagedSession] = {}
         self._registry_lock = threading.Lock()
 
@@ -127,7 +134,12 @@ class SessionManager:
             label = request
             if not label and seed is not None:
                 label = f"[fields-first] групп: {len(seed.groups)}"
-            session_id = self._store.create_session(label)
+            session_id = self._store.create_session(
+                label,
+                owner=owner,
+                target_bi=target_bi.value,
+                pinned=seed_tables(seed) if seed is not None else (),
+            )
         else:
             session_id = uuid.uuid4().hex
         agent = AgentSession(
@@ -162,7 +174,9 @@ class SessionManager:
         running the LLM (no GROUNDING/PROPOSE). The same approve/build/iterate path applies.
         """
         if self._store is not None:
-            session_id = self._store.create_session(f"авто-обзор: {spec.title}")
+            session_id = self._store.create_session(
+                f"авто-обзор: {spec.title}", owner=owner, target_bi=target_bi.value
+            )
         else:
             session_id = uuid.uuid4().hex
         agent = AgentSession(
@@ -203,11 +217,143 @@ class SessionManager:
 
     def get(self, session_id: str) -> ManagedSession:
         with self._registry_lock:
-            try:
-                return self._sessions[session_id]
-            except KeyError:
-                raise UnknownSession(session_id) from None
+            managed = self._sessions.get(session_id)
+        if managed is not None:
+            return managed
+        # X-4: registry miss -> rehydrate from the durable record (server restart or
+        # eviction past MAX_SESSIONS). Store reads run outside the registry lock; the
+        # double-check below keeps the winner if two callers hydrated the same id
+        # concurrently (the loser's copy is dropped before anyone could lock it).
+        managed = self._hydrate(session_id)
+        with self._registry_lock:
+            existing = self._sessions.get(session_id)
+            if existing is not None:
+                return existing
+            self._evict_idle_locked()
+            self._sessions[session_id] = managed
+        return managed
+
+    def _hydrate(self, session_id: str) -> ManagedSession:
+        """Rebuild a ManagedSession from Store rows (X-4); raises UnknownSession when
+        there is nothing meaningful to resume.
+
+        Phase mapping: the latest spec row decides — 'approved' -> APPROVED, any other
+        status -> APPROVE (word edits keep appending 'proposed' rows, so the latest row
+        IS the current spec). No spec rows -> the dialogue was still clarifying: resume
+        as CLARIFY only if at least one clarify round actually reached the user
+        (trace_events); a session that died before its first agent output never returned
+        its id to the client, so it is not resumable — UnknownSession.
+
+        Deliberately not restored (regenerated by the next turn): grounding report,
+        advisor verdicts, seed layout-analysis. Clarification answers are restored only
+        for CLARIFY sessions — in APPROVE/APPROVED every reply goes down the patch path,
+        which never re-reads them.
+        """
+        if self._store is None:
+            raise UnknownSession(session_id)
+        row = self._store.session_row(session_id)
+        if row is None or row["status"] == "deleted":
+            raise UnknownSession(session_id)
+        user_texts = [m["content"] for m in self._store.messages(session_id) if m["role"] == "user"]
+
+        specs = self._store.specs(session_id)
+        spec: DashboardSpec | None = None
+        spec_row_id: int | None = None
+        clarifications: list[str] = []
+        clarify_rounds = 0
+        if specs:
+            spec = DashboardSpec.model_validate(specs[-1]["spec_json"])
+            spec_row_id = specs[-1]["id"]
+            phase = AgentPhase.APPROVED if specs[-1]["status"] == "approved" else AgentPhase.APPROVE
+            # auto-overview sessions have no user message at all (adopt_spec records only
+            # the agent's summary) — the session label stands in; _request is never
+            # re-read on the patch path anyway
+            request = user_texts[0] if user_texts else row["request"]
+        else:
+            if not user_texts:
+                raise UnknownSession(session_id)
+            clarify_rounds = sum(
+                1 for e in self._store.trace_events(session_id) if e["kind"] == "clarify"
+            )
+            if clarify_rounds == 0:
+                raise UnknownSession(session_id)
+            phase = AgentPhase.CLARIFY
+            request = user_texts[0]
+            # no spec was ever proposed, so every user message after the first is a
+            # clarification answer (word edits only exist once a spec does)
+            clarifications = user_texts[1:]
+
+        # RBAC: ground/patch on the owner's schema scope, exactly like the live session
+        # did (app.py filtered the model at start). Owner gone from the users file ->
+        # fall back to the full model; the approve-time forbidden_tables gate still holds.
+        model = self._model
+        owner = row.get("owner")
+        if owner:
+            user = self._store.get_user(owner)
+            if user is not None:
+                model = filter_model_by_schemas(self._model, user["allowed_schemas"])
+
+        agent = AgentSession.restore(
+            model,
+            self._llm,
+            self._advisor,
+            store=self._store,
+            session_id=session_id,
+            include_samples=self._include_samples,
+            phase=phase,
+            request=request,
+            clarifications=clarifications,
+            clarify_rounds=clarify_rounds,
+            pinned=set(row.get("pinned") or ()),
+            spec=spec,
+            spec_row_id=spec_row_id,
+            dcr_logged={
+                (r["table_name"], r["rule"])
+                for r in self._store.dm_change_requests_for_session(session_id)
+            },
+        )
+        try:
+            target = TargetBI(row.get("target_bi") or "superset")
+        except ValueError:  # a legacy/foreign value never blocks resume
+            target = TargetBI.SUPERSET
+        managed = ManagedSession(session_id, agent, target_bi=target, owner=owner)
+
+        builds = self._store.builds(session_id)
+        if builds:
+            last = builds[-1]
+            if last["status"] == "ok":
+                managed.build_status = "built"
+                url = last["url"] or ""
+                base = self._bi_base_urls.get(target, "").rstrip("/")
+                if base and url and not url.startswith(("http://", "https://")):
+                    url = base + url  # pipeline stores the BI-relative url (F-1 convention)
+                managed.dashboard_url = url
+                # seed the SSE buffer with a synthetic terminal event: a late stream
+                # reader must get closure, not heartbeats forever on an empty buffer
+                managed.add_event(BuildEvent(kind="done", text=spec.title if spec else "", url=url))
+            else:
+                managed.build_status = "failed"
+                managed.add_event(BuildEvent(kind="error", text=last["error"] or "build failed"))
+        elif phase is AgentPhase.APPROVED:
+            # approved but no build row: the process died in the approve->build window
+            # (reap_stuck_builds covers the mid-build case). Mark failed so the approve
+            # endpoint's retry path rebuilds the same approved spec instead of 409.
+            managed.build_status = "failed"
+            managed.add_event(
+                BuildEvent(kind="error", text="build was interrupted by a server restart")
+            )
+        return managed
 
     def remove(self, session_id: str) -> bool:
+        """Forget the session and tombstone its durable record (status='deleted').
+
+        Without the tombstone, lazy hydration would resurrect a DELETEd session on the
+        next GET, making delete a no-op. The rows themselves stay — delete makes the
+        session unaddressable, not unrecorded.
+        """
         with self._registry_lock:
-            return self._sessions.pop(session_id, None) is not None
+            removed = self._sessions.pop(session_id, None) is not None
+        if self._store is not None and self._store.session_status(session_id) is not None:
+            self._store.set_session_status(session_id, "deleted")
+            return True
+        return removed

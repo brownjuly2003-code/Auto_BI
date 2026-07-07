@@ -100,6 +100,7 @@ def create_app(
         advisor=advisor,
         store=store,
         include_samples=include_samples,
+        bi_base_urls=bi_base_urls,  # X-4: hydration re-absolutizes stored dashboard urls
     )
     app = FastAPI(title="Auto_BI API", version=__version__)
 
@@ -363,7 +364,9 @@ def create_app(
         managed = _owned(session_id, request)
         if managed.build_status == "building":
             raise HTTPException(status_code=409, detail="build is running")
-        manager.remove(session_id)  # the durable record stays in Store
+        # the durable rows stay in Store, but the session is tombstoned (status='deleted')
+        # so lazy hydration (X-4) never resurrects it
+        manager.remove(session_id)
 
     # --- enrichment (task 2.7): gaps -> inline edits -> commit model.yaml ----------
     # one lock serializes model mutation + dump; agent sessions read the same object,

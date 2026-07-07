@@ -6,6 +6,14 @@
 
 ### Added
 
+- Session-resume после рестарта (X-4): промах in-memory реестра лениво регидрирует
+  сессию из Store (schema v7: `sessions.owner/target_bi/pinned`) — фаза диалога,
+  текущий spec, счётчик clarify-раундов, статус билда и абсолютная ссылка на дашборд
+  переживают рестарт `auto_bi serve` и eviction за `MAX_SESSIONS`; билд, оборванный
+  рестартом, воскресает как `failed` и пересобирается повторным approve. RBAC
+  сохраняется (владелец и скоуп схем восстанавливаются; legacy-сессии без владельца
+  при включённом auth видит только админ). `DELETE /sessions/{id}` теперь ставит
+  tombstone (`status='deleted'`), иначе гидрация воскрешала бы удалённую сессию.
 - DataLens: пресет периода на дашборд-селекторе (B5) — `DashboardFilter.default`
   («last 12 months» / ISO-диапазон) компилируется в relative-interval токен
   (`__interval___relative_-12M___relative_+0d`) в `defaultValue`+`defaults` контрола;

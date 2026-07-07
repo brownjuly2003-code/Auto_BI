@@ -152,7 +152,7 @@ def test_foreign_keys_enforced(store: Store) -> None:
 
 def test_schema_version_stamped(store: Store) -> None:
     version = store._db.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 6
+    assert version == 7
 
 
 def test_trace_events_ordered_by_seq(store: Store) -> None:
@@ -291,7 +291,7 @@ def test_migrates_v1_db_to_v2(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 7
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the pre-existing row survived and back-fills with defaults
@@ -324,7 +324,7 @@ def test_migrates_legacy_v0_db_with_old_llm_calls(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 7
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the first observability-aware write no longer crashes with "no such column: step"
@@ -369,7 +369,7 @@ def test_migrates_v3_db_adds_remediation_column(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 7
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(dm_change_requests)")}
     assert "remediation" in cols
     # the pre-existing row survived and back-fills the new column with its default
@@ -405,7 +405,7 @@ def test_migrates_v4_db_adds_token_columns(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 7
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"input_tokens", "output_tokens"} <= cols
     # the pre-existing row survived; its token columns back-fill to NULL (not a fake 0)
@@ -459,7 +459,7 @@ def test_migrates_v5_db_hashes_plaintext_tokens(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 6
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 7
     (row,) = store._rows("SELECT token, user_id FROM auth_tokens")
     assert row["token"] == _hash_token("plaintext-raw-token-value")
     assert row["user_id"] == 1
@@ -481,3 +481,64 @@ def test_dm_change_request_persists_remediation(store: Store) -> None:
     row = store.dm_change_request(req_id)
     assert row is not None
     assert row["remediation"] == '[{"kind": "ch_projection", "ddl": "ALTER TABLE ..."}]'
+
+
+# --- schema v7: session identity for restart-resume (X-4) ---------------------------
+
+
+def test_create_session_persists_owner_target_and_pins(store: Store) -> None:
+    sid = store.create_session(
+        "выручка", owner="alice", target_bi="datalens", pinned=["dm.stores", "dm.sales_daily"]
+    )
+    row = store.session_row(sid)
+    assert row is not None
+    assert row["owner"] == "alice"
+    assert row["target_bi"] == "datalens"
+    assert row["pinned"] == ["dm.sales_daily", "dm.stores"]  # stored sorted
+    # defaults: auth off, Superset, no seed
+    bare = store.session_row(store.create_session("r"))
+    assert bare["owner"] is None
+    assert bare["target_bi"] == "superset"
+    assert bare["pinned"] == []
+    assert store.session_row("no-such-session") is None
+
+
+def test_dm_change_requests_for_session_scopes_by_session(store: Store) -> None:
+    sid = store.create_session("r")
+    other = store.create_session("other")
+    store.add_dm_change_request(sid, table_name="dm.sales_daily", rule="a", severity="warn")
+    store.add_dm_change_request(other, table_name="dm.stores", rule="b", severity="warn")
+    rows = store.dm_change_requests_for_session(sid)
+    assert [(r["table_name"], r["rule"]) for r in rows] == [("dm.sales_daily", "a")]
+
+
+def test_migrates_v6_db_adds_session_resume_columns(tmp_path) -> None:
+    # a v6 DB: sessions predates owner/target_bi/pinned. CREATE TABLE IF NOT EXISTS leaves
+    # it untouched, so the v7 migration must ALTER in place; the legacy row back-fills to
+    # owner=NULL / target_bi='superset' / pinned='[]' (hydration's safe defaults).
+    import sqlite3
+
+    path = tmp_path / "v6.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE sessions ("
+        " id TEXT PRIMARY KEY,"
+        " created_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        " request TEXT NOT NULL DEFAULT '',"
+        " status TEXT NOT NULL DEFAULT 'open');"
+        "INSERT INTO sessions (id, request, status) VALUES ('legacy1', 'выручка', 'built');"
+    )
+    db.execute("PRAGMA user_version = 6")
+    db.commit()
+    db.close()
+
+    store = Store(path)
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 7
+    cols = {r["name"] for r in store._db.execute("PRAGMA table_info(sessions)")}
+    assert {"owner", "target_bi", "pinned"} <= cols
+    row = store.session_row("legacy1")
+    assert row["status"] == "built"
+    assert row["owner"] is None
+    assert row["target_bi"] == "superset"
+    assert row["pinned"] == []
+    store.close()
