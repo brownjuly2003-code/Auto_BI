@@ -22,6 +22,8 @@ if [ -n "${SPACE_HOST:-}" ]; then
 else
     export AUTO_BI_SUPERSET_PUBLIC_URL="${DEMO_PUBLIC_URL:-http://localhost:7860}"
 fi
+# created HERE, not in the Dockerfile: build runs as root, this runs as UID 1000
+mkdir -p /tmp/auto_bi
 export AUTO_BI_STORE_PATH=/tmp/auto_bi/store.sqlite
 
 echo "[autobi] serving (public url: ${AUTO_BI_SUPERSET_PUBLIC_URL})..."

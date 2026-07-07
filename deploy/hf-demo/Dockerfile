@@ -56,7 +56,6 @@ RUN chmod +x /opt/demo/start-*.sh
 # ClickHouse/nginx/supervisor all write under paths owned by that user; nginx temp/pid
 # live in /tmp (see nginx.conf).
 RUN mkdir -p /var/lib/clickhouse /var/log/clickhouse-server /app/superset_home \
-        /tmp/auto_bi \
     && chown -R superset:superset \
         /var/lib/clickhouse /var/log/clickhouse-server /etc/clickhouse-server \
         /app/superset_home /opt/demo
