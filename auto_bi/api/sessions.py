@@ -350,6 +350,12 @@ class SessionManager:
         Without the tombstone, lazy hydration would resurrect a DELETEd session on the
         next GET, making delete a no-op. The rows themselves stay — delete makes the
         session unaddressable, not unrecorded.
+
+        Known non-atomicity: a get() racing this remove can re-insert the session into
+        the registry after the pop but before (or despite) the tombstone — the durable
+        record is 'deleted' either way, so the resurrection lives only until the next
+        restart/eviction. Accepted: it needs the same client to DELETE and address one
+        session concurrently, and the tombstone is what actually owns the semantics.
         """
         with self._registry_lock:
             removed = self._sessions.pop(session_id, None) is not None
