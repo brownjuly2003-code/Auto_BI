@@ -24,8 +24,9 @@ class LoginRateLimiter:
     parameters to reuse the same mechanism for a different window/lockout scale (e.g. a
     per-day LLM-call quota).
 
-    Once a key exceeds the window, it is locked out; each further call while still
-    locked out grows the *next* lockout (doubling per strike, capped at
+    Once a key exceeds the window, it is locked out; calls during an active lockout are
+    refused with the remaining wait and do not extend it. Each renewed window violation
+    after a lockout expires is a new strike that doubles the next lockout (capped at
     `lockout_cap_seconds`), so a scripted retry-loop gets throttled progressively harder
     while a one-off accidental burst only waits out the base lockout. Strikes are never
     reset while the key stays active, so an attacker cannot wait once and reset back to

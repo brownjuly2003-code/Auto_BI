@@ -652,6 +652,9 @@ def create_app(
 
     @app.patch("/api/v1/dm-change-requests/{request_id}")
     def update_dm_change_request(request_id: int, body: DCRStatusUpdate) -> dict:
+        # P8: the DCR workflow state is shared like model.yaml — no anonymous writes in
+        # the public demo (the demo never creates DCRs, so this is defense in depth)
+        _check_demo_gate("Правка статуса DCR")
         if body.status not in DCR_STATUSES:
             raise HTTPException(
                 status_code=422,

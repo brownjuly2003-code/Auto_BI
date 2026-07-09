@@ -72,6 +72,14 @@ def test_enrichment_writes_are_403(demo_model, tmp_path) -> None:
     assert r.status_code == 403
 
 
+def test_dcr_status_write_is_403(demo_model) -> None:
+    # shared workflow state, same rule as enrichment: the gate answers before the
+    # store wiring (403, not 503/404) — the demo never creates DCRs, defense in depth
+    client = demo_client(demo_model)
+    r = client.patch("/api/v1/dm-change-requests/1", json={"status": "accepted"})
+    assert r.status_code == 403
+
+
 def test_read_surfaces_stay_open(demo_model) -> None:
     client = demo_client(demo_model)
     assert client.get("/api/v1/model/fields").status_code == 200
