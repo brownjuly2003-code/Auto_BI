@@ -164,6 +164,11 @@ def build_form_data(
     if chart.viz == Viz.BIG_NUMBER:
         # the dataset is a single already-aggregated row -> MAX is the identity
         metric = _adhoc_metric(q.measures[0], chart.id, 0, agg="MAX", label=_label(q.measures[0]))
+        # every KPI tile shares one shape: value line + unit line, equal font proportions
+        # (pinned to Superset's defaults so a default drift can't desynchronize the row).
+        # Without the pin the tiles also diverge live: a subheader-less tile lets the
+        # value auto-grow into the freed height. Centering is dashboard CSS (adapter).
+        base = {**base, "header_font_size": 0.4, "subheader_font_size": 0.15}
         if kpi_scale is not None and kpi_scale[0] > 1:
             # scale the headline into RU magnitude units: divide the metric and round to a whole
             # number ("236"), with the unit ("млрд") on the smaller subheader line. Grouped
@@ -174,6 +179,15 @@ def build_form_data(
             metric = {**metric, "sqlExpression": f"({metric['sqlExpression']}) / {divisor:.0f}"}
             headline_fmt = ",.1f" if scaled < 10 else ",.0f"
             return {**base, "metric": metric, "subheader": unit, "y_axis_format": headline_fmt}
+        if fmt == _PERCENT_D3:
+            # a percent KPI mirrors the unit tiles: plain value + "%" on the subheader line
+            # ("1.5" over "%"), NOT "1.5%" glued into the headline — the lone long string
+            # shrank the font and, with no subheader line, the tile centered differently
+            # from its neighbours (the "одинаковый формат" fix). d3 "%" implies ×100, so
+            # the metric is scaled in SQL; ".1~f" keeps the .1% precision, trim drops a
+            # trailing zero ("34", not "34.0" — the L-1 band rule without a probe).
+            metric = {**metric, "sqlExpression": f"({metric['sqlExpression']}) * 100"}
+            return {**base, "metric": metric, "subheader": "%", "y_axis_format": ".1~f"}
         fd = {**base, "metric": metric, "subheader": ""}
         if fmt:
             fd["y_axis_format"] = fmt

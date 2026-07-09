@@ -51,6 +51,19 @@ logger = logging.getLogger(__name__)
 
 DATABASE_NAME = "Auto_BI ClickHouse"
 
+# Dashboard-level CSS: KPI tiles center as one visual row (same baseline both axes).
+# big_number_total renders the value left/top-anchored and, with no unit line, drifts
+# vertically relative to its neighbours; there is no form_data knob for alignment, so
+# this is the deterministic native-format seam (invariant 1), same as position_json.
+# Verified against the pinned Superset 4.1 DOM (.superset-legacy-chart-big-number).
+KPI_CENTER_CSS = """
+.superset-legacy-chart-big-number {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+}
+.superset-legacy-chart-big-number .header-line { justify-content: center; }
+"""
+
 # a measure is money (KPI unit gets a "₽") when its model description says so — kept as
 # markers, not a hard-coded currency, so a count/qty KPI never gets a spurious ruble sign.
 _MONEY_MARKERS = ("руб", "₽", "rub")
@@ -345,6 +358,7 @@ class SupersetAdapter:
                 "dashboard_title": spec.title,
                 "position_json": json.dumps(position, ensure_ascii=False),
                 "json_metadata": json.dumps(json_metadata, ensure_ascii=False),
+                "css": KPI_CENTER_CSS,
                 "published": True,
             },
         )

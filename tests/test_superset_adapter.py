@@ -166,6 +166,33 @@ def test_form_data_keeps_full_precision_for_averages() -> None:
     assert "column_config" not in build_form_data(avg_table, dataset_id=1)
 
 
+def test_form_data_percent_kpi_moves_percent_to_the_subheader_line() -> None:
+    # the KPI row reads as one format: value line + unit line on every tile. A percent
+    # KPI therefore renders "1.5" over "%" (metric ×100 in SQL, since d3 "%" would both
+    # multiply and glue the sign into the headline); ".1~f" keeps the .1% precision and
+    # trims a trailing zero ("34", not "34.0").
+    from auto_bi.ir.spec import MeasureTransform
+
+    pct = Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.POP_PCT)
+    fd = build_form_data(_chart(Viz.BIG_NUMBER, measures=[pct]), dataset_id=1)
+    assert fd["metric"]["sqlExpression"].endswith("* 100")
+    assert fd["subheader"] == "%"
+    assert fd["y_axis_format"] == ".1~f"
+
+
+def test_form_data_big_number_pins_equal_font_proportions() -> None:
+    # all KPI tiles share the same value/unit font proportions regardless of scale branch
+    from auto_bi.ir.spec import MeasureTransform
+
+    pct = Measure(column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.POP_PCT)
+    for fd in (
+        build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1),
+        build_form_data(_chart(Viz.BIG_NUMBER), dataset_id=1, kpi_scale=(1e9, "млрд ₽", 236.1)),
+        build_form_data(_chart(Viz.BIG_NUMBER, measures=[pct]), dataset_id=1),
+    ):
+        assert (fd["header_font_size"], fd["subheader_font_size"]) == (0.4, 0.15)
+
+
 def test_form_data_percent_format_for_ratio_transforms() -> None:
     from auto_bi.ir.spec import MeasureTransform
 
@@ -526,6 +553,10 @@ def test_build_full_flow() -> None:
     assert dataset_posts[0]["table_name"].startswith("auto_bi__")
 
     dash_post = next(b for m, p, b in fake.requests if m == "POST" and p == "/api/v1/dashboard/")
+    # KPI tiles center as one visual row — the alignment knob is dashboard CSS, not form_data
+    from auto_bi.adapters.superset.adapter import KPI_CENTER_CSS
+
+    assert dash_post["css"] == KPI_CENTER_CSS
     position = json.loads(dash_post["position_json"])
     chart_ids = {
         node["meta"]["chartId"] for node in position.values()
