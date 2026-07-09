@@ -66,6 +66,15 @@
   целочисленное округление теряло до трети величины («1,5 млрд» → «2 млрд»).
   Оба адаптера (Superset `",.1f"`, DataLens `precision: 1`).
 - OpenAPI/docs-страница отдаёт версию пакета вместо захардкоженной «0.1.0» (L-3).
+- Публичное демо: пересборка дашборда после первого билда падала с 422
+  «A database with the same name already exists» — у Public-роли (Gamma-like)
+  оставался `can_read on Database`, из-за чего FAB (is_item_public ДО verify_jwt)
+  исполнял даже аутентифицированный GET /api/v1/database/ адаптера как анонимный,
+  а анонимному DatabaseFilter прячет коннекшены → get-or-create всегда шёл в create.
+  `superset_public_role.py` теперь снимает и это чтение; smoke `demo-image.yml`
+  гоняет ДВА билда в одном контейнере, чтобы lookup-путь не оставался слепым пятном.
+- Демо-режим: `PATCH /api/v1/dm-change-requests/{id}` закрыт 403-гейтом как и
+  остальные записи разделяемого состояния (в демо DCR не создаются — defense in depth).
 - DataLens: percent-ось (C1) — доля/ratio-чарты показывали сырые 0..1 на оси значений
   (3 сессии считалось engine-limit). Причина: ось читает `formatting` поля ТОЛЬКО при
   `placeholder.settings.axisFormatMode="by-field"` (реверс datalens-ui 0.3831.0), флаг

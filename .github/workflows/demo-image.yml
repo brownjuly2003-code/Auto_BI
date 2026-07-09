@@ -44,24 +44,27 @@ jobs:
           curl -fsS http://localhost:7860/agent/api/v1/health \
             | python3 -c 'import json,sys; assert json.load(sys.stdin)["demo_auto_only"] is True'
 
-      - name: Smoke — anonymous auto-overview builds a public dashboard
+      - name: Smoke — anonymous auto-overview builds a public dashboard, twice
         run: |
           set -euxo pipefail
-          SID=$(curl -fsS -X POST http://localhost:7860/agent/api/v1/sessions/auto \
-            -H 'Content-Type: application/json' -d '{"table":"dm.sales_daily"}' \
-            | python3 -c 'import json,sys;print(json.load(sys.stdin)["session_id"])')
-          curl -fsS -X POST "http://localhost:7860/agent/api/v1/sessions/$SID/approve"
-          STATUS=building
-          for i in $(seq 1 60); do
-            STATUS=$(curl -fsS "http://localhost:7860/agent/api/v1/sessions/$SID" \
-              | python3 -c 'import json,sys;print(json.load(sys.stdin)["build_status"])')
-            [ "$STATUS" = "built" ] && break
-            if [ "$STATUS" = "failed" ]; then docker logs demo | tail -150; exit 1; fi
-            sleep 5
-          done
-          [ "$STATUS" = "built" ]
-          URL=$(curl -fsS "http://localhost:7860/agent/api/v1/sessions/$SID" \
-            | python3 -c 'import json,sys;print(json.load(sys.stdin)["dashboard_url"])')
+          build_once() {
+            SID=$(curl -fsS -X POST http://localhost:7860/agent/api/v1/sessions/auto \
+              -H 'Content-Type: application/json' -d '{"table":"dm.sales_daily"}' \
+              | python3 -c 'import json,sys;print(json.load(sys.stdin)["session_id"])')
+            curl -fsS -X POST "http://localhost:7860/agent/api/v1/sessions/$SID/approve" >&2
+            STATUS=building
+            for i in $(seq 1 60); do
+              STATUS=$(curl -fsS "http://localhost:7860/agent/api/v1/sessions/$SID" \
+                | python3 -c 'import json,sys;print(json.load(sys.stdin)["build_status"])')
+              [ "$STATUS" = "built" ] && break
+              if [ "$STATUS" = "failed" ]; then docker logs demo | tail -150; return 1; fi
+              sleep 5
+            done
+            [ "$STATUS" = "built" ]
+            curl -fsS "http://localhost:7860/agent/api/v1/sessions/$SID" \
+              | python3 -c 'import json,sys;print(json.load(sys.stdin)["dashboard_url"])'
+          }
+          URL=$(build_once)
           echo "dashboard: $URL"
           # absolute against the public base (DEMO_PUBLIC_URL fallback in start-autobi.sh)
           echo "$URL" | grep -q '^http://localhost:7860/'
@@ -70,6 +73,14 @@ jobs:
           echo "final url: $FINAL"
           case "$FINAL" in *login*) echo "::error::anonymous view redirected to login"; exit 1;; esac
           [ "$(curl -s -o /dev/null -w '%{http_code}' -L "$URL")" = "200" ]
+          # SECOND build in the same container: exercises the ensure_database LOOKUP
+          # path. With `can_read on Database` on the Public role, FAB ran even the
+          # adapter's authenticated GET /api/v1/database/ as anonymous (is_item_public
+          # short-circuits before verify_jwt), anonymous sees no connections, and every
+          # build after the first died on POST 422 "same name already exists".
+          URL2=$(build_once)
+          echo "second dashboard: $URL2"
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -L "$URL2")" = "200" ]
 
       - name: Container logs on failure
         if: failure()
