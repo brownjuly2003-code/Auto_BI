@@ -252,6 +252,10 @@ def build_form_data(
 
     # echarts timeseries family: line, bar, stacked_bar, area
     x_axis, *rest_dims = q.dimensions
+    # a temporal x (model role=TIME) is the chart's own x column, not just a group column: the
+    # adapter passes its alias as time_column AND it is dimensions[0]. Bars over such a column
+    # must keep the time axis (see below), so distinguish it from a numeric categorical x.
+    x_is_temporal = time_column is not None and time_column == column_alias(x_axis)
     breakdown: dict[str, None] = {}  # series + extra dimensions, deduped, order kept
     for col in (*q.series, *rest_dims):
         breakdown.setdefault(col, None)
@@ -269,11 +273,20 @@ def build_form_data(
         # §3.5). Superset must also mark this column is_dttm on the dataset (auto on a fresh Date
         # column); this pairs with that.
         form_data["granularity_sqla"] = time_column
+    if x_is_temporal:
+        # a temporal x renders on a time axis whose tick labels need an explicit date format;
+        # without it Superset's ECharts prints the raw epoch-ms of each bucket (a bar over
+        # cohort months showed 1769904000000 instead of "июл 2024"). smart_date is Superset's
+        # adaptive date format. A line already defaults to a time axis (this is a no-op label
+        # pin there); the fix matters for a bar, which is otherwise forced categorical below.
+        form_data["x_axis_time_format"] = "smart_date"
     if fmt:
         form_data["y_axis_format"] = fmt
-    if chart.viz in (Viz.BAR, Viz.STACKED_BAR, Viz.HISTOGRAM):
+    if chart.viz in (Viz.BAR, Viz.STACKED_BAR, Viz.HISTOGRAM) and not x_is_temporal:
         # a numeric dimension (store_id) / a histogram's numeric bucket bounds otherwise land on
-        # a continuous value axis: thin bars at their numeric positions instead of labeled buckets
+        # a continuous value axis: thin bars at their numeric positions instead of labeled
+        # buckets. A TEMPORAL x is the exception — forcing it categorical makes ECharts print
+        # the bucket's raw epoch-ms; it stays on the time axis with x_axis_time_format instead.
         form_data["xAxisForceCategorical"] = True
     if chart.viz in (Viz.BAR, Viz.STACKED_BAR):
         if horizontal:

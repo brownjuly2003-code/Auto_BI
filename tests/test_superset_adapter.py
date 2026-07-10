@@ -286,6 +286,20 @@ def test_form_data_bar_forces_categorical_axis() -> None:
     assert "xAxisForceCategorical" not in line  # lines keep the time/value axis
 
 
+def test_form_data_temporal_bar_keeps_time_axis_not_categorical() -> None:
+    # a bar over a TIME column (e.g. cohort month) must NOT be forced categorical — forcing it
+    # makes ECharts print the raw epoch-ms of each bucket (the cohort dashboard showed
+    # 1769904000000 instead of "июл 2024"); it keeps the time axis with an explicit date format
+    fd = build_form_data(_chart(Viz.BAR, dimensions=["date"]), dataset_id=1, time_column="date")
+    assert "xAxisForceCategorical" not in fd
+    assert fd["x_axis_time_format"] == "smart_date"
+    assert fd["granularity_sqla"] == "date"
+    # a numeric non-temporal bar (store_id) is still forced categorical, gets no date format
+    num = build_form_data(_chart(Viz.BAR, dimensions=["store_id"]), dataset_id=1)
+    assert num["xAxisForceCategorical"] is True
+    assert "x_axis_time_format" not in num
+
+
 def test_form_data_bar_horizontal_orientation() -> None:
     # a categorical ranking renders horizontally so long RU labels get the full row width
     # (the adapter computes the flag via is_horizontal_bar; build_form_data just honors it)
