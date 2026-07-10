@@ -67,11 +67,12 @@ jobs:
           generate_release_notes: false
 
   # X-2: PyPI publication via Trusted Publishing (OIDC) — no long-lived token in secrets.
-  # ONE-TIME owner prerequisite before the first tag that should publish: on pypi.org →
-  # "Publishing" → add a (pending) trusted publisher for project `auto-bi` with
-  # owner `brownjuly2003-code`, repo `Auto_BI`, workflow `release.yml`, environment `pypi`.
-  # Until that is configured this job fails with an OIDC error while the docker/GH-release
-  # job above still completes (the jobs are independent).
+  # The trusted publisher (project `autobi-agent`, owner `brownjuly2003-code`, repo
+  # `Auto_BI`, workflow `release.yml`, environment `pypi`) is registered on pypi.org since
+  # 2026-07-10; a tag publishes without further setup. The distribution is named
+  # `autobi-agent`, NOT `auto-bi`: PyPI folds separators when comparing names, so `auto-bi`
+  # collides with the pre-existing placeholder project `autobi` and is refused as "too
+  # similar". The importable package and the console script stay `auto_bi`.
   pypi:
     runs-on: ubuntu-latest
     environment: pypi

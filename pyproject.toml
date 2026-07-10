@@ -1,6 +1,6 @@
 [project]
-name = "auto-bi"
-version = "0.3.0"
+name = "autobi-agent"
+version = "0.3.1"
 description = "Agent: text / field layout -> dashboard in selected BI on top of DWH DM layer"
 readme = "README.md"
 license = "MIT"

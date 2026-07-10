@@ -53,7 +53,7 @@ flowchart LR
 Подключение новой витрины DWH за ≤ 1 ч — [docs/ONBOARDING_DWH.md](docs/ONBOARDING_DWH.md).
 
 ```bash
-pip install -e .                                  # консольная команда auto_bi
+pip install autobi-agent                          # или pip install -e . из корня репозитория
 auto_bi introspect --output semantic/model.yaml   # DWH -> черновик модели
 auto_bi build "Выручка по магазинам за июнь 2026"  # текст -> дашборд
 auto_bi build --auto dm.sales_daily                # витрина -> обзорный дашборд (без LLM)

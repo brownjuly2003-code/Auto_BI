@@ -57,8 +57,8 @@ wheels = [
 ]
 
 [[package]]
-name = "auto-bi"
-version = "0.3.0"
+name = "autobi-agent"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "clickhouse-connect" },

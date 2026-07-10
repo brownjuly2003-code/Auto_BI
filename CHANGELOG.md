@@ -2,6 +2,17 @@
 
 Формат по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [SemVer](https://semver.org/lang/ru/).
 
+## [0.3.1] - 2026-07-10
+
+Первый релиз на PyPI: `pip install autobi-agent`.
+
+### Changed
+
+- **Имя дистрибутива — `autobi-agent`** (было `auto-bi`; импортируемый пакет и консольная
+  команда остаются `auto_bi`). PyPI отвергает `auto-bi` как «too similar to an existing
+  project»: при сравнении имён разделители схлопываются, поэтому имя конфликтует с уже
+  занятым пакетом-заглушкой `autobi`. Trusted publisher зарегистрирован под новым именем.
+
 ## [0.3.0] - 2026-07-10
 
 Session-resume, публичное демо (живой Space + режим `AUTO_BI_DEMO_AUTO_ONLY`),
