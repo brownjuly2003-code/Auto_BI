@@ -69,6 +69,36 @@ def test_inflections_match_via_stem() -> None:
     assert out.tables[0].name == "dm.stores"
 
 
+def test_synonyms_pull_table_and_render_into_prompt() -> None:
+    # X-3: «удержание» is nowhere in the physical names/descriptions — only in the
+    # hand-authored synonyms — yet the mart must win selection and the LLM must see
+    # the vocabulary in the rendered model
+    cohorts = Table(
+        name="dm.cohort_retention",
+        description="Когортный ретеншен",
+        synonyms=["удержание", "retention", "отток"],
+        columns=[
+            Column(
+                name="months_since",
+                type="UInt16",
+                role=ColumnRole.DIMENSION,
+                synonyms=["месяц жизни"],
+            )
+        ],
+    )
+    filler = [_table(f"dm.filler_{i}", "Технические данные загрузок", n_cols=15) for i in range(5)]
+    budget = len(render_model(SemanticModel(tables=[cohorts]))) + 40
+    out = select_context(
+        SemanticModel(tables=[*filler, cohorts]), "покажи удержание клиентов", budget_chars=budget
+    )
+    assert [t.name for t in out.tables] == ["dm.cohort_retention"]
+    rendered = render_table(cohorts)
+    assert "[синонимы: удержание, retention, отток]" in rendered
+    assert "[синонимы: месяц жизни]" in rendered
+    # samples gating must NOT drop synonyms: vocabulary is authored, not data
+    assert "[синонимы: удержание" in render_table(cohorts, include_samples=False)
+
+
 def test_value_mention_pulls_table() -> None:
     products = Table(
         name="dm.products",

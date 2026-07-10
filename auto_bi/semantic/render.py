@@ -21,6 +21,8 @@ def render_table(table: Table, *, include_samples: bool = True) -> str:
     header = f"Таблица {table.name}"
     if table.description:
         header += f" — {table.description}"
+    if table.synonyms:  # hand-authored vocabulary (X-3), not data samples — never gated
+        header += f" [синонимы: {', '.join(table.synonyms)}]"
     if table.physical and table.physical.rows:
         header += f" ({_human_rows(table.physical.rows)} строк)"
     lines = [header]
@@ -33,6 +35,8 @@ def render_table(table: Table, *, include_samples: bool = True) -> str:
         col += ")"
         if c.description:
             col += f": {c.description}"
+        if c.synonyms:
+            col += f" [синонимы: {', '.join(c.synonyms)}]"
         if c.fk:
             col += f" [fk: {c.fk}]"
         if c.top_values and include_samples:  # gated by AUTO_BI_SEND_SAMPLES (sensitive DMs)

@@ -204,6 +204,10 @@ tables:
       format: 3
 - name: dm.orders
   description: 'Заказы клиентов (клиентский грейн: customer_id, order_date) — база когортного анализа'
+  synonyms:
+  - клиенты
+  - покупатели
+  - покупки клиентов
   grain:
   - customer_id
   - order_date
@@ -241,6 +245,14 @@ tables:
       order_date: 672
 - name: dm.cohort_retention
   description: 'Когортный ретеншен: месяц первой покупки клиента x месяцев с первой покупки x уникальных клиентов'
+  synonyms:
+  - удержание
+  - удержание клиентов
+  - retention
+  - ретеншен
+  - когорты
+  - повторные покупки
+  - отток
   grain:
   - cohort_month
   - months_since
@@ -249,10 +261,15 @@ tables:
     type: Date
     role: time
     description: Месяц когорты (месяц первой покупки клиента)
+    synonyms:
+    - когорта
   - name: months_since
     type: UInt16
     role: dimension
     description: Месяцев с первой покупки (0 = месяц первой покупки)
+    synonyms:
+    - месяц жизни
+    - период удержания
   - name: customers
     type: UInt64
     role: measure

@@ -36,6 +36,11 @@ class Column(BaseModel):
     agg: Aggregation | None = None  # default aggregation for measures
     fk: str | None = None  # "schema.table.column" the dimension points to
     top_values: list[str] = Field(default_factory=list)  # low-cardinality samples for grounding
+    # hand-authored alternate names ("удержание" for a retention column): rendered into
+    # LLM prompts and scored by context selection, so a request phrased in the user's own
+    # words still finds the column (X-3). NOT auto-introspected — vocabulary is a modeling
+    # decision, like description.
+    synonyms: list[str] = Field(default_factory=list)
 
 
 class Physical(BaseModel):
@@ -57,6 +62,9 @@ class Table(BaseModel):
     grain: list[str] = Field(default_factory=list)
     columns: list[Column] = Field(default_factory=list)
     physical: Physical | None = None
+    # alternate names for the whole mart ("удержание"/"retention" for dm.cohort_retention);
+    # same contract as Column.synonyms — see there
+    synonyms: list[str] = Field(default_factory=list)
 
     def column(self, name: str) -> Column | None:
         return next((c for c in self.columns if c.name == name), None)

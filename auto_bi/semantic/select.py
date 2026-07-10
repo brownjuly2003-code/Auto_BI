@@ -36,6 +36,9 @@ def _stems(text: str) -> set[str]:
 def _column_score(column: Column, request_stems: set[str]) -> float:
     score = 0.0
     score += 2.0 * len(request_stems & _stems(column.name))
+    # synonyms are alternate names, so they weigh like the name: «удержание» must pull
+    # the retention column exactly as its physical name would (X-3)
+    score += 2.0 * len(request_stems & _stems(" ".join(column.synonyms)))
     score += 1.0 * len(request_stems & _stems(column.description))
     if column.top_values:
         # the user may name a concrete value ("алкоголь", "Москва"), not a column
@@ -47,6 +50,7 @@ def _table_score(table: Table, request_stems: set[str]) -> float:
     """Lexical relevance: weighted stem overlap between the request and the table."""
     score = 0.0
     score += 3.0 * len(request_stems & _stems(table.name))
+    score += 3.0 * len(request_stems & _stems(" ".join(table.synonyms)))  # alternate names
     score += 2.0 * len(request_stems & _stems(table.description))
     for c in table.columns:
         score += _column_score(c, request_stems)
