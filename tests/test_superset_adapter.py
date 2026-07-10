@@ -268,6 +268,76 @@ def test_form_data_heatmap() -> None:
     assert fd["metric"]["sqlExpression"] == 'SUM("sum_revenue")'
 
 
+def test_form_data_heatmap_y_pad_makes_adhoc_groupby() -> None:
+    # upstream #33105: numeric 0 on the y-axis renders as <NULL>; the padded adhoc
+    # column ("00".."23") fixes the label and the alpha order at once
+    chart = _chart(Viz.HEATMAP, dimensions=["cohort_month", "months_since"])
+    fd = build_form_data(chart, dataset_id=1, heatmap_y_pad=2)
+    assert fd["groupby"] == {
+        "expressionType": "SQL",
+        "sqlExpression": "LPAD(CAST(\"months_since\" AS VARCHAR), 2, '0')",
+        "label": "months_since",
+    }
+    # without the hint the plain column stays (id-like axes keep natural labels)
+    plain = build_form_data(chart, dataset_id=1)
+    assert plain["groupby"] == "months_since"
+
+
+def _cohort_model() -> SemanticModel:
+    return SemanticModel.model_validate(
+        {
+            "tables": [
+                {
+                    "name": "dm.cohort_retention",
+                    "columns": [
+                        {"name": "cohort_month", "type": "Date", "role": "time"},
+                        {"name": "months_since", "type": "UInt16", "role": "dimension"},
+                        {"name": "label", "type": "String", "role": "dimension"},
+                        {"name": "customers", "type": "UInt64", "role": "measure", "agg": "sum"},
+                    ],
+                    "physical": {
+                        "engine": "clickhouse",
+                        "cardinality": {"months_since": 24, "label": 24},
+                    },
+                }
+            ]
+        }
+    )
+
+
+def test_heatmap_y_pad_only_for_small_numeric_dimension() -> None:
+    def _heatmap(y: str, table: str = "dm.cohort_retention") -> ChartSpec:
+        return ChartSpec(
+            id="h",
+            title="h",
+            viz=Viz.HEATMAP,
+            query=ChartQuery(
+                table=table,
+                dimensions=["cohort_month", y],
+                measures=[Measure(column="customers", agg=Aggregation.SUM)],
+            ),
+        )
+
+    adapter = make_adapter(FakeSuperset(), model=_cohort_model())
+    assert adapter._heatmap_y_pad(_heatmap("months_since")) == 2  # 24 ordinals -> width 2
+    assert adapter._heatmap_y_pad(_heatmap("label")) is None  # non-numeric type
+    # id-like axis: cardinality above the ordinal threshold -> natural labels kept
+    sales = make_adapter(FakeSuperset(), model=MODEL)
+    big = ChartSpec(
+        id="h2",
+        title="h2",
+        viz=Viz.HEATMAP,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date", "store_id"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        ),
+    )
+    assert sales._heatmap_y_pad(big) is None  # store_id cardinality 4200 > 100
+    assert sales._heatmap_y_pad(_chart(Viz.BAR, dimensions=["store_id"])) is None  # not a heatmap
+    assert make_adapter(FakeSuperset())._heatmap_y_pad(big) is None  # no model
+
+
 def test_form_data_stacked_bar_sets_stack_and_series() -> None:
     fd = build_form_data(
         _chart(Viz.STACKED_BAR, dimensions=["date"], series=["store_id"]), dataset_id=1

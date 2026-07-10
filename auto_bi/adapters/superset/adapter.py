@@ -283,6 +283,34 @@ class SupersetAdapter:
                 return column_alias(col)
         return None
 
+    _HEATMAP_PAD_MAX_CARD = 100  # ordinal periods (cohort months/weeks), not id-like axes
+
+    def _heatmap_y_pad(self, chart: ChartSpec) -> int | None:
+        """Zero-pad width for a heatmap's numeric ordinal y-axis, else None.
+
+        heatmap_v2 renders a numeric 0 as `<NULL>` on the axis (upstream #33105) and
+        alpha-sorts numeric keys (#31318); padding the value to a fixed width fixes both.
+        Applied only to a small-cardinality numeric DIMENSION (cohort periods 0..N, where
+        a zero row is the norm and short labels stay short) — an id-like axis (store_id,
+        cardinality in the thousands) keeps its natural labels: it has no zero row to hit
+        the bug, and "0001" would be strictly worse to read. Width = digits of the largest
+        expected value (cardinality - 1, ordinals are dense from 0), min 2.
+        """
+        if chart.viz != Viz.HEATMAP or self._model is None or len(chart.query.dimensions) != 2:
+            return None
+        y = chart.query.dimensions[1]
+        table_name, _, name = y.rpartition(".")
+        table = self._model.table(table_name or chart.query.table)
+        column = table.column(name) if table else None
+        if column is None or column.role != ColumnRole.DIMENSION:
+            return None
+        if not re.search(r"int|float|decimal|numeric|double", column.type, re.IGNORECASE):
+            return None
+        card = (table.physical.cardinality.get(name, 0) if table and table.physical else 0) or 0
+        if not 0 < card <= self._HEATMAP_PAD_MAX_CARD:
+            return None
+        return max(2, len(str(card - 1)))
+
     def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef:
         horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
         form_data = build_form_data(
@@ -293,6 +321,7 @@ class SupersetAdapter:
             axis_scale=self._axis_scale(chart, ds),
             metric_labels=self._metric_labels(chart),
             time_column=self._temporal_alias(chart.query),
+            heatmap_y_pad=self._heatmap_y_pad(chart),
         )
         created = self._client.post(
             "/api/v1/chart/",

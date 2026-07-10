@@ -120,6 +120,7 @@ def build_form_data(
     axis_scale: tuple[float, str, float] | None = None,
     metric_labels: dict[str, str] | None = None,
     time_column: str | None = None,
+    heatmap_y_pad: int | None = None,
 ) -> dict:
     """Superset chart params for the pinned 4.1, on top of a virtual dataset.
 
@@ -146,6 +147,13 @@ def build_form_data(
     over a TIME column. A dashboard native time filter delivers a time_range, but Superset's
     ECharts query names no time column, so without granularity_sqla the range binds to nothing
     and the preset period (B5) silently fails to re-scope the chart. None => no time binding.
+
+    `heatmap_y_pad` (heatmap only) zero-pads the y-axis dimension to this width via an adhoc
+    SQL column: heatmap_v2 renders a numeric 0 as `<NULL>` on the axis (upstream #33105, the
+    js preparer treats 0/false as missing) and sorts numeric keys alphabetically (#31318) —
+    padded strings ("00".."23") fix both the label and the order. The adapter computes the
+    width from the model for small-cardinality numeric dimensions (ordinal cohort periods);
+    None => the plain column (id-like axes keep their natural labels).
     """
     q = chart.query
     labels = metric_labels or {}
@@ -239,10 +247,22 @@ def build_form_data(
 
     if chart.viz == Viz.HEATMAP:
         x_axis, y_axis = q.dimensions  # shape-validated to exactly two
+        y_alias = column_alias(y_axis)
+        groupby: str | dict = y_alias
+        if heatmap_y_pad is not None:
+            # zero-pad an ordinal numeric y (cohort periods 0..N): value 0 otherwise renders
+            # as <NULL> on the axis and alpha sort shuffles numbers (see the docstring).
+            # ANSI LPAD/CAST renders on both ClickHouse and Greenplum through the virtual
+            # dataset; live-verified on the pinned 4.1 (probe chart, stand 2026-07-11).
+            groupby = {
+                "expressionType": "SQL",
+                "sqlExpression": f"LPAD(CAST(\"{y_alias}\" AS VARCHAR), {heatmap_y_pad}, '0')",
+                "label": y_alias,
+            }
         return {
             **base,
             "x_axis": column_alias(x_axis),
-            "groupby": column_alias(y_axis),
+            "groupby": groupby,
             "metric": metrics[0],
             "sort_x_axis": "alpha_asc",
             "sort_y_axis": "alpha_asc",
