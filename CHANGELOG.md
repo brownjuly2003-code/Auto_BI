@@ -2,7 +2,11 @@
 
 Формат по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [SemVer](https://semver.org/lang/ru/).
 
-## [Unreleased]
+## [0.3.0] - 2026-07-10
+
+Session-resume, публичное демо (живой Space + режим `AUTO_BI_DEMO_AUTO_ONLY`),
+PyPI-конвейер, единый формат KPI-ряда и DataLens-доводки (пресет периода,
+RU-единицы, percent-ось).
 
 ### Added
 
