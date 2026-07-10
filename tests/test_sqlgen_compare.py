@@ -119,12 +119,53 @@ def test_compare_filters_apply_to_both_bucket_and_aggregate() -> None:
     assert sql.count("\"region\" = 'RF'") == 2
 
 
+def test_compare_time_lower_bound_widens_in_outer_scan_only() -> None:
+    # A "last quarter" period filter clips the prior quarter's rows: without widening the outer
+    # scan, the prior conditional aggregate is NULL and the KPI tile renders empty (live bug,
+    # dashboard /uif1gsbulluid 2026-07-10). The outer >= must shift back one compare interval;
+    # the bucket subquery keeps the original bound so p_cur anchors in the REQUESTED window.
+    from auto_bi.ir.spec import FilterOp, QueryFilter
+
+    q = _cmp_q(
+        TimeGrain.QUARTER,
+        kind=ScalarCompareKind.POP,
+        filters=[
+            QueryFilter(column="date", op=FilterOp.GTE, value="2026-04-01"),
+            QueryFilter(column="date", op=FilterOp.LTE, value="2026-06-30"),
+        ],
+    )
+    sql = generate_chart_sql(q)
+    # subquery: original bound; outer: widened bound (cast to date, minus one quarter;
+    # sqlglot's clickhouse dialect renders the cast target as Nullable(DATE))
+    assert "\"date\" >= '2026-04-01'" in sql
+    assert "CAST('2026-04-01' AS Nullable(DATE)) - INTERVAL 3 MONTH" in sql
+    # the upper bound stays as-is in both scans
+    assert sql.count("\"date\" <= '2026-06-30'") == 2
+    guard_sql(sql)
+
+    pg = generate_chart_sql(q, dialect="postgres")
+    assert "CAST('2026-04-01' AS DATE) - INTERVAL '3 MONTH'" in pg
+    guard_sql(pg, dialect="postgres")
+
+
+def test_compare_non_time_gte_filter_is_not_widened() -> None:
+    # widening applies only to the compare time column: a numeric lower bound on another column
+    # must pass through untouched in both scans
+    from auto_bi.ir.spec import FilterOp, QueryFilter
+
+    q = _cmp_q(filters=[QueryFilter(column="revenue", op=FilterOp.GTE, value=100)])
+    sql = generate_chart_sql(q)
+    assert sql.count('"revenue" >= 100') == 2
+    assert "AS Nullable(DATE)" not in sql  # no widened date bound anywhere
+
+
 # --- numeric verification in DuckDB (postgres semantics) -------------------
 
 
 def _duckdb_scalar(
     rows: list[tuple[str, float]],
     *,
+    query: ChartQuery | None = None,
     kind: ScalarCompareKind = ScalarCompareKind.YOY,
     output: ScalarCompareOutput = ScalarCompareOutput.PCT,
 ) -> float | None:
@@ -132,7 +173,7 @@ def _duckdb_scalar(
     con = duckdb.connect()
     con.execute("CREATE SCHEMA dm; CREATE TABLE dm.sales_daily (date DATE, revenue DOUBLE)")
     con.executemany("INSERT INTO dm.sales_daily VALUES (?, ?)", rows)
-    sql = generate_chart_sql(_cmp_q(kind=kind, output=output), dialect="postgres")
+    sql = generate_chart_sql(query or _cmp_q(kind=kind, output=output), dialect="postgres")
     result = con.execute(sql).fetchall()
     assert len(result) == 1  # a scalar KPI is exactly one row
     return result[0][0]
@@ -171,6 +212,25 @@ def test_compare_missing_prior_bucket_is_null() -> None:
     # is NULL over zero rows -> the ratio is NULL, never a crash
     rows, _ = _monthly(6, start_year=2024)
     assert _duckdb_scalar(rows) is None
+
+
+def test_compare_pop_pct_survives_period_filter_numbers() -> None:
+    # the live bug reproduced numerically: a "last quarter" filter (Q2) with a QoQ compare —
+    # the widened outer scan lets Q1 rows feed p_prev, so the KPI is (Q2 - Q1) / Q1, not NULL
+    from auto_bi.ir.spec import FilterOp, QueryFilter
+
+    rows, vals = _monthly(6, start_year=2024)  # 2024-01 .. 2024-06
+    q = _cmp_q(
+        TimeGrain.QUARTER,
+        kind=ScalarCompareKind.POP,
+        filters=[
+            QueryFilter(column="date", op=FilterOp.GTE, value="2024-04-01"),
+            QueryFilter(column="date", op=FilterOp.LTE, value="2024-06-30"),
+        ],
+    )
+    got = _duckdb_scalar(rows, query=q)
+    q1, q2 = sum(vals[0:3]), sum(vals[3:6])
+    assert got is not None and abs(got - (q2 - q1) / q1) < 1e-9
 
 
 # --- routing: a compare measure never touches the windowed/flat paths ------

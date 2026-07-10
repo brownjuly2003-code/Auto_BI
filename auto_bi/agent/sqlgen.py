@@ -493,10 +493,16 @@ def _generate_compare_kpi_sql(query: ChartQuery, *, dialect: str, apply_limit: b
     aggregates the measure over each bucket via `agg(CASE WHEN bucket = b.p_* THEN col END)` and
     forms `(cur - prior)/prior` (output=pct) or `cur - prior` (output=abs). A missing prior bucket
     yields NULL (NULLIF), never a crash. Filters apply to BOTH the subquery and the outer aggregate
-    so the comparison reflects exactly the filtered range. The truncated time column is base-table-
-    qualified (see _grained_source) so its inner reference cannot bind to a SELECT alias of the same
-    bare name (alias-shadow). The pct numerator is cast to Float64 in _safe_div (ClickHouse keeps a
-    Decimal quotient's scale — the same lesson as the other derived measures)."""
+    so the comparison reflects exactly the filtered range — with one exception: a lower-bound (>=)
+    filter on the compare column is widened by one compare interval in the OUTER scan only. The
+    prior bucket usually lies just before the requested window (a "last quarter" filter clips the
+    previous quarter's rows), so scanning the unwidened window makes the prior aggregate NULL and
+    the tile renders empty; the subquery keeps the original bound so p_cur stays the last bucket of
+    the REQUESTED window, and the conditional aggregation still pins rows to exactly p_cur/p_prev.
+    The truncated time column is base-table-qualified (see _grained_source) so its inner reference
+    cannot bind to a SELECT alias of the same bare name (alias-shadow). The pct numerator is cast
+    to Float64 in _safe_div (ClickHouse keeps a Decimal quotient's scale — the same lesson as the
+    other derived measures)."""
     measure = query.measures[0]
     c = measure.compare
     assert c is not None  # validate guarantees this on the compare path
@@ -531,8 +537,18 @@ def _generate_compare_kpi_sql(query: ChartQuery, *, dialect: str, apply_limit: b
         .from_(exp.to_table(query.table))
         .join(sub.subquery(alias="b"), join_type="cross")
     )
+    compare_bare = c.column.rpartition(".")[2]
     for qf in query.filters:
-        select = select.where(_filter_expr(qf.model_copy(update={"column": resolve(qf.column)})))
+        resolved = qf.model_copy(update={"column": resolve(qf.column)})
+        if (
+            qf.op == FilterOp.GTE
+            and isinstance(qf.value, str)
+            and qf.column.rpartition(".")[2] == compare_bare
+        ):
+            widened = exp.Sub(this=exp.cast(_literal(qf.value), "DATE"), expression=interval.copy())
+            select = select.where(exp.GTE(this=_dim_column(resolved.column), expression=widened))
+        else:
+            select = select.where(_filter_expr(resolved))
     return select.sql(dialect=dialect, identify=True)
 
 
