@@ -169,6 +169,16 @@ def build_form_data(
         "row_limit": q.limit,
     }
 
+    if q.raw_sql is not None:
+        # X-5 escape hatch: the dataset is the operator's raw SELECT (not an aggregated IR
+        # query), so the table shows its result columns verbatim — RAW query mode, no
+        # groupby/metrics. `dimensions`, if given, name the columns to display; empty => Superset
+        # renders every column of the result. Validation pins raw_sql to viz=TABLE.
+        fd = {**base, "query_mode": "raw"}
+        if q.dimensions:
+            fd["all_columns"] = [column_alias(c) for c in q.dimensions]
+        return fd
+
     if chart.viz == Viz.BIG_NUMBER:
         # the dataset is a single already-aggregated row -> MAX is the identity
         metric = _adhoc_metric(q.measures[0], chart.id, 0, agg="MAX", label=_label(q.measures[0]))

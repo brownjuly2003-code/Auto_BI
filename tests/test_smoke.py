@@ -12,7 +12,7 @@ def test_version() -> None:
 def test_settings_defaults() -> None:
     settings = Settings(_env_file=None)
     assert settings.ch_port == 8123
-    assert settings.gracekelly_model == "claude-sonnet-4-6"
+    assert settings.gracekelly_model == "claude-sonnet-5"
     assert settings.send_samples is True
 
 

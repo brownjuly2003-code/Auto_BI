@@ -6,6 +6,21 @@
 
 ### Added
 
+- Escape hatch `raw_sql` (X-5): ручной SELECT для запросов, которые IR не выражает.
+  `ChartQuery.raw_sql` (только `viz=table`) SQL_GEN отдаёт дословно, дальше — тот же
+  live-гейт, что у сгенерированного SQL (`guard_sql` SELECT-only → EXPLAIN → LIMIT-прогон)
+  → virtual dataset в Superset. Ручной люк (CLI `auto_bi raw --sql-file q.sql`), НЕ
+  LLM-генерация — инвариант 1 сохраняется. Ров осознанно ослаблен: advisor слепнет,
+  нормализации/форматы не применяются, колонки по модели не проверяются (ARCHITECTURE §3.16).
+- Публичное демо: текстовый путь можно включить (`AUTO_BI_DEMO_AUTO_ONLY=false`) — `start-autobi.sh`
+  подключает LLM-провайдер (по умолчанию GraceKelly `claude-sonnet-5` через публичный туннель в
+  Space secrets) и принудительно включает per-IP session-квоту. По умолчанию демо остаётся
+  auto-only (без LLM, нулевой бюджет).
+
+### Changed
+
+- Дефолтная модель GraceKelly — `claude-sonnet-5` (было `claude-sonnet-4-6`).
+
 - Запрос своими словами без имени витрины (X-3): поле `synonyms` у таблиц и колонок
   семантической модели — рукописные альтернативные имена («удержание»/«retention»
   у когортной витрины). Синонимы рендерятся в LLM-промпты и скорятся контекст-селекцией

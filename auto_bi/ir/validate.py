@@ -55,8 +55,56 @@ def validate_spec(spec: DashboardSpec, model: SemanticModel) -> list[str]:
     return errors
 
 
+def _validate_raw_chart(chart: ChartSpec, prefix: str) -> list[str]:
+    """Validate the X-5 raw_sql escape hatch: a manual SELECT that bypasses model validation.
+
+    The columns can't be checked against the model (that IS the point — the SQL expresses what the
+    IR cannot), so validation covers only: the SQL is a single plain SELECT (static guard_sql — the
+    same SELECT-only parse the live gate repeats, surfaced now for an early, actionable error), viz
+    is TABLE (the only shape a raw result maps to with no IR column->axis mapping), and no
+    aggregating IR query field is set alongside it (a raw chart carries its whole query in the SQL;
+    `dimensions` are allowed — they name the display columns). The live EXPLAIN + LIMIT trial still
+    runs in compile_and_build."""
+    from auto_bi.agent.sql_guard import SQLGuardError, guard_sql
+
+    errors: list[str] = []
+    if chart.viz != Viz.TABLE:
+        errors.append(f"{prefix}: raw_sql is supported only with viz=table, got {chart.viz.value}")
+    try:
+        guard_sql(chart.query.raw_sql or "")
+    except SQLGuardError as e:
+        errors.append(f"{prefix}: raw_sql is not a single plain SELECT: {e}")
+    q = chart.query
+    populated = [
+        name
+        for name, val in (
+            ("measures", q.measures),
+            ("series", q.series),
+            ("rows", q.rows),
+            ("columns", q.columns),
+            ("joins", q.joins),
+            ("filters", q.filters),
+            ("order_by", q.order_by),
+        )
+        if val
+    ]
+    if q.time_grain is not None:
+        populated.append("time_grain")
+    if q.bins is not None:
+        populated.append("bins")
+    if populated:
+        errors.append(
+            f"{prefix}: raw_sql cannot be combined with IR query fields {sorted(populated)} "
+            "(a raw chart carries its whole query in the SQL; only `dimensions` — the display "
+            "columns — may accompany it)"
+        )
+    return errors
+
+
 def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
     prefix = f"chart {chart.id!r}"
+    if chart.query.raw_sql is not None:
+        return _validate_raw_chart(chart, prefix)
     table = model.table(chart.query.table)
     if table is None:
         known = ", ".join(t.name for t in model.tables)

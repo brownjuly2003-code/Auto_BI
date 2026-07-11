@@ -55,7 +55,7 @@ def test_extract_json_none() -> None:
 def test_complete_happy_path(tmp_path) -> None:
     def responder(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
-        assert body["model"] == "claude-sonnet-4-6"
+        assert body["model"] == "claude-sonnet-5"
         assert body["decompose"] is False
         assert body["metadata"] == {"app": "auto_bi"}
         return gk_response('```json\n{"title": "ok", "count": 5}\n```')

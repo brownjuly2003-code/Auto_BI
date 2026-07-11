@@ -37,6 +37,8 @@ class Advisor:
         return estimate_scan(self._run_query, sql) or {}
 
     def review_chart(self, chart: ChartSpec) -> list[Finding]:
+        if chart.query.raw_sql is not None:
+            return []  # X-5 raw hatch: advisor reasons over IR, it is blind to raw SQL (by design)
         table = self._model.table(chart.query.table)
         if table is None or table.physical is None:
             return []  # nothing to reason about without physical metadata

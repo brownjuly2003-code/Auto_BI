@@ -57,7 +57,7 @@ class Settings(BaseSettings):
 
     # GraceKelly LLM service
     gracekelly_url: str = "http://127.0.0.1:8011"
-    gracekelly_model: str = "claude-sonnet-4-6"
+    gracekelly_model: str = "claude-sonnet-5"
 
     # Direct Anthropic API (used when llm_provider="anthropic"; SDK is an optional extra).
     # api_key blank -> the SDK reads the standard ANTHROPIC_API_KEY env var.

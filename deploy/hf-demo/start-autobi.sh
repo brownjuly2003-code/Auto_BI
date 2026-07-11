@@ -7,7 +7,26 @@ set -euo pipefail
 echo "[autobi] waiting for superset..."
 until curl -fsS http://127.0.0.1:8088/health >/dev/null 2>&1; do sleep 2; done
 
-export AUTO_BI_DEMO_AUTO_ONLY=true
+# auto-overview stays the DEFAULT (safe: no LLM, zero budget). Set AUTO_BI_DEMO_AUTO_ONLY=false
+# (or DEMO_AUTO_ONLY=false) in the Space to open the text/fields path — then wire an LLM provider
+# and a session quota below.
+export AUTO_BI_DEMO_AUTO_ONLY="${AUTO_BI_DEMO_AUTO_ONLY:-${DEMO_AUTO_ONLY:-true}}"
+if [ "${AUTO_BI_DEMO_AUTO_ONLY}" = "false" ]; then
+    # Text path is LIVE. Provider defaults to GraceKelly (claude-sonnet-5); its URL must be a
+    # PUBLIC tunnel to a running GraceKelly — a Space container CANNOT reach 127.0.0.1 on your
+    # machine, so set AUTO_BI_GRACEKELLY_URL to the tunnel (ngrok/cloudflared) in the Space
+    # secrets. Alternatively use the direct Anthropic API (AUTO_BI_LLM_PROVIDER=anthropic +
+    # ANTHROPIC_API_KEY, needs an image built with the anthropic extra). The per-IP session quota
+    # is forced ON so an anonymous visitor cannot drain the LLM budget.
+    export AUTO_BI_LLM_PROVIDER="${AUTO_BI_LLM_PROVIDER:-gracekelly}"
+    export AUTO_BI_SESSION_RATE_ENABLED="${AUTO_BI_SESSION_RATE_ENABLED:-true}"
+    export AUTO_BI_SESSION_RATE_PER_DAY="${AUTO_BI_SESSION_RATE_PER_DAY:-50}"
+    # behind nginx in the container: trust the loopback proxy so the per-IP quota is truly per-IP
+    export AUTO_BI_FORWARDED_ALLOW_IPS="${AUTO_BI_FORWARDED_ALLOW_IPS:-127.0.0.1}"
+    echo "[autobi] TEXT path ENABLED — provider=${AUTO_BI_LLM_PROVIDER}, quota ${AUTO_BI_SESSION_RATE_PER_DAY}/day/IP"
+else
+    echo "[autobi] auto-overview only (text/fields/enrichment disabled)"
+fi
 export AUTO_BI_CH_HOST=127.0.0.1
 export AUTO_BI_CH_PORT=8123
 export AUTO_BI_CH_USER=auto_bi_ro

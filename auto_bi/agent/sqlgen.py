@@ -192,6 +192,12 @@ def generate_chart_sql(
     computes the base aggregates and an outer SELECT applies the window / division over them
     (see `_generate_windowed_sql`).
     """
+    if query.raw_sql is not None:
+        # X-5 escape hatch: an operator-supplied SELECT, returned verbatim. The dialect does not
+        # re-render it (it is already written for the target engine) and no IR path applies; the
+        # live gate (guard_sql SELECT-only + EXPLAIN + LIMIT trial) still runs in compile_and_build,
+        # exactly as for generated SQL. See ir/spec.py ChartQuery.raw_sql.
+        return query.raw_sql
     if query.bins is not None:
         return _generate_histogram_sql(query, dialect=dialect, apply_limit=apply_limit)
     if any(m.compare is not None for m in query.measures):

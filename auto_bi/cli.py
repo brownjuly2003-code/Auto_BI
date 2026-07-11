@@ -41,6 +41,27 @@ def main(argv: list[str] | None = None) -> int:
         help="Auto mode: maximum number of charts (default: 8)",
     )
 
+    raw = sub.add_parser(
+        "raw",
+        help="X-5 escape hatch: build a table dashboard from a raw SELECT (no LLM, no IR)",
+    )
+    raw.add_argument("--sql-file", required=True, help="File with the SELECT to run (UTF-8)")
+    raw.add_argument("--title", default="Raw SQL", help="Dashboard/chart title")
+    raw.add_argument(
+        "--table",
+        default="dm",
+        help="Base table/schema label for the dataset name (the SQL itself names its tables)",
+    )
+    raw.add_argument(
+        "--columns",
+        default="",
+        help="Comma-separated result columns to display (optional; empty => all columns)",
+    )
+    raw.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
+    raw.add_argument(
+        "--target", choices=["superset"], default="superset", help="BI target (raw: superset only)"
+    )
+
     chat = sub.add_parser("chat", help="Dialogue: clarify -> preview spec -> approve -> build")
     chat.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
 
@@ -119,6 +140,10 @@ def main(argv: list[str] | None = None) -> int:
         if not args.description:
             parser.error("build needs a description or --auto <table>")
         return _build(args.description, args.model_path, args.target)
+    if args.command == "raw":
+        return _build_raw(
+            args.sql_file, args.title, args.table, args.columns, args.model_path, args.target
+        )
     if args.command == "chat":
         return _chat(args.model_path)
     if args.command == "serve":
@@ -172,6 +197,71 @@ def _build(description: str, model_path: str, target: str = "superset") -> int:
     )
     base = settings.datalens_url if target_bi == TargetBI.DATALENS else settings.superset_url
     print(f"\nДашборд готов: {base.rstrip('/')}{ref.url}")
+    return 0
+
+
+def _build_raw(
+    sql_file: str,
+    title: str,
+    table: str,
+    columns: str,
+    model_path: str,
+    target: str = "superset",
+) -> int:
+    """X-5 escape hatch: build a one-chart TABLE dashboard from an operator-supplied SELECT.
+
+    No LLM and no IR compilation — the SQL is used verbatim, gated live (guard_sql SELECT-only +
+    EXPLAIN + LIMIT trial) exactly like generated SQL. The moat is deliberately bypassed (no
+    advisor, no normalization); the model is loaded only for the adapter's dataset schema."""
+    from functools import partial
+    from pathlib import Path
+
+    from auto_bi.adapters.factory import make_adapter
+    from auto_bi.agent.pipeline import compile_and_build
+    from auto_bi.agent.sql_guard import LiveSQLValidator
+    from auto_bi.config import get_settings
+    from auto_bi.introspect.clickhouse import make_run_query
+    from auto_bi.ir.spec import ChartQuery, ChartSpec, DashboardSpec, TargetBI, Viz
+    from auto_bi.semantic.model import SemanticModel
+    from auto_bi.store import Store
+
+    if not Path(sql_file).exists():
+        print(f"SQL file not found: {sql_file}")
+        return 2
+    sql = Path(sql_file).read_text(encoding="utf-8").strip()
+    if not sql:
+        print(f"SQL file is empty: {sql_file}")
+        return 2
+    if not Path(model_path).exists():
+        print(f"Semantic model not found: {model_path}")
+        return 2
+
+    settings = get_settings()
+    model = SemanticModel.load(model_path)
+    cols = [c.strip() for c in columns.split(",") if c.strip()]
+    spec = DashboardSpec(
+        title=title,
+        target_bi=TargetBI(target),
+        charts=[
+            ChartSpec(
+                id="raw",
+                title=title,
+                viz=Viz.TABLE,
+                query=ChartQuery(table=table, dimensions=cols, raw_sql=sql),
+            )
+        ],
+    )
+    store = Store(settings.store_path)
+    session_id = store.create_session(f"[raw] {title}")
+    ref = compile_and_build(
+        spec,
+        model,
+        LiveSQLValidator(make_run_query(settings)),
+        partial(make_adapter, settings=settings, model=model),
+        store=store,
+        session_id=session_id,
+    )
+    print(f"\nДашборд готов: {settings.superset_url.rstrip('/')}{ref.url}")
     return 0
 
 

@@ -77,6 +77,8 @@ def _is_time_dimension(ref: str, base_table: str, model: SemanticModel) -> bool:
 
 def _normalize_chart(chart: ChartSpec, model: SemanticModel) -> ChartSpec:
     query = chart.query
+    if query.raw_sql is not None:
+        return chart  # X-5 raw hatch: no IR axis to rank; normalizations don't apply
     if chart.viz not in _CATEGORICAL_VIZ:
         return chart
     if not query.dimensions:  # no categorical axis to rank
@@ -226,6 +228,8 @@ def _label_join_for(ref: str, base_table: str, model: SemanticModel) -> tuple[st
 
 def _label_joins_chart(chart: ChartSpec, model: SemanticModel) -> ChartSpec:
     q = chart.query
+    if q.raw_sql is not None:
+        return chart  # X-5 raw hatch: dimensions are display column names, not model FKs
     swaps: dict[str, str] = {}  # bare id ref -> qualified label ref
     added: dict[frozenset[str], JoinSpec] = {}
     for role in _DIM_ROLES:

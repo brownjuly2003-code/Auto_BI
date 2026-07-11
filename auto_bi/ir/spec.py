@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from auto_bi.semantic.model import Aggregation
 
@@ -276,7 +276,7 @@ class ChartQuery(BaseModel):
     series: list[str] = Field(default_factory=list)  # stack/breakdown for stacked_bar, area
     rows: list[str] = Field(default_factory=list)  # pivot row dimensions
     columns: list[str] = Field(default_factory=list)  # pivot column dimensions
-    measures: list[Measure] = Field(min_length=1)
+    measures: list[Measure] = Field(default_factory=list)
     filters: list[QueryFilter] = Field(default_factory=list)
     joins: list[JoinSpec] = Field(default_factory=list)
     order_by: list[OrderBy] = Field(default_factory=list)
@@ -290,6 +290,27 @@ class ChartQuery(BaseModel):
     # single measure becomes the per-bucket count. None => not a histogram (the common case).
     # Used only with viz=HISTOGRAM (enforced by validation).
     bins: int | None = Field(default=None, ge=2, le=200)
+    # X-5 raw_sql escape hatch: an operator-supplied SELECT for a query the IR cannot express
+    # (an exotic window, a construct with no IR primitive). When set, SQL_GEN returns it VERBATIM
+    # (no dialect re-render, no normalization) and it is gated live exactly like generated SQL
+    # (guard_sql SELECT-only + EXPLAIN + LIMIT trial in compile_and_build). This DELIBERATELY
+    # bypasses the moat: the Feasibility Advisor is blind to it, top-N/label-join/format
+    # normalizations don't apply, and validate_spec cannot check its columns against the model —
+    # so it is a MANUAL hatch (CLI/API), never LLM-authored (invariant 1 stays: the LLM emits only
+    # IR). Only with viz=TABLE; `dimensions`, if given, name the result columns to display. None =>
+    # a normal IR chart (the common case). See docs/ARCHITECTURE §raw-sql-escape-hatch.
+    raw_sql: str | None = None
+
+    @model_validator(mode="after")
+    def _raw_sql_or_measure(self) -> ChartQuery:
+        # a normal chart needs >=1 measure (SQL_GEN aggregates them); a raw_sql chart carries its
+        # own SELECT and has none. Enforced here rather than via Field(min_length) so the raw hatch
+        # can legitimately omit measures while every IR-authored chart still requires one.
+        if self.raw_sql is not None and not self.raw_sql.strip():
+            raise ValueError("raw_sql must be a non-empty SELECT, or None")
+        if self.raw_sql is None and not self.measures:
+            raise ValueError("a chart query needs at least one measure unless raw_sql is set")
+        return self
 
     def group_columns(self) -> list[str]:
         """All dimension-like columns to GROUP BY, deduped, order preserved.

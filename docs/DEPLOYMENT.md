@@ -228,6 +228,16 @@ port — до него дотягивается только Caddy.
 дашборды анонимно через Public-роль). Подробности и smoke-процедура —
 `deploy/hf-demo/README.md`; это ДЕМО-упаковка, для прода используйте схему выше.
 
+**Текстовый путь на демо (по требованию).** По умолчанию демо — auto-only (без LLM, нулевой
+бюджет). Чтобы открыть ввод текста/полей, задайте в Space secrets `AUTO_BI_DEMO_AUTO_ONLY=false`:
+`start-autobi.sh` тогда подключит LLM-провайдера и ПРИНУДИТЕЛЬНО включит per-IP session-квоту
+(`AUTO_BI_SESSION_RATE_ENABLED=true`, `_PER_DAY` по умолчанию 50). Провайдер по умолчанию —
+GraceKelly (`claude-sonnet-5`); контейнер Space НЕ достучится до `127.0.0.1` на вашей машине,
+поэтому `AUTO_BI_GRACEKELLY_URL` должен указывать на ПУБЛИЧНЫЙ туннель (ngrok/cloudflared) к
+запущенному GraceKelly — демо живёт, только пока ваша машина и туннель включены, и каждый запрос
+анонима тратит вашу LLM-квоту. Альтернатива без туннеля — прямой Anthropic API
+(`AUTO_BI_LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`, образ с extra `anthropic`).
+
 Альтернатива compose — systemd-юнит на голом хосте:
 
 ```ini
