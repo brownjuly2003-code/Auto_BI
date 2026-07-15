@@ -8,11 +8,11 @@ assemble_dashboard (position_json grid + chart linkage).
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
 
+from auto_bi.adapters.artifacts import dataset_table_name
 from auto_bi.adapters.base import (
     AdapterHealth,
     ChartRef,
@@ -88,11 +88,15 @@ def _int_id(ref_id: int | str) -> int:
     return int(ref_id)
 
 
-def _dataset_name(title: str, chart_id: str) -> str:
-    """Readable, collision-free dataset name: slugs can truncate-collide, so a short
-    hash of the full chart_id (unique per spec) keeps two charts on distinct datasets."""
-    suffix = hashlib.sha1(chart_id.encode()).hexdigest()[:8]
-    return f"auto_bi__{_slug(title)}__{_slug(chart_id)}__{suffix}"
+def _dataset_name(title: str, chart_id: str, namespace: str = "") -> str:
+    """Readable, collision-free dataset name (audit P0-2).
+
+    Slugs can truncate-collide, so a short hash of chart_id (+ optional build/session
+    namespace) keeps charts and independent sessions on distinct datasets. Without a
+    namespace two sessions with the same title/chart ids would PUT the same virtual
+    dataset and silently rewrite each other's SQL — see ARCHITECTURE §artifact-namespace.
+    """
+    return dataset_table_name(title, chart_id, namespace)
 
 
 class SupersetAdapter:
@@ -105,8 +109,18 @@ class SupersetAdapter:
         # filters by column role/grain; without it filters degrade to the documented warning.
         self._model = model
         self._database: DatabaseRef | None = None
+        # P0-2: set via set_artifact_namespace() before build(); empty = legacy single-user.
+        self._artifact_namespace: str = ""
 
     # --- BIAdapter ----------------------------------------------------------
+
+    def set_artifact_namespace(self, namespace: str) -> None:
+        """P0-2: pin this build's technical names to a session/build namespace.
+
+        Not part of the BIAdapter Protocol (optional concrete helper); the pipeline
+        calls it when present so two sessions never share dataset table_names.
+        """
+        self._artifact_namespace = (namespace or "").strip()
 
     def healthcheck(self) -> AdapterHealth:
         ok = self._client.health()
@@ -419,7 +433,7 @@ class SupersetAdapter:
         for chart in spec.charts:
             ds = self.ensure_dataset(
                 chart.query,
-                name=_dataset_name(spec.title, chart.id),
+                name=_dataset_name(spec.title, chart.id, self._artifact_namespace),
                 apply_limit=chart.id not in in_filter_scope,
             )
             datasets.append(ds)

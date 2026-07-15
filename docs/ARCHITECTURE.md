@@ -412,6 +412,36 @@ remote-источники (`url`/`s3`/`remote`/…).
   (raw может джойнить витрины, которых модель не описывает); RBAC смотрит таблицы из AST SQL;
 - v1 — только Superset (virtual dataset из raw SQL); `target_bi=datalens` с raw_sql → validation error.
 
+### 3.17 Artifact namespace (P0-2, 2026-07-16)
+
+Человеческий `spec.title` / `chart.title` — **display metadata**, не primary key BI-артефакта.
+Технические имена (Superset `table_name`, DataLens dataset/widget/dashboard entry name) включают
+короткий non-secret fingerprint build/session namespace (`auto_bi.adapters.artifacts`):
+
+```
+namespace = session_id:random8   # new_build_namespace(session_id)
+dataset   = auto_bi__{title}__{chart_id}__{ns6}__{hash8(chart_id+namespace)}
+```
+
+`compile_and_build` вызывает optional `adapter.set_artifact_namespace(...)` перед `build()`
+(Protocol `BIAdapter` **не** меняется — S4; concrete helpers на Superset/DataLens). Критерий:
+два независимо собранных дашборда с одинаковыми title/chart ids и разным SQL **не** делят
+один virtual dataset; rebuild одной сессии тоже получает новый random token, поэтому старый
+dashboard не получает PUT чужого SQL. Полный ArtifactManager / ownership-table в Store —
+следующий шаг (audit этап B остаток).
+
+### 3.18 Resource bounds (P0-3, 2026-07-16)
+
+- **Fail-closed remote bind:** `auto_bi serve --host 0.0.0.0` с `auth=false` и без
+  `demo_auto_only` отказывается стартовать, пока нет `AUTO_BI_ALLOW_INSECURE_REMOTE=true`.
+  HF-demo биндится на `127.0.0.1` за nginx — не затрагивается.
+- **Bounded concurrent builds:** `AUTO_BI_MAX_CONCURRENT_BUILDS` (default 2) — semaphore;
+  approve сверх ёмкости → 503 + `Retry-After` (слот захватывается до мутации session state,
+  отпускается в `finally` build-thread).
+- **Work quota:** `AUTO_BI_WORK_RATE_*` (и **форсируется** при `demo_auto_only`) на
+  `POST /sessions/auto`, `POST .../approve`, `GET .../insights` — DWH/BI cost, не только LLM.
+  LLM-квота O-2 (`SESSION_RATE_*`) по-прежнему отдельно на text/reply.
+
 ## 4. Безопасность
 
 - DWH: отдельная **read-only роль**, видит только DM-схемы.

@@ -50,6 +50,7 @@ docker build -t auto_bi .
 docker run -d --name auto_bi \
   -p 8200:8200 \
   --env-file .env \
+  -e AUTO_BI_ALLOW_INSECURE_REMOTE=true \
   -v "$(pwd)/data:/app/data" \
   -v "$(pwd)/logs:/app/logs" \
   auto_bi \
@@ -62,10 +63,21 @@ docker run -d --name auto_bi \
 сменить `--log-level`. Версия запущенного образа проверяется без входа в контейнер: `GET
 /api/v1/health` возвращает поле `version`.
 
+**P0-3 fail-closed remote bind.** `serve --host 0.0.0.0` с `AUTO_BI_AUTH_ENABLED=false` и без
+демо-профиля (`AUTO_BI_DEMO_AUTO_ONLY`) **отказывается стартовать**, пока нет явного
+`AUTO_BI_ALLOW_INSECURE_REMOTE=true` (доверие к сети) или включённого auth. Для локальной
+разработки биндитесь на `127.0.0.1` (дефолт CLI) — флаг не нужен. Публичный HF-demo слушает
+`127.0.0.1` за nginx внутри контейнера. На проде предпочтительнее `AUTH_ENABLED=true`, а не
+insecure-флаг. Дополнительно: `AUTO_BI_MAX_CONCURRENT_BUILDS` (default 2) и
+`AUTO_BI_WORK_RATE_*` (форсируется в demo) ограничивают дорогие auto/approve/insights.
+
 **Без Docker (`uv`):**
 
 ```bash
-uv run auto_bi serve --host 0.0.0.0 --port 8200 --log-format json --log-level INFO
+# local (default host is already 127.0.0.1)
+uv run auto_bi serve --port 8200 --log-format json --log-level INFO
+# trusted LAN only — explicit consent:
+AUTO_BI_ALLOW_INSECURE_REMOTE=true uv run auto_bi serve --host 0.0.0.0 --port 8200
 ```
 
 **Обязательно переживающие пересборку/рестарт volume'ы:**

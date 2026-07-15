@@ -409,8 +409,28 @@ class DataLensAdapter:
         self._connection_id: str | None = None
         # dataset id -> (name, fields_by_alias) for binding charts to dataset fields
         self._datasets: dict[str, tuple[str, dict[str, dict]]] = {}
+        # P0-2: set via set_artifact_namespace() before build(); empty = legacy single-user.
+        self._artifact_namespace: str = ""
 
     # --- BIAdapter ----------------------------------------------------------
+
+    def set_artifact_namespace(self, namespace: str) -> None:
+        """P0-2: pin this build's technical names to a session/build namespace.
+
+        Dataset names and DataLens widget/dashboard entry names include a short
+        fingerprint so two sessions never promote/delete over each other.
+        """
+        self._artifact_namespace = (namespace or "").strip()
+
+    def _owned_entry_name(self, title: str) -> str:
+        """Display title + optional namespace fingerprint (DataLens entry charset)."""
+        base = safe_entry_name(title)
+        ns = self._artifact_namespace
+        if not ns:
+            return base
+        fp = hashlib.sha1(ns.encode("utf-8")).hexdigest()[:6]
+        # safe_entry_name again: fingerprint is word-safe, but titles may leave edge spaces
+        return safe_entry_name(f"{base} {fp}", fallback=f"Auto_BI_{fp}")
 
     def healthcheck(self) -> AdapterHealth:
         # `/ping` only proves the UI process is up; it answers without a valid session,
@@ -782,7 +802,7 @@ class DataLensAdapter:
         wip_created: list[tuple[str, str]] = []
         try:
             for chart in spec.charts:
-                ds_canonical = dataset_name(spec.title, chart.id)
+                ds_canonical = dataset_name(spec.title, chart.id, self._artifact_namespace)
                 wip_created.append(("dataset", _wip_name(ds_canonical)))
                 apply_limit = chart.id not in in_filter_scope
                 ds = self.ensure_dataset(
@@ -823,7 +843,7 @@ class DataLensAdapter:
                         measure_scale=(scale[0], aliases),
                     )
                 to_promote.append(("dataset", ds_canonical, str(ds.id)))
-                chart_canonical = safe_entry_name(chart.title)
+                chart_canonical = self._owned_entry_name(chart.title)
                 wip_created.append(("widget", _wip_name(chart_canonical)))
                 ref = self.create_chart(
                     chart,
@@ -836,7 +856,7 @@ class DataLensAdapter:
                 to_promote.append(("widget", chart_canonical, str(ref.id)))
                 refs.append(ref)
                 placements.append((chart, str(ref.id), str(ds.id)))
-            dash_canonical = safe_entry_name(spec.title)
+            dash_canonical = self._owned_entry_name(spec.title)
             wip_created.append(("dash", _wip_name(dash_canonical)))
             dash = self.assemble_dashboard(
                 spec, refs, placements=placements, name=_wip_name(dash_canonical)

@@ -486,6 +486,20 @@ def _serve(  # pragma: no cover — wiring only
         return 2
 
     settings = get_settings()
+    # P0-3 fail-closed remote bind: non-loopback + auth off + not a demo profile requires
+    # an explicit operator consent flag (Docker/trusted LAN). HF demo binds 127.0.0.1.
+    loopback = {"127.0.0.1", "localhost", "::1"}
+    if host not in loopback and not (
+        settings.auth_enabled or settings.demo_auto_only or settings.allow_insecure_remote
+    ):
+        print(
+            f"Refusing to serve on {host}:{port} with auth disabled.\n"
+            "Enable AUTO_BI_AUTH_ENABLED=true, run a demo profile "
+            "(AUTO_BI_DEMO_AUTO_ONLY=true), bind to 127.0.0.1, or set "
+            "AUTO_BI_ALLOW_INSECURE_REMOTE=true for a trusted network only."
+        )
+        return 2
+
     model = SemanticModel.load(model_path)
     run_query = make_run_query(settings)
     store = Store(settings.store_path)
@@ -574,6 +588,9 @@ def _serve(  # pragma: no cover — wiring only
         cookie_secure=cookie_secure,
         session_rate_enabled=settings.session_rate_enabled,
         session_rate_per_day=settings.session_rate_per_day,
+        work_rate_enabled=settings.work_rate_enabled,
+        work_rate_per_day=settings.work_rate_per_day,
+        max_concurrent_builds=settings.max_concurrent_builds,
         # F-1: the UI link must point at the BI host, not the Auto_BI host serving the
         # page. The PUBLIC url wins when it differs from the API url the adapter calls
         # (P8 demo: adapter -> 127.0.0.1:8088, viewer -> https://<space>.hf.space).
