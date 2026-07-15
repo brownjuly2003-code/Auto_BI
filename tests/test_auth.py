@@ -130,6 +130,29 @@ def test_forbidden_tables() -> None:
     assert forbidden_tables(spec, ["finance"]) == ["dm.sales", "ext.rates"]
 
 
+def test_forbidden_tables_raw_sql_ast_not_just_label() -> None:
+    """P0-1: raw_sql RBAC must walk the SELECT, not only query.table (dataset label)."""
+    from auto_bi.ir.spec import ChartQuery, ChartSpec, DashboardSpec, Viz
+
+    spec = DashboardSpec(
+        title="t",
+        charts=[
+            ChartSpec(
+                id="raw",
+                title="raw",
+                viz=Viz.TABLE,
+                query=ChartQuery(
+                    table="dm.allowed",
+                    dimensions=["id"],
+                    raw_sql="SELECT id FROM finance.secret",
+                ),
+            )
+        ],
+    )
+    assert forbidden_tables(spec, ["dm"]) == ["finance.secret"]
+    assert forbidden_tables(spec, ["*"]) == []
+
+
 def test_auth_user_is_admin() -> None:
     assert AuthUser("a", role="admin", allowed_schemas=["*"]).is_admin
     assert not AuthUser("a", role="analyst", allowed_schemas=["dm"]).is_admin

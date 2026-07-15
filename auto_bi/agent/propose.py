@@ -8,7 +8,7 @@ verbatim, max 3 rounds, never fixed silently.
 import json
 import logging
 
-from auto_bi.ir.spec import DashboardSpec
+from auto_bi.ir.spec import DashboardSpec, llm_dashboard_spec_schema
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.llm.policy import reasoning_for
@@ -189,7 +189,7 @@ def _select_for_prompt(
     unchanged.
     """
     if fixed_chars is None:
-        schema = json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False)
+        schema = json.dumps(llm_dashboard_spec_schema(), ensure_ascii=False)
         fixed_chars = len(PROPOSE_SPEC_PROMPT.format(model_text="", request=request, schema=schema))
     budget = PROMPT_CHAR_BUDGET - fixed_chars - FEEDBACK_MARGIN
     return select_context(
@@ -212,7 +212,7 @@ def build_propose_prompt(
     return PROPOSE_SPEC_PROMPT.format(
         model_text=render_model(model, include_samples=include_samples),
         request=request,
-        schema=json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False),
+        schema=json.dumps(llm_dashboard_spec_schema(), ensure_ascii=False),
     )
 
 
@@ -258,7 +258,7 @@ def patch_spec(
     would push the LLM to re-seat charts onto other tables.
     """
     spec_json = spec.model_dump_json()
-    schema = json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False)
+    schema = json.dumps(llm_dashboard_spec_schema(), ensure_ascii=False)
     fixed = len(
         PATCH_SPEC_PROMPT.format(model_text="", spec=spec_json, request=edit_request, schema=schema)
     )
@@ -318,7 +318,8 @@ def _complete_validated(
         spec = llm.complete(
             prompt, DashboardSpec, reasoning=reasoning, session_id=session_id, step=step
         )
-        errors = validate_spec(spec, model)
+        # Operator-only hatch: never accept raw_sql from the LLM path (P0-1).
+        errors = validate_spec(spec, model, allow_raw_sql=False)
         if not errors:
             return spec
         logger.warning("spec failed model validation (round %d): %s", round_no + 1, errors)
@@ -330,6 +331,6 @@ def _complete_validated(
             errors="\n".join(f"- {e}" for e in errors),
             model_text=render_model(model, include_samples=include_samples),
             request=request,
-            schema=json.dumps(DashboardSpec.model_json_schema(), ensure_ascii=False),
+            schema=json.dumps(llm_dashboard_spec_schema(), ensure_ascii=False),
         )
     raise SpecValidationError(errors)

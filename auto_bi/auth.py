@@ -114,11 +114,25 @@ def filter_model_by_schemas(model: SemanticModel, allowed_schemas: list[str]) ->
 
 
 def spec_tables(spec: DashboardSpec) -> set[str]:
-    """Every DWH table a spec touches: each chart's base table + its joined tables."""
+    """Every DWH table a spec touches: base table, joins, and tables inside raw_sql AST.
+
+    For a raw_sql chart `query.table` is only a dataset label — RBAC must also walk the
+    SELECT via sqlglot, otherwise a user scoped to `dm` can smuggle `finance.secret`
+    through the hatch while labeling the chart `dm.allowed`.
+    """
+    from auto_bi.agent.sql_guard import SQLGuardError, extract_table_names
+
     tables: set[str] = set()
     for chart in spec.charts:
         tables.add(chart.query.table)
         tables.update(j.table for j in chart.query.joins)
+        if chart.query.raw_sql is not None:
+            try:
+                tables.update(extract_table_names(chart.query.raw_sql))
+            except SQLGuardError:
+                # Unparseable / non-SELECT raw_sql is rejected by validate_spec; for RBAC
+                # treat as "unknown table" so a broken hatch never slips past the gate.
+                tables.add("__unparseable_raw_sql__")
     return tables
 
 

@@ -13,7 +13,9 @@ SQL_GEN groups by the union of all four; adapters read each role to lay out the 
 
 from __future__ import annotations
 
+from copy import deepcopy
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -350,3 +352,24 @@ class DashboardSpec(BaseModel):
     target_bi: TargetBI = TargetBI.SUPERSET
     filters: list[DashboardFilter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(min_length=1, max_length=12)
+
+
+def llm_dashboard_spec_schema() -> dict[str, Any]:
+    """JSON Schema handed to PROPOSE/PATCH LLMs — without operator-only `raw_sql`.
+
+    ChartQuery.raw_sql remains on the runtime IR (CLI `auto_bi raw` / compile path),
+    but the LLM must never see or emit it (invariant 1 + P0-1). Stripping the field
+    from the schema is defense layer 1; `validate_spec(..., allow_raw_sql=False)` is
+    layer 2 if a model still invents the key.
+    """
+    schema = deepcopy(DashboardSpec.model_json_schema())
+    defs = schema.get("$defs") or schema.get("definitions") or {}
+    chart_query = defs.get("ChartQuery")
+    if isinstance(chart_query, dict):
+        props = chart_query.get("properties")
+        if isinstance(props, dict):
+            props.pop("raw_sql", None)
+        required = chart_query.get("required")
+        if isinstance(required, list) and "raw_sql" in required:
+            chart_query["required"] = [r for r in required if r != "raw_sql"]
+    return schema
