@@ -59,6 +59,22 @@ def test_filters_all_ops() -> None:
     assert "\"city\" <> 'Москва'" in sql
 
 
+def test_relative_period_filter_compiles_natively() -> None:
+    """P1-1: relative 'last N months' GTE becomes a dialect-native bound, not a string."""
+    q = make_query(
+        dimensions=[],
+        filters=[QueryFilter(column="date", op=FilterOp.GTE, value="last 12 months")],
+    )
+    ch = generate_chart_sql(q, dialect="clickhouse")
+    assert "addMonths" in ch and "today" in ch.lower() and "-12" in ch
+    assert "'last 12 months'" not in ch
+
+    pg = generate_chart_sql(q, dialect="postgres")
+    assert "INTERVAL" in pg.upper()
+    assert "CURRENT_DATE" in pg.upper()
+    assert "'last 12 months'" not in pg
+
+
 def test_order_by_raw_measure_column_uses_alias() -> None:
     # measure without a label: ordering by the raw column must resolve to the SELECT
     # alias, never the bare column (which is not in GROUP BY -> ClickHouse error 215)

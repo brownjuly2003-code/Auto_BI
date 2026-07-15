@@ -44,11 +44,13 @@ from auto_bi.ir.spec import (
     ChartSpec,
     DashboardFilter,
     DashboardSpec,
+    FilterOp,
     JoinSpec,
     LayoutHint,
     Measure,
     MeasureTransform,
     OrderBy,
+    QueryFilter,
     ScalarCompare,
     ScalarCompareKind,
     TargetBI,
@@ -424,11 +426,29 @@ def build_auto_spec(
     for i, chart in enumerate(charts, start=1):
         chart.id = f"auto{i}"
 
-    # an interactive period control for the overview: the Superset/DataLens adapters compile
-    # spec.filters into a native time filter scoped to the charts that expose the time column
-    # (KPIs/breakdowns over the fact). It opens preset to a recent window (_OVERVIEW_PERIOD) so
-    # the overview reads as current while keeping a full year in view for the yoy KPI; the user
-    # widens it to full history on the dashboard (B5 — DashboardFilter.default -> defaultDataMask).
+    # P1-1: bake the overview period into EACH chart's query.filters (SQL WHERE), not only into
+    # the native dashboard control. A native time filter can only re-scope charts whose grain
+    # exposes the time column (typically the dynamics line) — KPIs and categorical breakdowns
+    # stay all-time, so the user sees contradictory numbers. Baking a GTE "last N …" filter
+    # (compiled by SQL_GEN to a dialect-native bound) makes every chart honour the same window.
+    # Exception: a yoy_pct *series* needs a full year of prior buckets for every point — baking
+    # the short window would null out the lag; those charts keep full history (the interactive
+    # native control still covers them when the grain includes time).
+    if time_col is not None:
+        period_filter = QueryFilter(column=time_col.name, op=FilterOp.GTE, value=_OVERVIEW_PERIOD)
+        baked: list[ChartSpec] = []
+        for chart in charts:
+            if any(m.transform == MeasureTransform.YOY_PCT for m in chart.query.measures):
+                baked.append(chart)
+                continue
+            q = chart.query.model_copy(update={"filters": [*chart.query.filters, period_filter]})
+            baked.append(chart.model_copy(update={"query": q}))
+        charts = baked
+
+    # Interactive period control (B5): adapters compile this into a native time filter scoped
+    # to charts that expose the time column. Opens preset to _OVERVIEW_PERIOD so the user can
+    # widen/narrow on the dashboard; the baked query.filters above already align the default
+    # numbers across the whole board.
     filters: list[DashboardFilter] = []
     if time_col is not None:
         filters.append(
