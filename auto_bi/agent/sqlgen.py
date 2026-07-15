@@ -4,6 +4,8 @@ No LLM here (D5): the spec's query block is declarative, SQL is assembled from i
 Identifiers are always quoted, values go through sqlglot literals.
 """
 
+import re
+
 from sqlglot import expressions as exp
 
 from auto_bi.ir.spec import (
@@ -21,6 +23,13 @@ from auto_bi.ir.spec import (
 from auto_bi.semantic.model import Aggregation
 
 DIALECT = "clickhouse"
+
+# Relative period tokens (e.g. "last 12 months") — same phrasing as DashboardFilter.default /
+# B5 native time control. When used as a GTE/LTE filter value, SQL_GEN compiles them to a
+# dialect-native lower/upper bound so auto-overview can bake the period into EVERY chart's
+# WHERE (not only the few charts whose grain exposes the time column to a native filter).
+_RELATIVE_PERIOD = re.compile(r"^last\s+(\d+)\s+(day|days|month|months|year|years)$", re.IGNORECASE)
+_CH_ADD = {"day": "addDays", "month": "addMonths", "year": "addYears"}
 
 _AGG_FUNC = {
     Aggregation.SUM: "sum",
@@ -85,7 +94,40 @@ def _time_grain_expr(col: exp.Expression, grain: TimeGrain, *, dialect: str) -> 
     return exp.func("date_trunc", exp.Literal.string(grain.value), col)  # type: ignore[return-value]
 
 
-def _filter_expr(qf: QueryFilter) -> exp.Expression:
+def _relative_period_bound(value: str, *, dialect: str = DIALECT) -> exp.Expression | None:
+    """Compile "last N days|months|years" to a dialect-native timestamp expression, or None.
+
+    Used as the RHS of a GTE (start of window) or LTE (rarely) filter. Not a full range —
+    upper bound stays open ("through now"), matching Superset/DataLens "Last N months".
+    """
+    m = _RELATIVE_PERIOD.match(value.strip())
+    if m is None:
+        return None
+    n = int(m.group(1))
+    unit = m.group(2).lower().rstrip("s")  # day | month | year
+    if dialect == "clickhouse":
+        # addMonths(today(), -12) — same calendar arithmetic Superset's relative tokens use
+        return exp.func(_CH_ADD[unit], exp.func("today"), exp.Literal.number(-n))  # type: ignore[return-value]
+    # Postgres / DuckDB: CURRENT_DATE - INTERVAL 'N unit'
+    return exp.Sub(  # type: ignore[return-value]
+        this=exp.CurrentDate(),
+        expression=exp.Interval(
+            this=exp.Literal.string(f"{n} {unit}"),
+            unit=None,
+        ),
+    )
+
+
+def _filter_rhs(value: str | int | float, *, dialect: str = DIALECT) -> exp.Expression:
+    """Filter value as a sqlglot expression: relative period token or a plain literal."""
+    if isinstance(value, str):
+        relative = _relative_period_bound(value, dialect=dialect)
+        if relative is not None:
+            return relative
+    return _literal(value)
+
+
+def _filter_expr(qf: QueryFilter, *, dialect: str = DIALECT) -> exp.Expression:
     col = _dim_column(qf.column)
     if qf.op == FilterOp.IN:
         values = qf.value if isinstance(qf.value, list) else [qf.value]
@@ -94,7 +136,7 @@ def _filter_expr(qf: QueryFilter) -> exp.Expression:
         return col.isin(*[_literal(v) for v in values])
     if isinstance(qf.value, list):
         raise ValueError(f"operator {qf.op.value!r} expects a scalar, got list: {qf.value}")
-    rhs = _literal(qf.value)
+    rhs = _filter_rhs(qf.value, dialect=dialect)
     match qf.op:
         case FilterOp.EQ:
             return col.eq(rhs)
@@ -273,7 +315,9 @@ def _grouped_select(
             join_type="left",
         )
     for qf in query.filters:
-        select = select.where(_filter_expr(qf.model_copy(update={"column": resolve(qf.column)})))
+        select = select.where(
+            _filter_expr(qf.model_copy(update={"column": resolve(qf.column)}), dialect=dialect)
+        )
     if group_exprs:
         select = select.group_by(*group_exprs)
     return select
@@ -523,7 +567,9 @@ def _generate_compare_kpi_sql(query: ChartQuery, *, dialect: str, apply_limit: b
     )
     sub = exp.select(p_cur, p_prev).from_(exp.to_table(query.table))
     for qf in query.filters:
-        sub = sub.where(_filter_expr(qf.model_copy(update={"column": resolve(qf.column)})))
+        sub = sub.where(
+            _filter_expr(qf.model_copy(update={"column": resolve(qf.column)}), dialect=dialect)
+        )
 
     bucket_outer = _time_grain_expr(_grained_source(query, c.column), c.grain, dialect=dialect)
     col_ref = resolve(measure.column)
@@ -551,10 +597,14 @@ def _generate_compare_kpi_sql(query: ChartQuery, *, dialect: str, apply_limit: b
             and isinstance(qf.value, str)
             and qf.column.rpartition(".")[2] == compare_bare
         ):
-            widened = exp.Sub(this=exp.cast(_literal(qf.value), "DATE"), expression=interval.copy())
+            # absolute ISO date or relative "last N …" token (P1-1 bake) — widen both forms
+            lower = _filter_rhs(qf.value, dialect=dialect)
+            if _relative_period_bound(qf.value, dialect=dialect) is None:
+                lower = exp.cast(lower, "DATE")
+            widened = exp.Sub(this=lower, expression=interval.copy())
             select = select.where(exp.GTE(this=_dim_column(resolved.column), expression=widened))
         else:
-            select = select.where(_filter_expr(resolved))
+            select = select.where(_filter_expr(resolved, dialect=dialect))
     return select.sql(dialect=dialect, identify=True)
 
 
@@ -604,7 +654,7 @@ def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: boo
         exp.alias_(width, "w", quoted=True),  # type: ignore[arg-type]
     ).from_(exp.to_table(query.table))
     for qf in query.filters:
-        sub = sub.where(_filter_expr(qf))
+        sub = sub.where(_filter_expr(qf, dialect=dialect))
     sub = sub.where(_not_null(col_bare.copy()))  # min/width over non-NULL values only
 
     mn = exp.column("mn", table="b", quoted=True)
@@ -628,7 +678,7 @@ def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: boo
         .join(sub.subquery(alias="b"), join_type="cross")
     )
     for qf in query.filters:
-        select = select.where(_filter_expr(qf))
+        select = select.where(_filter_expr(qf, dialect=dialect))
     # drop NULL-valued rows: a NULL is in no bucket and the dialects disagree on where it lands
     # (CH → NULL bucket, Postgres least() → top bucket). Qualified by the base table so it cannot
     # bind to the bucket SELECT alias of the same bare name (alias-shadow; see _grained_source).

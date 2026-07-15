@@ -34,17 +34,16 @@ def _fake_run_query(sql: str) -> list[dict]:
     A rising 30-day revenue series with a single mid-series spike (day 15); a concentrated
     region ranking; a diffuse (flat) category ranking; a 3-row city ranking; a 3-way format
     share. KPI SQL (no dimension token) falls through to no rows.
+
+    Dimension tokens are matched BEFORE the period-baked `"date"` WHERE (P1-1): every
+    overview chart now carries `date >= addMonths(today(), -12)`, so a date-first check
+    would steal region/category/city rankings and return an empty leader ("—").
     """
     if "share_of_total" in sql:
         return [
             {"format": "магазин у дома", "share_of_total_sum_revenue": 0.41},
             {"format": "супермаркет", "share_of_total_sum_revenue": 0.35},
             {"format": "гипермаркет", "share_of_total_sum_revenue": 0.24},
-        ]
-    if '"date"' in sql:
-        return [
-            {"date": f"2026-01-{i:02d}", "sum_revenue": (2000.0 if i == 15 else float(100 + 5 * i))}
-            for i in range(1, 31)
         ]
     if "region" in sql:
         return [
@@ -57,6 +56,11 @@ def _fake_run_query(sql: str) -> list[dict]:
         return [
             {"city": c, "sum_revenue": float(v)}
             for c, v in [("Самара", 300), ("Пермь", 200), ("Омск", 100)]
+        ]
+    if '"date"' in sql:
+        return [
+            {"date": f"2026-01-{i:02d}", "sum_revenue": (2000.0 if i == 15 else float(100 + 5 * i))}
+            for i in range(1, 31)
         ]
     return []  # KPIs and anything else
 

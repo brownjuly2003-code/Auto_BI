@@ -325,6 +325,23 @@ def test_auto_overview_period(model) -> None:
     assert mask["filterState"]["value"] == "Last 12 months"
 
 
+def test_auto_overview_period_baked_into_chart_queries(model) -> None:
+    """P1-1: every non-yoy chart carries the overview period as a SQL WHERE (GTE), so KPIs
+    and categorical bars open on the same window as the dynamics line — not all-time."""
+    from auto_bi.ir.spec import FilterOp, MeasureTransform
+
+    spec = build_auto_spec(model, "dm.sales_daily")
+    for chart in spec.charts:
+        has_yoy_series = any(m.transform == MeasureTransform.YOY_PCT for m in chart.query.measures)
+        period_filters = [
+            f for f in chart.query.filters if f.op == FilterOp.GTE and f.value == _OVERVIEW_PERIOD
+        ]
+        if has_yoy_series:
+            assert period_filters == []  # lag needs prior-year rows outside the short window
+        else:
+            assert period_filters, f"chart {chart.id!r} missing baked period filter"
+
+
 def _yoy_kpis(spec) -> list:
     # S14: the year-over-year view is a compact scalar KPI (Measure.compare, a big_number), not a
     # full-width line

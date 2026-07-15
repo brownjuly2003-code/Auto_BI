@@ -32,6 +32,11 @@
 
 ### Fixed
 
+- **P1-1 auto-overview period:** период «last 12 months» запекается в SQL WHERE
+  каждого чарта обзора (KPI/бары/таблица), а не только в native time-control
+  (он покрывал в основном линию динамики). SQL_GEN понимает relative-токены
+  `last N days|months|years` как GTE-bound. Серия `yoy_pct` остаётся на полной
+  истории (лагу нужны prior-year точки).
 - **P0-1 raw_sql:** LLM text/fields/patch больше не может эмитить `raw_sql`
   (schema без поля + `validate_spec(allow_raw_sql=False)`); schema-RBAC ходит
   по AST SELECT, а не только по `query.table`-метке; `guard_sql` режет remote

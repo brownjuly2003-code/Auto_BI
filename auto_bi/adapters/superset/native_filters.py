@@ -4,8 +4,13 @@ Scope-to-applicable: each chart is its own pre-aggregated virtual dataset, so a 
 filter (a WHERE by the column's bare alias) can only be honored by a chart that GROUPs
 by that column — an aggregated dataset that didn't select the column has nothing to
 filter on. Charts that don't expose the column are left OUT of the filter's scope
-(Superset still shows the filter; those charts ignore it). This keeps each chart's
-intent intact: a total-revenue KPI stays one number even while a city filter is active.
+(Superset still shows the filter; those charts ignore it).
+
+Auto-overview (P1-1) additionally bakes the default period into each chart's
+`query.filters` (SQL WHERE via a relative "last N …" token), so KPIs and categorical
+charts open on the same window as the dynamics line even though they stay out of the
+native control's scope. Interactive re-scoping on the dashboard still only moves
+in-scope charts; the baked WHERE is the honest default.
 
 filterType comes from the column's semantic role (TIME -> filter_time, else
 filter_select), not from DashboardFilter.type — the LLM does not reliably override that
