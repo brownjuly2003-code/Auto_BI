@@ -32,6 +32,10 @@
 
 ### Fixed
 
+- **P0-1 raw_sql:** LLM text/fields/patch больше не может эмитить `raw_sql`
+  (schema без поля + `validate_spec(allow_raw_sql=False)`); schema-RBAC ходит
+  по AST SELECT, а не только по `query.table`-метке; `guard_sql` режет remote
+  table-functions; DataLens+raw явно rejected. CLI `auto_bi raw` без изменений.
 - Superset: bar по временнОй оси (когорты по месяцам) держит time-ось с датами
   вместо категориальной с сырыми epoch-ms; числовые категории (`store_id`)
   по-прежнему форсятся категориальными.

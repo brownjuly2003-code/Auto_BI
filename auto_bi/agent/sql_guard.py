@@ -13,13 +13,35 @@ DIALECT = "clickhouse"
 TRIAL_LIMIT = 10
 TRIAL_TIMEOUT_S = 30
 
+# Table-valued / remote-source functions that SELECT-only does not make safe for a
+# multi-schema DWH service account. Names are lowercased for comparison.
+_FORBIDDEN_TABLE_FUNCS = frozenset(
+    {
+        "url",
+        "s3",
+        "hdfs",
+        "file",
+        "input",
+        "remote",
+        "cluster",
+        "clusterallreplicas",
+        "mysql",
+        "postgresql",
+        "sqlite",
+        "odbc",
+        "jdbc",
+        "mongodb",
+        "redis",
+    }
+)
+
 
 class SQLGuardError(Exception):
     pass
 
 
-def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
-    """Raise unless sql is exactly one plain SELECT (CTEs allowed, writes/DDL never)."""
+def _parse_one_select(sql: str, *, dialect: str = DIALECT) -> exp.Expression:
+    """Parse exactly one SELECT/UNION statement or raise SQLGuardError."""
     try:
         statements = sqlglot.parse(sql, read=dialect)
     except sqlglot.errors.ParseError as e:
@@ -32,6 +54,12 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
     root = statements[0]
     if not isinstance(root, exp.Select | exp.Union):
         raise SQLGuardError(f"only SELECT is allowed, got {type(root).__name__}")
+    return root
+
+
+def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
+    """Raise unless sql is exactly one plain SELECT (CTEs allowed, writes/DDL never)."""
+    root = _parse_one_select(sql, dialect=dialect)
 
     forbidden = (
         exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create, exp.Alter,
@@ -40,6 +68,39 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
     for node in root.walk():
         if isinstance(node, forbidden):
             raise SQLGuardError(f"forbidden construct in SQL: {type(node).__name__}")
+        # Table-valued remote sources: `FROM url(...)` / `FROM s3(...)` etc.
+        if isinstance(node, exp.Anonymous):
+            name = (node.this or "").lower() if isinstance(node.this, str) else ""
+            if name in _FORBIDDEN_TABLE_FUNCS:
+                raise SQLGuardError(f"forbidden table function in SQL: {name}()")
+        if isinstance(node, exp.Func):
+            name = (node.sql_name() or "").lower()
+            if name in _FORBIDDEN_TABLE_FUNCS:
+                raise SQLGuardError(f"forbidden table function in SQL: {name}()")
+
+
+def extract_table_names(sql: str, *, dialect: str = DIALECT) -> frozenset[str]:
+    """Physical table names referenced by a SELECT (CTE aliases excluded).
+
+    Used by schema-RBAC for the raw_sql hatch: `query.table` is only a dataset label
+    and must not be the sole RBAC surface. Returns fully-qualified names when the
+    SQL qualifies them (`dm.sales_daily`); bare names stay bare (schema_of then
+    treats the whole token as the schema segment — still fail-closed for RBAC if
+    the bare name is not an allowed schema).
+    """
+    root = _parse_one_select(sql, dialect=dialect)
+    cte_names = {(cte.alias_or_name or "").lower() for cte in root.find_all(exp.CTE)}
+    tables: set[str] = set()
+    for table in root.find_all(exp.Table):
+        name = table.name
+        if not name:
+            continue
+        # CTE self-reference: bare name matching a WITH alias, no db/catalog.
+        if name.lower() in cte_names and not table.db and not table.catalog:
+            continue
+        parts = [p for p in (table.catalog, table.db, name) if p]
+        tables.add(".".join(parts))
+    return frozenset(tables)
 
 
 def _trial_statements(sql: str, dialect: str) -> list[str]:

@@ -4,7 +4,8 @@ Covers the deterministic contract around the hatch: the IR accepts a measureless
 still rejects a measureless non-raw one), SQL_GEN returns the SQL verbatim, validate_spec restricts
 the hatch to a single SELECT + viz=TABLE with no aggregating IR fields alongside it, the Superset
 table renders in raw query mode, and the moat layers (top-N/label-join normalization, advisor)
-skip it. The live EXPLAIN + LIMIT trial is exercised by the stand e2e, not here.
+skip it. P0-1: LLM path rejects raw_sql; schema-RBAC walks the SELECT AST; DataLens is rejected.
+The live EXPLAIN + LIMIT trial is exercised by the stand e2e, not here.
 """
 
 import pytest
@@ -13,8 +14,18 @@ from pydantic import ValidationError
 from auto_bi.adapters.superset.form_data import build_form_data
 from auto_bi.advisor.core import Advisor
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
+from auto_bi.agent.sql_guard import SQLGuardError, extract_table_names, guard_sql
 from auto_bi.agent.sqlgen import generate_chart_sql
-from auto_bi.ir.spec import ChartQuery, ChartSpec, DashboardSpec, Measure, Viz
+from auto_bi.auth import forbidden_tables, spec_tables
+from auto_bi.ir.spec import (
+    ChartQuery,
+    ChartSpec,
+    DashboardSpec,
+    Measure,
+    TargetBI,
+    Viz,
+    llm_dashboard_spec_schema,
+)
 from auto_bi.ir.validate import validate_spec
 from auto_bi.semantic.model import Aggregation, SemanticModel
 
@@ -143,3 +154,68 @@ def test_normalization_leaves_raw_untouched() -> None:
 
 def test_advisor_is_blind_to_raw() -> None:
     assert Advisor(MODEL).review_chart(_raw_chart()) == []
+
+
+# --- P0-1: operator-only hatch + RBAC on AST ---------------------------------
+
+
+def test_llm_schema_excludes_raw_sql() -> None:
+    schema = llm_dashboard_spec_schema()
+    defs = schema.get("$defs") or schema.get("definitions") or {}
+    props = defs["ChartQuery"]["properties"]
+    assert "raw_sql" not in props
+    # runtime IR still carries the field for the CLI hatch
+    assert "raw_sql" in ChartQuery.model_json_schema()["properties"]
+
+
+def test_validate_rejects_raw_on_llm_path() -> None:
+    errors = validate_spec(_raw_spec(columns=["store_id", "rev"]), MODEL, allow_raw_sql=False)
+    assert any("operator-only hatch" in e for e in errors)
+
+
+def test_validate_rejects_raw_on_datalens() -> None:
+    spec = DashboardSpec(
+        title="Raw",
+        target_bi=TargetBI.DATALENS,
+        charts=[_raw_chart(columns=["store_id", "rev"])],
+    )
+    errors = validate_spec(spec, MODEL)
+    assert any("target_bi=superset" in e for e in errors)
+
+
+def test_extract_table_names_from_raw_sql() -> None:
+    assert extract_table_names(RAW) == frozenset({"dm.sales_daily"})
+    with_cte = (
+        "WITH base AS (SELECT store_id, revenue FROM dm.sales_daily) "
+        "SELECT store_id, SUM(revenue) AS rev FROM base GROUP BY store_id"
+    )
+    assert extract_table_names(with_cte) == frozenset({"dm.sales_daily"})
+
+
+def test_guard_rejects_remote_table_function() -> None:
+    with pytest.raises(SQLGuardError, match="forbidden table function"):
+        guard_sql("SELECT * FROM url('http://evil.example/x')")
+
+
+def test_spec_tables_walks_raw_sql_ast() -> None:
+    # Label says dm.allowed, SQL reads finance.secret — RBAC must see the real table.
+    chart = ChartSpec(
+        id="raw",
+        title="Raw",
+        viz=Viz.TABLE,
+        query=ChartQuery(
+            table="dm.allowed",
+            dimensions=["x"],
+            raw_sql="SELECT id, amount FROM finance.secret",
+        ),
+    )
+    spec = DashboardSpec(title="t", charts=[chart])
+    assert "finance.secret" in spec_tables(spec)
+    assert "dm.allowed" in spec_tables(spec)
+    assert forbidden_tables(spec, ["dm"]) == ["finance.secret"]
+    assert forbidden_tables(spec, ["dm", "finance"]) == []
+
+
+def test_operator_raw_still_validates() -> None:
+    # CLI path keeps allow_raw_sql=True (default): hatch still works for operators.
+    assert validate_spec(_raw_spec(columns=["store_id", "rev"]), MODEL) == []

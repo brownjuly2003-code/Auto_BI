@@ -35,7 +35,18 @@ _ORDERED_TRANSFORMS = frozenset(
 _TRANSFORM_UNSUPPORTED_VIZ = frozenset({Viz.BIG_NUMBER, Viz.PIVOT, Viz.HEATMAP})
 
 
-def validate_spec(spec: DashboardSpec, model: SemanticModel) -> list[str]:
+def validate_spec(
+    spec: DashboardSpec,
+    model: SemanticModel,
+    *,
+    allow_raw_sql: bool = True,
+) -> list[str]:
+    """Validate a DashboardSpec against the semantic model.
+
+    `allow_raw_sql=False` is the LLM path (propose/patch): ChartQuery.raw_sql is an
+    operator-only hatch (CLI `auto_bi raw`) and must never come from text/fields/repair.
+    Default True keeps the operator/compile path working.
+    """
     errors: list[str] = []
 
     chart_ids = [c.id for c in spec.charts]
@@ -50,26 +61,36 @@ def validate_spec(spec: DashboardSpec, model: SemanticModel) -> list[str]:
             errors.append(f"dashboard filter references unknown column: {f.column!r}{hint}")
 
     for chart in spec.charts:
-        errors.extend(_validate_chart(chart, model))
+        errors.extend(_validate_chart(chart, model, spec=spec, allow_raw_sql=allow_raw_sql))
 
     return errors
 
 
-def _validate_raw_chart(chart: ChartSpec, prefix: str) -> list[str]:
+def _validate_raw_chart(
+    chart: ChartSpec, prefix: str, *, target_bi: str | None = None
+) -> list[str]:
     """Validate the X-5 raw_sql escape hatch: a manual SELECT that bypasses model validation.
 
     The columns can't be checked against the model (that IS the point — the SQL expresses what the
     IR cannot), so validation covers only: the SQL is a single plain SELECT (static guard_sql — the
     same SELECT-only parse the live gate repeats, surfaced now for an early, actionable error), viz
-    is TABLE (the only shape a raw result maps to with no IR column->axis mapping), and no
+    is TABLE (the only shape a raw result maps to with no IR column->axis mapping), no
     aggregating IR query field is set alongside it (a raw chart carries its whole query in the SQL;
-    `dimensions` are allowed — they name the display columns). The live EXPLAIN + LIMIT trial still
-    runs in compile_and_build."""
+    `dimensions` are allowed — they name the display columns), and the BI target is Superset
+    (v1 only — DataLens has no raw-table path). The live EXPLAIN + LIMIT trial still runs in
+    compile_and_build. Table-level RBAC for the hatch is enforced separately via
+    `auth.spec_tables` (AST walk), not here.
+    """
     from auto_bi.agent.sql_guard import SQLGuardError, guard_sql
+    from auto_bi.ir.spec import TargetBI
 
     errors: list[str] = []
     if chart.viz != Viz.TABLE:
         errors.append(f"{prefix}: raw_sql is supported only with viz=table, got {chart.viz.value}")
+    if target_bi is not None and target_bi != TargetBI.SUPERSET.value:
+        errors.append(
+            f"{prefix}: raw_sql is supported only with target_bi=superset, got {target_bi!r}"
+        )
     try:
         guard_sql(chart.query.raw_sql or "")
     except SQLGuardError as e:
@@ -101,10 +122,23 @@ def _validate_raw_chart(chart: ChartSpec, prefix: str) -> list[str]:
     return errors
 
 
-def _validate_chart(chart: ChartSpec, model: SemanticModel) -> list[str]:
+def _validate_chart(
+    chart: ChartSpec,
+    model: SemanticModel,
+    *,
+    spec: DashboardSpec | None = None,
+    allow_raw_sql: bool = True,
+) -> list[str]:
     prefix = f"chart {chart.id!r}"
     if chart.query.raw_sql is not None:
-        return _validate_raw_chart(chart, prefix)
+        if not allow_raw_sql:
+            return [
+                f"{prefix}: raw_sql is an operator-only hatch (CLI `auto_bi raw`); "
+                "LLM/text/fields paths must use IR measures and dimensions only"
+            ]
+        target = spec.target_bi.value if spec is not None else None
+        return _validate_raw_chart(chart, prefix, target_bi=target)
+
     table = model.table(chart.query.table)
     if table is None:
         known = ", ".join(t.name for t in model.tables)
