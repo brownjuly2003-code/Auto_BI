@@ -686,19 +686,39 @@ def create_app(
             raise HTTPException(status_code=503, detail="store is not configured")
         return store
 
+    def _dcr_visible(row: dict, user: AuthUser) -> bool:
+        """P1-4: non-admin sees only DCRs from own sessions whose table is in their schemas.
+        Auth off -> caller is anonymous admin (full access). Unknown/foreign -> treat as
+        invisible so list/detail/patch return the same 404 as sessions (no existence probe)."""
+        if not auth_enabled or user.is_admin:
+            return True
+        if row.get("session_owner") != user.username:
+            return False
+        return is_table_allowed(row.get("table_name") or "", user.allowed_schemas)
+
+    def _dcr_or_404(request_id: int, request: Request) -> dict:
+        row = _store().dm_change_request(request_id)
+        if row is None or not _dcr_visible(row, _user(request)):
+            raise HTTPException(status_code=404, detail=f"unknown dm_change_request {request_id}")
+        return row
+
     @app.get("/api/v1/dm-change-requests")
-    def list_dm_change_requests(status: str | None = None) -> list[dict]:
-        return _store().dm_change_requests(status)
+    def list_dm_change_requests(request: Request, status: str | None = None) -> list[dict]:
+        # P1-4: analysts only list their own sessions' DCRs (schema-filtered); admin = all
+        user = _user(request)
+        owner = None if (not auth_enabled or user.is_admin) else user.username
+        rows = _store().dm_change_requests(status, owner=owner)
+        if auth_enabled and not user.is_admin:
+            rows = [r for r in rows if _dcr_visible(r, user)]
+        return rows
 
     @app.get("/api/v1/dm-change-requests/{request_id}")
-    def dm_change_request(request_id: int) -> dict:
-        row = _store().dm_change_request(request_id)
-        if row is None:
-            raise HTTPException(status_code=404, detail=f"unknown dm_change_request {request_id}")
+    def dm_change_request(request_id: int, request: Request) -> dict:
+        row = _dcr_or_404(request_id, request)
         return {**row, "markdown": render_dm_change_request(row)}
 
     @app.patch("/api/v1/dm-change-requests/{request_id}")
-    def update_dm_change_request(request_id: int, body: DCRStatusUpdate) -> dict:
+    def update_dm_change_request(request_id: int, body: DCRStatusUpdate, request: Request) -> dict:
         # P8: the DCR workflow state is shared like model.yaml — no anonymous writes in
         # the public demo (the demo never creates DCRs, so this is defense in depth)
         _check_demo_gate("Правка статуса DCR")
@@ -707,9 +727,15 @@ def create_app(
                 status_code=422,
                 detail=f"status must be one of {DCR_STATUSES}, got {body.status!r}",
             )
-        if _store().dm_change_request(request_id) is None:
-            raise HTTPException(status_code=404, detail=f"unknown dm_change_request {request_id}")
-        _store().set_dm_change_request_status(request_id, body.status)
+        # P1-4: foreign DCR -> 404; own-but-not-admin -> 403 (status is a DM-owner action)
+        row = _dcr_or_404(request_id, request)
+        user = _user(request)
+        if auth_enabled and not user.is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="only admin can update dm_change_request status",
+            )
+        _store().set_dm_change_request_status(row["id"], body.status)
         return {"id": request_id, "status": body.status}
 
     # --- observability (Phase 4): per-session trace + LLM-usage dashboard ----------
@@ -731,10 +757,14 @@ def create_app(
         }
 
     @app.get("/api/v1/observability/llm")
-    def observability_llm() -> dict:
-        """Global LLM-usage aggregates. Char volumes are a universal size proxy; real
-        input/output tokens are summed where the provider reports usage (Anthropic) and
-        stay NULL on GraceKelly (`token_calls` counts the rows that carry real tokens)."""
+    def observability_llm(request: Request) -> dict:
+        """LLM-usage aggregates. Admin (or auth off) gets the global view; a non-admin
+        analyst only sees spend on sessions they own (audit P1-4 — no cross-user leak).
+        Char volumes are a universal size proxy; real input/output tokens are summed where
+        the provider reports usage (Anthropic) and stay NULL on GraceKelly."""
+        user = _user(request)
+        if auth_enabled and not user.is_admin:
+            return _store().llm_usage_summary(owner=user.username)
         return _store().llm_usage_summary()
 
     @app.get("/api/v1/sessions/{session_id}/insights")

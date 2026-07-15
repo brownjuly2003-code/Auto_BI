@@ -116,6 +116,8 @@ def test_logs_step_and_completion_chars_to_store(tmp_path) -> None:
     assert call["step"] == "propose_spec"
     assert call["completion_chars"] == len(output)
     assert call["model"] == "claude-sonnet-4-6"
+    # P2-1: native end_turn is normalised to completed for usage dashboards
+    assert call["status"] == "completed"
     store.close()
 
 
@@ -166,5 +168,6 @@ def test_calls_are_logged_without_prompt_content(tmp_path) -> None:
 @pytest.mark.skipif(ANTHROPIC_INSTALLED, reason="exercises the missing-SDK path")
 def test_missing_sdk_raises_clear_error() -> None:
     # No injected `create` -> the client tries to build the real SDK, which is absent here.
-    with pytest.raises(LLMError, match="anthropic"):
+    # Distribution name is autobi-agent (PyPI), not the rejected auto-bi alias (audit P1-3).
+    with pytest.raises(LLMError, match="autobi-agent\\[anthropic\\]"):
         AnthropicClient(Settings(_env_file=None))

@@ -206,17 +206,23 @@ def test_llm_usage_summary_aggregates(store: Store) -> None:
     _log("grounding", "completed", 800, 1000, 200)
     _log("propose", "completed", 1600, 2000, 800)
     _log("propose", "transport_error", 50, 2000, 0)
+    # P2-1: Anthropic-legacy stop_reason end_turn also counts as success
+    _log("propose", "end_turn", 100, 500, 50)
     summary = store.llm_usage_summary()
     t = summary["totals"]
-    assert t["calls"] == 3
-    assert t["ok"] == 2 and t["failed"] == 1
-    assert t["latency_ms_total"] == 2450
+    assert t["calls"] == 4
+    assert t["ok"] == 3 and t["failed"] == 1
+    assert t["latency_ms_total"] == 2550
     assert t["latency_ms_max"] == 1600
-    assert t["prompt_chars"] == 5000 and t["completion_chars"] == 1000
+    assert t["prompt_chars"] == 5500 and t["completion_chars"] == 1050
     by_step = {r["step"]: r for r in summary["by_step"]}
-    assert by_step["propose"]["calls"] == 2
-    assert by_step["propose"]["completion_chars"] == 800
-    assert {r["status"] for r in summary["by_status"]} == {"completed", "transport_error"}
+    assert by_step["propose"]["calls"] == 3
+    assert by_step["propose"]["completion_chars"] == 850
+    assert {r["status"] for r in summary["by_status"]} == {
+        "completed",
+        "transport_error",
+        "end_turn",
+    }
 
 
 def test_llm_usage_summary_empty_is_zero(store: Store) -> None:
