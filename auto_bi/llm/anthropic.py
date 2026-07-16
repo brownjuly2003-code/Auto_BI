@@ -7,7 +7,7 @@ the agent"). The structured-output repair loop and call logging are shared with
 GraceKellyClient via `auto_bi.llm._structured`; only the transport differs.
 
 The `anthropic` SDK is an OPTIONAL dependency (the lean core does not require it):
-install with `pip install 'auto-bi[anthropic]'` or `uv sync --extra anthropic`. It is
+install with `pip install 'autobi-agent[anthropic]'` or `uv sync --extra anthropic`. It is
 imported lazily, so importing this module never forces the SDK to be present — useful
 for tests, which inject a fake `create` callable instead.
 """
@@ -41,7 +41,8 @@ def _build_create(settings: Settings) -> MessagesCreate:
     except ImportError as exc:  # optional dependency
         raise LLMError(
             "the 'anthropic' package is required for AUTO_BI_LLM_PROVIDER=anthropic; "
-            "install it with `pip install 'auto-bi[anthropic]'` or `uv sync --extra anthropic`"
+            "install it with `pip install 'autobi-agent[anthropic]'` "
+            "or `uv sync --extra anthropic`"
         ) from exc
     try:
         # api_key blank -> SDK falls back to the ANTHROPIC_API_KEY env var.
@@ -123,16 +124,24 @@ class AnthropicClient:
                 thinking=thinking,
                 messages=[{"role": "user", "content": prompt}],
             )
-            status = getattr(response, "stop_reason", None) or "unknown"
+            # Native stop_reason (end_turn / max_tokens / refusal / …). Map successful
+            # completions to status='completed' so usage dashboards match GraceKelly
+            # (audit P2-1); keep the native reason in the error text on failure paths.
+            stop_reason = getattr(response, "stop_reason", None) or "unknown"
+            status = (
+                "completed"
+                if stop_reason in ("end_turn", "max_tokens", "stop_sequence")
+                else stop_reason
+            )
             # capture usage before the refusal/empty guards so even a refused or empty
             # response records the input tokens it actually spent
             input_tokens, output_tokens = _extract_usage(response)
-            if status == "refusal":
+            if stop_reason == "refusal":
                 raise LLMError("Anthropic declined the request (stop_reason=refusal)")
             text = _extract_text(response)
             completion_chars = len(text)
             if not text:
-                raise LLMError(f"Anthropic returned no text (stop_reason={status})")
+                raise LLMError(f"Anthropic returned no text (stop_reason={stop_reason})")
             return text
         except LLMError:
             raise

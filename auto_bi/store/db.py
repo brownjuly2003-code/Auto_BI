@@ -441,18 +441,39 @@ class Store:
             "SELECT * FROM trace_events WHERE session_id = ? ORDER BY seq, id", session_id
         )
 
-    def llm_usage_summary(self, session_id: str | None = None) -> dict[str, Any]:
+    # Provider-native success statuses that mean "call produced a usable completion".
+    # GraceKelly writes `completed`; Anthropic historically stored stop_reason (`end_turn`)
+    # (audit P2-1). Both count as ok; genuine failures stay failed/refusal/transport_error.
+    _LLM_OK_STATUSES = ("completed", "end_turn", "max_tokens", "stop_sequence")
+
+    def llm_usage_summary(
+        self, session_id: str | None = None, *, owner: str | None = None
+    ) -> dict[str, Any]:
         """Aggregates for the LLM-usage dashboard. Char volumes are a universal size
         proxy (every call has them). Real `input_tokens`/`output_tokens` are summed
         NULL-ignoring — they are populated only on providers that report usage (Anthropic);
         GraceKelly reports none, so its rows stay NULL. `token_calls` counts the rows that
         carry real tokens, so callers can show token figures only when they exist rather
-        than presenting a NULL-driven 0 as if it were measured."""
-        where = "WHERE session_id = ?" if session_id is not None else ""
-        params: tuple[Any, ...] = (session_id,) if session_id is not None else ()
+        than presenting a NULL-driven 0 as if it were measured.
+
+        `owner` (P1-4): when set, only calls whose session is owned by that username —
+        used for non-admin observability so a user never sees foreign spend.
+        """
+        if session_id is not None and owner is not None:
+            raise ValueError("llm_usage_summary: pass session_id or owner, not both")
+        if session_id is not None:
+            where = "WHERE session_id = ?"
+            params: tuple[Any, ...] = (session_id,)
+        elif owner is not None:
+            where = "WHERE session_id IN (SELECT id FROM sessions WHERE owner = ?)"
+            params = (owner,)
+        else:
+            where = ""
+            params = ()
+        ok_list = ", ".join(f"'{s}'" for s in self._LLM_OK_STATUSES)
         totals_row = self._db_one(
             "SELECT COUNT(*) AS calls,"
-            " COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0) AS ok,"
+            f" COALESCE(SUM(CASE WHEN status IN ({ok_list}) THEN 1 ELSE 0 END), 0) AS ok,"
             " COALESCE(SUM(latency_ms), 0) AS latency_ms_total,"
             " COALESCE(CAST(ROUND(AVG(latency_ms)) AS INTEGER), 0) AS latency_ms_avg,"
             " COALESCE(MAX(latency_ms), 0) AS latency_ms_max,"
@@ -508,10 +529,31 @@ class Store:
             )
         return _row_id(cur)
 
-    def dm_change_requests(self, status: str | None = None) -> list[dict[str, Any]]:
-        if status is None:
-            return self._rows("SELECT * FROM dm_change_requests ORDER BY id")
-        return self._rows("SELECT * FROM dm_change_requests WHERE status = ? ORDER BY id", status)
+    def dm_change_requests(
+        self, status: str | None = None, *, owner: str | None = None
+    ) -> list[dict[str, Any]]:
+        """List DCRs with session context (request text + owner for RBAC P1-4).
+
+        `owner` when set restricts to rows whose session is owned by that username
+        (non-admin list path). Admin/auth-off pass owner=None for the full list.
+        """
+        sql = (
+            "SELECT r.*, s.request AS session_request, s.owner AS session_owner"
+            " FROM dm_change_requests r"
+            " LEFT JOIN sessions s ON s.id = r.session_id"
+        )
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status is not None:
+            clauses.append("r.status = ?")
+            params.append(status)
+        if owner is not None:
+            clauses.append("s.owner = ?")
+            params.append(owner)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY r.id"
+        return self._rows(sql, *params)
 
     def dm_change_requests_for_session(self, session_id: str) -> list[dict[str, Any]]:
         """One session's DCRs — hydration rebuilds the agent's dedup set from these (X-4)."""
@@ -520,9 +562,10 @@ class Store:
         )
 
     def dm_change_request(self, request_id: int) -> dict[str, Any] | None:
-        """One DCR with its session context (what the user was trying to build)."""
+        """One DCR with its session context (what the user was trying to build + owner)."""
         rows = self._rows(
-            "SELECT r.*, s.request AS session_request FROM dm_change_requests r"
+            "SELECT r.*, s.request AS session_request, s.owner AS session_owner"
+            " FROM dm_change_requests r"
             " LEFT JOIN sessions s ON s.id = r.session_id WHERE r.id = ?",
             request_id,
         )

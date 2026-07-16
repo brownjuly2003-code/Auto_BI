@@ -42,6 +42,14 @@
   auth / demo profile required for non-loopback); `MAX_CONCURRENT_BUILDS`
   (default 2) → 503 + Retry-After on approve; work quota on auto/approve/insights
   (forced when `demo_auto_only`). LLM session quota stays separate (O-2).
+- **P1-4 DCR / observability RBAC:** list/detail DCR scoped by session owner +
+  allowed schemas (foreign → 404); PATCH status is admin-only (own non-admin →
+  403). Global `GET /observability/llm` is admin-only; analysts get own-session
+  spend only. No cross-user `session_request` leak.
+- **P2-1 Anthropic usage:** successful `stop_reason` (`end_turn`/…) stored as
+  `status=completed`; usage summary also counts legacy `end_turn` rows as ok.
+- **P1-3 install hint:** missing-SDK error names `autobi-agent[anthropic]`
+  (not the rejected `auto-bi` distribution).
 - **P1-1 auto-overview period:** период «last 12 months» запекается в SQL WHERE
   каждого чарта обзора (KPI/бары/таблица), а не только в native time-control
   (он покрывал в основном линию динамики). SQL_GEN понимает relative-токены
