@@ -26,8 +26,8 @@
 ## 2. Быстрый старт (ClickHouse + Superset)
 
 ```bash
-# 1. установка (extra "anthropic" ставит SDK для прямого LLM-провайдера, дефолт)
-pip install -e '.[anthropic]'
+# 1. установка (Anthropic SDK — core-зависимость, default LLM-провайдер)
+pip install -e .
 
 # 2. настройка доступа (пример .env — значения свои)
 #    AUTO_BI_CH_HOST=localhost   AUTO_BI_CH_USER=auto_bi_ro   AUTO_BI_CH_PASSWORD=...

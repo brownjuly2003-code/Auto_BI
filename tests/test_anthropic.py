@@ -104,6 +104,13 @@ def test_transport_error_becomes_llm_error(tmp_path) -> None:
         make_client(create, tmp_path).complete("сделай", Answer)
 
 
+def test_anthropic_is_core_dependency() -> None:
+    """P1-3: plain install / Docker image must ship the default LLM provider SDK."""
+    import importlib.util
+
+    assert importlib.util.find_spec("anthropic") is not None
+
+
 def test_logs_step_and_completion_chars_to_store(tmp_path) -> None:
     from auto_bi.store import Store
 
@@ -168,6 +175,6 @@ def test_calls_are_logged_without_prompt_content(tmp_path) -> None:
 @pytest.mark.skipif(ANTHROPIC_INSTALLED, reason="exercises the missing-SDK path")
 def test_missing_sdk_raises_clear_error() -> None:
     # No injected `create` -> the client tries to build the real SDK, which is absent here.
-    # Distribution name is autobi-agent (PyPI), not the rejected auto-bi alias (audit P1-3).
-    with pytest.raises(LLMError, match="autobi-agent\\[anthropic\\]"):
+    # Anthropic is a core dep (P1-3); this path is only hit on a broken install.
+    with pytest.raises(LLMError, match=r"not importable|core dependency"):
         AnthropicClient(Settings(_env_file=None))

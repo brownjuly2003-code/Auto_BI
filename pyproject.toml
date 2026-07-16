@@ -26,12 +26,13 @@ dependencies = [
     "fastapi>=0.139.0",
     "uvicorn>=0.50.2",
     "psycopg[binary]>=3.3.4",
+    "anthropic>=0.116.0",
 ]
 
 [project.optional-dependencies]
-# Direct Anthropic Messages API provider (AUTO_BI_LLM_PROVIDER=anthropic). Optional so the
-# lean core stays GraceKelly-only by default: `uv sync --extra anthropic` / `pip install '.[anthropic]'`.
-anthropic = ["anthropic>=0.116.0"]
+# No-op alias: anthropic is a core dependency (audit P1-3). Kept so older install
+# lines (`pip install 'autobi-agent[anthropic]'` / `uv sync --extra anthropic`) still work.
+anthropic = []
 
 [dependency-groups]
 dev = [
@@ -95,7 +96,6 @@ python_version = "3.12"
 files = ["auto_bi"]
 
 [[tool.mypy.overrides]]
-# anthropic is an optional extra (installed only with `.[anthropic]`); clickhouse_connect
-# ships no py.typed marker. Neither has type info, but neither should block checking our code.
+# anthropic / clickhouse_connect ship no usable py.typed stubs for our mypy gate.
 module = ["anthropic", "clickhouse_connect", "clickhouse_connect.*"]
 ignore_missing_imports = true
