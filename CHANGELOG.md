@@ -50,6 +50,14 @@
   `status=completed`; usage summary also counts legacy `end_turn` rows as ok.
 - **P1-3 install hint:** missing-SDK error names `autobi-agent[anthropic]`
   (not the rejected `auto-bi` distribution).
+- **P2-2 seed join-field false drop:** `seed_analysis` keeps already-qualified
+  column refs (`dm.stores.city`); only bare columns are prefixed with
+  `query.table` — join fields used in the spec are no longer reported as
+  «не вошли в дашборд».
+- **P1-5 strict models:** IR, semantic model, seed, grounding report, API
+  request bodies use `extra="forbid"` (`StrictModel`); typos like `limt` /
+  `max_chart` / `tablse` fail validation instead of silently defaulting.
+  `AutoSessionRequest.max_charts` bounded to 1..12; request/reply length caps.
 - **P1-1 auto-overview period:** период «last 12 months» запекается в SQL WHERE
   каждого чарта обзора (KPI/бары/таблица), а не только в native time-control
   (он покрывал в основном линию динамики). SQL_GEN понимает relative-токены

@@ -10,7 +10,9 @@ from enum import StrEnum
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from auto_bi.strict import StrictModel
 
 
 class ColumnRole(StrEnum):
@@ -28,7 +30,7 @@ class Aggregation(StrEnum):
     COUNT_DISTINCT = "count_distinct"
 
 
-class Column(BaseModel):
+class Column(StrictModel):
     name: str
     type: str
     role: ColumnRole
@@ -43,7 +45,7 @@ class Column(BaseModel):
     synonyms: list[str] = Field(default_factory=list)
 
 
-class Physical(BaseModel):
+class Physical(StrictModel):
     """Engine-level facts: formal definition of what the DM is designed for (advisor fuel)."""
 
     engine: str  # required: never dropped from yaml by exclude_defaults
@@ -56,7 +58,7 @@ class Physical(BaseModel):
     cardinality: dict[str, int] = Field(default_factory=dict)
 
 
-class Table(BaseModel):
+class Table(StrictModel):
     name: str  # fully qualified: "dm.sales_daily"
     description: str = ""
     grain: list[str] = Field(default_factory=list)
@@ -70,19 +72,19 @@ class Table(BaseModel):
         return next((c for c in self.columns if c.name == name), None)
 
 
-class Join(BaseModel):
+class Join(StrictModel):
     left: str  # "dm.sales_daily.store_id"
     right: str  # "dm.stores.id"
     type: str = "many_to_one"
 
 
-class Metric(BaseModel):
+class Metric(StrictModel):
     name: str
     sql: str
     description: str = ""
 
 
-class SemanticModel(BaseModel):
+class SemanticModel(StrictModel):
     tables: list[Table] = Field(default_factory=list)
     joins: list[Join] = Field(default_factory=list)
     metrics: list[Metric] = Field(default_factory=list)

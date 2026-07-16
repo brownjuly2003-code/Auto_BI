@@ -12,20 +12,21 @@ dropped fields — the LLM never grades its own homework.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.semantic.model import SemanticModel
+from auto_bi.strict import StrictModel
 
 
-class SeedGroup(BaseModel):
+class SeedGroup(StrictModel):
     label: str = ""
     fields: list[str] = Field(min_length=1)  # fully qualified: "dm.sales_daily.revenue"
 
 
-class FieldsSeed(BaseModel):
-    groups: list[SeedGroup] = Field(min_length=1)
-    comment: str = ""
+class FieldsSeed(StrictModel):
+    groups: list[SeedGroup] = Field(min_length=1, max_length=12)
+    comment: str = Field(default="", max_length=4000)
 
 
 def validate_seed(seed: FieldsSeed, model: SemanticModel) -> list[str]:
@@ -74,6 +75,19 @@ def render_seed_request(seed: FieldsSeed, model: SemanticModel) -> str:
     return "\n".join(lines)
 
 
+def _field_key(table: str, col: str) -> str:
+    """Normalize a chart column ref to the fully-qualified form seed fields use.
+
+    Seed fields are always FQ (`dm.stores.city`). Spec columns may be bare on the
+    base table (`revenue`) or already FQ for joined tables (`dm.stores.city`).
+    Prefixing every col with `q.table` double-qualified join refs
+    (`dm.sales_daily.dm.stores.city`) and falsely reported them as dropped (audit P2-2).
+    """
+    if "." in col:
+        return col
+    return f"{table}.{col}"
+
+
 def seed_analysis(seed: FieldsSeed, spec: DashboardSpec) -> list[str]:
     """Deterministic layout analysis: what of the seed did NOT survive into the spec.
 
@@ -84,9 +98,9 @@ def seed_analysis(seed: FieldsSeed, spec: DashboardSpec) -> list[str]:
     for chart in spec.charts:
         q = chart.query
         for col in (*q.group_columns(), *(m.column for m in q.measures)):
-            used.add(f"{q.table}.{col}")
+            used.add(_field_key(q.table, col))
         for qf in q.filters:
-            used.add(f"{q.table}.{qf.column}")
+            used.add(_field_key(q.table, qf.column))
     for f in spec.filters:
         used.add(f.column)
 

@@ -10,24 +10,25 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from auto_bi.llm.base import LLMClient
 from auto_bi.llm.policy import reasoning_for
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.semantic.render import render_model
 from auto_bi.semantic.select import PROMPT_CHAR_BUDGET, select_context
+from auto_bi.strict import StrictModel
 
 MAX_CLARIFY_QUESTIONS = 3
 
 
-class EntityMatch(BaseModel):
+class EntityMatch(StrictModel):
     phrase: str  # fragment of the user request, verbatim
     candidates: list[str] = Field(default_factory=list)  # "dm.table.column" / "dm.table"
     note: str = ""
 
 
-class GroundingReport(BaseModel):
+class GroundingReport(StrictModel):
     tables: list[str] = Field(default_factory=list)  # tables the dashboard will need
     matched: list[EntityMatch] = Field(default_factory=list)  # exactly one candidate each
     ambiguous: list[EntityMatch] = Field(default_factory=list)  # >=2 real candidates

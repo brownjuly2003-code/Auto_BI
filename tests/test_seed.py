@@ -87,6 +87,47 @@ def test_analysis_reports_dropped_fields_and_group_count() -> None:
     assert any("2 групп" in n and "1 чартов" in n for n in notes)
 
 
+def test_analysis_join_field_not_false_dropped() -> None:
+    """P2-2: a joined FQ dimension in the spec must match the seed field, not
+    get double-qualified as base.table.dm.stores.city and reported dropped."""
+    seed = FieldsSeed(
+        groups=[
+            SeedGroup(
+                fields=[
+                    "dm.sales_daily.date",
+                    "dm.stores.city",
+                    "dm.sales_daily.revenue",
+                ]
+            )
+        ]
+    )
+    spec = DashboardSpec.model_validate(
+        {
+            "title": "По городам",
+            "charts": [
+                {
+                    "id": "c1",
+                    "title": "Выручка",
+                    "viz": "bar",
+                    "query": {
+                        "table": "dm.sales_daily",
+                        "dimensions": ["dm.sales_daily.date", "dm.stores.city"],
+                        "measures": [{"column": "revenue", "agg": "sum"}],
+                        "joins": [
+                            {
+                                "table": "dm.stores",
+                                "on_left": "dm.sales_daily.store_id",
+                                "on_right": "dm.stores.id",
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+    )
+    assert seed_analysis(seed, spec) == []
+
+
 # --- machine flow ------------------------------------------------------------------
 
 
