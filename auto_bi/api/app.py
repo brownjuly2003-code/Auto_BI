@@ -92,6 +92,9 @@ def create_app(
     cookie_secure: bool = False,  # force `Secure` on the login cookie (B-2); see cli.py::_serve
     session_rate_enabled: bool = False,  # O-2 LLM-call quota, opt-in; see config.py
     session_rate_per_day: int = 100,
+    work_rate_enabled: bool = False,  # P0-3 expensive non-LLM paths; see config.py
+    work_rate_per_day: int = 50,
+    max_concurrent_builds: int = 2,  # P0-3 hard cap on in-flight builds
     bi_base_urls: Mapping[TargetBI, str] | None = None,  # target -> BI host, absolutizes ref.url
     demo_auto_only: bool = False,  # P8 public demo: auto-overview only; see config.py
 ) -> FastAPI:
@@ -123,6 +126,21 @@ def create_app(
         if session_rate_enabled
         else None
     )
+    # P0-3: public demo forces a work quota even when the operator forgot work_rate_enabled
+    # (auto-overview has no LLM, so the session limiter alone would not protect DWH/BI).
+    _work_rate_on = work_rate_enabled or demo_auto_only
+    _work_limiter = (
+        LoginRateLimiter(
+            rate_limit=work_rate_per_day,
+            window_seconds=_DAY_SECONDS,
+            base_lockout_seconds=_DAY_SECONDS,
+            lockout_cap_seconds=_DAY_SECONDS,
+        )
+        if _work_rate_on
+        else None
+    )
+    # P0-3: bounded concurrent builds (thread-per-build remains, but the pool is capped).
+    _build_slots = threading.BoundedSemaphore(max(1, max_concurrent_builds))
 
     def _check_session_quota(request: Request) -> None:
         if _session_limiter is None:
@@ -133,6 +151,19 @@ def create_app(
             raise HTTPException(
                 status_code=429,
                 detail="LLM session quota exceeded for this IP, try again later",
+                headers={"Retry-After": str(int(wait) + 1)},
+            )
+
+    def _check_work_quota(request: Request) -> None:
+        """P0-3: rate-limit auto / approve / insights (DWH+BI cost, not only LLM)."""
+        if _work_limiter is None:
+            return
+        client_ip = request.client.host if request.client else "unknown"
+        wait = _work_limiter.check(client_ip)
+        if wait > 0:
+            raise HTTPException(
+                status_code=429,
+                detail="work quota exceeded for this IP, try again later",
                 headers={"Retry-After": str(int(wait) + 1)},
             )
 
@@ -354,11 +385,10 @@ def create_app(
         "/api/v1/sessions/auto", response_model=TurnResponse, response_model_exclude_none=True
     )
     def start_auto_session(body: AutoSessionRequest, request: Request) -> TurnResponse:
-        # Auto-overview: a curated dashboard built deterministically from one datamart
-        # (no text, no LLM) — intentionally NOT gated by the O-2 session quota above,
-        # which exists to protect LLM spend and this path makes no LLM call. RBAC: scope
-        # to allowed schemas, then hard-gate the table the build runs over (auto builds
-        # over exactly this table; auth off -> always allowed).
+        # Auto-overview: curated dashboard from one datamart (no LLM). O-2 session quota
+        # still does not apply (no LLM spend), but P0-3 work quota does — auto burns
+        # DWH/BI/CPU. RBAC: scope to allowed schemas, then hard-gate the table.
+        _check_work_quota(request)
         scoped_model = filter_model_by_schemas(model, _user(request).allowed_schemas)
         if scoped_model.table(body.table) is None:
             raise HTTPException(status_code=404, detail=f"unknown table {body.table!r}")
@@ -530,45 +560,60 @@ def create_app(
     def approve(session_id: str, request: Request) -> dict:
         if builder is None:
             raise HTTPException(status_code=503, detail="build is not wired (no BI configured)")
+        _check_work_quota(request)
+        # P0-3: refuse before mutating session state when the process is at build capacity.
+        if not _build_slots.acquire(blocking=False):
+            raise HTTPException(
+                status_code=503,
+                detail="build capacity full, try again later",
+                headers={"Retry-After": "30"},
+            )
         managed = _owned(session_id, request)
-        with managed.lock:
-            if managed.build_status == "building":
-                raise HTTPException(status_code=409, detail="build already running")
-            _apply_target_bi(managed)  # the build dispatches on spec.target_bi (F8/F1)
-            current = managed.agent.spec
-            if current is not None:
-                # the model is shared and mutable (enrichment PATCH, task 2.7): a role
-                # edit can invalidate a spec proposed earlier — fail HERE with a clear
-                # message, not minutes later inside the build thread (F6)
-                problems = validate_spec(current, model)
-                if problems:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="spec no longer valid against the model "
-                        f"(edited since the proposal?): {'; '.join(problems)}",
-                    )
-                # RBAC hard gate (checked on the spec to be built, BEFORE the machine
-                # transition so a denied approve has no side effect): never build over a
-                # table outside the caller's schemas. Grounding was already scoped, so this
-                # is defense in depth; auth off -> allowed_schemas ['*'] -> always empty.
-                denied = forbidden_tables(current, _user(request).allowed_schemas)
-                if denied:
-                    raise HTTPException(
-                        status_code=403,
-                        detail=f"not allowed to build over tables outside your schemas: {denied}",
-                    )
-            if managed.build_status == "failed" and managed.agent.phase == AgentPhase.APPROVED:
-                # a failed build leaves the machine in APPROVED with no pending edit:
-                # retry must rebuild the same approved spec, not dead-end on 409
-                spec = managed.agent.spec
-                assert spec is not None
-            else:
-                try:
-                    spec = managed.agent.approve()
-                except RuntimeError as exc:
-                    raise HTTPException(status_code=409, detail=str(exc)) from None
-            managed.reset_events()  # iteration re-approve: fresh stream for this build
-            managed.build_status = "building"
+        try:
+            with managed.lock:
+                if managed.build_status == "building":
+                    raise HTTPException(status_code=409, detail="build already running")
+                _apply_target_bi(managed)  # the build dispatches on spec.target_bi (F8/F1)
+                current = managed.agent.spec
+                if current is not None:
+                    # the model is shared and mutable (enrichment PATCH, task 2.7): a role
+                    # edit can invalidate a spec proposed earlier — fail HERE with a clear
+                    # message, not minutes later inside the build thread (F6)
+                    problems = validate_spec(current, model)
+                    if problems:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="spec no longer valid against the model "
+                            f"(edited since the proposal?): {'; '.join(problems)}",
+                        )
+                    # RBAC hard gate (checked on the spec to be built, BEFORE the machine
+                    # transition so a denied approve has no side effect): never build over a
+                    # table outside the caller's schemas. Grounding was already scoped, so this
+                    # is defense in depth; auth off -> allowed_schemas ['*'] -> always empty.
+                    denied = forbidden_tables(current, _user(request).allowed_schemas)
+                    if denied:
+                        raise HTTPException(
+                            status_code=403,
+                            detail=(
+                                "not allowed to build over tables outside your schemas: "
+                                f"{denied}"
+                            ),
+                        )
+                if managed.build_status == "failed" and managed.agent.phase == AgentPhase.APPROVED:
+                    # a failed build leaves the machine in APPROVED with no pending edit:
+                    # retry must rebuild the same approved spec, not dead-end on 409
+                    spec = managed.agent.spec
+                    assert spec is not None
+                else:
+                    try:
+                        spec = managed.agent.approve()
+                    except RuntimeError as exc:
+                        raise HTTPException(status_code=409, detail=str(exc)) from None
+                managed.reset_events()  # iteration re-approve: fresh stream for this build
+                managed.build_status = "building"
+        except Exception:
+            _build_slots.release()
+            raise
 
         def _trace_build(
             kind: str, *, status: str = "ok", latency_ms: int = 0, detail: str = ""
@@ -606,6 +651,8 @@ def create_app(
                     detail=str(exc)[:200],
                 )
                 return
+            finally:
+                _build_slots.release()
             managed.build_status = "built"
             # F-1: adapters return a BI-relative url; a relative href in the UI would resolve
             # against the Auto_BI host (:8200), not the BI host (:8088) -> 404 on click. Glue
@@ -699,7 +746,8 @@ def create_app(
         (auto_bi.agent.insights).
         A separate surface from the dashboard, best-effort: a chart that fails to run is
         skipped. 503 when no DWH connection is configured; empty list when the session has
-        no spec yet."""
+        no spec yet. P0-3: gated by the work quota (re-runs every chart SQL)."""
+        _check_work_quota(request)
         managed = _owned(session_id, request)
         spec = managed.agent.spec
         if spec is None:

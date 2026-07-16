@@ -91,13 +91,17 @@ def _human_field_title(
     return desc.strip() or alias
 
 
-def dataset_name(title: str, chart_id: str) -> str:
+def dataset_name(title: str, chart_id: str, namespace: str = "") -> str:
     """Readable, collision-free dataset name (mirrors SupersetAdapter._dataset_name).
 
     Always within the DataLens entry-name charset (only word chars + underscores), so it
-    needs no `safe_entry_name` pass — unlike free-form chart/dashboard titles."""
-    suffix = hashlib.sha1(chart_id.encode()).hexdigest()[:8]
-    return f"auto_bi__{_slug(title)}__{_slug(chart_id)}__{suffix}"
+    needs no `safe_entry_name` pass — unlike free-form chart/dashboard titles.
+    Optional `namespace` (audit P0-2) fingerprints the session/build so two independent
+    sessions with the same title/chart ids never share or promote over each other.
+    """
+    from auto_bi.adapters.artifacts import dataset_table_name
+
+    return dataset_table_name(title, chart_id, namespace)
 
 
 # DataLens entry-name charset (charts-engine `data.name` + US validation, live-verified):

@@ -32,6 +32,16 @@
 
 ### Fixed
 
+- **P0-2 BI artifact collisions:** technical dataset (and DataLens entry) names
+  include a build/session namespace fingerprint (`adapters/artifacts.py`);
+  `compile_and_build` pins it via `set_artifact_namespace` before `build()`.
+  Two sessions with the same title/chart ids no longer share or PUT-overwrite
+  one virtual dataset; rebuilds get a fresh token so an older dashboard keeps
+  its SQL. `BIAdapter` Protocol unchanged (optional concrete helper).
+- **P0-3 resource bounds:** fail-closed remote bind (`ALLOW_INSECURE_REMOTE` /
+  auth / demo profile required for non-loopback); `MAX_CONCURRENT_BUILDS`
+  (default 2) → 503 + Retry-After on approve; work quota on auto/approve/insights
+  (forced when `demo_auto_only`). LLM session quota stays separate (O-2).
 - **P1-1 auto-overview period:** период «last 12 months» запекается в SQL WHERE
   каждого чарта обзора (KPI/бары/таблица), а не только в native time-control
   (он покрывал в основном линию динамики). SQL_GEN понимает relative-токены

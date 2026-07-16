@@ -6,6 +6,7 @@ All collaborators are injected; the CLI wires real ones from settings.
 
 from collections.abc import Callable
 
+from auto_bi.adapters.artifacts import new_build_namespace
 from auto_bi.adapters.base import BIAdapter, DashboardRef
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.propose import SpecValidationError, propose_spec
@@ -129,6 +130,13 @@ def compile_and_build(
         health = adapter.healthcheck()
         if not health.ok:
             raise RuntimeError(f"{spec.target_bi.value} healthcheck failed: {health.message}")
+
+        # P0-2: pin technical BI artifact names to this build/session so two independent
+        # sessions with the same title/chart ids never share or overwrite datasets.
+        # Optional helper on concrete adapters (Protocol unchanged — CLAUDE.md S4).
+        set_ns = getattr(adapter, "set_artifact_namespace", None)
+        if callable(set_ns):
+            set_ns(new_build_namespace(session_id))
 
         ref = adapter.build(spec)
     except Exception as exc:

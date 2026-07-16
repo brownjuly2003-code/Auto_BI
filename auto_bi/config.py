@@ -85,15 +85,27 @@ class Settings(BaseSettings):
     # LLM-call quota on session-creating endpoints (O-2) — OPT-IN, off by default: local
     # dev/tests/CLI are unaffected unless explicitly enabled ahead of a public demo. Gates
     # POST /api/v1/sessions and /sessions/{id}/reply (both trigger LLM calls) per-IP,
-    # per rolling day, protecting the LLM budget from runaway usage; POST
-    # /sessions/auto stays ungated (deterministic, no LLM — ARCHITECTURE "auto-overview").
+    # per rolling day, protecting the LLM budget from runaway usage.
     session_rate_enabled: bool = False
     session_rate_per_day: int = 100
+    # Expensive non-LLM work quota (audit P0-3): auto start / approve / insights burn
+    # DWH+BI+CPU even when no LLM is involved. OPT-IN; forced ON when demo_auto_only
+    # (public demo profile) so an anonymous visitor cannot flood builds.
+    work_rate_enabled: bool = False
+    work_rate_per_day: int = 50
+    # Hard cap on concurrent builds in this process (audit P0-3). Approve returns 503
+    # with Retry-After when the semaphore is full — no unbounded thread-per-build fan-out.
+    max_concurrent_builds: int = 2
     # Public demo mode (P8): the deterministic auto-overview path becomes the ONLY
     # entry — text/fields sessions and word edits (both call the LLM) and enrichment
     # writes (mutate the shared model.yaml) return 403; the UI greys those tabs out.
     # The server is wired with DisabledLLM, so no provider/key is needed at all.
     demo_auto_only: bool = False
+    # Fail-closed remote bind (audit P0-3): serving on a non-loopback host with auth
+    # off and demo_auto_only off refuses to start unless this is true. Docker images
+    # and trusted internal networks set it explicitly; never leave it true on the
+    # public internet without auth or a demo profile.
+    allow_insecure_remote: bool = False
     # F-2: behind a reverse proxy request.client is the PROXY address, so the per-IP
     # login limiter (B-3) and session quota (O-2) above would degrade into one shared
     # bucket. uvicorn rewrites request.client from X-Forwarded-For, but only when the
