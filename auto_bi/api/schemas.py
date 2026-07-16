@@ -7,15 +7,16 @@ word edit that must NOT lose the session (F6 contract, now over HTTP).
 
 from __future__ import annotations
 
-from pydantic import BaseModel, model_validator
+from pydantic import Field, model_validator
 
 from auto_bi.agent.machine import AgentTurn
 from auto_bi.agent.seed import FieldsSeed
 from auto_bi.ir.spec import TargetBI
+from auto_bi.strict import StrictModel
 
 
-class StartSessionRequest(BaseModel):
-    request: str = ""
+class StartSessionRequest(StrictModel):
+    request: str = Field(default="", max_length=8000)
     seed: FieldsSeed | None = None  # fields-first entry (task 2.3)
     # which BI to build into (UI selector, F8); None -> the spec default (Superset).
     # An unknown value is rejected by the enum (422), not silently coerced.
@@ -28,23 +29,24 @@ class StartSessionRequest(BaseModel):
         return self
 
 
-class AutoSessionRequest(BaseModel):
+class AutoSessionRequest(StrictModel):
     """Auto-overview entry: a curated dashboard built from one datamart, no text/LLM."""
 
-    table: str
+    table: str = Field(min_length=1, max_length=200)
     target_bi: TargetBI | None = None  # None -> Superset (mirrors StartSessionRequest)
-    max_charts: int = 8
+    # audit P1-5: typo max_chart must 422; bounds match DashboardSpec charts max
+    max_charts: int = Field(default=8, ge=1, le=12)
 
 
-class ReplyRequest(BaseModel):
-    text: str
+class ReplyRequest(StrictModel):
+    text: str = Field(min_length=1, max_length=8000)
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(StrictModel):
     """Auth login (Phase 4, opt-in). Returns a bearer token on success."""
 
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
 
 
 class TurnResponse(AgentTurn):
@@ -52,35 +54,35 @@ class TurnResponse(AgentTurn):
     error: str = ""
 
 
-class SessionState(BaseModel):
+class SessionState(StrictModel):
     session_id: str
     phase: str
     build_status: str  # idle | building | built | failed
     dashboard_url: str = ""
 
 
-class DCRStatusUpdate(BaseModel):
+class DCRStatusUpdate(StrictModel):
     status: str  # validated against dmcr.DCR_STATUSES in the handler
 
 
-class TableUpdate(BaseModel):
+class TableUpdate(StrictModel):
     """Enrichment (task 2.7): table-level edits; only description is editable."""
 
-    description: str
+    description: str = Field(max_length=4000)
 
 
-class ColumnUpdate(BaseModel):
+class ColumnUpdate(StrictModel):
     """Enrichment (task 2.7): column edits; None = leave as is.
 
     role/agg are validated against the model enums in the handler (422 on
     unknown values; agg is only meaningful on measures — mirror of F9)."""
 
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=4000)
     role: str | None = None
     agg: str | None = None
 
 
-class BuildEvent(BaseModel):
+class BuildEvent(StrictModel):
     kind: str  # log | done | error
     text: str = ""
     url: str = ""

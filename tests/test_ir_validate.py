@@ -488,7 +488,9 @@ def test_lag_periods_on_yoy_is_rejected(demo_model) -> None:
 def test_lag_periods_on_share_is_rejected(demo_model) -> None:
     from auto_bi.ir.spec import MeasureTransform
 
-    bad = _lag_chart(MeasureTransform.SHARE_OF_TOTAL, 2, viz=Viz.PIE, dimensions=["store_id"])
+    # viz lives on ChartSpec, not ChartQuery (extra=forbid); pass only query kwargs
+    bad = _lag_chart(MeasureTransform.SHARE_OF_TOTAL, 2, dimensions=["store_id"])
+    bad = bad.model_copy(update={"viz": Viz.PIE})
     errors = validate_spec(spec(bad), demo_model)
     assert any("lag_periods" in e and "pop_abs/pop_pct" in e for e in errors)
 

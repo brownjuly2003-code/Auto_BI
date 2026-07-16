@@ -17,9 +17,10 @@ from copy import deepcopy
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
 
 from auto_bi.semantic.model import Aggregation
+from auto_bi.strict import StrictModel
 
 
 class TargetBI(StrEnum):
@@ -118,7 +119,7 @@ class ScalarCompareOutput(StrEnum):
     ABS = "abs"
 
 
-class ScalarCompare(BaseModel):
+class ScalarCompare(StrictModel):
     """A scalar period-compare KPI: one number = how the measure changed vs a period back.
 
     Unlike `MeasureTransform.YOY_PCT` (a windowed SERIES, one point per period along a time axis),
@@ -140,13 +141,13 @@ class ScalarCompare(BaseModel):
     output: ScalarCompareOutput = ScalarCompareOutput.PCT
 
 
-class QueryFilter(BaseModel):
+class QueryFilter(StrictModel):
     column: str
     op: FilterOp
     value: str | int | float | list[str] | list[int] | list[float]
 
 
-class Measure(BaseModel):
+class Measure(StrictModel):
     column: str
     agg: Aggregation
     label: str = ""
@@ -244,12 +245,12 @@ def is_compact_number(measure: Measure) -> bool:
     return measure.agg in (Aggregation.SUM, Aggregation.COUNT, Aggregation.COUNT_DISTINCT)
 
 
-class OrderBy(BaseModel):
+class OrderBy(StrictModel):
     by: str  # dimension column or measure label/column
     dir: str = Field(default="asc", pattern="^(asc|desc)$")
 
 
-class JoinSpec(BaseModel):
+class JoinSpec(StrictModel):
     """One LEFT JOIN of the chart's base table to a related dimension table.
 
     The LLM declares the join explicitly, but validation only accepts pairs that
@@ -272,7 +273,7 @@ def column_alias(col: str) -> str:
     return col.rpartition(".")[2]
 
 
-class ChartQuery(BaseModel):
+class ChartQuery(StrictModel):
     table: str  # fully qualified: "dm.sales_daily"
     dimensions: list[str] = Field(default_factory=list)
     series: list[str] = Field(default_factory=list)  # stack/breakdown for stacked_bar, area
@@ -327,13 +328,13 @@ class ChartQuery(BaseModel):
         return list(seen)
 
 
-class LayoutHint(BaseModel):
+class LayoutHint(StrictModel):
     w: int = Field(default=6, ge=1, le=12)
     h: int = Field(default=4, ge=1, le=12)
     row: int = Field(default=0, ge=0)
 
 
-class ChartSpec(BaseModel):
+class ChartSpec(StrictModel):
     id: str
     title: str
     viz: Viz
@@ -341,13 +342,13 @@ class ChartSpec(BaseModel):
     layout_hint: LayoutHint = Field(default_factory=LayoutHint)
 
 
-class DashboardFilter(BaseModel):
+class DashboardFilter(StrictModel):
     column: str  # fully qualified: "dm.sales_daily.date"
     type: str = "time_range"
     default: str = ""  # e.g. "last 90 days"
 
 
-class DashboardSpec(BaseModel):
+class DashboardSpec(StrictModel):
     title: str
     target_bi: TargetBI = TargetBI.SUPERSET
     filters: list[DashboardFilter] = Field(default_factory=list)

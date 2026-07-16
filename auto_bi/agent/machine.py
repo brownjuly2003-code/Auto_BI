@@ -17,7 +17,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from auto_bi.advisor.core import Advisor
 from auto_bi.advisor.narrate import ChartVerdict, narrate_findings
@@ -28,6 +28,7 @@ from auto_bi.ir.spec import DashboardSpec, column_alias
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import Store
+from auto_bi.strict import StrictModel
 
 MAX_CLARIFY_ROUNDS = 2
 
@@ -53,7 +54,7 @@ class AgentPhase(StrEnum):
     FAILED = "failed"
 
 
-class AgentTurn(BaseModel):
+class AgentTurn(StrictModel):
     phase: AgentPhase
     message: str = ""
     questions: list[str] = Field(default_factory=list)
