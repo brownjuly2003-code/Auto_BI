@@ -6,10 +6,9 @@ GraceKelly service (removing that single point of failure — see ARCHITECTURE �
 the agent"). The structured-output repair loop and call logging are shared with
 GraceKellyClient via `auto_bi.llm._structured`; only the transport differs.
 
-The `anthropic` SDK is an OPTIONAL dependency (the lean core does not require it):
-install with `pip install 'autobi-agent[anthropic]'` or `uv sync --extra anthropic`. It is
-imported lazily, so importing this module never forces the SDK to be present — useful
-for tests, which inject a fake `create` callable instead.
+The `anthropic` SDK is a **core** dependency (audit P1-3: default provider must work
+after plain `pip install autobi-agent` / production Docker). It is still imported
+lazily, so tests can inject a fake `create` callable without constructing the real client.
 """
 
 from __future__ import annotations
@@ -40,9 +39,9 @@ def _build_create(settings: Settings) -> MessagesCreate:
         import anthropic
     except ImportError as exc:  # optional dependency
         raise LLMError(
-            "the 'anthropic' package is required for AUTO_BI_LLM_PROVIDER=anthropic; "
-            "install it with `pip install 'autobi-agent[anthropic]'` "
-            "or `uv sync --extra anthropic`"
+            "the 'anthropic' package is required for AUTO_BI_LLM_PROVIDER=anthropic "
+            "but is not importable; reinstall with `pip install autobi-agent` "
+            "(anthropic is a core dependency) or `uv sync`"
         ) from exc
     try:
         # api_key blank -> SDK falls back to the ANTHROPIC_API_KEY env var.

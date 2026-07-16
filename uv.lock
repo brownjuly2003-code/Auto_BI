@@ -61,6 +61,7 @@ name = "autobi-agent"
 version = "0.3.1"
 source = { editable = "." }
 dependencies = [
+    { name = "anthropic" },
     { name = "clickhouse-connect" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -73,11 +74,6 @@ dependencies = [
     { name = "uvicorn" },
 ]
 
-[package.optional-dependencies]
-anthropic = [
-    { name = "anthropic" },
-]
-
 [package.dev-dependencies]
 dev = [
     { name = "black" },
@@ -88,7 +84,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.116.0" },
+    { name = "anthropic", specifier = ">=0.116.0" },
     { name = "clickhouse-connect", specifier = ">=1.4.2" },
     { name = "fastapi", specifier = ">=0.139.0" },
     { name = "httpx", specifier = ">=0.27" },

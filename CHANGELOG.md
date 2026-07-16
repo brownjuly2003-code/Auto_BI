@@ -30,6 +30,14 @@
   дашборд собирается из неё — heatmap-треугольник, bar раннего удержания,
   big_number размера базы.
 
+### Changed
+
+- **P1-3 Anthropic is a core dependency:** `anthropic` SDK ships with plain
+  `pip install autobi-agent` and the production Docker image (default
+  `AUTO_BI_LLM_PROVIDER=anthropic`). Optional extra `[anthropic]` kept as a
+  no-op alias for older install lines. USER_GUIDE / DEPLOYMENT / ARCHITECTURE
+  updated.
+
 ### Fixed
 
 - **P0-2 BI artifact collisions:** technical dataset (and DataLens entry) names

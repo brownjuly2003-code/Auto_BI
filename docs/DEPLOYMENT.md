@@ -248,7 +248,7 @@ GraceKelly (`claude-sonnet-5`); контейнер Space НЕ достучитс
 поэтому `AUTO_BI_GRACEKELLY_URL` должен указывать на ПУБЛИЧНЫЙ туннель (ngrok/cloudflared) к
 запущенному GraceKelly — демо живёт, только пока ваша машина и туннель включены, и каждый запрос
 анонима тратит вашу LLM-квоту. Альтернатива без туннеля — прямой Anthropic API
-(`AUTO_BI_LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`, образ с extra `anthropic`).
+(`AUTO_BI_LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`; Anthropic SDK входит в base image).
 
 Альтернатива compose — systemd-юнит на голом хосте:
 
