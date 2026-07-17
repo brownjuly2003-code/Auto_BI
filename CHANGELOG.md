@@ -31,6 +31,23 @@
   когерентности и секции changelog вынесены в юнит-тестируемый `scripts/release_preflight.py`
   (`tests/test_release_preflight.py`); быстрый drift-гвард «pyproject == `__version__`» добавлен
   в обычный сьют, чтобы расхождение ловилось на каждом PR, а не только при теге.
+- Supply-chain hardening релиза (P1-7 доп., GitHub-native, без внешних сервисов): (1)
+  **SLSA build provenance** — новый job `provenance` в `release.yml` (`needs: preflight`)
+  скачивает РОВНО те sdist+wheel, что собрал preflight, и подписывает их через
+  `actions/attest-build-provenance` (Sigstore + GitHub attestation store); проверка постфактум —
+  `gh attestation verify <файл> --repo brownjuly2003-code/Auto_BI`. Права выданы минимально на
+  уровне job'а (`id-token: write`, `attestations: write`, `contents: read`), не workflow-wide.
+  (2) **PEP 740 аттестации на PyPI** — у `pypa/gh-action-pypi-publish` под trusted publishing
+  они включены по умолчанию (v1.11+, `@release/v1` уже трекает такую версию); выставлены
+  `attestations: true` явно, чтобы будущий флип дефолта не уронил их тихо. (3) **SBOM** —
+  `anchore/sbom-action` генерирует SPDX-JSON по исходному дереву (`pyproject.toml` + `uv.lock`)
+  и файл прикладывается к GitHub Release ассетом (через `files:` у `action-gh-release`; событие
+  тега = `push`, поэтому собственная выгрузка ассета у экшена не срабатывает — отключена во
+  избежание лишнего workflow-артефакта). (4) **Environment-approval** — job `pypi` получил
+  полную форму `environment:` с `url` на точную версию пакета на PyPI; включение required
+  reviewers для окружения `pypi` (ручной аппрув каждой публикации) — настройка в repo settings,
+  файл менять не нужно (как включить — `docs/DEPLOYMENT.md` §2). Аттестации/SBOM исполняются
+  только на реальный push тега `vX.Y.Z` — первая живая проверка на следующем релизе.
 - Escape hatch `raw_sql` (X-5): ручной SELECT для запросов, которые IR не выражает.
   `ChartQuery.raw_sql` (только `viz=table`) SQL_GEN отдаёт дословно, дальше — тот же
   live-гейт, что у сгенерированного SQL (`guard_sql` SELECT-only → EXPLAIN → LIMIT-прогон)

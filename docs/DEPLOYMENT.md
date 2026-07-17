@@ -48,6 +48,22 @@ USER_GUIDE.md отвечает на «как пользоваться», ARCHITE
 > отклоняется ДО любой публикации — частичный релиз (GHCR одной версии, PyPI другой) невозможен.
 > Логика когерентности вынесена в `scripts/release_preflight.py` и юнит-тестируется офлайн.
 
+> **Supply-chain на релизе (P1-7 доп., GitHub-native).** Тег дополнительно даёт: **SLSA build
+> provenance** на sdist+wheel (job `provenance`, `actions/attest-build-provenance` → Sigstore +
+> GitHub attestation store; проверка — `gh attestation verify <файл> --repo
+> brownjuly2003-code/Auto_BI`), **PEP 740 аттестации на PyPI** (у `gh-action-pypi-publish` под
+> trusted publishing включены по умолчанию, выставлены явно) и **SBOM** в формате SPDX-JSON,
+> приложенный к GitHub Release ассетом (`anchore/sbom-action` по `pyproject.toml`+`uv.lock`).
+> Всё исполняется только на push тега `vX.Y.Z`.
+>
+> **Ручной аппрув публикации на PyPI (опционально).** Job `pypi` привязан к окружению
+> `environment: pypi`. Чтобы каждая публикация требовала ручного подтверждения: Settings →
+> Environments → `pypi` → **Required reviewers** (добавить себя/команду; при желании
+> «Prevent self-review»). После этого прогон `pypi` встаёт на паузу «Waiting» до аппрува в
+> Actions-UI; при отклонении job падает, а `preflight`/`release`/GHCR уже отработали
+> независимо (провенанс/образ публикуются, PyPI-заливка ждёт). Настраивается в repo settings,
+> `release.yml` менять не нужно; по умолчанию reviewers нет — поведение не меняется.
+
 ```bash
 # вариант A: тег уже опубликован в GHCR — просто стянуть (замените версию на нужный тег)
 docker pull ghcr.io/brownjuly2003-code/auto_bi:X.Y.Z   # или :latest — последний тег
