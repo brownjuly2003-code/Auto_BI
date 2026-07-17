@@ -1,4 +1,4 @@
-"""Effective filters per chart (ARCHITECTURE §3.6, audit P1-2).
+"""Effective filters per chart (ARCHITECTURE §3.3, audit P1-2).
 
 A chart's real WHERE at dashboard-refresh time is not just `query.filters`. A dashboard-level
 control (`spec.filters`) narrows the charts it scopes to, so rules that read only

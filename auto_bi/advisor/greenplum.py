@@ -1,4 +1,4 @@
-"""Greenplum / Greengage rule pack (ARCHITECTURE §3.6, D9): mechanisms, not cases.
+"""Greenplum / Greengage rule pack (ARCHITECTURE §3.3, D9): mechanisms, not cases.
 
 GP performance is dominated by data movement between segments and partition pruning,
 so the pack reasons about the distribution key (`physical.distribution_key`), the range

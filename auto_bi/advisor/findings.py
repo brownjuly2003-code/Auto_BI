@@ -1,4 +1,4 @@
-"""Feasibility Advisor findings (ARCHITECTURE §3.6, D9).
+"""Feasibility Advisor findings (ARCHITECTURE §3.3, D9).
 
 The verdict is decided by CODE (deterministic rules + measured EXPLAIN evidence);
 the LLM only narrates these findings later (task 1.7). The advisor is advisory-only —
