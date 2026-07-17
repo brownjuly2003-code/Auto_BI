@@ -1,4 +1,4 @@
-"""Feasibility Advisor orchestrator (ARCHITECTURE §3.6).
+"""Feasibility Advisor orchestrator (ARCHITECTURE §3.3).
 
 Per chart: gather measured EXPLAIN evidence (if a read-only RunQuery is available),
 then run the engine rule pack. Advisory-only — returns findings, never blocks a build

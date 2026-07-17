@@ -1,4 +1,4 @@
-"""ClickHouse rule pack (ARCHITECTURE §3.6, D9): mechanisms, not enumerated cases.
+"""ClickHouse rule pack (ARCHITECTURE §3.3, D9): mechanisms, not enumerated cases.
 
 Each rule reads the DM's physical metadata (`sorting_key`, `partition_key`, engine,
 rows, cardinality) and/or the measured EXPLAIN evidence, and decides a verdict. The
@@ -96,10 +96,34 @@ def explain_high_scan_fraction(ctx: RuleContext) -> list[Finding]:
                 "est_rows": est_rows,
                 "total_rows": total,
                 "scan_fraction": round(fraction, 3),
+                "period_compare": _is_period_compare(ctx),
             },
-            suggestions=["narrow the time range or add a filter on a sorting-key/partition column"],
+            suggestions=_scan_suggestions(ctx),
         )
     ]
+
+
+def _is_period_compare(ctx: RuleContext) -> bool:
+    """A scalar period-compare KPI (`Measure.compare`) — one number vs a period back."""
+    return any(m.compare is not None for m in ctx.query.measures)
+
+
+def _scan_suggestions(ctx: RuleContext) -> list[str]:
+    """What to actually do about a heavy scan — which differs by why it is heavy.
+
+    A period-compare reads the current window AND the prior one by construction, and SQL_GEN
+    widens its outer scan on purpose to reach the prior bucket. Telling its author to "narrow
+    the time range or add a filter" is wrong twice over: the window is already filtered, and
+    narrowing it is what the widening exists to undo. The honest lever is the DM — compare
+    over pre-aggregated buckets instead of raw rows.
+    """
+    if _is_period_compare(ctx):
+        return [
+            "a period-compare reads the current window and the prior one — that second pass is "
+            "inherent to the question, not a missing filter; to cut it, expose a pre-aggregated "
+            "rollup of this measure in the DM so the compare scans buckets instead of raw rows"
+        ]
+    return ["narrow the time range or add a filter on a sorting-key/partition column"]
 
 
 def filter_not_in_sorting_key_prefix(ctx: RuleContext) -> list[Finding]:

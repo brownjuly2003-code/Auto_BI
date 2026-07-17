@@ -17,6 +17,8 @@ from auto_bi.ir.spec import (
     FilterOp,
     Measure,
     QueryFilter,
+    ScalarCompare,
+    TimeGrain,
     Viz,
 )
 from auto_bi.semantic.model import Aggregation
@@ -119,6 +121,59 @@ def test_control_does_not_silence_a_chart_outside_its_scope() -> None:
     chart = bar()
     findings = Advisor(fact_model()).review(dash([chart]))
     assert "no_filter_on_large_fact" in rules(findings)
+
+
+def compare_kpi() -> ChartSpec:
+    """A scalar period-compare KPI: one number vs a year back (autospec's «Выручка, г/г»)."""
+    return ChartSpec(
+        id="k1",
+        title="Выручка, г/г",
+        viz=Viz.BIG_NUMBER,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            measures=[
+                Measure(
+                    column="revenue",
+                    agg=Aggregation.SUM,
+                    compare=ScalarCompare(column="date", grain=TimeGrain.MONTH),
+                )
+            ],
+            filters=[QueryFilter(column="date", op=FilterOp.GTE, value="2026-01-01")],
+        ),
+    )
+
+
+def test_period_compare_is_not_told_to_add_a_filter_it_already_has() -> None:
+    # the second pass is inherent to comparing periods, and SQL_GEN widens the outer scan on
+    # purpose — "narrow the time range or add a filter" is advice that cannot be acted on
+    def run_query(sql: str) -> list[dict]:
+        return [{"parts": 61, "rows": 29_132_263, "marks": 3574}]
+
+    f = next(
+        x
+        for x in Advisor(fact_model(rows=20_000_000), run_query=run_query).review_chart(
+            compare_kpi()
+        )
+        if x.rule == "explain_high_scan_fraction"
+    )
+    assert f.evidence["period_compare"] is True
+    (suggestion,) = f.suggestions
+    assert "rollup" in suggestion
+    assert "narrow the time range" not in suggestion
+
+
+def test_plain_chart_still_gets_the_filter_advice() -> None:
+    def run_query(sql: str) -> list[dict]:
+        return [{"parts": 20, "rows": 19_000_000, "marks": 1174}]
+
+    chart = bar(filters=[QueryFilter(column="date", op=FilterOp.GTE, value="2026-01-01")])
+    f = next(
+        x
+        for x in Advisor(fact_model(rows=20_000_000), run_query=run_query).review_chart(chart)
+        if x.rule == "explain_high_scan_fraction"
+    )
+    assert f.evidence["period_compare"] is False
+    assert "narrow the time range" in f.suggestions[0]
 
 
 def test_multi_pass_scan_is_reported_as_passes_not_a_share() -> None:

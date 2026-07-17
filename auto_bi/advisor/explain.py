@@ -1,4 +1,4 @@
-"""Universal detection layer: engine estimates the query cost (ARCHITECTURE §3.6).
+"""Universal detection layer: engine estimates the query cost (ARCHITECTURE §3.3).
 
 ClickHouse `EXPLAIN ESTIMATE` returns the rows/marks/parts it expects to read; we
 turn that into a scan-fraction against the table's known size. Engine-agnostic in
