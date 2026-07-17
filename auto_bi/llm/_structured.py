@@ -74,7 +74,11 @@ def extract_json(text: str) -> str:
 
 
 def complete_with_repair(
-    call: Callable[[str], str], prompt: str, schema: type[BaseModel]
+    call: Callable[[str], str],
+    prompt: str,
+    schema: type[BaseModel],
+    *,
+    on_attempt: Callable[[], None] | None = None,
 ) -> BaseModel:
     """Run `call(prompt)` and validate against `schema`; on failure, feed the error back.
 
@@ -82,11 +86,18 @@ def complete_with_repair(
     raw text. The repair loop is identical for every client: up to MAX_REPAIRS retries,
     aborting early if a repair produces the same broken answer (no progress). Callers keep
     the precise return type via their own `type[T] -> T` signature (a `cast` at the seam).
+
+    `on_attempt`, if given, runs immediately BEFORE each provider round-trip (the initial
+    call and every repair). It is the LLM-budget hook (llm/budget.py): raising there —
+    e.g. `BudgetExceeded` — aborts before the call is issued, so every attempt draws the
+    budget down and no caller can bypass enforcement (it lives where `call` is invoked).
     """
     current = prompt
     last_error = ""
     previous_answer: str | None = None
     for attempt in range(1 + MAX_REPAIRS):
+        if on_attempt is not None:
+            on_attempt()
         answer = call(current)
         try:
             return schema.model_validate_json(extract_json(answer))

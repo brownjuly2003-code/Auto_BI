@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
@@ -22,6 +23,7 @@ from auto_bi.llm._structured import append_llm_log, complete_with_repair, extrac
 from auto_bi.llm.base import LLMError
 
 if TYPE_CHECKING:
+    from auto_bi.llm.budget import LLMBudget
     from auto_bi.store import Store
 
 T = TypeVar("T", bound=BaseModel)
@@ -42,6 +44,7 @@ class GraceKellyClient:
         http: httpx.Client | None = None,
         log_path: str | Path = "logs/llm_calls.jsonl",
         store: Store | None = None,
+        budget: LLMBudget | None = None,
     ) -> None:
         self._settings = settings
         self._http = http or httpx.Client(
@@ -51,6 +54,7 @@ class GraceKellyClient:
         )
         self._log_path = Path(log_path)
         self._store = store
+        self._budget = budget
 
     def complete(
         self,
@@ -67,8 +71,17 @@ class GraceKellyClient:
                 lambda p: self._call(p, reasoning=reasoning, session_id=session_id, step=step),
                 prompt,
                 schema,
+                on_attempt=self._budget_hook(session_id),
             ),
         )
+
+    def _budget_hook(self, session_id: str | None) -> Callable[[], None] | None:
+        """Draw the LLM budget down before every provider round-trip (initial + repairs)."""
+        if self._budget is None:
+            return None
+        budget = self._budget
+        model = self._settings.gracekelly_model
+        return lambda: budget.check(session_id=session_id, model=model)
 
     def _call(self, prompt: str, *, reasoning: bool, session_id: str | None, step: str) -> str:
         if len(prompt) > PROMPT_LIMIT:

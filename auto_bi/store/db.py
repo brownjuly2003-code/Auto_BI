@@ -109,6 +109,11 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     input_tokens  INTEGER,  -- NULL = provider reported no usage (GraceKelly / transport error)
     output_tokens INTEGER   -- real tokens only where the provider returns usage (Anthropic)
 );
+-- llm/budget.py reads this ledger per session and per rolling window on every provider
+-- round-trip; index the two scope keys (created via always-run CREATE IF NOT EXISTS, no
+-- schema-version bump). Cheap at demo scale, keeps the budget checks off a full scan.
+CREATE INDEX IF NOT EXISTS ix_llm_calls_session ON llm_calls(session_id);
+CREATE INDEX IF NOT EXISTS ix_llm_calls_created ON llm_calls(created_at);
 CREATE TABLE IF NOT EXISTS trace_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id  TEXT,
@@ -508,6 +513,53 @@ class Store:
             "by_step": _breakdown("step"),
             "by_status": _breakdown("status"),
         }
+
+    def _llm_usage(self, where: str, params: tuple[Any, ...]) -> dict[str, Any]:
+        """Budget-scoped usage from `llm_calls` (audit P0-3 item 4, llm/budget.py).
+
+        Returns `calls`, `latency_ms`, total estimated `tokens`, and a per-`model`
+        breakdown so the enforcer can price cost. Tokens are the provider's real usage
+        where reported (Anthropic), else char-estimated (chars / 4) so a token budget
+        still bites on GraceKelly, which reports none. Every attempt is counted (a repair
+        is a distinct row), independent of status — a budget must see all round-trips.
+        """
+        rows = self._rows(
+            "SELECT model,"
+            " COALESCE(SUM(COALESCE(input_tokens, prompt_chars / 4)), 0) AS input_tokens,"
+            " COALESCE(SUM(COALESCE(output_tokens, completion_chars / 4)), 0) AS output_tokens,"
+            " COUNT(*) AS calls,"
+            " COALESCE(SUM(latency_ms), 0) AS latency_ms"
+            f" FROM llm_calls WHERE {where} GROUP BY model",
+            *params,
+        )
+        return {
+            "calls": sum(r["calls"] for r in rows),
+            "latency_ms": sum(r["latency_ms"] for r in rows),
+            "tokens": sum(r["input_tokens"] + r["output_tokens"] for r in rows),
+            "by_model": rows,
+        }
+
+    def session_llm_usage(self, session_id: str | None) -> dict[str, Any]:
+        """Budget usage for one conversation, all-time (per-session scope)."""
+        if session_id is None:
+            return self._llm_usage("session_id IS NULL", ())
+        return self._llm_usage("session_id = ?", (session_id,))
+
+    def actor_llm_usage(self, owner: str | None, *, window_hours: int = 24) -> dict[str, Any]:
+        """Budget usage in a rolling window for one actor, or globally.
+
+        `owner` set -> only calls whose session that owner owns (per-actor/day scope when
+        auth is on). `owner is None` -> every call in the window (the single global bucket
+        when auth is off — a total-spend circuit breaker for the anonymous public demo).
+        """
+        window = f"-{int(window_hours)} hours"
+        if owner is None:
+            return self._llm_usage("created_at >= datetime('now', ?)", (window,))
+        return self._llm_usage(
+            "created_at >= datetime('now', ?)"
+            " AND session_id IN (SELECT id FROM sessions WHERE owner = ?)",
+            (window, owner),
+        )
 
     # --- dm change requests ---------------------------------------------------------
 

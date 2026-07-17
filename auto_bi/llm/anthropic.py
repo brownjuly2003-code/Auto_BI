@@ -25,6 +25,7 @@ from auto_bi.llm._structured import append_llm_log, complete_with_repair
 from auto_bi.llm.base import LLMError
 
 if TYPE_CHECKING:
+    from auto_bi.llm.budget import LLMBudget
     from auto_bi.store import Store
 
 T = TypeVar("T", bound=BaseModel)
@@ -81,6 +82,7 @@ class AnthropicClient:
         create: MessagesCreate | None = None,
         log_path: str | Path = "logs/llm_calls.jsonl",
         store: Store | None = None,
+        budget: LLMBudget | None = None,
     ) -> None:
         self._settings = settings
         # Injected `create` keeps unit tests SDK-free; otherwise build the real client now,
@@ -88,6 +90,7 @@ class AnthropicClient:
         self._create = create or _build_create(settings)
         self._log_path = Path(log_path)
         self._store = store
+        self._budget = budget
 
     def complete(
         self,
@@ -104,8 +107,17 @@ class AnthropicClient:
                 lambda p: self._call(p, reasoning=reasoning, session_id=session_id, step=step),
                 prompt,
                 schema,
+                on_attempt=self._budget_hook(session_id),
             ),
         )
+
+    def _budget_hook(self, session_id: str | None) -> Callable[[], None] | None:
+        """Draw the LLM budget down before every provider round-trip (initial + repairs)."""
+        if self._budget is None:
+            return None
+        budget = self._budget
+        model = self._settings.anthropic_model
+        return lambda: budget.check(session_id=session_id, model=model)
 
     def _call(self, prompt: str, *, reasoning: bool, session_id: str | None, step: str) -> str:
         started = time.monotonic()
