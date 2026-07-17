@@ -17,8 +17,26 @@
   Space secrets) и принудительно включает per-IP session-квоту. По умолчанию демо остаётся
   auto-only (без LLM, нулевой бюджет).
 
+- Semantic governance для rate/non-additive колонок (P1-6): поле `Column.additivity`
+  (`additive | semi_additive | non_additive`; `semi_additive` записывается, но в v1 не
+  энфорсится). Интроспекторы CH/GP размечают rate-подобные имена (`rate|ratio|pct|percent|share`,
+  `price`/`unit_price`) как `agg: avg` + `non_additive`; валидация спеки отклоняет `sum` над
+  `non_additive` колонкой (и в denominator ratio-меры) с подсказкой для repair loop;
+  enrichment-API отвечает 422 на такой `agg`; autospec для неаддитивной меры без модельного agg
+  падает в AVG и не строит share-of-total над ней; маркер рендерится в model_text для LLM.
+  Committed-модели исправлены: `effective_tax_rate`/`return_rate` (model_x5) и `price`
+  (model, model_stand) больше не суммируются (ARCHITECTURE §3.2).
+- `Physical.captured_at` — UTC-штамп снятия статистики интроспектором: замороженные в git
+  `rows`/`cardinality` теперь несут дату происхождения (P1-6, ARCHITECTURE §3.2).
+
 ### Changed
 
+- `explain_high_scan_fraction` предпочитает **живой** знаменатель (P1-6): при доступном
+  RunQuery advisor берёт текущий размер таблицы из `system.tables` (кэш на инстанс,
+  never-raise) вместо git-замороженного `physical.rows`, который расходится с окружением
+  (модель 20M vs демо 1M) и давал ложную долю скана; `evidence.total_rows_source: live|model`
+  фиксирует происхождение, фолбэк на модельный `rows` — при недоступном каталоге или live-нуле
+  (ARCHITECTURE §3.3).
 - Feasibility Advisor судит **effective query**, а не дословный запрос спеки (P1-2):
   фильтры чарта плюс дашбордные контролы, которые реально его сужают (`advisor/effective.py`).
   Контрол засчитывается по тем же условиям, что кодируют оба адаптера — колонка в grain чарта

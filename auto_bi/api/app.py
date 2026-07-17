@@ -64,7 +64,7 @@ from auto_bi.introspect.gaps import find_gaps
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient, LLMError
-from auto_bi.semantic.model import Aggregation, ColumnRole, SemanticModel
+from auto_bi.semantic.model import Additivity, Aggregation, ColumnRole, SemanticModel
 from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
@@ -498,6 +498,17 @@ def create_app(
                         status_code=422, detail="agg is only valid for role=measure"
                     )
                 agg = None  # leaving the measure role drops the default aggregation
+            if agg == Aggregation.SUM and column.additivity == Additivity.NON_ADDITIVE:
+                # semantic governance (P1-6): the same rule spec validation enforces —
+                # enrichment must not hand-author a default the specs can never use
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"column {column_name!r} is non_additive (rate/ratio): sum "
+                        "бессмыслен — используйте avg (или ratio numerator/denominator "
+                        "на уровне спеки); либо снимите additivity в model.yaml"
+                    ),
+                )
             column.role = role
             column.agg = agg
             if body.description is not None:
@@ -509,6 +520,7 @@ def create_app(
             "description": column.description,
             "role": column.role.value,
             "agg": column.agg.value if column.agg else None,
+            "additivity": column.additivity.value if column.additivity else None,
         }
 
     @app.get("/api/v1/model/fields")
@@ -527,6 +539,7 @@ def create_app(
                         "type": c.type,
                         "description": c.description,
                         "agg": c.agg.value if c.agg else None,
+                        "additivity": c.additivity.value if c.additivity else None,
                     }
                     for c in t.columns
                 ],

@@ -30,12 +30,29 @@ class Aggregation(StrEnum):
     COUNT_DISTINCT = "count_distinct"
 
 
+class Additivity(StrEnum):
+    """How a measure column behaves under summation (semantic governance, P1-6).
+
+    `non_additive` — a rate/ratio/price: a row-wise SUM is business-meaningless, so spec
+    validation rejects `agg: sum` over it (avg or a numerator/denominator ratio instead).
+    `semi_additive` — additive over some dimensions but not others (a distinct-count
+    snapshot, a balance): recorded as modeling intent, not enforced in v1 — enforcement
+    needs to know the non-additive axis. `additive` — explicit "sum is fine".
+    Unset (None) — unknown; no constraint, same as before the field existed.
+    """
+
+    ADDITIVE = "additive"
+    SEMI_ADDITIVE = "semi_additive"
+    NON_ADDITIVE = "non_additive"
+
+
 class Column(StrictModel):
     name: str
     type: str
     role: ColumnRole
     description: str = ""
     agg: Aggregation | None = None  # default aggregation for measures
+    additivity: Additivity | None = None  # summation semantics of a measure (see Additivity)
     fk: str | None = None  # "schema.table.column" the dimension points to
     top_values: list[str] = Field(default_factory=list)  # low-cardinality samples for grounding
     # hand-authored alternate names ("удержание" for a retention column): rendered into
@@ -56,6 +73,11 @@ class Physical(StrictModel):
     rows: int = 0
     bytes: int = 0
     cardinality: dict[str, int] = Field(default_factory=dict)
+    # when these stats were captured (UTC ISO-8601, introspector-stamped). Stats live in git
+    # while the DWH keeps growing and every environment differs (demo 1M / stand 20M / prod
+    # 100M), so consumers that can measure live (advisor scan fraction) must not trust `rows`
+    # as "now" — this stamp is what makes the staleness visible instead of implicit.
+    captured_at: str = ""
 
 
 class Table(StrictModel):

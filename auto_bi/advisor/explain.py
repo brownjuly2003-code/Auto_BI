@@ -8,7 +8,38 @@ through the same RunQuery seam as introspection and the SQL guard.
 
 from __future__ import annotations
 
+import re
+
 from auto_bi.introspect.base import RunQuery
+
+_TABLE_RE = re.compile(r"^(\w+)\.(\w+)$")
+
+
+def live_row_count(run_query: RunQuery, table: str) -> int | None:
+    """Current row count of `db.table` from system.tables; None if unavailable.
+
+    The committed model's `physical.rows` is a git-frozen snapshot while every environment
+    differs (P1-6: model 20M vs compose 100M vs HF demo 1M), so a scan fraction computed
+    against it lies whenever the model is stale. When we can ask the live engine anyway
+    (we just ran EXPLAIN through the same seam), the denominator should be live too.
+    Never raises; a malformed name or a failed query degrades to None (model fallback).
+    """
+    m = _TABLE_RE.match(table)
+    if not m:
+        return None  # quoted/exotic identifiers: not worth an injection surface
+    db, name = m.groups()
+    try:
+        rows = run_query(
+            f"SELECT total_rows FROM system.tables WHERE database = '{db}' AND name = '{name}'"
+        )
+    except Exception:  # advisory only: no live count => static fallback, never raise
+        return None
+    if not rows:
+        return None
+    total = rows[0].get("total_rows")
+    # NULL (non-MergeTree) or 0 (dropped/detached vs a model that says millions) carry no
+    # usable signal for a denominator — fall back to the modeled size instead
+    return int(total) if total else None
 
 
 def estimate_scan(run_query: RunQuery, sql: str) -> dict | None:

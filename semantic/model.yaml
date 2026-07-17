@@ -58,7 +58,8 @@ tables:
     type: Decimal(18, 2)
     role: measure
     description: Базовая цена, руб
-    agg: sum
+    agg: avg
+    additivity: non_additive
   physical:
     engine: clickhouse
     table_engine: MergeTree

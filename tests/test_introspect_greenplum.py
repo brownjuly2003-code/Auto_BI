@@ -19,13 +19,13 @@ from auto_bi.semantic.model import Aggregation, ColumnRole
 
 
 def test_role_for_heuristics() -> None:
-    assert _role_for("date", "date") == (ColumnRole.TIME, None)
-    assert _role_for("ts", "timestamp without time zone") == (ColumnRole.TIME, None)
-    assert _role_for("store_id", "integer") == (ColumnRole.DIMENSION, None)
-    assert _role_for("id", "bigint") == (ColumnRole.DIMENSION, None)
-    assert _role_for("revenue", "numeric(12,2)") == (ColumnRole.MEASURE, Aggregation.SUM)
-    assert _role_for("qty", "integer") == (ColumnRole.MEASURE, Aggregation.SUM)
-    assert _role_for("city", "text") == (ColumnRole.DIMENSION, None)
+    assert _role_for("date", "date") == (ColumnRole.TIME, None, None)
+    assert _role_for("ts", "timestamp without time zone") == (ColumnRole.TIME, None, None)
+    assert _role_for("store_id", "integer") == (ColumnRole.DIMENSION, None, None)
+    assert _role_for("id", "bigint") == (ColumnRole.DIMENSION, None, None)
+    assert _role_for("revenue", "numeric(12,2)") == (ColumnRole.MEASURE, Aggregation.SUM, None)
+    assert _role_for("qty", "integer") == (ColumnRole.MEASURE, Aggregation.SUM, None)
+    assert _role_for("city", "text") == (ColumnRole.DIMENSION, None, None)
 
 
 def test_parse_distribution_key() -> None:

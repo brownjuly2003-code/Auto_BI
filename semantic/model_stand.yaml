@@ -58,7 +58,8 @@ tables:
     type: Decimal(18, 2)
     role: measure
     description: Базовая цена, руб
-    agg: sum
+    agg: avg
+    additivity: non_additive
   physical:
     engine: clickhouse
     table_engine: MergeTree
@@ -275,6 +276,9 @@ tables:
     role: measure
     description: Активных клиентов когорты в месяце (uniqExact)
     agg: sum
+    # distinct-count snapshot: additive across cohorts, NOT across months_since (the same
+    # customer is active in several months). Recorded intent; not enforced in v1.
+    additivity: semi_additive
   physical:
     engine: clickhouse
     table_engine: MergeTree

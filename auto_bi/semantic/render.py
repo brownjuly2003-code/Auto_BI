@@ -32,6 +32,8 @@ def render_table(table: Table, *, include_samples: bool = True) -> str:
         col = f"  - {c.name} ({c.type}, {c.role.value}"
         if c.agg:
             col += f", {c.agg.value}"
+        if c.additivity:  # e.g. "non_additive": tells the LLM up front that sum is invalid
+            col += f", {c.additivity.value}"
         col += ")"
         if c.description:
             col += f": {c.description}"

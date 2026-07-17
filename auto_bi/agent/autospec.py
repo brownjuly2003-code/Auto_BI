@@ -56,9 +56,11 @@ from auto_bi.ir.spec import (
     TargetBI,
     TimeGrain,
     Viz,
+    is_additive_agg,
     measure_alias,
 )
 from auto_bi.semantic.model import (
+    Additivity,
     Aggregation,
     Column,
     ColumnRole,
@@ -176,8 +178,11 @@ def _yoy_applicable(grain: TimeGrain, time_card: int | None) -> bool:
 
 
 def _to_measure(col: Column) -> Measure:
-    # empty label => SQL alias is "<agg>_<column>" (measure_alias); chart titles are human
-    return Measure(column=col.name, agg=col.agg or Aggregation.SUM, label="")
+    # empty label => SQL alias is "<agg>_<column>" (measure_alias); chart titles are human.
+    # A non-additive column (rate/price) with no modeled agg must not fall back to SUM —
+    # validation would reject the spec it lands in (P1-6), so the fallback is AVG.
+    fallback = Aggregation.AVG if col.additivity == Additivity.NON_ADDITIVE else Aggregation.SUM
+    return Measure(column=col.name, agg=col.agg or fallback, label="")
 
 
 def _share_of(measure: Measure) -> Measure:
@@ -386,7 +391,9 @@ def build_auto_spec(
     # P4 — structure: each category's share of total as a sorted bar (part-to-whole, no pie).
     # The share is a window over the base aggregate; ordering by it equals ordering by the base
     # measure (the total is constant), so the bar still reads top-down by contribution.
-    if share_break is not None:
+    # Only for an additive primary: a share of avg(price) divides by a sum of averages,
+    # which is not a part-to-whole of anything (P1-6).
+    if share_break is not None and is_additive_agg(primary.agg):
         share = _share_of(primary)
         charts.append(
             ChartSpec(
