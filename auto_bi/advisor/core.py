@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from auto_bi.advisor.clickhouse import RULES as CH_RULES
 from auto_bi.advisor.clickhouse import RuleContext
+from auto_bi.advisor.effective import effective_filters
 from auto_bi.advisor.explain import estimate_scan
 from auto_bi.advisor.findings import Finding
 from auto_bi.advisor.greenplum import RULES as GP_RULES
@@ -36,18 +37,26 @@ class Advisor:
             return gp_explain_evidence(self._run_query, sql) or {}
         return estimate_scan(self._run_query, sql) or {}
 
-    def review_chart(self, chart: ChartSpec) -> list[Finding]:
+    def review_chart(self, chart: ChartSpec, spec: DashboardSpec | None = None) -> list[Finding]:
+        """Findings for one chart. Pass `spec` so the dashboard's controls are taken into
+        account (P1-2); without it the chart is judged on its own filters alone, which
+        overstates the scan for a chart the dashboard opens filtered."""
         if chart.query.raw_sql is not None:
             return []  # X-5 raw hatch: advisor reasons over IR, it is blind to raw SQL (by design)
         table = self._model.table(chart.query.table)
         if table is None or table.physical is None:
             return []  # nothing to reason about without physical metadata
 
-        evidence = self._gather_evidence(generate_chart_sql(chart.query, dialect=self._dialect))
+        # Judge (and measure) the query the BI actually runs on refresh: a control's default
+        # is part of that query, so EXPLAIN-ing the verbatim spec query would overstate the scan.
+        query = chart.query.model_copy(
+            update={"filters": effective_filters(chart, spec, self._model)}
+        )
+        evidence = self._gather_evidence(generate_chart_sql(query, dialect=self._dialect))
 
         ctx = RuleContext(
             chart_id=chart.id,
-            query=chart.query,
+            query=query,
             table=table,
             physical=table.physical,
             evidence=evidence,
@@ -61,5 +70,5 @@ class Advisor:
     def review(self, spec: DashboardSpec) -> list[Finding]:
         findings: list[Finding] = []
         for chart in spec.charts:
-            findings.extend(self.review_chart(chart))
+            findings.extend(self.review_chart(chart, spec))
         return findings

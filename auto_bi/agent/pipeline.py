@@ -8,11 +8,13 @@ from collections.abc import Callable
 
 from auto_bi.adapters.artifacts import new_build_namespace
 from auto_bi.adapters.base import BIAdapter, DashboardRef
+from auto_bi.advisor.core import Advisor
+from auto_bi.advisor.narrate import ChartVerdict, worst_verdicts
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.propose import SpecValidationError, propose_spec
 from auto_bi.agent.sql_guard import LiveSQLValidator
 from auto_bi.agent.sqlgen import generate_chart_sql
-from auto_bi.ir.spec import TargetBI
+from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
@@ -22,6 +24,32 @@ from auto_bi.store import Store
 # partial-applied with settings+model). Injected as a resolver so the pipeline never names a
 # concrete adapter (Phase 4 F1) and tests can supply a fake.
 AdapterFor = Callable[[TargetBI], BIAdapter]
+
+
+def review_and_log(
+    advisor: Advisor | None,
+    spec: DashboardSpec,
+    log: Callable[[str], None] = print,
+) -> list[ChartVerdict]:
+    """Advisor pass for the one-shot CLI paths (P1-2), which otherwise never ran it.
+
+    Mechanical on purpose: the verdict is decided by the rules either way (invariant 5) and
+    only the wording would be the LLM's, so narrating here would cost an extra provider call
+    per build to reword text an engineer-facing CLI reads fine as-is. The chat path (machine)
+    still narrates, where a user is conversing. Advisory-only — the build proceeds regardless.
+    """
+    if advisor is None:
+        return []
+    verdicts = list(worst_verdicts(advisor.review(spec)).values())
+    if not verdicts:
+        return []
+    titles = {c.id: c.title for c in spec.charts}
+    log("Advisor:")
+    for v in verdicts:
+        log(f"  [{v.severity.value}] {titles.get(v.chart_id, v.chart_id)}: {v.text}")
+        for suggestion in v.suggestions:
+            log(f"      → {suggestion}")
+    return verdicts
 
 
 def build_dashboard(
@@ -36,6 +64,7 @@ def build_dashboard(
     store: Store | None = None,
     session_id: str | None = None,
     target_bi: TargetBI | None = None,
+    advisor: Advisor | None = None,
 ) -> DashboardRef:
     log(f"PROPOSE_SPEC: «{description}»")
     spec = propose_spec(
@@ -48,6 +77,7 @@ def build_dashboard(
     log(f"spec ok: «{spec.title}», {len(spec.charts)} чартов → {spec.target_bi.value}")
     for chart in spec.charts:
         log(f"  - [{chart.viz.value}] {chart.title}")
+    review_and_log(advisor, spec, log)
 
     spec_id: int | None = None
     if store is not None and session_id is not None:

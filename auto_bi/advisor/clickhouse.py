@@ -9,10 +9,12 @@ join support); `point_lookup_pattern` from PLAN 1.6 is deferred for the same rea
 no real case to tune it against yet. Rules stay silent on clean queries — warning
 fatigue is the enemy.
 
-Filter rules read only chart-level `query.filters`: dashboard-level `spec.filters`
-are not compiled by the Superset adapter yet (see spec_summary warning), so charts
-genuinely run unfiltered. When native dashboard filters land (Phase 2), these rules
-must start counting applicable dashboard filters too, or they will false-positive.
+Filter rules read `ctx.query.filters`, and `ctx.query` is the EFFECTIVE query: the chart's own
+filters plus the dashboard controls that actually narrow it (`advisor/effective.py`, P1-2).
+Native dashboard filters landed in Phase 2, so reasoning over the spec's verbatim query — as
+these rules once did — false-positives on specs whose period lives solely in a control. Rules
+need not know where a filter came from: they judge what the BI runs, which is also what the
+EXPLAIN evidence measured.
 """
 
 from __future__ import annotations
@@ -35,6 +37,10 @@ COLLAPSING_ENGINES = ("Replacing", "Collapsing", "VersionedCollapsing")
 @dataclass
 class RuleContext:
     chart_id: str
+    # the EFFECTIVE query (advisor/effective.py): the chart's filters plus the dashboard
+    # controls that narrow it. Deliberately not the spec's verbatim query — a rule that
+    # reasoned over the latter would report a full scan on a chart the dashboard opens
+    # filtered, which is the P1-2 bug. `Advisor.review_chart` builds it.
     query: ChartQuery
     table: Table
     physical: Physical
@@ -68,13 +74,24 @@ def explain_high_scan_fraction(ctx: RuleContext) -> list[Finding]:
     if fraction < SCAN_FRACTION_WARN:
         return []
     severity = Severity.CRITICAL if fraction >= SCAN_FRACTION_CRITICAL else Severity.WARN
+    # est_rows sums EVERY pass over the table, so a query that reads it more than once — a
+    # period-compare scans the current window and the prior one — lands above 100%. Phrasing
+    # that as a share of the table ("reads ~146% of X") reads like a broken number and costs
+    # the finding its credibility, so above 1 we report passes instead of a share.
+    if fraction > 1:
+        title = (
+            f"query reads {est_rows} rows from {ctx.table.name} — {fraction:.1f}× its "
+            f"{total} rows (more than one pass over the table)"
+        )
+    else:
+        title = f"query reads ~{fraction:.0%} of {ctx.table.name} ({est_rows} of {total} rows)"
     return [
         Finding(
             rule="explain_high_scan_fraction",
             severity=severity,
             verdict_class=VerdictClass.SPEC_ADJUSTMENT,
             chart_id=ctx.chart_id,
-            title=f"query reads ~{fraction:.0%} of {ctx.table.name} ({est_rows} of {total} rows)",
+            title=title,
             evidence={
                 "est_rows": est_rows,
                 "total_rows": total,
