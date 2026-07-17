@@ -96,6 +96,27 @@ class Settings(BaseSettings):
     # Hard cap on concurrent builds in this process (audit P0-3). Approve returns 503
     # with Retry-After when the semaphore is full — no unbounded thread-per-build fan-out.
     max_concurrent_builds: int = 2
+    # LLM client-seam budget (audit P0-3 item 4) — OPT-IN, off by default (matches the
+    # session/work quota convention above). The HTTP quotas gate REQUESTS but cannot see
+    # provider round-trips; one request fans out into grounding + propose + advisor +
+    # up to 3 repair retries. This budget is enforced inside the shared repair loop, so
+    # the initial call AND every repair draw it down, per session and per actor / rolling
+    # day. A limit of 0 (or 0.0) means that dimension is unlimited. Fails closed: a call
+    # that would cross a limit raises BudgetExceeded before it is issued (llm/budget.py).
+    llm_budget_enabled: bool = False
+    # per conversation (session id), all-time
+    llm_budget_session_max_calls: int = 0
+    llm_budget_session_max_tokens: int = 0
+    llm_budget_session_max_seconds: float = 0.0
+    llm_budget_session_max_cost_usd: float = 0.0
+    # per actor (session owner; one global bucket when auth is off) / rolling 24h
+    llm_budget_day_max_calls: int = 0
+    llm_budget_day_max_tokens: int = 0
+    llm_budget_day_max_seconds: float = 0.0
+    llm_budget_day_max_cost_usd: float = 0.0
+    # cost price table (USD per 1000 tokens), "model:in/out,...". Example defaults only —
+    # override for your provider contract; used only when a *_max_cost_usd limit is set.
+    llm_budget_prices: str = "claude-sonnet-4-6:0.003/0.015,claude-sonnet-5:0.003/0.015"
     # Public demo mode (P8): the deterministic auto-overview path becomes the ONLY
     # entry — text/fields sessions and word edits (both call the LLM) and enrichment
     # writes (mutate the shared model.yaml) return 403; the UI greys those tabs out.
