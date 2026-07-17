@@ -38,6 +38,16 @@ USER_GUIDE.md отвечает на «как пользоваться», ARCHITE
 **Docker — готовый образ из GHCR (после того, как вырезан хотя бы один тег `vX.Y.Z` —
 `release.yml`, S10) или сборка локально:**
 
+> **Релизный preflight (P1-7).** Тег `vX.Y.Z` публикует образ GHCR и пакет PyPI только после
+> job `preflight` в `release.yml`: версия тега обязана совпадать с `pyproject.toml
+> [project].version` и `auto_bi.__version__`, `CHANGELOG.md` — нести непустую секцию
+> `## [<версия>]`, а собранные `uv build` sdist+wheel — пройти `twine check` и clean-install
+> smoke (`auto_bi --help` из свежего окружения). `release` (GHCR + GitHub Release) и `pypi`
+> гейтятся на `preflight`, причём `pypi` публикует ровно те артефакты, что preflight собрал и
+> проверил (через `upload-artifact`/`download-artifact`, без пересборки). Рассинхрон версий
+> отклоняется ДО любой публикации — частичный релиз (GHCR одной версии, PyPI другой) невозможен.
+> Логика когерентности вынесена в `scripts/release_preflight.py` и юнит-тестируется офлайн.
+
 ```bash
 # вариант A: тег уже опубликован в GHCR — просто стянуть (замените версию на нужный тег)
 docker pull ghcr.io/brownjuly2003-code/auto_bi:X.Y.Z   # или :latest — последний тег
