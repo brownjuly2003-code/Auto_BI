@@ -1,5 +1,5 @@
 """SQLite store (task 1.9): sessions, messages, specs, builds, llm_calls,
-dm_change_requests, trace_events.
+dm_change_requests, trace_events, bi_artifacts.
 
 stdlib sqlite3, no ORM (stack rule: no heavy frameworks). One Store per process;
 the schema is created on open and is append-mostly — history is data, so specs
@@ -151,6 +151,29 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
     expires_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_auth_tokens_user ON auth_tokens(user_id);
+-- BI-artifact ownership ledger (audit P0-2 criterion 4): every database/dataset/chart/
+-- dashboard a build creates, keyed on session/owner and the build namespace (`build_token`
+-- = the revision). This is what an ownership-based orphan cleanup selects on — prior
+-- revisions' OWNED artifacts (see `orphan_bi_artifacts`), NEVER a title/name (two dashboards
+-- may share a technical name). `name` is display/debug only; `schema_set` (the DWH schema.
+-- table a dataset reads) scopes RBAC. Added via always-run CREATE IF NOT EXISTS + indexes,
+-- NO schema-version bump (mirrors the llm_calls budget indexes above) — a brand-new table is
+-- created on every open, so a legacy DB gains it without an ALTER/migration.
+CREATE TABLE IF NOT EXISTS bi_artifacts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT,
+    build_token TEXT NOT NULL,                        -- build namespace = the revision
+    target_bi   TEXT NOT NULL,                        -- 'superset' | 'datalens'
+    kind        TEXT NOT NULL,                        -- 'database'|'dataset'|'chart'|'dashboard'
+    native_id   TEXT NOT NULL,                        -- BI-native id, stringified
+    name        TEXT,                                 -- technical name: display/debug ONLY
+    owner       TEXT,                                 -- session owner, NULL when auth off
+    schema_set  TEXT,                                 -- DWH schema.table read, for RBAC scoping
+    status      TEXT NOT NULL DEFAULT 'live',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_bi_artifacts_session ON bi_artifacts(session_id);
+CREATE INDEX IF NOT EXISTS ix_bi_artifacts_build ON bi_artifacts(build_token);
 """
 
 
@@ -680,6 +703,93 @@ class Store:
         with self._lock, self._db:
             cur = self._db.execute("DELETE FROM auth_tokens WHERE expires_at <= datetime('now')")
         return cur.rowcount
+
+    # --- BI-artifact ownership ledger (audit P0-2 criterion 4) --------------------
+
+    def record_bi_artifact(
+        self,
+        *,
+        session_id: str | None,
+        build_token: str,
+        target_bi: str,
+        kind: str,
+        native_id: str,
+        name: str | None = None,
+        owner: str | None = None,
+        schema_set: str | None = None,
+    ) -> int:
+        """Record one BI entity a build created (database/dataset/chart/dashboard).
+
+        Written by the orchestrator after a successful build for every artifact the concrete
+        adapter reports (`drain_build_artifacts`). Keyed on session/owner + `build_token` (the
+        build namespace = the revision) so a later ownership-based cleanup can find prior
+        revisions' OWNED artifacts by id. `name` is a technical name for display/debug only —
+        it is NEVER a delete key (two dashboards may legitimately share a title). `schema_set`
+        (the DWH schema.table a dataset reads) scopes RBAC. `owner` is NULL when auth is off.
+        """
+        with self._lock, self._db:
+            cur = self._db.execute(
+                "INSERT INTO bi_artifacts"
+                " (session_id, build_token, target_bi, kind, native_id, name, owner, schema_set)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (session_id, build_token, target_bi, kind, native_id, name, owner, schema_set),
+            )
+        return _row_id(cur)
+
+    def bi_artifacts(self, session_id: str) -> list[dict[str, Any]]:
+        """All ledger rows for one session (every build's artifacts, oldest first)."""
+        return self._rows("SELECT * FROM bi_artifacts WHERE session_id = ? ORDER BY id", session_id)
+
+    def orphan_bi_artifacts(
+        self, session_id: str, current_build_token: str, *, owner: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Delete candidates for ownership-based orphan cleanup (audit P0-2 criterion 4).
+
+        Returns the session's still-live artifacts from PRIOR builds: `status='live'` rows
+        whose `build_token != current_build_token`. The selection is keyed purely on OWNERSHIP
+        (session_id + build_token, optionally the owner) and NEVER on name/title — two
+        dashboards may legitimately share a technical name, so a name-keyed delete could remove
+        an artifact another dashboard still owns (the DataLens `_delete_if_exists`-by-name
+        hazard this ledger exists to replace). When `owner` is passed the selection is further
+        RBAC-scoped to that owner's rows (a non-admin cleanup never touches another user's
+        artifacts); `owner=None` (auth off / admin) matches every owner for the session.
+
+        OFFLINE selection layer only (SCOPE decision): this returns the id set that a future
+        stand-verified session will feed to the BI delete-by-id API. It performs NO BI delete
+        and does not flip any status — see `mark_bi_artifacts_superseded` for the seam the
+        live-cleanup path will call after a successful delete. NOTE for that future session:
+        the `database` connection (Superset/DataLens) is idempotent-by-name and SHARED across
+        builds, so a prior-revision `kind='database'` row here is still referenced by the
+        current build — validate references (or exclude shared connection kinds) before
+        deleting, unlike per-build datasets/charts/dashboards.
+        """
+        sql = (
+            "SELECT * FROM bi_artifacts"
+            " WHERE session_id = ? AND build_token != ? AND status = 'live'"
+        )
+        params: list[Any] = [session_id, current_build_token]
+        if owner is not None:
+            sql += " AND owner = ?"
+            params.append(owner)
+        sql += " ORDER BY id"
+        return self._rows(sql, *params)
+
+    def mark_bi_artifacts_superseded(self, ids: Iterable[int]) -> None:
+        """Flip the given ledger rows from 'live' to 'superseded' (keyed on the ledger's own
+        row id, never on a BI name).
+
+        Available for the FUTURE live-cleanup path and UNUSED today: the stand-verified session
+        that wires the BI delete-by-id will call this AFTER a successful delete so a re-run
+        never re-selects an already-removed artifact via `orphan_bi_artifacts`."""
+        ids = list(ids)
+        if not ids:
+            return
+        placeholders = ",".join("?" for _ in ids)
+        with self._lock, self._db:
+            self._db.execute(
+                f"UPDATE bi_artifacts SET status = 'superseded' WHERE id IN ({placeholders})",
+                ids,
+            )
 
     # --- helpers ------------------------------------------------------------------
 

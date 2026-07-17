@@ -654,6 +654,39 @@ def test_build_full_flow() -> None:
     assert dashboard.url == f"/superset/dashboard/{dashboard.id}/"
 
 
+def test_build_drains_all_four_artifact_kinds() -> None:
+    # ownership ledger (P0-2 criterion 4): build() records every BI entity it creates on the
+    # concrete adapter; drain_build_artifacts returns them (NOT a BIAdapter Protocol method).
+    spec = make_spec()
+    fake = FakeSuperset()
+    adapter = make_adapter(fake, model=MODEL)
+    adapter.set_artifact_namespace("sess:abc")
+    dashboard = adapter.build(spec)
+
+    arts = adapter.drain_build_artifacts()
+    by_kind: dict[str, list] = {}
+    for a in arts:
+        by_kind.setdefault(a.kind, []).append(a)
+    # one database, one dataset + one chart per spec chart, one dashboard
+    assert len(by_kind["database"]) == 1
+    assert len(by_kind["dataset"]) == len(spec.charts)
+    assert len(by_kind["chart"]) == len(spec.charts)
+    assert len(by_kind["dashboard"]) == 1
+    assert by_kind["database"][0].name == "Auto_BI ClickHouse"
+    # native ids are stringified; the dashboard's matches the returned ref
+    assert all(isinstance(a.native_id, str) for a in arts)
+    assert by_kind["dashboard"][0].native_id == str(dashboard.id)
+    # schema_set carries the DWH schema.table for datasets/charts, None for db/dashboard
+    assert all(a.schema_set == "dm.sales_daily" for a in by_kind["dataset"])
+    assert all(a.schema_set == "dm.sales_daily" for a in by_kind["chart"])
+    assert by_kind["database"][0].schema_set is None
+    assert by_kind["dashboard"][0].schema_set is None
+    # the dataset technical name is display/debug only (carries the P0-2 namespace fingerprint)
+    assert by_kind["dataset"][0].name.startswith("auto_bi__")
+    # draining clears the buffer -> a second drain is empty (no double-report)
+    assert adapter.drain_build_artifacts() == []
+
+
 def test_dataset_names_unique_even_when_slugs_collide() -> None:
     from auto_bi.adapters.superset.adapter import _dataset_name, _slug
 

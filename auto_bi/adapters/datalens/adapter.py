@@ -20,6 +20,7 @@ import logging
 import re
 import uuid
 
+from auto_bi.adapters.artifacts import BuildArtifact
 from auto_bi.adapters.base import (
     AdapterHealth,
     ChartRef,
@@ -411,6 +412,9 @@ class DataLensAdapter:
         self._datasets: dict[str, tuple[str, dict[str, dict]]] = {}
         # P0-2: set via set_artifact_namespace() before build(); empty = legacy single-user.
         self._artifact_namespace: str = ""
+        # Ownership ledger (P0-2 criterion 4): build() accumulates the BI entities it creates
+        # here; the orchestrator drains them after a successful build via drain_build_artifacts.
+        self._build_artifacts: list[BuildArtifact] = []
 
     # --- BIAdapter ----------------------------------------------------------
 
@@ -421,6 +425,18 @@ class DataLensAdapter:
         fingerprint so two sessions never promote/delete over each other.
         """
         self._artifact_namespace = (namespace or "").strip()
+
+    def drain_build_artifacts(self) -> list[BuildArtifact]:
+        """Return and clear the BI artifacts the last build() created (P0-2 criterion 4).
+
+        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace):
+        the orchestrator (compile_and_build) drains after a successful build() and records the
+        rows in Store.bi_artifacts (the ownership ledger). Entries carry the CANONICAL entry
+        names/ids (post-promote), so the ledger never references a transient `__wip` entry.
+        Draining clears the buffer so a reused adapter never double-reports."""
+        drained = list(self._build_artifacts)
+        self._build_artifacts = []
+        return drained
 
     def _owned_entry_name(self, title: str) -> str:
         """Display title + optional namespace fingerprint (DataLens entry charset)."""
@@ -791,7 +807,11 @@ class DataLensAdapter:
         the temp `__wip` entries it created (`_cleanup_wip` in the except branch), so they do
         not linger as orphans even if the next attempt's title/chart set differs (F2 audit
         P3)."""
-        self.ensure_database()
+        # Ownership ledger (P0-2 criterion 4): reset the buffer, then record each canonical
+        # entity as it is created so the orchestrator can drain a complete set on success.
+        self._build_artifacts = []
+        db = self.ensure_database()
+        self._build_artifacts.append(BuildArtifact("database", str(db.id), db.name))
         in_filter_scope = participating_chart_ids(spec, self._model)
         placements: list[Placement] = []
         refs: list[ChartRef] = []
@@ -843,6 +863,11 @@ class DataLensAdapter:
                         measure_scale=(scale[0], aliases),
                     )
                 to_promote.append(("dataset", ds_canonical, str(ds.id)))
+                # schema_set = the DWH schema.table this dataset/chart reads (RBAC scoping);
+                # record the CANONICAL name (post-promote), never the transient __wip name.
+                self._build_artifacts.append(
+                    BuildArtifact("dataset", str(ds.id), ds_canonical, chart.query.table)
+                )
                 chart_canonical = self._owned_entry_name(chart.title)
                 wip_created.append(("widget", _wip_name(chart_canonical)))
                 ref = self.create_chart(
@@ -854,6 +879,9 @@ class DataLensAdapter:
                     axis_unit=axis_unit,
                 )
                 to_promote.append(("widget", chart_canonical, str(ref.id)))
+                self._build_artifacts.append(
+                    BuildArtifact("chart", str(ref.id), chart_canonical, chart.query.table)
+                )
                 refs.append(ref)
                 placements.append((chart, str(ref.id), str(ds.id)))
             dash_canonical = self._owned_entry_name(spec.title)
@@ -862,6 +890,7 @@ class DataLensAdapter:
                 spec, refs, placements=placements, name=_wip_name(dash_canonical)
             )
             to_promote.append(("dash", dash_canonical, str(dash.id)))
+            self._build_artifacts.append(BuildArtifact("dashboard", str(dash.id), dash_canonical))
             # Build fully succeeded under temp names -> promote them to canonical (delete stale
             # + rename). Reached only on success, so the old version survives any earlier failure.
             self._promote_to_canonical(to_promote)

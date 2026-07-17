@@ -12,7 +12,7 @@ import json
 import logging
 import re
 
-from auto_bi.adapters.artifacts import dataset_table_name
+from auto_bi.adapters.artifacts import BuildArtifact, dataset_table_name
 from auto_bi.adapters.base import (
     AdapterHealth,
     ChartRef,
@@ -111,6 +111,9 @@ class SupersetAdapter:
         self._database: DatabaseRef | None = None
         # P0-2: set via set_artifact_namespace() before build(); empty = legacy single-user.
         self._artifact_namespace: str = ""
+        # Ownership ledger (P0-2 criterion 4): build() accumulates the BI entities it creates
+        # here; the orchestrator drains them after a successful build via drain_build_artifacts.
+        self._build_artifacts: list[BuildArtifact] = []
 
     # --- BIAdapter ----------------------------------------------------------
 
@@ -121,6 +124,17 @@ class SupersetAdapter:
         calls it when present so two sessions never share dataset table_names.
         """
         self._artifact_namespace = (namespace or "").strip()
+
+    def drain_build_artifacts(self) -> list[BuildArtifact]:
+        """Return and clear the BI artifacts the last build() created (P0-2 criterion 4).
+
+        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace):
+        the orchestrator (compile_and_build) drains after a successful build() and records the
+        rows in Store.bi_artifacts (the ownership ledger). Draining clears the buffer so a
+        reused adapter never double-reports. See docs/ARCHITECTURE §3.5 (artifact identity)."""
+        drained = list(self._build_artifacts)
+        self._build_artifacts = []
+        return drained
 
     def healthcheck(self) -> AdapterHealth:
         ok = self._client.health()
@@ -424,7 +438,11 @@ class SupersetAdapter:
         `spec.target_bi` (Phase 4 F1).
         """
         model = self._model
-        self.ensure_database()
+        # Ownership ledger (P0-2 criterion 4): reset the buffer, then record each entity as it
+        # is created so the orchestrator can drain a complete set after a successful build.
+        self._build_artifacts = []
+        db = self.ensure_database()
+        self._build_artifacts.append(BuildArtifact("database", str(db.id), db.name))
         # charts in a dashboard filter's scope drop the SQL top-N LIMIT (it moves to
         # form_data) so the filter re-ranks after filtering — computable from the spec
         in_filter_scope = participating_chart_ids(spec, model) if model is not None else set()
@@ -437,5 +455,15 @@ class SupersetAdapter:
                 apply_limit=chart.id not in in_filter_scope,
             )
             datasets.append(ds)
-            refs.append(self.create_chart(chart, ds))
-        return self.assemble_dashboard(spec, refs, datasets=datasets, model=model)
+            # schema_set = the DWH schema.table this dataset/chart reads (RBAC scoping)
+            self._build_artifacts.append(
+                BuildArtifact("dataset", str(ds.id), ds.name, chart.query.table)
+            )
+            ref = self.create_chart(chart, ds)
+            self._build_artifacts.append(
+                BuildArtifact("chart", str(ref.id), ref.name, chart.query.table)
+            )
+            refs.append(ref)
+        dash = self.assemble_dashboard(spec, refs, datasets=datasets, model=model)
+        self._build_artifacts.append(BuildArtifact("dashboard", str(dash.id), dash.title))
+        return dash

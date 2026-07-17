@@ -6,6 +6,25 @@
 
 ### Added
 
+- BI-artifact ownership ledger + orphan-cleanup SELECTION (P0-2, критерий 4, **OFFLINE-слой**):
+  таблица Store `bi_artifacts` (`id`, `session_id`, `build_token` = build-namespace = ревизия,
+  `target_bi`, `kind` = `database|dataset|chart|dashboard`, `native_id`, `name` — display/debug,
+  `owner`, `schema_set` — DWH `schema.table` для RBAC, `status` = `live`, `created_at`). Оба
+  адаптера (Superset и DataLens) при `build()` накапливают созданные сущности и отдают их новым
+  concrete-методом `drain_build_artifacts()` (**НЕ** в `BIAdapter`-Protocol, как
+  `set_artifact_namespace`); оркестратор `compile_and_build` после успешного билда сливает их и
+  пишет в леджер с session/owner/build_token (`owner` — из `sessions.owner`, NULL при auth off;
+  `schema_set` датасета/чарта — из `query.table`). Выбор кандидатов на чистку —
+  `orphan_bi_artifacts(session_id, current_build_token, *, owner=None)`: живые строки сессии с
+  `build_token != текущего` (опц. RBAC по `owner`), ключ — **ВЛАДЕНИЕ** (session/build_token),
+  **НИКОГДА** не имя/заголовок (два дашборда могут делить техническое имя — та самая ловушка
+  `_delete_if_exists`-по-имени DataLens, ради которой леджер и существует).
+  `mark_bi_artifacts_superseded(ids)` — шов для будущей чистки, пока не используется. Таблица
+  добавлена как always-run `CREATE IF NOT EXISTS` + индексы, **БЕЗ** bump'а версии схемы (как
+  budget-индексы `llm_calls`). **Ничего живого не удаляется** (осознанный scope): live
+  delete-by-id по выборке `orphan_bi_artifacts` оставлен будущей стенд-верифицированной сессии,
+  `_delete_if_exists`/`_promote_to_canonical` DataLens не тронуты. IR/`BIAdapter`-Protocol/
+  инварианты 1–8 не тронуты (ARCHITECTURE §3.5).
 - Бюджет LLM на шве клиента (P0-3 item 4): `LLMBudget` (`llm/budget.py`) энфорсит лимиты по
   **вызовам / токенам / стоимости / времени** на **сессию** и на **актора / скользящие 24ч**
   (владелец сессии при auth on; единый глобальный бакет при auth off — предохранитель суммарного

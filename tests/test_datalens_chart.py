@@ -569,6 +569,46 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
     assert linked.startswith("widget-")
 
 
+def test_build_drains_all_four_artifact_kinds() -> None:
+    # ownership ledger (P0-2 criterion 4): build() records every BI entity it creates on the
+    # concrete adapter; drain_build_artifacts returns them (NOT a BIAdapter Protocol method).
+    fake = FakeClient()
+    spec = DashboardSpec(
+        title="dash",
+        charts=[
+            ChartSpec(
+                id="t",
+                title="trend",
+                viz=Viz.LINE,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    dimensions=["date"],
+                    measures=[Measure(column="revenue", agg=Aggregation.SUM, label="rev")],
+                ),
+            )
+        ],
+    )
+    adapter = _adapter(fake)
+    adapter.set_artifact_namespace("sess:abc")
+    dash = adapter.build(spec)
+
+    arts = adapter.drain_build_artifacts()
+    assert [a.kind for a in arts] == ["database", "dataset", "chart", "dashboard"]
+    by_kind = {a.kind: a for a in arts}
+    # CANONICAL (post-promote) names recorded, never the transient __wip name
+    assert not by_kind["dataset"].name.endswith("__wip")
+    assert not by_kind["chart"].name.endswith("__wip")
+    assert not by_kind["dashboard"].name.endswith("__wip")
+    # dashboard native id matches the returned ref; schema_set on dataset/chart only
+    assert by_kind["dashboard"].native_id == str(dash.id)
+    assert by_kind["dataset"].schema_set == "dm.sales_daily"
+    assert by_kind["chart"].schema_set == "dm.sales_daily"
+    assert by_kind["database"].schema_set is None
+    assert by_kind["dashboard"].schema_set is None
+    # draining clears the buffer -> a second drain is empty (no double-report)
+    assert adapter.drain_build_artifacts() == []
+
+
 def _money_model() -> SemanticModel:
     """_model() with the revenue column marked as money ("руб") for the ₽ unit line."""
     from auto_bi.semantic.model import Column, ColumnRole, Physical, Table

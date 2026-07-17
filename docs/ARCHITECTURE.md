@@ -457,8 +457,28 @@ dataset   = auto_bi__{title}__{chart_id}__{ns6}__{hash8(chart_id+namespace)}
 (Protocol `BIAdapter` **не** меняется — S4; concrete helpers на Superset/DataLens). Критерий:
 два независимо собранных дашборда с одинаковыми title/chart ids и разным SQL **не** делят
 один virtual dataset; rebuild одной сессии тоже получает новый random token, поэтому старый
-dashboard не получает PUT чужого SQL. Полный ArtifactManager / ownership-table в Store —
-следующий шаг (audit этап B остаток).
+dashboard не получает PUT чужого SQL.
+
+**Ownership ledger + orphan-cleanup SELECTION (P0-2 критерий 4, 2026-07-17, OFFLINE-слой).**
+Namespace защищает от коллизий, но не отслеживает владение: Superset `build()` только создаёт
+(сироты копятся при rebuild), а DataLens удаляет прежние entry **по имени** (`_delete_if_exists`),
+рискуя снести одноимённый виджет чужого дашборда. Введён durable-леджер: таблица Store
+`bi_artifacts` пишет каждый созданный `database|dataset|chart|dashboard` с `build_token`
+(= namespace = ревизия), `owner` (из `sessions.owner`, NULL при auth off), `schema_set`
+(DWH `schema.table`, что читает датасет/чарт — для RBAC) и `status` (`live`). Оба адаптера
+накапливают сущности во время `build()` и отдают их concrete-методом `drain_build_artifacts()`
+(тоже **вне** `BIAdapter`-Protocol, как `set_artifact_namespace`); `compile_and_build` сливает их
+после успешного билда. Выбор кандидатов на чистку —
+`Store.orphan_bi_artifacts(session, current_build_token, *, owner=None)`: живые строки сессии из
+прошлых ревизий (`build_token != текущего`, опц. RBAC по owner), ключ — **владение, НИКОГДА имя/
+title**. Таблица идемпотентна (always-run `CREATE IF NOT EXISTS` + индексы, без bump'а версии —
+как budget-индексы `llm_calls`). **Осознанный scope: live-удаление НЕ включено** — ни один BI
+delete API не вызывается, поведение `_delete_if_exists`/`_promote_to_canonical` не менялось. Шов
+для будущей стенд-верифицированной сессии: `orphan_bi_artifacts` даёт id-набор → BI delete-by-id →
+`Store.mark_bi_artifacts_superseded(ids)`. ⚠️ connection (`kind='database'`) идемпотентен-по-имени
+и **общий** между билдами — строку прошлой ревизии всё ещё держит текущий билд; будущая чистка
+обязана проверять ссылки / исключать shared connection перед delete (в отличие от per-build
+dataset/chart/dashboard).
 
 ### 3.18 Resource bounds (P0-3, 2026-07-16)
 

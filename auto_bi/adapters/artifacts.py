@@ -14,6 +14,26 @@ from __future__ import annotations
 import hashlib
 import re
 import uuid
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class BuildArtifact:
+    """One BI entity created during a build(), for the ownership ledger (Store.bi_artifacts).
+
+    Accumulated on the concrete adapter as build() creates database -> datasets -> charts ->
+    dashboard, then drained by the orchestrator (`drain_build_artifacts`, a concrete adapter
+    helper — NOT a BIAdapter Protocol method, like `set_artifact_namespace`) and written to the
+    durable ledger keyed on session/owner/build_token. `name` is a technical/display name for
+    debug ONLY: ownership-based orphan cleanup keys on the build_token/owner, NEVER on name/title
+    (audit P0-2 criterion 4). `schema_set` is the DWH schema.table a dataset/chart reads, carried
+    for RBAC scoping; None for a database connection or a dashboard (they read no single table).
+    """
+
+    kind: str  # 'database' | 'dataset' | 'chart' | 'dashboard'
+    native_id: str  # BI-native id, stringified
+    name: str  # technical name (display/debug only, never a delete key)
+    schema_set: str | None = None  # DWH schema.table read (dataset/chart), for RBAC scoping
 
 
 def new_build_namespace(session_id: str | None = None) -> str:
