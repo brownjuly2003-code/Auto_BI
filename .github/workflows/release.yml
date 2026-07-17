@@ -13,7 +13,77 @@ permissions:
   packages: write
 
 jobs:
+  # P1-7: a single gate that runs FIRST and fails the whole release unless the tag, the code
+  # and the changelog agree on one version, the built sdist+wheel carry that version, and the
+  # wheel actually installs and runs. release (GHCR + GitHub Release) and pypi both `needs` it,
+  # so a stray tag `v0.3.2` while pyproject/__version__ still say `0.3.1` publishes NOTHING —
+  # no more partial release where GHCR gets 0.3.2 but PyPI gets a 0.3.1 wheel.
+  preflight:
+    name: Preflight — version coherence, changelog, build, smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Derive version from tag
+        id: meta
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      # Fail fast, before building: tag == pyproject.toml [project].version ==
+      # auto_bi.__version__, and CHANGELOG.md carries a non-empty `## [<version>]` section
+      # (not just `## [Unreleased]`). The coherence + changelog checks live in a unit-tested
+      # script (scripts/release_preflight.py, tests/test_release_preflight.py).
+      - name: Check version coherence + changelog section
+        run: uv run python scripts/release_preflight.py "$VERSION"
+
+      # Build once here; the pypi job downloads these exact artifacts (below) instead of
+      # rebuilding, so the published bits are the ones preflight checked — no rebuild drift.
+      - name: Build sdist and wheel
+        run: |
+          rm -rf dist
+          uv build
+
+      - name: Verify built artifacts match the tag
+        run: uv run python scripts/release_preflight.py "$VERSION" --dist-dir dist
+
+      - name: Twine check
+        run: uv run --with twine twine check dist/*
+
+      # Clean-install smoke: install ONLY the freshly built wheel into a fresh, isolated
+      # environment (`--no-project` => not the project's own .venv) and confirm the package
+      # imports at the tagged version and the console script runs. Catches a wheel that builds
+      # but can't be installed/used.
+      - name: Clean-install smoke (import + console script)
+        run: |
+          wheel=$(ls dist/*.whl)
+          uv run --isolated --no-project --with "$wheel" python -c "import auto_bi, os; v = os.environ['VERSION']; assert auto_bi.__version__ == v, auto_bi.__version__; print('import OK', auto_bi.__version__)"
+          uv run --isolated --no-project --with "$wheel" auto_bi --help
+
+      - name: Upload built distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
   release:
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -73,16 +143,21 @@ jobs:
   # `autobi-agent`, NOT `auto-bi`: PyPI folds separators when comparing names, so `auto-bi`
   # collides with the pre-existing placeholder project `autobi` and is refused as "too
   # similar". The importable package and the console script stay `auto_bi`.
+  #
+  # P1-7: publishes the sdist+wheel built and verified by preflight (downloaded below), not a
+  # fresh rebuild — the bits on PyPI are exactly the ones twine-checked and smoke-installed.
   pypi:
+    needs: preflight
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write  # OIDC token for PyPI; nothing else
       contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-      - name: Build sdist and wheel
-        run: uv build
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
       - name: Publish to PyPI (trusted publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
