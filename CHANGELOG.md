@@ -6,6 +6,18 @@
 
 ### Added
 
+- Release preflight (P1-7): в `release.yml` добавлен job `preflight`, который выполняется
+  ПЕРВЫМ и валит весь релиз, пока не сойдётся всё разом — версия тега (`vX.Y.Z`) ==
+  `pyproject.toml [project].version` == `auto_bi.__version__`; в `CHANGELOG.md` есть непустая
+  секция `## [<версия>]` (а не только `[Unreleased]`); `uv build` даёт один связный sdist+wheel
+  под этой версией; `twine check` проходит; чистая установка колеса в свежее окружение импортится
+  и запускает консольный скрипт (`auto_bi --help`). Job'ы `release` (GHCR + GitHub Release) и
+  `pypi` (Trusted Publishing) теперь `needs: preflight`, а `pypi` публикует РОВНО те артефакты,
+  что собрал и проверил preflight (`upload-artifact`/`download-artifact`, без пересборки) —
+  рассинхрон версий отклоняется до любой публикации, частичный релиз невозможен. Проверки
+  когерентности и секции changelog вынесены в юнит-тестируемый `scripts/release_preflight.py`
+  (`tests/test_release_preflight.py`); быстрый drift-гвард «pyproject == `__version__`» добавлен
+  в обычный сьют, чтобы расхождение ловилось на каждом PR, а не только при теге.
 - Escape hatch `raw_sql` (X-5): ручной SELECT для запросов, которые IR не выражает.
   `ChartQuery.raw_sql` (только `viz=table`) SQL_GEN отдаёт дословно, дальше — тот же
   live-гейт, что у сгенерированного SQL (`guard_sql` SELECT-only → EXPLAIN → LIMIT-прогон)
