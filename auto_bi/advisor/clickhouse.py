@@ -65,9 +65,16 @@ def _size_severity(rows: int) -> Severity:
 
 
 def explain_high_scan_fraction(ctx: RuleContext) -> list[Finding]:
-    """Measured: EXPLAIN ESTIMATE says the query reads most of the table."""
+    """Measured: EXPLAIN ESTIMATE says the query reads most of the table.
+
+    The denominator prefers the LIVE table size (`live_total_rows`, fetched by the Advisor
+    through the same seam as the EXPLAIN itself) over the git-frozen `physical.rows`: the
+    modeled size drifts per environment (20M in the model vs 1M on the demo), and a live
+    numerator over a stale denominator yields fractions that are simply wrong (P1-6).
+    """
     est_rows = ctx.evidence.get("est_rows")
-    total = ctx.physical.rows
+    live_total = ctx.evidence.get("live_total_rows")
+    total = live_total or ctx.physical.rows
     if not est_rows or not total:
         return []
     fraction = est_rows / total
@@ -95,6 +102,7 @@ def explain_high_scan_fraction(ctx: RuleContext) -> list[Finding]:
             evidence={
                 "est_rows": est_rows,
                 "total_rows": total,
+                "total_rows_source": "live" if live_total else "model",
                 "scan_fraction": round(fraction, 3),
                 "period_compare": _is_period_compare(ctx),
             },

@@ -386,6 +386,7 @@ def test_model_fields_panel(demo_model) -> None:
         "type": "Decimal(18, 2)",
         "description": "Выручка, руб",
         "agg": "sum",
+        "additivity": None,
     }
 
 

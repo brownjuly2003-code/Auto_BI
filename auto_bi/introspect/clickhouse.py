@@ -9,10 +9,12 @@ The draft is meant to be hand-edited and committed as semantic/model.yaml.
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 
 from auto_bi.config import Settings
-from auto_bi.introspect.base import RunQuery
+from auto_bi.introspect.base import RunQuery, rate_like
 from auto_bi.semantic.model import (
+    Additivity,
     Aggregation,
     Column,
     ColumnRole,
@@ -45,15 +47,17 @@ def _unwrap_type(ch_type: str) -> str:
     return inner
 
 
-def _role_for(name: str, ch_type: str) -> tuple[ColumnRole, Aggregation | None]:
+def _role_for(name: str, ch_type: str) -> tuple[ColumnRole, Aggregation | None, Additivity | None]:
     base = _unwrap_type(ch_type)
     if base.startswith(_TIME_PREFIXES):
-        return ColumnRole.TIME, None
+        return ColumnRole.TIME, None, None
     if name == "id" or name.endswith("_id"):
-        return ColumnRole.DIMENSION, None
+        return ColumnRole.DIMENSION, None, None
     if base.startswith(_NUMERIC_PREFIXES):
-        return ColumnRole.MEASURE, Aggregation.SUM
-    return ColumnRole.DIMENSION, None
+        if rate_like(name):  # a rate/price: summing rows is meaningless (P1-6)
+            return ColumnRole.MEASURE, Aggregation.AVG, Additivity.NON_ADDITIVE
+        return ColumnRole.MEASURE, Aggregation.SUM, None
+    return ColumnRole.DIMENSION, None, None
 
 
 def _guess_fk(column_name: str, database: str, table_names: set[str]) -> str | None:
@@ -96,7 +100,7 @@ class ClickHouseIntrospector:
             full_name = f"{db}.{t['name']}"
             columns = []
             for c in (c for c in columns_meta if c["table"] == t["name"]):
-                role, agg = _role_for(c["name"], c["type"])
+                role, agg, additivity = _role_for(c["name"], c["type"])
                 fk = _guess_fk(c["name"], db, full_names) if role == ColumnRole.DIMENSION else None
                 if fk:
                     joins.append(Join(left=f"{full_name}.{c['name']}", right=fk))
@@ -106,6 +110,7 @@ class ClickHouseIntrospector:
                         type=c["type"],
                         role=role,
                         agg=agg,
+                        additivity=additivity,
                         fk=fk,
                         description=c["comment"] or "",
                     )
@@ -130,6 +135,7 @@ class ClickHouseIntrospector:
                         rows=rows,
                         bytes=int(t["total_bytes"] or 0),
                         cardinality=cardinality,
+                        captured_at=datetime.now(UTC).isoformat(timespec="seconds"),
                     ),
                 )
             )

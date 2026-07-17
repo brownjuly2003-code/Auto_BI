@@ -229,6 +229,15 @@ def is_ratio_measure(measure: Measure) -> bool:
     return measure.denominator is not None
 
 
+def is_additive_agg(agg: Aggregation) -> bool:
+    """Whether the aggregate's values add up across categories (sum/count families).
+
+    Averages and extrema don't: a share-of-total over avg(price) divides by a sum of
+    averages, which measures nothing — autospec gates its structure (share) view on this.
+    Also the "reaches millions" half of the compact-number display rule."""
+    return agg in (Aggregation.SUM, Aggregation.COUNT, Aggregation.COUNT_DISTINCT)
+
+
 def is_compact_number(measure: Measure) -> bool:
     """Whether a measure should DISPLAY abbreviated (236G / 236,1 млрд) rather than in full
     (236149963687). Additive aggregates over a fact table reach millions/billions and overflow
@@ -242,7 +251,7 @@ def is_compact_number(measure: Measure) -> bool:
     """
     if is_percent_measure(measure) or is_ratio_measure(measure):
         return False
-    return measure.agg in (Aggregation.SUM, Aggregation.COUNT, Aggregation.COUNT_DISTINCT)
+    return is_additive_agg(measure.agg)
 
 
 class OrderBy(StrictModel):

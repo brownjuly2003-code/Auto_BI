@@ -14,7 +14,7 @@ from auto_bi.ir.spec import (
     column_alias,
     measure_alias,
 )
-from auto_bi.semantic.model import Aggregation, ColumnRole, SemanticModel, Table
+from auto_bi.semantic.model import Additivity, Aggregation, ColumnRole, SemanticModel, Table
 
 # numeric aggregations make no sense over dimension columns; count/count_distinct
 # are legal over anything. Rejecting here keeps the error actionable for the repair
@@ -253,6 +253,13 @@ def _validate_chart(
             errors.append(
                 f"{prefix}: {agg.value} over {col.role.value} column "
                 f"{col_name!r} — для неё допустимы только count/count_distinct"
+            )
+        elif agg == Aggregation.SUM and col.additivity == Additivity.NON_ADDITIVE:
+            # semantic governance (P1-6): a rate/ratio/price summed over rows is
+            # business-meaningless; the model says so, the spec must not do it
+            errors.append(
+                f"{prefix}: sum над неаддитивной колонкой {col_name!r} (rate/ratio) "
+                "бессмыслен — используйте avg или ratio из numerator/denominator"
             )
 
     for measure in chart.query.measures:

@@ -51,7 +51,8 @@ tables:
   - name: effective_tax_rate
     type: Nullable(Float64)
     role: measure
-    agg: sum
+    agg: avg
+    additivity: non_additive
   physical:
     engine: clickhouse
     table_engine: MergeTree
@@ -136,7 +137,8 @@ tables:
   - name: return_rate
     type: Float64
     role: measure
-    agg: sum
+    agg: avg
+    additivity: non_additive
   physical:
     engine: clickhouse
     table_engine: MergeTree
@@ -189,7 +191,8 @@ tables:
   - name: return_rate
     type: Float64
     role: measure
-    agg: sum
+    agg: avg
+    additivity: non_additive
   - name: returned_value
     type: Float64
     role: measure

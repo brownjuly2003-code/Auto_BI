@@ -12,11 +12,13 @@ stubbed in tests) and the same draft-then-hand-edit contract for semantic/model.
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 
 from auto_bi.config import Settings
 from auto_bi.engine import GREENPLUM
-from auto_bi.introspect.base import RunQuery
+from auto_bi.introspect.base import RunQuery, rate_like
 from auto_bi.semantic.model import (
+    Additivity,
     Aggregation,
     Column,
     ColumnRole,
@@ -40,15 +42,17 @@ def _ident(name: str) -> str:
     return name
 
 
-def _role_for(name: str, pg_type: str) -> tuple[ColumnRole, Aggregation | None]:
+def _role_for(name: str, pg_type: str) -> tuple[ColumnRole, Aggregation | None, Additivity | None]:
     base = pg_type.lower()
     if base.startswith(_TIME_TYPES):
-        return ColumnRole.TIME, None
+        return ColumnRole.TIME, None, None
     if name == "id" or name.endswith("_id"):
-        return ColumnRole.DIMENSION, None
+        return ColumnRole.DIMENSION, None, None
     if base.startswith(_NUMERIC_TYPES):
-        return ColumnRole.MEASURE, Aggregation.SUM
-    return ColumnRole.DIMENSION, None
+        if rate_like(name):  # a rate/price: summing rows is meaningless (P1-6)
+            return ColumnRole.MEASURE, Aggregation.AVG, Additivity.NON_ADDITIVE
+        return ColumnRole.MEASURE, Aggregation.SUM, None
+    return ColumnRole.DIMENSION, None, None
 
 
 def _parse_distribution_key(distributedby: str | None) -> list[str]:
@@ -116,7 +120,7 @@ class GreenplumIntrospector:
             cardinality = self._cardinality(sch, t["name"])
             columns: list[Column] = []
             for c in columns_by_name[full_name]:
-                role, agg = _role_for(c["name"], c["type"])
+                role, agg, additivity = _role_for(c["name"], c["type"])
                 fk = (
                     _guess_fk(c["name"], sch, columns_by_table, full_name)
                     if role == ColumnRole.DIMENSION
@@ -130,6 +134,7 @@ class GreenplumIntrospector:
                         type=c["type"],
                         role=role,
                         agg=agg,
+                        additivity=additivity,
                         fk=fk,
                         description=c["comment"] or "",
                         top_values=self._top_values(sch, t["name"], c["name"], role, cardinality),
@@ -147,6 +152,7 @@ class GreenplumIntrospector:
                         partition_key=self._partition_key(sch, t["name"]),
                         rows=self._rows(sch, t["name"]),
                         cardinality=cardinality,
+                        captured_at=datetime.now(UTC).isoformat(timespec="seconds"),
                     ),
                 )
             )

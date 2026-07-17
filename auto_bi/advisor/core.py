@@ -10,7 +10,7 @@ from __future__ import annotations
 from auto_bi.advisor.clickhouse import RULES as CH_RULES
 from auto_bi.advisor.clickhouse import RuleContext
 from auto_bi.advisor.effective import effective_filters
-from auto_bi.advisor.explain import estimate_scan
+from auto_bi.advisor.explain import estimate_scan, live_row_count
 from auto_bi.advisor.findings import Finding
 from auto_bi.advisor.greenplum import RULES as GP_RULES
 from auto_bi.advisor.greenplum import gp_explain_evidence
@@ -29,6 +29,18 @@ class Advisor:
         self._engine = next((t.physical.engine for t in model.tables if t.physical), CLICKHOUSE)
         self._dialect = sqlglot_dialect(self._engine)
         self._rules = GP_RULES if self._engine == GREENPLUM else CH_RULES
+        # live row counts per table, one catalog query each per Advisor instance: the
+        # scan-fraction denominator must be as live as the EXPLAIN numerator (P1-6)
+        self._live_rows: dict[str, int | None] = {}
+
+    def _live_total_rows(self, table_name: str) -> int | None:
+        """Live table size through the same read-only seam; None => model fallback.
+        CH-only: the GP pack has no scan-fraction rule to feed."""
+        if self._run_query is None or self._engine == GREENPLUM:
+            return None
+        if table_name not in self._live_rows:
+            self._live_rows[table_name] = live_row_count(self._run_query, table_name)
+        return self._live_rows[table_name]
 
     def _gather_evidence(self, sql: str) -> dict:
         if self._run_query is None:
@@ -53,6 +65,9 @@ class Advisor:
             update={"filters": effective_filters(chart, spec, self._model)}
         )
         evidence = self._gather_evidence(generate_chart_sql(query, dialect=self._dialect))
+        live_rows = self._live_total_rows(chart.query.table)
+        if live_rows is not None:
+            evidence = {**evidence, "live_total_rows": live_rows}
 
         ctx = RuleContext(
             chart_id=chart.id,
