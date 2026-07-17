@@ -20,7 +20,7 @@ from enum import StrEnum
 from pydantic import Field
 
 from auto_bi.advisor.core import Advisor
-from auto_bi.advisor.narrate import ChartVerdict, narrate_findings
+from auto_bi.advisor.narrate import ChartVerdict, narrate_findings, worst_verdicts
 from auto_bi.agent.grounding import GroundingReport, clarify_questions, ground
 from auto_bi.agent.propose import patch_spec, propose_spec
 from auto_bi.agent.seed import FieldsSeed, render_seed_request, seed_analysis, seed_tables
@@ -247,14 +247,14 @@ class AgentSession:
 
         The auto-overview entry (`agent/autospec.py`) produces a deterministic spec, so
         the machine skips GROUNDING/PROPOSE and goes straight to APPROVE — the same
-        approve/build/iterate path then applies. Advisor narration needs the LLM, so
-        verdicts stay empty here (the deterministic findings still show in the CLI/offline
-        path); a later word edit in APPROVE patches via the LLM as usual.
+        approve/build/iterate path then applies. The advisor runs here too (P1-2): only its
+        *wording* needs the LLM, so this path carries the rules' mechanical text instead. A
+        later word edit in APPROVE goes through the LLM as usual and narrates then.
         """
         if self.phase != AgentPhase.INTAKE:
             raise RuntimeError(f"session already started (phase={self.phase})")
         self.spec = spec
-        self.verdicts = []
+        self.verdicts = self._advise_mechanically(spec)
         self.phase = AgentPhase.APPROVE
         message = spec_summary(spec)
         self._record("agent", message)
@@ -262,8 +262,9 @@ class AgentSession:
             self._spec_row_id = self._store.save_spec(
                 self._session_id, spec.model_dump(mode="json")
             )
+            self._log_dm_change_requests()
         self._trace("auto_propose", detail=f"{len(spec.charts)} чартов")
-        return AgentTurn(phase=self.phase, message=message, spec=spec, verdicts=[])
+        return AgentTurn(phase=self.phase, message=message, spec=spec, verdicts=self.verdicts)
 
     def approve(self) -> DashboardSpec:
         if self.phase != AgentPhase.APPROVE or self.spec is None:
@@ -341,26 +342,7 @@ class AgentSession:
             self._spec_row_id = self._store.save_spec(
                 self._session_id, self.spec.model_dump(mode="json")
             )
-            for v in self.verdicts:
-                if v.verdict_class.value == "dm_change_request":
-                    chart = next((c for c in self.spec.charts if c.id == v.chart_id), None)
-                    key = (chart.query.table if chart else "", ", ".join(v.rules))
-                    if key in self._dcr_logged:
-                        continue  # word edits re-run the advisor: one request per finding
-                    self._dcr_logged.add(key)
-                    remediation = (
-                        json.dumps([r.model_dump() for r in v.remediations], ensure_ascii=False)
-                        if v.remediations
-                        else ""
-                    )
-                    self._store.add_dm_change_request(
-                        self._session_id,
-                        table_name=key[0],
-                        rule=key[1],
-                        severity=v.severity.value,
-                        narrative=v.text,
-                        remediation=remediation,
-                    )
+            self._log_dm_change_requests()
         return AgentTurn(
             phase=self.phase,
             message=message,
@@ -368,6 +350,48 @@ class AgentSession:
             verdicts=self.verdicts,
             notes=notes or [],
         )
+
+    def _log_dm_change_requests(self) -> None:
+        """Persist dm_change_request verdicts so the DM owner can act on them. Shared by the
+        LLM propose path and the auto path — a change request is decided by the rules, so it
+        does not depend on narration having run."""
+        if self._store is None or self._session_id is None or self.spec is None:
+            return
+        for v in self.verdicts:
+            if v.verdict_class.value != "dm_change_request":
+                continue
+            chart = next((c for c in self.spec.charts if c.id == v.chart_id), None)
+            key = (chart.query.table if chart else "", ", ".join(v.rules))
+            if key in self._dcr_logged:
+                continue  # word edits re-run the advisor: one request per finding
+            self._dcr_logged.add(key)
+            remediation = (
+                json.dumps([r.model_dump() for r in v.remediations], ensure_ascii=False)
+                if v.remediations
+                else ""
+            )
+            self._store.add_dm_change_request(
+                self._session_id,
+                table_name=key[0],
+                rule=key[1],
+                severity=v.severity.value,
+                narrative=v.text,
+                remediation=remediation,
+            )
+
+    def _advise_mechanically(self, spec: DashboardSpec) -> list[ChartVerdict]:
+        """Advisor verdicts without the LLM (P1-2).
+
+        The verdict is code's either way (invariant 5) — only the wording is the LLM's, and
+        the auto path has no LLM to ask. `worst_verdicts` keeps each rule's own mechanical
+        text, which beats the alternative of staying silent on real findings.
+        """
+        if self._advisor is None:
+            return []
+        with self._timed("advisor") as step:
+            findings = self._advisor.review(spec)
+            step.detail = f"{len(findings)} находок"
+        return list(worst_verdicts(findings).values())
 
     def _record(self, role: str, content: str) -> None:
         if self._store is not None and self._session_id is not None:

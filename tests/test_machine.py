@@ -417,6 +417,67 @@ def test_trace_records_agent_steps(demo_model, tmp_path) -> None:
     store.close()
 
 
+def _one_finding_advisor(finding):
+    class OneFindingAdvisor(Advisor):
+        def __init__(self) -> None:  # bypass model/run_query wiring
+            pass
+
+        def review(self, spec):
+            return [finding]
+
+    return OneFindingAdvisor()
+
+
+def test_auto_path_advises_without_the_llm(demo_model, tmp_path) -> None:
+    # P1-2: the auto path used to adopt a spec with verdicts=[] — the advisor never ran, so a
+    # real finding was silently dropped. Only the wording needs the LLM; the verdict is code's.
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("авто-обзор: dm.sales_daily")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+
+    llm = ScriptedLLM([])  # any LLM call here would raise -> narration must not be attempted
+    agent = AgentSession(
+        demo_model, llm, _one_finding_advisor(_finding()), store=store, session_id=sid
+    )
+    turn = agent.adopt_spec(spec)
+
+    assert turn.phase == AgentPhase.APPROVE
+    (verdict,) = turn.verdicts
+    assert verdict.text == "фильтр мимо префикса ключа сортировки"  # the rule's own text
+    assert verdict.suggestions == ["добавить фильтр по date"]
+    store.close()
+
+
+def test_auto_path_logs_dm_change_requests(demo_model, tmp_path) -> None:
+    # a change request is decided by the rules, so the auto path must record it too
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("авто-обзор: dm.sales_daily")
+    critical = _finding(
+        severity=Severity.CRITICAL,
+        vc=VerdictClass.DM_CHANGE_REQUEST,
+        rule="no_filter_on_large_fact",
+        title="запрос не предусмотрен витриной",
+    )
+    agent = AgentSession(
+        demo_model, ScriptedLLM([]), _one_finding_advisor(critical), store=store, session_id=sid
+    )
+    agent.adopt_spec(DashboardSpec.model_validate(GOOD_SPEC))
+
+    (req,) = store.dm_change_requests("open")
+    assert req["table_name"] == "dm.sales_daily"
+    assert req["rule"] == "no_filter_on_large_fact"
+    store.close()
+
+
+def test_auto_path_stays_silent_on_a_clean_spec(demo_model, tmp_path) -> None:
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("авто-обзор: dm.sales_daily")
+    agent = AgentSession(demo_model, ScriptedLLM([]), advisor=None, store=store, session_id=sid)
+    turn = agent.adopt_spec(DashboardSpec.model_validate(GOOD_SPEC))
+    assert turn.verdicts == []  # no advisor wired -> unchanged behaviour
+    store.close()
+
+
 def test_trace_records_clarify_and_grounding_error(demo_model, tmp_path) -> None:
     store = Store(tmp_path / "s.sqlite")
     sid = store.create_session("неоднозначно")

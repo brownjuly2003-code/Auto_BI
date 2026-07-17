@@ -164,6 +164,7 @@ def _build(description: str, model_path: str, target: str = "superset") -> int:
     from pathlib import Path
 
     from auto_bi.adapters.factory import make_adapter
+    from auto_bi.advisor.core import Advisor
     from auto_bi.agent.pipeline import build_dashboard
     from auto_bi.agent.sql_guard import LiveSQLValidator
     from auto_bi.config import get_settings
@@ -184,16 +185,18 @@ def _build(description: str, model_path: str, target: str = "superset") -> int:
     store = Store(settings.store_path)
     session_id = store.create_session(description)
     store.add_message(session_id, "user", description)
+    run_query = make_run_query(settings)
     ref = build_dashboard(
         description,
         model,
         llm=make_llm(settings, store=store),
-        sql_validator=LiveSQLValidator(make_run_query(settings)),
+        sql_validator=LiveSQLValidator(run_query),
         adapter_for=partial(make_adapter, settings=settings, model=model),
         include_samples=settings.send_samples,
         store=store,
         session_id=session_id,
         target_bi=target_bi,
+        advisor=Advisor(model, run_query),
     )
     base = settings.datalens_url if target_bi == TargetBI.DATALENS else settings.superset_url
     print(f"\nДашборд готов: {base.rstrip('/')}{ref.url}")
@@ -271,9 +274,10 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
     from pathlib import Path
 
     from auto_bi.adapters.factory import make_adapter
+    from auto_bi.advisor.core import Advisor
     from auto_bi.agent.autospec import build_auto_spec
     from auto_bi.agent.insights import analyze_spec
-    from auto_bi.agent.pipeline import compile_and_build
+    from auto_bi.agent.pipeline import compile_and_build, review_and_log
     from auto_bi.agent.sql_guard import LiveSQLValidator
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
@@ -303,6 +307,7 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
         print(f"  - [{chart.viz.value}] {chart.title}")
 
     run_query = make_run_query(settings)
+    review_and_log(Advisor(model, run_query), spec)
     ref = compile_and_build(
         spec,
         model,
