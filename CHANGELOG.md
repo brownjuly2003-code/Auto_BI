@@ -6,6 +6,10 @@
 
 ### Added
 
+- Гейт качества тестов (D-4-минимум, аудит 2026-07-18): CI падает при покрытии <90%
+  (`--cov-fail-under=90`; фактическое ~95%), warnings в тестах = ошибки
+  (`filterwarnings = ["error"]` c одним явным allowlist-исключением на сторонний
+  starlette/httpx2-deprecation, который из кода auto_bi не чинится).
 - BI-artifact ownership **live-cleanup ВКЛЮЧЁН** (P0-2, критерий 4, надстройка над OFFLINE-леджером
   ниже; live-проверен на 20M-стенде 2026-07-18). Два пути через один движок удаления
   `prune_artifact_rows` (delete-by-id, порядок `chart → dashboard → dataset` — датасет не

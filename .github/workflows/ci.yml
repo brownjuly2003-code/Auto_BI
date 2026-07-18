@@ -61,8 +61,10 @@ jobs:
       # churning uv.lock. duckdb runs the transform SQL's numeric verification
       # (test_sqlgen_transforms) under PostgreSQL window semantics; without it those
       # tests importorskip and the numbers go unchecked.
+      # --cov-fail-under gates the ratchet (D-4): the suite has held ~95% since Phase 4,
+      # 90 leaves headroom for legitimate wiring code while failing on a real slide.
       - name: Pytest + coverage
-        run: uv run --with pytest-cov --with duckdb pytest -q --cov=auto_bi --cov-report=term-missing
+        run: uv run --with pytest-cov --with duckdb pytest -q --cov=auto_bi --cov-report=term-missing --cov-fail-under=90
 
       # The advisor eval suite is deterministic (rule-pack findings, no LLM/stand) —
       # running it in CI machinizes part of invariant 8 (don't ship a prompt/advisor
