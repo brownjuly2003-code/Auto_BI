@@ -511,6 +511,13 @@ per-session серийность, либо переработать селекц
 - **Work quota:** `AUTO_BI_WORK_RATE_*` (и **форсируется** при `demo_auto_only`) на
   `POST /sessions/auto`, `POST .../approve`, `GET .../insights` — DWH/BI cost, не только LLM.
   LLM-квота O-2 (`SESSION_RATE_*`) по-прежнему отдельно на text/reply.
+- **Bounded SSE consumers (C-7, 2026-07-18):** `SSEGate` (`api/ratelimit.py`) —
+  `AUTO_BI_SSE_MAX_STREAMS` (глобально, дефолт 20) + `AUTO_BI_SSE_MAX_STREAMS_PER_SESSION`
+  (дефолт 3; 0 = без лимита). Каждый открытый `GET .../events` паркует worker-тред на
+  sync-генераторе; сверх ёмкости → 429 + `Retry-After`. Слот берётся ДО создания
+  итератора событий (отбитый консьюмер не съедает билд-события) и освобождается в
+  `finally` генератора (срабатывает и на диссконнекте клиента; мёртвых добивает
+  F4-heartbeat).
 
 ## 4. Безопасность
 

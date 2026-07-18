@@ -113,3 +113,44 @@ class LoginRateLimiter:
             self._lockout_until.pop(key, None)
             self._strikes.pop(key, None)
         self._last_purge = now
+
+
+class SSEGate:
+    """Bounded concurrent SSE consumers (audit C-7): a global cap and a per-session cap.
+
+    Each open event stream parks a worker thread on the sync generator, so unbounded
+    EventSource consumers exhaust the pool. `acquire` is checked BEFORE the session's
+    event iterator is created (a rejected consumer never swallows build events) and the
+    matching `release` runs in the stream generator's `finally`, which starlette invokes
+    on client disconnect as well. A cap of 0 disables that dimension.
+    """
+
+    def __init__(self, max_total: int = 20, max_per_session: int = 3) -> None:
+        self._max_total = max_total
+        self._max_per_session = max_per_session
+        self._lock = threading.Lock()
+        self._by_session: dict[str, int] = {}
+
+    def acquire(self, session_id: str) -> bool:
+        with self._lock:
+            if self._max_total and sum(self._by_session.values()) >= self._max_total:
+                return False
+            if (
+                self._max_per_session
+                and self._by_session.get(session_id, 0) >= self._max_per_session
+            ):
+                return False
+            self._by_session[session_id] = self._by_session.get(session_id, 0) + 1
+            return True
+
+    def release(self, session_id: str) -> None:
+        with self._lock:
+            left = self._by_session.get(session_id, 0) - 1
+            if left > 0:
+                self._by_session[session_id] = left
+            else:
+                self._by_session.pop(session_id, None)
+
+    def active(self) -> int:
+        with self._lock:
+            return sum(self._by_session.values())

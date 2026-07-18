@@ -35,7 +35,7 @@ from auto_bi.agent.insights import analyze_spec
 from auto_bi.agent.machine import AgentPhase, AgentTurn
 from auto_bi.agent.propose import SpecValidationError
 from auto_bi.agent.seed import validate_seed
-from auto_bi.api.ratelimit import LoginRateLimiter
+from auto_bi.api.ratelimit import LoginRateLimiter, SSEGate
 from auto_bi.api.schemas import (
     AutoSessionRequest,
     BuildEvent,
@@ -95,6 +95,8 @@ def create_app(
     work_rate_enabled: bool = False,  # P0-3 expensive non-LLM paths; see config.py
     work_rate_per_day: int = 50,
     max_concurrent_builds: int = 2,  # P0-3 hard cap on in-flight builds
+    sse_max_streams: int = 20,  # C-7 cap on concurrent SSE consumers, 0 = unlimited
+    sse_max_streams_per_session: int = 3,  # C-7 per-session cap, 0 = unlimited
     bi_base_urls: Mapping[TargetBI, str] | None = None,  # target -> BI host, absolutizes ref.url
     demo_auto_only: bool = False,  # P8 public demo: auto-overview only; see config.py
 ) -> FastAPI:
@@ -813,15 +815,35 @@ def create_app(
             ],
         }
 
+    # C-7: bounded SSE fan-out (SSEGate). Exposed on app.state so tests can saturate
+    # the gate without holding real concurrent connections (TestClient buffers streams).
+    app.state.sse_gate = SSEGate(sse_max_streams, sse_max_streams_per_session)
+
     @app.get("/api/v1/sessions/{session_id}/events")
     def build_events(session_id: str, request: Request) -> StreamingResponse:
         managed = _owned(session_id, request)
         if managed.agent.phase != AgentPhase.APPROVED and managed.build_status == "idle":
             raise HTTPException(status_code=409, detail="no build to stream: approve first")
+        # capped BEFORE the event iterator exists: a rejected consumer swallows nothing
+        if not app.state.sse_gate.acquire(session_id):
+            raise HTTPException(
+                status_code=429,
+                detail="too many concurrent event streams; retry shortly",
+                headers={"Retry-After": "5"},
+            )
+
+        def _stream():
+            try:
+                # None = idle heartbeat: an SSE comment clients ignore, but writing it
+                # surfaces a dropped connection and frees the worker thread (F4)
+                for event in managed.stream_events():
+                    yield ": ping\n\n" if event is None else event.sse()
+            finally:
+                # runs on normal end AND client disconnect (starlette closes the generator)
+                app.state.sse_gate.release(session_id)
+
         return StreamingResponse(
-            # None = idle heartbeat: an SSE comment clients ignore, but writing it
-            # surfaces a dropped connection and frees the worker thread (F4)
-            (": ping\n\n" if event is None else event.sse() for event in managed.stream_events()),
+            _stream(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
