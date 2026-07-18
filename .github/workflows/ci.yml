@@ -116,6 +116,27 @@ jobs:
           git commit -m "chore(ci): update coverage badge [skip ci]"
           git push
 
+  # C-5: known-CVE gate over the LOCKED dependency set (uv.lock is the source of truth;
+  # --all-extras covers the anthropic extra too). uv export pins everything, so pip-audit
+  # runs offline-resolution-free with --disable-pip.
+  dependency-audit:
+    name: Dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Export the locked dependency set
+        run: uv export --format requirements-txt --all-extras --no-emit-project -o requirements-audit.txt
+
+      - name: Audit locked dependencies for known CVEs
+        run: uvx pip-audit -r requirements-audit.txt --disable-pip --require-hashes --progress-spinner off
+
   docker:
     name: Docker image build (drift check)
     runs-on: ubuntu-latest
