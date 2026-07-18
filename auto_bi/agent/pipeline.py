@@ -285,6 +285,13 @@ def _prune_superseded_artifacts(
     and the prune is a no-op. NEVER fails the build: the dashboard is already delivered, so
     any error here is logged and the leftover rows stay 'live' for a later prune.
     Kill-switch: AUTO_BI_PRUNE_ON_REBUILD=false (wired via the `prune_orphans` parameter).
+
+    INVARIANT (builds of ONE session are serial): `orphan_bi_artifacts` selects every ledger
+    row of the session whose token differs from `current_build_token` — a CONCURRENT build of
+    the same session that already recorded its ledger rows would be deleted here as a "prior
+    revision". Today this is unreachable (the API rejects a second build of a running session
+    with 409, the CLI creates a fresh session per run), but a future parallel executor MUST
+    keep per-session builds serial or rework this selection (see ARCHITECTURE §3.17).
     """
     delete = getattr(adapter, "delete_artifact", None)
     if not callable(delete):

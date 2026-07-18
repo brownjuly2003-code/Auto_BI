@@ -833,9 +833,10 @@ class Store:
         """Flip the given ledger rows from 'live' to 'superseded' (keyed on the ledger's own
         row id, never on a BI name).
 
-        Available for the FUTURE live-cleanup path and UNUSED today: the stand-verified session
-        that wires the BI delete-by-id will call this AFTER a successful delete so a re-run
-        never re-selects an already-removed artifact via `orphan_bi_artifacts`."""
+        Called by the live-cleanup engine (`prune_artifact_rows`) AFTER a successful BI
+        delete-by-id so a re-run never re-selects an already-removed artifact via
+        `orphan_bi_artifacts`/`stale_bi_artifacts`. Rows whose delete failed are left 'live'
+        on purpose — the next prune pass retries them (404 = already gone = success)."""
         ids = list(ids)
         if not ids:
             return

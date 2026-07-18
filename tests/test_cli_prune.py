@@ -115,6 +115,30 @@ def test_prune_failed_delete_keeps_row_live_and_exits_1(monkeypatch, tmp_path) -
     assert statuses["dataset:101"] == "superseded"
 
 
+def test_prune_unknown_target_rows_skipped_not_traceback(monkeypatch, tmp_path, capsys) -> None:
+    """A ledger row with an unknown target_bi is reported as skipped; valid targets still run."""
+    adapter = _FakeAdapter()
+    store = _wire(monkeypatch, tmp_path, adapter)
+    session = _seed_two_builds(store)  # superset: t1 stale, t2 latest
+    ghost = store.create_session("неизвестный таргет")
+    for token, native_id in (("g1", "901"), ("g2", "902")):
+        store.record_bi_artifact(
+            session_id=ghost,
+            build_token=token,
+            target_bi="mssql",
+            kind="dashboard",
+            native_id=native_id,
+            name=f"dashboard-{native_id}",
+        )
+    rc = main(["prune", "--model-path", MODEL])
+    assert rc == 1  # skipped rows -> non-zero, but no traceback
+    out = capsys.readouterr().out
+    assert "mssql" in out and "пропущено" in out
+    # the unknown-target stale row is untouched, the superset revision is still pruned
+    assert _statuses(store, ghost)["dashboard:901"] == "live"
+    assert _statuses(store, session)["chart:102"] == "superseded"
+
+
 def test_prune_unhealthy_bi_skips_target(monkeypatch, tmp_path, capsys) -> None:
     adapter = _FakeAdapter(healthy=False)
     store = _wire(monkeypatch, tmp_path, adapter)

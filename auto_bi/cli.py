@@ -397,7 +397,12 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
     failed_total = 0
     skipped_total = 0
     for target, target_rows in sorted(by_target.items()):
-        adapter = adapter_for(TargetBI(target))
+        try:
+            adapter = adapter_for(TargetBI(target))
+        except Exception as exc:
+            print(f"{target}: неизвестный target ({exc}) — {len(target_rows)} строк пропущено")
+            skipped_total += len(target_rows)
+            continue
         health = adapter.healthcheck()
         if not health.ok:
             print(f"{target}: недоступен ({health.message}) — {len(target_rows)} строк пропущено")
