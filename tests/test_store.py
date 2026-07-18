@@ -576,6 +576,19 @@ def test_orphan_bi_artifacts_never_selects_by_name(store: Store) -> None:
     assert [o["native_id"] for o in orphans] == ["1"]  # session b's colliding-name row excluded
 
 
+def test_orphan_bi_artifacts_excludes_shared_database_by_default(store: Store) -> None:
+    # the connection (kind='database') is idempotent-by-name and SHARED across builds: the
+    # prior revision's row is still referenced by the current build, so the default selection
+    # must NOT offer it for deletion; include_shared=True keeps the full audit view.
+    sid = store.create_session("r")
+    _art(store, sid, "tok1", kind="database", native_id="1", name="conn", schema_set=None)
+    per_build = _art(store, sid, "tok1", kind="dataset", native_id="10")
+    orphans = store.orphan_bi_artifacts(sid, "tok2")
+    assert [o["id"] for o in orphans] == [per_build]  # deletable as returned
+    audit = store.orphan_bi_artifacts(sid, "tok2", include_shared=True)
+    assert [o["kind"] for o in audit] == ["database", "dataset"]
+
+
 def test_orphan_bi_artifacts_owner_scoping(store: Store) -> None:
     sid = store.create_session("r")
     alice = _art(store, sid, "tok1", native_id="1", owner="alice")

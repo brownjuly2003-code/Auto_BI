@@ -19,11 +19,14 @@
   `build_token != текущего` (опц. RBAC по `owner`), ключ — **ВЛАДЕНИЕ** (session/build_token),
   **НИКОГДА** не имя/заголовок (два дашборда могут делить техническое имя — та самая ловушка
   `_delete_if_exists`-по-имени DataLens, ради которой леджер и существует).
-  `mark_bi_artifacts_superseded(ids)` — шов для будущей чистки, пока не используется. Таблица
-  добавлена как always-run `CREATE IF NOT EXISTS` + индексы, **БЕЗ** bump'а версии схемы (как
-  budget-индексы `llm_calls`). **Ничего живого не удаляется** (осознанный scope): live
-  delete-by-id по выборке `orphan_bi_artifacts` оставлен будущей стенд-верифицированной сессии,
-  `_delete_if_exists`/`_promote_to_canonical` DataLens не тронуты. IR/`BIAdapter`-Protocol/
+  `mark_bi_artifacts_superseded(ids)` — шов для будущей чистки, пока не используется. Селекция
+  исключает `SHARED_BI_KINDS` (`database`-connection, идемпотентен-по-имени и общий между
+  билдами) **по умолчанию** — выдача безопасна для delete-by-id как есть; `include_shared=True`
+  даёт полный аудит-вид. Таблица добавлена как always-run `CREATE IF NOT EXISTS` + индексы,
+  **БЕЗ** bump'а версии схемы (как budget-индексы `llm_calls`). **Ничего живого не удаляется**
+  (осознанный scope): сам продукт BI delete API не вызывает, `_delete_if_exists`/
+  `_promote_to_canonical` DataLens не тронуты; полный цикл build → rebuild → orphan → Superset
+  DELETE → superseded live-проверен на 20M-стенде 2026-07-18. IR/`BIAdapter`-Protocol/
   инварианты 1–8 не тронуты (ARCHITECTURE §3.5).
 - Бюджет LLM на шве клиента (P0-3 item 4): `LLMBudget` (`llm/budget.py`) энфорсит лимиты по
   **вызовам / токенам / стоимости / времени** на **сессию** и на **актора / скользящие 24ч**

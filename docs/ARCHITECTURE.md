@@ -476,9 +476,12 @@ title**. Таблица идемпотентна (always-run `CREATE IF NOT EXIS
 delete API не вызывается, поведение `_delete_if_exists`/`_promote_to_canonical` не менялось. Шов
 для будущей стенд-верифицированной сессии: `orphan_bi_artifacts` даёт id-набор → BI delete-by-id →
 `Store.mark_bi_artifacts_superseded(ids)`. ⚠️ connection (`kind='database'`) идемпотентен-по-имени
-и **общий** между билдами — строку прошлой ревизии всё ещё держит текущий билд; будущая чистка
-обязана проверять ссылки / исключать shared connection перед delete (в отличие от per-build
-dataset/chart/dashboard).
+и **общий** между билдами — строку прошлой ревизии всё ещё держит текущий билд, поэтому селекция
+исключает `SHARED_BI_KINDS` **по умолчанию** (кодом, не только докстрингом): выдача
+`orphan_bi_artifacts` безопасна для delete-by-id как есть; `include_shared=True` — полный
+аудит-вид. Весь цикл (build → rebuild → orphan → Superset DELETE → superseded) live-проверен
+на стенде 2026-07-18: два дашборда с одинаковым title различены по ownership, per-build
+артефакты удалены (200→404), shared connection и чужие дашборды не тронуты.
 
 ### 3.18 Resource bounds (P0-3, 2026-07-16)
 

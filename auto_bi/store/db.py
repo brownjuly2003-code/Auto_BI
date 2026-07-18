@@ -55,6 +55,12 @@ _SCHEMA_VERSION = 7  # bump together with a migration when the schema changes
 
 _TOKEN_HASH_RE = re.compile(r"^[0-9a-f]{64}$")  # sha256 hex digest shape
 
+# BI-artifact kinds that are idempotent-by-name and SHARED across builds: the connection a
+# prior revision recorded is still referenced by the CURRENT build (and by unrelated
+# dashboards), so it is never a per-build orphan. `orphan_bi_artifacts` excludes these by
+# default — deleting one live was proven to break every dashboard on the connection.
+SHARED_BI_KINDS = frozenset({"database"})
+
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -741,7 +747,12 @@ class Store:
         return self._rows("SELECT * FROM bi_artifacts WHERE session_id = ? ORDER BY id", session_id)
 
     def orphan_bi_artifacts(
-        self, session_id: str, current_build_token: str, *, owner: str | None = None
+        self,
+        session_id: str,
+        current_build_token: str,
+        *,
+        owner: str | None = None,
+        include_shared: bool = False,
     ) -> list[dict[str, Any]]:
         """Delete candidates for ownership-based orphan cleanup (audit P0-2 criterion 4).
 
@@ -754,20 +765,27 @@ class Store:
         RBAC-scoped to that owner's rows (a non-admin cleanup never touches another user's
         artifacts); `owner=None` (auth off / admin) matches every owner for the session.
 
-        OFFLINE selection layer only (SCOPE decision): this returns the id set that a future
-        stand-verified session will feed to the BI delete-by-id API. It performs NO BI delete
-        and does not flip any status — see `mark_bi_artifacts_superseded` for the seam the
-        live-cleanup path will call after a successful delete. NOTE for that future session:
-        the `database` connection (Superset/DataLens) is idempotent-by-name and SHARED across
-        builds, so a prior-revision `kind='database'` row here is still referenced by the
-        current build — validate references (or exclude shared connection kinds) before
-        deleting, unlike per-build datasets/charts/dashboards.
+        `SHARED_BI_KINDS` (the `database` connection) are EXCLUDED by default: the connection
+        is idempotent-by-name and shared across builds, so a prior-revision `kind='database'`
+        row is still referenced by the current build (and by unrelated dashboards) — feeding
+        it to a delete-by-id API would sever every dashboard on the connection. This was
+        proven live on the stand (2026-07-18): the selection is safe to delete as returned.
+        `include_shared=True` restores the full audit view (every prior-revision row).
+
+        OFFLINE selection layer only (SCOPE decision): this returns the id set that the
+        live-cleanup path feeds to the BI delete-by-id API. It performs NO BI delete and does
+        not flip any status — see `mark_bi_artifacts_superseded` for the seam that path calls
+        after a successful delete.
         """
         sql = (
             "SELECT * FROM bi_artifacts"
             " WHERE session_id = ? AND build_token != ? AND status = 'live'"
         )
         params: list[Any] = [session_id, current_build_token]
+        if not include_shared:
+            placeholders = ",".join("?" for _ in SHARED_BI_KINDS)
+            sql += f" AND kind NOT IN ({placeholders})"
+            params.extend(sorted(SHARED_BI_KINDS))
         if owner is not None:
             sql += " AND owner = ?"
             params.append(owner)
