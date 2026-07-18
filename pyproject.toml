@@ -77,6 +77,14 @@ markers = [
     "integration: requires running ClickHouse/Superset stand (docker, runs on Mac)",
 ]
 addopts = "-m 'not integration'"
+# D-4: warnings are errors; every allowlisted entry must name a concrete third-party
+# warning we cannot fix ourselves (never a blanket ignore of our own code).
+filterwarnings = [
+    "error",
+    # fastapi's own `from starlette.testclient import ...` — upstream migration to
+    # httpx2 pending; not triggerable from auto_bi code.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
 
 # Coverage is measured in CI and locally via:
 #   uv run --with pytest-cov pytest --cov=auto_bi --cov-report=term-missing

@@ -48,6 +48,10 @@ class SupersetClient:
         self._access_token: str | None = None
         self._csrf_token: str | None = None
 
+    def close(self) -> None:
+        """Release the underlying httpx connection pool (long-lived callers/tests)."""
+        self._http.close()
+
     def login(self) -> None:
         response = self._http.post(
             "/api/v1/security/login",

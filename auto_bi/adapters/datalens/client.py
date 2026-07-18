@@ -66,6 +66,10 @@ class DataLensClient:
         self._signin_path = signin_path
         self._logged_in = False
 
+    def close(self) -> None:
+        """Release the underlying httpx connection pool (long-lived callers/tests)."""
+        self._http.close()
+
     def login(self) -> None:
         if not self._password:
             # C-8: no more shipped default of "admin" — an unset password must fail

@@ -192,7 +192,8 @@ def adapter(model: SemanticModel) -> DataLensAdapter:
     a = DataLensAdapter(client, dwh, model, workbook_id=s.datalens_workbook_id)
     assert a.healthcheck().ok, "DataLens /ping failed — is the stand up (tunnel :8090)?"
     a.ensure_database()
-    return a
+    yield a
+    client.close()  # -W error: an unclosed pool raises ResourceWarning at GC
 
 
 @pytest.mark.parametrize("chart", CHARTS, ids=lambda c: c.id)
