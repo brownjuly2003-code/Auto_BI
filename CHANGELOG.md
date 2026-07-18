@@ -116,6 +116,17 @@
 - `Physical.captured_at` — UTC-штамп снятия статистики интроспектором: замороженные в git
   `rows`/`cardinality` теперь несут дату происхождения (P1-6, ARCHITECTURE §3.2).
 
+### Security
+
+- SQL-guard: denylist табличных функций дополнен (C-1, аудит 2026-07-18) — remote/объектные
+  стораджи и lakehouse-форматы (`remoteSecure`, `s3Cluster`/`hdfsCluster`/`urlCluster`/
+  `fileCluster`, `azureBlobStorage(+Cluster)`, `gcs`, `oss`, `deltaLake`/`iceberg`/`hudi`
+  (+Cluster)) и RBAC-слепые локальные (`merge` — читает все таблицы по regexp правами
+  сервисного аккаунта, `dictionary`, `executable`). Закрыта форма AST, где sqlglot парсит
+  вызов табличной функции как неквалифицированную таблицу (`dictionary('x')`): таблица без
+  схемы с denylist-именем отклоняется, `dm.dictionary` и CTE-алиасы — нет. Заметка о
+  кандидате на allowlist — ARCHITECTURE §4.
+
 ### Changed
 
 - `explain_high_scan_fraction` предпочитает **живой** знаменатель (P1-6): при доступном
