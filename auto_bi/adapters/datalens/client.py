@@ -33,7 +33,13 @@ DEFAULT_SIGNIN_PATH = "/gateway/auth/auth/signin"
 
 
 class DataLensAPIError(Exception):
-    pass
+    """API-level failure; `status_code` carries the HTTP status when one was received
+    (None for signin-shape failures), so callers like `delete_artifact` can tell an
+    already-gone 404 from a real error."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class DataLensClient:
@@ -84,7 +90,8 @@ class DataLensClient:
             response = self._http.post(path, json=body)
         if response.status_code >= 400:
             raise DataLensAPIError(
-                f"{service}/{method} -> {response.status_code}: {response.text[:500]}"
+                f"{service}/{method} -> {response.status_code}: {response.text[:500]}",
+                status_code=response.status_code,
             )
         return response.json() if response.content else {}
 
@@ -98,7 +105,10 @@ class DataLensClient:
             self.login()
             response = self._http.post(path, json=body)
         if response.status_code >= 400:
-            raise DataLensAPIError(f"POST {path} -> {response.status_code}: {response.text[:500]}")
+            raise DataLensAPIError(
+                f"POST {path} -> {response.status_code}: {response.text[:500]}",
+                status_code=response.status_code,
+            )
         return response.json() if response.content else {}
 
     def health(self, path: str = "/ping") -> bool:

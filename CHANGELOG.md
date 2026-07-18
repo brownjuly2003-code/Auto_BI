@@ -6,6 +6,29 @@
 
 ### Added
 
+- BI-artifact ownership **live-cleanup ВКЛЮЧЁН** (P0-2, критерий 4, надстройка над OFFLINE-леджером
+  ниже; live-проверен на 20M-стенде 2026-07-18). Два пути через один движок удаления
+  `prune_artifact_rows` (delete-by-id, порядок `chart → dashboard → dataset` — датасет не
+  удаляется, пока его читает чарт; `SHARED_BI_KINDS` пропускаются). (1) **Авто-прунинг на
+  ребилде:** после успешного билда И записи в леджер `compile_and_build` зовёт
+  `_prune_superseded_artifacts` — удаляет BI-артефакты ПРОШЛЫХ ревизий ЭТОЙ сессии по
+  `native_id` (селекция `orphan_bi_artifacts`: ключ session/owner/build_token, **НИКОГДА** имя/
+  title; только что доставленный дашборд несёт текущий `build_token` и не трогается). Прунинг
+  **НИКОГДА не валит билд**: дашборд уже доставлен, любая ошибка логируется, строки остаются
+  `live` и повторяются следующим прунингом. Выключатель `AUTO_BI_PRUNE_ON_REBUILD=false`
+  (`Settings.prune_on_rebuild`, дефолт `true`, прокинут параметром `prune_orphans` в
+  `build_dashboard`/`compile_and_build`). (2) **Операторская команда** `auto_bi prune
+  [--session ID] [--dry-run] [--model-path …]` — селекция `Store.stale_bi_artifacts`: живые
+  строки билдов, которые НЕ являются последним билдом своей сессии (последний дашборд каждой
+  сессии всегда переживает прунинг — удаляются ревизии, не чужие дашборды). `--dry-run` печатает
+  кандидатов и не удаляет; недоступный BI-таргет → его строки пропускаются; exit 0 при чистом
+  прогоне, 1 если что-то не удалось или было пропущено. `delete_artifact` — новый concrete-хелпер
+  обоих адаптеров (Superset `_DELETE_PATHS` / DataLens `_DELETE_SCOPES`; **вне** `BIAdapter`-
+  Protocol, как `drain_build_artifacts`/`set_artifact_namespace`): удаляет одну сущность по
+  native_id, 404 = уже удалена (норм), любой другой сбой → строка остаётся `live`; shared-kind
+  (`database`-connection) отвергается и в SQL-селекции, и самим адаптером. `stale_bi_artifacts`
+  добавлен в Store, `mark_bi_artifacts_superseded(ids)` теперь используется обоими путями.
+  IR/`BIAdapter`-Protocol/инварианты 1–8 не тронуты (ARCHITECTURE §3.17).
 - BI-artifact ownership ledger + orphan-cleanup SELECTION (P0-2, критерий 4, **OFFLINE-слой**):
   таблица Store `bi_artifacts` (`id`, `session_id`, `build_token` = build-namespace = ревизия,
   `target_bi`, `kind` = `database|dataset|chart|dashboard`, `native_id`, `name` — display/debug,

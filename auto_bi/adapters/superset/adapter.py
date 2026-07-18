@@ -76,6 +76,16 @@ _LABEL_SEPS = (",", "(", ":", " —", " -")
 # title) instead of the d3 SI "15G" — big_number scales its headline separately (_kpi_scale).
 _AXIS_SCALE_VIZ = (Viz.LINE, Viz.BAR, Viz.STACKED_BAR, Viz.AREA)
 
+# kind -> DELETE endpoint for the ownership-based live-cleanup. `database` is DELIBERATELY
+# absent: the connection is shared across builds (SHARED_BI_KINDS) and deleting it live was
+# proven to break every dashboard on it — the ledger selection already excludes it, and
+# this map is the adapter-level second belt.
+_DELETE_PATHS = {
+    "chart": "/api/v1/chart/",
+    "dashboard": "/api/v1/dashboard/",
+    "dataset": "/api/v1/dataset/",
+}
+
 
 def _slug(text: str, max_len: int = 40) -> str:
     return re.sub(r"\W+", "_", text.lower()).strip("_")[:max_len] or "dataset"
@@ -135,6 +145,26 @@ class SupersetAdapter:
         drained = list(self._build_artifacts)
         self._build_artifacts = []
         return drained
+
+    def delete_artifact(self, kind: str, native_id: str) -> None:
+        """Delete one owned BI entity by native id (ownership ledger live-cleanup).
+
+        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts).
+        Returns normally when the entity was deleted OR was already gone (404 — e.g. removed
+        by hand between builds); raises on any other failure so the caller keeps the ledger
+        row 'live' and retries on a later prune. Never accepts a shared kind.
+        """
+        path = _DELETE_PATHS.get(kind)
+        if path is None:
+            raise ValueError(f"refusing to delete shared/unknown BI artifact kind: {kind!r}")
+        try:
+            self._client.delete(f"{path}{_int_id(native_id)}")
+        except SupersetAPIError as exc:
+            if exc.status_code == 404:
+                logger.info("superset %s %s already gone (404)", kind, native_id)
+                return
+            raise
+        logger.info("superset %s %s deleted (live-cleanup)", kind, native_id)
 
     def healthcheck(self) -> AdapterHealth:
         ok = self._client.health()

@@ -792,6 +792,43 @@ class Store:
         sql += " ORDER BY id"
         return self._rows(sql, *params)
 
+    def stale_bi_artifacts(
+        self, session_id: str | None = None, *, include_shared: bool = False
+    ) -> list[dict[str, Any]]:
+        """Ledger-wide delete candidates for the operator `auto_bi prune` command.
+
+        Returns still-live rows from builds that are NOT their session's latest build — the
+        cross-session generalization of `orphan_bi_artifacts` (which needs the current
+        build_token in hand and serves the in-pipeline rebuild prune). "Latest" is the
+        session's most recently RECORDED build (max ledger row id): only successful builds
+        reach the ledger, so a session's newest token is always a delivered dashboard, and
+        every earlier token is a superseded revision. Each session's latest build is never
+        selected — prune removes prior revisions, not other sessions' dashboards.
+
+        Same safety envelope as `orphan_bi_artifacts`: selection keys on ownership
+        (session/build_token), never on name/title, and `SHARED_BI_KINDS` are excluded
+        unless `include_shared=True` (audit view). `session_id` narrows to one session.
+        """
+        sql = (
+            "SELECT a.* FROM bi_artifacts a"
+            " WHERE a.status = 'live'"
+            " AND a.build_token != ("
+            "   SELECT b.build_token FROM bi_artifacts b"
+            "   WHERE b.session_id IS a.session_id"
+            "   ORDER BY b.id DESC LIMIT 1"
+            " )"
+        )
+        params: list[Any] = []
+        if not include_shared:
+            placeholders = ",".join("?" for _ in SHARED_BI_KINDS)
+            sql += f" AND a.kind NOT IN ({placeholders})"
+            params.extend(sorted(SHARED_BI_KINDS))
+        if session_id is not None:
+            sql += " AND a.session_id = ?"
+            params.append(session_id)
+        sql += " ORDER BY a.id"
+        return self._rows(sql, *params)
+
     def mark_bi_artifacts_superseded(self, ids: Iterable[int]) -> None:
         """Flip the given ledger rows from 'live' to 'superseded' (keyed on the ledger's own
         row id, never on a BI name).

@@ -73,6 +73,12 @@ _CONNECTION_ENGINE_LABEL = {
     "postgresql": "PostgreSQL",
 }
 
+# ledger kind -> US entry scope for the ownership-based live-cleanup (`mix/deleteEntry`
+# routes per scope — see _delete_if_exists). `database` is DELIBERATELY absent: the
+# connection is shared across builds (SHARED_BI_KINDS); the ledger selection already
+# excludes it, and this map is the adapter-level second belt.
+_DELETE_SCOPES = {"dataset": "dataset", "chart": "widget", "dashboard": "dash"}
+
 
 def connection_name(engine: str) -> str:
     return f"Auto_BI {_CONNECTION_ENGINE_LABEL.get(engine, engine)}"
@@ -437,6 +443,27 @@ class DataLensAdapter:
         drained = list(self._build_artifacts)
         self._build_artifacts = []
         return drained
+
+    def delete_artifact(self, kind: str, native_id: str) -> None:
+        """Delete one owned workbook entry by entryId (ownership ledger live-cleanup).
+
+        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts).
+        Returns normally when the entry was deleted OR was already gone (404 — canonical
+        names carry the build fingerprint, but an entry may still have been removed by hand
+        or by a same-name replace); raises on any other failure so the caller keeps the
+        ledger row 'live' and retries on a later prune. Never accepts a shared kind.
+        """
+        scope = _DELETE_SCOPES.get(kind)
+        if scope is None:
+            raise ValueError(f"refusing to delete shared/unknown BI artifact kind: {kind!r}")
+        try:
+            self._client.gateway("mix", "deleteEntry", {"entryId": native_id, "scope": scope})
+        except DataLensAPIError as exc:
+            if exc.status_code == 404:
+                logger.info("datalens %s %s already gone (404)", kind, native_id)
+                return
+            raise
+        logger.info("datalens %s %s deleted (live-cleanup)", kind, native_id)
 
     def _owned_entry_name(self, title: str) -> str:
         """Display title + optional namespace fingerprint (DataLens entry charset)."""

@@ -132,6 +132,17 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true", help="Report what would change without writing"
     )
 
+    prune = sub.add_parser(
+        "prune",
+        help="Delete prior-revision BI artifacts via the ownership ledger "
+        "(each session's latest build always survives)",
+    )
+    prune.add_argument("--session", default=None, help="Prune only this session id")
+    prune.add_argument(
+        "--dry-run", action="store_true", help="List the delete candidates without deleting"
+    )
+    prune.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
+
     args = parser.parse_args(argv)
 
     if args.command == "build":
@@ -156,6 +167,8 @@ def main(argv: list[str] | None = None) -> int:
         return _eval(args.model_path, args.suite, args.cases, args.llm_mode, args.fixtures_dir)
     if args.command == "dbt-import":
         return _dbt_import(args.manifest, args.catalog, args.model_path, args.dry_run)
+    if args.command == "prune":
+        return _prune(args.session, args.dry_run, args.model_path)
     return 0
 
 
@@ -197,6 +210,7 @@ def _build(description: str, model_path: str, target: str = "superset") -> int:
         session_id=session_id,
         target_bi=target_bi,
         advisor=Advisor(model, run_query),
+        prune_orphans=settings.prune_on_rebuild,
     )
     base = settings.datalens_url if target_bi == TargetBI.DATALENS else settings.superset_url
     print(f"\nДашборд готов: {base.rstrip('/')}{ref.url}")
@@ -263,6 +277,7 @@ def _build_raw(
         partial(make_adapter, settings=settings, model=model),
         store=store,
         session_id=session_id,
+        prune_orphans=settings.prune_on_rebuild,
     )
     print(f"\nДашборд готов: {settings.superset_url.rstrip('/')}{ref.url}")
     return 0
@@ -329,6 +344,78 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
     except Exception:
         pass
     return 0
+
+
+def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
+    """Operator cleanup: delete prior-revision BI artifacts via the ownership ledger.
+
+    Selection is `Store.stale_bi_artifacts` — live rows of builds that are NOT their
+    session's latest build (each session's latest dashboard always survives; prune removes
+    superseded revisions, never other sessions' current dashboards). Deletion goes through
+    the same engine as the in-pipeline auto-prune (`prune_artifact_rows`: delete-by-id,
+    chart -> dashboard -> dataset, shared kinds never touched); rows whose delete fails
+    stay 'live' and are retried by a later prune.
+    """
+    from functools import partial
+    from pathlib import Path
+
+    from auto_bi.adapters.factory import make_adapter
+    from auto_bi.agent.pipeline import prune_artifact_rows
+    from auto_bi.config import get_settings
+    from auto_bi.ir.spec import TargetBI
+    from auto_bi.semantic.model import SemanticModel
+    from auto_bi.store import Store
+
+    if not Path(model_path).exists():
+        print(f"Semantic model not found: {model_path}")
+        print("Generate the draft first: auto_bi introspect --output semantic/model.yaml")
+        return 2
+
+    settings = get_settings()
+    model = SemanticModel.load(model_path)
+    store = Store(settings.store_path)
+    rows = store.stale_bi_artifacts(session_id=session)
+    if not rows:
+        print("Сирот прошлых ревизий нет.")
+        return 0
+
+    by_target: dict[str, list[dict]] = {}
+    for row in rows:
+        by_target.setdefault(row["target_bi"], []).append(row)
+    print(f"Кандидаты на удаление (прошлые ревизии, всего {len(rows)}):")
+    for target, target_rows in sorted(by_target.items()):
+        print(f"  {target}:")
+        for row in target_rows:
+            sid = (row["session_id"] or "")[:8]
+            print(f"    {row['kind']} {row['native_id']} «{row['name']}» (сессия {sid}…)")
+    if dry_run:
+        print("Dry-run: ничего не удалено.")
+        return 0
+
+    adapter_for = partial(make_adapter, settings=settings, model=model)
+    removed_total = 0
+    failed_total = 0
+    skipped_total = 0
+    for target, target_rows in sorted(by_target.items()):
+        adapter = adapter_for(TargetBI(target))
+        health = adapter.healthcheck()
+        if not health.ok:
+            print(f"{target}: недоступен ({health.message}) — {len(target_rows)} строк пропущено")
+            skipped_total += len(target_rows)
+            continue
+        delete = getattr(adapter, "delete_artifact", None)
+        if not callable(delete):
+            print(f"{target}: адаптер без delete_artifact — {len(target_rows)} строк пропущено")
+            skipped_total += len(target_rows)
+            continue
+        removed, failed = prune_artifact_rows(store, target_rows, delete, print)
+        removed_total += removed
+        failed_total += failed
+    print(
+        f"Итог: удалено {removed_total}, не удалось {failed_total}, пропущено {skipped_total}"
+        + (" (останутся до следующего прунинга)" if failed_total or skipped_total else "")
+    )
+    return 0 if not (failed_total or skipped_total) else 1
 
 
 APPROVE_WORDS = {"да", "ок", "ok", "строй", "собирай", "build", "yes", "y", "+"}
@@ -420,6 +507,7 @@ def _chat(model_path: str) -> int:  # pragma: no cover — interactive wiring, l
                             log=lambda s: console.print(f"[dim]{s}[/dim]"),
                             store=store,
                             session_id=session_id,
+                            prune_orphans=settings.prune_on_rebuild,
                         )
                         base = (
                             settings.datalens_url
@@ -545,6 +633,7 @@ def _serve(  # pragma: no cover — wiring only
             log,
             store=store,
             session_id=session_id,
+            prune_orphans=settings.prune_on_rebuild,
         )
 
     def bi_healthcheck() -> AdapterHealth:

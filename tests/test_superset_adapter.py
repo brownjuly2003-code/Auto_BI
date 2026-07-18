@@ -11,7 +11,7 @@ import pytest
 
 from auto_bi.adapters.base import DatasetRef, DWHConfig
 from auto_bi.adapters.superset.adapter import SupersetAdapter
-from auto_bi.adapters.superset.client import SupersetClient
+from auto_bi.adapters.superset.client import SupersetAPIError, SupersetClient
 from auto_bi.adapters.superset.form_data import build_form_data, build_position_json, ru_kpi_scale
 from auto_bi.ir.spec import (
     ChartQuery,
@@ -837,3 +837,64 @@ def test_build_full_flow_scales_ruble_kpi_and_humanizes_legend() -> None:
     # KPI (no temporal group column) does not, so it stays a full-history single number
     assert line_params["granularity_sqla"] == "date"
     assert "granularity_sqla" not in kpi_params
+
+
+# --- delete_artifact (ownership live-cleanup) -------------------------------
+
+
+class FakeDeleteSuperset:
+    """Login/CSRF plus a DELETE endpoint answering one fixed status; records DELETE paths."""
+
+    def __init__(self, status: int = 200) -> None:
+        self.status = status
+        self.deletes: list[str] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/v1/security/login":
+            return httpx.Response(200, json={"access_token": "jwt"})
+        if path == "/api/v1/security/csrf_token/":
+            return httpx.Response(200, json={"result": "csrf"})
+        if request.method == "DELETE":
+            self.deletes.append(path)
+            if self.status >= 400:
+                return httpx.Response(self.status, json={"message": "boom"})
+            return httpx.Response(self.status, json={"message": "OK"})
+        return httpx.Response(404, json={"message": f"unexpected {request.method} {path}"})
+
+
+def _delete_adapter(fake: FakeDeleteSuperset) -> SupersetAdapter:
+    http = httpx.Client(base_url="http://superset.test", transport=httpx.MockTransport(fake))
+    return SupersetAdapter(SupersetClient("http://superset.test", "admin", "pw", http=http), DWH)
+
+
+def test_delete_artifact_maps_kinds_to_rest_endpoints() -> None:
+    fake = FakeDeleteSuperset()
+    adapter = _delete_adapter(fake)
+    adapter.delete_artifact("chart", "370")
+    adapter.delete_artifact("dashboard", "42")
+    adapter.delete_artifact("dataset", "80")
+    assert fake.deletes == ["/api/v1/chart/370", "/api/v1/dashboard/42", "/api/v1/dataset/80"]
+
+
+def test_delete_artifact_tolerates_already_gone_404() -> None:
+    fake = FakeDeleteSuperset(status=404)
+    _delete_adapter(fake).delete_artifact("chart", "370")  # no raise: already deleted
+    assert fake.deletes == ["/api/v1/chart/370"]
+
+
+def test_delete_artifact_reraises_non_404_with_status_code() -> None:
+    fake = FakeDeleteSuperset(status=500)
+    with pytest.raises(SupersetAPIError) as err:
+        _delete_adapter(fake).delete_artifact("dashboard", "42")
+    assert err.value.status_code == 500
+
+
+def test_delete_artifact_refuses_shared_and_unknown_kinds() -> None:
+    fake = FakeDeleteSuperset()
+    adapter = _delete_adapter(fake)
+    with pytest.raises(ValueError, match="shared/unknown"):
+        adapter.delete_artifact("database", "1")
+    with pytest.raises(ValueError, match="shared/unknown"):
+        adapter.delete_artifact("mystery", "9")
+    assert fake.deletes == []  # refused before any HTTP call

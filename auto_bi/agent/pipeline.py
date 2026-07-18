@@ -18,7 +18,7 @@ from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
-from auto_bi.store import Store
+from auto_bi.store import SHARED_BI_KINDS, Store
 
 # Resolve the spec's BI target to a wired adapter (auto_bi.adapters.factory.make_adapter,
 # partial-applied with settings+model). Injected as a resolver so the pipeline never names a
@@ -65,6 +65,7 @@ def build_dashboard(
     session_id: str | None = None,
     target_bi: TargetBI | None = None,
     advisor: Advisor | None = None,
+    prune_orphans: bool = True,
 ) -> DashboardRef:
     log(f"PROPOSE_SPEC: «{description}»")
     spec = propose_spec(
@@ -92,6 +93,7 @@ def build_dashboard(
         store=store,
         session_id=session_id,
         spec_id=spec_id,
+        prune_orphans=prune_orphans,
     )
 
 
@@ -105,6 +107,7 @@ def compile_and_build(
     store: Store | None = None,
     session_id: str | None = None,
     spec_id: int | None = None,
+    prune_orphans: bool = True,
 ) -> DashboardRef:
     """SQL_GEN -> VALIDATE -> BUILD for an already-produced spec (chat APPROVE path).
 
@@ -183,6 +186,8 @@ def compile_and_build(
         # ownership ledger (P0-2 criterion 4): build_token/adapter are in scope here — reaching
         # this point means adapter.build(spec) returned without raising
         _record_bi_artifacts(store, session_id, spec, adapter, build_token)
+        if prune_orphans:
+            _prune_superseded_artifacts(store, session_id, build_token, adapter, log)
     return ref
 
 
@@ -203,11 +208,11 @@ def _record_bi_artifacts(
     recorded. `owner` is the session's persisted owner (NULL when auth is off); `schema_set`
     per dataset/chart comes from the chart query's table (RBAC scoping).
 
-    DEFERRED live-cleanup seam (SCOPE decision): this writes the durable ledger ONLY. The
-    ownership-based cleanup that DELETES the orphans `Store.orphan_bi_artifacts` selects (via
-    the BI delete-by-id API, then `Store.mark_bi_artifacts_superseded`) is left for a future
-    stand-verified session — no BI delete is performed here, and existing
-    delete/promote-by-name behavior in the adapters is unchanged.
+    Live-cleanup IS wired (2026-07-18): right after this record, `compile_and_build` calls
+    `_prune_superseded_artifacts`, which deletes THIS session's prior-revision orphans that
+    `Store.orphan_bi_artifacts` selects — by native id via a concrete adapter `delete_artifact`,
+    then `Store.mark_bi_artifacts_superseded` — and never fails the build. The operator path for
+    superseded revisions is `auto_bi prune` (selection `Store.stale_bi_artifacts`).
     """
     drain = getattr(adapter, "drain_build_artifacts", None)
     if not callable(drain):
@@ -226,3 +231,74 @@ def _record_bi_artifacts(
             owner=owner,
             schema_set=art.schema_set,
         )
+
+
+# Ownership live-cleanup delete order, proven live on the stand (2026-07-18): charts first,
+# then the dashboard, then datasets — a dataset is never deleted while a chart still reads it.
+_PRUNE_ORDER = {"chart": 0, "dashboard": 1, "dataset": 2}
+
+
+def prune_artifact_rows(
+    store: Store,
+    rows: list[dict],
+    delete: Callable[[str, str], None],
+    log: Callable[[str], None] = print,
+) -> tuple[int, int]:
+    """Feed ledger rows into a BI delete-by-id callable, superseding the removed ones.
+
+    The shared deletion engine of both prune paths (auto-prune on rebuild and the operator
+    `auto_bi prune`); `delete` is a concrete adapter's `delete_artifact`. Shared kinds are
+    skipped defensively even though both selections already exclude them in SQL. A per-row
+    failure keeps that row 'live' — it is re-selected and retried by a later prune — and
+    never propagates. Returns (removed, failed).
+    """
+    removed: list[int] = []
+    failed = 0
+    for row in sorted(rows, key=lambda r: _PRUNE_ORDER.get(r["kind"], 99)):
+        if row["kind"] in SHARED_BI_KINDS:
+            continue
+        try:
+            delete(row["kind"], str(row["native_id"]))
+        except Exception as exc:
+            failed += 1
+            log(f"prune: {row['kind']} {row['native_id']} не удалён ({exc}) — остаётся в леджере")
+            continue
+        removed.append(row["id"])
+    if removed:
+        store.mark_bi_artifacts_superseded(removed)
+    return len(removed), failed
+
+
+def _prune_superseded_artifacts(
+    store: Store,
+    session_id: str,
+    current_build_token: str,
+    adapter: BIAdapter,
+    log: Callable[[str], None],
+) -> None:
+    """Auto-prune on rebuild: delete THIS session's prior-revision BI artifacts by id.
+
+    Runs after a successful build + ledger record, so the freshly delivered dashboard is
+    never touched (its rows carry `current_build_token`). Selection is `orphan_bi_artifacts`
+    — ownership-keyed (session/owner/build_token, never name/title), shared kinds excluded
+    in SQL. `delete_artifact` is a concrete adapter helper; a bare-protocol adapter lacks it
+    and the prune is a no-op. NEVER fails the build: the dashboard is already delivered, so
+    any error here is logged and the leftover rows stay 'live' for a later prune.
+    Kill-switch: AUTO_BI_PRUNE_ON_REBUILD=false (wired via the `prune_orphans` parameter).
+    """
+    delete = getattr(adapter, "delete_artifact", None)
+    if not callable(delete):
+        return
+    try:
+        session = store.session_row(session_id)
+        owner = session.get("owner") if session else None
+        orphans = store.orphan_bi_artifacts(session_id, current_build_token, owner=owner)
+        if not orphans:
+            return
+        removed, failed = prune_artifact_rows(store, orphans, delete, log)
+        line = f"prune: удалены артефакты прошлых сборок сессии: {removed}"
+        if failed:
+            line += f" (не удалось: {failed}, будут повторены следующим прунингом)"
+        log(line)
+    except Exception as exc:  # the build itself already succeeded — never re-raise
+        log(f"prune: пропущен ({exc})")
