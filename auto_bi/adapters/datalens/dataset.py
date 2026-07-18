@@ -1,7 +1,7 @@
 """IR -> DataLens createConnection / createDataset payloads (deterministic).
 
 The shapes here are LIVE-VERIFIED on the self-hosted stand (reversal doc
-`docs/plans/2026-06-13-phase3.2-datalens-adapter-reversal.md` §3-4): both
+`internal/2026-06-13-phase3.2-datalens-adapter-reversal.md` §3-4): both
 `bi/createConnection` and `bi/createDataset` returned 200 with these bodies.
 
 Key design point (invariant 1, and reversal §4): DataLens normally derives a SQL

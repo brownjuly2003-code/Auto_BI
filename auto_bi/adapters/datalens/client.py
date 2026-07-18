@@ -1,7 +1,7 @@
 """Thin DataLens client: signin (cookie session) + UI-gateway JSON RPC.
 
 Transport is verified live on the self-hosted OSS stand (reversal doc
-`docs/plans/2026-06-13-phase3.2-datalens-adapter-reversal.md` §1-2): the adapter talks to
+`internal/2026-06-13-phase3.2-datalens-adapter-reversal.md` §1-2): the adapter talks to
 the **UI gateway** with a **cookie session** named ``auth``. Two route shapes:
 - signin: ``POST {base}/gateway/auth/auth/signin`` (scope literally ``auth``, served by a
   dedicated route with AuthPolicy.disabled so it works unauthenticated) — `{login,

@@ -8,7 +8,7 @@ Two complementary checks:
 
 The numeric pass covers the Greenplum/Greengage (postgres) path end-to-end. ClickHouse's
 `lagInFrame` is frame-bounded, so its frame semantics still need a live-stand check — see
-docs/plans/2026-06-25-derived-metrics-pop.md ("live-verify gate").
+internal/2026-06-25-derived-metrics-pop.md ("live-verify gate").
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def test_pop_abs_clickhouse_uses_laginframe_and_subquery() -> None:
     # outer window: ClickHouse lagInFrame with an explicit ROWS frame, over the inner alias.
     # The source is wrapped in toNullable so the first (out-of-frame) row is NULL, not 0:
     # ClickHouse lagInFrame returns the type default (0) out-of-frame, where Postgres LAG
-    # gives NULL. Verified live on the stand (docs/plans/2026-06-25-derived-metrics-pop.md §6).
+    # gives NULL. Verified live on the stand (internal/2026-06-25-derived-metrics-pop.md §6).
     assert (
         'lagInFrame(toNullable("__src_0")) OVER '
         '(ORDER BY "date" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)'

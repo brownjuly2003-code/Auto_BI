@@ -50,7 +50,7 @@ def classify(path: str) -> str | None:
     """Return a human-readable reason if *path* is forbidden, else ``None``.
 
     ``path`` is a forward-slash repo-relative path exactly as ``git ls-files``
-    emits it. Only ROOT-level files are judged by name: nested ``docs/plans/**``
+    emits it. Only ROOT-level files are judged by name: a nested ``docs/plan_*.md``
     stays public and package modules like ``auto_bi/llm/_structured.py`` are fine.
     """
     name = path.rsplit("/", 1)[-1]
@@ -121,7 +121,7 @@ def self_test() -> int:
         "README.md",
         "plan.md",  # the public roadmap: no underscore, not plan_*
         "CHANGELOG.md",
-        "docs/plans/2026-07-18-live-cleanup-wiring.md",  # nested plans are public
+        "docs/plan_datalens.md",  # nested plan_* is allowed (only root is internal)
         "docs/audit_notes.md",  # nested audit_* is allowed (only root is internal)
         "auto_bi/__init__.py",  # leading underscore only forbidden at ROOT
         "auto_bi/llm/_structured.py",

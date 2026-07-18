@@ -3,9 +3,10 @@
 Дата: 2026-06-11 (переработан под скоуп «RU-рынок, v1 = ClickHouse + Superset», см. ARCHITECTURE §1.1).
 Оценки — в неделях фуллтайм-эквивалента (FTE); вечерами умножать на ~2.
 
-> **АКТУАЛЬНЫЙ ОТКРЫТЫЙ BACKLOG (после cont. 11, с гейт-статусом каждого пункта) —
-> `docs/plans/2026-06-29-roadmap-maximal.md`.** Этот PLAN.md — фазовая история; roadmap-maximal —
-> что осталось и что брать дальше (🟢АВТО / 🟡S2 / 🟠S4 / 🔵стенд / 🟣владелец / 🔴наружу).
+> **Этот PLAN.md — фазовая история (Phase 0–4).** Что осталось и что берётся дальше —
+> [plan.md](../plan.md) в корне; полный roadmap с гейт-статусом каждого пункта
+> (🟢АВТО / 🟡S2 / 🟠S4 / 🔵стенд / 🟣владелец / 🔴наружу) ведётся во внутреннем
+> `internal/2026-06-29-roadmap-maximal.md`.
 
 ## Definition of «полноценный продукт»
 
@@ -108,15 +109,15 @@
 
 ## Phase 4 — Hardening до продукта (2–4 нед + ongoing)
 
-- [x] **Auth/мульти-юзер + RBAC по DWH-схемам** (2026-06-14): opt-in (`AUTO_BI_AUTH_ENABLED`, дефолт OFF → single-user без изменений). stdlib pbkdf2 хэш паролей + bearer/cookie-токены; RBAC ограничивает пользователя его схемами DWH (модель скоупится на grounding, build гейтится, enrichment-PATCH гейтится, сессии owner-bound). Web UI логин (cookie-сессия для SSE). S6-ревью пройдено (`docs/history/fable_audit_phase4_auth.md`: 0 P1, 2 P2 закрыты). Деталь: `docs/USER_GUIDE.md` §7.
+- [x] **Auth/мульти-юзер + RBAC по DWH-схемам** (2026-06-14): opt-in (`AUTO_BI_AUTH_ENABLED`, дефолт OFF → single-user без изменений). stdlib pbkdf2 хэш паролей + bearer/cookie-токены; RBAC ограничивает пользователя его схемами DWH (модель скоупится на grounding, build гейтится, enrichment-PATCH гейтится, сессии owner-bound). Web UI логин (cookie-сессия для SSE). S6-ревью пройдено (`internal/fable_audit_phase4_auth.md`: 0 P1, 2 P2 закрыты). Деталь: `docs/USER_GUIDE.md` §7.
 - [x] **Observability** (2026-06-14): трейс шагов агента на сессию (`trace_events`: grounding/clarify/propose/patch/advisor/approve + build-фазы, тайминг+исход) + дашборд расходов LLM (вызовы/латентность/объёмы; разбивка по шагу). GraceKelly не отдаёт токены/стоимость → объёмы в символах = size-прокси (не токены/$). API `GET /sessions/{id}/trace` + `/observability/llm`; UI-панель «Наблюдаемость». Деталь: ARCHITECTURE §3.9.
 - [x] **Eval до 40+ кейсов** (2026-06-14): счётчик достигнут — **40 golden** (26 CH + 14 GP) + **15 advisor** (9 CH + 6 GP) = 55 кейсов (`auto_bi/eval/cases.py`). Дальше — не добивать числом, а наполнять при реальных пробелах; прогон перед каждым изменением промптов остаётся постоянной практикой.
 - [x] **Пользовательская документация + onboarding нового DWH за ≤1 час** (2026-06-14): `docs/USER_GUIDE.md` (установка, все команды CLI, web UI, два режима, advisor, наблюдаемость, конфиг) + `docs/ONBOARDING_DWH.md` (пошагово подключить новый DWH с бюджетом ≤1ч; CH через CLI, GP через `GreenplumIntrospector` API) + обновлён README (статус Phase 0→4, quickstart). Команды/сниппеты smoke-проверены.
 - Продуктовые опции по спросу:
-  - **Visiology-адаптер** — спайк сделан (2026-06-14, `docs/plans/2026-06-14-visiology-spike.md`): **NO-GO автономно** (нет publicREST для авторинга дашбордов — только UI-Designer; нет free/email-only стенда). Gate: лицензионный стенд v3 от заказчика.
-  - **Luxms-адаптер** — спайк+дизайн сделаны (2026-06-14, `docs/plans/2026-06-14-luxms-adapter-plan.md`): **GO-with-stand** (полный REST/CRUD source→cube(SQL)→dashlet→dashboard, JWT/cookie-auth, нативный CH; живой публичный API проверен). Gate: демо-креды `sandbox.demo.luxmsbi.com` или self-hosted Docker-стенд → затем реализация (зеркало DataLens-трека).
+  - **Visiology-адаптер** — спайк сделан (2026-06-14, `internal/2026-06-14-visiology-spike.md`): **NO-GO автономно** (нет publicREST для авторинга дашбордов — только UI-Designer; нет free/email-only стенда). Gate: лицензионный стенд v3 от заказчика.
+  - **Luxms-адаптер** — спайк+дизайн сделаны (2026-06-14, `internal/2026-06-14-luxms-adapter-plan.md`): **GO-with-stand** (полный REST/CRUD source→cube(SQL)→dashlet→dashboard, JWT/cookie-auth, нативный CH; живой публичный API проверен). Gate: демо-креды `sandbox.demo.luxmsbi.com` или self-hosted Docker-стенд → затем реализация (зеркало DataLens-трека).
   - Реестровая упаковка, новые движки — по конкретному запросу.
-  - **Адекватность собираемого дашборда** (2026-06-14, план `docs/plans/2026-06-14-dashboard-adequacy-fixes.md`):
+  - **Адекватность собираемого дашборда** (2026-06-14, план `internal/2026-06-14-dashboard-adequacy-fixes.md`):
     авто-масштаб виджетов DataLens — **сделано** (merge `22c32a0`); backlog по «go» — B1 default
     top-N для категориальных чартов (BI-agnostic), B2 категориальная ось для числового измерения
     в DataLens (Superset уже решает через `xAxisForceCategorical`), B3 джойн id→имя (S2+eval),

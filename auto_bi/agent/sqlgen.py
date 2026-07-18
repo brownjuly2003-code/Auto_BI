@@ -341,7 +341,7 @@ def _safe_div(num: exp.Expression, den: exp.Expression) -> exp.Expression:
     a Decimal(18,2) numerator truncates to 0.00, and category shares lose their fraction so
     they no longer sum to 1) — a ratio measure must divide in Float64. Postgres numeric
     division is already exact; the cast only normalises the result type. Verified live on the
-    ClickHouse stand (docs/plans/2026-06-25-derived-metrics-pop.md §6)."""
+    ClickHouse stand (internal/2026-06-25-derived-metrics-pop.md §6)."""
     return exp.Div(
         this=exp.cast(num, "DOUBLE"),
         expression=exp.Nullif(this=den, expression=exp.Literal.number(0)),
