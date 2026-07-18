@@ -115,8 +115,8 @@
   `non_additive` колонкой (и в denominator ratio-меры) с подсказкой для repair loop;
   enrichment-API отвечает 422 на такой `agg`; autospec для неаддитивной меры без модельного agg
   падает в AVG и не строит share-of-total над ней; маркер рендерится в model_text для LLM.
-  Committed-модели исправлены: `effective_tax_rate`/`return_rate` (model_x5) и `price`
-  (model, model_stand) больше не суммируются (ARCHITECTURE §3.2).
+  Committed-модели исправлены: `price` (model, model_stand) больше не суммируется
+  (ARCHITECTURE §3.2).
 - `Physical.captured_at` — UTC-штамп снятия статистики интроспектором: замороженные в git
   `rows`/`cardinality` теперь несут дату происхождения (P1-6, ARCHITECTURE §3.2).
 
@@ -223,6 +223,14 @@
   `AUTO_BI_LLM_PROVIDER=anthropic`). Optional extra `[anthropic]` kept as a
   no-op alias for older install lines. USER_GUIDE / DEPLOYMENT / ARCHITECTURE
   updated.
+
+### Removed
+
+- Заимствованная витрина-срез из репозитория убрана целиком (аудит 2026-07-18, п.6):
+  `semantic/model_x5.yaml`, `docs/gaps_report_marts_x5.md`, стендовые
+  `scripts/stand_create_marts.sql` / `scripts/stand_load_bv_mat.sh` и runbook 1.10.
+  Продуктового кода не касается: модель ничем не загружалась (golden-сьюты идут на
+  `model.yaml` / `model_gp.yaml`), в wheel `semantic/` и не входил.
 
 ### Fixed
 
