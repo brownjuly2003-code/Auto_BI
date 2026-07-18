@@ -67,6 +67,13 @@ class DataLensClient:
         self._logged_in = False
 
     def login(self) -> None:
+        if not self._password:
+            # C-8: no more shipped default of "admin" — an unset password must fail
+            # loudly (like Superset's 401 on login), not sign in to someone's stand.
+            raise DataLensAPIError(
+                "DataLens password is empty — set AUTO_BI_DATALENS_PASSWORD "
+                "(the 'admin' default was removed)"
+            )
         response = self._http.post(
             self._signin_path,
             json={"login": self._username, "password": self._password},

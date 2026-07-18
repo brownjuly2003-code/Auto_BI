@@ -1,5 +1,7 @@
 """Application settings loaded from environment / .env (never hardcode secrets)."""
 
+import os
+from collections.abc import Mapping
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,7 +41,9 @@ class Settings(BaseSettings):
     # DataLens (self-hosted OSS stand, v2 BI target)
     datalens_url: str = "http://localhost:8090"
     datalens_user: str = "admin"
-    datalens_password: str = "admin"
+    # No shipped default (audit C-8): an empty password fails loudly at signin
+    # (DataLensClient.login) instead of silently trying a well-known credential.
+    datalens_password: str = ""
     # Dedicated "Auto_BI" workbook on the self-hosted stand (Phase 4 F3): the agent's
     # delete-then-create idempotency only touches entries it owns, so writing to an
     # ISOLATED workbook keeps it from ever clobbering foreign entries (the OpenSource Demo
@@ -152,3 +156,30 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def unknown_env_settings(environ: Mapping[str, str] | None = None) -> list[str]:
+    """AUTO_BI_* environment variables that no Settings field consumes (audit C-2).
+
+    `extra="ignore"` silently drops typos — `AUTO_BI_AUTH_ENABLE=true` leaves auth OFF
+    with no trace. `serve` reports every returned name as a warning so a misspelled
+    security flag is visible in the log instead of silently inert. Compares against
+    `Settings.model_fields` plus any explicit string validation_alias (none today;
+    AliasChoices would need unpacking if ever introduced).
+    """
+    env = os.environ if environ is None else environ
+    prefix = str(Settings.model_config.get("env_prefix", "")).upper()
+    known: set[str] = set()
+    for name, field in Settings.model_fields.items():
+        known.add(f"{prefix}{name}".upper())
+        if isinstance(field.validation_alias, str):
+            known.add(field.validation_alias.upper())
+    return sorted(k for k in env if k.upper().startswith(prefix) and k.upper() not in known)
+
+
+def warn_unknown_env_settings(log, environ: Mapping[str, str] | None = None) -> list[str]:
+    """Log a warning per unknown AUTO_BI_* variable; returns what was flagged."""
+    unknown = unknown_env_settings(environ)
+    for var in unknown:
+        log.warning("unknown AUTO_BI_* environment variable (typo?): %s is ignored", var)
+    return unknown
