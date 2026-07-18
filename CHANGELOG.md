@@ -118,6 +118,13 @@
 
 ### Security
 
+- `deploy/hf-demo/publish_space.py` — безопасная обвязка (C-3, аудит 2026-07-18): дефолтный
+  рабочий каталог = `TemporaryDirectory` с гарантированной очисткой; существующий
+  пользовательский путь удаляется ТОЛЬКО при маркере клона этого Space (`.git` + remote
+  `huggingface.co/spaces/<SPACE>`) И явном `--force-clean` — чужой каталог не сносится
+  (юнит-тесты); токен больше не встраивается в push-URL — аутентификация через inline
+  credential helper из env `HF_TOKEN`; новый `--dry-run` (без токена) показывает
+  снапшот/дифф и ничего не пушит.
 - SQL-guard: denylist табличных функций дополнен (C-1, аудит 2026-07-18) — remote/объектные
   стораджи и lakehouse-форматы (`remoteSecure`, `s3Cluster`/`hdfsCluster`/`urlCluster`/
   `fileCluster`, `azureBlobStorage(+Cluster)`, `gcs`, `oss`, `deltaLake`/`iceberg`/`hudi`
