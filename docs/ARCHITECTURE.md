@@ -12,7 +12,7 @@
 5. даёт выбрать целевую BI-платформу (v1: Superset; v2: DataLens; дальше по спросу),
 6. строит дашборд в выбранной BI и возвращает ссылку.
 
-LLM: **Sonnet 4.6 thinking через GraceKelly API** (см. §3.6).
+LLM: **Sonnet 5 с adaptive thinking** — прямой Anthropic Messages API по умолчанию, GraceKelly опцией (см. §3.6).
 
 ### 1.1 Скоуп: «спроектировано для N, построено для 1»
 

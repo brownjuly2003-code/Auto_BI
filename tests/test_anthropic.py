@@ -49,7 +49,7 @@ def test_complete_happy_path(tmp_path) -> None:
     result = make_client(create, tmp_path).complete("сделай", Answer)
     assert result == Answer(title="ok", count=5)
     # transport shape: single user message, configured model, thinking off by default
-    assert calls[0]["model"] == "claude-sonnet-4-6"
+    assert calls[0]["model"] == "claude-sonnet-5"
     assert calls[0]["messages"] == [{"role": "user", "content": "сделай"}]
     assert calls[0]["thinking"] == {"type": "disabled"}
 
@@ -122,7 +122,7 @@ def test_logs_step_and_completion_chars_to_store(tmp_path) -> None:
     (call,) = store.llm_calls(sid)
     assert call["step"] == "propose_spec"
     assert call["completion_chars"] == len(output)
-    assert call["model"] == "claude-sonnet-4-6"
+    assert call["model"] == "claude-sonnet-5"
     # P2-1: native end_turn is normalised to completed for usage dashboards
     assert call["status"] == "completed"
     store.close()
