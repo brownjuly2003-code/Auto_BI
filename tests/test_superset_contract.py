@@ -173,7 +173,8 @@ def adapter() -> SupersetAdapter:
     a = SupersetAdapter(client, dwh, SemanticModel.load("semantic/model.yaml"))
     assert a.healthcheck().ok, "Superset /health failed — is the stand up?"
     a.ensure_database()
-    return a
+    yield a
+    client.close()  # -W error: an unclosed pool raises ResourceWarning at GC
 
 
 @pytest.mark.parametrize("chart", CHARTS, ids=lambda c: c.id)
