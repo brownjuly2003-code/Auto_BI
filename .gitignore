@@ -36,3 +36,21 @@ Thumbs.db
 
 # build artifacts (uv build)
 dist/
+
+# internal working notes — never tracked, never published (B-3).
+# Root-anchored on purpose: package modules (auto_bi/llm/_structured.py, __init__.py)
+# and public nested docs (docs/plans/**) must stay unaffected.
+# Guarded by CI: scripts/check_repo_hygiene.py fails if one is force-added anyway.
+/_*
+/audit_*.md
+/plan_*.md
+/*_NEXT_SESSION*
+/presentation.html
+/research*.md
+/new_plen_*.md
+/nl_sql_*.md
+/s01-*.md
+/x4-*.md
+/p8-hf-demo.md
+/dashboard_design_research.md
+/start-bi-tunnel.cmd

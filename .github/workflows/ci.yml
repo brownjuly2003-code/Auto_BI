@@ -23,6 +23,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Layer-2 publication guard (B-3): .gitignore keeps internal notes out of the
+      # index; this fails CI if one is force-added anyway. Runs before any install —
+      # stdlib-only, uses the runner's preinstalled python3.
+      - name: Verify repo-hygiene detector
+        run: python3 scripts/check_repo_hygiene.py --self-test
+
+      - name: Check no internal note is tracked
+        run: python3 scripts/check_repo_hygiene.py
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
