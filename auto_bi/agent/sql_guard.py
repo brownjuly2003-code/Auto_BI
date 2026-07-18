@@ -23,8 +23,23 @@ _FORBIDDEN_TABLE_FUNCS = frozenset(
         "file",
         "input",
         "remote",
+        "remotesecure",
         "cluster",
         "clusterallreplicas",
+        "s3cluster",
+        "hdfscluster",
+        "urlcluster",
+        "filecluster",
+        "azureblobstorage",
+        "azureblobstoragecluster",
+        "gcs",
+        "oss",
+        "deltalake",
+        "deltalakecluster",
+        "iceberg",
+        "icebergcluster",
+        "hudi",
+        "hudicluster",
         "mysql",
         "postgresql",
         "sqlite",
@@ -32,6 +47,11 @@ _FORBIDDEN_TABLE_FUNCS = frozenset(
         "jdbc",
         "mongodb",
         "redis",
+        # RBAC-blind local escapes: merge() reads every table matching a regexp with the
+        # CALLER's rights, dictionary() bypasses schema scoping, executable() runs a binary.
+        "merge",
+        "dictionary",
+        "executable",
     }
 )
 
@@ -65,6 +85,7 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
         exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create, exp.Alter,
         exp.TruncateTable, exp.Grant, exp.Command, exp.Set,
     )  # fmt: skip
+    cte_names = {(cte.alias_or_name or "").lower() for cte in root.find_all(exp.CTE)}
     for node in root.walk():
         if isinstance(node, forbidden):
             raise SQLGuardError(f"forbidden construct in SQL: {type(node).__name__}")
@@ -76,6 +97,14 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
         if isinstance(node, exp.Func):
             name = (node.sql_name() or "").lower()
             if name in _FORBIDDEN_TABLE_FUNCS:
+                raise SQLGuardError(f"forbidden table function in SQL: {name}()")
+        # sqlglot(clickhouse) parses some table functions as plain Tables (e.g.
+        # dictionary('x') becomes Table with alias columns), so also flag any
+        # UNQUALIFIED table whose name is denylisted. A real table of that name is
+        # still reachable schema-qualified (dm.dictionary); CTE alias refs are fine.
+        if isinstance(node, exp.Table) and not node.args.get("db"):
+            name = (node.name or "").lower()
+            if name in _FORBIDDEN_TABLE_FUNCS and name not in cte_names:
                 raise SQLGuardError(f"forbidden table function in SQL: {name}()")
 
 

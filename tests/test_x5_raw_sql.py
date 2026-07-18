@@ -197,6 +197,52 @@ def test_guard_rejects_remote_table_function() -> None:
         guard_sql("SELECT * FROM url('http://evil.example/x')")
 
 
+# C-1: remote/RBAC-blind ClickHouse table functions, in the camelCase spelling the
+# ClickHouse docs use (the guard compares lowercased names).
+_C1_TABLE_FUNCS = [
+    "remoteSecure",
+    "s3Cluster",
+    "hdfsCluster",
+    "urlCluster",
+    "fileCluster",
+    "azureBlobStorage",
+    "azureBlobStorageCluster",
+    "gcs",
+    "oss",
+    "deltaLake",
+    "deltaLakeCluster",
+    "iceberg",
+    "icebergCluster",
+    "hudi",
+    "hudiCluster",
+    "dictionary",
+    "executable",
+    "merge",
+]
+
+
+@pytest.mark.parametrize("func", _C1_TABLE_FUNCS)
+def test_guard_rejects_rbac_blind_table_functions(func: str) -> None:
+    with pytest.raises(SQLGuardError, match="forbidden table function"):
+        guard_sql(f"SELECT * FROM {func}('a', 'b')")
+
+
+def test_guard_allows_schema_qualified_table_named_like_function() -> None:
+    # dm.dictionary is a real table read, not the dictionary() table function
+    guard_sql("SELECT * FROM dm.dictionary")
+
+
+def test_guard_allows_cte_alias_shadowing_denylisted_name() -> None:
+    guard_sql("WITH merge AS (SELECT 1 AS x) SELECT x FROM merge")
+
+
+def test_validate_rejects_merge_in_raw_sql_path() -> None:
+    # merge('db','regexp') reads every table matching the regexp with the service
+    # account's rights — the hatch must reject it at validation, before any live trial.
+    errors = validate_spec(_raw_spec(sql="SELECT * FROM merge('dm', '^sales')"), MODEL)
+    assert any("forbidden table function in SQL: merge()" in e for e in errors)
+
+
 def test_spec_tables_walks_raw_sql_ast() -> None:
     # Label says dm.allowed, SQL reads finance.secret — RBAC must see the real table.
     chart = ChartSpec(
