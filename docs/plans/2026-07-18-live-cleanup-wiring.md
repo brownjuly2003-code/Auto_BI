@@ -34,8 +34,8 @@ kill-switch).
 - [x] 3. DataLensClient: `status_code` на `DataLensAPIError`; DataLensAdapter.`delete_artifact` (404 tolerant, database refused) → тесты адаптера
 - [x] 4. pipeline: `_prune_superseded_artifacts` + параметр `prune_orphans` в `compile_and_build`/`build_dashboard`; wiring `settings.prune_on_rebuild` во все call-sites (cli `_build`/`_build_raw`/`_build_auto`/chat-approve, serve builder) → tests/test_pipeline.py (rebuild прунит; ошибка delete не валит билд; адаптер без хелпера = no-op; флаг off = no-op)
 - [x] 5. CLI `auto_bi prune [--session] [--dry-run] [--model]` поверх `stale_bi_artifacts` + общий движок удаления → тест CLI
-- [ ] 6. Docs: ARCHITECTURE §3.17 (wired), CHANGELOG §Unreleased, USER_GUIDE (prune + флаг), .env.example, DEPLOYMENT (если касается)
-- [ ] 7. Гейты: pytest весь сьют, ruff/black/mypy — чисто
+- [x] 6. Docs: ARCHITECTURE §3.17 (wired), CHANGELOG §Unreleased, USER_GUIDE (prune + флаг), .env.example, DEPLOYMENT (если касается)
+- [x] 7. Гейты: pytest весь сьют, ruff/black/mypy — чисто
 - [ ] 8. Live verify (Mac-стенд, Superset+CH): build → rebuild той же сессии → прошлая ревизия удалена автоматически (re-GET 404), текущая жива (200), ledger superseded; `auto_bi prune --dry-run` пуст; стенд возвращён как был
 - [ ] 9. PR → CI 3/3 → merge → CI main success
 
