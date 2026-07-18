@@ -695,6 +695,8 @@ def _serve(  # pragma: no cover — wiring only
         work_rate_enabled=settings.work_rate_enabled,
         work_rate_per_day=settings.work_rate_per_day,
         max_concurrent_builds=settings.max_concurrent_builds,
+        sse_max_streams=settings.sse_max_streams,
+        sse_max_streams_per_session=settings.sse_max_streams_per_session,
         # F-1: the UI link must point at the BI host, not the Auto_BI host serving the
         # page. The PUBLIC url wins when it differs from the API url the adapter calls
         # (P8 demo: adapter -> 127.0.0.1:8088, viewer -> https://<space>.hf.space).

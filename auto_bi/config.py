@@ -100,6 +100,11 @@ class Settings(BaseSettings):
     # Hard cap on concurrent builds in this process (audit P0-3). Approve returns 503
     # with Retry-After when the semaphore is full — no unbounded thread-per-build fan-out.
     max_concurrent_builds: int = 2
+    # C-7: caps on concurrent SSE event-stream consumers (each parks a worker thread).
+    # Exceeding either returns 429 + Retry-After; 0 = unlimited. On by default — the
+    # heartbeat already frees dead peers, this bounds the live ones.
+    sse_max_streams: int = 20
+    sse_max_streams_per_session: int = 3
     # LLM client-seam budget (audit P0-3 item 4) — OPT-IN, off by default (matches the
     # session/work quota convention above). The HTTP quotas gate REQUESTS but cannot see
     # provider round-trips; one request fans out into grounding + propose + advisor +
