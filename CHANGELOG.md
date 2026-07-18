@@ -118,6 +118,13 @@
 
 ### Security
 
+- Опечатки в `AUTO_BI_*`-переменных больше не молчат (C-2, аудит 2026-07-18): `extra="ignore"`
+  у Settings тихо выбрасывал `AUTO_BI_AUTH_ENABLE=true` (auth оставался выключен без следа) —
+  `auto_bi serve` на старте сверяет окружение с `Settings.model_fields` (+string-алиасы) и
+  пишет warning на каждую неизвестную переменную (`config.warn_unknown_env_settings`).
+- Убран дефолт `datalens_password="admin"` (C-8, аудит 2026-07-18): дефолт пустой, signin с
+  пустым паролем падает понятной ошибкой «set AUTO_BI_DATALENS_PASSWORD» ДО сетевого вызова
+  (симметрично Superset, у которого пароль без дефолта всегда); healthcheck отдаёт её как not-ok.
 - `deploy/hf-demo/publish_space.py` — безопасная обвязка (C-3, аудит 2026-07-18): дефолтный
   рабочий каталог = `TemporaryDirectory` с гарантированной очисткой; существующий
   пользовательский путь удаляется ТОЛЬКО при маркере клона этого Space (`.git` + remote

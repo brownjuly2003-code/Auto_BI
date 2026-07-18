@@ -584,6 +584,11 @@ def _serve(  # pragma: no cover — wiring only
         return 2
 
     settings = get_settings()
+    # C-2: a misspelled AUTO_BI_* variable is silently ignored by pydantic
+    # (extra="ignore") — surface it so a typo'd security flag is never silently inert.
+    from auto_bi.config import warn_unknown_env_settings
+
+    warn_unknown_env_settings(logger)
     # P0-3 fail-closed remote bind: non-loopback + auth off + not a demo profile requires
     # an explicit operator consent flag (Docker/trusted LAN). HF demo binds 127.0.0.1.
     loopback = {"127.0.0.1", "localhost", "::1"}
