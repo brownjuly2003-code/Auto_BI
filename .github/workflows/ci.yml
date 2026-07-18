@@ -155,11 +155,24 @@ jobs:
           tags: auto_bi:ci
 
       # C-4: the image must START under non-root and report container-level health.
-      # ALLOW_INSECURE_REMOTE is required because serve binds 0.0.0.0 with auth off —
-      # fail-closed remote bind (P0-3) would refuse to start otherwise.
+      # `serve` connects to the DWH eagerly at boot (make_run_query), so the smoke
+      # provides a throwaway ClickHouse on a shared network. ALLOW_INSECURE_REMOTE is
+      # required because serve binds 0.0.0.0 with auth off — fail-closed remote bind
+      # (P0-3) would refuse to start otherwise.
       - name: Smoke run — non-root user + HEALTHCHECK healthy
         run: |
-          docker run -d --name smoke -e AUTO_BI_ALLOW_INSECURE_REMOTE=true auto_bi:ci
+          docker network create smoke-net
+          docker run -d --name smoke-ch --network smoke-net \
+            clickhouse/clickhouse-server:24.8@sha256:1ffa82edee000a42c09313bd9f1293d94c570aee74babc1b3ca9983a35fa597b
+          for i in $(seq 1 30); do
+            docker exec smoke-ch clickhouse-client -q "SELECT 1" >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker run -d --name smoke --network smoke-net \
+            -e AUTO_BI_ALLOW_INSECURE_REMOTE=true \
+            -e AUTO_BI_CH_HOST=smoke-ch -e AUTO_BI_CH_USER=default \
+            -e AUTO_BI_CH_PASSWORD= -e AUTO_BI_CH_DATABASE=default \
+            auto_bi:ci
           for i in $(seq 1 30); do
             status=$(docker inspect -f '{{.State.Health.Status}}' smoke)
             [ "$status" = "healthy" ] && break
@@ -169,7 +182,8 @@ jobs:
           docker inspect -f '{{.State.Health.Status}}' smoke | grep -qx healthy || { docker logs smoke; exit 1; }
           docker exec smoke id -u | grep -qx 1000
           docker exec smoke whoami | grep -qx app
-          docker rm -f smoke
+          docker rm -f smoke smoke-ch
+          docker network rm smoke-net
 
   integration:
     name: Integration (ClickHouse + Superset stand)
