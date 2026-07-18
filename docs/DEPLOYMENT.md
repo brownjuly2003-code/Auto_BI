@@ -111,7 +111,7 @@ AUTO_BI_ALLOW_INSECURE_REMOTE=true uv run auto_bi serve --host 0.0.0.0 --port 82
 | Путь (по умолчанию) | Что там | Переменная |
 |---|---|---|
 | `data/auto_bi.sqlite` | Store: sessions/specs/builds/llm_calls/dm_change_requests/trace_events/users/auth_tokens | `AUTO_BI_STORE_PATH` |
-| `logs/llm_calls.jsonl` | построчный лог сырых LLM-вызовов (Anthropic/GraceKelly) | — (путь зашит в клиентах, см. §7) |
+| `logs/llm_calls.jsonl` | построчный лог метаданных LLM-вызовов (hash промпта/размеры/latency/статус — НЕ сырые промпты; Anthropic/GraceKelly) | — (путь зашит в клиентах, см. §7) |
 
 Без этих двух volume-маунтов каждый `docker run`/пересоздание контейнера тихо теряет всю
 историю — не только бэкап (§6) становится бессмысленным, но и наблюдаемость/трейс сессий.
@@ -339,11 +339,12 @@ Cron (ежедневно в 03:00, хранить 14 копий):
 
 ## 7. Ротация `logs/*.jsonl`
 
-`logs/llm_calls.jsonl` — построчный append-лог сырых вызовов LLM
+`logs/llm_calls.jsonl` — построчный append-лог метаданных вызовов LLM: hash промпта,
+размеры, latency, статус — сырые промпты/ответы туда НЕ пишутся
 (`llm/anthropic.py`/`llm/gracekelly.py`, путь зашит по умолчанию, встроенной ротации/лимита
 размера нет). Это дубль того, что уже надёжно живёт в Store (`llm_calls`, наблюдаемость в UI
 — USER_GUIDE §5) в структурированном виде — ротация/удаление старых jsonl-файлов не теряет
-агрегаты и трейс, только сырые построчные записи.
+агрегаты и трейс, только построчные записи метаданных.
 
 `logrotate`:
 
