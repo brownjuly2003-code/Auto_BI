@@ -176,6 +176,29 @@ class Settings(BaseSettings):
     # SQLite store (sessions, specs, builds, llm_calls, dm_change_requests, users)
     store_path: str = "data/auto_bi.sqlite"
 
+    # Store retention (audit D-3). The telemetry tables grow without bound: every LLM
+    # round-trip appends to `llm_calls`, every pipeline step to `trace_events`, and every
+    # rebuild leaves its prior revision's rows in `bi_artifacts`. Only `auth_tokens` was
+    # ever swept. OFF by default and opt-in like the other limiters (auth/quotas/budget):
+    # deleting operational history is irreversible, so an operator turns it on knowingly.
+    # A sweep runs on `serve` startup and every `retention_sweep_hours` after.
+    # SESSION-OWNED rows (sessions/messages/specs/builds) are NEVER touched — they are the
+    # user's own work, not telemetry; clean those with `auto_bi prune` / by hand.
+    retention_enabled: bool = False
+    # per-table age limits in days; 0 disables that table's sweep while leaving the others on
+    retention_llm_calls_days: int = 90
+    retention_trace_events_days: int = 30
+    # only NON-live artifact rows (superseded/deleted) age out — a live row is the ledger
+    # that live-cleanup selects on, and dropping it would orphan a real BI entity
+    retention_bi_artifacts_days: int = 30
+    retention_sweep_hours: int = 6
+
+    # Prometheus metrics endpoint (audit D-3): GET /api/v1/metrics in the text exposition
+    # format. Off by default — it aggregates GLOBAL spend and build counts, so with auth on
+    # it is admin-only, and with auth off it would expose those numbers to anyone who can
+    # reach the port.
+    metrics_enabled: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

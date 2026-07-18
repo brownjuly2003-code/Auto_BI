@@ -35,6 +35,8 @@ from auto_bi.agent.insights import analyze_spec
 from auto_bi.agent.machine import AgentPhase, AgentTurn
 from auto_bi.agent.propose import SpecValidationError
 from auto_bi.agent.seed import validate_seed
+from auto_bi.api.metrics import LiveMetrics
+from auto_bi.api.metrics import render as render_metrics
 from auto_bi.api.ratelimit import LoginRateLimiter, SSEGate
 from auto_bi.api.schemas import (
     AutoSessionRequest,
@@ -64,6 +66,7 @@ from auto_bi.introspect.gaps import find_gaps
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient, LLMError
+from auto_bi.llm.budget import ModelPrices
 from auto_bi.semantic.model import Additivity, Aggregation, ColumnRole, SemanticModel
 from auto_bi.store import Store
 
@@ -73,6 +76,24 @@ logger = logging.getLogger(__name__)
 Builder = Callable[[DashboardSpec, Callable[[str], None], str], DashboardRef]
 
 _DAY_SECONDS = 86400.0
+
+
+def _timed_run_query(run_query: RunQuery, live: LiveMetrics) -> RunQuery:
+    """Wrap the read-only DWH seam so every query lands in the metrics counters (D-3).
+
+    A FAILED query is counted too — its wall time is real load, and a DWH that is slow to
+    reject is exactly what an operator needs to see. Wrapping here rather than inside the
+    driver keeps `make_run_query` free of API concerns and covers every consumer that goes
+    through the seam (insights, advisor, SQL guard)."""
+
+    def timed(sql: str) -> Any:
+        started = time.monotonic()
+        try:
+            return run_query(sql)
+        finally:
+            live.dwh_query(time.monotonic() - started)
+
+    return timed
 
 
 def create_app(
@@ -99,6 +120,8 @@ def create_app(
     sse_max_streams_per_session: int = 3,  # C-7 per-session cap, 0 = unlimited
     bi_base_urls: Mapping[TargetBI, str] | None = None,  # target -> BI host, absolutizes ref.url
     demo_auto_only: bool = False,  # P8 public demo: auto-overview only; see config.py
+    metrics_enabled: bool = False,  # D-3 Prometheus endpoint, opt-in; see config.py
+    llm_prices: ModelPrices | None = None,  # price table for the spend metric (D-3)
 ) -> FastAPI:
     manager = SessionManager(
         model=model,
@@ -143,6 +166,11 @@ def create_app(
     )
     # P0-3: bounded concurrent builds (thread-per-build remains, but the pool is capped).
     _build_slots = threading.BoundedSemaphore(max(1, max_concurrent_builds))
+    # D-3: in-process counters for /metrics. Always maintained (the cost is an int bump), so
+    # turning the endpoint on needs no restart-time wiring beyond the flag itself.
+    _live_metrics = LiveMetrics(build_slots_total=max(1, max_concurrent_builds))
+    if run_query is not None:
+        run_query = _timed_run_query(run_query, _live_metrics)
 
     def _check_session_quota(request: Request) -> None:
         if _session_limiter is None:
@@ -648,6 +676,7 @@ def create_app(
 
         def _build() -> None:
             started = time.monotonic()
+            _live_metrics.build_started()
             _trace_build("build_start", detail=spec.title)
             try:
                 ref = builder(
@@ -668,6 +697,7 @@ def create_app(
                 return
             finally:
                 _build_slots.release()
+                _live_metrics.build_finished()
             managed.build_status = "built"
             # F-1: adapters return a BI-relative url; a relative href in the UI would resolve
             # against the Auto_BI host (:8200), not the BI host (:8088) -> 404 on click. Glue
@@ -781,6 +811,26 @@ def create_app(
         if auth_enabled and not user.is_admin:
             return _store().llm_usage_summary(owner=user.username)
         return _store().llm_usage_summary()
+
+    @app.get("/api/v1/metrics", include_in_schema=False)
+    def metrics(request: Request) -> Response:
+        """Prometheus text exposition (D-3). Off unless AUTO_BI_METRICS_ENABLED.
+
+        These are GLOBAL numbers (everyone's builds, everyone's LLM spend), so unlike
+        `/observability/llm` there is no per-owner view to fall back on: with auth on it is
+        admin-only, full stop. 404 rather than 403 when disabled — a scraper should not be
+        able to tell a disabled endpoint from a forbidden one.
+        """
+        if not metrics_enabled:
+            raise HTTPException(status_code=404, detail="metrics are disabled")
+        if auth_enabled and not _user(request).is_admin:
+            raise HTTPException(status_code=403, detail="metrics require an admin token")
+        text = render_metrics(
+            _store().metrics_snapshot(), _live_metrics.snapshot(), llm_prices or {}
+        )
+        # version=0.0.4 is what Prometheus' own exposition parser advertises; without the
+        # charset a scraper may fall back to latin-1 on the HELP lines
+        return Response(content=text, media_type="text/plain; version=0.0.4; charset=utf-8")
 
     @app.get("/api/v1/sessions/{session_id}/insights")
     def session_insights(session_id: str, request: Request) -> dict:

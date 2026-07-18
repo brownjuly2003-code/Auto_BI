@@ -335,6 +335,47 @@ Cron (ежедневно в 03:00, хранить 14 копий):
 периодического cron-снапшота недостаточно (напр. RPO меньше суток); для одиночного
 инструмента cron-копии обычно хватает.
 
+### 6.1 Retention: что растёт и как это подрезать
+
+Три таблицы растут вместе с ИСПОЛЬЗОВАНИЕМ, а не с работой пользователя: `llm_calls`
+(строка на каждый вызов провайдера), `trace_events` (строка на шаг пайплайна) и
+не-`live` строки `bi_artifacts` (прошлые ревизии, которые оставляет каждая пересборка).
+Свип выключен по умолчанию — удаление операционной истории необратимо:
+
+```bash
+AUTO_BI_RETENTION_ENABLED=true
+AUTO_BI_RETENTION_LLM_CALLS_DAYS=90      # 0 = хранить вечно (учёт затрат)
+AUTO_BI_RETENTION_TRACE_EVENTS_DAYS=30
+AUTO_BI_RETENTION_BI_ARTIFACTS_DAYS=30   # только superseded/deleted строки
+AUTO_BI_RETENTION_SWEEP_HOURS=6
+```
+
+Свип идёт на старте `serve` и далее раз в `SWEEP_HOURS`. Что он **не трогает**:
+`sessions`, `messages`, `specs`, `builds` — это работа пользователя, а не телеметрия;
+и `live`-строки `bi_artifacts` — по ним живёт ownership-cleanup, их удаление осиротило бы
+реальный дашборд в BI. Чистить пользовательскую историю — только осознанно и вручную.
+
+SQLite не отдаёт место ОС после DELETE: файл не уменьшится, пока не сделать `VACUUM`
+(блокирующая операция — на остановленном процессе или в окно обслуживания).
+
+### 6.2 Prometheus-метрики
+
+```bash
+AUTO_BI_METRICS_ENABLED=true      # GET /api/v1/metrics, text exposition
+```
+
+Выключено по умолчанию: цифры глобальные (все билды, весь LLM-spend), поэтому при
+`AUTH_ENABLED=true` эндпоинт доступен **только админу** — скрейперу нужен bearer-токен
+(`authorization` в scrape-конфиге). Выключенный эндпоинт отвечает 404, а не 403.
+
+Что отдаёт: `auto_bi_builds_total{status}`, `auto_bi_builds_in_flight`,
+`auto_bi_build_slots_total`, `auto_bi_dwh_queries_total` + `auto_bi_dwh_query_seconds_total`,
+`auto_bi_llm_calls_total{status}`, `auto_bi_llm_tokens_total{model,direction}`,
+`auto_bi_llm_cost_usd_total` (по той же прайс-таблице, что и бюджетный guard — незалистанная
+модель тарифицируется в 0), `auto_bi_store_rows{table}` — по последней видно, работает ли
+retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуляются при рестарте — это
+нормальный counter reset, Prometheus его обрабатывает.
+
 ---
 
 ## 7. Ротация `logs/*.jsonl`

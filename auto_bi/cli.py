@@ -571,6 +571,7 @@ def _serve(  # pragma: no cover — wiring only
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
     from auto_bi.ir.spec import TargetBI
+    from auto_bi.llm.budget import parse_prices
     from auto_bi.llm.factory import make_llm
     from auto_bi.logging_setup import configure_logging
     from auto_bi.semantic.model import SemanticModel
@@ -619,6 +620,16 @@ def _serve(  # pragma: no cover — wiring only
         n = seed_users(store, settings)
         logger.info("auth enabled: seeded %d user(s)", n)
         _start_token_purge_thread(store)
+    if settings.retention_enabled:  # D-3: age out telemetry tables, opt-in
+        logger.info(
+            "store retention enabled: llm_calls %dd, trace_events %dd, bi_artifacts %dd, "
+            "sweep every %dh",
+            settings.retention_llm_calls_days,
+            settings.retention_trace_events_days,
+            settings.retention_bi_artifacts_days,
+            settings.retention_sweep_hours,
+        )
+        _start_retention_thread(store, settings)
     if settings.session_rate_enabled:  # O-2: LLM-call quota, opt-in
         logger.info(
             "session rate limit enabled: %d LLM session call(s)/day/IP",
@@ -705,6 +716,10 @@ def _serve(  # pragma: no cover — wiring only
             TargetBI.DATALENS: settings.datalens_url,
         },
         demo_auto_only=settings.demo_auto_only,
+        metrics_enabled=settings.metrics_enabled,
+        # D-3: the spend metric prices the same ledger with the same table as the budget
+        # guard, so a listed-model change moves both together
+        llm_prices=parse_prices(settings.llm_budget_prices),
     )
     uvicorn_kwargs: dict = {
         "host": host,
@@ -749,6 +764,41 @@ def _start_token_purge_thread(  # pragma: no cover — wiring only
                 logger.exception("token purge sweep failed")
 
     threading.Thread(target=_loop, name="auth-token-purge", daemon=True).start()
+
+
+def _start_retention_thread(store, settings) -> None:  # pragma: no cover — wiring only
+    """Daemon thread that ages out the telemetry tables (D-3).
+
+    Sweeps ONCE at startup and every `retention_sweep_hours` after: a server that restarts
+    more often than the interval would otherwise never sweep at all. `Store.purge_retention`
+    carries the tested logic and the choice of which tables are eligible; this loop is pure
+    wiring, like the token purge above."""
+    import threading
+    import time
+
+    interval = max(1, settings.retention_sweep_hours) * 3600.0
+
+    def _sweep() -> None:
+        deleted = store.purge_retention(
+            llm_calls_days=settings.retention_llm_calls_days,
+            trace_events_days=settings.retention_trace_events_days,
+            bi_artifacts_days=settings.retention_bi_artifacts_days,
+        )
+        if any(deleted.values()):
+            logger.info(
+                "retention sweep deleted %s",
+                ", ".join(f"{n} row(s) from {t}" for t, n in deleted.items() if n),
+            )
+
+    def _loop() -> None:
+        while True:
+            try:
+                _sweep()
+            except Exception:
+                logger.exception("retention sweep failed")
+            time.sleep(interval)
+
+    threading.Thread(target=_loop, name="store-retention", daemon=True).start()
 
 
 def _render_turn(console, turn) -> None:  # pragma: no cover — presentation only

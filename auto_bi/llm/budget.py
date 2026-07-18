@@ -175,9 +175,19 @@ class LLMBudget:
                 )
 
     def _cost(self, by_model: list[dict[str, Any]]) -> float:
-        total = 0.0
-        for row in by_model:
-            in_price, out_price = self._prices.get(row["model"], (0.0, 0.0))
-            total += int(row["input_tokens"]) / 1000.0 * in_price
-            total += int(row["output_tokens"]) / 1000.0 * out_price
-        return total
+        return cost_usd(by_model, self._prices)
+
+
+def cost_usd(by_model: list[dict[str, Any]], prices: ModelPrices) -> float:
+    """USD spend for per-model token rows, at the given price table (per 1000 tokens).
+
+    Shared by the budget guard and the metrics endpoint so both price the same ledger the
+    same way. An UNLISTED model prices at 0 — the documented behavior of the price table
+    (config.llm_budget_prices), and the reason a cost limit on an unlisted model never fires.
+    """
+    total = 0.0
+    for row in by_model:
+        in_price, out_price = prices.get(row["model"], (0.0, 0.0))
+        total += int(row["input_tokens"]) / 1000.0 * in_price
+        total += int(row["output_tokens"]) / 1000.0 * out_price
+    return total
