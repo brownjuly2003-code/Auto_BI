@@ -122,6 +122,15 @@
 
 ### Security
 
+- Контейнер-hardening (C-4, аудит 2026-07-18): продуктовый Dockerfile — non-root
+  `USER app` (uid 1000, писабельны только `data/`+`logs/`) + `HEALTHCHECK` на
+  `/api/v1/health` (stdlib urllib, без curl); базовые образы обоих Dockerfile
+  (python-slim, uv, clickhouse 24.8, superset 4.1.2 — demo тянул `uv:latest`!)
+  запинены по digest; все actions в пяти workflow запинены по commit-SHA (`# vX`
+  комментарий держит человекочитаемость); CI docker-job теперь ЗАПУСКАЕТ образ
+  (smoke: healthy + uid 1000 + user app); release.yml — SLSA-provenance на
+  GHCR-образ (`attest-build-provenance`, push-to-registry) и Trivy-скан пушнутого
+  образа (fail на HIGH/CRITICAL с доступным фиксом).
 - Сканы в CI (C-5, аудит 2026-07-18): (1) job `dependency-audit` — pip-audit по
   залоченному набору зависимостей (`uv export --all-extras` с хэшами, `--require-hashes`;
   локальный прогон: 0 CVE); (2) workflow `codeql.yml` — статанализ python на PR/main/
