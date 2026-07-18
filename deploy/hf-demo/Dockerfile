@@ -9,9 +9,10 @@
 # 3.12 into an isolated venv, the two runtimes never mix.
 # ClickHouse comes from ITS pinned official image (same 24.8 as the compose stand) —
 # one static binary; apt/packages.clickhouse.com is not reachable from every network.
-FROM clickhouse/clickhouse-server:24.8 AS clickhouse
+# C-4: bases pinned by digest — bump = update tag AND digest together.
+FROM clickhouse/clickhouse-server:24.8@sha256:1ffa82edee000a42c09313bd9f1293d94c570aee74babc1b3ca9983a35fa597b AS clickhouse
 
-FROM apache/superset:4.1.2
+FROM apache/superset:4.1.2@sha256:15e110b8533d3cb6a0d529512ea71252b0ac62e3f72b1f7a5000f1361822ac26
 
 USER root
 
@@ -33,7 +34,7 @@ RUN pip install --no-cache-dir "clickhouse-connect>=0.8,<1"
 # The managed interpreter must live on a world-readable path: the build runs as root
 # but the container runs as UID 1000 — uv's default ~/.local/... under /root is 0700,
 # which made the venv shebang unlaunchable (exit 126).
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.8.23@sha256:94390f20a83e2de83f63b2dadcca2efab2e6798f772edab52bf545696c86bdb4 /uv /usr/local/bin/uv
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 COPY pyproject.toml README.md LICENSE /opt/autobi-src/
 COPY auto_bi /opt/autobi-src/auto_bi
