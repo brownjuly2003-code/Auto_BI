@@ -122,6 +122,12 @@
 
 ### Security
 
+- Fingerprint BI-коннекшена при реюзе (C-6, аудит 2026-07-18): `ensure_database` обоих
+  адаптеров переиспользует коннекшен ПО ИМЕНИ — стейл-запись (переехавший стенд, другой
+  порт/база) молча кормила бы дашборды не тем DWH. Теперь при реюзе host/port(/db) из
+  существующей записи (Superset `sqlalchemy_uri` / DataLens `bi/getConnection`) сверяются
+  с текущим DWHConfig: mismatch → warning, при `AUTO_BI_BI_CONNECTION_STRICT=true` — отказ.
+  Best-effort: нечитаемый fingerprint никогда не ломает билд, только positive-mismatch.
 - Лимит одновременных SSE-консьюмеров (C-7, аудит 2026-07-18): `SSEGate` — глобальный cap
   (`AUTO_BI_SSE_MAX_STREAMS`, дефолт 20) и cap на сессию (`AUTO_BI_SSE_MAX_STREAMS_PER_SESSION`,
   дефолт 3; 0 = без лимита); сверх ёмкости `GET .../events` отвечает 429 + `Retry-After`.

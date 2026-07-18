@@ -408,11 +408,16 @@ class DataLensAdapter:
         dwh: DWHConfig,
         model: SemanticModel,
         workbook_id: str,
+        *,
+        strict_connection: bool = False,
     ) -> None:
         self._client = client
         self._dwh = dwh
         self._model = model
         self._workbook_id = workbook_id
+        # C-6: refuse (instead of warn) on a reused connection whose fingerprint
+        # mismatches the current DWH config (AUTO_BI_BI_CONNECTION_STRICT).
+        self._strict_connection = strict_connection
         self._connection_id: str | None = None
         # dataset id -> (name, fields_by_alias) for binding charts to dataset fields
         self._datasets: dict[str, tuple[str, dict[str, dict]]] = {}
@@ -502,6 +507,7 @@ class DataLensAdapter:
         # connection if present.
         existing = self._find_entry_id("connection", name)
         if existing is not None:
+            self._verify_connection_fingerprint(existing, dwh)
             self._connection_id = existing
             logger.info("datalens connection reused: id=%s", existing)
             return DatabaseRef(id=existing, name=name)
@@ -510,6 +516,38 @@ class DataLensAdapter:
         self._connection_id = created["id"]
         logger.info("datalens connection created: id=%s", self._connection_id)
         return DatabaseRef(id=self._connection_id, name=name)
+
+    def _verify_connection_fingerprint(self, connection_id: str, dwh: DWHConfig) -> None:
+        """C-6: a reused connection entry must point at the CURRENT DWH host/port.
+
+        Best-effort mirror of the Superset check: `bi/getConnection` echoes the stored
+        host/port (db is chosen per dataset in DataLens, so only the server is compared).
+        An unreadable/shape-drifted response only logs debug — the check must never break
+        the verified build path; a POSITIVE mismatch warns, or raises when
+        `strict_connection` (AUTO_BI_BI_CONNECTION_STRICT=true).
+        """
+        try:
+            detail = self._client.gateway("bi", "getConnection", {"connectionId": connection_id})
+        except DataLensAPIError as exc:
+            logger.debug("connection fingerprint unavailable for id=%s: %s", connection_id, exc)
+            return
+        host, port = detail.get("host"), detail.get("port")
+        if host is None:  # response shape without host -> cannot verify
+            return
+        mismatches: list[str] = []
+        if str(host).lower() != dwh.host.lower():
+            mismatches.append(f"host {host!r} != {dwh.host!r}")
+        if port is not None and int(port) != dwh.port:
+            mismatches.append(f"port {port} != {dwh.port}")
+        if not mismatches:
+            return
+        msg = (
+            f"reused DataLens connection (id={connection_id}) does not match the current "
+            f"DWH config: " + "; ".join(mismatches)
+        )
+        if self._strict_connection:
+            raise DataLensAPIError("stale BI connection refused: " + msg)
+        logger.warning("%s — proceeding (AUTO_BI_BI_CONNECTION_STRICT=true to refuse)", msg)
 
     def _find_entry_id(self, scope: str, name: str) -> str | None:
         """Encoded entryId of a workbook entry with this exact name and scope, or None.

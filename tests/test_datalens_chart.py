@@ -790,7 +790,8 @@ def test_ensure_database_reuses_existing_connection() -> None:
     )
     ref = _adapter(fake).ensure_database()
     methods = [m for _, m, _ in fake.gateway_calls]
-    assert methods == ["getWorkbookEntries"]  # lookup hit -> no create
+    # lookup hit -> fingerprint check (C-6) -> no create
+    assert methods == ["getWorkbookEntries", "getConnection"]
     assert ref.id == "conn-enc-id"
     assert fake.deletes == []  # connection is reused (not replaced), never deleted
 

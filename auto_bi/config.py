@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # ClickHouse host as the DataLens connection reaches it (host.docker.internal on the
     # self-hosted compose stand); port reuses ch_port.
     ch_host_from_datalens: str = "host.docker.internal"
+    # C-6: adapters reuse the BI connection by NAME; on reuse the stored host/port(/db)
+    # fingerprint is compared to the current DWH config. Mismatch warns by default;
+    # true = refuse the build (stale connection would silently read the wrong DWH).
+    bi_connection_strict: bool = False
 
     # LLM provider seam (llm/factory.py): "anthropic" (default — direct Anthropic Messages
     # API, works out of the box with just an API key) or "gracekelly" (local orchestration

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from urllib.parse import urlparse
 
 from auto_bi.adapters.artifacts import BuildArtifact, dataset_table_name
 from auto_bi.adapters.base import (
@@ -111,13 +112,21 @@ def _dataset_name(title: str, chart_id: str, namespace: str = "") -> str:
 
 class SupersetAdapter:
     def __init__(
-        self, client: SupersetClient, dwh: DWHConfig, model: SemanticModel | None = None
+        self,
+        client: SupersetClient,
+        dwh: DWHConfig,
+        model: SemanticModel | None = None,
+        *,
+        strict_connection: bool = False,
     ) -> None:
         self._client = client
         self._dwh = dwh
         # `model` (constructor-injected, mirrors DataLensAdapter) lets build() scope native
         # filters by column role/grain; without it filters degrade to the documented warning.
         self._model = model
+        # C-6: refuse (instead of warn) when the reused BI connection's fingerprint
+        # does not match the current DWH config (AUTO_BI_BI_CONNECTION_STRICT).
+        self._strict_connection = strict_connection
         self._database: DatabaseRef | None = None
         # P0-2: set via set_artifact_namespace() before build(); empty = legacy single-user.
         self._artifact_namespace: str = ""
@@ -176,6 +185,7 @@ class SupersetAdapter:
             "/api/v1/database/", params={"q": rison_eq_filter("database_name", DATABASE_NAME)}
         )
         for item in existing.get("result", []):
+            self._verify_connection_fingerprint(item["id"], dwh)
             self._database = DatabaseRef(id=item["id"], name=DATABASE_NAME)
             logger.info("database already in superset: id=%s", item["id"])
             return self._database
@@ -188,6 +198,42 @@ class SupersetAdapter:
         self._database = DatabaseRef(id=created["id"], name=DATABASE_NAME)
         logger.info("database created in superset: id=%s", created["id"])
         return self._database
+
+    def _verify_connection_fingerprint(self, database_id: int, dwh: DWHConfig) -> None:
+        """C-6: a reused connection must point at the CURRENT DWH.
+
+        `ensure_database` reuses the connection by NAME, so a stale entry (stand moved,
+        port changed, different database) would silently feed every dashboard from the
+        wrong DWH. Compare host/port/database parsed from the existing sqlalchemy_uri
+        (password is masked by Superset — не сравнивается) against DWHConfig. Best-effort:
+        an unreadable fingerprint only logs debug; a POSITIVE mismatch warns, or raises
+        when `strict_connection` (AUTO_BI_BI_CONNECTION_STRICT=true).
+        """
+        try:
+            detail = self._client.get(f"/api/v1/database/{database_id}").get("result") or {}
+            uri = urlparse(detail.get("sqlalchemy_uri") or "")
+        except Exception as exc:  # fingerprint is advisory — never break the build path
+            logger.debug("connection fingerprint unavailable for id=%s: %s", database_id, exc)
+            return
+        if not uri.scheme:  # no uri in the payload -> cannot verify
+            return
+        mismatches: list[str] = []
+        if (uri.hostname or "").lower() != dwh.host.lower():
+            mismatches.append(f"host {uri.hostname!r} != {dwh.host!r}")
+        if uri.port is not None and uri.port != dwh.port:
+            mismatches.append(f"port {uri.port} != {dwh.port}")
+        existing_db = (uri.path or "").lstrip("/")
+        if existing_db and existing_db != dwh.database:
+            mismatches.append(f"database {existing_db!r} != {dwh.database!r}")
+        if not mismatches:
+            return
+        msg = (
+            f"reused Superset connection {DATABASE_NAME!r} (id={database_id}) does not "
+            f"match the current DWH config: " + "; ".join(mismatches)
+        )
+        if self._strict_connection:
+            raise SupersetAPIError("stale BI connection refused: " + msg)
+        logger.warning("%s — proceeding (AUTO_BI_BI_CONNECTION_STRICT=true to refuse)", msg)
 
     def ensure_dataset(
         self, query: ChartQuery, name: str | None = None, *, apply_limit: bool = True
