@@ -226,6 +226,12 @@
 
 ### Removed
 
+- Рабочая кухня вынесена во внутренний репозиторий (аудит 2026-07-18, п.5): 16 файлов
+  `docs/history/`, 22 файла `docs/plans/` и пооперационный лог сессий из `CLAUDE.md`.
+  Это разборы стендов, машин и ходов отладки — они устаревали быстрее, чем окупалась
+  их правка. Поддерживаемые доки (`README`, `ARCHITECTURE`, `PLAN`, `USER_GUIDE`,
+  `DEPLOYMENT`, `ONBOARDING_DWH`, `MARKET`, `CHANGELOG`) не тронуты; ссылки на
+  вынесенное помечены префиксом `internal/` (конвенция описана в README §Документация).
 - Заимствованная витрина-срез из репозитория убрана целиком (аудит 2026-07-18, п.6):
   `semantic/model_x5.yaml`, `docs/gaps_report_marts_x5.md`, стендовые
   `scripts/stand_create_marts.sql` / `scripts/stand_load_bv_mat.sh` и runbook 1.10.

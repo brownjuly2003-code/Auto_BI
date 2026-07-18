@@ -39,7 +39,7 @@ dist/
 
 # internal working notes — never tracked, never published (B-3).
 # Root-anchored on purpose: package modules (auto_bi/llm/_structured.py, __init__.py)
-# and public nested docs (docs/plans/**) must stay unaffected.
+# and public nested docs (a hypothetical docs/plan_*.md) must stay unaffected.
 # Guarded by CI: scripts/check_repo_hygiene.py fails if one is force-added anyway.
 /_*
 /audit_*.md

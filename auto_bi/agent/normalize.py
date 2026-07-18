@@ -8,7 +8,7 @@ hand-built spec, or a fields-first seed can omit it, leaving the wall.
 
 This module enforces a sane top-N deterministically at the IR layer, so BOTH BI
 adapters (Superset, DataLens) inherit the fix from one place (BI-agnostic — see
-``docs/plans/2026-06-14-dashboard-adequacy-fixes.md`` B1). It is pure and idempotent,
+``internal/2026-06-14-dashboard-adequacy-fixes.md`` B1). It is pure and idempotent,
 and only acts where the author did *not* already express top-N intent.
 
 Skips (left untouched):
