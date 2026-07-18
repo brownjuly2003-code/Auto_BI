@@ -162,11 +162,13 @@ def compile_and_build(
             raise RuntimeError(f"{spec.target_bi.value} healthcheck failed: {health.message}")
 
         # P0-2: pin technical BI artifact names to this build/session so two independent
-        # sessions with the same title/chart ids never share or overwrite datasets.
-        # Optional helper on concrete adapters (Protocol unchanged — CLAUDE.md S4).
+        # sessions with the same title/chart ids never share or overwrite datasets. The same
+        # namespace is the build's `build_token` = its revision id in the ownership ledger
+        # (P0-2 criterion 4). Optional helper on concrete adapters (Protocol unchanged — S4).
+        build_token = new_build_namespace(session_id)
         set_ns = getattr(adapter, "set_artifact_namespace", None)
         if callable(set_ns):
-            set_ns(new_build_namespace(session_id))
+            set_ns(build_token)
 
         ref = adapter.build(spec)
     except Exception as exc:
@@ -178,4 +180,49 @@ def compile_and_build(
     if store is not None and session_id is not None:
         store.save_build(session_id, spec_id, dashboard_id=ref.id, url=ref.url, status="ok")
         store.set_session_status(session_id, "built")
+        # ownership ledger (P0-2 criterion 4): build_token/adapter are in scope here — reaching
+        # this point means adapter.build(spec) returned without raising
+        _record_bi_artifacts(store, session_id, spec, adapter, build_token)
     return ref
+
+
+def _record_bi_artifacts(
+    store: Store,
+    session_id: str,
+    spec: DashboardSpec,
+    adapter: BIAdapter,
+    build_token: str,
+) -> None:
+    """Ownership ledger (audit P0-2 criterion 4): after a successful build, drain the BI
+    artifacts the adapter created and record them in `Store.bi_artifacts` keyed on
+    session/owner/build_token, so a future ownership-based orphan cleanup can select prior
+    revisions' OWNED artifacts by id — NEVER by name (two dashboards may share a title).
+
+    `drain_build_artifacts` is a concrete adapter helper, not a BIAdapter Protocol method
+    (like `set_artifact_namespace`); a bare-protocol adapter lacks it, in which case nothing is
+    recorded. `owner` is the session's persisted owner (NULL when auth is off); `schema_set`
+    per dataset/chart comes from the chart query's table (RBAC scoping).
+
+    DEFERRED live-cleanup seam (SCOPE decision): this writes the durable ledger ONLY. The
+    ownership-based cleanup that DELETES the orphans `Store.orphan_bi_artifacts` selects (via
+    the BI delete-by-id API, then `Store.mark_bi_artifacts_superseded`) is left for a future
+    stand-verified session — no BI delete is performed here, and existing
+    delete/promote-by-name behavior in the adapters is unchanged.
+    """
+    drain = getattr(adapter, "drain_build_artifacts", None)
+    if not callable(drain):
+        return
+    session = store.session_row(session_id)
+    owner = session.get("owner") if session else None
+    target_bi = spec.target_bi.value
+    for art in drain():
+        store.record_bi_artifact(
+            session_id=session_id,
+            build_token=build_token,
+            target_bi=target_bi,
+            kind=art.kind,
+            native_id=art.native_id,
+            name=art.name,
+            owner=owner,
+            schema_set=art.schema_set,
+        )

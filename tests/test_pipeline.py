@@ -132,6 +132,70 @@ def test_compile_and_build_marks_session_failed_on_healthcheck_failure(tmp_path)
     store.close()
 
 
+def test_compile_and_build_records_bi_artifacts_in_ownership_ledger(tmp_path) -> None:
+    # ownership ledger (P0-2 criterion 4): a successful build records every BI entity in
+    # Store.bi_artifacts, keyed on the session owner and ONE build_token (the revision).
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
+
+    compile_and_build(
+        spec,
+        demo_model_fixtureless(),
+        LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _target: make_adapter(FakeSuperset()),
+        store=store,
+        session_id=sid,
+        spec_id=spec_id,
+    )
+
+    arts = store.bi_artifacts(sid)
+    assert {a["kind"] for a in arts} == {"database", "dataset", "chart", "dashboard"}
+    # every row carries the session owner, the target BI, and ONE build_token (the revision)
+    assert {a["owner"] for a in arts} == {"alice"}
+    assert {a["target_bi"] for a in arts} == {"superset"}
+    assert len({a["build_token"] for a in arts}) == 1
+    # datasets carry the DWH schema.table (RBAC scoping); all rows start 'live'
+    assert all(a["schema_set"] for a in arts if a["kind"] == "dataset")
+    assert all(a["status"] == "live" for a in arts)
+    store.close()
+
+
+def test_compile_and_build_second_build_makes_first_an_orphan(tmp_path) -> None:
+    # a rebuild in the same session gets a fresh build_token, so the prior build's OWNED
+    # artifacts become the orphan-cleanup candidates — selected on ownership, never on name.
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+
+    def _run() -> None:
+        compile_and_build(
+            spec,
+            demo_model_fixtureless(),
+            LiveSQLValidator(stub_run_query),
+            adapter_for=lambda _target: make_adapter(FakeSuperset()),
+            store=store,
+            session_id=sid,
+        )
+
+    _run()
+    first_token = store.bi_artifacts(sid)[0]["build_token"]
+    _run()  # rebuild in the same session -> a new build_token
+
+    tokens = {a["build_token"] for a in store.bi_artifacts(sid)}
+    assert len(tokens) == 2
+    current = next(t for t in tokens if t != first_token)
+    orphans = store.orphan_bi_artifacts(sid, current, owner="alice")
+    assert orphans  # the first build's artifacts are the delete candidates
+    assert {o["build_token"] for o in orphans} == {first_token}
+    store.close()
+
+
 def demo_model_fixtureless():
     """conftest's demo_model as a plain call (this test composes fixtures manually)."""
     from tests.conftest import demo_model
