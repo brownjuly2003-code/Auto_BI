@@ -459,7 +459,7 @@ dataset   = auto_bi__{title}__{chart_id}__{ns6}__{hash8(chart_id+namespace)}
 один virtual dataset; rebuild одной сессии тоже получает новый random token, поэтому старый
 dashboard не получает PUT чужого SQL.
 
-**Ownership ledger + orphan-cleanup SELECTION (P0-2 критерий 4, 2026-07-17, OFFLINE-слой).**
+**Ownership ledger + live-cleanup (P0-2 критерий 4, 2026-07-17 леджер, 2026-07-18 wiring).**
 Namespace защищает от коллизий, но не отслеживает владение: Superset `build()` только создаёт
 (сироты копятся при rebuild), а DataLens удаляет прежние entry **по имени** (`_delete_if_exists`),
 рискуя снести одноимённый виджет чужого дашборда. Введён durable-леджер: таблица Store
@@ -472,16 +472,33 @@ Namespace защищает от коллизий, но не отслеживае
 `Store.orphan_bi_artifacts(session, current_build_token, *, owner=None)`: живые строки сессии из
 прошлых ревизий (`build_token != текущего`, опц. RBAC по owner), ключ — **владение, НИКОГДА имя/
 title**. Таблица идемпотентна (always-run `CREATE IF NOT EXISTS` + индексы, без bump'а версии —
-как budget-индексы `llm_calls`). **Осознанный scope: live-удаление НЕ включено** — ни один BI
-delete API не вызывается, поведение `_delete_if_exists`/`_promote_to_canonical` не менялось. Шов
-для будущей стенд-верифицированной сессии: `orphan_bi_artifacts` даёт id-набор → BI delete-by-id →
-`Store.mark_bi_artifacts_superseded(ids)`. ⚠️ connection (`kind='database'`) идемпотентен-по-имени
+как budget-индексы `llm_calls`). **Live-cleanup ВКЛЮЧЁН** (2026-07-18) на этом леджере двумя
+путями через общий движок `prune_artifact_rows` (delete-by-id, порядок `chart → dashboard →
+dataset` — датасет не удаляется, пока его читает чарт). (1) **Авто-прунинг на ребилде:**
+`compile_and_build` после успешного билда И записи в леджер зовёт `_prune_superseded_artifacts`
+— удаляет прошлые ревизии ЭТОЙ сессии из `orphan_bi_artifacts` по native_id; свежий дашборд
+несёт текущий `build_token` и не трогается. **Никогда не валит билд** (он уже доставлен — ошибка
+логируется, строки остаются `live` для следующего прунинга); выключатель
+`AUTO_BI_PRUNE_ON_REBUILD=false` (`prune_on_rebuild`, дефолт on). (2) **Операторская** `auto_bi
+prune [--session] [--dry-run]` по `Store.stale_bi_artifacts` — живые строки НЕ-последних билдов
+сессии (последний дашборд каждой сессии переживает прунинг). Удаление обоими путями идёт через
+concrete-хелпер адаптера `delete_artifact(kind, native_id)` (Superset `_DELETE_PATHS` / DataLens
+`_DELETE_SCOPES`; **вне** `BIAdapter`-Protocol, как `drain_build_artifacts`/
+`set_artifact_namespace`): 404 = уже удалена (норм), любой другой сбой → строка остаётся `live`;
+удалённое помечается `Store.mark_bi_artifacts_superseded(ids)`. ⚠️ connection (`kind='database'`) идемпотентен-по-имени
 и **общий** между билдами — строку прошлой ревизии всё ещё держит текущий билд, поэтому селекция
 исключает `SHARED_BI_KINDS` **по умолчанию** (кодом, не только докстрингом): выдача
 `orphan_bi_artifacts` безопасна для delete-by-id как есть; `include_shared=True` — полный
 аудит-вид. Весь цикл (build → rebuild → orphan → Superset DELETE → superseded) live-проверен
 на стенде 2026-07-18: два дашборда с одинаковым title различены по ownership, per-build
 артефакты удалены (200→404), shared connection и чужие дашборды не тронуты.
+
+**Инвариант: билды одной сессии серийны.** `orphan_bi_artifacts(session, current_token)`
+отдаёт ВСЕ живые строки сессии с другим `build_token` — конкурентный билд B той же сессии,
+успевший записать леджер, был бы удалён авто-прунингом билда A как «прошлая ревизия». Сегодня
+это недостижимо (API отбивает второй билд бегущей сессии 409 «build already running»; CLI
+создаёт новую сессию на каждый прогон), но будущий параллельный executor обязан либо сохранить
+per-session серийность, либо переработать селекцию прунинга.
 
 ### 3.18 Resource bounds (P0-3, 2026-07-16)
 

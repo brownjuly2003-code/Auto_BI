@@ -15,7 +15,13 @@ logger = logging.getLogger(__name__)
 
 
 class SupersetAPIError(Exception):
-    pass
+    """API-level failure; `status_code` carries the HTTP status when one was received
+    (None for login/CSRF failures raised before a request cycle completes), so callers
+    like `delete_artifact` can tell an already-gone 404 from a real error."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def rison_eq_filter(column: str, value: str, page_size: int = 100) -> str:
@@ -89,7 +95,8 @@ class SupersetClient:
             )
         if response.status_code >= 400:
             raise SupersetAPIError(
-                f"{method} {path} -> {response.status_code}: {response.text[:500]}"
+                f"{method} {path} -> {response.status_code}: {response.text[:500]}",
+                status_code=response.status_code,
             )
         return response.json() if response.content else {}
 
@@ -101,6 +108,9 @@ class SupersetClient:
 
     def put(self, path: str, json: dict) -> dict[str, Any]:
         return self.request("PUT", path, json=json)
+
+    def delete(self, path: str) -> dict[str, Any]:
+        return self.request("DELETE", path)
 
     def health(self) -> bool:
         try:

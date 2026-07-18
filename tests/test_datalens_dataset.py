@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from auto_bi.adapters.base import DWHConfig
+from auto_bi.adapters.datalens.adapter import DataLensAdapter
 from auto_bi.adapters.datalens.client import DataLensAPIError, DataLensClient
 from auto_bi.adapters.datalens.dataset import (
     _user_type,
@@ -399,3 +400,71 @@ def test_client_login_without_cookie_raises() -> None:
 
 def test_client_health() -> None:
     assert _client(FakeDataLens()).health() is True
+
+
+# --- delete_artifact (ownership live-cleanup) -------------------------------
+
+
+class FakeDeleteGateway:
+    """Signin + `mix/deleteEntry` answering one fixed status; records deleteEntry bodies."""
+
+    def __init__(self, status: int = 200) -> None:
+        self.status = status
+        self.delete_bodies: list[dict] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        import json
+
+        path = request.url.path
+        if path.endswith("/auth/signin"):
+            return httpx.Response(
+                200, json={"done": True}, headers={"set-cookie": "auth=JWE.token; Path=/"}
+            )
+        if path == "/gateway/root/mix/deleteEntry":
+            self.delete_bodies.append(json.loads(request.content))
+            if self.status >= 400:
+                return httpx.Response(self.status, json={"message": "boom"})
+            return httpx.Response(self.status, json={"done": True})
+        return httpx.Response(404, json={"message": f"unexpected {path}"})
+
+
+def _delete_adapter(fake: FakeDeleteGateway, model: SemanticModel) -> DataLensAdapter:
+    http = httpx.Client(base_url="http://dl.test", transport=httpx.MockTransport(fake))
+    client = DataLensClient("http://dl.test", "admin", "admin", http=http)
+    return DataLensAdapter(client, CH_DWH, model, "wbtest")
+
+
+def test_delete_artifact_maps_kinds_to_entry_scopes(demo_model: SemanticModel) -> None:
+    fake = FakeDeleteGateway()
+    adapter = _delete_adapter(fake, demo_model)
+    adapter.delete_artifact("chart", "abc123")
+    adapter.delete_artifact("dataset", "ds456")
+    adapter.delete_artifact("dashboard", "dash789")
+    assert fake.delete_bodies == [
+        {"entryId": "abc123", "scope": "widget"},
+        {"entryId": "ds456", "scope": "dataset"},
+        {"entryId": "dash789", "scope": "dash"},
+    ]
+
+
+def test_delete_artifact_tolerates_already_gone_404(demo_model: SemanticModel) -> None:
+    fake = FakeDeleteGateway(status=404)
+    _delete_adapter(fake, demo_model).delete_artifact("chart", "abc123")  # no raise
+    assert fake.delete_bodies == [{"entryId": "abc123", "scope": "widget"}]
+
+
+def test_delete_artifact_reraises_non_404_with_status_code(demo_model: SemanticModel) -> None:
+    fake = FakeDeleteGateway(status=500)
+    with pytest.raises(DataLensAPIError) as err:
+        _delete_adapter(fake, demo_model).delete_artifact("dashboard", "dash789")
+    assert err.value.status_code == 500
+
+
+def test_delete_artifact_refuses_shared_and_unknown_kinds(demo_model: SemanticModel) -> None:
+    fake = FakeDeleteGateway()
+    adapter = _delete_adapter(fake, demo_model)
+    with pytest.raises(ValueError, match="shared/unknown"):
+        adapter.delete_artifact("database", "conn1")
+    with pytest.raises(ValueError, match="shared/unknown"):
+        adapter.delete_artifact("mystery", "x")
+    assert fake.delete_bodies == []  # refused before any gateway call

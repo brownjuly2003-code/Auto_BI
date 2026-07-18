@@ -617,6 +617,122 @@ def test_bi_artifacts_table_present_without_version_bump(store: Store) -> None:
     assert store._db.execute("PRAGMA user_version").fetchone()[0] == 7
 
 
+# --- Store.stale_bi_artifacts: ledger-wide prune candidates (operator `auto_bi prune`) ----
+
+
+def _build(store: Store, session_id, build_token, *, owner=None) -> dict[str, int]:
+    """Record one full build's four artifact kinds under a single build_token.
+
+    Returns kind -> ledger row id so a test can name the prior build's rows precisely.
+    """
+    return {
+        "database": _art(
+            store,
+            session_id,
+            build_token,
+            kind="database",
+            native_id=f"{build_token}-db",
+            name="conn",
+            schema_set=None,
+            owner=owner,
+        ),
+        "dataset": _art(
+            store,
+            session_id,
+            build_token,
+            kind="dataset",
+            native_id=f"{build_token}-ds",
+            owner=owner,
+        ),
+        "chart": _art(
+            store,
+            session_id,
+            build_token,
+            kind="chart",
+            native_id=f"{build_token}-ch",
+            name="Выручка",
+            owner=owner,
+        ),
+        "dashboard": _art(
+            store,
+            session_id,
+            build_token,
+            kind="dashboard",
+            native_id=f"{build_token}-dash",
+            name="Обзор",
+            schema_set=None,
+            owner=owner,
+        ),
+    }
+
+
+def test_stale_bi_artifacts_returns_only_prior_build_excluding_shared(store: Store) -> None:
+    # two builds in one session: the newest build_token (max ledger row id) is the delivered
+    # dashboard and is kept; only the older build's rows are stale, and the shared database is
+    # excluded by default (still referenced by the current build).
+    sid = store.create_session("r")
+    first = _build(store, sid, "tok1")
+    _build(store, sid, "tok2")  # latest build — never selected
+    stale = store.stale_bi_artifacts()
+    assert {s["id"] for s in stale} == {first["dataset"], first["chart"], first["dashboard"]}
+    assert all(s["build_token"] == "tok1" for s in stale)
+    assert "database" not in {s["kind"] for s in stale}
+
+
+def test_stale_bi_artifacts_include_shared_returns_prior_database(store: Store) -> None:
+    # include_shared=True restores the full audit view: the prior build's database row IS returned
+    sid = store.create_session("r")
+    first = _build(store, sid, "tok1")
+    _build(store, sid, "tok2")
+    stale = store.stale_bi_artifacts(include_shared=True)
+    assert {s["id"] for s in stale} == set(first.values())  # all four of tok1, database included
+    assert "database" in {s["kind"] for s in stale}
+
+
+def test_stale_bi_artifacts_keeps_each_sessions_latest_build(store: Store) -> None:
+    # two sessions, one build each: every session's only build is its latest -> nothing is stale
+    a = store.create_session("a")
+    b = store.create_session("b")
+    _build(store, a, "tokA")
+    _build(store, b, "tokB")
+    assert store.stale_bi_artifacts() == []
+
+
+def test_stale_bi_artifacts_session_filter_narrows_to_one_session(store: Store) -> None:
+    a = store.create_session("a")
+    b = store.create_session("b")
+    a_first = _build(store, a, "tokA1")
+    _build(store, a, "tokA2")
+    b_first = _build(store, b, "tokB1")
+    _build(store, b, "tokB2")
+    # unfiltered: both sessions' prior-build non-shared rows
+    assert {s["id"] for s in store.stale_bi_artifacts()} == {
+        a_first["dataset"],
+        a_first["chart"],
+        a_first["dashboard"],
+        b_first["dataset"],
+        b_first["chart"],
+        b_first["dashboard"],
+    }
+    # session_id= narrows to that session only
+    scoped = store.stale_bi_artifacts(session_id=a)
+    assert {s["id"] for s in scoped} == {
+        a_first["dataset"],
+        a_first["chart"],
+        a_first["dashboard"],
+    }
+    assert all(s["session_id"] == a for s in scoped)
+
+
+def test_stale_bi_artifacts_never_returns_superseded_rows(store: Store) -> None:
+    # rows already marked superseded (removed by an earlier prune) are never re-selected
+    sid = store.create_session("r")
+    first = _build(store, sid, "tok1")
+    _build(store, sid, "tok2")
+    store.mark_bi_artifacts_superseded([first["dataset"], first["chart"], first["dashboard"]])
+    assert store.stale_bi_artifacts() == []
+
+
 def test_migrates_v6_db_adds_session_resume_columns(tmp_path) -> None:
     # a v6 DB: sessions predates owner/target_bi/pinned. CREATE TABLE IF NOT EXISTS leaves
     # it untouched, so the v7 migration must ALTER in place; the legacy row back-fills to

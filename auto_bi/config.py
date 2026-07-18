@@ -136,6 +136,15 @@ class Settings(BaseSettings):
     # internal network). None = uvicorn's default (trust loopback only).
     forwarded_allow_ips: str | None = None
 
+    # Ownership-based live-cleanup on rebuild (audit P0-2 criterion 4, wired 2026-07-18):
+    # after a successful build the pipeline deletes THIS session's prior-revision BI
+    # artifacts by native id (selection = Store.orphan_bi_artifacts: session/owner-scoped,
+    # shared kinds excluded in SQL). ON by default — a rebuild replaces its previous
+    # revision; this is the chosen product behavior, and a prune failure never fails the
+    # build. Kill-switch for operators who want prior revisions kept (clean them later
+    # with `auto_bi prune`).
+    prune_on_rebuild: bool = True
+
     # SQLite store (sessions, specs, builds, llm_calls, dm_change_requests, users)
     store_path: str = "data/auto_bi.sqlite"
 
