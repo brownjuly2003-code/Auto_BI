@@ -518,6 +518,105 @@ def test_dm_change_requests_for_session_scopes_by_session(store: Store) -> None:
     assert [(r["table_name"], r["rule"]) for r in rows] == [("dm.sales_daily", "a")]
 
 
+# --- BI-artifact ownership ledger (audit P0-2 criterion 4) --------------------------
+
+
+def _art(store: Store, session_id, build_token, **over) -> int:
+    kw = dict(
+        session_id=session_id,
+        build_token=build_token,
+        target_bi="superset",
+        kind="dataset",
+        native_id="1",
+        name="auto_bi__x",
+        owner=None,
+        schema_set="dm.sales_daily",
+    )
+    kw.update(over)
+    return store.record_bi_artifact(**kw)
+
+
+def test_bi_artifact_record_and_list_roundtrip(store: Store) -> None:
+    sid = store.create_session("r")
+    _art(store, sid, "tok1", kind="database", native_id="7", name="conn", schema_set=None)
+    _art(store, sid, "tok1", kind="dataset", native_id="101", name="auto_bi__sales")
+    _art(store, sid, "tok1", kind="chart", native_id="102", name="Выручка")
+    _art(store, sid, "tok1", kind="dashboard", native_id="103", name="Обзор", schema_set=None)
+    rows = store.bi_artifacts(sid)
+    assert [r["kind"] for r in rows] == ["database", "dataset", "chart", "dashboard"]
+    assert all(r["build_token"] == "tok1" and r["status"] == "live" for r in rows)
+    ds = rows[1]
+    assert (ds["native_id"], ds["name"]) == ("101", "auto_bi__sales")
+    assert ds["schema_set"] == "dm.sales_daily"
+    # empty for an unknown session
+    assert store.bi_artifacts("no-such") == []
+
+
+def test_orphan_bi_artifacts_selects_only_prior_build_tokens(store: Store) -> None:
+    sid = store.create_session("r")
+    old_a = _art(store, sid, "tok1", native_id="10")
+    old_b = _art(store, sid, "tok1", kind="chart", native_id="11")
+    # with only tok1 present, tok1 is the current build -> nothing from a prior revision
+    assert store.orphan_bi_artifacts(sid, "tok1") == []
+    _art(store, sid, "tok2", native_id="20")  # a new (current) build — must NOT be an orphan
+    orphans = store.orphan_bi_artifacts(sid, "tok2")
+    assert {o["id"] for o in orphans} == {old_a, old_b}
+    assert all(o["build_token"] == "tok1" for o in orphans)
+
+
+def test_orphan_bi_artifacts_never_selects_by_name(store: Store) -> None:
+    # a same-titled artifact owned by ANOTHER session/owner must never be selected: the
+    # selection keys on ownership (session_id/build_token), never on the technical name.
+    a = store.create_session("a")
+    b = store.create_session("b")
+    mine = _art(store, a, "tok1", native_id="1", name="collide", owner="alice")
+    _art(store, b, "tokB", native_id="99", name="collide", owner="bob")  # identical name
+    orphans = store.orphan_bi_artifacts(a, "tok2")
+    assert [o["id"] for o in orphans] == [mine]
+    assert [o["native_id"] for o in orphans] == ["1"]  # session b's colliding-name row excluded
+
+
+def test_orphan_bi_artifacts_excludes_shared_database_by_default(store: Store) -> None:
+    # the connection (kind='database') is idempotent-by-name and SHARED across builds: the
+    # prior revision's row is still referenced by the current build, so the default selection
+    # must NOT offer it for deletion; include_shared=True keeps the full audit view.
+    sid = store.create_session("r")
+    _art(store, sid, "tok1", kind="database", native_id="1", name="conn", schema_set=None)
+    per_build = _art(store, sid, "tok1", kind="dataset", native_id="10")
+    orphans = store.orphan_bi_artifacts(sid, "tok2")
+    assert [o["id"] for o in orphans] == [per_build]  # deletable as returned
+    audit = store.orphan_bi_artifacts(sid, "tok2", include_shared=True)
+    assert [o["kind"] for o in audit] == ["database", "dataset"]
+
+
+def test_orphan_bi_artifacts_owner_scoping(store: Store) -> None:
+    sid = store.create_session("r")
+    alice = _art(store, sid, "tok1", native_id="1", owner="alice")
+    _art(store, sid, "tok1", native_id="2", owner="bob")
+    # owner-scoped: a non-admin cleanup sees only its own prior artifacts
+    scoped = store.orphan_bi_artifacts(sid, "tok2", owner="alice")
+    assert [o["id"] for o in scoped] == [alice]
+    # owner=None (admin / auth off) sees every owner for the session
+    assert len(store.orphan_bi_artifacts(sid, "tok2")) == 2
+
+
+def test_mark_bi_artifacts_superseded_removes_from_orphan_selection(store: Store) -> None:
+    sid = store.create_session("r")
+    keep = _art(store, sid, "tok1", native_id="1")
+    gone = _art(store, sid, "tok1", native_id="2")
+    store.mark_bi_artifacts_superseded([gone])
+    orphans = store.orphan_bi_artifacts(sid, "tok2")
+    assert [o["id"] for o in orphans] == [keep]  # superseded row no longer selected
+    assert store.mark_bi_artifacts_superseded([]) is None  # empty is a no-op
+
+
+def test_bi_artifacts_table_present_without_version_bump(store: Store) -> None:
+    # the table is created via always-run CREATE IF NOT EXISTS; schema_version stays 7 (no bump)
+    tables = {r["name"] for r in store._db.execute("SELECT name FROM sqlite_master")}
+    assert "bi_artifacts" in tables
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 7
+
+
 def test_migrates_v6_db_adds_session_resume_columns(tmp_path) -> None:
     # a v6 DB: sessions predates owner/target_bi/pinned. CREATE TABLE IF NOT EXISTS leaves
     # it untouched, so the v7 migration must ALTER in place; the legacy row back-fills to
