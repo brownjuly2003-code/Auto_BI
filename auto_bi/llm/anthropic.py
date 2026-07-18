@@ -127,7 +127,9 @@ class AnthropicClient:
         output_tokens: int | None = None
         try:
             # reasoning -> adaptive thinking on GROUNDING/PROPOSE; mechanical steps run without it
-            # (Sonnet 4.6 supports both; mirrors the GraceKelly reasoning flag, llm/policy.py).
+            # (Sonnet 5 accepts both; mirrors the GraceKelly reasoning flag, llm/policy.py).
+            # Always sent explicitly: the model's own when-omitted default differs by
+            # version, and thinking blocks are dropped by _extract_text either way.
             thinking = {"type": "adaptive"} if reasoning else {"type": "disabled"}
             response = self._create(
                 model=self._settings.anthropic_model,

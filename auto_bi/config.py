@@ -70,7 +70,14 @@ class Settings(BaseSettings):
     # Direct Anthropic API (used when llm_provider="anthropic"; SDK is an optional extra).
     # api_key blank -> the SDK reads the standard ANTHROPIC_API_KEY env var.
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-sonnet-4-6"
+    # Current Sonnet. Thinking is passed explicitly on every call (adaptive on reasoning
+    # steps, disabled on mechanical ones — llm/anthropic.py), so the model's own
+    # thinking-when-omitted default never applies here. Its tokenizer counts the same text
+    # ~30% higher than claude-sonnet-4-6 did: re-check `anthropic_max_tokens` and the price
+    # table below before assuming an old cost or budget baseline still holds.
+    anthropic_model: str = "claude-sonnet-5"
+    # Kept at 16k on purpose: `messages.create` here is non-streaming, and the SDK refuses
+    # non-streaming requests whose estimated duration would outrun the HTTP timeout.
     anthropic_max_tokens: int = 16000
 
     send_samples: bool = True
@@ -127,9 +134,17 @@ class Settings(BaseSettings):
     llm_budget_day_max_tokens: int = 0
     llm_budget_day_max_seconds: float = 0.0
     llm_budget_day_max_cost_usd: float = 0.0
-    # cost price table (USD per 1000 tokens), "model:in/out,...". Example defaults only —
-    # override for your provider contract; used only when a *_max_cost_usd limit is set.
-    llm_budget_prices: str = "claude-sonnet-4-6:0.003/0.015,claude-sonnet-5:0.003/0.015"
+    # cost price table (USD per 1000 tokens), "model:in/out,...". List prices as of
+    # 2026-07-18; override for your provider contract. Used only when a *_max_cost_usd
+    # limit is set — an unlisted model prices at 0, so add yours before relying on a cap.
+    # Sonnet 5 carries a lower introductory rate through 2026-08-31; the table keeps the
+    # standard rate so the guard errs toward over-estimating spend, not under.
+    llm_budget_prices: str = (
+        "claude-opus-4-8:0.005/0.025,"
+        "claude-sonnet-5:0.003/0.015,"
+        "claude-sonnet-4-6:0.003/0.015,"
+        "claude-haiku-4-5:0.001/0.005"
+    )
     # Public demo mode (P8): the deterministic auto-overview path becomes the ONLY
     # entry — text/fields sessions and word edits (both call the LLM) and enrichment
     # writes (mutate the shared model.yaml) return 403; the UI greys those tabs out.

@@ -233,7 +233,7 @@ vs Greenplum/Greengage).
 | `AUTO_BI_DATALENS_URL` / `_USER` / `_PASSWORD` / `_WORKBOOK_ID` | self-hosted DataLens (v2) | `http://localhost:8090` / `admin` / `admin` / `ra7f79yirtumb` |
 | `AUTO_BI_CH_HOST_FROM_DATALENS` | CH-хост, как его достаёт DataLens-коннекшн | `host.docker.internal` |
 | `AUTO_BI_LLM_PROVIDER` | LLM-провайдер: `anthropic` (прямой Messages API) или `gracekelly` (локальный сервис) | `anthropic` |
-| `ANTHROPIC_API_KEY` / `AUTO_BI_ANTHROPIC_MODEL` / `_MAX_TOKENS` | Прямой Anthropic API (провайдер `anthropic`). Ключ — стандартная переменная SDK, без префикса `AUTO_BI_`; `AUTO_BI_ANTHROPIC_API_KEY` тоже работает, если ключ нужно держать рядом с остальным `.env` | `` / `claude-sonnet-4-6` / `16000` |
+| `ANTHROPIC_API_KEY` / `AUTO_BI_ANTHROPIC_MODEL` / `_MAX_TOKENS` | Прямой Anthropic API (провайдер `anthropic`). Ключ — стандартная переменная SDK, без префикса `AUTO_BI_`; `AUTO_BI_ANTHROPIC_API_KEY` тоже работает, если ключ нужно держать рядом с остальным `.env` | `` / `claude-sonnet-5` / `16000` |
 | `AUTO_BI_GRACEKELLY_URL` / `_MODEL` | Локальный LLM-сервис (провайдер `gracekelly`) | `http://127.0.0.1:8011` / `claude-sonnet-5` |
 | `AUTO_BI_SEND_SAMPLES` | слать ли примеры значений в grounding | `true` |
 | `AUTO_BI_STORE_PATH` | SQLite-стор (сессии, spec'ы, сборки, llm_calls, заявки DM, users) | `data/auto_bi.sqlite` |
