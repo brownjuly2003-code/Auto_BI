@@ -129,12 +129,29 @@ jobs:
             found { print }
           ' CHANGELOG.md > release_notes.md
 
+      # Supply-chain: a software bill of materials (SPDX JSON) for the release, generated from
+      # the checked-out source (Syft reads pyproject.toml + uv.lock) — one tool, one format.
+      # Attached to the GitHub Release as an asset below (GitHub's dependency graph ingests
+      # SPDX natively). This run is a tag push (event=push), not a `release` event, so the
+      # action's own release-asset upload never fires; attach it via action-gh-release's
+      # `files:` instead, and disable the action's own uploads so no stray workflow artifact
+      # is produced.
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: autobi-agent.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           name: v${{ steps.meta.outputs.version }}
           body_path: release_notes.md
           generate_release_notes: false
+          files: autobi-agent.spdx.json
 
   # X-2: PyPI publication via Trusted Publishing (OIDC) — no long-lived token in secrets.
   # The trusted publisher (project `autobi-agent`, owner `brownjuly2003-code`, repo
@@ -149,9 +166,17 @@ jobs:
   pypi:
     needs: preflight
     runs-on: ubuntu-latest
-    environment: pypi
+    # `environment: pypi` also gates this job behind any protection rules configured for that
+    # environment in repo settings (Settings → Environments → pypi). None are set by default,
+    # so behaviour is unchanged; adding "Required reviewers" there turns every PyPI publish
+    # into a manual approval without touching this file (see docs/DEPLOYMENT.md §2).
+    environment:
+      name: pypi
+      # Deep-links the deployment (and the approval prompt, once reviewers are enabled) to the
+      # exact version being published on PyPI.
+      url: https://pypi.org/project/autobi-agent/${{ needs.preflight.outputs.version }}/
     permissions:
-      id-token: write  # OIDC token for PyPI; nothing else
+      id-token: write  # OIDC: PyPI trusted publishing + PEP 740 attestation signing
       contents: read
     steps:
       - name: Download built distributions
@@ -161,3 +186,33 @@ jobs:
           path: dist
       - name: Publish to PyPI (trusted publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # PEP 740: under trusted publishing, gh-action-pypi-publish (v1.11+) signs and
+          # uploads attestations by default via the ambient OIDC identity. `@release/v1`
+          # already tracks a version with this on; set it explicitly so a future default flip
+          # can't silently drop it. Consumes the job's `id-token: write` above.
+          attestations: true
+
+  # Supply-chain: SLSA build provenance for the EXACT sdist+wheel that preflight built and
+  # pypi publishes. Attests each dist file's digest to this workflow run via Sigstore +
+  # GitHub's attestation store; consumers verify later with
+  # `gh attestation verify <file> --repo brownjuly2003-code/Auto_BI`. Independent of
+  # release/pypi (all three only `needs: preflight`) — provenance binds the build, not the
+  # publication — and, like the rest of this workflow, runs only on a real `vX.Y.Z` tag push.
+  provenance:
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write      # mint the Sigstore OIDC token
+      attestations: write  # persist the attestation to the repo's attestation store
+      contents: read
+    steps:
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Attest build provenance (sdist + wheel)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*"
