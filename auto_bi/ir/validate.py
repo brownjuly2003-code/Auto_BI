@@ -234,6 +234,16 @@ def _validate_chart(
             f"{prefix}: measures collide by alias {m_dupes} — "
             "две меры дают одинаковый SELECT-алиас (задайте label одной из них)"
         )
+    # ...and the two sets must not collide with EACH OTHER: a measure label equal to a
+    # dimension's bare name (label="store_id" next to dimensions=["store_id"]) emits two
+    # SELECT columns under one alias; which one the BI's aggregate picks up is undefined,
+    # so the chart silently shows wrong numbers instead of failing.
+    cross = sorted(set(aliases) & set(m_aliases))
+    if cross:
+        errors.append(
+            f"{prefix}: measure alias collides with dimension column {cross} — "
+            "мера и размерность дают одинаковый SELECT-алиас (задайте мере другой label)"
+        )
     used_tables = {c.rpartition(".")[0] for c in group_cols if "." in c}
     used_tables.update(
         qf.column.rpartition(".")[0] for qf in chart.query.filters if "." in qf.column

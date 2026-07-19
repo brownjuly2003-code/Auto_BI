@@ -630,6 +630,28 @@ def test_distinct_measure_aliases_ok(demo_model) -> None:
     assert validate_spec(spec(ok), demo_model) == []
 
 
+def test_measure_alias_colliding_with_dimension_rejected(demo_model) -> None:
+    # a measure label equal to a dimension's bare name emits two SELECT columns under one
+    # alias; which one the BI's aggregate reads is undefined -> silently wrong numbers
+    # (audit 2026-07-19 finding 2)
+    bad = chart(
+        dimensions=["store_id"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM, label="store_id")],
+    )
+    errors = validate_spec(spec(bad), demo_model)
+    assert any("measure alias collides with dimension column" in e for e in errors)
+
+
+def test_measure_over_dimension_column_without_label_ok(demo_model) -> None:
+    # no false positive on the same column used both ways: the unlabeled measure's default
+    # alias carries the agg prefix (count_distinct_store_id), so it never shadows the dimension
+    ok = chart(
+        dimensions=["store_id"],
+        measures=[Measure(column="store_id", agg=Aggregation.COUNT_DISTINCT)],
+    )
+    assert validate_spec(spec(ok), demo_model) == []
+
+
 # --- scalar period-compare KPI (Measure.compare) ---------------------------
 
 
