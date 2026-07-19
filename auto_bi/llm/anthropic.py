@@ -34,7 +34,7 @@ T = TypeVar("T", bound=BaseModel)
 MessagesCreate = Callable[..., Any]
 
 
-def _build_create(settings: Settings) -> MessagesCreate:
+def _build_sdk_client(settings: Settings) -> Any:
     """Construct the real Anthropic SDK client lazily; clear error if it's unavailable."""
     try:
         import anthropic
@@ -46,10 +46,9 @@ def _build_create(settings: Settings) -> MessagesCreate:
         ) from exc
     try:
         # api_key blank -> SDK falls back to the ANTHROPIC_API_KEY env var.
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key or None)
+        return anthropic.Anthropic(api_key=settings.anthropic_api_key or None)
     except Exception as exc:  # missing key, bad config
         raise LLMError(f"failed to initialise the Anthropic client: {exc}") from exc
-    return client.messages.create
 
 
 def _extract_text(response: Any) -> str:
@@ -86,11 +85,25 @@ class AnthropicClient:
     ) -> None:
         self._settings = settings
         # Injected `create` keeps unit tests SDK-free; otherwise build the real client now,
-        # which is also where the optional dependency / API key is actually required.
-        self._create = create or _build_create(settings)
+        # which is also where the optional dependency / API key is actually required. The
+        # SDK client is retained (not just its bound `messages.create`) so close() can
+        # release its HTTP pool (D-2 lifecycle); with an injected create there is no pool.
+        if create is not None:
+            self._sdk_client = None
+            self._create = create
+        else:
+            self._sdk_client = _build_sdk_client(settings)
+            self._create = self._sdk_client.messages.create
         self._log_path = Path(log_path)
         self._store = store
         self._budget = budget
+
+    def close(self) -> None:
+        """Release the SDK client's HTTP pool, if this instance owns one (D-2 lifecycle).
+
+        Not part of the LLMClient Protocol — owners release via getattr (see cli.py)."""
+        if self._sdk_client is not None:
+            self._sdk_client.close()
 
     def complete(
         self,

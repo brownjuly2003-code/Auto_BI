@@ -359,7 +359,7 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
     from functools import partial
     from pathlib import Path
 
-    from auto_bi.adapters.factory import make_adapter
+    from auto_bi.adapters.factory import close_adapter, make_adapter
     from auto_bi.agent.pipeline import prune_artifact_rows
     from auto_bi.config import get_settings
     from auto_bi.ir.spec import TargetBI
@@ -403,19 +403,25 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
             print(f"{target}: неизвестный target ({exc}) — {len(target_rows)} строк пропущено")
             skipped_total += len(target_rows)
             continue
-        health = adapter.healthcheck()
-        if not health.ok:
-            print(f"{target}: недоступен ({health.message}) — {len(target_rows)} строк пропущено")
-            skipped_total += len(target_rows)
-            continue
-        delete = getattr(adapter, "delete_artifact", None)
-        if not callable(delete):
-            print(f"{target}: адаптер без delete_artifact — {len(target_rows)} строк пропущено")
-            skipped_total += len(target_rows)
-            continue
-        removed, failed = prune_artifact_rows(store, target_rows, delete, print)
-        removed_total += removed
-        failed_total += failed
+        try:
+            health = adapter.healthcheck()
+            if not health.ok:
+                print(
+                    f"{target}: недоступен ({health.message}) — {len(target_rows)} строк "
+                    "пропущено"
+                )
+                skipped_total += len(target_rows)
+                continue
+            delete = getattr(adapter, "delete_artifact", None)
+            if not callable(delete):
+                print(f"{target}: адаптер без delete_artifact — {len(target_rows)} строк пропущено")
+                skipped_total += len(target_rows)
+                continue
+            removed, failed = prune_artifact_rows(store, target_rows, delete, print)
+            removed_total += removed
+            failed_total += failed
+        finally:
+            close_adapter(adapter)  # D-2 lifecycle: one adapter (and pool) per target
     print(
         f"Итог: удалено {removed_total}, не удалось {failed_total}, пропущено {skipped_total}"
         + (" (останутся до следующего прунинга)" if failed_total or skipped_total else "")
@@ -563,7 +569,7 @@ def _serve(  # pragma: no cover — wiring only
     import uvicorn
 
     from auto_bi.adapters.base import AdapterHealth
-    from auto_bi.adapters.factory import make_adapter
+    from auto_bi.adapters.factory import make_adapter, probe_health
     from auto_bi.advisor.core import Advisor
     from auto_bi.agent.pipeline import compile_and_build
     from auto_bi.agent.sql_guard import LiveSQLValidator
@@ -659,8 +665,10 @@ def _serve(  # pragma: no cover — wiring only
 
     def bi_healthcheck() -> AdapterHealth:
         # v1 scope is ClickHouse+Superset (CLAUDE.md "Скоуп"); DataLens is the v2/stand-only
-        # target, so readiness checks the BI that's actually deployed.
-        return adapter_for(TargetBI.SUPERSET).healthcheck()
+        # target, so readiness checks the BI that's actually deployed. probe_health releases
+        # the throwaway adapter's HTTP pool — /ready is polled, one leaked pool per probe
+        # otherwise (D-2 lifecycle).
+        return probe_health(adapter_for, TargetBI.SUPERSET)
 
     def llm_healthcheck() -> AdapterHealth:
         if settings.llm_provider.strip().lower() != "gracekelly":
@@ -741,7 +749,15 @@ def _serve(  # pragma: no cover — wiring only
         # skip uvicorn's own dictConfig so its "uvicorn"/"uvicorn.access" loggers propagate
         # to the root logger configure_logging() just set up — one consistent JSON stream.
         uvicorn_kwargs["log_config"] = None
-    uvicorn.run(app, **uvicorn_kwargs)
+    try:
+        uvicorn.run(app, **uvicorn_kwargs)
+    finally:
+        # D-2 lifecycle: the LLM client lives for the whole server; release its HTTP pool
+        # on shutdown. getattr — close() is not part of the LLMClient Protocol (DisabledLLM
+        # and fakes have none).
+        llm_close = getattr(llm, "close", None)
+        if callable(llm_close):
+            llm_close()
     return 0
 
 

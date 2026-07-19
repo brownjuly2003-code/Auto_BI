@@ -470,6 +470,14 @@ class DataLensAdapter:
             raise
         logger.info("datalens %s %s deleted (live-cleanup)", kind, native_id)
 
+    def close(self) -> None:
+        """Release the client's HTTP pool (D-2 lifecycle: adapters are created per build).
+
+        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts);
+        callers release through auto_bi.adapters.factory.close_adapter, which tolerates
+        adapters without it. The adapter is single-use after close."""
+        self._client.close()
+
     def _owned_entry_name(self, title: str) -> str:
         """Display title + optional namespace fingerprint (DataLens entry charset)."""
         base = safe_entry_name(title)

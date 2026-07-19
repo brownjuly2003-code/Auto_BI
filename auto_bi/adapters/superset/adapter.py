@@ -175,6 +175,14 @@ class SupersetAdapter:
             raise
         logger.info("superset %s %s deleted (live-cleanup)", kind, native_id)
 
+    def close(self) -> None:
+        """Release the client's HTTP pool (D-2 lifecycle: adapters are created per build).
+
+        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts);
+        callers release through auto_bi.adapters.factory.close_adapter, which tolerates
+        adapters without it. The adapter is single-use after close."""
+        self._client.close()
+
     def healthcheck(self) -> AdapterHealth:
         ok = self._client.health()
         return AdapterHealth(ok=ok, message="" if ok else "GET /health failed")
