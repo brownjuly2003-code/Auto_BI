@@ -4,10 +4,12 @@ No dialogue yet (INTAKE/CLARIFY arrive in Phase 1) — single pass, fail loudly.
 All collaborators are injected; the CLI wires real ones from settings.
 """
 
+import logging
 from collections.abc import Callable
 
 from auto_bi.adapters.artifacts import new_build_namespace
 from auto_bi.adapters.base import BIAdapter, DashboardRef
+from auto_bi.adapters.factory import close_adapter
 from auto_bi.advisor.core import Advisor
 from auto_bi.advisor.narrate import ChartVerdict, worst_verdicts
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
@@ -19,6 +21,8 @@ from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import SHARED_BI_KINDS, Store
+
+logger = logging.getLogger(__name__)
 
 # Resolve the spec's BI target to a wired adapter (auto_bi.adapters.factory.make_adapter,
 # partial-applied with settings+model). Injected as a resolver so the pipeline never names a
@@ -121,74 +125,90 @@ def compile_and_build(
     """
     if store is not None and session_id is not None:
         store.set_session_status(session_id, "building")
+    # D-2 lifecycle: the adapter (and its HTTP pool) is created per build, so it must be
+    # released on EVERY exit — after the ledger/prune on success, and on any failure. The
+    # outer finally is the single release point.
+    adapter: BIAdapter | None = None
     try:
-        # deterministic dashboard-adequacy normalization, before SQL_GEN + adapter so BOTH
-        # the validated SQL and the built dashboard see one normalized spec. Both passes are
-        # pure and idempotent. The preview/advisor see the pre-normalization spec, so log
-        # changes. B3 (label joins) runs first — it swaps raw FK id dimensions for their
-        # human-readable name via a safe LEFT JOIN; B1 (top-N) then ranks the now-named
-        # categorical axis.
-        labeled = apply_label_joins(spec, model)
-        relabeled = [
-            c.id for o, c in zip(spec.charts, labeled.charts, strict=True) if c.query != o.query
-        ]
-        if relabeled:
-            log(
-                f"нормализация: id-измерения заменены на названия через join в чартах "
-                f"{relabeled}"
-            )
-        normalized = apply_chart_defaults(labeled, model)
-        topn_changed = [
-            c.id
-            for o, c in zip(labeled.charts, normalized.charts, strict=True)
-            if c.query != o.query
-        ]
-        if topn_changed:
-            log(f"нормализация: дефолтный top-N применён к категориальным чартам {topn_changed}")
-        spec = normalized
-        # invariant 2 at the BI boundary: never let an unvalidated spec reach the adapter,
-        # regardless of how `spec` was produced (defense-in-depth; no-op on the happy path).
-        errors = validate_spec(spec, model)
-        if errors:
-            raise SpecValidationError(errors)
+        try:
+            # deterministic dashboard-adequacy normalization, before SQL_GEN + adapter so BOTH
+            # the validated SQL and the built dashboard see one normalized spec. Both passes are
+            # pure and idempotent. The preview/advisor see the pre-normalization spec, so log
+            # changes. B3 (label joins) runs first — it swaps raw FK id dimensions for their
+            # human-readable name via a safe LEFT JOIN; B1 (top-N) then ranks the now-named
+            # categorical axis.
+            labeled = apply_label_joins(spec, model)
+            relabeled = [
+                c.id for o, c in zip(spec.charts, labeled.charts, strict=True) if c.query != o.query
+            ]
+            if relabeled:
+                log(
+                    f"нормализация: id-измерения заменены на названия через join в чартах "
+                    f"{relabeled}"
+                )
+            normalized = apply_chart_defaults(labeled, model)
+            topn_changed = [
+                c.id
+                for o, c in zip(labeled.charts, normalized.charts, strict=True)
+                if c.query != o.query
+            ]
+            if topn_changed:
+                log(
+                    f"нормализация: дефолтный top-N применён к категориальным чартам "
+                    f"{topn_changed}"
+                )
+            spec = normalized
+            # invariant 2 at the BI boundary: never let an unvalidated spec reach the adapter,
+            # regardless of how `spec` was produced (defense-in-depth; no-op on the happy path).
+            errors = validate_spec(spec, model)
+            if errors:
+                raise SpecValidationError(errors)
 
-        for chart in spec.charts:
-            sql = generate_chart_sql(chart.query)
-            sql_validator.validate(sql)
-            log(f"SQL ok ({chart.id}): EXPLAIN + LIMIT-прогон прошли")
+            for chart in spec.charts:
+                sql = generate_chart_sql(chart.query)
+                sql_validator.validate(sql)
+                log(f"SQL ok ({chart.id}): EXPLAIN + LIMIT-прогон прошли")
 
-        # dispatch on the spec's declared target so a "datalens" spec never silently builds
-        # in Superset (invariant 2 at the BI boundary; Phase 4 F1)
-        adapter = adapter_for(spec.target_bi)
-        health = adapter.healthcheck()
-        if not health.ok:
-            raise RuntimeError(f"{spec.target_bi.value} healthcheck failed: {health.message}")
+            # dispatch on the spec's declared target so a "datalens" spec never silently builds
+            # in Superset (invariant 2 at the BI boundary; Phase 4 F1)
+            adapter = adapter_for(spec.target_bi)
+            health = adapter.healthcheck()
+            if not health.ok:
+                raise RuntimeError(f"{spec.target_bi.value} healthcheck failed: {health.message}")
 
-        # P0-2: pin technical BI artifact names to this build/session so two independent
-        # sessions with the same title/chart ids never share or overwrite datasets. The same
-        # namespace is the build's `build_token` = its revision id in the ownership ledger
-        # (P0-2 criterion 4). Optional helper on concrete adapters (Protocol unchanged — S4).
-        build_token = new_build_namespace(session_id)
-        set_ns = getattr(adapter, "set_artifact_namespace", None)
-        if callable(set_ns):
-            set_ns(build_token)
+            # P0-2: pin technical BI artifact names to this build/session so two independent
+            # sessions with the same title/chart ids never share or overwrite datasets. The same
+            # namespace is the build's `build_token` = its revision id in the ownership ledger
+            # (P0-2 criterion 4). Optional helper on concrete adapters (Protocol unchanged — S4).
+            build_token = new_build_namespace(session_id)
+            set_ns = getattr(adapter, "set_artifact_namespace", None)
+            if callable(set_ns):
+                set_ns(build_token)
 
-        ref = adapter.build(spec)
-    except Exception as exc:
+            ref = adapter.build(spec)
+        except Exception as exc:
+            if store is not None and session_id is not None:
+                store.save_build(session_id, spec_id, status="failed", error=str(exc))
+                store.set_session_status(session_id, "failed")
+            raise
+        log(f"BUILD done: {ref.title} -> {ref.url}")
         if store is not None and session_id is not None:
-            store.save_build(session_id, spec_id, status="failed", error=str(exc))
-            store.set_session_status(session_id, "failed")
-        raise
-    log(f"BUILD done: {ref.title} -> {ref.url}")
-    if store is not None and session_id is not None:
-        store.save_build(session_id, spec_id, dashboard_id=ref.id, url=ref.url, status="ok")
-        store.set_session_status(session_id, "built")
-        # ownership ledger (P0-2 criterion 4): build_token/adapter are in scope here — reaching
-        # this point means adapter.build(spec) returned without raising
-        _record_bi_artifacts(store, session_id, spec, adapter, build_token)
-        if prune_orphans:
-            _prune_superseded_artifacts(store, session_id, build_token, adapter, log)
-    return ref
+            store.save_build(session_id, spec_id, dashboard_id=ref.id, url=ref.url, status="ok")
+            store.set_session_status(session_id, "built")
+            # ownership ledger (P0-2 criterion 4): build_token/adapter are in scope here —
+            # reaching this point means adapter.build(spec) returned without raising
+            _record_bi_artifacts(store, session_id, spec, adapter, build_token)
+            if prune_orphans:
+                _prune_superseded_artifacts(store, session_id, build_token, adapter, log)
+        return ref
+    finally:
+        if adapter is not None:
+            try:
+                close_adapter(adapter)
+            except Exception:
+                # a failing pool release must never mask the build outcome: the dashboard is
+                # already delivered, or the original error is already propagating
+                logger.debug("BI adapter close failed", exc_info=True)
 
 
 def _record_bi_artifacts(

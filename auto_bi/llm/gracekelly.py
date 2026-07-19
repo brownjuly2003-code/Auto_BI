@@ -56,6 +56,13 @@ class GraceKellyClient:
         self._store = store
         self._budget = budget
 
+    def close(self) -> None:
+        """Release the HTTP pool (D-2 lifecycle). The client is single-use after close.
+
+        Not part of the LLMClient Protocol — owners release via getattr (see cli.py), so
+        fakes and DisabledLLM need no counterpart."""
+        self._http.close()
+
     def complete(
         self,
         prompt: str,

@@ -14,7 +14,9 @@ DWHConfig engine stays ClickHouse here regardless of the model's introspection e
 
 from __future__ import annotations
 
-from auto_bi.adapters.base import BIAdapter, DWHConfig
+from collections.abc import Callable
+
+from auto_bi.adapters.base import AdapterHealth, BIAdapter, DWHConfig
 from auto_bi.config import Settings
 from auto_bi.ir.spec import TargetBI
 from auto_bi.semantic.model import SemanticModel
@@ -63,3 +65,31 @@ def make_adapter(target_bi: TargetBI, settings: Settings, model: SemanticModel) 
         )
 
     raise ValueError(f"unsupported BI target: {target_bi!r}")
+
+
+def close_adapter(adapter: BIAdapter) -> None:
+    """Release the adapter's HTTP pool, if it has one (D-2 lifecycle).
+
+    `close()` is a concrete helper on both real adapters, NOT part of the BIAdapter
+    Protocol (S4 — like drain_build_artifacts), so release goes through getattr: fakes
+    and minimal adapters without a pool are fine to pass here.
+    """
+    close = getattr(adapter, "close", None)
+    if callable(close):
+        close()
+
+
+def probe_health(
+    adapter_for: Callable[[TargetBI], BIAdapter], target_bi: TargetBI
+) -> AdapterHealth:
+    """Healthcheck `target_bi` through a throwaway adapter, releasing its HTTP pool.
+
+    Readiness probes (`/ready`) construct an adapter per call; without the release each
+    probe leaked one connection pool for the life of the process (D-2 lifecycle) —
+    the demo keepalive alone pings readiness a few times a minute.
+    """
+    adapter = adapter_for(target_bi)
+    try:
+        return adapter.healthcheck()
+    finally:
+        close_adapter(adapter)
