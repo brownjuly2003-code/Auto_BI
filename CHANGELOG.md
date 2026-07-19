@@ -2,6 +2,28 @@
 
 Формат по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [SemVer](https://semver.org/lang/ru/).
 
+## [Unreleased]
+
+### Added
+
+- **Retention-свип store** (D-3, аудит 2026-07-18): `Store.purge_retention` подрезает по
+  возрасту три таблицы, которые росли без ограничений — `llm_calls` (строка на вызов
+  провайдера), `trace_events` (строка на шаг пайплайна) и **не-`live`** строки
+  `bi_artifacts` (прошлые ревизии от пересборок). До этого свипались только `auth_tokens`.
+  Выключено по умолчанию (`AUTO_BI_RETENTION_ENABLED=false`) — удаление операционной
+  истории необратимо; сроки настраиваются по таблицам, `0` = хранить вечно. Свип идёт на
+  старте `serve` и раз в `AUTO_BI_RETENTION_SWEEP_HOURS`. **Не трогает** `sessions`/
+  `messages`/`specs`/`builds` (работа пользователя, не телеметрия) и `live`-строки леджера
+  (по ним живёт ownership-cleanup — их удаление осиротило бы реальный дашборд в BI).
+- **Prometheus-метрики** (D-3): `GET /api/v1/metrics` в text exposition format, opt-in
+  через `AUTO_BI_METRICS_ENABLED`. Билды по статусу и in-flight, слоты сборки, DWH-проходы
+  и суммарное время в них, LLM-вызовы/токены/секунды по моделям, `auto_bi_llm_cost_usd_total`
+  по той же прайс-таблице, что и бюджетный guard (`llm.budget.cost_usd` — общая функция,
+  незалистанная модель тарифицируется в 0), и `auto_bi_store_rows{table}` — по ней видно,
+  работает ли retention. Цифры глобальные, поэтому при включённом auth эндпоинт
+  **admin-only**; выключенный отвечает 404, а не 403. Рендер — свой (модуль 174 строки), без
+  зависимости `prometheus_client` с её глобальным реестром и default-коллекторами.
+
 ## [0.4.0] - 2026-07-18
 
 ### Added

@@ -710,6 +710,100 @@ class Store:
             cur = self._db.execute("DELETE FROM auth_tokens WHERE expires_at <= datetime('now')")
         return cur.rowcount
 
+    # --- retention (audit D-3) ----------------------------------------------------
+
+    def purge_retention(
+        self,
+        *,
+        llm_calls_days: int = 0,
+        trace_events_days: int = 0,
+        bi_artifacts_days: int = 0,
+    ) -> dict[str, int]:
+        """Age out the telemetry tables; returns {table: rows deleted}.
+
+        Only the three tables that grow with USAGE rather than with the user's own work:
+        `llm_calls` (one row per provider round-trip), `trace_events` (one per pipeline
+        step) and the NON-live rows of `bi_artifacts` (prior revisions left by rebuilds).
+        Sessions, messages, specs and builds are the user's work and are never swept here —
+        deleting them would silently destroy conversation history.
+
+        A `live` bi_artifacts row is excluded regardless of age: it is what ownership-based
+        cleanup selects on (`orphan_bi_artifacts`), so dropping it would strand a real BI
+        entity with no record that we own it. Per-table `0` days = that table is skipped,
+        so an operator can sweep traces but keep the full LLM ledger for cost accounting.
+        """
+        deleted: dict[str, int] = {}
+        sweeps = (
+            ("llm_calls", llm_calls_days, "DELETE FROM llm_calls WHERE created_at < ?"),
+            ("trace_events", trace_events_days, "DELETE FROM trace_events WHERE created_at < ?"),
+            (
+                "bi_artifacts",
+                bi_artifacts_days,
+                "DELETE FROM bi_artifacts WHERE status != 'live' AND created_at < ?",
+            ),
+        )
+        with self._lock, self._db:
+            for table, days, sql in sweeps:
+                if days <= 0:
+                    continue
+                cutoff = self._db.execute(
+                    "SELECT datetime('now', ?) AS cutoff", (f"-{int(days)} days",)
+                ).fetchone()["cutoff"]
+                deleted[table] = self._db.execute(sql, (cutoff,)).rowcount
+        return deleted
+
+    # --- metrics (audit D-3) ------------------------------------------------------
+
+    def metrics_snapshot(self) -> dict[str, Any]:
+        """Store-side counters for the Prometheus endpoint (auto_bi.api.metrics).
+
+        One pass over the aggregate tables, no per-session scan: builds and sessions by
+        status, LLM totals split by model (so the renderer can price spend with the same
+        table the budget guard uses), and the row counts of the telemetry tables — those
+        make an operator's retention settings observable instead of assumed.
+        """
+        with self._lock:
+            builds = [
+                dict(r)
+                for r in self._db.execute(
+                    "SELECT status, COUNT(*) AS n FROM builds GROUP BY status"
+                )
+            ]
+            sessions = [
+                dict(r)
+                for r in self._db.execute(
+                    "SELECT status, COUNT(*) AS n FROM sessions GROUP BY status"
+                )
+            ]
+            llm_by_model = [
+                dict(r)
+                for r in self._db.execute(
+                    "SELECT model,"
+                    " COUNT(*) AS calls,"
+                    " COALESCE(SUM(input_tokens), 0) AS input_tokens,"
+                    " COALESCE(SUM(output_tokens), 0) AS output_tokens,"
+                    " COALESCE(SUM(latency_ms), 0) AS latency_ms"
+                    " FROM llm_calls GROUP BY model"
+                )
+            ]
+            llm_by_status = [
+                dict(r)
+                for r in self._db.execute(
+                    "SELECT status, COUNT(*) AS n FROM llm_calls GROUP BY status"
+                )
+            ]
+            rows = {
+                table: self._db.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
+                for table in ("llm_calls", "trace_events", "bi_artifacts", "sessions")
+            }
+        return {
+            "builds_by_status": builds,
+            "sessions_by_status": sessions,
+            "llm_by_model": llm_by_model,
+            "llm_by_status": llm_by_status,
+            "table_rows": rows,
+        }
+
     # --- BI-artifact ownership ledger (audit P0-2 criterion 4) --------------------
 
     def record_bi_artifact(
