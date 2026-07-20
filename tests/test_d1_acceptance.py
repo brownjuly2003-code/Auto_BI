@@ -64,10 +64,28 @@ RATIO = Measure(
 )
 
 # Two non-empty, non-overlapping windows inside the demo fact (730 days from 2024-07-01).
+# NOTE (live CI 2026-07-20, assumption 3 refuted): Superset time_range "A : B" is
+# inclusive-start, EXCLUSIVE-end — [A, B). The CH reference mirrors that (< end).
 PERIOD_A = ("2025-01-01", "2025-06-30")  # H1 2025
 PERIOD_B = ("2025-07-01", "2025-12-31")  # H2 2025
 PERIOD_A_RANGE = f"{PERIOD_A[0]} : {PERIOD_A[1]}"
 PERIOD_B_RANGE = f"{PERIOD_B[0]} : {PERIOD_B[1]}"
+
+
+def _time_axis(grain: str) -> dict:
+    """Temporal x-axis column as the real ECharts chart emits it in query_context.
+
+    Live CI 2026-07-20: a top-level ``time_grain_sqla`` key on an ad-hoc chart/data
+    query is silently ignored (the response came back in daily rows) — the grain
+    must ride inside the BASE_AXIS column, which is what the saved chart sends.
+    """
+    return {
+        "columnType": "BASE_AXIS",
+        "expressionType": "SQL",
+        "label": "date",
+        "sqlExpression": "date",
+        "timeGrain": grain,
+    }
 
 
 def d1_acceptance_spec() -> DashboardSpec:
@@ -219,16 +237,16 @@ def test_d1_extra_form_data_payload_shapes() -> None:
     assert select_query["filters"][0]["col"] == source_column_alias("dm.stores.name", MART)
     assert select_query["filters"][0]["op"] == "IN"
 
-    # trend with monthly grain
+    # trend with monthly grain — grain rides inside the BASE_AXIS column (see _time_axis)
     trend_query = {
-        "columns": ["date"],
+        "columns": [_time_axis("P1M")],
         "metrics": [_adhoc_metric(REVENUE, "d1_trend", 0, from_source=True)],
         "granularity": "date",
-        "time_grain_sqla": "P1M",
         "time_range": PERIOD_A_RANGE,
         "row_limit": 5000,
     }
-    assert trend_query["time_grain_sqla"] == "P1M"
+    assert trend_query["columns"][0]["timeGrain"] == "P1M"
+    assert trend_query["columns"][0]["columnType"] == "BASE_AXIS"
 
 
 def test_d1_magnitude_probe_orderby_payload_shape() -> None:
@@ -331,7 +349,8 @@ def _ch_where(
     if start is not None:
         clauses.append(f"f.date >= toDate('{start}')")
     if end is not None:
-        clauses.append(f"f.date <= toDate('{end}')")
+        # Superset time_range "A : B" is [A, B) — mirror the exclusive end
+        clauses.append(f"f.date < toDate('{end}')")
     if store_name is not None:
         # match the source-dataset alias path: JOIN stores, filter on name
         safe = store_name.replace("'", "''")
@@ -561,10 +580,9 @@ def test_d1_live_build_and_filter_rescope(
         time_range: str, store: str | None = None
     ) -> tuple[list[tuple[date, float]], dict]:
         q: dict[str, Any] = {
-            "columns": ["date"],
+            "columns": [_time_axis("P1M")],
             "metrics": [rev_metric],
             "granularity": "date",
-            "time_grain_sqla": "P1M",
             "time_range": time_range,
             "row_limit": 5000,
             "orderby": [["date", True]],
@@ -772,10 +790,9 @@ def test_d1_live_build_and_filter_rescope(
     # assumption 2: week grain (P1W) — week-start convention
     # =====================================================================
     week_q: dict[str, Any] = {
-        "columns": ["date"],
+        "columns": [_time_axis("P1W")],
         "metrics": [rev_metric],
         "granularity": "date",
-        "time_grain_sqla": "P1W",
         "time_range": PERIOD_A_RANGE,
         "row_limit": 5000,
         "orderby": [["date", True]],
@@ -821,7 +838,7 @@ def test_d1_live_build_and_filter_rescope(
     if magnitude is not None and magnitude >= 1e9:
         soft.check(
             "assumption3: KPI shows млрд (not 236G)",
-            "млрд" in sub and "/ 1000000000" in metric_sql.replace(" ", ""),
+            "млрд" in sub and "/1000000000" in metric_sql.replace(" ", ""),
             f"subheader={sub!r} sql={metric_sql!r} magnitude={magnitude}",
         )
     elif magnitude is not None and magnitude >= 1e6:
