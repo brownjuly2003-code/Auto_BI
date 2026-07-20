@@ -34,8 +34,9 @@ from auto_bi.adapters.superset.native_filters import (
     build_native_filter_configuration,
     participating_chart_ids,
 )
+from auto_bi.agent.dataset_plan import DatasetRole, plan_datasets, source_dataset_inputs
 from auto_bi.agent.normalize import is_horizontal_bar
-from auto_bi.agent.sqlgen import generate_chart_sql
+from auto_bi.agent.sqlgen import generate_chart_sql, generate_source_sql
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
@@ -246,10 +247,18 @@ class SupersetAdapter:
     def ensure_dataset(
         self, query: ChartQuery, name: str | None = None, *, apply_limit: bool = True
     ) -> DatasetRef:
-        db = self._database or self.ensure_database()
+        """OWN per-chart virtual dataset from `generate_chart_sql` (Protocol seam)."""
         sql = generate_chart_sql(query, apply_limit=apply_limit)
         table_name = name or f"auto_bi__{_slug(query.table)}"
+        return self._ensure_sql_dataset(sql, table_name)
 
+    def _ensure_sql_dataset(self, sql: str, table_name: str) -> DatasetRef:
+        """Idempotent virtual dataset from validated SQL (shared source or OWN).
+
+        Same namespace/ownership conventions and PUT-on-exists behaviour as the historical
+        ensure_dataset path; the SQL is assumed already gated (guard + EXPLAIN + LIMIT).
+        """
+        db = self._database or self.ensure_database()
         existing = self._client.get(
             "/api/v1/dataset/", params={"q": rison_eq_filter("table_name", table_name)}
         )
@@ -270,24 +279,51 @@ class SupersetAdapter:
         logger.info("dataset %s created: id=%s", table_name, created["id"])
         return DatasetRef(id=created["id"], name=table_name)
 
-    def _measure_magnitude(self, ds: DatasetRef, measure: Measure) -> float | None:
+    def _measure_magnitude(
+        self,
+        ds: DatasetRef,
+        measure: Measure,
+        *,
+        from_source: bool = False,
+        chart: ChartSpec | None = None,
+    ) -> float | None:
         """The measure's peak aggregated value, measured live so its RU magnitude unit
-        (млрд/млн/тыс) can be chosen: for a big_number the dataset is one row (MAX = the scalar),
-        for a line/bar it is grouped (MAX = the tallest series point). Best-effort: any failure
-        returns None and the chart falls back to the default format — a display nicety must never
-        break a build."""
+        (млрд/млн/тыс) can be chosen.
+
+        OWN dataset: already aggregated — ``MAX("sum_revenue")`` is the tallest series
+        point (or the scalar for a one-row KPI).
+
+        SOURCE dataset: raw mart rows — probe must re-aggregate with the IR aggregation
+        (``SUM("revenue")``, not ``MAX("sum_revenue")`` which does not exist). For a
+        grouped chart, group by the chart dims, order by the metric desc, row_limit 1
+        so the value is still the tallest series point.
+
+        Best-effort: any failure returns None and the chart falls back to the default
+        format — a display nicety must never break a build.
+        """
         try:
+            if from_source:
+                metric = _adhoc_metric(measure, "kpimag", 0, from_source=True)
+            else:
+                metric = _adhoc_metric(measure, "kpimag", 0, agg="MAX")
+            query: dict = {
+                "metrics": [metric],
+                "row_limit": 1,
+            }
+            if from_source and chart is not None:
+                dims = list(chart.query.group_columns())
+                if dims:
+                    from auto_bi.agent.dataset_plan import source_column_alias
+
+                    query["groupby"] = [source_column_alias(c, chart.query.table) for c in dims]
+                    # tallest series point: order by the metric descending
+                    query["orderby"] = [[metric, False]]
             result = self._client.post(
                 "/api/v1/chart/data",
                 json={
                     "datasource": {"id": _int_id(ds.id), "type": "table"},
                     "force": True,
-                    "queries": [
-                        {
-                            "metrics": [_adhoc_metric(measure, "kpimag", 0, agg="MAX")],
-                            "row_limit": 1,
-                        }
-                    ],
+                    "queries": [query],
                     "result_format": "json",
                     "result_type": "full",
                 },
@@ -295,7 +331,9 @@ class SupersetAdapter:
             rows = result["result"][0]["data"]
             if not rows:
                 return None
-            value = rows[0].get(measure_alias(measure))
+            # adhoc label is the measure alias (or human label when set)
+            label = metric.get("label") or measure_alias(measure)
+            value = rows[0].get(label)
             return float(value) if value is not None else None
         except (SupersetAPIError, KeyError, IndexError, TypeError, ValueError):
             return None
@@ -341,7 +379,13 @@ class SupersetAdapter:
         return "₽" if any(m in text for m in _MONEY_MARKERS) else ""
 
     def _ru_scale(
-        self, measure: Measure, table: str, ds: DatasetRef
+        self,
+        measure: Measure,
+        table: str,
+        ds: DatasetRef,
+        *,
+        from_source: bool = False,
+        chart: ChartSpec | None = None,
     ) -> tuple[float, str, float] | None:
         """(divisor, RU unit line, scaled magnitude) for a large compact measure, measured
         live, or None to keep the default format. Only additive aggregates (is_compact_number)
@@ -351,7 +395,7 @@ class SupersetAdapter:
         and the cartesian value axis (_axis_scale)."""
         if not is_compact_number(measure):
             return None
-        magnitude = self._measure_magnitude(ds, measure)
+        magnitude = self._measure_magnitude(ds, measure, from_source=from_source, chart=chart)
         if magnitude is None:
             return None
         divisor, unit = ru_kpi_scale(magnitude)
@@ -360,14 +404,24 @@ class SupersetAdapter:
         currency = self._measure_currency(measure, table)
         return divisor, f"{unit} {currency}".strip(), magnitude / divisor
 
-    def _kpi_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str, float] | None:
+    def _kpi_scale(
+        self, chart: ChartSpec, ds: DatasetRef, *, from_source: bool = False
+    ) -> tuple[float, str, float] | None:
         """(divisor, RU unit line, scaled magnitude) for a large ruble big_number headline,
         or None (default fmt)."""
         if chart.viz != Viz.BIG_NUMBER:
             return None
-        return self._ru_scale(chart.query.measures[0], chart.query.table, ds)
+        return self._ru_scale(
+            chart.query.measures[0],
+            chart.query.table,
+            ds,
+            from_source=from_source,
+            chart=chart,
+        )
 
-    def _axis_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str, float] | None:
+    def _axis_scale(
+        self, chart: ChartSpec, ds: DatasetRef, *, from_source: bool = False
+    ) -> tuple[float, str, float] | None:
         """(divisor, RU unit line, scaled magnitude) for a large-magnitude line/bar/area value
         axis, or None to keep d3 SI. Same rule as the KPI: d3's SI axis format only speaks
         k/M/G/T, so RU units ("15 млрд ₽" vs "15G") need the metric scaled and the unit on the
@@ -378,13 +432,23 @@ class SupersetAdapter:
         the first one's units (billions) — off by orders of magnitude."""
         if chart.viz not in _AXIS_SCALE_VIZ or len(chart.query.measures) != 1:
             return None
-        return self._ru_scale(chart.query.measures[0], chart.query.table, ds)
+        return self._ru_scale(
+            chart.query.measures[0],
+            chart.query.table,
+            ds,
+            from_source=from_source,
+            chart=chart,
+        )
 
-    def _temporal_alias(self, query: ChartQuery) -> str | None:
-        """Alias of the query's temporal group column (model role=TIME), else None. Passed to
-        build_form_data as granularity_sqla so a dashboard native time filter's time_range binds
-        to it — the ECharts query names no time column on its own, so the preset period (B5)
-        would otherwise not re-scope the chart."""
+    def _temporal_alias(self, query: ChartQuery, *, from_source: bool = False) -> str | None:
+        """Alias of the temporal column for granularity_sqla, else None.
+
+        Prefer a TIME column in the chart's grain (line/bar x-axis). On a SOURCE dataset the
+        mart still carries its TIME column even when the chart does not GROUP BY it (KPI),
+        so a dashboard native time filter can re-scope the multi-row aggregate — passed to
+        build_form_data as granularity_sqla. Without it the ECharts/big_number query names no
+        time column and the preset period (B5) silently fails to re-scope the chart.
+        """
         if self._model is None:
             return None
         for col in query.group_columns():
@@ -393,6 +457,12 @@ class SupersetAdapter:
             column = table.column(name) if table else None
             if column is not None and column.role == ColumnRole.TIME:
                 return column_alias(col)
+        if from_source:
+            table = self._model.table(query.table)
+            if table is not None:
+                for column in table.columns:
+                    if column.role == ColumnRole.TIME:
+                        return column.name
         return None
 
     _HEATMAP_PAD_MAX_CARD = 100  # ordinal periods (cohort months/weeks), not id-like axes
@@ -423,17 +493,20 @@ class SupersetAdapter:
             return None
         return max(2, len(str(card - 1)))
 
-    def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef:
+    def create_chart(
+        self, chart: ChartSpec, ds: DatasetRef, *, from_source: bool = False
+    ) -> ChartRef:
         horizontal = self._model is not None and is_horizontal_bar(chart, self._model)
         form_data = build_form_data(
             chart,
             _int_id(ds.id),
             horizontal=horizontal,
-            kpi_scale=self._kpi_scale(chart, ds),
-            axis_scale=self._axis_scale(chart, ds),
+            kpi_scale=self._kpi_scale(chart, ds, from_source=from_source),
+            axis_scale=self._axis_scale(chart, ds, from_source=from_source),
             metric_labels=self._metric_labels(chart),
-            time_column=self._temporal_alias(chart.query),
+            time_column=self._temporal_alias(chart.query, from_source=from_source),
             heatmap_y_pad=self._heatmap_y_pad(chart),
+            from_source=from_source,
         )
         created = self._client.post(
             "/api/v1/chart/",
@@ -454,6 +527,7 @@ class SupersetAdapter:
         charts: list[ChartRef],
         datasets: list[DatasetRef] | None = None,
         model: SemanticModel | None = None,
+        plan=None,
     ) -> DashboardRef:
         if len(charts) != len(spec.charts):
             raise ValueError(f"got {len(charts)} chart refs for {len(spec.charts)} spec charts")
@@ -465,7 +539,9 @@ class SupersetAdapter:
                     (chart, _int_id(ref.id), _int_id(ds.id))
                     for chart, ref, ds in zip(spec.charts, charts, datasets, strict=True)
                 ]
-                native_filters, applied = build_native_filter_configuration(spec, placements, model)
+                native_filters, applied = build_native_filter_configuration(
+                    spec, placements, model, plan=plan
+                )
                 for f, in_scope, excluded in applied:
                     logger.info(
                         "native filter %s wired: scope=%s excluded=%s",
@@ -514,12 +590,16 @@ class SupersetAdapter:
     # --- happy path ----------------------------------------------------------
 
     def build(self, spec: DashboardSpec) -> DashboardRef:
-        """Full compile: database -> per-chart datasets -> charts -> dashboard.
+        """Full compile: database -> datasets -> charts -> dashboard.
 
-        The constructor-injected model lets the dashboard wire native filters (scope by
-        column role/grain); without it the filters degrade to the documented "skipped"
-        warning. Signature mirrors DataLensAdapter.build so the pipeline can dispatch by
-        `spec.target_bi` (Phase 4 F1).
+        D-1 (variant A): with a model, `plan_datasets` picks one shared semantic-grain
+        source dataset per mart for expressible (SOURCE) charts; inexpressible (OWN)
+        charts keep today's per-chart aggregated dataset. Without a model the legacy
+        one-dataset-per-chart path is kept (bare-protocol / unit tests).
+
+        The constructor-injected model also wires native filters (scope = SOURCE charts
+        on that mart, plus OWN charts whose grain exposes the column). Signature mirrors
+        DataLensAdapter.build so the pipeline can dispatch by `spec.target_bi` (Phase 4 F1).
         """
         model = self._model
         # Ownership ledger (P0-2 criterion 4): reset the buffer, then record each entity as it
@@ -527,27 +607,53 @@ class SupersetAdapter:
         self._build_artifacts = []
         db = self.ensure_database()
         self._build_artifacts.append(BuildArtifact("database", str(db.id), db.name))
+
+        plan = plan_datasets(spec) if model is not None else None
         # charts in a dashboard filter's scope drop the SQL top-N LIMIT (it moves to
-        # form_data) so the filter re-ranks after filtering — computable from the spec
+        # form_data) so the filter re-ranks after filtering — OWN charts only; SOURCE SQL
+        # has no LIMIT by construction
         in_filter_scope = participating_chart_ids(spec, model) if model is not None else set()
+
+        # one shared source dataset per mart that has at least one SOURCE chart
+        source_datasets: dict[str, DatasetRef] = {}
+        if plan is not None and model is not None:
+            for table in plan.source_tables:
+                inputs = source_dataset_inputs(spec, plan, model, table)
+                sql = generate_source_sql(
+                    inputs.table,
+                    list(inputs.columns),
+                    list(inputs.joins),
+                    inputs.joined_refs,
+                )
+                name = _dataset_name(spec.title, f"source:{table}", self._artifact_namespace)
+                ds = self._ensure_sql_dataset(sql, name)
+                source_datasets[table] = ds
+                self._build_artifacts.append(BuildArtifact("dataset", str(ds.id), ds.name, table))
+                logger.info("source dataset for %s: id=%s name=%s", table, ds.id, ds.name)
+
         refs: list[ChartRef] = []
         datasets: list[DatasetRef] = []
         for chart in spec.charts:
-            ds = self.ensure_dataset(
-                chart.query,
-                name=_dataset_name(spec.title, chart.id, self._artifact_namespace),
-                apply_limit=chart.id not in in_filter_scope,
-            )
+            role = plan.chart(chart.id).role if plan is not None else DatasetRole.OWN
+            if role is DatasetRole.SOURCE:
+                ds = source_datasets[chart.query.table]
+                from_source = True
+            else:
+                ds = self.ensure_dataset(
+                    chart.query,
+                    name=_dataset_name(spec.title, chart.id, self._artifact_namespace),
+                    apply_limit=chart.id not in in_filter_scope,
+                )
+                self._build_artifacts.append(
+                    BuildArtifact("dataset", str(ds.id), ds.name, chart.query.table)
+                )
+                from_source = False
             datasets.append(ds)
-            # schema_set = the DWH schema.table this dataset/chart reads (RBAC scoping)
-            self._build_artifacts.append(
-                BuildArtifact("dataset", str(ds.id), ds.name, chart.query.table)
-            )
-            ref = self.create_chart(chart, ds)
+            ref = self.create_chart(chart, ds, from_source=from_source)
             self._build_artifacts.append(
                 BuildArtifact("chart", str(ref.id), ref.name, chart.query.table)
             )
             refs.append(ref)
-        dash = self.assemble_dashboard(spec, refs, datasets=datasets, model=model)
+        dash = self.assemble_dashboard(spec, refs, datasets=datasets, model=model, plan=plan)
         self._build_artifacts.append(BuildArtifact("dashboard", str(dash.id), dash.title))
         return dash

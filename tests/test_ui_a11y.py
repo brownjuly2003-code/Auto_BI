@@ -146,3 +146,25 @@ def test_text_tiers_stay_visually_distinct() -> None:
     ratios = [contrast(tokens[t], tokens["bg"]) for t in ("text", "text-2", "text-3")]
     assert ratios[0] > ratios[1] > ratios[2]
     assert ratios[1] / ratios[2] >= 1.2
+
+
+# --- D-1 filter-fallback preview note (static, no browser) -------------------------------
+
+
+def test_ui_renders_filter_fallback_notes() -> None:
+    """OWN-chart badge «фильтр не влияет» is wired in the static UI (app.js + CSS).
+
+    No browser: assert the renderer and styles exist so a preview note from the API is
+    visible in the turn/spec-pane without removing any dashboard control.
+    """
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    css = CSS.read_text(encoding="utf-8")
+    assert "isFilterFallbackNote" in js
+    assert "фильтр не влияет" in js
+    assert "chart-filter-note" in js
+    assert "spec-note-filter" in js
+    assert ".chart-filter-note" in css
+    assert ".spec-note-filter" in css
+    # controls stay: filter description still rendered, no disable path
+    assert "spec-filters" in js
+    assert "disabled" not in js.split("isFilterFallbackNote")[1][:400]

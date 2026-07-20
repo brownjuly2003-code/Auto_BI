@@ -8,6 +8,7 @@ import re
 
 from sqlglot import expressions as exp
 
+from auto_bi.agent.dataset_plan import collect_source_aliases
 from auto_bi.ir.spec import (
     ChartQuery,
     FilterOp,
@@ -265,20 +266,25 @@ def generate_source_sql(
     aggregation and top-N move into the BI as native metrics (form_data), the
     default period arrives as the native filter's default — so every mart column
     stays filterable and the window is consistent WITHOUT baking it into SQL.
-    Rendered and gated (guard_sql + EXPLAIN + LIMIT trial) exactly like chart SQL.
+    Joined refs get deterministic unique aliases (``dm.stores.name`` -> ``stores_name``);
+    mart columns stay bare. Alias uniqueness is validated before emit — a collision
+    raises (never a silently ambiguous dataset). Rendered and gated (guard_sql +
+    EXPLAIN + LIMIT trial) exactly like chart SQL.
     """
+    aliases = collect_source_aliases(columns, joined_refs, table)
     select_cols: list[exp.Expression] = []
     for c in columns:
+        alias = aliases[c]
         if joins:
             # joined tables can share bare column names — qualify with the base table
-            # and alias back to the bare name so the dataset schema stays stable
-            e = exp.alias_(_dim_column(f"{table}.{c}"), column_alias(c), quoted=True)
+            # and alias back so the dataset schema stays stable
+            e = exp.alias_(_dim_column(f"{table}.{c}"), alias, quoted=True)
             select_cols.append(e)  # type: ignore[arg-type]
         else:
             select_cols.append(_dim_column(c))
     for ref in joined_refs:
         select_cols.append(
-            exp.alias_(_dim_column(ref), column_alias(ref), quoted=True)  # type: ignore[arg-type]
+            exp.alias_(_dim_column(ref), aliases[ref], quoted=True)  # type: ignore[arg-type]
         )
     select = exp.select(*select_cols).from_(exp.to_table(table))
     for j in joins:

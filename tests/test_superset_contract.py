@@ -265,9 +265,12 @@ NF_SPEC = DashboardSpec(
 
 
 def test_native_filter_configuration_roundtrip(adapter: SupersetAdapter) -> None:
-    """build() wires spec.filters into native_filter_configuration, scoped only to the
-    charts whose grain exposes the column; the city filter must leave the KPI + day
-    charts out, and the participating chart's dataset must drop its SQL top-N LIMIT."""
+    """build() wires spec.filters into native_filter_configuration. D-1 (variant A):
+    all three charts are plain aggregates -> SOURCE on one shared semantic-grain
+    dataset, so BOTH controls reach every chart (pre-D-1 only the chart whose grain
+    exposed the column). The joined city column binds by its unique source alias
+    (stores_city, never bare city), and the shared source SQL carries no LIMIT
+    (top-N lives in form_data)."""
     ref = adapter.build(NF_SPEC)  # adapter is constructed with the model (fixture)
 
     dash = adapter._client.get(f"/api/v1/dashboard/{ref.id}")["result"]
@@ -277,26 +280,31 @@ def test_native_filter_configuration_roundtrip(adapter: SupersetAdapter) -> None
         for v in pos.values()
         if isinstance(v, dict) and v.get("type") == "CHART"
     }
+    all_slices = {
+        slice_of["[contract-nf] KPI"],
+        slice_of["[contract-nf] city"],
+        slice_of["[contract-nf] day"],
+    }
     nfc = json.loads(dash["json_metadata"])["native_filter_configuration"]
     by_col = {f["targets"][0].get("column", {}).get("name", f["filterType"]): f for f in nfc}
 
-    city = by_col["city"]
+    city = by_col["stores_city"]
     assert city["filterType"] == "filter_select"
-    assert slice_of["[contract-nf] city"] in city["chartsInScope"]
-    assert slice_of["[contract-nf] KPI"] in city["scope"]["excluded"]
-    assert slice_of["[contract-nf] day"] in city["scope"]["excluded"]
+    assert all_slices <= set(city["chartsInScope"])
+    assert city["scope"]["excluded"] == []
 
     time_filter = by_col["filter_time"]  # empty target -> keyed by filterType above
     assert time_filter["filterType"] == "filter_time"
-    assert slice_of["[contract-nf] day"] in time_filter["chartsInScope"]
+    assert all_slices <= set(time_filter["chartsInScope"])
 
-    # the city chart is in a filter's scope -> its virtual dataset must have no LIMIT
-    # (the top-N moved to form_data so the filter re-ranks after filtering)
+    # every chart sits on the shared source dataset: no LIMIT by construction, and the
+    # joined label is selected under its unique alias (the D-1 aliasing scheme, live)
     city_slice = slice_of["[contract-nf] city"]
     chart = adapter._client.get(f"/api/v1/chart/{city_slice}")["result"]
     dataset_id = json.loads(chart["params"])["datasource"].split("__")[0]
     ds_full = adapter._client.get(f"/api/v1/dataset/{dataset_id}")["result"]
     assert "LIMIT" not in ds_full["sql"].upper()
+    assert '"stores_city"' in ds_full["sql"]
 
 
 def test_time_filter_actually_narrows_timeseries(adapter: SupersetAdapter) -> None:

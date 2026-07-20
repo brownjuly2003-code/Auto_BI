@@ -1,12 +1,18 @@
 """D-1 dataset plan: expressibility classifier + shared source dataset shape."""
 
+from collections import Counter
+
+import pytest
 import sqlglot
 from sqlglot import expressions as exp
 
 from auto_bi.agent.dataset_plan import (
     DatasetRole,
+    SourceAliasCollisionError,
+    collect_source_aliases,
     inexpressible_reason,
     plan_datasets,
+    source_column_alias,
     source_dataset_inputs,
 )
 from auto_bi.agent.sqlgen import generate_source_sql
@@ -96,6 +102,40 @@ def test_raw_sql_falls_back() -> None:
 def test_histogram_bins_fall_back() -> None:
     q = chart(viz=Viz.HISTOGRAM, dimensions=["revenue"], bins=20).query
     assert "histogram" in (inexpressible_reason(q) or "")
+
+
+def test_filter_preview_notes_for_own_charts_with_filters() -> None:
+    from auto_bi.agent.dataset_plan import filter_preview_notes
+    from auto_bi.ir.spec import DashboardFilter
+
+    own = chart(
+        "share",
+        viz=Viz.BAR,
+        dimensions=["store_id"],
+        measures=[
+            Measure(
+                column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL
+            )
+        ],
+    )
+    own = own.model_copy(update={"title": "Доля магазинов"})
+    plain = chart(
+        "kpi",
+        viz=Viz.BIG_NUMBER,
+        dimensions=[],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+    )
+    # no filters -> no badges (nothing to warn about)
+    assert filter_preview_notes(spec(own, plain)) == []
+    with_filters = DashboardSpec(
+        title="d",
+        filters=[DashboardFilter(column="dm.sales_daily.date", type="time_range")],
+        charts=[own, plain],
+    )
+    notes = filter_preview_notes(with_filters)
+    assert len(notes) == 1
+    assert notes[0].startswith("«Доля магазинов»: фильтр не влияет:")
+    assert "share_of_total" in notes[0]
 
 
 # --- plan ---------------------------------------------------------------------
@@ -200,9 +240,62 @@ def test_source_sql_with_joins_qualifies_and_aliases() -> None:
         "dm.sales_daily", ["date", "revenue"], [join], joined_refs=["dm.stores.name"]
     )
     parsed = sqlglot.parse_one(sql, read="clickhouse")
-    assert [c.alias_or_name for c in parsed.selects] == ["date", "revenue", "name"]
+    # joined refs get deterministic unique aliases (not bare "name")
+    assert [c.alias_or_name for c in parsed.selects] == ["date", "revenue", "stores_name"]
     joins = parsed.args.get("joins") or []
     assert len(joins) == 1
     assert joins[0].side == "LEFT" or joins[0].kind == "LEFT"
     # base columns are qualified against the mart so joined bare names cannot collide
     assert '"dm"."sales_daily"."date"' in sql or '"dm"."sales_daily".date' in sql
+
+
+def test_source_column_alias_mart_bare_joined_unique() -> None:
+    assert source_column_alias("date", "dm.sales_daily") == "date"
+    assert source_column_alias("dm.sales_daily.store_id", "dm.sales_daily") == "store_id"
+    assert source_column_alias("dm.stores.name", "dm.sales_daily") == "stores_name"
+    assert source_column_alias("dm.products.name", "dm.sales_daily") == "products_name"
+
+
+def test_two_joined_name_refs_have_unique_source_aliases(demo_model) -> None:
+    """Finding 2 repro: two SOURCE charts on stores.name and products.name must not
+    both emit AS \"name\" on the shared source dataset."""
+    stores_join = JoinSpec(
+        table="dm.stores", on_left="dm.sales_daily.store_id", on_right="dm.stores.id"
+    )
+    products_join = JoinSpec(
+        table="dm.products", on_left="dm.sales_daily.product_id", on_right="dm.products.id"
+    )
+    s = spec(
+        chart(
+            "by_store",
+            viz=Viz.BAR,
+            dimensions=["dm.stores.name"],
+            joins=[stores_join],
+        ),
+        chart(
+            "by_product",
+            viz=Viz.BAR,
+            dimensions=["dm.products.name"],
+            joins=[products_join],
+        ),
+    )
+    plan = plan_datasets(s)
+    inputs = source_dataset_inputs(s, plan, demo_model, "dm.sales_daily")
+    assert set(inputs.joined_refs) == {"dm.stores.name", "dm.products.name"}
+    sql = generate_source_sql(
+        inputs.table, list(inputs.columns), list(inputs.joins), inputs.joined_refs
+    )
+    aliases = [c.alias_or_name for c in sqlglot.parse_one(sql, read="clickhouse").selects]
+    dupes = [a for a, n in Counter(aliases).items() if n > 1]
+    assert dupes == [], f"duplicate aliases in source SQL: {dupes}"
+    assert "stores_name" in aliases and "products_name" in aliases
+    assert aliases.count("name") == 0
+
+
+def test_source_alias_collision_raises_at_plan_time() -> None:
+    with pytest.raises(SourceAliasCollisionError, match="stores_name"):
+        collect_source_aliases(
+            ["date", "stores_name"],
+            ["dm.stores.name"],
+            "dm.sales_daily",
+        )

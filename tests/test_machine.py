@@ -254,7 +254,7 @@ def test_narrate_silent_on_clean_spec(demo_model) -> None:
     assert narrate_findings(NoCallLLM(), spec, []) == []
 
 
-def test_spec_summary_names_charts_a_filter_applies_to() -> None:
+def test_spec_summary_names_charts_a_filter_applies_to(demo_model) -> None:
     # the date column IS in the line chart's grain -> the native filter reaches it;
     # the preview must name the chart so the built dashboard matches the preview
     spec = DashboardSpec.model_validate(
@@ -265,26 +265,37 @@ def test_spec_summary_names_charts_a_filter_applies_to() -> None:
             ],
         }
     )
-    summary = spec_summary(spec)
+    summary = spec_summary(spec, demo_model)
     assert "dm.sales_daily.date" in summary
     assert "применяется к" in summary
     assert "Выручка по дням" in summary
     assert "не применим" not in summary
 
 
-def test_spec_summary_warns_when_filter_reaches_no_chart() -> None:
-    # store_id is in no chart's grain (charts group by date only) -> the filter cannot
-    # be wired; the preview must say so instead of implying it works
+def test_spec_summary_warns_when_filter_reaches_no_chart(demo_model) -> None:
+    # control on a mart no chart reads -> cannot be wired; preview must say so
     spec = DashboardSpec.model_validate(
-        {**GOOD_SPEC, "filters": [{"column": "dm.sales_daily.store_id", "type": "value"}]}
+        {**GOOD_SPEC, "filters": [{"column": "dm.other_fact.region_id", "type": "value"}]}
     )
-    summary = spec_summary(spec)
+    summary = spec_summary(spec, demo_model)
     assert "не применим ни к одному чарту" in summary
     assert "⚠" in summary
 
 
-def test_spec_summary_silent_without_filters() -> None:
-    assert "фильтры" not in spec_summary(DashboardSpec.model_validate(GOOD_SPEC))
+def test_spec_summary_source_chart_receives_mart_filter(demo_model) -> None:
+    # D-1: a plain line is SOURCE — store_id on the same mart reaches it even without
+    # store_id in the grain (shared semantic-grain dataset carries all columns)
+    spec = DashboardSpec.model_validate(
+        {**GOOD_SPEC, "filters": [{"column": "dm.sales_daily.store_id", "type": "value"}]}
+    )
+    summary = spec_summary(spec, demo_model)
+    assert "применяется к" in summary
+    assert "Выручка по дням" in summary
+    assert "не применим" not in summary
+
+
+def test_spec_summary_silent_without_filters(demo_model) -> None:
+    assert "фильтры" not in spec_summary(DashboardSpec.model_validate(GOOD_SPEC), demo_model)
 
 
 # --- store linkage -------------------------------------------------------------

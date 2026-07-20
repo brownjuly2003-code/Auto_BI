@@ -114,6 +114,94 @@ def test_form_data_line() -> None:
     assert "granularity_sqla" not in fd  # no time_column => no time binding
 
 
+def test_form_data_source_uses_real_agg_over_raw_column() -> None:
+    # D-1 SOURCE: adhoc metric is SUM/AVG/... over the mart column, not identity over alias
+    chart = make_spec().charts[1]  # label="Выручка", column=revenue
+    fd = build_form_data(chart, dataset_id=42, from_source=True)
+    assert fd["metrics"][0]["sqlExpression"] == 'SUM("revenue")'
+    assert fd["metrics"][0]["label"] == "Выручка"  # display name unchanged
+    avg = _chart(
+        Viz.LINE, dimensions=["date"], measures=[Measure(column="check", agg=Aggregation.AVG)]
+    )
+    assert (
+        build_form_data(avg, 1, from_source=True)["metrics"][0]["sqlExpression"] == 'AVG("check")'
+    )
+
+
+def test_form_data_source_kpi_aggregates_multi_row() -> None:
+    # SOURCE KPI sits on multi-row grain — IR agg (SUM), never identity MAX
+    fd = build_form_data(make_spec().charts[0], dataset_id=7, from_source=True)
+    assert fd["metric"]["sqlExpression"] == 'SUM("revenue")'
+    assert "MAX" not in fd["metric"]["sqlExpression"]
+
+
+def test_form_data_source_time_grain_sqla() -> None:
+    from auto_bi.ir.spec import TimeGrain
+
+    chart = _chart(
+        Viz.LINE,
+        dimensions=["date"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+        time_grain=TimeGrain.MONTH,
+    )
+    fd = build_form_data(chart, dataset_id=1, from_source=True, time_column="date")
+    assert fd["time_grain_sqla"] == "P1M"
+    assert fd["granularity_sqla"] == "date"
+    # OWN path keeps time grain in SQL (toStartOf*), not form_data
+    own = build_form_data(chart, dataset_id=1, time_column="date")
+    assert "time_grain_sqla" not in own
+
+
+def test_form_data_source_ratio_is_sql_expression() -> None:
+    ratio = Measure(
+        column="revenue",
+        agg=Aggregation.SUM,
+        denominator=Measure(column="orders", agg=Aggregation.SUM),
+    )
+    fd = build_form_data(
+        _chart(Viz.LINE, dimensions=["date"], measures=[ratio]), 1, from_source=True
+    )
+    expr = fd["metrics"][0]["sqlExpression"]
+    assert 'SUM("revenue")' in expr
+    assert 'SUM("orders")' in expr
+    assert "NULLIF" in expr
+
+
+def test_form_data_from_source_uses_unique_joined_dim_alias() -> None:
+    """Finding 2: SOURCE form_data groups by stores_name / products_name, not bare name."""
+    from auto_bi.ir.spec import JoinSpec
+
+    stores = JoinSpec(table="dm.stores", on_left="dm.sales_daily.store_id", on_right="dm.stores.id")
+    products = JoinSpec(
+        table="dm.products", on_left="dm.sales_daily.product_id", on_right="dm.products.id"
+    )
+    by_store = ChartSpec(
+        id="by_store",
+        title="s",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["dm.stores.name"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            joins=[stores],
+        ),
+    )
+    by_product = ChartSpec(
+        id="by_product",
+        title="p",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["dm.products.name"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            joins=[products],
+        ),
+    )
+    assert build_form_data(by_store, 1, from_source=True)["x_axis"] == "stores_name"
+    assert build_form_data(by_product, 1, from_source=True)["x_axis"] == "products_name"
+    assert build_form_data(by_store, 1, from_source=False)["x_axis"] == "name"
+
+
 def test_form_data_time_column_sets_granularity() -> None:
     # B5: a timeseries chart passed its temporal column names it as granularity_sqla so a
     # dashboard native time filter's time_range binds to it (else the ECharts query names no
@@ -654,6 +742,67 @@ def test_build_full_flow() -> None:
     assert dashboard.url == f"/superset/dashboard/{dashboard.id}/"
 
 
+def test_build_source_vs_own_dataset_roles() -> None:
+    """D-1: SOURCE charts share one source dataset; OWN keeps a per-chart aggregated one."""
+    from auto_bi.ir.spec import MeasureTransform
+
+    revenue = Measure(column="revenue", agg=Aggregation.SUM)
+    share = Measure(
+        column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL
+    )
+    spec = DashboardSpec(
+        title="roles",
+        charts=[
+            ChartSpec(
+                id="kpi",
+                title="KPI",
+                viz=Viz.BIG_NUMBER,
+                query=ChartQuery(table="dm.sales_daily", measures=[revenue]),
+                layout_hint=LayoutHint(w=4, h=2, row=0),
+            ),
+            ChartSpec(
+                id="trend",
+                title="Trend",
+                viz=Viz.LINE,
+                query=ChartQuery(table="dm.sales_daily", dimensions=["date"], measures=[revenue]),
+                layout_hint=LayoutHint(w=8, h=4, row=1),
+            ),
+            ChartSpec(
+                id="share",
+                title="Share",
+                viz=Viz.BAR,
+                query=ChartQuery(table="dm.sales_daily", dimensions=["store_id"], measures=[share]),
+                layout_hint=LayoutHint(w=6, h=4, row=2),
+            ),
+        ],
+    )
+    fake = FakeSuperset()
+    make_adapter(fake, model=MODEL).build(spec)
+    dataset_posts = [b for m, p, b in fake.requests if m == "POST" and p == "/api/v1/dataset/"]
+    # one shared source + one OWN (share) dataset
+    assert len(dataset_posts) == 2
+    source = next(b for b in dataset_posts if "source" in b["table_name"])
+    own = next(b for b in dataset_posts if "source" not in b["table_name"])
+    # source SQL: no GROUP BY / WHERE / LIMIT
+    assert "GROUP BY" not in source["sql"].upper()
+    assert "WHERE" not in source["sql"].upper()
+    assert "LIMIT" not in source["sql"].upper()
+    # OWN still aggregated
+    assert "GROUP BY" in own["sql"].upper() or "share" in own["sql"].lower() or "SUM" in own["sql"]
+
+    chart_posts = [b for m, p, b in fake.requests if m == "POST" and p == "/api/v1/chart/"]
+    by_name = {c["slice_name"]: json.loads(c["params"]) for c in chart_posts}
+    # SOURCE charts share the same datasource id (the source dataset)
+    assert by_name["KPI"]["datasource"] == by_name["Trend"]["datasource"]
+    assert by_name["Share"]["datasource"] != by_name["KPI"]["datasource"]
+    # SOURCE form_data aggregates raw column; OWN re-aggregates the measure alias
+    assert 'SUM("revenue")' in by_name["KPI"]["metric"]["sqlExpression"]
+    assert (
+        "share_of_total" in by_name["Share"]["metrics"][0]["sqlExpression"]
+        or "SUM(" in by_name["Share"]["metrics"][0]["sqlExpression"]
+    )
+
+
 def test_build_drains_all_four_artifact_kinds() -> None:
     # ownership ledger (P0-2 criterion 4): build() records every BI entity it creates on the
     # concrete adapter; drain_build_artifacts returns them (NOT a BIAdapter Protocol method).
@@ -667,9 +816,10 @@ def test_build_drains_all_four_artifact_kinds() -> None:
     by_kind: dict[str, list] = {}
     for a in arts:
         by_kind.setdefault(a.kind, []).append(a)
-    # one database, one dataset + one chart per spec chart, one dashboard
+    # one database, one shared source dataset for the mart (both charts are SOURCE), one
+    # chart per spec chart, one dashboard — D-1 no longer creates one dataset per chart
     assert len(by_kind["database"]) == 1
-    assert len(by_kind["dataset"]) == len(spec.charts)
+    assert len(by_kind["dataset"]) == 1
     assert len(by_kind["chart"]) == len(spec.charts)
     assert len(by_kind["dashboard"]) == 1
     assert by_kind["database"][0].name == "Auto_BI ClickHouse"
@@ -683,6 +833,7 @@ def test_build_drains_all_four_artifact_kinds() -> None:
     assert by_kind["dashboard"][0].schema_set is None
     # the dataset technical name is display/debug only (carries the P0-2 namespace fingerprint)
     assert by_kind["dataset"][0].name.startswith("auto_bi__")
+    assert "source" in by_kind["dataset"][0].name
     # draining clears the buffer -> a second drain is empty (no double-report)
     assert adapter.drain_build_artifacts() == []
 
@@ -790,6 +941,38 @@ def test_measure_magnitude_best_effort_returns_none_on_no_rows() -> None:
     assert adapter._kpi_scale(_bignum(measure), DatasetRef(id=42, name="t")) is None
 
 
+def test_measure_magnitude_from_source_probes_raw_column_agg() -> None:
+    """Finding 3: SOURCE KPI probe uses SUM(\"revenue\"), never MAX(\"sum_revenue\")."""
+    fake = FakeSuperset(kpi_value=236e9)
+    adapter = make_adapter(fake, model=MODEL)
+    measure = Measure(column="revenue", agg=Aggregation.SUM)
+    kpi = _bignum(measure)
+    scale = adapter._kpi_scale(kpi, DatasetRef(id=42, name="t"), from_source=True)
+    assert scale == (1e9, "млрд ₽", 236.0)
+    probe = next(b for m, p, b in fake.requests if m == "POST" and p == "/api/v1/chart/data")
+    sql = probe["queries"][0]["metrics"][0]["sqlExpression"]
+    assert 'SUM("revenue")' in sql
+    assert "sum_revenue" not in sql
+    assert "MAX" not in sql
+    assert "groupby" not in probe["queries"][0]
+
+
+def test_measure_magnitude_from_source_grouped_orders_by_metric() -> None:
+    """Finding 3: SOURCE line/bar probe groups by dims and takes the tallest point."""
+    fake = FakeSuperset(kpi_value=14e9)
+    adapter = make_adapter(fake, model=MODEL)
+    line = _chart(Viz.LINE, dimensions=["date"])
+    scale = adapter._axis_scale(line, DatasetRef(id=42, name="t"), from_source=True)
+    assert scale == (1e9, "млрд ₽", 14.0)
+    probe = next(b for m, p, b in fake.requests if m == "POST" and p == "/api/v1/chart/data")
+    q = probe["queries"][0]
+    assert 'SUM("revenue")' in q["metrics"][0]["sqlExpression"]
+    assert "sum_revenue" not in q["metrics"][0]["sqlExpression"]
+    assert q["groupby"] == ["date"]
+    assert q["row_limit"] == 1
+    assert q["orderby"][0][1] is False  # descending
+
+
 def test_axis_scale_large_ruble_line_but_not_percent_or_kpi() -> None:
     adapter = make_adapter(FakeSuperset(kpi_value=14e9), model=MODEL)
     ds = DatasetRef(id=42, name="t")
@@ -833,10 +1016,13 @@ def test_build_full_flow_scales_ruble_kpi_and_humanizes_legend() -> None:
     # the line chart legend reads the human measure name resolved from the model
     line_params = json.loads(chart_posts[1]["params"])
     assert line_params["metrics"][0]["label"] == "Выручка"
-    # B5: the line over `date` names its temporal column so a dashboard time filter binds; the
-    # KPI (no temporal group column) does not, so it stays a full-history single number
+    # D-1 SOURCE: both the line and the KPI bind the mart's TIME column so a dashboard
+    # time filter re-scopes them (KPI is multi-row under the shared source dataset)
     assert line_params["granularity_sqla"] == "date"
-    assert "granularity_sqla" not in kpi_params
+    assert kpi_params["granularity_sqla"] == "date"
+    # SOURCE metrics aggregate the raw column, not the pre-computed measure alias
+    assert 'SUM("revenue")' in kpi_params["metric"]["sqlExpression"]
+    assert 'SUM("revenue")' in line_params["metrics"][0]["sqlExpression"]
 
 
 # --- delete_artifact (ownership live-cleanup) -------------------------------

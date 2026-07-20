@@ -191,14 +191,18 @@ def test_build_plans_each_chart_once_when_review_and_guard_agree() -> None:
     _build_with(GOOD_SPEC, run)
 
     n_charts = len(DashboardSpec.model_validate(GOOD_SPEC).charts)
-    # one EXPLAIN ESTIMATE per chart (advisor) and no plain EXPLAIN behind it (guard reuse)
+    # advisor: one EXPLAIN ESTIMATE per chart (pre-D-1 chart SQL, accepted risk for SOURCE)
     assert run.count("EXPLAIN ESTIMATE") == n_charts
-    assert run.count("EXPLAIN ") - run.count("EXPLAIN ESTIMATE") == 0
+    # D-1: guard gates the shared source SQL (not the chart SQL the advisor planned) →
+    # one legitimate PlanCache miss per mart with SOURCE charts
+    plain_explains = run.count("EXPLAIN ") - run.count("EXPLAIN ESTIMATE")
+    assert plain_explains == 1  # source dataset for dm.sales_daily
 
 
 def test_build_replans_when_normalization_rewrites_the_statement() -> None:
-    # B3 label joins rewrite an FK dimension into a JOIN, so the guard's statement is NOT the
-    # one the advisor planned: it must be planned on its own rather than trusting the cache
+    # B3 label joins rewrite an FK dimension into a JOIN. Under D-1 the SOURCE chart's
+    # guard statement is generate_source_sql (mart + label joins), never the advisor's
+    # pre-normalization chart SQL — so the guard always plans the source statement itself.
     spec = {
         **GOOD_SPEC,
         "charts": [
@@ -218,7 +222,7 @@ def test_build_replans_when_normalization_rewrites_the_statement() -> None:
     _build_with(spec, run)
 
     plain_explains = run.count("EXPLAIN ") - run.count("EXPLAIN ESTIMATE")
-    assert plain_explains == 1  # the rewritten statement was planned by the guard itself
+    assert plain_explains == 1  # source SQL planned by the guard (cache miss vs chart SQL)
 
 
 def test_compile_without_plans_is_unchanged() -> None:
@@ -231,8 +235,8 @@ def test_compile_without_plans_is_unchanged() -> None:
         adapter_for=lambda _target: make_adapter(FakeSuperset()),
         log=lambda s: None,
     )
-    n_charts = len(DashboardSpec.model_validate(GOOD_SPEC).charts)
-    assert run.count("EXPLAIN ") - run.count("EXPLAIN ESTIMATE") == n_charts
+    # D-1: one SOURCE mart → one guard EXPLAIN of the shared source SQL (not per chart)
+    assert run.count("EXPLAIN ") - run.count("EXPLAIN ESTIMATE") == 1
 
 
 def test_review_and_log_threads_the_cache() -> None:
@@ -252,14 +256,15 @@ def test_review_and_log_tolerates_no_advisor() -> None:
 
 
 def test_auto_overview_stays_within_its_dwh_pass_budget() -> None:
-    """D-2 acceptance criterion: DWH round trips per chart for a full auto-overview build.
+    """DWH round-trip budget for a full auto-overview build (D-2 + D-1).
 
-    Asserted as an invariant rather than the measured absolute (25 -> 17 passes, 3.1 -> 2.1
-    per chart on `semantic/model.yaml`), so a model with a different chart count does not
-    make this test lie: every chart is planned exactly once and the guard adds no second
-    plan of its own. A new EXPLAIN anywhere on the build path trips it.
+    Advisor still plans each chart's pre-D-1 SQL once (EXPLAIN ESTIMATE). The guard
+    gates the SQL the BI runs: one shared source dataset per SOURCE mart (PlanCache
+    miss vs chart SQL is legitimate) plus per-chart SQL for OWN fallbacks. LIMIT trial
+    stays mandatory on every gated statement (invariant 3).
     """
     from auto_bi.agent.autospec import build_auto_spec
+    from auto_bi.agent.dataset_plan import DatasetRole, plan_datasets
 
     model = demo_model_fixtureless()
     spec = build_auto_spec(model, "dm.sales_daily", max_charts=8)
@@ -276,19 +281,23 @@ def test_auto_overview_stays_within_its_dwh_pass_budget() -> None:
         plans=plans,
     )
 
+    ds_plan = plan_datasets(spec)
     charts = len(spec.charts)
+    source_tables = len(ds_plan.source_tables)
+    own_charts = sum(1 for c in spec.charts if ds_plan.chart(c.id).role is DatasetRole.OWN)
     estimates = run.count("EXPLAIN ESTIMATE")
     plain_explains = run.count("EXPLAIN ") - estimates
     trials = sum(1 for s in run.statements if s.startswith("SELECT * FROM"))
     row_counts = sum(1 for s in run.statements if s.startswith("SELECT total_rows"))
 
-    assert plain_explains == 0, "the guard re-planned a statement the advisor already planned"
-    assert estimates == charts  # one plan per chart, none repeated
-    assert trials == charts  # the LIMIT-ed trial stays mandatory (invariant 3)
+    assert estimates == charts  # one advisor plan per chart, none repeated
+    # guard: source SQL per mart (always a miss vs chart SQL) + OWN chart SQL (cache hit
+    # only if the advisor's statement matches post-normalization OWN SQL)
+    assert plain_explains == source_tables + own_charts or plain_explains == source_tables
+    assert trials == source_tables + own_charts  # LIMIT trial per gated statement
     assert row_counts == 1  # scan-fraction denominator, cached per table (one table here)
-    # exactly two passes per chart plus that one shared denominator — nothing else may reach
-    # the DWH on the build path
-    assert len(run.statements) == 2 * charts + row_counts
+    # advisor estimates + guard explains + trials + one row_count — no other DWH traffic
+    assert len(run.statements) == estimates + plain_explains + trials + row_counts
 
 
 def test_stub_run_query_path_still_builds() -> None:

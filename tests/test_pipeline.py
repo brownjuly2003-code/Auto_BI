@@ -445,3 +445,72 @@ def demo_model_fixtureless():
     from tests.conftest import demo_model
 
     return demo_model.__wrapped__()
+
+
+def test_datalens_target_gates_every_chart_sql() -> None:
+    """Finding 4: D-1 source-once gating is Superset-only; DataLens keeps per-chart gate."""
+    from auto_bi.adapters.base import AdapterHealth, DashboardRef
+    from auto_bi.ir.spec import TargetBI
+    from tests.test_query_plan import RecordingRunQuery
+
+    class StubDataLens:
+        def healthcheck(self) -> AdapterHealth:
+            return AdapterHealth(ok=True, message="ok")
+
+        def build(self, spec: DashboardSpec) -> DashboardRef:
+            return DashboardRef(id="dl-1", title=spec.title, url="/dl/1")
+
+        def close(self) -> None:
+            return None
+
+    multi = {
+        **GOOD_SPEC,
+        "target_bi": "datalens",
+        "charts": [
+            {
+                "id": "kpi",
+                "title": "Итог",
+                "viz": "big_number",
+                "query": {
+                    "table": "dm.sales_daily",
+                    "measures": [{"column": "revenue", "agg": "sum", "label": "Выручка"}],
+                },
+            },
+            {
+                "id": "by_day",
+                "title": "По дням",
+                "viz": "line",
+                "query": {
+                    "table": "dm.sales_daily",
+                    "dimensions": ["date"],
+                    "measures": [{"column": "revenue", "agg": "sum", "label": "Выручка"}],
+                },
+            },
+            {
+                "id": "by_store",
+                "title": "По магазинам",
+                "viz": "bar",
+                "query": {
+                    "table": "dm.sales_daily",
+                    "dimensions": ["store_id"],
+                    "measures": [{"column": "revenue", "agg": "sum", "label": "Выручка"}],
+                },
+            },
+        ],
+    }
+    run = RecordingRunQuery()
+    log: list[str] = []
+    compile_and_build(
+        DashboardSpec.model_validate(multi),
+        demo_model_fixtureless(),
+        LiveSQLValidator(run),
+        adapter_for=lambda target: (
+            StubDataLens() if target is TargetBI.DATALENS else make_adapter(FakeSuperset())
+        ),
+        log=log.append,
+    )
+    plain_explains = run.count("EXPLAIN ") - run.count("EXPLAIN ESTIMATE")
+    # three charts, each generate_chart_sql is EXPLAIN+LIMIT-gated (no source-once skip)
+    assert plain_explains == 3
+    assert sum(1 for line in log if line.startswith("SQL ok (")) == 3
+    assert not any("source:" in line for line in log)

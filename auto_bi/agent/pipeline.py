@@ -12,11 +12,12 @@ from auto_bi.adapters.base import BIAdapter, DashboardRef
 from auto_bi.adapters.factory import close_adapter
 from auto_bi.advisor.core import Advisor
 from auto_bi.advisor.narrate import ChartVerdict, worst_verdicts
+from auto_bi.agent.dataset_plan import DatasetRole, plan_datasets, source_dataset_inputs
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.propose import SpecValidationError, propose_spec
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sql_guard import LiveSQLValidator
-from auto_bi.agent.sqlgen import generate_chart_sql
+from auto_bi.agent.sqlgen import generate_chart_sql, generate_source_sql
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
@@ -178,10 +179,34 @@ def compile_and_build(
             if errors:
                 raise SpecValidationError(errors)
 
-            for chart in spec.charts:
-                sql = generate_chart_sql(chart.query)
-                sql_validator.validate(sql, plans=plans)
-                log(f"SQL ok ({chart.id}): EXPLAIN + LIMIT-прогон прошли")
+            # D-1 gating split applies only when the target consumes the dataset plan
+            # (Superset: one source dataset per mart + skip SOURCE per-chart SQL).
+            # DataLens still builds per-chart datasets from generate_chart_sql — keep
+            # pre-D-1 per-chart EXPLAIN+LIMIT gating so invariant 3 is not silently
+            # bypassed on that lane (PR-2 finding 4).
+            if spec.target_bi is TargetBI.SUPERSET:
+                ds_plan = plan_datasets(spec)
+                for table in ds_plan.source_tables:
+                    inputs = source_dataset_inputs(spec, ds_plan, model, table)
+                    sql = generate_source_sql(
+                        inputs.table,
+                        list(inputs.columns),
+                        list(inputs.joins),
+                        inputs.joined_refs,
+                    )
+                    sql_validator.validate(sql, plans=plans)
+                    log(f"SQL ok (source:{table}): EXPLAIN + LIMIT-прогон прошли")
+                for chart in spec.charts:
+                    if ds_plan.chart(chart.id).role is DatasetRole.SOURCE:
+                        continue  # BI dataset already gated above
+                    sql = generate_chart_sql(chart.query)
+                    sql_validator.validate(sql, plans=plans)
+                    log(f"SQL ok ({chart.id}/own): EXPLAIN + LIMIT-прогон прошли")
+            else:
+                for chart in spec.charts:
+                    sql = generate_chart_sql(chart.query)
+                    sql_validator.validate(sql, plans=plans)
+                    log(f"SQL ok ({chart.id}): EXPLAIN + LIMIT-прогон прошли")
 
             # dispatch on the spec's declared target so a "datalens" spec never silently builds
             # in Superset (invariant 2 at the BI boundary; Phase 4 F1)
