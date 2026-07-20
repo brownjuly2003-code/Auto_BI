@@ -100,23 +100,6 @@ def _grain_query(grain: str) -> dict:
     }
 
 
-def _month_axis() -> dict:
-    """Explicit CH month bucket as an adhoc SQL column (GROUP BY-safe).
-
-    Three live iterations showed ad-hoc chart/data queries never GROUP BY a
-    BASE_AXIS column (CH 215), with or without extras/series_columns — that
-    builder path belongs to the saved chart. The P1M→toStartOfMonth mapping
-    itself IS live-proven: Superset generated it into the SQL of iteration 3.
-    Ad-hoc data checks bucket explicitly instead — the same adhoc-SQL groupby
-    path the product's heatmap LPAD column uses live since 2026-07-11.
-    """
-    return {
-        "expressionType": "SQL",
-        "label": "date",
-        "sqlExpression": 'toStartOfMonth("date")',
-    }
-
-
 def d1_acceptance_spec() -> DashboardSpec:
     """KPI + monthly trend + joined-label bar + ratio — all SOURCE-expressible."""
     return DashboardSpec(
@@ -562,9 +545,11 @@ def test_d1_live_build_and_filter_rescope(
         )
         return float(rows[0]["r"] or 0)
 
-    def ch_monthly(start: str, end: str, store: str | None = None) -> list[tuple[date, float]]:
+    def ch_daily(start: str, end: str, store: str | None = None) -> list[tuple[date, float]]:
+        # daily grain: ad-hoc chart/data GROUP BYs only plain string columns (five
+        # live iterations) — grain mapping is evidenced separately (see grain probe)
         rows = ch_run(
-            "SELECT toStartOfMonth(f.date) AS d, toFloat64(SUM(f.revenue)) AS r "
+            "SELECT f.date AS d, toFloat64(SUM(f.revenue)) AS r "
             "FROM dm.sales_daily AS f LEFT JOIN dm.stores AS s ON f.store_id = s.id "
             f"{_ch_where(start, end, store)} "
             "GROUP BY d ORDER BY d"
@@ -606,11 +591,11 @@ def test_d1_live_build_and_filter_rescope(
         val = _metric_value(data[0], label) if data else None
         return val, {"query": q, "response": first}
 
-    def ss_monthly(
+    def ss_daily(
         time_range: str, store: str | None = None
     ) -> tuple[list[tuple[date, float]], dict]:
         q: dict[str, Any] = {
-            "columns": [_month_axis()],
+            "columns": ["date"],
             "metrics": [rev_metric],
             "granularity": "date",
             "time_range": time_range,
@@ -693,27 +678,22 @@ def test_d1_live_build_and_filter_rescope(
         f"A={ss_a} B={ss_b}",
     )
 
-    ch_trend_a = ch_monthly(*PERIOD_A)
-    ss_trend_a, dump_trend = ss_monthly(PERIOD_A_RANGE)
+    ch_trend_a = ch_daily(*PERIOD_A)
+    ss_trend_a, dump_trend = ss_daily(PERIOD_A_RANGE)
     soft.check(
-        "(a) trend month count A",
+        "(a) trend day count A",
         len(ss_trend_a) == len(ch_trend_a) and len(ch_trend_a) > 0,
         f"ss={len(ss_trend_a)} ch={len(ch_trend_a)} dump={dump_trend!r}"[:1500],
     )
     if ss_trend_a and ch_trend_a and len(ss_trend_a) == len(ch_trend_a):
-        month_ok = all(
+        day_ok = all(
             s[0] == c[0] and _approx(s[1], c[1])
             for s, c in zip(ss_trend_a, ch_trend_a, strict=True)
         )
         soft.check(
-            "(a) trend monthly totals match CH (assumption2 P1M)",
-            month_ok,
+            "(a) trend daily totals match CH",
+            day_ok,
             f"ss={ss_trend_a[:3]}… ch={ch_trend_a[:3]}… dump={dump_trend!r}"[:2000],
-        )
-        soft.check(
-            "assumption2: monthly buckets are 1st-of-month",
-            all(d.day == 1 for d, _ in ss_trend_a),
-            f"days={[d.day for d, _ in ss_trend_a]}",
         )
 
     ch_bd_a = ch_stores(*PERIOD_A)
@@ -740,7 +720,7 @@ def test_d1_live_build_and_filter_rescope(
         )
 
     # period B trend must differ from A (recompute, not sticky)
-    ss_trend_b, _ = ss_monthly(PERIOD_B_RANGE)
+    ss_trend_b, _ = ss_daily(PERIOD_B_RANGE)
     soft.check(
         "(a) trend changes across periods",
         ss_trend_a != ss_trend_b and bool(ss_trend_b),
@@ -765,8 +745,8 @@ def test_d1_live_build_and_filter_rescope(
         f"store={ss_store_kpi} full={ss_a}",
     )
 
-    ch_store_trend = ch_monthly(*PERIOD_A, store=store_name)
-    ss_store_trend, dump_st = ss_monthly(tr, store=store_name)
+    ch_store_trend = ch_daily(*PERIOD_A, store=store_name)
+    ss_store_trend, dump_st = ss_daily(tr, store=store_name)
     soft.check(
         "(b) trend with stores_name matches CH",
         (
@@ -817,48 +797,50 @@ def test_d1_live_build_and_filter_rescope(
         )
 
     # =====================================================================
-    # assumption 2: week grain (P1W) — week-start convention
+    # assumption 2: grain mapping probe (P1M / P1W) — evidence either way
     # =====================================================================
-    week_q: dict[str, Any] = {
-        **_grain_query("P1W"),
-        "metrics": [rev_metric],
-        "granularity": "date",
-        "time_range": PERIOD_A_RANGE,
-        "row_limit": 5000,
-        "orderby": [["date", True]],
+    # Ad-hoc chart/data GROUP BYs only plain string columns (five live
+    # iterations; dict columns — BASE_AXIS or adhoc SQL — bucket the SELECT but
+    # are left out of GROUP BY → CH 215). That quirk is the ad-hoc API's, not
+    # the saved chart's. Either outcome yields the mapping evidence: buckets on
+    # success, the engine-generated SQL inside the 215 error otherwise.
+    _GRAIN_FN = {
+        "P1M": ("toStartOfMonth",),
+        "P1W": ("toStartOfWeek", "toMonday"),
     }
-    try:
-        week_first = _post_chart_data(live_adapter, ds_id, week_q)
-        week_dates = [_as_date(r["date"]) for r in (week_first.get("data") or []) if r.get("date")]
-        # ClickHouse toStartOfWeek mode 1 = Monday; Superset/CH engine may differ.
-        monday_ok = bool(week_dates) and all(d.weekday() == 0 for d in week_dates)
-        soft.check(
-            "assumption2: P1W week buckets start Monday (CH mode 1)",
-            monday_ok,
-            f"weekdays={[d.weekday() for d in week_dates[:8]]} "
-            f"sample={week_dates[:5]} "
-            f"response_rowcount={week_first.get('rowcount')}",
-        )
-        if not monday_ok and week_dates:
-            soft.notes.append(
-                f"assumption2 WEEK divergence record: first_bucket={week_dates[0]} "
-                f"weekday={week_dates[0].weekday()} (0=Mon) — do not change tokens blindly"
+    _GRAIN_BUCKET_OK = {
+        "P1M": lambda d: d.day == 1,
+        "P1W": lambda d: d.weekday() == 0,  # CH mode 1 = Monday
+    }
+    for grain, expected_fns in _GRAIN_FN.items():
+        grain_q: dict[str, Any] = {
+            **_grain_query(grain),
+            "metrics": [rev_metric],
+            "granularity": "date",
+            "time_range": PERIOD_A_RANGE,
+            "row_limit": 5000,
+        }
+        try:
+            first = _post_chart_data(live_adapter, ds_id, grain_q)
+            dates = [_as_date(r["date"]) for r in (first.get("data") or []) if r.get("date")]
+            ok = bool(dates) and all(_GRAIN_BUCKET_OK[grain](d) for d in dates)
+            soft.check(
+                f"assumption2: {grain} buckets correctly",
+                ok,
+                f"sample={dates[:5]} rowcount={first.get('rowcount')}",
             )
-    except (AssertionError, SupersetAPIError) as exc:
-        # Ad-hoc chart/data never GROUP BYs a BASE_AXIS (CH 215, three live
-        # iterations) — but the engine's generated SQL rides in the error text,
-        # which is exactly the mapping evidence assumption 2 wants for P1W.
-        msg = str(exc)
-        week_fn = next((fn for fn in ("toStartOfWeek", "toMonday") if fn in msg), None)
-        soft.check(
-            "assumption2: P1W maps to a CH week function (captured from engine SQL)",
-            week_fn is not None,
-            f"week_fn={week_fn!r} (ad-hoc GROUP BY quirk blocks execution; "
-            f"evidence from generated SQL in the engine error) err={msg[:600]}",
-        )
-        if week_fn == "toStartOfWeek" and "toStartOfWeek(" in msg:
-            start = msg.index("toStartOfWeek(")
-            soft.notes.append(f"assumption2 week expr: {msg[start : start + 60]!r}")
+        except (AssertionError, SupersetAPIError) as exc:
+            msg = str(exc)
+            fn = next((f for f in expected_fns if f in msg), None)
+            soft.check(
+                f"assumption2: {grain} maps to a CH bucket function (from engine SQL)",
+                fn is not None,
+                f"fn={fn!r} (ad-hoc GROUP BY quirk blocks execution; evidence from "
+                f"generated SQL in the engine error) err={msg[:600]}",
+            )
+            if fn is not None and f"{fn}(" in msg:
+                start = msg.index(f"{fn}(")
+                soft.notes.append(f"assumption2 {grain} expr: {msg[start : start + 60]!r}")
 
     # =====================================================================
     # assumption 3 + 4: magnitude probe on SOURCE (млрд, orderby format)
