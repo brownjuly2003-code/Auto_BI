@@ -224,8 +224,8 @@ jobs:
           DEMO_FACT_ROWS: "1000000"
         run: docker compose up -d --build --wait --wait-timeout 900
 
-      - name: Integration tests — Superset contract suite
-        run: uv run pytest -m integration tests/test_superset_contract.py
+      - name: Integration tests — Superset contract suite + D-1 acceptance
+        run: uv run pytest -m integration tests/test_superset_contract.py tests/test_d1_acceptance.py
 
       # --auto is the deterministic auto-overview path (no LLM, ARCHITECTURE §auto-overview)
       # — a real end-to-end build against the live stand needs no API key.
