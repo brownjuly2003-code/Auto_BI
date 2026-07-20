@@ -232,6 +232,16 @@ jobs:
       - name: Live end-to-end build (auto-overview, no LLM)
         run: uv run auto_bi build --auto dm.sales_daily --target superset --model-path semantic/model.yaml
 
+      # D-4: the same happy path a user walks — real Chromium against `serve` in the
+      # public-demo profile (DisabledLLM, no key) building in the live Superset, plus an
+      # axe-core scan of every UI state on the way. playwright/axe are pulled ephemerally
+      # like pytest-cov/duckdb in the quality job, to keep uv.lock lean.
+      - name: Install Playwright Chromium
+        run: uv run --with playwright playwright install --with-deps chromium
+
+      - name: Browser E2E — web UI happy path + axe (no LLM)
+        run: uv run --with playwright --with axe-playwright-python pytest -m e2e tests/test_web_e2e.py
+
       - name: Stand logs (on failure, for debugging)
         if: failure()
         run: docker compose logs --tail=300
