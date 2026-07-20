@@ -11,6 +11,7 @@ from sqlglot import expressions as exp
 from auto_bi.ir.spec import (
     ChartQuery,
     FilterOp,
+    JoinSpec,
     Measure,
     MeasureTransform,
     QueryFilter,
@@ -247,6 +248,46 @@ def generate_chart_sql(
     if any(_is_derived(m) for m in query.measures):
         return _generate_windowed_sql(query, dialect=dialect, apply_limit=apply_limit)
     return _generate_flat_sql(query, dialect=dialect, apply_limit=apply_limit)
+
+
+def generate_source_sql(
+    table: str,
+    columns: list[str],
+    joins: list[JoinSpec],
+    joined_refs: list[str] | tuple[str, ...] = (),
+    *,
+    dialect: str = DIALECT,
+) -> str:
+    """D-1 (variant A): the shared semantic-grain dataset for one mart.
+
+    SELECT of the mart's own columns (bare aliases) plus the label columns the
+    charts reference through LEFT JOINs (B3), no GROUP BY / WHERE / LIMIT:
+    aggregation and top-N move into the BI as native metrics (form_data), the
+    default period arrives as the native filter's default — so every mart column
+    stays filterable and the window is consistent WITHOUT baking it into SQL.
+    Rendered and gated (guard_sql + EXPLAIN + LIMIT trial) exactly like chart SQL.
+    """
+    select_cols: list[exp.Expression] = []
+    for c in columns:
+        if joins:
+            # joined tables can share bare column names — qualify with the base table
+            # and alias back to the bare name so the dataset schema stays stable
+            e = exp.alias_(_dim_column(f"{table}.{c}"), column_alias(c), quoted=True)
+            select_cols.append(e)  # type: ignore[arg-type]
+        else:
+            select_cols.append(_dim_column(c))
+    for ref in joined_refs:
+        select_cols.append(
+            exp.alias_(_dim_column(ref), column_alias(ref), quoted=True)  # type: ignore[arg-type]
+        )
+    select = exp.select(*select_cols).from_(exp.to_table(table))
+    for j in joins:
+        select = select.join(
+            exp.to_table(j.table),
+            on=_dim_column(j.on_left).eq(_dim_column(j.on_right)),
+            join_type="left",
+        )
+    return select.sql(dialect=dialect, identify=True)
 
 
 def _resolve_for(query: ChartQuery):
