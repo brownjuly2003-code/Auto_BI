@@ -18,6 +18,7 @@ Two dataset shapes (D-1 variant A):
 
 from __future__ import annotations
 
+from auto_bi.agent.dataset_plan import source_column_alias
 from auto_bi.ir.spec import (
     ChartSpec,
     DashboardSpec,
@@ -31,6 +32,18 @@ from auto_bi.ir.spec import (
     measure_alias,
 )
 from auto_bi.semantic.model import Aggregation
+
+
+def _dim_dataset_alias(col: str, mart_table: str, *, from_source: bool) -> str:
+    """Dataset column name for a dimension ref on OWN vs SOURCE charts.
+
+    SOURCE uses the shared source-dataset alias (``stores_name`` for a joined
+    label); OWN keeps SQL_GEN's bare ``column_alias``.
+    """
+    if from_source:
+        return source_column_alias(col, mart_table)
+    return column_alias(col)
+
 
 # d3 format for large additive aggregates: 3 significant figures, SI-abbreviated and
 # trailing-zero-trimmed (236149963687 -> "236G", 114971033 -> "115M"). Superset renders
@@ -263,11 +276,16 @@ def _fd_big_number(
     return fd
 
 
-def _fd_pie(chart: ChartSpec, base: dict, metrics: list[dict], fmt: str) -> dict:
+def _fd_pie(
+    chart: ChartSpec, base: dict, metrics: list[dict], fmt: str, *, from_source: bool
+) -> dict:
     # shape-validated to exactly one dimension + one measure
+    mart = chart.query.table
     fd = {
         **base,
-        "groupby": [column_alias(c) for c in chart.query.dimensions],
+        "groupby": [
+            _dim_dataset_alias(c, mart, from_source=from_source) for c in chart.query.dimensions
+        ],
         "metric": metrics[0],
         "sort_by_metric": True,
     }
@@ -276,12 +294,17 @@ def _fd_pie(chart: ChartSpec, base: dict, metrics: list[dict], fmt: str) -> dict
     return fd
 
 
-def _fd_table(chart: ChartSpec, base: dict, metrics: list[dict], *, label_of) -> dict:
+def _fd_table(
+    chart: ChartSpec, base: dict, metrics: list[dict], *, label_of, from_source: bool
+) -> dict:
     q = chart.query
+    mart = q.table
     fd = {
         **base,
         "query_mode": "aggregate",
-        "groupby": [column_alias(c) for c in q.group_columns()],
+        "groupby": [
+            _dim_dataset_alias(c, mart, from_source=from_source) for c in q.group_columns()
+        ],
         "metrics": metrics,
     }
     # per-metric format (a table can mix a big sum, a small average, and a percent share),
@@ -297,15 +320,16 @@ def _fd_table(chart: ChartSpec, base: dict, metrics: list[dict], *, label_of) ->
     return fd
 
 
-def _fd_pivot(chart: ChartSpec, base: dict, metrics: list[dict]) -> dict:
+def _fd_pivot(chart: ChartSpec, base: dict, metrics: list[dict], *, from_source: bool) -> dict:
     # OWN: cells re-aggregate with Sum over a one-row-per-cell grain (identity).
     # SOURCE: Sum over raw rows is the real aggregate (IR measures are SUM-family for pivots
     # in practice; Superset's pivot aggregateFunction is chart-level, not per-metric).
     q = chart.query
+    mart = q.table
     return {
         **base,
-        "groupbyRows": [column_alias(c) for c in q.rows],
-        "groupbyColumns": [column_alias(c) for c in q.columns],
+        "groupbyRows": [_dim_dataset_alias(c, mart, from_source=from_source) for c in q.rows],
+        "groupbyColumns": [_dim_dataset_alias(c, mart, from_source=from_source) for c in q.columns],
         "metrics": metrics,
         "metricsLayout": "COLUMNS",
         "aggregateFunction": "Sum",
@@ -319,10 +343,12 @@ def _fd_heatmap(
     metrics: list[dict],
     *,
     heatmap_y_pad: int | None,
+    from_source: bool,
 ) -> dict:
     q = chart.query
+    mart = q.table
     x_axis, y_axis = q.dimensions  # shape-validated to exactly two
-    y_alias = column_alias(y_axis)
+    y_alias = _dim_dataset_alias(y_axis, mart, from_source=from_source)
     groupby: str | dict = y_alias
     if heatmap_y_pad is not None:
         # zero-pad an ordinal numeric y (cohort periods 0..N): value 0 otherwise renders
@@ -336,7 +362,7 @@ def _fd_heatmap(
         }
     return {
         **base,
-        "x_axis": column_alias(x_axis),
+        "x_axis": _dim_dataset_alias(x_axis, mart, from_source=from_source),
         "groupby": groupby,
         "metric": metrics[0],
         "sort_x_axis": "alpha_asc",
@@ -360,20 +386,22 @@ def _fd_timeseries(
 ) -> dict:
     # echarts timeseries family: line, bar, stacked_bar, area
     q = chart.query
+    mart = q.table
     x_axis, *rest_dims = q.dimensions
     # a temporal x (model role=TIME) is the chart's own x column, not just a group column: the
     # adapter passes its alias as time_column AND it is dimensions[0]. Bars over such a column
     # must keep the time axis (see below), so distinguish it from a numeric categorical x.
-    x_is_temporal = time_column is not None and time_column == column_alias(x_axis)
+    x_alias = _dim_dataset_alias(x_axis, mart, from_source=from_source)
+    x_is_temporal = time_column is not None and time_column == x_alias
     breakdown: dict[str, None] = {}  # series + extra dimensions, deduped, order kept
     for col in (*q.series, *rest_dims):
         breakdown.setdefault(col, None)
     form_data = {
         **base,
-        "x_axis": column_alias(x_axis),
+        "x_axis": x_alias,
         "x_axis_sort_asc": True,
         "metrics": metrics,
-        "groupby": [column_alias(c) for c in breakdown],
+        "groupby": [_dim_dataset_alias(c, mart, from_source=from_source) for c in breakdown],
     }
     if time_column:
         # designate the temporal column so a dashboard native time filter's time_range binds to
@@ -516,20 +544,22 @@ def build_form_data(
         return fd
 
     if chart.viz == Viz.PIE:
-        fd = _fd_pie(chart, base, metrics, fmt)
+        fd = _fd_pie(chart, base, metrics, fmt, from_source=from_source)
         _apply_series_limit(fd, chart, from_source=from_source)
         return fd
 
     if chart.viz == Viz.TABLE:
-        fd = _fd_table(chart, base, metrics, label_of=_label)
+        fd = _fd_table(chart, base, metrics, label_of=_label, from_source=from_source)
         _apply_series_limit(fd, chart, from_source=from_source)
         return fd
 
     if chart.viz == Viz.PIVOT:
-        return _fd_pivot(chart, base, metrics)
+        return _fd_pivot(chart, base, metrics, from_source=from_source)
 
     if chart.viz == Viz.HEATMAP:
-        return _fd_heatmap(chart, base, metrics, heatmap_y_pad=heatmap_y_pad)
+        return _fd_heatmap(
+            chart, base, metrics, heatmap_y_pad=heatmap_y_pad, from_source=from_source
+        )
 
     return _fd_timeseries(
         chart,

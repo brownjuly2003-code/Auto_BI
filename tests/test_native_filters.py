@@ -290,3 +290,203 @@ def test_own_chart_stays_out_of_source_filter_scope() -> None:
     config, _ = build_native_filter_configuration(spec, placements, MODEL)
     assert config[0]["chartsInScope"] == [101]  # KPI only; OWN bar has no date in grain
     assert config[0]["scope"]["excluded"] == [102]
+
+
+def _flagship_joined_filter_spec() -> DashboardSpec:
+    """Finding 1 repro: filter on joined label column with mixed SOURCE charts."""
+    from auto_bi.ir.spec import JoinSpec
+
+    stores_join = JoinSpec(
+        table="dm.stores", on_left="dm.sales_daily.store_id", on_right="dm.stores.id"
+    )
+    return DashboardSpec(
+        title="t",
+        filters=[DashboardFilter(column="dm.stores.name", type="value")],
+        charts=[
+            ChartSpec(
+                id="kpi",
+                title="Итог",
+                viz=Viz.BIG_NUMBER,
+                query=ChartQuery(table="dm.sales_daily", measures=[REVENUE]),
+            ),
+            ChartSpec(
+                id="by_store",
+                title="По магазинам",
+                viz=Viz.BAR,
+                query=ChartQuery(
+                    table="dm.sales_daily",
+                    dimensions=["dm.stores.name"],
+                    measures=[REVENUE],
+                    joins=[stores_join],
+                ),
+            ),
+            ChartSpec(
+                id="by_day",
+                title="По дням",
+                viz=Viz.LINE,
+                query=ChartQuery(table="dm.sales_daily", dimensions=["date"], measures=[REVENUE]),
+            ),
+        ],
+    )
+
+
+def test_joined_filter_scopes_all_source_charts_and_binds_unique_alias() -> None:
+    """Finding 1+2: joined filter wires every SOURCE chart; binds stores_name not name."""
+    from auto_bi.agent.dataset_plan import chart_accepts_filter, plan_datasets
+    from auto_bi.agent.machine import spec_summary
+
+    spec = _flagship_joined_filter_spec()
+    plan = plan_datasets(spec)
+    filt = spec.filters[0]
+    # every chart is SOURCE and the source dataset exposes stores.name via the join
+    for c in spec.charts:
+        assert chart_accepts_filter(c, filt, spec, plan, MODEL) is True
+
+    placements = _placements_custom(spec)
+    config, applied = build_native_filter_configuration(spec, placements, MODEL)
+    assert len(config) == 1
+    assert config[0]["chartsInScope"] == [sid for _, sid, _ in placements]
+    assert config[0]["targets"][0]["column"]["name"] == "stores_name"
+    assert applied[0][1] == config[0]["chartsInScope"]
+
+    # preview names exactly the same charts the wiring scopes
+    summary = spec_summary(spec, MODEL)
+    assert "не применим" not in summary
+    assert "применяется к" in summary
+    for title in ("Итог", "По магазинам", "По дням"):
+        assert title in summary.split("применяется к")[1].split("\n")[0]
+
+
+def test_preview_matches_wiring_mart_joined_and_nothing() -> None:
+    """Finding 1 acceptance: (a) mart filter (b) joined filter (c) reaches nothing."""
+    from auto_bi.agent.dataset_plan import chart_accepts_filter, plan_datasets
+    from auto_bi.agent.machine import spec_summary
+
+    model = MODEL
+
+    def scoped_titles(spec: DashboardSpec) -> list[str]:
+        plan = plan_datasets(spec)
+        filt = spec.filters[0]
+        return [c.title for c in spec.charts if chart_accepts_filter(c, filt, spec, plan, model)]
+
+    def preview_applies(spec: DashboardSpec) -> list[str] | None:
+        summary = spec_summary(spec, model)
+        if "не применим ни к одному чарту" in summary:
+            return None
+        # line like:  ⛃ фильтр … → применяется к: A, B; не затрагивает: C
+        for line in summary.splitlines():
+            if "применяется к:" in line:
+                part = line.split("применяется к:")[1]
+                applies = part.split(";")[0]
+                return [t.strip() for t in applies.split(",") if t.strip()]
+        return []
+
+    # (a) mart-column filter on all-SOURCE charts
+    mart = _spec([DashboardFilter(column="dm.sales_daily.store_id", type="value")])
+    assert preview_applies(mart) == scoped_titles(mart) == ["Итог", "По магазинам", "По дням"]
+    config, _ = build_native_filter_configuration(mart, _placements(mart), model)
+    assert config[0]["chartsInScope"] == [101, 102, 103]
+    assert config[0]["targets"][0]["column"]["name"] == "store_id"
+
+    # (b) joined-column filter
+    joined = _flagship_joined_filter_spec()
+    assert preview_applies(joined) == scoped_titles(joined)
+    assert set(scoped_titles(joined)) == {"Итог", "По магазинам", "По дням"}
+
+    # (c) filter reaches nothing
+    nothing = _spec([DashboardFilter(column="dm.other_fact.region_id", type="value")])
+    assert preview_applies(nothing) is None
+    assert scoped_titles(nothing) == []
+    config, applied = build_native_filter_configuration(nothing, _placements(nothing), model)
+    assert config == [] and applied == []
+
+
+def test_own_joined_grain_excluded_when_alias_mismatches_bound() -> None:
+    """Finding 2 trap: OWN chart groups by dm.stores.name (dataset col ``name``) but
+    the filter binds ``stores_name`` on the source dataset — OWN is excluded.
+    Mart-column OWN grain still accepts (alias matches)."""
+    from auto_bi.agent.dataset_plan import (
+        chart_accepts_filter,
+        filter_preview_notes,
+        plan_datasets,
+    )
+    from auto_bi.ir.spec import JoinSpec, MeasureTransform
+
+    stores_join = JoinSpec(
+        table="dm.stores", on_left="dm.sales_daily.store_id", on_right="dm.stores.id"
+    )
+    own_joined = ChartSpec(
+        id="own_stores",
+        title="Доля по магазинам",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["dm.stores.name"],
+            measures=[
+                Measure(
+                    column="revenue",
+                    agg=Aggregation.SUM,
+                    transform=MeasureTransform.SHARE_OF_TOTAL,
+                )
+            ],
+            joins=[stores_join],
+        ),
+    )
+    own_mart = ChartSpec(
+        id="own_store_id",
+        title="Доля по store_id",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["store_id"],
+            measures=[
+                Measure(
+                    column="revenue",
+                    agg=Aggregation.SUM,
+                    transform=MeasureTransform.SHARE_OF_TOTAL,
+                )
+            ],
+        ),
+    )
+    source = ChartSpec(
+        id="by_store",
+        title="Магазины",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["dm.stores.name"],
+            measures=[REVENUE],
+            joins=[stores_join],
+        ),
+    )
+
+    # direction 1: joined filter — OWN grain matches but alias diverges
+    joined_filt = DashboardFilter(column="dm.stores.name", type="value")
+    joined_spec = DashboardSpec(
+        title="t", filters=[joined_filt], charts=[source, own_joined, own_mart]
+    )
+    plan = plan_datasets(joined_spec)
+    assert chart_accepts_filter(source, joined_filt, joined_spec, plan, MODEL) is True
+    assert chart_accepts_filter(own_joined, joined_filt, joined_spec, plan, MODEL) is False
+    assert chart_accepts_filter(own_mart, joined_filt, joined_spec, plan, MODEL) is False
+    placements = [
+        (source, 201, 51),
+        (own_joined, 202, 52),
+        (own_mart, 203, 53),
+    ]
+    config, _ = build_native_filter_configuration(joined_spec, placements, MODEL)
+    assert config[0]["chartsInScope"] == [201]
+    assert config[0]["targets"][0]["column"]["name"] == "stores_name"
+    notes = filter_preview_notes(joined_spec, MODEL)
+    assert any("stores_name" in n and "Доля по магазинам" in n for n in notes)
+
+    # direction 2: mart filter — OWN with store_id grain accepts (aliases match)
+    mart_filt = DashboardFilter(column="dm.sales_daily.store_id", type="value")
+    mart_spec = DashboardSpec(title="t", filters=[mart_filt], charts=[source, own_joined, own_mart])
+    plan = plan_datasets(mart_spec)
+    assert chart_accepts_filter(source, mart_filt, mart_spec, plan, MODEL) is True
+    assert chart_accepts_filter(own_joined, mart_filt, mart_spec, plan, MODEL) is False
+    assert chart_accepts_filter(own_mart, mart_filt, mart_spec, plan, MODEL) is True
+    config, _ = build_native_filter_configuration(mart_spec, placements, MODEL)
+    assert set(config[0]["chartsInScope"]) == {201, 203}
+    assert config[0]["targets"][0]["column"]["name"] == "store_id"

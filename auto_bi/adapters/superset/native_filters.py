@@ -1,10 +1,15 @@
 """Native dashboard filters: compile spec.filters -> Superset native_filter_configuration.
 
 D-1 (variant A): charts on the shared semantic-grain source dataset carry every mart
-column (plus label joins), so a native filter (a WHERE by the column's bare alias)
+column (plus label joins), so a native filter (a WHERE by the column's bound alias)
 scopes to ALL SOURCE-role charts of that mart whose source dataset exposes the column.
 OWN-role charts keep the pre-D-1 grain rule: only a chart that GROUPs by the filtered
-column can honor it (its aggregated dataset has nothing else to filter on).
+column can honor it (its aggregated dataset has nothing else to filter on) — AND the
+OWN dataset column name must equal the filter's bound source alias (joined refs alias
+to ``stores_name``, while OWN SQL still emits bare ``name``; those charts are excluded).
+
+Scope logic lives in `agent.dataset_plan` and is shared with the preview — never a
+second implementation that can drift.
 
 Qualified comparison (audit 19.07, finding #1): scope never matches on bare column
 name alone — `dm.products.name` must not grab a chart grouped by `dm.stores.name`.
@@ -31,12 +36,26 @@ import hashlib
 
 from auto_bi.agent.dataset_plan import (
     DatasetPlan,
-    DatasetRole,
+    chart_accepts_filter,
+    filter_bound_column,
+    grain_exposes_column,
     plan_datasets,
-    source_dataset_inputs,
+    qualified_column_ref,
+    source_exposes_column,
 )
 from auto_bi.ir.spec import ChartSpec, DashboardFilter, DashboardSpec, column_alias
 from auto_bi.semantic.model import ColumnRole, SemanticModel
+
+# Re-export scope helpers so existing imports from this module keep working.
+__all__ = [
+    "build_native_filter_configuration",
+    "chart_accepts_filter",
+    "grain_exposes_column",
+    "participating_chart_ids",
+    "qualified_column_ref",
+    "source_exposes_column",
+    "superset_time_range",
+]
 
 # (chart, superset slice id, virtual dataset id) for one placed chart
 Placement = tuple[ChartSpec, int, int]
@@ -66,59 +85,20 @@ def _filter_name(filter_: DashboardFilter, model: SemanticModel) -> str:
     return column_alias(filter_.column)
 
 
-def qualified_column_ref(ref: str, default_table: str) -> str:
-    """Fully qualify a column ref against `default_table` when it is bare.
-
-    Dashboard filters and joined dimensions are already `schema.table.col`; mart grain
-    columns are often bare (`date`, `store_id`). Comparing bare names alone wrongly
-    equates `dm.products.name` with `dm.stores.name` (both alias to `name`).
-    """
-    if "." in ref:
-        return ref
-    return f"{default_table}.{ref}"
-
-
-def grain_exposes_column(chart: ChartSpec, filter_column: str) -> bool:
-    """Whether the chart's GROUP BY grain carries `filter_column` (qualified match)."""
-    target = qualified_column_ref(filter_column, chart.query.table)
-    for col in chart.query.group_columns():
-        if qualified_column_ref(col, chart.query.table) == target:
-            return True
-    return False
-
-
-def source_exposes_column(
-    spec: DashboardSpec,
-    plan: DatasetPlan,
-    model: SemanticModel,
-    table: str,
-    filter_column: str,
-) -> bool:
-    """Whether the shared source dataset for `table` carries `filter_column`."""
-    inputs = source_dataset_inputs(spec, plan, model, table)
-    target = qualified_column_ref(filter_column, table)
-    # mart's own column: filter names schema.table.col and the bare name is in columns
-    ft, _, fname = filter_column.rpartition(".")
-    if ft == table and fname in inputs.columns:
-        return True
-    if target in inputs.joined_refs or filter_column in inputs.joined_refs:
-        return True
-    # bare filter (unusual for DashboardFilter) against mart columns
-    return "." not in filter_column and filter_column in inputs.columns
-
-
-def chart_accepts_filter(
-    chart: ChartSpec,
+def _filter_target_alias(
     filter_: DashboardFilter,
-    spec: DashboardSpec,
-    plan: DatasetPlan,
-    model: SemanticModel,
-) -> bool:
-    """Whether a dashboard filter's WHERE can reach this chart's dataset."""
-    cp = plan.chart(chart.id)
-    if cp.role is DatasetRole.SOURCE:
-        return source_exposes_column(spec, plan, model, cp.table, filter_.column)
-    return grain_exposes_column(chart, filter_.column)
+    in_scope_charts: list[ChartSpec],
+) -> str:
+    """Column name the native filter binds on its target dataset.
+
+    Prefer the source-dataset alias of the first in-scope chart's mart (joined refs
+    become ``stores_name``). Falls back to bare ``column_alias`` only when the
+    in-scope set is empty (caller skips such filters).
+    """
+    if not in_scope_charts:
+        return column_alias(filter_.column)
+    mart = in_scope_charts[0].query.table
+    return filter_bound_column(filter_.column, mart)
 
 
 def participating_chart_ids(spec: DashboardSpec, model: SemanticModel) -> set[str]:
@@ -157,12 +137,13 @@ def build_native_filter_configuration(
     all_ids = [sid for _, sid, _ in placements]
 
     for filter_ in spec.filters:
-        alias = column_alias(filter_.column)
         in_scope: list[int] = []
+        in_scope_charts: list[ChartSpec] = []
         target_dataset: int | None = None
         for chart, sid, dataset_id in placements:
             if chart_accepts_filter(chart, filter_, spec, plan, model):
                 in_scope.append(sid)
+                in_scope_charts.append(chart)
                 if target_dataset is None:
                     target_dataset = dataset_id
         if not in_scope:
@@ -171,6 +152,7 @@ def build_native_filter_configuration(
         assert target_dataset is not None
         excluded = [sid for sid in all_ids if sid not in in_scope]
         name = _filter_name(filter_, model)
+        alias = _filter_target_alias(filter_, in_scope_charts)
         if _is_temporal(filter_.column, model):
             config.append(_time_filter(filter_, name, in_scope, excluded))
         else:

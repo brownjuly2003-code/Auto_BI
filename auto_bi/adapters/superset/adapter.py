@@ -279,24 +279,51 @@ class SupersetAdapter:
         logger.info("dataset %s created: id=%s", table_name, created["id"])
         return DatasetRef(id=created["id"], name=table_name)
 
-    def _measure_magnitude(self, ds: DatasetRef, measure: Measure) -> float | None:
+    def _measure_magnitude(
+        self,
+        ds: DatasetRef,
+        measure: Measure,
+        *,
+        from_source: bool = False,
+        chart: ChartSpec | None = None,
+    ) -> float | None:
         """The measure's peak aggregated value, measured live so its RU magnitude unit
-        (млрд/млн/тыс) can be chosen: for a big_number the dataset is one row (MAX = the scalar),
-        for a line/bar it is grouped (MAX = the tallest series point). Best-effort: any failure
-        returns None and the chart falls back to the default format — a display nicety must never
-        break a build."""
+        (млрд/млн/тыс) can be chosen.
+
+        OWN dataset: already aggregated — ``MAX("sum_revenue")`` is the tallest series
+        point (or the scalar for a one-row KPI).
+
+        SOURCE dataset: raw mart rows — probe must re-aggregate with the IR aggregation
+        (``SUM("revenue")``, not ``MAX("sum_revenue")`` which does not exist). For a
+        grouped chart, group by the chart dims, order by the metric desc, row_limit 1
+        so the value is still the tallest series point.
+
+        Best-effort: any failure returns None and the chart falls back to the default
+        format — a display nicety must never break a build.
+        """
         try:
+            if from_source:
+                metric = _adhoc_metric(measure, "kpimag", 0, from_source=True)
+            else:
+                metric = _adhoc_metric(measure, "kpimag", 0, agg="MAX")
+            query: dict = {
+                "metrics": [metric],
+                "row_limit": 1,
+            }
+            if from_source and chart is not None:
+                dims = list(chart.query.group_columns())
+                if dims:
+                    from auto_bi.agent.dataset_plan import source_column_alias
+
+                    query["groupby"] = [source_column_alias(c, chart.query.table) for c in dims]
+                    # tallest series point: order by the metric descending
+                    query["orderby"] = [[metric, False]]
             result = self._client.post(
                 "/api/v1/chart/data",
                 json={
                     "datasource": {"id": _int_id(ds.id), "type": "table"},
                     "force": True,
-                    "queries": [
-                        {
-                            "metrics": [_adhoc_metric(measure, "kpimag", 0, agg="MAX")],
-                            "row_limit": 1,
-                        }
-                    ],
+                    "queries": [query],
                     "result_format": "json",
                     "result_type": "full",
                 },
@@ -304,7 +331,9 @@ class SupersetAdapter:
             rows = result["result"][0]["data"]
             if not rows:
                 return None
-            value = rows[0].get(measure_alias(measure))
+            # adhoc label is the measure alias (or human label when set)
+            label = metric.get("label") or measure_alias(measure)
+            value = rows[0].get(label)
             return float(value) if value is not None else None
         except (SupersetAPIError, KeyError, IndexError, TypeError, ValueError):
             return None
@@ -350,7 +379,13 @@ class SupersetAdapter:
         return "₽" if any(m in text for m in _MONEY_MARKERS) else ""
 
     def _ru_scale(
-        self, measure: Measure, table: str, ds: DatasetRef
+        self,
+        measure: Measure,
+        table: str,
+        ds: DatasetRef,
+        *,
+        from_source: bool = False,
+        chart: ChartSpec | None = None,
     ) -> tuple[float, str, float] | None:
         """(divisor, RU unit line, scaled magnitude) for a large compact measure, measured
         live, or None to keep the default format. Only additive aggregates (is_compact_number)
@@ -360,7 +395,7 @@ class SupersetAdapter:
         and the cartesian value axis (_axis_scale)."""
         if not is_compact_number(measure):
             return None
-        magnitude = self._measure_magnitude(ds, measure)
+        magnitude = self._measure_magnitude(ds, measure, from_source=from_source, chart=chart)
         if magnitude is None:
             return None
         divisor, unit = ru_kpi_scale(magnitude)
@@ -369,14 +404,24 @@ class SupersetAdapter:
         currency = self._measure_currency(measure, table)
         return divisor, f"{unit} {currency}".strip(), magnitude / divisor
 
-    def _kpi_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str, float] | None:
+    def _kpi_scale(
+        self, chart: ChartSpec, ds: DatasetRef, *, from_source: bool = False
+    ) -> tuple[float, str, float] | None:
         """(divisor, RU unit line, scaled magnitude) for a large ruble big_number headline,
         or None (default fmt)."""
         if chart.viz != Viz.BIG_NUMBER:
             return None
-        return self._ru_scale(chart.query.measures[0], chart.query.table, ds)
+        return self._ru_scale(
+            chart.query.measures[0],
+            chart.query.table,
+            ds,
+            from_source=from_source,
+            chart=chart,
+        )
 
-    def _axis_scale(self, chart: ChartSpec, ds: DatasetRef) -> tuple[float, str, float] | None:
+    def _axis_scale(
+        self, chart: ChartSpec, ds: DatasetRef, *, from_source: bool = False
+    ) -> tuple[float, str, float] | None:
         """(divisor, RU unit line, scaled magnitude) for a large-magnitude line/bar/area value
         axis, or None to keep d3 SI. Same rule as the KPI: d3's SI axis format only speaks
         k/M/G/T, so RU units ("15 млрд ₽" vs "15G") need the metric scaled and the unit on the
@@ -387,7 +432,13 @@ class SupersetAdapter:
         the first one's units (billions) — off by orders of magnitude."""
         if chart.viz not in _AXIS_SCALE_VIZ or len(chart.query.measures) != 1:
             return None
-        return self._ru_scale(chart.query.measures[0], chart.query.table, ds)
+        return self._ru_scale(
+            chart.query.measures[0],
+            chart.query.table,
+            ds,
+            from_source=from_source,
+            chart=chart,
+        )
 
     def _temporal_alias(self, query: ChartQuery, *, from_source: bool = False) -> str | None:
         """Alias of the temporal column for granularity_sqla, else None.
@@ -450,8 +501,8 @@ class SupersetAdapter:
             chart,
             _int_id(ds.id),
             horizontal=horizontal,
-            kpi_scale=self._kpi_scale(chart, ds),
-            axis_scale=self._axis_scale(chart, ds),
+            kpi_scale=self._kpi_scale(chart, ds, from_source=from_source),
+            axis_scale=self._axis_scale(chart, ds, from_source=from_source),
             metric_labels=self._metric_labels(chart),
             time_column=self._temporal_alias(chart.query, from_source=from_source),
             heatmap_y_pad=self._heatmap_y_pad(chart),

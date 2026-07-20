@@ -66,19 +66,13 @@ class AgentTurn(StrictModel):
     noop: bool = False
 
 
-def _qualified_ref(ref: str, table: str) -> str:
-    """Fully qualify a bare column against its chart table (preview scope helper)."""
-    return ref if "." in ref else f"{table}.{ref}"
+def spec_summary(spec: DashboardSpec, model: SemanticModel) -> str:
+    """Human-readable preview of the spec, including honest filter scope.
 
-
-def _grain_has(chart, filter_column: str) -> bool:
-    """OWN-chart grain membership by fully qualified equality (not bare alias)."""
-    target = _qualified_ref(filter_column, chart.query.table)
-    return any(_qualified_ref(g, chart.query.table) == target for g in chart.query.group_columns())
-
-
-def spec_summary(spec: DashboardSpec) -> str:
-    from auto_bi.agent.dataset_plan import DatasetRole, filter_preview_notes, plan_datasets
+    Filter scope uses the same `chart_accepts_filter` as the Superset wiring —
+    never a second approximation that can drift from the built dashboard.
+    """
+    from auto_bi.agent.dataset_plan import chart_accepts_filter, filter_preview_notes, plan_datasets
 
     lines = [f"«{spec.title}» — {len(spec.charts)} чартов:"]
     for chart in spec.charts:
@@ -88,16 +82,12 @@ def spec_summary(spec: DashboardSpec) -> str:
         lines.append(f"  • [{chart.viz.value}] {chart.title} ({q.table}: {dims} × {measures})")
     plan = plan_datasets(spec)
     for f in spec.filters:
-        # D-1: SOURCE charts share a semantic-grain dataset (all mart columns filterable);
-        # OWN charts only receive a filter whose column is in their grain. Say exactly
+        # D-1: one shared scope function with the native-filter wiring. Say exactly
         # which charts HERE so the built dashboard never silently differs from the preview.
         applies: list[str] = []
         skips: list[str] = []
         for c in spec.charts:
-            cp = plan.chart(c.id)
-            if (cp.role is DatasetRole.SOURCE and f.column.rpartition(".")[0] == cp.table) or (
-                cp.role is DatasetRole.OWN and _grain_has(c, f.column)
-            ):
+            if chart_accepts_filter(c, f, spec, plan, model):
                 applies.append(c.title)
             else:
                 skips.append(c.title)
@@ -111,7 +101,7 @@ def spec_summary(spec: DashboardSpec) -> str:
                 f"  ⚠ фильтр дашборда «{f.column}» не применим ни к одному чарту "
                 "(нет колонки в их датасете) — задайте период фильтром чарта"
             )
-    for note in filter_preview_notes(spec):
+    for note in filter_preview_notes(spec, model):
         lines.append(f"  ◦ {note}")
     return "\n".join(lines)
 
@@ -275,7 +265,7 @@ class AgentSession:
         self.spec = spec
         self.verdicts = self._advise_mechanically(spec)
         self.phase = AgentPhase.APPROVE
-        message = spec_summary(spec)
+        message = spec_summary(spec, self._model)
         self._record("agent", message)
         if self._store is not None and self._session_id is not None:
             self._spec_row_id = self._store.save_spec(
@@ -357,8 +347,8 @@ class AgentSession:
         self.phase = AgentPhase.APPROVE
         # fields-first layout notes + D-1 honest badges for OWN charts under filters
         turn_notes = list(notes or [])
-        turn_notes.extend(filter_preview_notes(self.spec))
-        message = spec_summary(self.spec)
+        turn_notes.extend(filter_preview_notes(self.spec, self._model))
+        message = spec_summary(self.spec, self._model)
         # seed-analysis notes are not already in spec_summary; filter badges are
         seed_only = list(notes or [])
         if seed_only:

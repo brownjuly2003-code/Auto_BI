@@ -167,6 +167,41 @@ def test_form_data_source_ratio_is_sql_expression() -> None:
     assert "NULLIF" in expr
 
 
+def test_form_data_from_source_uses_unique_joined_dim_alias() -> None:
+    """Finding 2: SOURCE form_data groups by stores_name / products_name, not bare name."""
+    from auto_bi.ir.spec import JoinSpec
+
+    stores = JoinSpec(table="dm.stores", on_left="dm.sales_daily.store_id", on_right="dm.stores.id")
+    products = JoinSpec(
+        table="dm.products", on_left="dm.sales_daily.product_id", on_right="dm.products.id"
+    )
+    by_store = ChartSpec(
+        id="by_store",
+        title="s",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["dm.stores.name"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            joins=[stores],
+        ),
+    )
+    by_product = ChartSpec(
+        id="by_product",
+        title="p",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["dm.products.name"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            joins=[products],
+        ),
+    )
+    assert build_form_data(by_store, 1, from_source=True)["x_axis"] == "stores_name"
+    assert build_form_data(by_product, 1, from_source=True)["x_axis"] == "products_name"
+    assert build_form_data(by_store, 1, from_source=False)["x_axis"] == "name"
+
+
 def test_form_data_time_column_sets_granularity() -> None:
     # B5: a timeseries chart passed its temporal column names it as granularity_sqla so a
     # dashboard native time filter's time_range binds to it (else the ECharts query names no
@@ -904,6 +939,38 @@ def test_measure_magnitude_best_effort_returns_none_on_no_rows() -> None:
     measure = Measure(column="revenue", agg=Aggregation.SUM)
     assert adapter._measure_magnitude(DatasetRef(id=42, name="t"), measure) is None
     assert adapter._kpi_scale(_bignum(measure), DatasetRef(id=42, name="t")) is None
+
+
+def test_measure_magnitude_from_source_probes_raw_column_agg() -> None:
+    """Finding 3: SOURCE KPI probe uses SUM(\"revenue\"), never MAX(\"sum_revenue\")."""
+    fake = FakeSuperset(kpi_value=236e9)
+    adapter = make_adapter(fake, model=MODEL)
+    measure = Measure(column="revenue", agg=Aggregation.SUM)
+    kpi = _bignum(measure)
+    scale = adapter._kpi_scale(kpi, DatasetRef(id=42, name="t"), from_source=True)
+    assert scale == (1e9, "млрд ₽", 236.0)
+    probe = next(b for m, p, b in fake.requests if m == "POST" and p == "/api/v1/chart/data")
+    sql = probe["queries"][0]["metrics"][0]["sqlExpression"]
+    assert 'SUM("revenue")' in sql
+    assert "sum_revenue" not in sql
+    assert "MAX" not in sql
+    assert "groupby" not in probe["queries"][0]
+
+
+def test_measure_magnitude_from_source_grouped_orders_by_metric() -> None:
+    """Finding 3: SOURCE line/bar probe groups by dims and takes the tallest point."""
+    fake = FakeSuperset(kpi_value=14e9)
+    adapter = make_adapter(fake, model=MODEL)
+    line = _chart(Viz.LINE, dimensions=["date"])
+    scale = adapter._axis_scale(line, DatasetRef(id=42, name="t"), from_source=True)
+    assert scale == (1e9, "млрд ₽", 14.0)
+    probe = next(b for m, p, b in fake.requests if m == "POST" and p == "/api/v1/chart/data")
+    q = probe["queries"][0]
+    assert 'SUM("revenue")' in q["metrics"][0]["sqlExpression"]
+    assert "sum_revenue" not in q["metrics"][0]["sqlExpression"]
+    assert q["groupby"] == ["date"]
+    assert q["row_limit"] == 1
+    assert q["orderby"][0][1] is False  # descending
 
 
 def test_axis_scale_large_ruble_line_but_not_percent_or_kpi() -> None:
