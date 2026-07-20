@@ -642,6 +642,9 @@ function setMode(mode) {
     const active = tab.dataset.mode === mode;
     tab.classList.toggle("active", active);
     tab.setAttribute("aria-selected", String(active));
+    // roving tabindex (паттерн WAI-ARIA tabs): Tab выводит фокус ИЗ группы вкладок,
+    // а между ними ходят стрелками — см. обработчик keydown ниже
+    tab.tabIndex = active ? 0 : -1;
   }
   const fields = mode === "fields";
   const auto = mode === "auto";
@@ -901,6 +904,25 @@ $("approve-btn").addEventListener("click", approve);
 for (const tab of document.querySelectorAll(".mode-tab")) {
   tab.addEventListener("click", () => setMode(tab.dataset.mode));
 }
+
+// Стрелки/Home/End внутри группы вкладок (паттерн WAI-ARIA tabs): без этого до вкладок
+// «Полями»/«Авто» с клавиатуры не добраться — roving tabindex убирает их из Tab-обхода.
+$("mode-tabs").addEventListener("keydown", (e) => {
+  const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+  if (!keys.includes(e.key)) return;
+  const tabs = [...document.querySelectorAll(".mode-tab")].filter((t) => !t.disabled);
+  const current = tabs.indexOf(document.activeElement);
+  if (current === -1) return;
+  e.preventDefault();
+  const last = tabs.length - 1;
+  const next =
+    e.key === "Home" ? 0
+    : e.key === "End" ? last
+    : e.key === "ArrowLeft" ? (current === 0 ? last : current - 1)
+    : (current === last ? 0 : current + 1);
+  tabs[next].focus();
+  setMode(tabs[next].dataset.mode); // выбор следует за фокусом, как в automatic-activation
+});
 
 // примеры в пустом чате: заполняют поле (без авто-отправки — даём отредактировать)
 for (const chip of document.querySelectorAll(".example-chip")) {

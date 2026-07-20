@@ -20,18 +20,20 @@
         <option value="datalens">DataLens</option>
       </select>
     </label>
-    <span id="session-chip" class="chip chip-idle">нет сессии</span>
+    <span id="session-chip" class="chip chip-idle" role="status">нет сессии</span>
     <span id="user-chip" class="chip chip-user" hidden></span>
     <button type="button" id="logout-btn" class="btn btn-ghost" hidden>Выйти</button>
   </div>
 </header>
 
 <div id="login-overlay" class="login-overlay" hidden>
-  <form id="login-form" class="login-card" aria-label="Вход">
-    <div class="login-title">Вход в Auto_BI</div>
+  <form id="login-form" class="login-card" aria-labelledby="login-title">
+    <h2 id="login-title" class="login-title">Вход в Auto_BI</h2>
+    <label class="visually-hidden" for="login-user">Пользователь</label>
     <input id="login-user" type="text" placeholder="Пользователь" autocomplete="username" required>
+    <label class="visually-hidden" for="login-pass">Пароль</label>
     <input id="login-pass" type="password" placeholder="Пароль" autocomplete="current-password" required>
-    <p id="login-error" class="login-error" hidden></p>
+    <p id="login-error" class="login-error" role="alert" hidden></p>
     <button type="submit" class="btn btn-primary">Войти</button>
   </form>
 </div>
@@ -39,11 +41,16 @@
 <main class="layout">
   <section class="chat-pane" aria-label="Диалог">
     <div id="mode-tabs" class="mode-tabs" role="tablist" aria-label="Режим запроса">
-      <button type="button" class="mode-tab active" data-mode="text" role="tab" aria-selected="true">Текстом</button>
-      <button type="button" class="mode-tab" data-mode="fields" role="tab" aria-selected="false">Полями</button>
-      <button type="button" class="mode-tab" data-mode="auto" role="tab" aria-selected="false">Авто</button>
+      <button type="button" class="mode-tab active" data-mode="text" role="tab" id="tab-text"
+        aria-selected="true" aria-controls="chat">Текстом</button>
+      <button type="button" class="mode-tab" data-mode="fields" role="tab" id="tab-fields"
+        aria-selected="false" aria-controls="builder" tabindex="-1">Полями</button>
+      <button type="button" class="mode-tab" data-mode="auto" role="tab" id="tab-auto"
+        aria-selected="false" aria-controls="auto-panel" tabindex="-1">Авто</button>
     </div>
-    <div id="chat" class="chat">
+    <!-- role="log" + polite: ответы агента приходят асинхронно, без него скринридер
+         молчит о том, что диалог продвинулся -->
+    <div id="chat" class="chat" role="log" aria-live="polite" aria-labelledby="tab-text">
       <div id="chat-welcome" class="chat-welcome">
         <p class="welcome-lead">Опишите дашборд обычными словами — агент уточнит детали,
           предложит чарты и проверит их advisor’ом до сборки. Либо соберите дашборд из полей
@@ -57,7 +64,8 @@
       </div>
     </div>
 
-    <div id="builder" class="builder" hidden aria-label="Раскладка полей">
+    <div id="builder" class="builder" hidden role="tabpanel" aria-labelledby="tab-fields"
+      aria-label="Раскладка полей">
       <div class="builder-cols">
         <div class="field-panel">
           <div class="builder-title">Поля витрин</div>
@@ -69,6 +77,7 @@
             одного чарта. Тип визуализации подберёт агент.</p>
           <div id="groups" class="groups"></div>
           <button type="button" id="add-group" class="add-group">+ группа</button>
+          <label class="visually-hidden" for="seed-comment">Комментарий к раскладке</label>
           <input id="seed-comment" class="seed-comment" type="text"
             placeholder="Комментарий: период, ограничения… (необязательно)">
           <button type="button" id="seed-submit" class="btn btn-primary">Предложить дашборд</button>
@@ -76,7 +85,8 @@
       </div>
     </div>
 
-    <div id="auto-panel" class="auto-panel" hidden aria-label="Авто-обзор витрины">
+    <div id="auto-panel" class="auto-panel" hidden role="tabpanel" aria-labelledby="tab-auto"
+      aria-label="Авто-обзор витрины">
       <div class="builder-title">Авто-дашборд по витрине</div>
       <p class="builder-hint">Выберите витрину — агент детерминированно соберёт обзорный
         дашборд (KPI, динамика, ключевые разрезы) без единого запроса и без LLM.</p>
@@ -90,6 +100,7 @@
     </div>
 
     <form id="chat-form" class="chat-input">
+      <label class="visually-hidden" for="chat-text">Запрос к агенту</label>
       <textarea id="chat-text" rows="2" required
         placeholder="Опишите дашборд: «Обзор продаж: выручка по дням, топ магазинов…»"></textarea>
       <button type="submit" class="btn btn-secondary" id="send-btn">Отправить</button>
@@ -113,10 +124,13 @@
       <button id="approve-btn" class="btn btn-primary" type="button">Собрать дашборд</button>
     </div>
 
+    <!-- сборка идёт минутами и пишется по SSE: без live-региона незрячий пользователь
+         не узнаёт ни о ходе, ни о готовности. Лог — polite (шаги не перебивают),
+         результат — alert (терминальное событие, в т.ч. ошибка). -->
     <div id="build" class="build" hidden>
       <h2 class="pane-title">Сборка</h2>
-      <ol id="build-log" class="build-log"></ol>
-      <p id="build-result" class="build-result" hidden></p>
+      <ol id="build-log" class="build-log" aria-live="polite" aria-label="Ход сборки"></ol>
+      <p id="build-result" class="build-result" role="alert" hidden></p>
     </div>
 
     <details id="insights" class="insights" hidden>
