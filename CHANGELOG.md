@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **OWN-only дашборд больше не теряет joined-фильтр** (бэклог D-1): binding контрола
+  решается один раз на спеку (`dataset_plan.filter_binding_alias`) — source-alias
+  (`stores_name`), когда фильтр берёт хоть один source-датасет; bare pre-D-1 alias,
+  когда все чарты OWN (контрол биндится к OWN-датасету первого in-scope чарта, чарты
+  с колонкой в grain остаются в scope). Превью и Superset-wiring читают binding из
+  одной функции (`_filter_target_alias` удалён как вторая аппроксимация). Заодно
+  blanket-бейдж «фильтр не влияет» больше не ставится чарту, который контрол реально
+  двигает (превью не врёт в обе стороны). Mixed-дашборды не меняются: alias-mismatch
+  исключение и честная пометка остаются. Мутационно проверено.
+
 ### Added
 
 - **D-2 §5: reuse LIMIT-trial rows for magnitude + CLI insights** — `PlanCache` хранит

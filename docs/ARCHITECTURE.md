@@ -624,12 +624,20 @@ select-фильтра.
 **Один scope-функция для preview и wiring.** `chart_accepts_filter` (engine-neutral,
 в `dataset_plan`) — единственное место, где решается «фильтр доходит до чарта»:
 - SOURCE: колонка есть на source-датасете (mart column или joined_ref);
-- OWN: grain чарта экспонирует колонку **и** bare `column_alias` совпадает с
-  bound source-alias (OWN SQL по-прежнему эмитит bare `name`, а фильтр биндится
-  в `stores_name` → OWN исключается, preview note про alias-mismatch).
-Qualified-сравнение (`dm.products.name` ≠ `dm.stores.name`) — обе стороны
-нормализуются в `schema.table.col` до equality. Preview (`spec_summary`) и
-`build_native_filter_configuration` вызывают **ту же** функцию — второй
+- OWN: grain чарта экспонирует колонку **и** bare `column_alias` совпадает со
+  spec-wide binding контрола.
+Binding решается один раз на спеку (`filter_binding_alias`): BI применяет контрол
+как WHERE по ОДНОМУ имени колонки на все in-scope чарты, поэтому имя выбирается не
+per-chart. Если хоть один SOURCE-чарт экспонирует колонку — binding = source-alias
+(`stores_name`; OWN SQL эмитит bare `name` → OWN исключается, preview note про
+alias-mismatch). Если source-датасет фильтр не берёт вовсе (все чарты OWN) —
+binding = bare pre-D-1 alias, контрол биндится к OWN-датасету первого in-scope
+чарта и OWN-чарты с колонкой в grain остаются в scope: OWN-only дашборд больше не
+теряет joined-фильтр целиком. Blanket-бейдж «фильтр не влияет» ставится только
+чартам, которые ни один контрол спеки реально не двигает (превью не врёт в обе
+стороны). Qualified-сравнение (`dm.products.name` ≠ `dm.stores.name`) — обе
+стороны нормализуются в `schema.table.col` до equality. Preview (`spec_summary`) и
+`build_native_filter_configuration` вызывают **те же** функции — второй
 имплементации, которая может разъехаться, нет.
 
 **Gating invariant 3 (Superset-only split).** На `target_bi=superset` pipeline

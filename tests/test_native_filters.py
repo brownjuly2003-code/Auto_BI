@@ -490,3 +490,80 @@ def test_own_joined_grain_excluded_when_alias_mismatches_bound() -> None:
     config, _ = build_native_filter_configuration(mart_spec, placements, MODEL)
     assert set(config[0]["chartsInScope"]) == {201, 203}
     assert config[0]["targets"][0]["column"]["name"] == "store_id"
+
+
+def _own_share_chart(chart_id: str, title: str, dimensions: list[str], joins: list) -> ChartSpec:
+    """An inexpressible (OWN) bar: share_of_total forces the per-chart dataset."""
+    from auto_bi.ir.spec import MeasureTransform
+
+    return ChartSpec(
+        id=chart_id,
+        title=title,
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=dimensions,
+            measures=[
+                Measure(
+                    column="revenue",
+                    agg=Aggregation.SUM,
+                    transform=MeasureTransform.SHARE_OF_TOTAL,
+                )
+            ],
+            joins=joins,
+        ),
+    )
+
+
+def test_own_only_dashboard_keeps_joined_filter_via_bare_alias() -> None:
+    """Backlog fix (D-1 leftover): with NO source dataset taking the filter, the control
+    binds the bare pre-D-1 alias, so OWN charts with the column in grain stay in scope —
+    the joined filter is wired instead of being dropped entirely."""
+    from auto_bi.agent.dataset_plan import (
+        chart_accepts_filter,
+        filter_binding_alias,
+        filter_preview_notes,
+        plan_datasets,
+    )
+    from auto_bi.ir.spec import JoinSpec
+
+    stores_join = JoinSpec(
+        table="dm.stores", on_left="dm.sales_daily.store_id", on_right="dm.stores.id"
+    )
+    own_joined = _own_share_chart(
+        "own_stores", "Доля по магазинам", ["dm.stores.name"], [stores_join]
+    )
+    own_mart = _own_share_chart("own_store_id", "Доля по store_id", ["store_id"], [])
+
+    joined_filt = DashboardFilter(column="dm.stores.name", type="value")
+    spec = DashboardSpec(title="t", filters=[joined_filt], charts=[own_joined, own_mart])
+    plan = plan_datasets(spec)
+
+    # binding falls back to the bare alias (no SOURCE taker anywhere in the spec)
+    assert filter_binding_alias(spec, plan, MODEL, joined_filt) == "name"
+    assert chart_accepts_filter(own_joined, joined_filt, spec, plan, MODEL) is True
+    assert chart_accepts_filter(own_mart, joined_filt, spec, plan, MODEL) is False
+
+    placements = [(own_joined, 301, 61), (own_mart, 302, 62)]
+    config, applied = build_native_filter_configuration(spec, placements, MODEL)
+    assert len(config) == 1  # the filter is no longer skipped
+    assert config[0]["chartsInScope"] == [301]
+    assert config[0]["targets"][0] == {"datasetId": 61, "column": {"name": "name"}}
+    assert applied[0][1] == [301] and applied[0][2] == [302]
+
+    # the control works now — no alias-mismatch note, no blanket "фильтр не влияет"
+    # lie for the chart the control moves; the untouched chart keeps its honest badge
+    notes = filter_preview_notes(spec, MODEL)
+    assert not any("Доля по магазинам" in n for n in notes)
+    assert any("Доля по store_id" in n and "фильтр не влияет" in n for n in notes)
+
+
+def test_own_chart_moved_by_mart_filter_gets_no_blanket_badge() -> None:
+    """The pre-existing preview lie: an OWN chart whose grain matches a mart-column
+    filter IS moved by the control, so the blanket fallback badge must not appear."""
+    from auto_bi.agent.dataset_plan import filter_preview_notes
+
+    own_mart = _own_share_chart("own_store_id", "Доля по store_id", ["store_id"], [])
+    mart_filt = DashboardFilter(column="dm.sales_daily.store_id", type="value")
+    spec = DashboardSpec(title="t", filters=[mart_filt], charts=[own_mart])
+    assert filter_preview_notes(spec, MODEL) == []
