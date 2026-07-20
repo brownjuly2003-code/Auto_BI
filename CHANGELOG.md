@@ -6,6 +6,13 @@
 
 ### Fixed
 
+- **DataLens: LIMIT-drop scope = семантика селекторов DataLens, не роли Superset** —
+  `selector_scope_chart_ids` (bare per-chart alias по grain, зеркалит правило
+  `build_selectors`) вместо `participating_chart_ids`: OWN-размеченный чарт по
+  joined-колонке селектор реально двигает (у DataLens нет shared source-датасета),
+  а его SQL держал top-N LIMIT → селектор фильтровал пре-обрезанный top-N.
+  Тест согласованности: LIMIT-drop set == scope `build_selectors`.
+
 - **OWN-only дашборд больше не теряет joined-фильтр** (бэклог D-1): binding контрола
   решается один раз на спеку (`dataset_plan.filter_binding_alias`) — source-alias
   (`stores_name`), когда фильтр берёт хоть один source-датасет; bare pre-D-1 alias,
