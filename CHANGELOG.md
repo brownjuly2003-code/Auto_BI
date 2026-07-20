@@ -6,6 +6,16 @@
 
 ### Added
 
+- **D-1 PR-3: живая приёмка filterable dataset + ARCHITECTURE** — integration-тест
+  `tests/test_d1_acceptance.py` (маркер `integration`, деселектнут offline-lane):
+  build дашборда KPI + monthly trend + bar по joined `dm.stores.name` + ratio-мера
+  через реальный pipeline, затем `POST /api/v1/chart/data` с `time_range` и
+  `filters` на `stores_name` (то, что эмитят native-фильтры) — числа сверяются
+  с независимыми агрегатами ClickHouse. Soft-collect независимых чеков (period +
+  store + 5 declared assumptions rounds 1–2). Offline — payload-shape asserts
+  (roles/form_data/nfc/extra_form_data/orderby). CI integration-job гоняет suite
+  рядом с contract. Документация: `docs/ARCHITECTURE.md` §3.20.
+
 - **D-1 PR-2: filterable dataset (Superset, вариант A)** — один shared semantic-grain
   датасет на витрину для выразимых чартов (SOURCE), агрегация в form_data adhoc-метриках
   (SUM/AVG/COUNT… по сырой колонке, KPI без «одной строки», `time_grain_sqla` вместо
@@ -13,7 +23,7 @@
   датасете, qualified-сравнение колонок (фикс `dm.products.name` vs `dm.stores.name`),
   preview-пометка «фильтр не влияет: …» для OWN/fallback-чартов в turn.notes и spec-pane
   UI. Невыразимые (window/compare/raw_sql/bins) остаются на per-chart датасете. Живая
-  приёмка и ARCHITECTURE — PR-3.
+  приёмка и ARCHITECTURE — PR-3 (закрыто).
   **Review fixes (round 2):** (1) один общий `chart_accepts_filter` в `agent/dataset_plan`
   для preview и wiring (joined-label фильтр больше не «не применим» в summary);
   (2) детерминированные уникальные alias joined-ref (`dm.stores.name` → `stores_name`)
