@@ -135,9 +135,13 @@ def compile_and_build(
 
     `plans` (D-2 §3) carries the advisor's EXPLAIN evidence from a review that ran in the
     same call, letting the guard skip a re-plan of a statement it would plan identically.
-    Omitted (the API approve path, where preview and build are separate requests) every
-    chart is planned here as before.
+    When omitted (the API approve path, where preview and build are separate requests) a
+    fresh build-local PlanCache is created so D-2 §5 trial capture still works inside this
+    build; it starts empty (no advisor evidence — EXPLAIN-skip semantics unchanged) and
+    dies with the call. Nothing is persisted.
     """
+    if plans is None:
+        plans = PlanCache()
     if store is not None and session_id is not None:
         store.set_session_status(session_id, "building")
     # D-2 lifecycle: the adapter (and its HTTP pool) is created per build, so it must be
@@ -223,6 +227,12 @@ def compile_and_build(
             set_ns = getattr(adapter, "set_artifact_namespace", None)
             if callable(set_ns):
                 set_ns(build_token)
+            # D-2 §5: hand the build-local trial store to the concrete adapter so OWN
+            # magnitude can reuse complete LIMIT-trial rows. Optional helper (Protocol
+            # unchanged), same pattern as set_artifact_namespace.
+            set_plans = getattr(adapter, "set_query_plans", None)
+            if callable(set_plans):
+                set_plans(plans)
 
             ref = adapter.build(spec)
         except Exception as exc:

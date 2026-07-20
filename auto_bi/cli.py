@@ -343,7 +343,7 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
     # a deterministic "Что видно" layer over the real aggregates — a separate surface from
     # the dashboard, best-effort (a failed read never fails the build).
     try:
-        section = analyze_spec(spec, model, run_query).render()
+        section = analyze_spec(spec, model, run_query, plans=plans).render()
         if section:
             print(f"\n{section}")
     except Exception:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from auto_bi.adapters.base import DWHConfig
+from auto_bi.adapters.base import DatasetRef, DWHConfig
 from auto_bi.adapters.datalens.adapter import (
     DataLensAdapter,
     build_dashboard_data,
@@ -754,6 +754,81 @@ def test_build_multi_measure_line_is_never_axis_scaled() -> None:
     chart_post = next(b for p, b in fake.posts if p == "/api/charts/v1/charts")
     ph = {p["id"]: p for p in chart_post["data"]["visualization"]["placeholders"]}
     assert ph["y"].get("settings", {}).get("title") != "manual"  # no RU axis title
+
+
+def test_measure_magnitude_reuses_complete_trial() -> None:
+    """D-2 §5: complete trial → no /api/run probe; same scale as the probe would give."""
+    from auto_bi.agent.query_plan import PlanCache
+    from auto_bi.agent.sqlgen import generate_chart_sql
+    from auto_bi.ir.spec import measure_alias
+
+    fake = FakeClient(run_value=999e9)  # would be wrong tier if probe ran
+    adapter = DataLensAdapter(fake, DWH, _money_model(), workbook_id="wb1")
+    measure = Measure(column="revenue", agg=Aggregation.SUM)
+    chart = ChartSpec(
+        id="k",
+        title="Выручка",
+        viz=Viz.BIG_NUMBER,
+        query=ChartQuery(table="dm.sales_daily", measures=[measure]),
+    )
+    # seed a dataset entry so the probe path (if taken) can resolve fields
+    ds = DatasetRef(id="ds1", name="probe_ds")
+    alias = measure_alias(measure)
+    adapter._datasets["ds1"] = ("probe_ds", _fields((alias, "float", "MEASURE")))
+    plans = PlanCache()
+    plans.record_trial(generate_chart_sql(chart.query), [{alias: 236e9}])
+    adapter.set_query_plans(plans)
+
+    mag = adapter._measure_magnitude(measure, ds, agg="sum", chart=chart)
+    assert mag == 236e9
+    assert "/api/run" not in [p for p, _ in fake.posts]
+
+
+def test_measure_magnitude_probes_when_trial_truncated() -> None:
+    """D-2 §5: full-limit trial → live /api/run probe."""
+    from auto_bi.agent.query_plan import TRIAL_LIMIT, PlanCache
+    from auto_bi.agent.sqlgen import generate_chart_sql
+    from auto_bi.ir.spec import measure_alias
+
+    fake = FakeClient(run_value=236e9)
+    adapter = DataLensAdapter(fake, DWH, _money_model(), workbook_id="wb1")
+    measure = Measure(column="revenue", agg=Aggregation.SUM)
+    chart = ChartSpec(
+        id="k",
+        title="Выручка",
+        viz=Viz.BIG_NUMBER,
+        query=ChartQuery(table="dm.sales_daily", measures=[measure]),
+    )
+    alias = measure_alias(measure)
+    ds = DatasetRef(id="ds1", name="probe_ds")
+    adapter._datasets["ds1"] = ("probe_ds", _fields((alias, "float", "MEASURE")))
+    plans = PlanCache()
+    full = [{alias: float(i)} for i in range(TRIAL_LIMIT)]
+    plans.record_trial(generate_chart_sql(chart.query), full)
+    adapter.set_query_plans(plans)
+
+    mag = adapter._measure_magnitude(measure, ds, agg="sum", chart=chart)
+    assert mag == 236e9
+    assert any(p == "/api/run" for p, _ in fake.posts)
+
+
+def test_measure_magnitude_probes_when_no_plan_store() -> None:
+    """No set_query_plans → today's probe path (existing build tests also cover this)."""
+    fake = FakeClient(run_value=236e9)
+    adapter = DataLensAdapter(fake, DWH, _money_model(), workbook_id="wb1")
+    measure = Measure(column="revenue", agg=Aggregation.SUM)
+    chart = ChartSpec(
+        id="k",
+        title="Выручка",
+        viz=Viz.BIG_NUMBER,
+        query=ChartQuery(table="dm.sales_daily", measures=[measure]),
+    )
+    alias = "sum_revenue"
+    ds = DatasetRef(id="ds1", name="probe_ds")
+    adapter._datasets["ds1"] = ("probe_ds", _fields((alias, "float", "MEASURE")))
+    mag = adapter._measure_magnitude(measure, ds, agg="sum", chart=chart)
+    assert mag == 236e9
+    assert any(p == "/api/run" for p, _ in fake.posts)
 
 
 def test_build_small_magnitude_keeps_default_format() -> None:

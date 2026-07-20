@@ -30,6 +30,7 @@ from decimal import Decimal
 from statistics import fmean, median, pstdev
 
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
+from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.engine import CLICKHOUSE, sqlglot_dialect
 from auto_bi.introspect.base import RunQuery
@@ -129,19 +130,25 @@ def analyze_spec(
     run_query: RunQuery,
     *,
     max_per_chart: int = 4,
+    plans: PlanCache | None = None,
 ) -> Insights:
     """Run each chart of `spec` read-only and collect deterministic observations.
 
     The spec is normalized first (label joins + chart defaults — both pure and idempotent)
     so the SQL we run is byte-for-byte the SQL the dashboard shows. Never raises: a chart
     that errors is skipped.
+
+    `plans` (D-2 §5, CLI one-shot path only): when a complete LIMIT-trial was recorded for
+    a chart's exact SQL during the same build, reuse those rows instead of `run_query`.
+    A miss (truncated, SOURCE chart never gated per-chart, different dialect text) falls
+    through to a full run. serve `/insights` does not pass a cache (separate request).
     """
     normalized = apply_chart_defaults(apply_label_joins(spec, model), model)
     dialect = sqlglot_dialect(_engine_of(model))
     out: list[Observation] = []
     for chart in normalized.charts:
         try:
-            out.extend(_observe_chart(chart, run_query, dialect)[:max_per_chart])
+            out.extend(_observe_chart(chart, run_query, dialect, plans=plans)[:max_per_chart])
         except Exception:  # advisory only: one bad chart never sinks the pass
             continue
     return Insights(table=spec.charts[0].query.table if spec.charts else "", observations=out)
@@ -151,11 +158,24 @@ def _engine_of(model: SemanticModel) -> str:
     return next((t.physical.engine for t in model.tables if t.physical), CLICKHOUSE)
 
 
-def _observe_chart(chart: ChartSpec, run_query: RunQuery, dialect: str) -> list[Observation]:
+def _observe_chart(
+    chart: ChartSpec,
+    run_query: RunQuery,
+    dialect: str,
+    *,
+    plans: PlanCache | None = None,
+) -> list[Observation]:
     q = chart.query
     primary = q.measures[0]
     m_alias = measure_alias(primary)
-    rows = run_query(generate_chart_sql(q, dialect=dialect))
+    sql = generate_chart_sql(q, dialect=dialect)
+    rows: list[dict] | None = None
+    if plans is not None:
+        trial = plans.get_trial(sql)
+        if trial is not None and trial.complete:
+            rows = list(trial.rows)
+    if rows is None:
+        rows = run_query(sql)
     if not rows or not q.dimensions:
         return []  # KPIs (no dimension) and empty results carry no trend/ranking story
     d_alias = column_alias(q.dimensions[0])

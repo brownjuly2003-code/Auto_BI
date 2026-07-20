@@ -6,6 +6,14 @@
 
 ### Added
 
+- **D-2 §5: reuse LIMIT-trial rows for magnitude + CLI insights** — `PlanCache` хранит
+  trial-строки guard'а (параллельно plan entries; `complete = len(rows) < TRIAL_LIMIT`).
+  OWN-чарты Superset и все чарты DataLens берут magnitude из complete trial вместо
+  `/chart/data` / `/api/run`; SOURCE на Superset оставляют probe (после D-1 raw mart
+  trial ≠ агрегат). CLI `analyze_spec(..., plans=)` переиспользует trial; `serve
+  /insights` без изменений. `compile_and_build` создаёт build-local cache при
+  `plans is None` и передаёт его через `set_query_plans`. ARCHITECTURE §3.19.
+
 - **D-1 PR-3: живая приёмка filterable dataset + ARCHITECTURE** — integration-тест
   `tests/test_d1_acceptance.py` (маркер `integration`, деселектнут offline-lane):
   build дашборда KPI + monthly trend + bar по joined `dm.stores.name` + ratio-мера
