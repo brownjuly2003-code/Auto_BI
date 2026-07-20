@@ -5,8 +5,11 @@ column (plus label joins), so a native filter (a WHERE by the column's bound ali
 scopes to ALL SOURCE-role charts of that mart whose source dataset exposes the column.
 OWN-role charts keep the pre-D-1 grain rule: only a chart that GROUPs by the filtered
 column can honor it (its aggregated dataset has nothing else to filter on) — AND the
-OWN dataset column name must equal the filter's bound source alias (joined refs alias
-to ``stores_name``, while OWN SQL still emits bare ``name``; those charts are excluded).
+OWN dataset column name must equal the control's spec-wide binding
+(`dataset_plan.filter_binding_alias`): the source alias when a source dataset takes the
+filter (joined refs alias to ``stores_name``, while OWN SQL emits bare ``name`` — those
+charts are excluded with an honest preview note), or the bare pre-D-1 alias when NO
+source dataset takes it, so an OWN-only dashboard keeps its joined filter working.
 
 Scope logic lives in `agent.dataset_plan` and is shared with the preview — never a
 second implementation that can drift.
@@ -37,7 +40,7 @@ import hashlib
 from auto_bi.agent.dataset_plan import (
     DatasetPlan,
     chart_accepts_filter,
-    filter_bound_column,
+    filter_binding_alias,
     grain_exposes_column,
     plan_datasets,
     qualified_column_ref,
@@ -85,22 +88,6 @@ def _filter_name(filter_: DashboardFilter, model: SemanticModel) -> str:
     return column_alias(filter_.column)
 
 
-def _filter_target_alias(
-    filter_: DashboardFilter,
-    in_scope_charts: list[ChartSpec],
-) -> str:
-    """Column name the native filter binds on its target dataset.
-
-    Prefer the source-dataset alias of the first in-scope chart's mart (joined refs
-    become ``stores_name``). Falls back to bare ``column_alias`` only when the
-    in-scope set is empty (caller skips such filters).
-    """
-    if not in_scope_charts:
-        return column_alias(filter_.column)
-    mart = in_scope_charts[0].query.table
-    return filter_bound_column(filter_.column, mart)
-
-
 def participating_chart_ids(spec: DashboardSpec, model: SemanticModel) -> set[str]:
     """Spec-side chart ids that fall in at least one dashboard filter's scope.
 
@@ -138,12 +125,10 @@ def build_native_filter_configuration(
 
     for filter_ in spec.filters:
         in_scope: list[int] = []
-        in_scope_charts: list[ChartSpec] = []
         target_dataset: int | None = None
         for chart, sid, dataset_id in placements:
             if chart_accepts_filter(chart, filter_, spec, plan, model):
                 in_scope.append(sid)
-                in_scope_charts.append(chart)
                 if target_dataset is None:
                     target_dataset = dataset_id
         if not in_scope:
@@ -152,7 +137,10 @@ def build_native_filter_configuration(
         assert target_dataset is not None
         excluded = [sid for sid in all_ids if sid not in in_scope]
         name = _filter_name(filter_, model)
-        alias = _filter_target_alias(filter_, in_scope_charts)
+        # the same spec-wide binding the scope rule used — one function, no drift:
+        # source alias when a source dataset takes the filter, bare pre-D-1 alias
+        # when every taker is an OWN chart (the OWN-only joined-filter fix)
+        alias = filter_binding_alias(spec, plan, model, filter_)
         if _is_temporal(filter_.column, model):
             config.append(_time_filter(filter_, name, in_scope, excluded))
         else:

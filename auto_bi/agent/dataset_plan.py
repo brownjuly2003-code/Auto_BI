@@ -216,6 +216,35 @@ def source_exposes_column(
     return "." not in filter_column and filter_column in inputs.columns
 
 
+def filter_binding_alias(
+    spec: DashboardSpec,
+    plan: DatasetPlan,
+    model: SemanticModel,
+    filter_: DashboardFilter,
+) -> str:
+    """Dataset column name the dashboard control binds to — decided once per spec.
+
+    The BI applies one control as a WHERE by ONE column name across every in-scope
+    chart, so the binding must be chosen spec-wide, not per chart. When any SOURCE
+    chart's shared dataset exposes the column, the control binds the source alias
+    (joined refs alias to ``stores_name``) and an OWN chart participates only if its
+    dataset happens to carry that same name. When NO source dataset takes the filter
+    (e.g. every chart fell back to OWN), the control binds the bare pre-D-1 alias
+    instead — every OWN dataset carries ``column_alias`` for a grain column, so the
+    filter keeps working rather than being dropped entirely.
+
+    Single source of truth for the preview, the scope rule and the Superset wiring —
+    never re-derive the binding elsewhere.
+    """
+    for chart in spec.charts:
+        cp = plan.chart(chart.id)
+        if cp.role is DatasetRole.SOURCE and source_exposes_column(
+            spec, plan, model, cp.table, filter_.column
+        ):
+            return filter_bound_column(filter_.column, cp.table)
+    return column_alias(filter_.column)
+
+
 def chart_accepts_filter(
     chart: ChartSpec,
     filter_: DashboardFilter,
@@ -229,10 +258,12 @@ def chart_accepts_filter(
     (mart columns + label joins collected from SOURCE charts).
 
     OWN: the column must be in the chart's GROUP BY grain AND the OWN dataset's
-    column name for that ref must equal the filter's bound column name on the
-    source shape. After joined refs alias to ``stores_name`` (not bare ``name``),
-    an OWN chart whose SQL still emits ``name`` cannot honor a filter bound to
-    ``stores_name`` — exclude it rather than wire a dead control.
+    column name for that ref (always the bare SQL_GEN ``column_alias``) must equal
+    the control's spec-wide binding (`filter_binding_alias`). With a source dataset
+    in play the binding is the source alias (``stores_name``), so an OWN chart whose
+    SQL emits bare ``name`` is excluded rather than wired to a dead control. With no
+    source taker the binding IS the bare alias and the OWN chart participates —
+    an OWN-only dashboard no longer loses the joined filter entirely.
     """
     cp = plan.chart(chart.id)
     if cp.role is DatasetRole.SOURCE:
@@ -241,19 +272,22 @@ def chart_accepts_filter(
         return False
     # OWN dataset column is always the bare SQL_GEN alias (column_alias)
     own_dataset_col = column_alias(filter_.column)
-    bound = filter_bound_column(filter_.column, chart.query.table)
-    return own_dataset_col == bound
+    return own_dataset_col == filter_binding_alias(spec, plan, model, filter_)
 
 
 def own_filter_alias_mismatch(
     chart: ChartSpec,
     filter_: DashboardFilter,
+    spec: DashboardSpec,
     plan: DatasetPlan,
+    model: SemanticModel,
 ) -> bool:
     """True when an OWN chart's grain has the filter column but aliases diverge.
 
     Used for honest preview notes: the control cannot reach this chart even though
-    the chart groups by the same logical column.
+    the chart groups by the same logical column. Judged against the control's real
+    spec-wide binding (`filter_binding_alias`), so an OWN-only dashboard — where the
+    control falls back to the bare alias and DOES move the chart — gets no note.
     """
     cp = plan.chart(chart.id)
     if cp.role is not DatasetRole.OWN:
@@ -261,8 +295,7 @@ def own_filter_alias_mismatch(
     if not grain_exposes_column(chart, filter_.column):
         return False
     own_dataset_col = column_alias(filter_.column)
-    bound = filter_bound_column(filter_.column, chart.query.table)
-    return own_dataset_col != bound
+    return own_dataset_col != filter_binding_alias(spec, plan, model, filter_)
 
 
 def filter_preview_notes(spec: DashboardSpec, model: SemanticModel | None = None) -> list[str]:
@@ -280,12 +313,22 @@ def filter_preview_notes(spec: DashboardSpec, model: SemanticModel | None = None
     notes: list[str] = []
     for chart in spec.charts:
         cp = plan.charts[chart.id]
-        if cp.role is DatasetRole.OWN and cp.fallback_reason:
+        if model is None:
+            # without a model neither the scope rule nor the binding is computable
+            # (both read the source dataset shape) — keep the coarse pre-model badge
+            if cp.role is DatasetRole.OWN and cp.fallback_reason:
+                notes.append(f"«{chart.title}»: фильтр не влияет: {cp.fallback_reason}")
+            continue
+        # the badge must not lie in either direction: an OWN chart that some control
+        # DOES move (mart-grain match, or the OWN-only bare binding) gets no blanket
+        # "фильтр не влияет" note
+        moved = any(chart_accepts_filter(chart, f, spec, plan, model) for f in spec.filters)
+        if cp.role is DatasetRole.OWN and cp.fallback_reason and not moved:
             notes.append(f"«{chart.title}»: фильтр не влияет: {cp.fallback_reason}")
         for filter_ in spec.filters:
-            if own_filter_alias_mismatch(chart, filter_, plan):
+            if own_filter_alias_mismatch(chart, filter_, spec, plan, model):
                 own_col = column_alias(filter_.column)
-                bound = filter_bound_column(filter_.column, chart.query.table)
+                bound = filter_binding_alias(spec, plan, model, filter_)
                 notes.append(
                     f"«{chart.title}»: фильтр «{filter_.column}» не влияет: "
                     f"колонка датасета «{own_col}» ≠ bound «{bound}»"
