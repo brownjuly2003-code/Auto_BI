@@ -763,3 +763,52 @@ def test_migrates_v6_db_adds_session_resume_columns(tmp_path) -> None:
     assert row["target_bi"] == "superset"
     assert row["pinned"] == []
     store.close()
+
+
+# --- close() vs in-flight operations (CI segfault 2026-07-20) ------------------
+
+
+def test_close_serializes_with_in_flight_operations(tmp_path) -> None:
+    """close() must take the connection lock: the API build thread writes its final
+    build_done trace AFTER the client already saw the done-event over SSE, so a
+    teardown close() can arrive mid-execute — unserialized, that crashes the
+    interpreter in sqlite3's C layer (CI exit 139 inside add_trace_event)."""
+    import threading
+
+    store = Store(tmp_path / "close.sqlite")
+    in_flight = threading.Event()
+    finish_write = threading.Event()
+
+    def writer() -> None:
+        with store._lock:  # a writer mid-execute holds exactly this lock
+            in_flight.set()
+            finish_write.wait(timeout=5)
+
+    closed = threading.Event()
+
+    def closer() -> None:
+        store.close()
+        closed.set()
+
+    w = threading.Thread(target=writer)
+    w.start()
+    assert in_flight.wait(timeout=5)
+    c = threading.Thread(target=closer)
+    c.start()
+    # while the writer holds the lock, close() must block, not yank the connection away
+    assert not closed.wait(timeout=0.3)
+    finish_write.set()
+    assert closed.wait(timeout=5)
+    w.join(timeout=5)
+    c.join(timeout=5)
+
+
+def test_write_after_close_raises_cleanly(tmp_path) -> None:
+    """The late writer's failure mode is a clean ProgrammingError (build tracing
+    swallows it), never a crash."""
+    import sqlite3
+
+    store = Store(tmp_path / "closed.sqlite")
+    store.close()
+    with pytest.raises(sqlite3.ProgrammingError):
+        store.add_trace_event(None, kind="late_write")

@@ -269,7 +269,14 @@ class Store:
             self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     def close(self) -> None:
-        self._db.close()
+        # Under the same lock as every read/write: closing the shared connection while
+        # another thread is mid-execute crashes the interpreter in sqlite3's C layer
+        # (CI 2026-07-20, exit 139 — the daemon build thread was inside add_trace_event
+        # writing the final build_done trace when the test's teardown closed the store).
+        # A writer arriving AFTER close gets a clean sqlite3.ProgrammingError instead,
+        # which the callers that can legitimately race shutdown (build tracing) swallow.
+        with self._lock:
+            self._db.close()
 
     def ping(self) -> None:
         """Cheapest possible liveness probe (B-6 readiness): raises if the connection is
