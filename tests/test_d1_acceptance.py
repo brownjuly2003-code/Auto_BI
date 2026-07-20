@@ -18,7 +18,7 @@ Run live::
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
@@ -254,6 +254,16 @@ def test_d1_magnitude_probe_orderby_payload_shape() -> None:
     assert 'SUM("revenue")' in q["metrics"][0]["sqlExpression"]
 
 
+def test_as_date_parses_superset_epoch_ms_and_iso() -> None:
+    """chart/data returns temporal columns as epoch ms (midnight UTC), not ISO —
+    the first live CI run failed exactly here (ValueError: month must be in 1..12)."""
+    assert _as_date(1735689600000) == date(2025, 1, 1)  # epoch ms
+    assert _as_date(1735689600) == date(2025, 1, 1)  # epoch seconds
+    assert _as_date("1735689600000") == date(2025, 1, 1)  # stringified ms
+    assert _as_date("2025-01-01") == date(2025, 1, 1)
+    assert _as_date("2025-01-01T00:00:00") == date(2025, 1, 1)
+
+
 # ---------------------------------------------------------------------------
 # Live integration helpers
 # ---------------------------------------------------------------------------
@@ -293,8 +303,13 @@ def _as_date(value: Any) -> date:
         return value.date()
     if isinstance(value, date):
         return value
-    s = str(value)[:10]
-    return date.fromisoformat(s)
+    if isinstance(value, int | float) or (isinstance(value, str) and value.lstrip("-").isdigit()):
+        # Superset chart/data returns temporal columns as epoch ms (midnight UTC)
+        ts = float(value)
+        if abs(ts) >= 1e11:
+            ts /= 1000.0
+        return datetime.fromtimestamp(ts, tz=UTC).date()
+    return date.fromisoformat(str(value)[:10])
 
 
 def _as_float(value: Any) -> float | None:
