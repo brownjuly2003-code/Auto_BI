@@ -75,9 +75,12 @@ PERIOD_B_RANGE = f"{PERIOD_B[0]} : {PERIOD_B[1]}"
 def _time_axis(grain: str) -> dict:
     """Temporal x-axis column as the real ECharts chart emits it in query_context.
 
-    Live CI 2026-07-20: a top-level ``time_grain_sqla`` key on an ad-hoc chart/data
-    query is silently ignored (the response came back in daily rows) — the grain
-    must ride inside the BASE_AXIS column, which is what the saved chart sends.
+    Live CI 2026-07-20 (two iterations): a top-level ``time_grain_sqla`` key on an
+    ad-hoc chart/data query is silently ignored (daily rows came back); a lone
+    BASE_AXIS column bucketed the SELECT (P1M → toStartOfMonth, live-proving the
+    grain mapping) but was left out of GROUP BY (CH error 215). The real plugin
+    payload carries the grain in BOTH the BASE_AXIS column and
+    ``extras.time_grain_sqla`` plus ``series_columns`` — see ``_grain_query``.
     """
     return {
         "columnType": "BASE_AXIS",
@@ -85,6 +88,15 @@ def _time_axis(grain: str) -> dict:
         "label": "date",
         "sqlExpression": "date",
         "timeGrain": grain,
+    }
+
+
+def _grain_query(grain: str) -> dict:
+    """Query fragment replicating how the saved ECharts chart requests a time grain."""
+    return {
+        "columns": [_time_axis(grain)],
+        "series_columns": [],
+        "extras": {"time_grain_sqla": grain},
     }
 
 
@@ -237,9 +249,9 @@ def test_d1_extra_form_data_payload_shapes() -> None:
     assert select_query["filters"][0]["col"] == source_column_alias("dm.stores.name", MART)
     assert select_query["filters"][0]["op"] == "IN"
 
-    # trend with monthly grain — grain rides inside the BASE_AXIS column (see _time_axis)
+    # trend with monthly grain — grain rides in the BASE_AXIS column AND extras
     trend_query = {
-        "columns": [_time_axis("P1M")],
+        **_grain_query("P1M"),
         "metrics": [_adhoc_metric(REVENUE, "d1_trend", 0, from_source=True)],
         "granularity": "date",
         "time_range": PERIOD_A_RANGE,
@@ -247,6 +259,7 @@ def test_d1_extra_form_data_payload_shapes() -> None:
     }
     assert trend_query["columns"][0]["timeGrain"] == "P1M"
     assert trend_query["columns"][0]["columnType"] == "BASE_AXIS"
+    assert trend_query["extras"]["time_grain_sqla"] == "P1M"
 
 
 def test_d1_magnitude_probe_orderby_payload_shape() -> None:
@@ -580,7 +593,7 @@ def test_d1_live_build_and_filter_rescope(
         time_range: str, store: str | None = None
     ) -> tuple[list[tuple[date, float]], dict]:
         q: dict[str, Any] = {
-            "columns": [_time_axis("P1M")],
+            **_grain_query("P1M"),
             "metrics": [rev_metric],
             "granularity": "date",
             "time_range": time_range,
@@ -790,7 +803,7 @@ def test_d1_live_build_and_filter_rescope(
     # assumption 2: week grain (P1W) — week-start convention
     # =====================================================================
     week_q: dict[str, Any] = {
-        "columns": [_time_axis("P1W")],
+        **_grain_query("P1W"),
         "metrics": [rev_metric],
         "granularity": "date",
         "time_range": PERIOD_A_RANGE,
