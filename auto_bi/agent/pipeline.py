@@ -14,6 +14,7 @@ from auto_bi.advisor.core import Advisor
 from auto_bi.advisor.narrate import ChartVerdict, worst_verdicts
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.propose import SpecValidationError, propose_spec
+from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sql_guard import LiveSQLValidator
 from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.ir.spec import DashboardSpec, TargetBI
@@ -34,6 +35,8 @@ def review_and_log(
     advisor: Advisor | None,
     spec: DashboardSpec,
     log: Callable[[str], None] = print,
+    *,
+    plans: PlanCache | None = None,
 ) -> list[ChartVerdict]:
     """Advisor pass for the one-shot CLI paths (P1-2), which otherwise never ran it.
 
@@ -44,7 +47,7 @@ def review_and_log(
     """
     if advisor is None:
         return []
-    verdicts = list(worst_verdicts(advisor.review(spec)).values())
+    verdicts = list(worst_verdicts(advisor.review(spec, plans=plans)).values())
     if not verdicts:
         return []
     titles = {c.id: c.title for c in spec.charts}
@@ -82,7 +85,11 @@ def build_dashboard(
     log(f"spec ok: «{spec.title}», {len(spec.charts)} чартов → {spec.target_bi.value}")
     for chart in spec.charts:
         log(f"  - [{chart.viz.value}] {chart.title}")
-    review_and_log(advisor, spec, log)
+    # D-2 §3: review and build happen back to back here, so the advisor's plan of a chart
+    # statement is still current when the guard reaches the same statement — one cache for
+    # the whole call, discarded with it.
+    plans = PlanCache()
+    review_and_log(advisor, spec, log, plans=plans)
 
     spec_id: int | None = None
     if store is not None and session_id is not None:
@@ -98,6 +105,7 @@ def build_dashboard(
         session_id=session_id,
         spec_id=spec_id,
         prune_orphans=prune_orphans,
+        plans=plans,
     )
 
 
@@ -112,6 +120,7 @@ def compile_and_build(
     session_id: str | None = None,
     spec_id: int | None = None,
     prune_orphans: bool = True,
+    plans: PlanCache | None = None,
 ) -> DashboardRef:
     """SQL_GEN -> VALIDATE -> BUILD for an already-produced spec (chat APPROVE path).
 
@@ -122,6 +131,11 @@ def compile_and_build(
     recorded, so a SpecValidationError or a healthcheck failure vanished without a
     trace. A process killed mid-build (SIGKILL/OOM) still leaves the session stuck at
     'building' — `Store.reap_stuck_builds()` cleans those up on the next server start.
+
+    `plans` (D-2 §3) carries the advisor's EXPLAIN evidence from a review that ran in the
+    same call, letting the guard skip a re-plan of a statement it would plan identically.
+    Omitted (the API approve path, where preview and build are separate requests) every
+    chart is planned here as before.
     """
     if store is not None and session_id is not None:
         store.set_session_status(session_id, "building")
@@ -166,7 +180,7 @@ def compile_and_build(
 
             for chart in spec.charts:
                 sql = generate_chart_sql(chart.query)
-                sql_validator.validate(sql)
+                sql_validator.validate(sql, plans=plans)
                 log(f"SQL ok ({chart.id}): EXPLAIN + LIMIT-прогон прошли")
 
             # dispatch on the spec's declared target so a "datalens" spec never silently builds

@@ -7,6 +7,7 @@ escape hatch later. Plus live validation: EXPLAIN + LIMIT-ed trial run on the DW
 import sqlglot
 from sqlglot import expressions as exp
 
+from auto_bi.agent.query_plan import PlanCache
 from auto_bi.introspect.base import RunQuery
 
 DIALECT = "clickhouse"
@@ -154,13 +155,22 @@ class LiveSQLValidator:
         self._run = run_query
         self._dialect = dialect
 
-    def validate(self, sql: str) -> None:
-        """guard -> EXPLAIN -> LIMIT-ed execution; raises SQLGuardError with context."""
+    def validate(self, sql: str, *, plans: PlanCache | None = None) -> None:
+        """guard -> EXPLAIN -> LIMIT-ed execution; raises SQLGuardError with context.
+
+        `plans` (D-2 §3) lets the guard skip its EXPLAIN when the Advisor already planned
+        this EXACT statement cleanly earlier in the same build — the DWH has then already
+        parsed, resolved and permission-checked it, so the second round trip measures
+        nothing new. The guard only reads the cache and never fills it: on a miss (a
+        different statement, a failed plan, or no cache at all) the EXPLAIN runs as before.
+        Invariant 3 is untouched — `guard_sql` and the trial run stay unconditional.
+        """
         guard_sql(sql, dialect=self._dialect)
-        try:
-            self._run(f"EXPLAIN {sql}")
-        except Exception as e:
-            raise SQLGuardError(f"EXPLAIN failed: {e}") from e
+        if plans is None or not plans.planned_ok(sql):
+            try:
+                self._run(f"EXPLAIN {sql}")
+            except Exception as e:
+                raise SQLGuardError(f"EXPLAIN failed: {e}") from e
         try:
             for stmt in _trial_statements(sql, self._dialect):
                 self._run(stmt)
