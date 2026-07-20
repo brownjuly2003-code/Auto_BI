@@ -5,9 +5,15 @@
   --bg: #f7f6f3;            /* тёплый off-white, не #fff */
   --surface: #ffffff;
   --surface-dim: #f1efeb;
+  /* Три уровня текста. Контраст посчитан против всех трёх фонов выше; самый тёмный
+     (--surface-dim) задаёт границу, поэтому все три проходят WCAG AA 4.5:1 и на нём:
+     text 13.7 · text-2 6.3 · text-3 4.7. Тона держат прежний холодный серый, шаги
+     между уровнями сохранены — иерархия читается, но третий уровень больше не
+     исчезает (был #9aa1ab = 2.4:1 на --bg, и им набраны 26 селекторов мелкого текста
+     10–15px, включая ярлыки вкладок и заголовки панелей). */
   --text: #1f2329;          /* primary, не #000 */
-  --text-2: #5c6470;        /* secondary */
-  --text-3: #9aa1ab;        /* tertiary */
+  --text-2: #4f5766;        /* secondary */
+  --text-3: #636b77;        /* tertiary */
   --accent: #0f766e;        /* единственный акцент */
   --accent-press: #0b5a54;
   --critical: #b42318;
@@ -20,6 +26,21 @@
 * { box-sizing: border-box; }
 
 [hidden] { display: none !important; } /* hidden-атрибут сильнее display у классов */
+
+/* Метка есть в дереве доступности, но не на экране: в этих полях по дизайну нет места
+   под видимую подпись, а placeholder меткой не является — он исчезает при вводе и
+   частью скринридеров не читается вовсе. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 
 html, body {
   margin: 0;
