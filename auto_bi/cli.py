@@ -293,6 +293,7 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
     from auto_bi.agent.autospec import build_auto_spec
     from auto_bi.agent.insights import analyze_spec
     from auto_bi.agent.pipeline import compile_and_build, review_and_log
+    from auto_bi.agent.query_plan import PlanCache
     from auto_bi.agent.sql_guard import LiveSQLValidator
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
@@ -322,7 +323,10 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
         print(f"  - [{chart.viz.value}] {chart.title}")
 
     run_query = make_run_query(settings)
-    review_and_log(Advisor(model, run_query), spec)
+    # D-2 §3: review and build run back to back, so one plan cache serves both — the guard
+    # skips re-planning a statement the advisor just planned identically.
+    plans = PlanCache()
+    review_and_log(Advisor(model, run_query), spec, plans=plans)
     ref = compile_and_build(
         spec,
         model,
@@ -331,6 +335,7 @@ def _build_auto(table_name: str, model_path: str, target: str, max_charts: int) 
         store=store,
         session_id=session_id,
         spec_id=spec_id,
+        plans=plans,
     )
     base = settings.datalens_url if target_bi == TargetBI.DATALENS else settings.superset_url
     print(f"\nДашборд готов: {base.rstrip('/')}{ref.url}")

@@ -14,6 +14,7 @@ from auto_bi.advisor.explain import estimate_scan, live_row_count
 from auto_bi.advisor.findings import Finding
 from auto_bi.advisor.greenplum import RULES as GP_RULES
 from auto_bi.advisor.greenplum import gp_explain_evidence
+from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.engine import CLICKHOUSE, GREENPLUM, sqlglot_dialect
 from auto_bi.introspect.base import RunQuery
@@ -42,14 +43,37 @@ class Advisor:
             self._live_rows[table_name] = live_row_count(self._run_query, table_name)
         return self._live_rows[table_name]
 
-    def _gather_evidence(self, sql: str) -> dict:
+    def _gather_evidence(self, sql: str, plans: PlanCache | None = None) -> dict:
+        """Measured evidence for one statement, recorded in `plans` when one is given.
+
+        `plans` (D-2 §3) is a per-build memo keyed by the exact SQL: an identical statement
+        is planned once no matter how many consumers ask, and the SQL guard later skips its
+        own EXPLAIN of a statement recorded here as planned. `ok` is derived conservatively
+        — the helpers below collapse "the engine refused" and "the engine returned nothing
+        usable" into a None, and only a parsed result counts as proof the statement plans,
+        so the worst a miss costs is the extra EXPLAIN that ran before this cache existed.
+        """
         if self._run_query is None:
             return {}
+        if plans is not None:
+            cached = plans.get(sql)
+            if cached is not None:
+                return dict(cached.evidence or {})
         if self._engine == GREENPLUM:
-            return gp_explain_evidence(self._run_query, sql) or {}
-        return estimate_scan(self._run_query, sql) or {}
+            evidence = gp_explain_evidence(self._run_query, sql)
+        else:
+            evidence = estimate_scan(self._run_query, sql)
+        if plans is not None:
+            plans.record(sql, ok=evidence is not None, evidence=evidence)
+        return dict(evidence or {})
 
-    def review_chart(self, chart: ChartSpec, spec: DashboardSpec | None = None) -> list[Finding]:
+    def review_chart(
+        self,
+        chart: ChartSpec,
+        spec: DashboardSpec | None = None,
+        *,
+        plans: PlanCache | None = None,
+    ) -> list[Finding]:
         """Findings for one chart. Pass `spec` so the dashboard's controls are taken into
         account (P1-2); without it the chart is judged on its own filters alone, which
         overstates the scan for a chart the dashboard opens filtered."""
@@ -64,7 +88,7 @@ class Advisor:
         query = chart.query.model_copy(
             update={"filters": effective_filters(chart, spec, self._model)}
         )
-        evidence = self._gather_evidence(generate_chart_sql(query, dialect=self._dialect))
+        evidence = self._gather_evidence(generate_chart_sql(query, dialect=self._dialect), plans)
         live_rows = self._live_total_rows(chart.query.table)
         if live_rows is not None:
             evidence = {**evidence, "live_total_rows": live_rows}
@@ -82,8 +106,8 @@ class Advisor:
             findings.extend(rule(ctx))
         return findings
 
-    def review(self, spec: DashboardSpec) -> list[Finding]:
+    def review(self, spec: DashboardSpec, *, plans: PlanCache | None = None) -> list[Finding]:
         findings: list[Finding] = []
         for chart in spec.charts:
-            findings.extend(self.review_chart(chart, spec))
+            findings.extend(self.review_chart(chart, spec, plans=plans))
         return findings
