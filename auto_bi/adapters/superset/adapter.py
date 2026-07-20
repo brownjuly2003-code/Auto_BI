@@ -36,6 +36,7 @@ from auto_bi.adapters.superset.native_filters import (
 )
 from auto_bi.agent.dataset_plan import DatasetRole, plan_datasets, source_dataset_inputs
 from auto_bi.agent.normalize import is_horizontal_bar
+from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sqlgen import generate_chart_sql, generate_source_sql
 from auto_bi.ir.spec import (
     ChartQuery,
@@ -134,6 +135,8 @@ class SupersetAdapter:
         # Ownership ledger (P0-2 criterion 4): build() accumulates the BI entities it creates
         # here; the orchestrator drains them after a successful build via drain_build_artifacts.
         self._build_artifacts: list[BuildArtifact] = []
+        # D-2 §5: set via set_query_plans() before build(); None = no trial reuse (probe only).
+        self._query_plans: PlanCache | None = None
 
     # --- BIAdapter ----------------------------------------------------------
 
@@ -144,6 +147,15 @@ class SupersetAdapter:
         calls it when present so two sessions never share dataset table_names.
         """
         self._artifact_namespace = (namespace or "").strip()
+
+    def set_query_plans(self, plans: PlanCache | None) -> None:
+        """D-2 §5: hand the build-local PlanCache so OWN magnitude can reuse trial rows.
+
+        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace).
+        The pipeline calls it when present after SQL gating has filled the trial store.
+        Lifetime is one build; the adapter is created per build and closed in finally.
+        """
+        self._query_plans = plans
 
     def drain_build_artifacts(self) -> list[BuildArtifact]:
         """Return and clear the BI artifacts the last build() created (P0-2 criterion 4).
@@ -291,17 +303,23 @@ class SupersetAdapter:
         (млрд/млн/тыс) can be chosen.
 
         OWN dataset: already aggregated — ``MAX("sum_revenue")`` is the tallest series
-        point (or the scalar for a one-row KPI).
+        point (or the scalar for a one-row KPI). When a complete LIMIT-trial was recorded
+        for this chart's exact SQL (D-2 §5), reuse max of the measure-alias column and
+        skip the `/api/v1/chart/data` probe. Incomplete (full-limit) trials fall through.
 
         SOURCE dataset: raw mart rows — probe must re-aggregate with the IR aggregation
         (``SUM("revenue")``, not ``MAX("sum_revenue")`` which does not exist). For a
         grouped chart, group by the chart dims, order by the metric desc, row_limit 1
-        so the value is still the tallest series point.
+        so the value is still the tallest series point. Trial rows are never used for
+        SOURCE (raw mart rows are not the aggregated magnitude).
 
         Best-effort: any failure returns None and the chart falls back to the default
         format — a display nicety must never break a build.
         """
         try:
+            reused = self._magnitude_from_trial(measure, from_source=from_source, chart=chart)
+            if reused is not None:
+                return reused
             if from_source:
                 metric = _adhoc_metric(measure, "kpimag", 0, from_source=True)
             else:
@@ -337,6 +355,37 @@ class SupersetAdapter:
             return float(value) if value is not None else None
         except (SupersetAPIError, KeyError, IndexError, TypeError, ValueError):
             return None
+
+    def _magnitude_from_trial(
+        self,
+        measure: Measure,
+        *,
+        from_source: bool,
+        chart: ChartSpec | None,
+    ) -> float | None:
+        """D-2 §5: max of measure-alias values from a complete OWN-chart trial, else None.
+
+        All conditions required; any miss falls through to the live probe. Never raises.
+        """
+        if from_source or chart is None or self._query_plans is None:
+            return None
+        # Same key the pipeline used when gating OWN SQL (generate_chart_sql, default args).
+        trial = self._query_plans.get_trial(generate_chart_sql(chart.query))
+        if trial is None or not trial.complete:
+            return None
+        alias = measure_alias(measure)
+        values: list[float] = []
+        for row in trial.rows:
+            if alias not in row:
+                continue
+            raw = row[alias]
+            if raw is None:
+                continue
+            try:
+                values.append(float(raw))
+            except (TypeError, ValueError):
+                continue
+        return max(values) if values else None
 
     def _human_label(self, measure: Measure, table: str) -> str | None:
         """Human display name for a measure's legend/tooltip: its explicit label, else the short

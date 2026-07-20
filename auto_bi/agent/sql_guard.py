@@ -161,9 +161,10 @@ class LiveSQLValidator:
         `plans` (D-2 §3) lets the guard skip its EXPLAIN when the Advisor already planned
         this EXACT statement cleanly earlier in the same build — the DWH has then already
         parsed, resolved and permission-checked it, so the second round trip measures
-        nothing new. The guard only reads the cache and never fills it: on a miss (a
-        different statement, a failed plan, or no cache at all) the EXPLAIN runs as before.
-        Invariant 3 is untouched — `guard_sql` and the trial run stay unconditional.
+        nothing new. On a miss (a different statement, a failed plan, or no cache at all)
+        the EXPLAIN runs as before. D-2 §5: when a cache is present the LIMIT-trial rows
+        are recorded into it (parallel store, exact-SQL key) so OWN magnitude / CLI insights
+        can reuse a complete trial; the trial itself stays unconditional (invariant 3).
         """
         guard_sql(sql, dialect=self._dialect)
         if plans is None or not plans.planned_ok(sql):
@@ -172,7 +173,13 @@ class LiveSQLValidator:
             except Exception as e:
                 raise SQLGuardError(f"EXPLAIN failed: {e}") from e
         try:
+            trial_rows: list[dict] = []
             for stmt in _trial_statements(sql, self._dialect):
-                self._run(stmt)
+                result = self._run(stmt)
+                # Postgres/Greenplum emit a SET before the SELECT; only the SELECT yields rows.
+                if not stmt.lstrip().upper().startswith("SET"):
+                    trial_rows = list(result)
+            if plans is not None:
+                plans.record_trial(sql, trial_rows, trial_limit=TRIAL_LIMIT)
         except Exception as e:
             raise SQLGuardError(f"trial run failed: {e}") from e

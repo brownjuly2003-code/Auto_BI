@@ -973,6 +973,69 @@ def test_measure_magnitude_from_source_grouped_orders_by_metric() -> None:
     assert q["orderby"][0][1] is False  # descending
 
 
+def test_measure_magnitude_reuses_complete_own_trial() -> None:
+    """D-2 §5: OWN chart with a complete trial skips /chart/data and keeps kpi_scale."""
+    from auto_bi.agent.query_plan import PlanCache
+    from auto_bi.agent.sqlgen import generate_chart_sql
+    from auto_bi.ir.spec import measure_alias
+
+    fake = FakeSuperset(kpi_value=999e9)  # would yield wrong tier if probe ran
+    adapter = make_adapter(fake, model=MODEL)
+    measure = Measure(column="revenue", agg=Aggregation.SUM)
+    kpi = _bignum(measure)
+    plans = PlanCache()
+    sql = generate_chart_sql(kpi.query)
+    plans.record_trial(sql, [{measure_alias(measure): 236e9}])
+    adapter.set_query_plans(plans)
+
+    scale = adapter._kpi_scale(kpi, DatasetRef(id=42, name="t"), from_source=False)
+    assert scale == (1e9, "млрд ₽", 236.0)
+    assert not any(p == "/api/v1/chart/data" for _, p, _ in fake.requests)
+
+
+def test_measure_magnitude_probes_when_own_trial_is_full_limit() -> None:
+    """D-2 §5: a filled TRIAL_LIMIT result is unprovably complete → live probe."""
+    from auto_bi.agent.query_plan import TRIAL_LIMIT, PlanCache
+    from auto_bi.agent.sqlgen import generate_chart_sql
+    from auto_bi.ir.spec import measure_alias
+
+    fake = FakeSuperset(kpi_value=236e9)
+    adapter = make_adapter(fake, model=MODEL)
+    measure = Measure(column="revenue", agg=Aggregation.SUM)
+    kpi = _bignum(measure)
+    plans = PlanCache()
+    alias = measure_alias(measure)
+    plans.record_trial(
+        generate_chart_sql(kpi.query), [{alias: float(i)} for i in range(TRIAL_LIMIT)]
+    )
+    adapter.set_query_plans(plans)
+
+    scale = adapter._kpi_scale(kpi, DatasetRef(id=42, name="t"), from_source=False)
+    assert scale == (1e9, "млрд ₽", 236.0)
+    assert any(p == "/api/v1/chart/data" for _, p, _ in fake.requests)
+
+
+def test_measure_magnitude_source_never_reuses_trial() -> None:
+    """D-2 §5 post-D-1: SOURCE keeps the probe even when a trial is on the store."""
+    from auto_bi.agent.query_plan import PlanCache
+    from auto_bi.agent.sqlgen import generate_chart_sql
+    from auto_bi.ir.spec import measure_alias
+
+    fake = FakeSuperset(kpi_value=236e9)
+    adapter = make_adapter(fake, model=MODEL)
+    measure = Measure(column="revenue", agg=Aggregation.SUM)
+    kpi = _bignum(measure)
+    plans = PlanCache()
+    # raw-looking trial that must not be used as magnitude
+    plans.record_trial(generate_chart_sql(kpi.query), [{measure_alias(measure): 1.0}])
+    adapter.set_query_plans(plans)
+
+    scale = adapter._kpi_scale(kpi, DatasetRef(id=42, name="t"), from_source=True)
+    assert scale == (1e9, "млрд ₽", 236.0)
+    probe = next(b for m, p, b in fake.requests if m == "POST" and p == "/api/v1/chart/data")
+    assert 'SUM("revenue")' in probe["queries"][0]["metrics"][0]["sqlExpression"]
+
+
 def test_axis_scale_large_ruble_line_but_not_percent_or_kpi() -> None:
     adapter = make_adapter(FakeSuperset(kpi_value=14e9), model=MODEL)
     ds = DatasetRef(id=42, name="t")

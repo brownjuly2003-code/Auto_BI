@@ -27,11 +27,23 @@ parsed, resolved and permission-checked this very statement.
 Lifetime is one build call. Nothing here is valid across builds — an estimate is a
 point-in-time measurement, and the cache is deliberately not wired into the long-lived
 `serve` Advisor, where the preview and the build are separate requests.
+
+D-2 §5: the guard also records LIMIT-trial *rows* in a parallel store (same exact-SQL key).
+Consumers that already paid for that trial — OWN-chart magnitude on Superset/DataLens, CLI
+insights — may reuse a *complete* trial (fewer rows than the limit) instead of a second
+round trip. A full-limit result is unprovably complete and is never reused for magnitude
+(the «млн вместо млрд» trap). SOURCE charts keep their live probe: raw mart trial rows are
+not the aggregated magnitude.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+# Same constant the guard uses for its LIMIT trial (`sql_guard.TRIAL_LIMIT`). Duplicated
+# here so this module stays free of a reverse import into the guard; both sites must stay
+# equal — the completeness rule is `len(rows) < TRIAL_LIMIT`.
+TRIAL_LIMIT = 10
 
 
 @dataclass(frozen=True)
@@ -42,11 +54,28 @@ class PlanEntry:
     evidence: dict | None  # parsed measurement, None when the engine gave none
 
 
+@dataclass(frozen=True)
+class TrialEntry:
+    """LIMIT-trial rows for one statement (D-2 §5), recorded by the SQL guard.
+
+    `complete` is True only when the trial returned fewer rows than the limit — the result
+    is then the full answer set (or a proper subset that still contains every group for
+    magnitude = max over groups). A filled limit is unprovably truncated and must not be
+    reused for magnitude or insights.
+    """
+
+    rows: tuple[dict, ...]  # at most TRIAL_LIMIT dict rows as returned by RunQuery
+    complete: bool
+
+
 class PlanCache:
-    """One plan per distinct SQL for the length of a single build."""
+    """One plan (and optional trial) per distinct SQL for the length of a single build."""
 
     def __init__(self) -> None:
         self._plans: dict[str, PlanEntry] = {}
+        # Parallel store: plan entries and trial rows for the same SQL coexist independently
+        # (first-record-wins on each side; the guard's trial arrives after the Advisor's plan).
+        self._trials: dict[str, TrialEntry] = {}
 
     def get(self, sql: str) -> PlanEntry | None:
         """The recorded plan for this exact statement, or None if it was never planned."""
@@ -64,6 +93,26 @@ class PlanCache:
         """True when this exact statement already planned cleanly (guard may skip EXPLAIN)."""
         entry = self._plans.get(sql)
         return entry is not None and entry.ok
+
+    def get_trial(self, sql: str) -> TrialEntry | None:
+        """LIMIT-trial rows for this exact statement, or None if never recorded."""
+        return self._trials.get(sql)
+
+    def record_trial(
+        self, sql: str, rows: list[dict], *, trial_limit: int = TRIAL_LIMIT
+    ) -> TrialEntry:
+        """Remember the LIMIT-trial result for `sql`; the first record for a statement wins.
+
+        Never stores more than `trial_limit` rows. Completeness is
+        ``len(capped) < trial_limit`` — a filled limit is truncated / unprovable.
+        """
+        existing = self._trials.get(sql)
+        if existing is not None:
+            return existing
+        capped = list(rows[:trial_limit])
+        entry = TrialEntry(rows=tuple(capped), complete=len(capped) < trial_limit)
+        self._trials[sql] = entry
+        return entry
 
     def __len__(self) -> int:
         return len(self._plans)

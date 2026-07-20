@@ -40,6 +40,8 @@ from auto_bi.adapters.datalens.dataset import (
 from auto_bi.adapters.superset.form_data import ru_kpi_scale
 from auto_bi.adapters.superset.native_filters import participating_chart_ids
 from auto_bi.agent.normalize import is_horizontal_bar
+from auto_bi.agent.query_plan import PlanCache
+from auto_bi.agent.sqlgen import generate_chart_sql
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
@@ -426,6 +428,8 @@ class DataLensAdapter:
         # Ownership ledger (P0-2 criterion 4): build() accumulates the BI entities it creates
         # here; the orchestrator drains them after a successful build via drain_build_artifacts.
         self._build_artifacts: list[BuildArtifact] = []
+        # D-2 §5: set via set_query_plans() before build(); None = no trial reuse (probe only).
+        self._query_plans: PlanCache | None = None
 
     # --- BIAdapter ----------------------------------------------------------
 
@@ -436,6 +440,15 @@ class DataLensAdapter:
         fingerprint so two sessions never promote/delete over each other.
         """
         self._artifact_namespace = (namespace or "").strip()
+
+    def set_query_plans(self, plans: PlanCache | None) -> None:
+        """D-2 §5: hand the build-local PlanCache so magnitude can reuse trial rows.
+
+        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace).
+        Every DataLens chart is per-chart gated, so a complete trial of the chart SQL is
+        the full aggregated answer when under the limit.
+        """
+        self._query_plans = plans
 
     def drain_build_artifacts(self) -> list[BuildArtifact]:
         """Return and clear the BI artifacts the last build() created (P0-2 criterion 4).
@@ -784,15 +797,23 @@ class DataLensAdapter:
         text = f"{col.description if col else ''} {measure.label or ''}".lower()
         return "₽" if any(m in text for m in _MONEY_MARKERS) else ""
 
-    def _measure_magnitude(self, measure: Measure, ds: DatasetRef, *, agg: str) -> float | None:
+    def _measure_magnitude(
+        self, measure: Measure, ds: DatasetRef, *, agg: str, chart: ChartSpec
+    ) -> float | None:
         """The measure's peak aggregated value over the chart's dataset, measured live via an
         inline (unsaved) /api/run of a metric probe config — the DataLens analogue of
         SupersetAdapter._measure_magnitude (`/api/v1/chart/data`). `agg` re-aggregates the
         pre-grouped subselect rows: "sum" for a one-row KPI dataset (the identity = the
         scalar), "max" for a grouped line/bar dataset (= the tallest series point).
+
+        D-2 §5: when a complete LIMIT-trial exists for this chart's exact SQL, re-aggregate
+        the measure-alias column locally (max/sum matching `agg`) and skip the probe.
         Best-effort: any failure returns None and the chart keeps the default format — a
         display nicety must never break a build."""
         try:
+            reused = self._magnitude_from_trial(measure, agg=agg, chart=chart)
+            if reused is not None:
+                return reused
             ds_name, fields = self._datasets[str(ds.id)]
             probe = ChartSpec(
                 id="auto_bi_magnitude_probe",
@@ -819,6 +840,34 @@ class DataLensAdapter:
             logger.warning("magnitude probe failed; keeping default format", exc_info=True)
             return None
 
+    def _magnitude_from_trial(
+        self, measure: Measure, *, agg: str, chart: ChartSpec
+    ) -> float | None:
+        """D-2 §5: re-aggregate a complete trial's measure-alias column; None on any miss."""
+        if self._query_plans is None:
+            return None
+        # Same key the pipeline used when gating DataLens per-chart SQL (default args).
+        trial = self._query_plans.get_trial(generate_chart_sql(chart.query))
+        if trial is None or not trial.complete:
+            return None
+        alias = measure_alias(measure)
+        values: list[float] = []
+        for row in trial.rows:
+            if alias not in row:
+                continue
+            raw = row[alias]
+            if raw is None:
+                continue
+            try:
+                values.append(float(raw))
+            except (TypeError, ValueError):
+                continue
+        if not values:
+            return None
+        # Mirror the live probe: "sum" = identity on a one-row KPI, "max" = tallest point.
+        total = sum(values) if agg == "sum" else max(values)
+        return abs(total)
+
     def _ru_scale(
         self, chart: ChartSpec, ds: DatasetRef, *, agg: str
     ) -> tuple[float, str, float] | None:
@@ -830,7 +879,7 @@ class DataLensAdapter:
         measure = chart.query.measures[0]
         if not is_compact_number(measure):
             return None
-        magnitude = self._measure_magnitude(measure, ds, agg=agg)
+        magnitude = self._measure_magnitude(measure, ds, agg=agg, chart=chart)
         if magnitude is None:
             return None
         divisor, unit = ru_kpi_scale(magnitude)

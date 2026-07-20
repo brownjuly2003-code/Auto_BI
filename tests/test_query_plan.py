@@ -73,6 +73,61 @@ def test_plans_are_keyed_by_exact_sql() -> None:
     assert cache.get(SQL.replace('"date"', '"store_id"')) is None
 
 
+# --- D-2 §5: trial row store (parallel to plan entries) -----------------------------
+
+
+def test_records_and_reads_back_a_complete_trial() -> None:
+    from auto_bi.agent.query_plan import TRIAL_LIMIT
+
+    cache = PlanCache()
+    rows = [{"sum_revenue": 100.0}, {"sum_revenue": 50.0}]
+    entry = cache.record_trial(SQL, rows)
+    assert entry.complete is True
+    assert entry.rows == tuple(rows)
+    assert cache.get_trial(SQL) is entry
+    assert len(entry.rows) < TRIAL_LIMIT
+
+
+def test_full_limit_trial_is_incomplete() -> None:
+    from auto_bi.agent.query_plan import TRIAL_LIMIT
+
+    cache = PlanCache()
+    rows = [{"n": i} for i in range(TRIAL_LIMIT)]
+    entry = cache.record_trial(SQL, rows)
+    assert entry.complete is False
+    assert len(entry.rows) == TRIAL_LIMIT
+
+
+def test_trial_and_plan_coexist_for_the_same_sql() -> None:
+    # first-record-wins on each store independently; trial arrives after the plan
+    cache = PlanCache()
+    cache.record(SQL, ok=True, evidence={"est_rows": 10})
+    cache.record_trial(SQL, [{"sum_revenue": 1.0}])
+    assert cache.planned_ok(SQL)
+    assert cache.get_trial(SQL) is not None
+    assert cache.get_trial(SQL).complete is True
+    # first trial wins
+    cache.record_trial(SQL, [{"sum_revenue": 999.0}])
+    assert cache.get_trial(SQL).rows[0]["sum_revenue"] == 1.0
+
+
+def test_guard_records_trial_rows_into_the_cache() -> None:
+    run = RecordingRunQuery()
+    cache = PlanCache()
+    LiveSQLValidator(run).validate(SQL, plans=cache)
+    trial = cache.get_trial(SQL)
+    assert trial is not None
+    assert trial.complete is True
+    assert trial.rows == ({"date": "2024-01-01"},)
+
+
+def test_guard_without_cache_does_not_require_trial_store() -> None:
+    # plans=None is still valid; trial capture is best-effort when a store is present
+    run = RecordingRunQuery()
+    LiveSQLValidator(run).validate(SQL, plans=None)
+    assert any(s.startswith("SELECT * FROM") for s in run.statements)
+
+
 # --- guard: skips its EXPLAIN only on a hit ------------------------------------------
 
 
@@ -298,6 +353,77 @@ def test_auto_overview_stays_within_its_dwh_pass_budget() -> None:
     assert row_counts == 1  # scan-fraction denominator, cached per table (one table here)
     # advisor estimates + guard explains + trials + one row_count — no other DWH traffic
     assert len(run.statements) == estimates + plain_explains + trials + row_counts
+
+
+def test_auto_overview_magnitude_probe_count_with_trial_reuse() -> None:
+    """D-2 §5 counting-fake: probes per chart on a full auto-overview (SOURCE vs OWN).
+
+    SOURCE charts always probe (raw trial ≠ magnitude). OWN charts with a complete trial
+    skip the probe. Report the measured delta; a small number is expected post-D-1.
+    """
+    from auto_bi.adapters.base import DatasetRef
+    from auto_bi.adapters.superset.adapter import _AXIS_SCALE_VIZ
+    from auto_bi.agent.autospec import build_auto_spec
+    from auto_bi.agent.dataset_plan import DatasetRole, plan_datasets
+    from auto_bi.agent.sqlgen import generate_chart_sql
+    from auto_bi.ir.spec import Viz, is_compact_number, measure_alias
+
+    model = demo_model_fixtureless()
+    spec = build_auto_spec(model, "dm.sales_daily", max_charts=8)
+    ds_plan = plan_datasets(spec)
+    plans = PlanCache()
+
+    # Seed complete OWN trials with a realistic magnitude column so reuse can fire.
+    for chart in spec.charts:
+        role = ds_plan.chart(chart.id).role
+        if role is DatasetRole.OWN and chart.query.measures:
+            m = chart.query.measures[0]
+            if is_compact_number(m):
+                plans.record_trial(
+                    generate_chart_sql(chart.query),
+                    [{measure_alias(m): 236e9}],
+                )
+
+    fake = FakeSuperset(kpi_value=236e9)
+    adapter = make_adapter(fake)
+    adapter.set_query_plans(plans)
+    ds = DatasetRef(id=42, name="t")
+
+    # Charts that would call magnitude: big_number KPI + single-measure line/bar/area.
+    probe_eligible: list[tuple] = []
+    for chart in spec.charts:
+        role = ds_plan.chart(chart.id).role
+        from_source = role is DatasetRole.SOURCE
+        is_kpi = chart.viz == Viz.BIG_NUMBER and chart.query.measures
+        is_axis = chart.viz in _AXIS_SCALE_VIZ and len(chart.query.measures) == 1
+        if (is_kpi or is_axis) and is_compact_number(chart.query.measures[0]):
+            probe_eligible.append((chart, from_source, role))
+
+    probes_after: dict[str, int] = {}
+    for chart, from_source, _role in probe_eligible:
+        before = sum(1 for m, p, _ in fake.requests if m == "POST" and p == "/api/v1/chart/data")
+        if chart.viz == Viz.BIG_NUMBER:
+            adapter._kpi_scale(chart, ds, from_source=from_source)
+        else:
+            adapter._axis_scale(chart, ds, from_source=from_source)
+        after = sum(1 for m, p, _ in fake.requests if m == "POST" and p == "/api/v1/chart/data")
+        probes_after[chart.id] = after - before
+
+    # Without trial store every eligible chart probes once.
+    probes_before = {cid: 1 for cid in probes_after}
+    own_ids = {c.id for c, _, r in probe_eligible if r is DatasetRole.OWN}
+    source_ids = {c.id for c, _, r in probe_eligible if r is DatasetRole.SOURCE}
+
+    # SOURCE always probes; OWN with seeded complete trial does not.
+    for cid in source_ids:
+        assert probes_after[cid] == 1, f"SOURCE {cid} must still probe"
+    for cid in own_ids:
+        assert probes_after[cid] == 0, f"OWN {cid} with complete trial must skip probe"
+
+    # expose counts for the round report (asserted shape, not inflated)
+    assert sum(probes_before.values()) == len(probe_eligible)
+    assert sum(probes_after.values()) == len(source_ids)
+    assert probes_before and (sum(probes_before.values()) >= sum(probes_after.values()))
 
 
 def test_stub_run_query_path_still_builds() -> None:

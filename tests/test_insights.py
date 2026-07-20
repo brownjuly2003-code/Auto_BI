@@ -417,6 +417,61 @@ def test_observe_chart_skips_table_viz() -> None:
     assert I._observe_chart(chart, lambda sql: [{"d": "a", "sum_x": 1.0}], "clickhouse") == []
 
 
+def test_observe_chart_reuses_complete_trial_without_run_query() -> None:
+    """D-2 §5: CLI path reuses a complete trial; run_query is not called for that chart."""
+    from auto_bi.agent.query_plan import PlanCache
+    from auto_bi.agent.sqlgen import generate_chart_sql
+
+    chart = ChartSpec(
+        id="c",
+        title="Топ",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="t",
+            dimensions=["d"],
+            measures=[Measure(column="x", agg=Aggregation.SUM)],
+        ),
+    )
+    rows = [{"d": "a", "sum_x": 80.0}, {"d": "b", "sum_x": 20.0}]
+    plans = PlanCache()
+    plans.record_trial(generate_chart_sql(chart.query, dialect="clickhouse"), rows)
+    calls: list[str] = []
+
+    def boom(sql: str) -> list[dict]:
+        calls.append(sql)
+        raise AssertionError("run_query must not be called on a complete trial hit")
+
+    obs = I._observe_chart(chart, boom, "clickhouse", plans=plans)
+    assert calls == []
+    assert [o.kind for o in obs] == ["leader"]
+    assert obs[0].subject == "a"
+
+
+def test_observe_chart_falls_back_when_trial_truncated() -> None:
+    """D-2 §5: full-limit trial is incomplete → full run_query path."""
+    from auto_bi.agent.query_plan import TRIAL_LIMIT, PlanCache
+    from auto_bi.agent.sqlgen import generate_chart_sql
+
+    chart = ChartSpec(
+        id="c",
+        title="Топ",
+        viz=Viz.BAR,
+        query=ChartQuery(
+            table="t",
+            dimensions=["d"],
+            measures=[Measure(column="x", agg=Aggregation.SUM)],
+        ),
+    )
+    plans = PlanCache()
+    plans.record_trial(
+        generate_chart_sql(chart.query, dialect="clickhouse"),
+        [{"d": f"r{i}", "sum_x": 1.0} for i in range(TRIAL_LIMIT)],
+    )
+    full_rows = [{"d": "winner", "sum_x": 99.0}, {"d": "other", "sum_x": 1.0}]
+    obs = I._observe_chart(chart, lambda sql: full_rows, "clickhouse", plans=plans)
+    assert obs[0].subject == "winner"
+
+
 def test_percent_measure_routes_to_share_branch() -> None:
     share_m = Measure(column="x", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL)
     chart = ChartSpec(
