@@ -14,6 +14,7 @@ from auto_bi.adapters.datalens.adapter import (
     build_dashboard_data,
     build_selectors,
     connection_name,
+    selector_scope_chart_ids,
 )
 from auto_bi.adapters.datalens.chart_config import VIZ_ID, build_chart_shared
 from auto_bi.adapters.datalens.client import DataLensAPIError
@@ -1273,6 +1274,64 @@ def test_build_selectors_select_control_scope_and_no_alias_single_dataset() -> N
     _, scoped, excluded = applied[0]
     assert scoped == ["bar"] and excluded == ["kpi"]
     assert alias_groups == []
+
+
+def test_selector_scope_uses_datalens_semantics_not_superset_roles() -> None:
+    """LIMIT-drop scope must match what a DataLens selector actually moves: bare per-chart
+    aliases. An OWN-marked (share_of_total) chart grouped by dm.stores.name IS moved by the
+    selector (its dataset field is bare ``name``), while Superset's participating set —
+    built around the shared source dataset's ``stores_name`` binding — excludes it."""
+    from auto_bi.adapters.superset.native_filters import participating_chart_ids
+    from auto_bi.ir.spec import JoinSpec, MeasureTransform
+
+    stores_join = JoinSpec(
+        table="dm.stores", on_left="dm.sales_daily.store_id", on_right="dm.stores.id"
+    )
+    source_bar = ChartSpec(
+        id="src", title="src", viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily", dimensions=["dm.stores.name"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)], joins=[stores_join],
+        ),
+    )  # fmt: skip
+    own_joined = ChartSpec(
+        id="own", title="own", viz=Viz.BAR,
+        query=ChartQuery(
+            table="dm.sales_daily", dimensions=["dm.stores.name"],
+            measures=[
+                Measure(
+                    column="revenue", agg=Aggregation.SUM,
+                    transform=MeasureTransform.SHARE_OF_TOTAL,
+                )
+            ],
+            joins=[stores_join],
+        ),
+    )  # fmt: skip
+    kpi = ChartSpec(
+        id="kpi", title="kpi", viz=Viz.BIG_NUMBER,
+        query=ChartQuery(
+            table="dm.sales_daily", measures=[Measure(column="revenue", agg=Aggregation.SUM)]
+        ),
+    )  # fmt: skip
+    spec = DashboardSpec(
+        title="dash",
+        filters=[DashboardFilter(column="dm.stores.name")],
+        charts=[source_bar, own_joined, kpi],
+    )
+
+    assert selector_scope_chart_ids(spec) == {"src", "own"}
+    # the Superset model would keep the LIMIT on the chart the selector moves
+    assert "own" not in participating_chart_ids(spec, _model())
+
+    # consistency: the LIMIT-drop set equals what build_selectors actually scopes
+    placements = [(source_bar, "ws", "ds_s"), (own_joined, "wo", "ds_o"), (kpi, "wk", "ds_k")]
+    fields = {
+        "ds_s": {"name": _ds_field("gs", "string")},
+        "ds_o": {"name": _ds_field("go", "string")},
+        "ds_k": {},
+    }
+    _, _, applied = build_selectors(spec, placements, fields, _model())
+    assert set(applied[0][1]) == selector_scope_chart_ids(spec)
 
 
 def test_build_selectors_ties_field_across_datasets() -> None:

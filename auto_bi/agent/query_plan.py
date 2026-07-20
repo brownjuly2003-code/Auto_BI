@@ -59,9 +59,8 @@ class TrialEntry:
     """LIMIT-trial rows for one statement (D-2 §5), recorded by the SQL guard.
 
     `complete` is True only when the trial returned fewer rows than the limit — the result
-    is then the full answer set (or a proper subset that still contains every group for
-    magnitude = max over groups). A filled limit is unprovably truncated and must not be
-    reused for magnitude or insights.
+    then IS the full answer set of the statement. A filled limit is unprovably complete
+    and must not be reused for magnitude or insights.
     """
 
     rows: tuple[dict, ...]  # at most TRIAL_LIMIT dict rows as returned by RunQuery

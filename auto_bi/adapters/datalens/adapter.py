@@ -38,7 +38,6 @@ from auto_bi.adapters.datalens.dataset import (
     safe_entry_name,
 )
 from auto_bi.adapters.superset.form_data import ru_kpi_scale
-from auto_bi.adapters.superset.native_filters import participating_chart_ids
 from auto_bi.agent.normalize import is_horizontal_bar
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sqlgen import generate_chart_sql
@@ -207,6 +206,28 @@ def _filter_label(filter_: DashboardFilter, model: SemanticModel) -> str:
     if column is not None and column.description.strip():
         return column.description.strip()
     return column_alias(filter_.column)
+
+
+def selector_scope_chart_ids(spec: DashboardSpec) -> set[str]:
+    """Chart ids some dashboard selector will move — DataLens semantics.
+
+    Must mirror `build_selectors`' in-scope rule (bare `column_alias` match against the
+    chart's grain), NOT Superset's `participating_chart_ids`: DataLens has no shared
+    source dataset, every chart keeps its per-chart dataset with bare SQL_GEN aliases,
+    so a selector moves ANY chart whose grain carries the column — including charts the
+    Superset model marks OWN with a source-alias mismatch. Computable from the spec
+    alone (before datasets exist): a grain column always becomes a dataset field, so
+    `build_selectors`' extra field-presence check cannot exclude a grain match later.
+    Used for the SQL top-N LIMIT drop: a chart a selector moves must re-rank after
+    filtering, not slice a pre-truncated top-N.
+    """
+    ids: set[str] = set()
+    for filter_ in spec.filters:
+        alias = column_alias(filter_.column)
+        for chart in spec.charts:
+            if alias in {column_alias(c) for c in chart.query.group_columns()}:
+                ids.add(chart.id)
+    return ids
 
 
 def build_selectors(
@@ -914,7 +935,8 @@ class DataLensAdapter:
         (mirrors SupersetAdapter.build, ARCHITECTURE §3.5).
 
         Charts in a dashboard selector's scope drop their SQL top-N LIMIT so the selector
-        re-ranks after filtering (computable from the spec via participating_chart_ids).
+        re-ranks after filtering (computable from the spec via selector_scope_chart_ids —
+        DataLens semantics, bare per-chart aliases, not Superset's source-dataset roles).
 
         Atomic at the build/promote boundary (F2): every entry is first created under a temp
         `__wip` name, so the existing canonical entries (the last working dashboard) are never
@@ -934,7 +956,7 @@ class DataLensAdapter:
         self._build_artifacts = []
         db = self.ensure_database()
         self._build_artifacts.append(BuildArtifact("database", str(db.id), db.name))
-        in_filter_scope = participating_chart_ids(spec, self._model)
+        in_filter_scope = selector_scope_chart_ids(spec)
         placements: list[Placement] = []
         refs: list[ChartRef] = []
         # (scope, canonical_name, temp_entry_id) promoted only after a fully successful build
