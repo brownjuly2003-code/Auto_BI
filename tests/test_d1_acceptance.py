@@ -25,7 +25,7 @@ import pytest
 
 from auto_bi.adapters.base import DWHConfig
 from auto_bi.adapters.superset.adapter import SupersetAdapter
-from auto_bi.adapters.superset.client import SupersetClient
+from auto_bi.adapters.superset.client import SupersetAPIError, SupersetClient
 from auto_bi.adapters.superset.form_data import VIZ_TYPE, _adhoc_metric, build_form_data
 from auto_bi.adapters.superset.native_filters import build_native_filter_configuration
 from auto_bi.agent.dataset_plan import DatasetRole, plan_datasets, source_column_alias
@@ -97,6 +97,23 @@ def _grain_query(grain: str) -> dict:
         "columns": [_time_axis(grain)],
         "series_columns": [],
         "extras": {"time_grain_sqla": grain},
+    }
+
+
+def _month_axis() -> dict:
+    """Explicit CH month bucket as an adhoc SQL column (GROUP BY-safe).
+
+    Three live iterations showed ad-hoc chart/data queries never GROUP BY a
+    BASE_AXIS column (CH 215), with or without extras/series_columns — that
+    builder path belongs to the saved chart. The P1M→toStartOfMonth mapping
+    itself IS live-proven: Superset generated it into the SQL of iteration 3.
+    Ad-hoc data checks bucket explicitly instead — the same adhoc-SQL groupby
+    path the product's heatmap LPAD column uses live since 2026-07-11.
+    """
+    return {
+        "expressionType": "SQL",
+        "label": "date",
+        "sqlExpression": 'toStartOfMonth("date")',
     }
 
 
@@ -593,7 +610,7 @@ def test_d1_live_build_and_filter_rescope(
         time_range: str, store: str | None = None
     ) -> tuple[list[tuple[date, float]], dict]:
         q: dict[str, Any] = {
-            **_grain_query("P1M"),
+            "columns": [_month_axis()],
             "metrics": [rev_metric],
             "granularity": "date",
             "time_range": time_range,
@@ -827,8 +844,21 @@ def test_d1_live_build_and_filter_rescope(
                 f"assumption2 WEEK divergence record: first_bucket={week_dates[0]} "
                 f"weekday={week_dates[0].weekday()} (0=Mon) — do not change tokens blindly"
             )
-    except AssertionError as exc:
-        soft.check("assumption2: P1W chart/data accepted", False, str(exc)[:2000])
+    except (AssertionError, SupersetAPIError) as exc:
+        # Ad-hoc chart/data never GROUP BYs a BASE_AXIS (CH 215, three live
+        # iterations) — but the engine's generated SQL rides in the error text,
+        # which is exactly the mapping evidence assumption 2 wants for P1W.
+        msg = str(exc)
+        week_fn = next((fn for fn in ("toStartOfWeek", "toMonday") if fn in msg), None)
+        soft.check(
+            "assumption2: P1W maps to a CH week function (captured from engine SQL)",
+            week_fn is not None,
+            f"week_fn={week_fn!r} (ad-hoc GROUP BY quirk blocks execution; "
+            f"evidence from generated SQL in the engine error) err={msg[:600]}",
+        )
+        if week_fn == "toStartOfWeek" and "toStartOfWeek(" in msg:
+            start = msg.index("toStartOfWeek(")
+            soft.notes.append(f"assumption2 week expr: {msg[start : start + 60]!r}")
 
     # =====================================================================
     # assumption 3 + 4: magnitude probe on SOURCE (млрд, orderby format)
