@@ -458,6 +458,13 @@ body { display: flex; flex-direction: column; }
 
 .spec-notes { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
 .spec-note { font-size: 13px; color: var(--text-2); }
+/* D-1: OWN-chart "фильтр не влияет" badge — warn tone, still AA on surface */
+.spec-note-filter { color: var(--warn); }
+.chart-filter-note {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--warn);
+}
 
 /* ---------- verdicts ---------- */
 

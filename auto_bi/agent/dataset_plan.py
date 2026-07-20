@@ -93,6 +93,25 @@ def plan_datasets(spec: DashboardSpec) -> DatasetPlan:
     return DatasetPlan(charts=charts, source_tables=tuple(source_tables))
 
 
+def filter_preview_notes(spec: DashboardSpec) -> list[str]:
+    """Honest preview badges for OWN charts when the dashboard has filters.
+
+    Julia's gate decision (2026-07-20): inexpressible charts keep their own dataset
+    and the interactive control does not move them — so the preview must say so,
+    never leave a lying control. Empty when there are no dashboard filters (nothing
+    for the badge to warn about) or every chart is SOURCE.
+    """
+    if not spec.filters:
+        return []
+    plan = plan_datasets(spec)
+    notes: list[str] = []
+    for chart in spec.charts:
+        cp = plan.charts[chart.id]
+        if cp.role is DatasetRole.OWN and cp.fallback_reason:
+            notes.append(f"«{chart.title}»: фильтр не влияет: {cp.fallback_reason}")
+    return notes
+
+
 @dataclass(frozen=True)
 class SourceDatasetInputs:
     """Everything `generate_source_sql` needs for one mart's shared dataset."""

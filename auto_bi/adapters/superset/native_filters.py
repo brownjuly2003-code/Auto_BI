@@ -1,16 +1,20 @@
 """Native dashboard filters: compile spec.filters -> Superset native_filter_configuration.
 
-Scope-to-applicable: each chart is its own pre-aggregated virtual dataset, so a native
-filter (a WHERE by the column's bare alias) can only be honored by a chart that GROUPs
-by that column — an aggregated dataset that didn't select the column has nothing to
-filter on. Charts that don't expose the column are left OUT of the filter's scope
-(Superset still shows the filter; those charts ignore it).
+D-1 (variant A): charts on the shared semantic-grain source dataset carry every mart
+column (plus label joins), so a native filter (a WHERE by the column's bare alias)
+scopes to ALL SOURCE-role charts of that mart whose source dataset exposes the column.
+OWN-role charts keep the pre-D-1 grain rule: only a chart that GROUPs by the filtered
+column can honor it (its aggregated dataset has nothing else to filter on).
 
-Auto-overview (P1-1) additionally bakes the default period into each chart's
-`query.filters` (SQL WHERE via a relative "last N …" token), so KPIs and categorical
-charts open on the same window as the dynamics line even though they stay out of the
-native control's scope. Interactive re-scoping on the dashboard still only moves
-in-scope charts; the baked WHERE is the honest default.
+Qualified comparison (audit 19.07, finding #1): scope never matches on bare column
+name alone — `dm.products.name` must not grab a chart grouped by `dm.stores.name`.
+Both sides are normalized to a fully qualified `schema.table.col` before equality.
+
+Auto-overview (P1-1) additionally bakes the default period into OWN charts'
+`query.filters` (SQL WHERE via a relative "last N …" token). SOURCE charts open on
+the native filter's default instead (no WHERE in the shared source SQL). Interactive
+re-scoping on the dashboard moves every in-scope chart; OWN charts stay on the baked
+window and the preview marks them "фильтр не влияет".
 
 filterType comes from the column's semantic role (TIME -> filter_time, else
 filter_select), not from DashboardFilter.type — the LLM does not reliably override that
@@ -25,6 +29,12 @@ from __future__ import annotations
 
 import hashlib
 
+from auto_bi.agent.dataset_plan import (
+    DatasetPlan,
+    DatasetRole,
+    plan_datasets,
+    source_dataset_inputs,
+)
 from auto_bi.ir.spec import ChartSpec, DashboardFilter, DashboardSpec, column_alias
 from auto_bi.semantic.model import ColumnRole, SemanticModel
 
@@ -56,19 +66,76 @@ def _filter_name(filter_: DashboardFilter, model: SemanticModel) -> str:
     return column_alias(filter_.column)
 
 
+def qualified_column_ref(ref: str, default_table: str) -> str:
+    """Fully qualify a column ref against `default_table` when it is bare.
+
+    Dashboard filters and joined dimensions are already `schema.table.col`; mart grain
+    columns are often bare (`date`, `store_id`). Comparing bare names alone wrongly
+    equates `dm.products.name` with `dm.stores.name` (both alias to `name`).
+    """
+    if "." in ref:
+        return ref
+    return f"{default_table}.{ref}"
+
+
+def grain_exposes_column(chart: ChartSpec, filter_column: str) -> bool:
+    """Whether the chart's GROUP BY grain carries `filter_column` (qualified match)."""
+    target = qualified_column_ref(filter_column, chart.query.table)
+    for col in chart.query.group_columns():
+        if qualified_column_ref(col, chart.query.table) == target:
+            return True
+    return False
+
+
+def source_exposes_column(
+    spec: DashboardSpec,
+    plan: DatasetPlan,
+    model: SemanticModel,
+    table: str,
+    filter_column: str,
+) -> bool:
+    """Whether the shared source dataset for `table` carries `filter_column`."""
+    inputs = source_dataset_inputs(spec, plan, model, table)
+    target = qualified_column_ref(filter_column, table)
+    # mart's own column: filter names schema.table.col and the bare name is in columns
+    ft, _, fname = filter_column.rpartition(".")
+    if ft == table and fname in inputs.columns:
+        return True
+    if target in inputs.joined_refs or filter_column in inputs.joined_refs:
+        return True
+    # bare filter (unusual for DashboardFilter) against mart columns
+    return "." not in filter_column and filter_column in inputs.columns
+
+
+def chart_accepts_filter(
+    chart: ChartSpec,
+    filter_: DashboardFilter,
+    spec: DashboardSpec,
+    plan: DatasetPlan,
+    model: SemanticModel,
+) -> bool:
+    """Whether a dashboard filter's WHERE can reach this chart's dataset."""
+    cp = plan.chart(chart.id)
+    if cp.role is DatasetRole.SOURCE:
+        return source_exposes_column(spec, plan, model, cp.table, filter_.column)
+    return grain_exposes_column(chart, filter_.column)
+
+
 def participating_chart_ids(spec: DashboardSpec, model: SemanticModel) -> set[str]:
     """Spec-side chart ids that fall in at least one dashboard filter's scope.
 
     Their virtual datasets must drop the SQL top-N LIMIT (the limit moves to form_data)
     so the filter re-ranks AFTER filtering instead of over a pre-truncated top-N — and
     so a select filter's option list isn't itself capped to the pre-filter top-N.
-    Computable from the spec alone (grain membership), before any slice exists.
+    SOURCE charts already have no LIMIT in SQL; including them is harmless and keeps
+    the helper's meaning ("in some filter's scope") honest for preview/logs.
+    Computable from the spec alone, before any slice exists.
     """
+    plan = plan_datasets(spec)
     ids: set[str] = set()
     for filter_ in spec.filters:
-        alias = column_alias(filter_.column)
         for chart in spec.charts:
-            if alias in {column_alias(c) for c in chart.query.group_columns()}:
+            if chart_accepts_filter(chart, filter_, spec, plan, model):
                 ids.add(chart.id)
     return ids
 
@@ -77,12 +144,14 @@ def build_native_filter_configuration(
     spec: DashboardSpec,
     placements: list[Placement],
     model: SemanticModel,
+    plan: DatasetPlan | None = None,
 ) -> tuple[list[dict], list[tuple[DashboardFilter, list[int], list[int]]]]:
     """(native_filter_configuration, applied) where `applied` pairs each WIRED filter
     with the slice ids it scopes to and the ones it skips — for an honest preview/log.
-    A filter no chart can honor (column not in any chart's grain) is skipped entirely;
-    the baked query.filters still constrain the data, so nothing silently breaks.
+    A filter no chart can honor is skipped entirely; the baked query.filters still
+    constrain OWN charts, so nothing silently breaks.
     """
+    plan = plan or plan_datasets(spec)
     config: list[dict] = []
     applied: list[tuple[DashboardFilter, list[int], list[int]]] = []
     all_ids = [sid for _, sid, _ in placements]
@@ -92,7 +161,7 @@ def build_native_filter_configuration(
         in_scope: list[int] = []
         target_dataset: int | None = None
         for chart, sid, dataset_id in placements:
-            if alias in {column_alias(c) for c in chart.query.group_columns()}:
+            if chart_accepts_filter(chart, filter_, spec, plan, model):
                 in_scope.append(sid)
                 if target_dataset is None:
                     target_dataset = dataset_id

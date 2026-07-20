@@ -98,6 +98,40 @@ def test_histogram_bins_fall_back() -> None:
     assert "histogram" in (inexpressible_reason(q) or "")
 
 
+def test_filter_preview_notes_for_own_charts_with_filters() -> None:
+    from auto_bi.agent.dataset_plan import filter_preview_notes
+    from auto_bi.ir.spec import DashboardFilter
+
+    own = chart(
+        "share",
+        viz=Viz.BAR,
+        dimensions=["store_id"],
+        measures=[
+            Measure(
+                column="revenue", agg=Aggregation.SUM, transform=MeasureTransform.SHARE_OF_TOTAL
+            )
+        ],
+    )
+    own = own.model_copy(update={"title": "Доля магазинов"})
+    plain = chart(
+        "kpi",
+        viz=Viz.BIG_NUMBER,
+        dimensions=[],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+    )
+    # no filters -> no badges (nothing to warn about)
+    assert filter_preview_notes(spec(own, plain)) == []
+    with_filters = DashboardSpec(
+        title="d",
+        filters=[DashboardFilter(column="dm.sales_daily.date", type="time_range")],
+        charts=[own, plain],
+    )
+    notes = filter_preview_notes(with_filters)
+    assert len(notes) == 1
+    assert notes[0].startswith("«Доля магазинов»: фильтр не влияет:")
+    assert "share_of_total" in notes[0]
+
+
 # --- plan ---------------------------------------------------------------------
 
 

@@ -273,14 +273,25 @@ def test_spec_summary_names_charts_a_filter_applies_to() -> None:
 
 
 def test_spec_summary_warns_when_filter_reaches_no_chart() -> None:
-    # store_id is in no chart's grain (charts group by date only) -> the filter cannot
-    # be wired; the preview must say so instead of implying it works
+    # control on a mart no chart reads -> cannot be wired; preview must say so
     spec = DashboardSpec.model_validate(
-        {**GOOD_SPEC, "filters": [{"column": "dm.sales_daily.store_id", "type": "value"}]}
+        {**GOOD_SPEC, "filters": [{"column": "dm.other_fact.region_id", "type": "value"}]}
     )
     summary = spec_summary(spec)
     assert "не применим ни к одному чарту" in summary
     assert "⚠" in summary
+
+
+def test_spec_summary_source_chart_receives_mart_filter() -> None:
+    # D-1: a plain line is SOURCE — store_id on the same mart reaches it even without
+    # store_id in the grain (shared semantic-grain dataset carries all columns)
+    spec = DashboardSpec.model_validate(
+        {**GOOD_SPEC, "filters": [{"column": "dm.sales_daily.store_id", "type": "value"}]}
+    )
+    summary = spec_summary(spec)
+    assert "применяется к" in summary
+    assert "Выручка по дням" in summary
+    assert "не применим" not in summary
 
 
 def test_spec_summary_silent_without_filters() -> None:

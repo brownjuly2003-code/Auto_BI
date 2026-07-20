@@ -24,7 +24,7 @@ from auto_bi.advisor.narrate import ChartVerdict, narrate_findings, worst_verdic
 from auto_bi.agent.grounding import GroundingReport, clarify_questions, ground
 from auto_bi.agent.propose import patch_spec, propose_spec
 from auto_bi.agent.seed import FieldsSeed, render_seed_request, seed_analysis, seed_tables
-from auto_bi.ir.spec import DashboardSpec, column_alias
+from auto_bi.ir.spec import DashboardSpec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import Store
@@ -66,34 +66,53 @@ class AgentTurn(StrictModel):
     noop: bool = False
 
 
+def _qualified_ref(ref: str, table: str) -> str:
+    """Fully qualify a bare column against its chart table (preview scope helper)."""
+    return ref if "." in ref else f"{table}.{ref}"
+
+
+def _grain_has(chart, filter_column: str) -> bool:
+    """OWN-chart grain membership by fully qualified equality (not bare alias)."""
+    target = _qualified_ref(filter_column, chart.query.table)
+    return any(_qualified_ref(g, chart.query.table) == target for g in chart.query.group_columns())
+
+
 def spec_summary(spec: DashboardSpec) -> str:
+    from auto_bi.agent.dataset_plan import DatasetRole, filter_preview_notes, plan_datasets
+
     lines = [f"«{spec.title}» — {len(spec.charts)} чартов:"]
     for chart in spec.charts:
         q = chart.query
         dims = ", ".join(q.group_columns()) or "—"
         measures = ", ".join(m.label or m.column for m in q.measures)
         lines.append(f"  • [{chart.viz.value}] {chart.title} ({q.table}: {dims} × {measures})")
+    plan = plan_datasets(spec)
     for f in spec.filters:
-        # native filters are scope-to-applicable: a filter only reaches charts whose
-        # grain exposes its column (the dataset is pre-aggregated). Say exactly which
-        # charts HERE so the built dashboard never silently differs from the preview.
-        alias = column_alias(f.column)
-        applies = [
-            c.title
-            for c in spec.charts
-            if alias in {column_alias(g) for g in c.query.group_columns()}
-        ]
-        skips = [c.title for c in spec.charts if c.title not in applies]
+        # D-1: SOURCE charts share a semantic-grain dataset (all mart columns filterable);
+        # OWN charts only receive a filter whose column is in their grain. Say exactly
+        # which charts HERE so the built dashboard never silently differs from the preview.
+        applies: list[str] = []
+        skips: list[str] = []
+        for c in spec.charts:
+            cp = plan.chart(c.id)
+            if (cp.role is DatasetRole.SOURCE and f.column.rpartition(".")[0] == cp.table) or (
+                cp.role is DatasetRole.OWN and _grain_has(c, f.column)
+            ):
+                applies.append(c.title)
+            else:
+                skips.append(c.title)
         if applies:
             line = f"  ⛃ фильтр дашборда «{f.column}» → применяется к: {', '.join(applies)}"
             if skips:
-                line += f"; не затрагивает (нет колонки в разрезе): {', '.join(skips)}"
+                line += f"; не затрагивает: {', '.join(skips)}"
             lines.append(line)
         else:
             lines.append(
                 f"  ⚠ фильтр дашборда «{f.column}» не применим ни к одному чарту "
-                "(нет колонки в их разрезе) — задайте период фильтром чарта"
+                "(нет колонки в их датасете) — задайте период фильтром чарта"
             )
+    for note in filter_preview_notes(spec):
+        lines.append(f"  ◦ {note}")
     return "\n".join(lines)
 
 
@@ -324,6 +343,8 @@ class AgentSession:
         return self._propose_turn(notes=notes)
 
     def _propose_turn(self, notes: list[str] | None = None) -> AgentTurn:
+        from auto_bi.agent.dataset_plan import filter_preview_notes
+
         assert self.spec is not None
         self.verdicts = []
         if self._advisor is not None:
@@ -334,9 +355,14 @@ class AgentSession:
                 )
                 step.detail = f"{len(findings)} находок"
         self.phase = AgentPhase.APPROVE
+        # fields-first layout notes + D-1 honest badges for OWN charts under filters
+        turn_notes = list(notes or [])
+        turn_notes.extend(filter_preview_notes(self.spec))
         message = spec_summary(self.spec)
-        if notes:
-            message += "\n" + "\n".join(f"  ◦ анализ раскладки: {n}" for n in notes)
+        # seed-analysis notes are not already in spec_summary; filter badges are
+        seed_only = list(notes or [])
+        if seed_only:
+            message += "\n" + "\n".join(f"  ◦ анализ раскладки: {n}" for n in seed_only)
         self._record("agent", message)
         if self._store is not None and self._session_id is not None:
             self._spec_row_id = self._store.save_spec(
@@ -348,7 +374,7 @@ class AgentSession:
             message=message,
             spec=self.spec,
             verdicts=self.verdicts,
-            notes=notes or [],
+            notes=turn_notes,
         )
 
     def _log_dm_change_requests(self) -> None:

@@ -390,6 +390,54 @@ def test_model_fields_panel(demo_model) -> None:
     }
 
 
+def test_filter_fallback_note_on_approve_preview(demo_model) -> None:
+    """D-1: OWN charts under a dashboard filter surface «фильтр не влияет» in turn.notes."""
+    from auto_bi.ir.spec import MeasureTransform
+
+    own_spec = {
+        "title": "Доли",
+        "filters": [
+            {"column": "dm.sales_daily.date", "type": "time_range", "default": "last 12 months"}
+        ],
+        "charts": [
+            {
+                "id": "share",
+                "title": "Доля магазинов",
+                "viz": "bar",
+                "query": {
+                    "table": "dm.sales_daily",
+                    "dimensions": ["store_id"],
+                    "measures": [
+                        {
+                            "column": "revenue",
+                            "agg": "sum",
+                            "transform": MeasureTransform.SHARE_OF_TOTAL.value,
+                        }
+                    ],
+                },
+            },
+            {
+                "id": "kpi",
+                "title": "Выручка",
+                "viz": "big_number",
+                "query": {
+                    "table": "dm.sales_daily",
+                    "measures": [{"column": "revenue", "agg": "sum"}],
+                },
+            },
+        ],
+    }
+    client = make_client(ScriptedLLM([CLEAR_REPORT, own_spec]), demo_model)
+    turn = client.post("/api/v1/sessions", json={"request": "доли по магазинам"}).json()
+    assert turn["phase"] == "approve"
+    notes = turn["notes"]
+    assert any("фильтр не влияет" in n and "Доля магазинов" in n for n in notes)
+    # SOURCE KPI is expressible — no badge for it
+    assert not any("«Выручка»" in n and "фильтр не влияет" in n for n in notes)
+    # message also carries the badge (preview text path)
+    assert "фильтр не влияет" in turn["message"]
+
+
 def test_fields_first_session_over_http(demo_model, tmp_path) -> None:
     store = Store(tmp_path / "seed.sqlite")
     client = make_client(ScriptedLLM([CLEAR_REPORT, GOOD_SPEC]), demo_model, store=store)

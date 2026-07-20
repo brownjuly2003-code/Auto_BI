@@ -6,6 +6,15 @@
 
 ### Added
 
+- **D-1 PR-2: filterable dataset (Superset, вариант A)** — один shared semantic-grain
+  датасет на витрину для выразимых чартов (SOURCE), агрегация в form_data adhoc-метриках
+  (SUM/AVG/COUNT… по сырой колонке, KPI без «одной строки», `time_grain_sqla` вместо
+  toStartOf* в SQL, ratio как `sqlExpression`), scope native-фильтров = чарты на source-
+  датасете, qualified-сравнение колонок (фикс `dm.products.name` vs `dm.stores.name`),
+  preview-пометка «фильтр не влияет: …» для OWN/fallback-чартов в turn.notes и spec-pane
+  UI. Невыразимые (window/compare/raw_sql/bins) остаются на per-chart датасете. Живая
+  приёмка и ARCHITECTURE — PR-3.
+
 - **Браузерный E2E веб-UI + axe-скан** (D-4): `tests/test_web_e2e.py` — Chromium
   (Playwright) проходит путь пользователя против настоящего `auto_bi serve` в
   demo-профиле (DisabledLLM — без ключа и трат) и живого ClickHouse+Superset:

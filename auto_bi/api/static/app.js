@@ -68,6 +68,11 @@ function groupColumns(query) {
   return seen;
 }
 
+function isFilterFallbackNote(note) {
+  // D-1: OWN-chart badge — "«Title»: фильтр не влияет: <reason>"
+  return typeof note === "string" && note.includes("фильтр не влияет");
+}
+
 function renderSpec(spec, verdicts, notes) {
   $("spec-empty").hidden = true;
   $("spec").hidden = false;
@@ -79,10 +84,18 @@ function renderSpec(spec, verdicts, notes) {
     const cols = spec.filters.map((f) => f.column + (f.default ? ` = ${f.default}` : ""));
     filters.textContent =
       `Фильтры дашборда (${cols.join(", ")}) переносятся в BI как интерактивные ` +
-      "контролы и действуют на чарты с этим разрезом (остальные не затрагивают).";
+      "контролы и действуют на выразимые чарты (общая витрина); невыразимые помечены ниже.";
     filters.hidden = false;
   } else {
     filters.hidden = true;
+  }
+
+  // chart title -> fallback reason, for a per-card badge next to the title
+  const fallbackByTitle = {};
+  for (const note of notes || []) {
+    if (!isFilterFallbackNote(note)) continue;
+    const m = note.match(/^«([^»]+)»:\s*(фильтр не влияет:.*)$/);
+    if (m) fallbackByTitle[m[1]] = m[2];
   }
 
   const charts = $("charts");
@@ -108,6 +121,13 @@ function renderSpec(spec, verdicts, notes) {
     fields.textContent = `${chart.query.table}: ${dims} × ${measures}`;
 
     card.append(row, fields);
+    const fallback = fallbackByTitle[chart.title];
+    if (fallback) {
+      const badge = document.createElement("div");
+      badge.className = "chart-filter-note";
+      badge.textContent = fallback;
+      card.appendChild(badge);
+    }
     charts.appendChild(card);
   }
 
@@ -116,8 +136,13 @@ function renderSpec(spec, verdicts, notes) {
   notesBox.hidden = !(notes && notes.length);
   for (const note of notes || []) {
     const line = document.createElement("div");
-    line.className = "spec-note";
-    line.textContent = `Анализ раскладки: ${note}`;
+    if (isFilterFallbackNote(note)) {
+      line.className = "spec-note spec-note-filter";
+      line.textContent = note;
+    } else {
+      line.className = "spec-note";
+      line.textContent = `Анализ раскладки: ${note}`;
+    }
     notesBox.appendChild(line);
   }
 
