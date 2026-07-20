@@ -251,6 +251,46 @@ def test_review_and_log_tolerates_no_advisor() -> None:
     assert review_and_log(None, DashboardSpec.model_validate(GOOD_SPEC), log=lambda s: None) == []
 
 
+def test_auto_overview_stays_within_its_dwh_pass_budget() -> None:
+    """D-2 acceptance criterion: DWH round trips per chart for a full auto-overview build.
+
+    Asserted as an invariant rather than the measured absolute (25 -> 17 passes, 3.1 -> 2.1
+    per chart on `semantic/model.yaml`), so a model with a different chart count does not
+    make this test lie: every chart is planned exactly once and the guard adds no second
+    plan of its own. A new EXPLAIN anywhere on the build path trips it.
+    """
+    from auto_bi.agent.autospec import build_auto_spec
+
+    model = demo_model_fixtureless()
+    spec = build_auto_spec(model, "dm.sales_daily", max_charts=8)
+    run = RecordingRunQuery()
+    plans = PlanCache()
+
+    review_and_log(Advisor(model, run), spec, log=lambda s: None, plans=plans)
+    compile_and_build(
+        spec,
+        model,
+        LiveSQLValidator(run),
+        adapter_for=lambda _target: make_adapter(FakeSuperset()),
+        log=lambda s: None,
+        plans=plans,
+    )
+
+    charts = len(spec.charts)
+    estimates = run.count("EXPLAIN ESTIMATE")
+    plain_explains = run.count("EXPLAIN ") - estimates
+    trials = sum(1 for s in run.statements if s.startswith("SELECT * FROM"))
+    row_counts = sum(1 for s in run.statements if s.startswith("SELECT total_rows"))
+
+    assert plain_explains == 0, "the guard re-planned a statement the advisor already planned"
+    assert estimates == charts  # one plan per chart, none repeated
+    assert trials == charts  # the LIMIT-ed trial stays mandatory (invariant 3)
+    assert row_counts == 1  # scan-fraction denominator, cached per table (one table here)
+    # exactly two passes per chart plus that one shared denominator — nothing else may reach
+    # the DWH on the build path
+    assert len(run.statements) == 2 * charts + row_counts
+
+
 def test_stub_run_query_path_still_builds() -> None:
     # the plain stub used across the suite has no ESTIMATE support; the build must not care
     compile_and_build(
