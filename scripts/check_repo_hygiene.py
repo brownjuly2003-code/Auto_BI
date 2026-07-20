@@ -62,6 +62,10 @@ def classify(path: str) -> str | None:
         return "SQLite WAL/SHM/journal sidecar (holds uncheckpointed working data)"
     if path.split("/", 1)[0].startswith("_"):
         return "internal root-level scratch/handoff/ops file (leading underscore)"
+    # Root Grok/ holds the external-executor task file and its round reports —
+    # working kitchen that must never be tracked (its .gitignore line can rot).
+    if path == "Grok" or path.startswith("Grok/"):
+        return "Grok executor scratch folder (task file / round reports)"
     if "/" in path:
         return None
     if path in _ROOT_NAMES:
@@ -116,6 +120,8 @@ def self_test() -> int:
         "store/auto_bi.sqlite",
         "store/auto_bi.sqlite-wal",
         "tmp/scratch.db",
+        "Grok/TASK.md",
+        "Grok/reports/round4_report.md",
     ]
     must_pass = [
         "README.md",
@@ -128,6 +134,7 @@ def self_test() -> int:
         "scripts/check_repo_hygiene.py",
         "docs/journal.md",  # ends in 'journal' but not '-journal': a doc, not a sidecar
         "research/notes.txt",  # nested dir, not a root research*.md
+        "docs/Grok/notes.md",  # only the ROOT Grok/ folder is executor scratch
     ]
     failures: list[str] = []
     for path in must_flag:

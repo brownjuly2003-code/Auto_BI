@@ -54,3 +54,5 @@ dist/
 /p8-hf-demo.md
 /dashboard_design_research.md
 /start-bi-tunnel.cmd
+# Grok executor scratch (TASK.md + its reports live in the tree, never in git)
+/Grok/
