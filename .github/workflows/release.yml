@@ -213,7 +213,7 @@ jobs:
           name: dist
           path: dist
       - name: Publish to PyPI (trusted publishing)
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
         with:
           # PEP 740: under trusted publishing, gh-action-pypi-publish (v1.11+) signs and
           # uploads attestations by default via the ambient OIDC identity. `@release/v1`
