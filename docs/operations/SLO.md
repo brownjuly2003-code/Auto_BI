@@ -60,11 +60,13 @@ Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
 | `auto_bi/ir/validate.py` | pure semantic-model and dashboard-spec validation boundary |
 | `auto_bi/ir/spec.py` | typed dashboard-spec schema and alias boundary |
 | `auto_bi/semantic/model.py` | typed semantic-model schema and lookup boundary |
+| `auto_bi/semantic/select.py` | deterministic semantic-context selection boundary |
 
 ```bash
 uv run --with mypy --with types-PyYAML mypy --strict \
   auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py auto_bi/config.py \
-  auto_bi/ir/validate.py auto_bi/ir/spec.py auto_bi/semantic/model.py
+  auto_bi/ir/validate.py auto_bi/ir/spec.py auto_bi/semantic/model.py \
+  auto_bi/semantic/select.py
 ```
 
 Do **not** set `strict = true` as a global or per-module override in `pyproject`
@@ -78,4 +80,4 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
   ownership cleanup; SQL guard is already gated.
 - Process memory / cold-start process budget on release image.
 - Expand mypy-strict allowlist beyond `auth` + `artifacts` + `errors` + `config`
-  + `ir/validate` + `ir/spec` + `semantic/model`.
+  + `ir/validate` + `ir/spec` + `semantic/model` + `semantic/select`.

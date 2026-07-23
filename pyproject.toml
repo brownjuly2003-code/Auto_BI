@@ -121,7 +121,7 @@ files = ["auto_bi"]
 # package in our mypy version). Instead CI runs a second command on the list:
 #   mypy --strict auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py
 #     auto_bi/config.py auto_bi/ir/validate.py auto_bi/ir/spec.py
-#     auto_bi/semantic/model.py
+#     auto_bi/semantic/model.py auto_bi/semantic/select.py
 # See docs/operations/SLO.md «Mypy strict modules».
 
 [[tool.mypy.overrides]]
