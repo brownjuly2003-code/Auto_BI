@@ -176,7 +176,8 @@ def test_generator_check_mode_exits_zero() -> None:
     assert code == 0
 
 
-def test_ir_validate_is_in_every_strict_mypy_job_and_slo() -> None:
+@pytest.mark.parametrize("target", ["auto_bi/ir/validate.py", "auto_bi/ir/spec.py"])
+def test_ir_targets_are_in_every_strict_mypy_job_and_slo(target: str) -> None:
     workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
     strict_steps = [
         step
@@ -185,8 +186,8 @@ def test_ir_validate_is_in_every_strict_mypy_job_and_slo() -> None:
         if step.get("name") == "Mypy strict (boundary modules)"
     ]
     assert len(strict_steps) == 2
-    assert all("auto_bi/ir/validate.py" in step["run"] for step in strict_steps)
-    assert "`auto_bi/ir/validate.py`" in SLO.read_text(encoding="utf-8")
+    assert all(target in step["run"] for step in strict_steps)
+    assert f"`{target}`" in SLO.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

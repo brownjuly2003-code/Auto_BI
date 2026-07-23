@@ -17,6 +17,10 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict IR schema boundary** —
+  `auto_bi/ir/spec.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  DashboardSpec schema и alias helpers теперь проверяются с `mypy --strict`.
+
 - **plan_sol шаг 12 residual: mypy-strict IR validation boundary** —
   `auto_bi/ir/validate.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
   semantic-model/spec validation теперь проверяется с `mypy --strict`.
