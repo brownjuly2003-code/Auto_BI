@@ -30,16 +30,16 @@
   Tests: `tests/test_release_promotion.py`. Residual: live tag dry-run;
   partial PyPI-without-image still possible (wheel unpublish manual).
 
-- **plan_sol шаг 5 (partial): GitHub checks scaffolding** —
-  `.github/CODEOWNERS`, PR template (security/data/docs/release), Dependabot
-  groups (uv + github-actions minor/patch) + docker ecosystem, stable
-  `gitleaks` check-run name, coverage-badge push soft-skip under branch
-  protection. Operator script `scripts/apply_github_protection.py` (dry-run
-  default) prepares main + `v*` tag rulesets and Dependabot security updates;
-  **apply is an admin gate** (not run in-session). Docs: DEPLOYMENT §11,
-  SECURITY. Tests: `tests/test_github_protection.py`. Residuals: live rulesets
-  empty until `--apply`; solo `pypi` prevent_self_review stays false; open
-  Dependabot PRs not bulk-merged.
+- **plan_sol шаг 5: GitHub checks scaffolding + live apply** —
+  `.github/CODEOWNERS`, PR template, Dependabot groups, stable `gitleaks`
+  check-run name, coverage-badge push soft-skip.
+  `scripts/apply_github_protection.py` applied (operator gate 2026-07-23):
+  main ruleset `19601118` (PR required, 6 status checks, conversation
+  resolution, no force-push/delete), tag ruleset `19601122` (`v*`: no
+  update/delete/non-ff), Dependabot security updates **enabled**. Payload fix:
+  `dismiss_stale_reviews_on_push` (API rejected `dismiss_stale_reviews`).
+  Residual: solo `pypi` prevent_self_review=false; open Dependabot PRs not
+  bulk-merged; direct push to main is blocked — use PRs.
 
 - **plan_sol шаг 4: Compose loopback + validated profiles** —
   `docker-compose.yml` публикует ClickHouse/Superset только на `127.0.0.1`

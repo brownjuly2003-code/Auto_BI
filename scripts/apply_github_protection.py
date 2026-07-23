@@ -96,8 +96,9 @@ def main_ruleset_body() -> dict[str, Any]:
             {
                 "type": "pull_request",
                 "parameters": {
+                    # GitHub API field is dismiss_stale_reviews_on_push (not dismiss_stale_reviews).
                     "required_approving_review_count": 0,
-                    "dismiss_stale_reviews": True,
+                    "dismiss_stale_reviews_on_push": True,
                     "require_code_owner_review": False,
                     "require_last_push_approval": False,
                     "required_review_thread_resolution": True,
