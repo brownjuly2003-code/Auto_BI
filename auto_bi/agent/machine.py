@@ -24,6 +24,7 @@ from auto_bi.advisor.narrate import ChartVerdict, narrate_findings, worst_verdic
 from auto_bi.agent.grounding import GroundingReport, clarify_questions, ground
 from auto_bi.agent.propose import patch_spec, propose_spec
 from auto_bi.agent.seed import FieldsSeed, render_seed_request, seed_analysis, seed_tables
+from auto_bi.errors import redact_secrets, store_error_text
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
@@ -436,6 +437,16 @@ class AgentSession:
         try:
             yield step
         except Exception as exc:
-            self._trace(kind, status="error", latency_ms=_ms(started), detail=str(exc)[:200])
+            # Durable trace must never hold raw provider bodies / DSN / tokens.
+            self._trace(
+                kind,
+                status="error",
+                latency_ms=_ms(started),
+                detail=store_error_text(exc)[:200],
+            )
             raise
-        self._trace(kind, latency_ms=_ms(started), detail=step.detail)
+        self._trace(
+            kind,
+            latency_ms=_ms(started),
+            detail=redact_secrets(step.detail)[:200] if step.detail else "",
+        )

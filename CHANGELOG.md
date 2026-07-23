@@ -6,6 +6,18 @@
 
 ### Security
 
+- **plan_sol шаг 3: SafeError + центральная редактиру** — публичные HTTP/SSE,
+  durable Store (builds/trace) и structured logs больше не несут raw provider
+  bodies, DSN, Authorization/cookies/API keys. Новый `auto_bi/errors.py`:
+  `SafeError` (code, public_message, retryable, correlation_id,
+  internal_detail, provider_status/class), `redact_secrets`,
+  `to_safe_error` / `store_error_text` / `public_error_text`,
+  `SecretRedactFilter` на root logging. BI-клиенты (Superset/DataLens) не
+  кладут `response.text` в exception message (только HTTP status; body в
+  debug-log после redact). `/ready` отдаёт boolean + stable
+  code/message/correlation_id без raw health text. Leak-canary:
+  `tests/test_safe_error.py` (+ обновлены ready/api/pipeline/machine).
+
 - **plan_sol шаг 2: prompt data boundary / samples opt-in** — default
   `AUTO_BI_SEND_SAMPLES=false` (раньше `true`): clean install не отправляет
   top-N значений DWH внешнему LLM. Classification на table/column

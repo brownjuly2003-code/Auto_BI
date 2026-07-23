@@ -111,9 +111,12 @@ def test_compile_and_build_closes_adapter_on_success() -> None:
 
 
 def test_compile_and_build_closes_adapter_on_failure() -> None:
+    from auto_bi.errors import CODE_BI_HEALTH, SafeError
+
     dead = _ClosableProbe(ok=False)  # healthcheck fails before build
-    with pytest.raises(RuntimeError, match="healthcheck failed"):
+    with pytest.raises(SafeError) as ei:
         _compile(lambda _target: dead)
+    assert ei.value.code == CODE_BI_HEALTH
     assert dead.closed
 
 

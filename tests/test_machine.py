@@ -510,5 +510,8 @@ def test_trace_records_clarify_and_grounding_error(demo_model, tmp_path) -> None
         agent2.start("выручка")
     (event,) = store.trace_events(sid2)
     assert event["kind"] == "grounding" and event["status"] == "error"
-    assert "llm down" in event["detail"]
+    # Durable trace keeps the SafeError face only (plan_sol step 3) — no raw exception text.
+    assert "llm down" not in event["detail"]
+    assert "ref=" in event["detail"]
+    assert event["detail"].startswith("[")
     store.close()

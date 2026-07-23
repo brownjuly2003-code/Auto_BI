@@ -24,6 +24,8 @@ from typing import Any
 
 import httpx
 
+from auto_bi.errors import redact_secrets
+
 logger = logging.getLogger(__name__)
 
 # Live-verified on the stand (2026-06-14): scope is literally `auth`, not `root` — the
@@ -35,7 +37,10 @@ DEFAULT_SIGNIN_PATH = "/gateway/auth/auth/signin"
 class DataLensAPIError(Exception):
     """API-level failure; `status_code` carries the HTTP status when one was received
     (None for signin-shape failures), so callers like `delete_artifact` can tell an
-    already-gone 404 from a real error."""
+    already-gone 404 from a real error.
+
+    ``message`` must stay free of response bodies and credentials (plan_sol step 3).
+    """
 
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
@@ -83,7 +88,15 @@ class DataLensClient:
             json={"login": self._username, "password": self._password},
         )
         if response.status_code != 200:
-            raise DataLensAPIError(f"signin failed: {response.status_code} {response.text[:300]}")
+            logger.debug(
+                "datalens signin failed HTTP %s body=%s",
+                response.status_code,
+                redact_secrets(response.text[:300]),
+            )
+            raise DataLensAPIError(
+                f"signin failed: HTTP {response.status_code}",
+                status_code=response.status_code,
+            )
         if "auth" not in self._http.cookies:
             # signin returned 200 but no session cookie -> wrong route/shape (open item)
             raise DataLensAPIError("signin ok but no `auth` cookie set; check signin_path")
@@ -100,8 +113,15 @@ class DataLensClient:
             self.login()
             response = self._http.post(path, json=body)
         if response.status_code >= 400:
+            logger.debug(
+                "datalens %s/%s failed HTTP %s body=%s",
+                service,
+                method,
+                response.status_code,
+                redact_secrets(response.text[:500]),
+            )
             raise DataLensAPIError(
-                f"{service}/{method} -> {response.status_code}: {response.text[:500]}",
+                f"{service}/{method} -> HTTP {response.status_code}",
                 status_code=response.status_code,
             )
         return response.json() if response.content else {}
@@ -116,8 +136,14 @@ class DataLensClient:
             self.login()
             response = self._http.post(path, json=body)
         if response.status_code >= 400:
+            logger.debug(
+                "datalens POST %s failed HTTP %s body=%s",
+                path,
+                response.status_code,
+                redact_secrets(response.text[:500]),
+            )
             raise DataLensAPIError(
-                f"POST {path} -> {response.status_code}: {response.text[:500]}",
+                f"POST {path} -> HTTP {response.status_code}",
                 status_code=response.status_code,
             )
         return response.json() if response.content else {}

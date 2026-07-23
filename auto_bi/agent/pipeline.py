@@ -18,6 +18,7 @@ from auto_bi.agent.propose import SpecValidationError, propose_spec
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sql_guard import LiveSQLValidator
 from auto_bi.agent.sqlgen import generate_chart_sql, generate_source_sql
+from auto_bi.errors import CODE_BI_HEALTH, SafeError, store_error_text, to_safe_error
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
@@ -217,7 +218,14 @@ def compile_and_build(
             adapter = adapter_for(spec.target_bi)
             health = adapter.healthcheck()
             if not health.ok:
-                raise RuntimeError(f"{spec.target_bi.value} healthcheck failed: {health.message}")
+                # SafeError: health.message may echo provider/network detail — keep it
+                # internal; public channels get a stable code (plan_sol step 3).
+                raise SafeError(
+                    CODE_BI_HEALTH,
+                    internal_detail=f"{spec.target_bi.value} healthcheck failed: {health.message}",
+                    retryable=True,
+                    provider_class=type(adapter).__name__,
+                )
 
             # P0-2: pin technical BI artifact names to this build/session so two independent
             # sessions with the same title/chart ids never share or overwrite datasets. The same
@@ -237,9 +245,18 @@ def compile_and_build(
             ref = adapter.build(spec)
         except Exception as exc:
             if store is not None and session_id is not None:
-                store.save_build(session_id, spec_id, status="failed", error=str(exc))
+                # Durable row must never hold raw provider bodies / DSN / tokens.
+                store.save_build(
+                    session_id,
+                    spec_id,
+                    status="failed",
+                    error=store_error_text(exc),
+                )
                 store.set_session_status(session_id, "failed")
-            raise
+            # Re-raise as SafeError so API/SSE see the public face; preserve original chain.
+            if isinstance(exc, SafeError):
+                raise
+            raise to_safe_error(exc) from exc
         log(f"BUILD done: {ref.title} -> {ref.url}")
         if store is not None and session_id is not None:
             store.save_build(session_id, spec_id, dashboard_id=ref.id, url=ref.url, status="ok")

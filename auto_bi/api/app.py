@@ -62,6 +62,15 @@ from auto_bi.auth import (
     verify_password,
 )
 from auto_bi.dmcr import DCR_STATUSES, render_dm_change_request
+from auto_bi.errors import (
+    CODE_BI_HEALTH,
+    CODE_DWH,
+    CODE_LLM,
+    CODE_STORE,
+    redact_secrets,
+    store_error_text,
+    to_safe_error,
+)
 from auto_bi.introspect.base import RunQuery
 from auto_bi.introspect.gaps import find_gaps
 from auto_bi.ir.spec import DashboardSpec, TargetBI
@@ -304,36 +313,78 @@ def create_app(
         (compose healthcheck, Fly checks) needs to know the store, DWH and BI account are
         actually reachable before routing traffic here. LLM reachability is reported but
         never gates `ok` — a transient LLM/GraceKelly outage still lets an already-built
-        dashboard serve traffic (ARCHITECTURE §3.11)."""
+        dashboard serve traffic (ARCHITECTURE §3.11).
 
-        def _probe(fn: Callable[[], Any]) -> dict:
+        Public response is boolean + stable code/message/correlation_id only (plan_sol
+        step 3). Redacted internal_detail is written to operator logs, never to the
+        response body.
+        """
+
+        def _public_fail(code: str, exc: BaseException) -> dict:
+            from auto_bi.errors import PUBLIC_MESSAGES, SafeError
+
+            # Component code (store/dwh/bi/llm) wins over generic classification so
+            # orchestrators can tell which dependency failed.
+            base = to_safe_error(exc, default_code=code)
+            safe = SafeError(
+                code,
+                PUBLIC_MESSAGES.get(code, base.public_message),
+                retryable=True,
+                correlation_id=base.correlation_id,
+                internal_detail=base.internal_detail or redact_secrets(str(exc)),
+                provider_class=type(exc).__name__,
+            )
+            logger.warning(
+                "ready check failed code=%s ref=%s detail=%s",
+                safe.code,
+                safe.correlation_id,
+                safe.internal_detail or safe.public_message,
+            )
+            # Public readiness is boolean + stable code/message/ref only. Redacted
+            # internal_detail stays in logs (and future admin diagnostics); never in
+            # the unauthenticated response body (plan_sol step 3).
+            return {
+                "ok": False,
+                "code": safe.code,
+                "message": safe.public_message,
+                "correlation_id": safe.correlation_id,
+            }
+
+        def _probe(fn: Callable[[], Any], *, code: str) -> dict:
             try:
                 fn()
                 return {"ok": True}
             except Exception as exc:
-                return {"ok": False, "message": str(exc)}
+                return _public_fail(code, exc)
 
-        def _adapter_probe(fn: Callable[[], AdapterHealth]) -> dict:
+        def _adapter_probe(fn: Callable[[], AdapterHealth], *, code: str) -> dict:
             try:
                 health_result = fn()
-                return {"ok": health_result.ok, "message": health_result.message}
+                if health_result.ok:
+                    return {"ok": True}
+                # Unhealthy but non-raising: treat message as internal only.
+                return _public_fail(code, RuntimeError(health_result.message or "unhealthy"))
             except Exception as exc:
-                return {"ok": False, "message": str(exc)}
+                return _public_fail(code, exc)
 
         checks: dict[str, dict] = {
-            "store": _probe(store.ping) if store is not None else {"ok": True, "configured": False},
+            "store": (
+                _probe(store.ping, code=CODE_STORE)
+                if store is not None
+                else {"ok": True, "configured": False}
+            ),
             "dwh": (
-                _probe(lambda: run_query("SELECT 1"))
+                _probe(lambda: run_query("SELECT 1"), code=CODE_DWH)
                 if run_query is not None
                 else {"ok": True, "configured": False}
             ),
             "bi": (
-                _adapter_probe(bi_healthcheck)
+                _adapter_probe(bi_healthcheck, code=CODE_BI_HEALTH)
                 if bi_healthcheck is not None
                 else {"ok": True, "configured": False}
             ),
             "llm": (
-                _adapter_probe(llm_healthcheck)
+                _adapter_probe(llm_healthcheck, code=CODE_LLM)
                 if llm_healthcheck is not None
                 else {"ok": True, "configured": False}
             ),
@@ -412,8 +463,17 @@ def create_app(
                 owner=_user(request).username if auth_enabled else None,
             )
         except LLMError as exc:
-            # nothing was registered (F2): tell the client plainly instead of a bare 500
-            raise HTTPException(status_code=502, detail=f"LLM failed to start: {exc}") from None
+            # nothing was registered (F2): public SafeError face (no raw provider text)
+            safe = to_safe_error(exc, default_code=CODE_LLM)
+            logger.warning(
+                "LLM failed to start ref=%s detail=%s",
+                safe.correlation_id,
+                safe.internal_detail,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=safe.for_public(),
+            ) from None
         _apply_target_bi(managed)
         return _turn(managed, turn)
 
@@ -596,10 +656,20 @@ def create_app(
             agent = managed.agent
             try:
                 turn = agent.reply(body.text)
-            except (SpecValidationError, LLMError) as exc:
-                # the machine kept the previous valid spec and stayed in its phase
+            except SpecValidationError as exc:
+                # IR validation messages are user-facing field diagnostics (no provider body).
                 current = AgentTurn(phase=agent.phase, spec=agent.spec, verdicts=agent.verdicts)
                 return _turn(managed, current, error=str(exc))
+            except LLMError as exc:
+                # Public face only — provider transport text stays in logs (plan_sol step 3).
+                safe = to_safe_error(exc, default_code=CODE_LLM)
+                logger.warning(
+                    "reply LLM failed ref=%s detail=%s",
+                    safe.correlation_id,
+                    safe.internal_detail,
+                )
+                current = AgentTurn(phase=agent.phase, spec=agent.spec, verdicts=agent.verdicts)
+                return _turn(managed, current, error=safe.for_sse())
             except RuntimeError as exc:  # no user turn expected in this phase
                 raise HTTPException(status_code=409, detail=str(exc)) from None
             _apply_target_bi(managed)  # the patch reset spec.target_bi -> re-stamp the choice
@@ -675,7 +745,8 @@ def create_app(
                     kind=kind,
                     status=status,
                     latency_ms=latency_ms,
-                    detail=detail,
+                    # Trace is durable and may be shown in observability UI — redact always.
+                    detail=redact_secrets(detail)[:200],
                 )
             except Exception:  # tracing must never kill the build
                 logger.exception("failed to record build trace event")
@@ -691,14 +762,22 @@ def create_app(
                     managed.session_id,
                 )
             except Exception as exc:
-                logger.exception("build failed for session %s", managed.session_id)
+                safe = to_safe_error(exc)
+                logger.exception(
+                    "build failed for session %s ref=%s code=%s detail=%s",
+                    managed.session_id,
+                    safe.correlation_id,
+                    safe.code,
+                    safe.internal_detail,
+                )
                 managed.build_status = "failed"
-                managed.add_event(BuildEvent(kind="error", text=str(exc)))
+                # SSE: public message + correlation_id only (plan_sol step 3).
+                managed.add_event(BuildEvent(kind="error", text=safe.for_sse()))
                 _trace_build(
                     "build_error",
                     status="error",
                     latency_ms=round((time.monotonic() - started) * 1000),
-                    detail=str(exc)[:200],
+                    detail=store_error_text(safe),
                 )
                 return
             finally:

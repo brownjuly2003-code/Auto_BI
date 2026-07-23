@@ -4,6 +4,7 @@ import pytest
 
 from auto_bi.agent.pipeline import build_dashboard, compile_and_build, prune_artifact_rows
 from auto_bi.agent.sql_guard import LiveSQLValidator, SQLGuardError
+from auto_bi.errors import CODE_BI_HEALTH, CODE_SQL, SafeError
 from auto_bi.ir.spec import DashboardSpec
 from tests.test_propose import GOOD_SPEC, FakeLLM
 from tests.test_superset_adapter import FakeSuperset, make_adapter
@@ -34,7 +35,7 @@ def test_build_dashboard_stops_on_sql_failure() -> None:
         raise RuntimeError("Unknown column")
 
     fake_superset = FakeSuperset()
-    with pytest.raises(SQLGuardError):
+    with pytest.raises(SafeError) as ei:
         build_dashboard(
             "выручка по дням",
             demo_model_fixtureless(),
@@ -43,6 +44,8 @@ def test_build_dashboard_stops_on_sql_failure() -> None:
             adapter_for=lambda _target: make_adapter(fake_superset),
             log=lambda s: None,
         )
+    assert ei.value.code == CODE_SQL
+    assert isinstance(ei.value.__cause__, SQLGuardError)
     # nothing was created in the BI after SQL validation failed
     assert not any(m == "POST" and "chart" in p for m, p, _ in fake_superset.requests)
 
@@ -85,7 +88,7 @@ def test_compile_and_build_marks_session_building_then_failed_on_sql_error(tmp_p
     spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
     fake_superset = FakeSuperset()
 
-    with pytest.raises(SQLGuardError):
+    with pytest.raises(SafeError) as ei:
         compile_and_build(
             spec,
             demo_model_fixtureless(),
@@ -95,10 +98,14 @@ def test_compile_and_build_marks_session_building_then_failed_on_sql_error(tmp_p
             session_id=sid,
             spec_id=spec_id,
         )
+    assert ei.value.code == CODE_SQL
 
     assert store.session_status(sid) == "failed"
     (build,) = store.builds(sid)
     assert build["status"] == "failed"
+    # Store holds the public SafeError face only (plan_sol step 3).
+    assert CODE_SQL in build["error"]
+    assert "Unknown column" not in build["error"]
     assert not any(m == "POST" and "chart" in p for m, p, _ in fake_superset.requests)
     store.close()
 
@@ -115,7 +122,7 @@ def test_compile_and_build_marks_session_failed_on_healthcheck_failure(tmp_path)
         def healthcheck(self) -> AdapterHealth:
             return AdapterHealth(ok=False, message="superset unreachable")
 
-    with pytest.raises(RuntimeError, match="healthcheck failed"):
+    with pytest.raises(SafeError) as ei:
         compile_and_build(
             spec,
             demo_model_fixtureless(),
@@ -124,11 +131,15 @@ def test_compile_and_build_marks_session_failed_on_healthcheck_failure(tmp_path)
             store=store,
             session_id=sid,
         )
+    assert ei.value.code == CODE_BI_HEALTH
+    assert "superset unreachable" in ei.value.internal_detail
+    assert "superset unreachable" not in ei.value.public_message
 
     assert store.session_status(sid) == "failed"
     (build,) = store.builds(sid)
     assert build["status"] == "failed"
-    assert "healthcheck failed" in build["error"]
+    assert CODE_BI_HEALTH in build["error"]
+    assert "superset unreachable" not in build["error"]
     store.close()
 
 
