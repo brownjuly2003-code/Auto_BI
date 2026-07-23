@@ -4,7 +4,7 @@
 
 Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом, drag&drop-раскладкой полей витрин или авто-обзором витрины** (детерминированный курируемый дашборд без LLM), уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
 
-**Скоуп v1 (RU-рынок):** ClickHouse (DM) + Apache Superset (BI). v2: Greengage/Greenplum + Yandex DataLens (self-hosted OSS-стенд). Универсальность — в швах (IR, адаптеры), не в имплементации.
+**Скоуп v1 (RU-рынок, release-gated в CI):** ClickHouse (DM) + Apache Superset (BI). **v2 experimental:** Greengage/Greenplum (offline advisor/golden в CI; live DWH — operator stand) + Yandex DataLens (unit compile offline; live contract Mac-only, не default release gate). Универсальность — в швах (IR, адаптеры), не в имплементации.
 **LLM:** прямой Anthropic Messages API (по умолчанию — нужен только `ANTHROPIC_API_KEY`); локальный сервис GraceKelly — документированная опция (`AUTO_BI_LLM_PROVIDER=gracekelly`, см. [USER_GUIDE §6](docs/USER_GUIDE.md#6-конфигурация-переменные-окружения)).
 
 ## Демо
@@ -104,7 +104,9 @@ uv run --with duckdb --with pytest-cov pytest --cov=auto_bi --cov-report=term-mi
 uv run python scripts/verify_live_clickhouse.py      # числа CH-путей на ЖИВОМ стенде (ratio/grain/yoy/compare-KPI/авто-обзор)
 ```
 
-`--with duckdb` — эфемерная test-dep (проверяет numeric-корректность transform-SQL под postgres-семантикой окон; без неё те тесты `importorskip`). Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Покрытие в бейдже выше генерируется самим CI на каждый push в main (`.github/badges/coverage.json`, из `coverage report --format=total`) — не статичное число. Superset-контрактный сьют (`tests/test_superset_contract.py`) + живой `auto_bi build --auto` дополнительно гоняются в CI отдельным job'ом (`integration`) на одноразовом docker-compose стенде ClickHouse+Superset; DataLens-сьют (`tests/test_datalens_contract.py`) остаётся Mac-only (self-hosted стенд, не докеризован). Job `docker` собирает образ на каждый PR (только сборка, ловит дрейф `Dockerfile`); на тег `vX.Y.Z` — `.github/workflows/release.yml` публикует образ в GHCR (`ghcr.io/brownjuly2003-code/auto_bi`) и создаёт GitHub Release из [CHANGELOG.md](CHANGELOG.md).
+`--with duckdb` — эфемерная test-dep (проверяет numeric-корректность transform-SQL под postgres-семантикой окон; без неё те тесты `importorskip`). Те же шаги гоняет CI на push/PR ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Покрытие в бейдже выше генерируется самим CI на каждый push в main (`.github/badges/coverage.json`, из `coverage report --format=total`) — не статичное число.
+
+**Compatibility gates (plan_sol step 10):** primary offline quality на Python 3.12; дополнительно job `Lint & tests (Python latest)` (3.13) и `Windows package/CLI smoke`. Dependency resolution matrix (locked / latest-compatible / lowest-direct) — step 6. Superset-контрактный сьют (`tests/test_superset_contract.py`) + живой `auto_bi build --auto` + browser E2E — job `integration` на docker-compose ClickHouse+Superset. Greenplum — offline advisor + golden replay в quality (live GP stand experimental). DataLens live contract (`tests/test_datalens_contract.py`) — Mac-only experimental, не в default CI. Матрица claims↔gates: `tests/test_compatibility_matrix.py`. Job `docker` собирает образ на каждый PR; на тег `vX.Y.Z` — `.github/workflows/release.yml` → GHCR + GitHub Release из [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

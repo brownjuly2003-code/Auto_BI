@@ -73,6 +73,8 @@ def _workflow_job_names(path: Path) -> set[str]:
             "ci.yml",
             {
                 "Lint, format & tests (offline)",
+                "Lint & tests (Python latest)",
+                "Windows package/CLI smoke",
                 "Dependency audit (pip-audit)",
                 "Dependency resolution (locked / latest / lowest-direct)",
                 "Docker image build (drift check)",

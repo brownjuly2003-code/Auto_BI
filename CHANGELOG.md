@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **plan_sol шаг 10 (partial): compatibility + E2E matrix** —
+  (1) CI job `Lint & tests (Python latest)` on CPython 3.13 (primary quality stays
+  3.12 so required-check name is stable under main ruleset).
+  (2) CI job `Windows package/CLI smoke` (locked install + wheel install).
+  (3) Honest support matrix test `tests/test_compatibility_matrix.py`: release-gated
+  vs offline-contract vs experimental (DataLens live + GP live stand marked
+  experimental; GP advisor/golden stay offline CI).
+  (4) Browser E2E expansion: mobile viewport landing+axe; auth analyst/admin login;
+  finance analyst forbidden-schema (no dm.* in auto picker); bad credentials.
+  Desktop happy path retained. No paid LLM in E2E.
+  Residual: failed-build retry UI, browser restart/resume, SSE reconnect mid-stream,
+  text/fields via FixtureLLM (serve has no fixture mode yet); live GP/DataLens
+  integration remain experimental/Mac-only.
+
 ### Changed
 
 - **plan_sol шаг 9: replay/live eval trust** — golden fixtures format v2 with

@@ -123,6 +123,88 @@ jobs:
             echo "coverage badge push skipped (branch protection / ruleset)"
           fi
 
+  # plan_sol step 10: prove the declared "Python 3.12+" floor still holds on the
+  # latest stable CPython. Separate job (not a matrix on `quality`) so the
+  # required check name "Lint, format & tests (offline)" stays stable under the
+  # main ruleset. Coverage badge / full eval stay on the primary quality job.
+  quality-py-latest:
+    name: Lint & tests (Python latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+
+      # Pin the "latest stable" we claim; bump when a new 3.x is GA and green.
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --python 3.13
+
+      - name: Ruff (lint)
+        run: uv run --python 3.13 ruff check .
+
+      - name: Black (format check)
+        run: uv run --python 3.13 black --check auto_bi tests
+
+      - name: Mypy (types)
+        run: uv run --python 3.13 --with mypy --with types-PyYAML mypy auto_bi
+
+      - name: Pytest + coverage gate
+        run: >
+          uv run --python 3.13 --with pytest-cov --with duckdb pytest -q
+          --cov=auto_bi --cov-report=term-missing --cov-fail-under=90
+
+      - name: Eval — golden suite replay (offline, ClickHouse fixtures)
+        run: >
+          uv run --python 3.13 auto_bi eval --suite golden --llm-mode replay
+          --fixtures-dir tests/fixtures/golden_llm --model-path semantic/model.yaml
+
+      - name: Eval — golden suite replay (offline, Greenplum fixtures)
+        run: >
+          uv run --python 3.13 auto_bi eval --suite golden --llm-mode replay
+          --fixtures-dir tests/fixtures/golden_llm --model-path semantic/model_gp.yaml
+
+  # plan_sol step 10: Windows package/CLI smoke. Full offline suite stays on
+  # Linux (Windows GHA is slower; local Windows host has a 1 GiB Python process
+  # guard). This job only proves the wheel/CLI entrypoint installs and runs.
+  windows-cli-smoke:
+    name: Windows package/CLI smoke
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install package (locked, no dev)
+        run: uv sync --frozen --no-dev
+
+      - name: CLI version + import smoke
+        run: |
+          uv run auto_bi --version
+          uv run python -c "import auto_bi; from auto_bi.cli import main; print(auto_bi.__version__)"
+
+      - name: Wheel build + install into clean venv
+        shell: pwsh
+        run: |
+          uv build --wheel -o dist
+          $whl = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
+          uv venv .venv-wheel --python 3.12
+          uv pip install --python .venv-wheel $whl
+          & .\.venv-wheel\Scripts\auto_bi.exe --version
+
   # C-5: known-CVE gate over the LOCKED dependency set (uv.lock is the source of truth;
   # --all-extras covers the anthropic extra too). uv export pins everything, so pip-audit
   # runs offline-resolution-free with --disable-pip.
