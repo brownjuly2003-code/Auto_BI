@@ -718,9 +718,14 @@ def create_app(
                                 f"{denied}"
                             ),
                         )
-                if managed.build_status == "failed" and managed.agent.phase == AgentPhase.APPROVED:
-                    # a failed build leaves the machine in APPROVED with no pending edit:
+                if (
+                    managed.build_status in ("failed", "built_with_cleanup_degraded")
+                    and managed.agent.phase == AgentPhase.APPROVED
+                ):
+                    # failed / degraded leaves the machine in APPROVED with no pending edit:
                     # retry must rebuild the same approved spec, not dead-end on 409
+                    # (degraded = BI delivered but ledger/prune residual — rebuild is a
+                    # valid recovery path, plan_sol step 8).
                     spec = managed.agent.spec
                     assert spec is not None
                 else:
@@ -770,9 +775,8 @@ def create_app(
                     safe.code,
                     safe.internal_detail,
                 )
-                managed.build_status = "failed"
-                # SSE: public message + correlation_id only (plan_sol step 3).
-                managed.add_event(BuildEvent(kind="error", text=safe.for_sse()))
+                # plan_sol step 8: status + SSE error under one lock (no split GET).
+                managed.apply_build_failure(safe.for_sse())
                 _trace_build(
                     "build_error",
                     status="error",
@@ -783,15 +787,24 @@ def create_app(
             finally:
                 _build_slots.release()
                 _live_metrics.build_finished()
-            managed.build_status = "built"
             # F-1: adapters return a BI-relative url; a relative href in the UI would resolve
             # against the Auto_BI host (:8200), not the BI host (:8088) -> 404 on click. Glue
             # the configured BI base here (same convention as the CLI: base.rstrip("/") + url).
             base = (bi_base_urls or {}).get(spec.target_bi, "").rstrip("/")
             absolute = bool(base) and not ref.url.startswith(("http://", "https://"))
             url = base + ref.url if absolute else ref.url
-            managed.dashboard_url = url
-            managed.add_event(BuildEvent(kind="done", text=ref.title, url=url))
+            # Degraded when Store session was marked built_with_cleanup_degraded (ledger
+            # pending or prune residual) — still a success for the user (live URL).
+            degraded = False
+            if store is not None:
+                try:
+                    degraded = (
+                        store.session_status(managed.session_id) == "built_with_cleanup_degraded"
+                    )
+                except Exception:
+                    degraded = False
+            # plan_sol step 8: status + URL + SSE done under one lock.
+            managed.apply_build_success(url, title=ref.title, degraded=degraded)
             _trace_build(
                 "build_done",
                 latency_ms=round((time.monotonic() - started) * 1000),
@@ -804,11 +817,12 @@ def create_app(
     @app.get("/api/v1/sessions/{session_id}", response_model=SessionState)
     def session_state(session_id: str, request: Request) -> SessionState:
         managed = _owned(session_id, request)
+        snap = managed.snapshot()
         return SessionState(
-            session_id=managed.session_id,
-            phase=managed.agent.phase.value,
-            build_status=managed.build_status,
-            dashboard_url=managed.dashboard_url,
+            session_id=snap.session_id,
+            phase=snap.phase,
+            build_status=snap.build_status,
+            dashboard_url=snap.dashboard_url,
         )
 
     def _store() -> Store:

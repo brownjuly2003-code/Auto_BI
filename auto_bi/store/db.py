@@ -29,10 +29,19 @@ NULL otherwise), `target_bi` (the per-session BI choice, previously in-memory on
 cannot be reconstructed from messages/specs/builds after a restart. Legacy rows get
 owner=NULL / target_bi='superset' / pinned='[]', which hydration treats as "admin-only
 when auth is on, Superset, no pins".
+
+Schema v8 (plan_sol step 8 / atomic build state): `builds` gained `build_token` (the
+ownership-ledger revision id for that build). Successful delivery + ledger are written
+in one SQLite transaction (`commit_build_success`); failure path is also one transaction
+(`commit_build_failure`). Build row status values: `ok` (full success), `failed`,
+`delivered_pending` (BI dashboard exists but ledger commit failed — reconcile later).
+Session status may be `built_with_cleanup_degraded` when prune after a successful build
+failed or ledger was only partially durable.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
@@ -51,7 +60,20 @@ def _row_id(cur: sqlite3.Cursor) -> int:
     return cur.lastrowid
 
 
-_SCHEMA_VERSION = 7  # bump together with a migration when the schema changes
+_SCHEMA_VERSION = 8  # bump together with a migration when the schema changes
+
+# Build row status values (durable `builds.status`).
+BUILD_OK = "ok"
+BUILD_FAILED = "failed"
+BUILD_DELIVERED_PENDING = "delivered_pending"
+
+# Session status values used by the build state machine (durable `sessions.status`).
+SESSION_OPEN = "open"
+SESSION_BUILDING = "building"
+SESSION_BUILT = "built"
+SESSION_FAILED = "failed"
+SESSION_DELETED = "deleted"
+SESSION_BUILT_DEGRADED = "built_with_cleanup_degraded"
 
 _TOKEN_HASH_RE = re.compile(r"^[0-9a-f]{64}$")  # sha256 hex digest shape
 
@@ -98,7 +120,8 @@ CREATE TABLE IF NOT EXISTS builds (
     dashboard_id INTEGER,
     url          TEXT NOT NULL DEFAULT '',
     status       TEXT NOT NULL DEFAULT 'ok',
-    error        TEXT NOT NULL DEFAULT ''
+    error        TEXT NOT NULL DEFAULT '',
+    build_token  TEXT NOT NULL DEFAULT ''   -- v8: ownership-ledger revision for this build
 );
 CREATE TABLE IF NOT EXISTS llm_calls (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -226,6 +249,7 @@ class Store:
         shape (`_TOKEN_HASH_RE`), not just the version check, so re-entering this branch
         (e.g. a v6 DB that somehow re-runs it) can never double-hash an already-hashed
         value. v7 adds sessions.owner/target_bi/pinned (guarded ALTERs, defaults cover
+        legacy rows). v8 adds builds.build_token (ownership revision; default '' for
         legacy rows).
         Idempotent — guarded by the column check, so it is safe to run on any schema.
         """
@@ -248,6 +272,9 @@ class Store:
             self._add_column("sessions", "owner", "TEXT")
             self._add_column("sessions", "target_bi", "TEXT NOT NULL DEFAULT 'superset'")
             self._add_column("sessions", "pinned", "TEXT NOT NULL DEFAULT '[]'")
+        if version < 8:
+            # v8: atomic build state — link builds row to ownership-ledger revision
+            self._add_column("builds", "build_token", "TEXT NOT NULL DEFAULT ''")
         if version < _SCHEMA_VERSION:
             self._db.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
 
@@ -363,22 +390,163 @@ class Store:
         # DataLens entry ids are strings, Superset ids are ints (SQLite stores either)
         dashboard_id: int | str | None = None,
         url: str = "",
-        status: str = "ok",
+        status: str = BUILD_OK,
         error: str = "",
+        build_token: str = "",
     ) -> int:
+        """Insert a builds row alone. Prefer `commit_build_success` / `commit_build_failure`
+        for terminal transitions so session status and ledger stay aligned."""
         with self._lock, self._db:
             cur = self._db.execute(
-                "INSERT INTO builds (session_id, spec_id, dashboard_id, url, status, error)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (session_id, spec_id, dashboard_id, url, status, error),
+                "INSERT INTO builds"
+                " (session_id, spec_id, dashboard_id, url, status, error, build_token)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (session_id, spec_id, dashboard_id, url, status, error, build_token),
             )
         return _row_id(cur)
+
+    def commit_build_success(
+        self,
+        session_id: str,
+        spec_id: int | None,
+        *,
+        dashboard_id: int | str | None,
+        url: str,
+        build_token: str,
+        target_bi: str,
+        owner: str | None,
+        artifacts: Iterable[dict[str, Any]],
+        session_status: str = SESSION_BUILT,
+    ) -> int:
+        """Atomic terminal success: builds row + session status + ownership ledger.
+
+        plan_sol step 8 / audit P1-2: previously `save_build` + `set_session_status` +
+        per-artifact `record_bi_artifact` were separate transactions — a crash between
+        them produced split-brain (Store=built, ledger empty, UI failed). One SQLite
+        transaction makes those three facts commit or roll back together.
+
+        `artifacts` items are dicts with keys kind/native_id/name/schema_set (same shape
+        as BuildArtifact fields). Empty artifacts still commit the build+session.
+        """
+        arts = list(artifacts)
+        with self._lock, self._db:
+            cur = self._db.execute(
+                "INSERT INTO builds"
+                " (session_id, spec_id, dashboard_id, url, status, error, build_token)"
+                " VALUES (?, ?, ?, ?, ?, '', ?)",
+                (session_id, spec_id, dashboard_id, url, BUILD_OK, build_token),
+            )
+            build_id = _row_id(cur)
+            for art in arts:
+                self._db.execute(
+                    "INSERT INTO bi_artifacts"
+                    " (session_id, build_token, target_bi, kind, native_id, name,"
+                    " owner, schema_set)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        session_id,
+                        build_token,
+                        target_bi,
+                        art["kind"],
+                        str(art["native_id"]),
+                        art.get("name"),
+                        owner,
+                        art.get("schema_set"),
+                    ),
+                )
+            self._db.execute(
+                "UPDATE sessions SET status = ? WHERE id = ?",
+                (session_status, session_id),
+            )
+        return build_id
+
+    def commit_build_failure(
+        self,
+        session_id: str,
+        spec_id: int | None,
+        *,
+        error: str,
+        build_token: str = "",
+    ) -> int:
+        """Atomic terminal failure: failed builds row + session status=failed."""
+        with self._lock, self._db:
+            cur = self._db.execute(
+                "INSERT INTO builds"
+                " (session_id, spec_id, dashboard_id, url, status, error, build_token)"
+                " VALUES (?, ?, NULL, '', ?, ?, ?)",
+                (session_id, spec_id, BUILD_FAILED, error, build_token),
+            )
+            build_id = _row_id(cur)
+            self._db.execute(
+                "UPDATE sessions SET status = ? WHERE id = ?",
+                (SESSION_FAILED, session_id),
+            )
+        return build_id
+
+    def commit_build_delivered_pending(
+        self,
+        session_id: str,
+        spec_id: int | None,
+        *,
+        dashboard_id: int | str | None,
+        url: str,
+        build_token: str,
+        error: str,
+    ) -> int:
+        """Record that the BI dashboard was delivered but the full ledger commit failed.
+
+        Must not be reported as a failed build to the user: the artifact exists in BI.
+        Session becomes `built_with_cleanup_degraded` so startup reconciliation can find
+        the row and operators can finish ledger repair.
+        """
+        with self._lock, self._db:
+            cur = self._db.execute(
+                "INSERT INTO builds"
+                " (session_id, spec_id, dashboard_id, url, status, error, build_token)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    session_id,
+                    spec_id,
+                    dashboard_id,
+                    url,
+                    BUILD_DELIVERED_PENDING,
+                    error,
+                    build_token,
+                ),
+            )
+            build_id = _row_id(cur)
+            self._db.execute(
+                "UPDATE sessions SET status = ? WHERE id = ?",
+                (SESSION_BUILT_DEGRADED, session_id),
+            )
+        return build_id
 
     def builds(self, session_id: str) -> list[dict[str, Any]]:
         return self._rows("SELECT * FROM builds WHERE session_id = ? ORDER BY id", session_id)
 
+    def build_by_token(self, build_token: str) -> dict[str, Any] | None:
+        """Lookup a durable builds row by ownership revision (idempotent retry / ops)."""
+        if not build_token:
+            return None
+        rows = self._rows(
+            "SELECT * FROM builds WHERE build_token = ? ORDER BY id DESC LIMIT 1",
+            build_token,
+        )
+        return rows[0] if rows else None
+
+    def pending_ledger_builds(self) -> list[dict[str, Any]]:
+        """Builds delivered to BI whose ownership ledger was not fully recorded.
+
+        Startup reconciliation surfaces these as audit trace events; the dashboard URL
+        remains authoritative for the user.
+        """
+        return self._rows(
+            "SELECT * FROM builds WHERE status = ? ORDER BY id",
+            BUILD_DELIVERED_PENDING,
+        )
+
     def reap_stuck_builds(self) -> list[str]:
-        """Sessions left at status='building' by a process that died mid-build (kill/OOM/
+        """Sessions left at status='building' by a process that died mid-build (kill/OOM,
         crash) have no builds-table row and no 'failed' status — a daemon build thread
         dying with the process leaves no trace of its own (B-7). Call once at server
         startup, before any new build starts: gives each orphan a synthetic 'failed'
@@ -387,7 +555,9 @@ class Store:
         with self._lock, self._db:
             stuck = [
                 r["id"]
-                for r in self._db.execute("SELECT id FROM sessions WHERE status = 'building'")
+                for r in self._db.execute(
+                    "SELECT id FROM sessions WHERE status = ?", (SESSION_BUILDING,)
+                )
             ]
             for session_id in stuck:
                 spec_row = self._db.execute(
@@ -395,18 +565,47 @@ class Store:
                     (session_id,),
                 ).fetchone()
                 self._db.execute(
-                    "INSERT INTO builds (session_id, spec_id, status, error)"
-                    " VALUES (?, ?, 'failed', ?)",
+                    "INSERT INTO builds (session_id, spec_id, status, error, build_token)"
+                    " VALUES (?, ?, ?, ?, '')",
                     (
                         session_id,
                         spec_row["id"] if spec_row else None,
+                        BUILD_FAILED,
                         "interrupted: process restarted while build was in-flight",
                     ),
                 )
                 self._db.execute(
-                    "UPDATE sessions SET status = 'failed' WHERE id = ?", (session_id,)
+                    "UPDATE sessions SET status = ? WHERE id = ?",
+                    (SESSION_FAILED, session_id),
                 )
         return stuck
+
+    def reconcile_pending_ledgers(self) -> list[dict[str, Any]]:
+        """Startup audit for delivered-but-unledgered builds (plan_sol step 8).
+
+        Does NOT invent ledger rows (we no longer have the artifact list after a
+        crash of the commit transaction). Emits a durable trace event per pending
+        build so ops can see the recovery path, and returns the rows for the
+        caller's log. Safe to call repeatedly (one trace per call — operators
+        expect a reminder each boot until the row is repaired manually or a
+        later rebuild supersedes the session).
+        """
+        pending = self.pending_ledger_builds()
+        for row in pending:
+            sid = row.get("session_id")
+            token = row.get("build_token") or ""
+            with contextlib.suppress(Exception):
+                # tracing must never block startup reconciliation
+                self.add_trace_event(
+                    sid,
+                    kind="build_reconcile",
+                    status="degraded",
+                    detail=(
+                        f"delivered_pending build_id={row.get('id')} "
+                        f"token={token[:24]} url={str(row.get('url') or '')[:80]}"
+                    )[:200],
+                )
+        return pending
 
     # --- llm calls ----------------------------------------------------------------
 

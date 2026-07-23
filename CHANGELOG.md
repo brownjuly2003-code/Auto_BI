@@ -6,6 +6,19 @@
 
 ### Changed
 
+- **plan_sol шаг 8: atomic build state (core)** — after `adapter.build` returns,
+  build row + session status + ownership ledger commit in **one SQLite transaction**
+  (`Store.commit_build_success`). Failure path is atomic too (`commit_build_failure`).
+  Ledger/commit fault after BI delivery never marks the build failed: durable
+  `builds.status=delivered_pending` + `sessions.status=built_with_cleanup_degraded`
+  and the DashboardRef is still returned (audit P1-2 split-brain closed). Schema v8:
+  `builds.build_token`. API: immutable `SessionSnapshot` under lock; terminal
+  success/failure apply status + `dashboard_url` + SSE together
+  (`apply_build_success` / `apply_build_failure`). Startup:
+  `reconcile_pending_ledgers` audit traces. Residual: durable outbox *before*
+  adapter return; stable build_token idempotency from approve. Tests:
+  `tests/test_session_snapshot.py`, store/pipeline fault-injection.
+
 - **plan_sol шаг 7: formal BI adapter contract** — `BuildContext` / `BuildResult` in
   `auto_bi/adapters/base.py`; Protocol requires `build(spec, ctx=None) -> BuildResult`,
   `delete_artifact`, `close`. Pipeline passes namespace+PlanCache via context and

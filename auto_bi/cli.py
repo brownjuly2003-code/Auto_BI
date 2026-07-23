@@ -647,6 +647,15 @@ def _serve(  # pragma: no cover — wiring only
             len(reaped),
             reaped,
         )
+    # plan_sol step 8: surface delivered_pending ledger gaps as audit trace (no invented
+    # ledger rows — operator rebuild / manual repair is the recovery path).
+    pending = store.reconcile_pending_ledgers()
+    if pending:
+        logger.warning(
+            "reconcile: %d delivered_pending build(s) need ledger attention: %s",
+            len(pending),
+            [r.get("id") for r in pending],
+        )
     if settings.auth_enabled:
         from auto_bi.auth import seed_users
 

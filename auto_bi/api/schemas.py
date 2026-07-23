@@ -57,7 +57,8 @@ class TurnResponse(AgentTurn):
 class SessionState(StrictModel):
     session_id: str
     phase: str
-    build_status: str  # idle | building | built | failed
+    # idle | building | built | failed | built_with_cleanup_degraded (plan_sol step 8)
+    build_status: str
     dashboard_url: str = ""
 
 

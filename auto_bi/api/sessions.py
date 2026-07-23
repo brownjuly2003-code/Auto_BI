@@ -14,6 +14,7 @@ from __future__ import annotations
 import threading
 import uuid
 from collections.abc import Iterator, Mapping
+from dataclasses import dataclass
 
 from auto_bi.advisor.core import Advisor
 from auto_bi.agent.machine import AgentPhase, AgentSession, AgentTurn
@@ -24,13 +25,39 @@ from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import Store
+from auto_bi.store.db import (
+    BUILD_DELIVERED_PENDING,
+    BUILD_OK,
+    SESSION_BUILT_DEGRADED,
+)
 
 TERMINAL_EVENTS = ("done", "error")
 MAX_SESSIONS = 200  # registry cap: oldest idle sessions are evicted past this (F3)
 
+# In-memory / API build_status values (plan_sol step 8).
+BUILD_STATUS_IDLE = "idle"
+BUILD_STATUS_BUILDING = "building"
+BUILD_STATUS_BUILT = "built"
+BUILD_STATUS_FAILED = "failed"
+BUILD_STATUS_DEGRADED = "built_with_cleanup_degraded"
+
 
 class UnknownSession(KeyError):
     pass
+
+
+@dataclass(frozen=True)
+class SessionSnapshot:
+    """Immutable view of session build UI state under one lock (plan_sol step 8).
+
+    Concurrent GET/SSE must not observe build_status=built with empty dashboard_url
+    (or failed with a live URL) while the build thread is mid-transition.
+    """
+
+    session_id: str
+    phase: str
+    build_status: str
+    dashboard_url: str
 
 
 class ManagedSession:
@@ -52,10 +79,34 @@ class ManagedSession:
         # spec.target_bi to its default).
         self.target_bi = target_bi
         self.lock = threading.Lock()
-        self.build_status = "idle"
+        self.build_status = BUILD_STATUS_IDLE
         self.dashboard_url = ""
         self._events: list[BuildEvent] = []
         self._events_cond = threading.Condition()
+
+    def snapshot(self) -> SessionSnapshot:
+        """Publish phase + build_status + dashboard_url under one lock."""
+        with self.lock:
+            return SessionSnapshot(
+                session_id=self.session_id,
+                phase=self.agent.phase.value,
+                build_status=self.build_status,
+                dashboard_url=self.dashboard_url,
+            )
+
+    def apply_build_success(self, url: str, *, title: str = "", degraded: bool = False) -> None:
+        """Terminal success under lock: status + URL + SSE done in one critical section."""
+        status = BUILD_STATUS_DEGRADED if degraded else BUILD_STATUS_BUILT
+        with self.lock:
+            self.build_status = status
+            self.dashboard_url = url
+            self.add_event(BuildEvent(kind="done", text=title, url=url))
+
+    def apply_build_failure(self, message: str) -> None:
+        """Terminal failure under lock: status + SSE error together."""
+        with self.lock:
+            self.build_status = BUILD_STATUS_FAILED
+            self.add_event(BuildEvent(kind="error", text=message))
 
     def add_event(self, event: BuildEvent) -> None:
         with self._events_cond:
@@ -321,24 +372,34 @@ class SessionManager:
         builds = self._store.builds(session_id)
         if builds:
             last = builds[-1]
-            if last["status"] == "ok":
-                managed.build_status = "built"
+            last_status = last.get("status") or ""
+            if last_status in (BUILD_OK, BUILD_DELIVERED_PENDING):
                 url = last["url"] or ""
                 base = self._bi_base_urls.get(target, "").rstrip("/")
                 if base and url and not url.startswith(("http://", "https://")):
                     url = base + url  # pipeline stores the BI-relative url (F-1 convention)
                 managed.dashboard_url = url
+                # delivered_pending or session degraded → UI still has a live dashboard
+                # URL; status is explicit so operators see cleanup residual.
+                session_status = row.get("status") or ""
+                if (
+                    last_status == BUILD_DELIVERED_PENDING
+                    or session_status == SESSION_BUILT_DEGRADED
+                ):
+                    managed.build_status = BUILD_STATUS_DEGRADED
+                else:
+                    managed.build_status = BUILD_STATUS_BUILT
                 # seed the SSE buffer with a synthetic terminal event: a late stream
                 # reader must get closure, not heartbeats forever on an empty buffer
                 managed.add_event(BuildEvent(kind="done", text=spec.title if spec else "", url=url))
             else:
-                managed.build_status = "failed"
+                managed.build_status = BUILD_STATUS_FAILED
                 managed.add_event(BuildEvent(kind="error", text=last["error"] or "build failed"))
         elif phase is AgentPhase.APPROVED:
             # approved but no build row: the process died in the approve->build window
             # (reap_stuck_builds covers the mid-build case). Mark failed so the approve
             # endpoint's retry path rebuilds the same approved spec instead of 409.
-            managed.build_status = "failed"
+            managed.build_status = BUILD_STATUS_FAILED
             managed.add_event(
                 BuildEvent(kind="error", text="build was interrupted by a server restart")
             )

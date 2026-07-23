@@ -172,6 +172,56 @@ def test_compile_and_build_records_bi_artifacts_in_ownership_ledger(tmp_path) ->
     # datasets carry the DWH schema.table (RBAC scoping); all rows start 'live'
     assert all(a["schema_set"] for a in arts if a["kind"] == "dataset")
     assert all(a["status"] == "live" for a in arts)
+    # plan_sol step 8: builds row carries the same token as the ledger
+    (build,) = store.builds(sid)
+    assert build["status"] == "ok"
+    assert build["build_token"] == arts[0]["build_token"]
+    assert store.session_status(sid) == "built"
+    store.close()
+
+
+def test_compile_and_build_ledger_fault_does_not_fail_delivery(tmp_path) -> None:
+    """plan_sol step 8 / audit P1-2: after BI deliver, ledger failure ≠ failed build.
+
+    Fault-injection: commit_build_success raises; pipeline must still return DashboardRef
+    and durable state must be delivered_pending / built_with_cleanup_degraded — never
+    the pre-step-8 split-brain (Store failed while BI has the dashboard).
+    """
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
+
+    real_commit = store.commit_build_success
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated ledger commit failure")
+
+    store.commit_build_success = boom  # type: ignore[method-assign]
+
+    ref = compile_and_build(
+        spec,
+        demo_model_fixtureless(),
+        LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _target: make_adapter(FakeSuperset()),
+        store=store,
+        session_id=sid,
+        spec_id=spec_id,
+        prune_orphans=False,
+    )
+    assert ref.url.startswith("/superset/dashboard/")
+    # Delivery recorded as pending — NOT failed
+    assert store.session_status(sid) == "built_with_cleanup_degraded"
+    (build,) = store.builds(sid)
+    assert build["status"] == "delivered_pending"
+    assert build["url"] == ref.url
+    assert build["dashboard_id"] is not None
+    # no ledger rows (commit never succeeded)
+    assert store.bi_artifacts(sid) == []
+    # restore so close/path cleanup is normal
+    store.commit_build_success = real_commit  # type: ignore[method-assign]
     store.close()
 
 
