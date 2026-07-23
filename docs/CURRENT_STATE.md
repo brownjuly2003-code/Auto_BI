@@ -66,6 +66,19 @@ browser session hydrate after reload; fields DnD E2E; live GHA after merge PR pa
 | `tests/test_docs_defaults.py` | defaults / version / CLI ratchet |
 | `tests/test_docs_as_code.py` | env ref freshness, internal links, eval counts |
 
+## SLO / recovery (plan_sol 12 core)
+
+| Control | Status |
+|---|---|
+| Online SQLite backup + integrity | `Store.backup_to` / `integrity_check`; `scripts/store_backup.py` |
+| Restore drill | script + `tests/test_store_backup.py` |
+| Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
+| Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize) |
+| Ops doc | [operations/SLO.md](operations/SLO.md) |
+
+Residual step 12: live p50/p95, full mutation score (mutmut), mypy-strict module roll-out,
+process memory / cold-start on release image.
+
 ## Открытый residual (не блокирует core claims)
 
 1. **Release live evidence** — next `v*` tag: image digest ↔ SBOM ↔ provenance.
@@ -73,7 +86,8 @@ browser session hydrate after reload; fields DnD E2E; live GHA after merge PR pa
 3. **Step 8 residual** — stable build_token from approve; durable outbox before adapter return.
 4. **Step 10 residual** — UI resume after reload; fields drag-drop E2E.
 5. **Step 11 residual** — full ARCHITECTURE current/history split; optional Field(description=) on every Settings key.
-6. **Step 12** — SLO baseline, backup/restore drill, property/mutation tests (next wave).
+6. **Step 12 residual** — live SLO, mutmut score, mypy-strict modules (core offline gates done).
+7. **Step 13** — final adversarial re-audit.
 
 ## Что не является source of truth
 

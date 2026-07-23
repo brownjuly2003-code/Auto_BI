@@ -379,7 +379,19 @@ Store — один файл SQLite (`AUTO_BI_STORE_PATH`, по умолчани�
 открытый без WAL (`store/db.py` — обычный rollback-journal, одно соединение,
 `check_same_thread=False`). Простое копирование файла (`cp`) во время работы процесса
 рискует зацепить файл в момент записи (torn read) — используйте встроенный SQLite
-online-backup, который безопасен на живой БД:
+online-backup, который безопасен на живой БД.
+
+**В коде / CLI-скрипте (plan_sol step 12):** `Store.backup_to(path)`,
+`Store.integrity_check()`, операторский wrapper:
+
+```bash
+uv run python scripts/store_backup.py backup data/auto_bi.sqlite \
+  /backup/auto_bi/auto_bi-$(date +%Y%m%d%H%M%S).sqlite
+uv run python scripts/store_backup.py check /backup/auto_bi/….sqlite
+uv run python scripts/store_backup.py restore-drill data/auto_bi.sqlite
+```
+
+Эквивалент через CLI sqlite3:
 
 ```bash
 mkdir -p /backup/auto_bi
@@ -389,8 +401,10 @@ sqlite3 data/auto_bi.sqlite ".backup /backup/auto_bi/auto_bi-$(date +%Y%m%d%H%M%
 Cron (ежедневно в 03:00, хранить 14 копий):
 
 ```cron
-0 3 * * * cd /opt/auto_bi && sqlite3 data/auto_bi.sqlite ".backup /backup/auto_bi/auto_bi-$(date +\%Y\%m\%d).sqlite" && find /backup/auto_bi -mtime +14 -delete
+0 3 * * * cd /opt/auto_bi && uv run python scripts/store_backup.py backup data/auto_bi.sqlite /backup/auto_bi/auto_bi-$(date +\%Y\%m\%d).sqlite && find /backup/auto_bi -mtime +14 -delete
 ```
+
+Автотесты: `tests/test_store_backup.py`. SLO/recovery overview — [operations/SLO.md](operations/SLO.md).
 
 Что теряется без бэкапа: история сессий/spec'ов/билдов/LLM-вызовов/заявок владельцу DM и
 пользователи auth (ARCHITECTURE §3.8) — сами дашборды в Superset/DataLens не пострадают

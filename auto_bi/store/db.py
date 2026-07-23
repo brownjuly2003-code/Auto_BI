@@ -310,6 +310,45 @@ class Store:
         closed or the file is unreadable, returns nothing otherwise."""
         self._rows("SELECT 1")
 
+    def integrity_check(self) -> list[str]:
+        """Run ``PRAGMA integrity_check`` under the store lock.
+
+        Returns ``["ok"]`` on a healthy file, or one+ diagnostic strings from SQLite
+        (plan_sol step 12 — automated backup integrity gate).
+        """
+        with self._lock:
+            rows = self._db.execute("PRAGMA integrity_check").fetchall()
+        return [str(r[0]) for r in rows]
+
+    def is_integrity_ok(self) -> bool:
+        """True iff integrity_check reports exactly ``ok``."""
+        result = self.integrity_check()
+        return result == ["ok"]
+
+    def backup_to(self, dest: str | Path) -> Path:
+        """Online SQLite backup to ``dest`` (safe while the process holds writers).
+
+        Uses the stdlib ``Connection.backup`` API (same family as ``sqlite3 .backup``
+        recommended in DEPLOYMENT §7). Serializes against the store lock so a mid-
+        page writer cannot interleave with the backup snapshot. Overwrites ``dest``
+        if it already exists.
+        """
+        dest_path = Path(dest)
+        if dest_path.name == ":memory:":
+            raise ValueError("backup destination cannot be :memory:")
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        if dest_path.exists():
+            dest_path.unlink()
+        # Destination is a fresh empty DB; page-copy under the source lock.
+        dest_conn = sqlite3.connect(dest_path)
+        try:
+            with self._lock:
+                self._db.backup(dest_conn)
+            dest_conn.commit()
+        finally:
+            dest_conn.close()
+        return dest_path
+
     # --- sessions / messages --------------------------------------------------
 
     def create_session(

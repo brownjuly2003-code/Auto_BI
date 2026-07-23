@@ -6,6 +6,15 @@
 
 ### Added
 
+- **plan_sol шаг 12 (SLO / recovery core)** —
+  `Store.backup_to` + `integrity_check` (online SQLite backup); operator script
+  `scripts/store_backup.py` (backup / check / restore-drill); unit restore drill
+  `tests/test_store_backup.py`. Offline performance baseline with soft absolute
+  ceilings and large/small ratios (`tests/test_perf_baseline.py`); property/
+  metamorphic tests for SQL guard, IR validate, normalize idempotence
+  (`tests/test_property_quality.py`). Ops: `docs/operations/SLO.md`, DEPLOYMENT §7
+  points at the script. Residual: live p50/p95, mutmut score, mypy-strict modules.
+
 - **plan_sol шаг 11 (docs-as-code closed core)** —
   `docs/CURRENT_STATE.md` as the single current-status entry point; generated
   `docs/ENV_REFERENCE.md` from `Settings` (`scripts/generate_env_reference.py`,
