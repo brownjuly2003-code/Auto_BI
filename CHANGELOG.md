@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: SQL guard mutation gate** — `mutmut 3.6.0`
+  ограничен `auto_bi/agent/sql_guard.py`; CI отклоняет выжившие, непокрытые,
+  пропущенные, suspicious, timed-out и crashed mutants. Evidence run уничтожил
+  все 106 сгенерированных мутаций.
+
 - **plan_sol шаг 12 residual: mypy-strict Settings boundary** —
   `auto_bi/config.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
   security-sensitive defaults и детектор опечаток `AUTO_BI_*` теперь проверяются

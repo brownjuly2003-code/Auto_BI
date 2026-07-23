@@ -36,6 +36,15 @@ No paid LLM, no Docker, no DWH in these probes. Local timings may be written to
 | RBAC schema filters (membership, filter joins, forbidden monotonicity, raw_sql hatch) | same |
 | Superset native filters (spec/wiring equivalence, order invariance, scope partition) | same |
 
+## Mutation smoke
+
+CI installs `mutmut==3.6.0` and mutates only
+`auto_bi/agent/sql_guard.py`. The bounded run uses
+`tests/test_property_quality.py`, `tests/test_query_plan.py`, and
+`tests/test_mutation_gate.py`; the evidence run killed all 106 generated mutants.
+`scripts/check_mutation_stats.py` rejects surviving, uncovered, skipped,
+suspicious, timed-out, and crashed mutants.
+
 ## Mypy strict modules (plan_sol step 12 residual)
 
 Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
@@ -61,7 +70,7 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
 ## Residual (not yet gates)
 
 - Tight p50/p95 production SLO from live stands (Mac/CI integration).
-- Full mutmut/cosmic-ray mutation score for `ir/validate`, `sql_guard`, dataset
-  planning, ownership cleanup — characterization via property tests only for now.
+- Extend bounded mutation coverage to `ir/validate`, dataset planning, and
+  ownership cleanup; SQL guard is already gated.
 - Process memory / cold-start process budget on release image.
 - Expand mypy-strict allowlist beyond `auth` + `artifacts` + `errors` + `config`.

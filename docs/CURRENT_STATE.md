@@ -75,17 +75,20 @@ resume / **fields DnD seed**). Residual: live GHA after merge PR path.
 | Restore drill | script + `tests/test_store_backup.py` |
 | Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
 | Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**, Superset native-filter scope) |
+| Mutation smoke | SQL guard gated in CI: 106/106 generated mutants killed; every weak outcome is rejected |
 | Mypy --strict allowlist | `auth.py`, `adapters/artifacts.py`, `errors.py`, `config.py` (CI; grow via SLO.md) |
 | Ops doc | [operations/SLO.md](operations/SLO.md) |
 
-Residual step 12: live p50/p95, full mutation score (mutmut), expand mypy-strict
-allowlist, process memory / cold-start on release image.
+Residual step 12: live p50/p95, mutation coverage for `ir/validate`, dataset
+planning and ownership cleanup, expand mypy-strict allowlist, process memory /
+cold-start on release image.
 
 ## Re-audit (plan_sol 13 core offline)
 
 Evidence: [operations/REAUDIT_plan_sol_23_07_26.md](operations/REAUDIT_plan_sol_23_07_26.md).
 Offline score **8.8/10** (was 8.2). Finding R1 fixed (SafeError test fake vs `build(spec, ctx)`).
-Live Space / GHA / `v*` tag / mutmut remain residual.
+Live Space / GHA / `v*` tag remain residual. Mutation coverage outside the
+bounded SQL guard target remains a separate local residual.
 
 ## Открытый residual (не блокирует core claims)
 
@@ -94,7 +97,8 @@ Live Space / GHA / `v*` tag / mutmut remain residual.
 3. **Step 8 residual** — durable outbox before adapter return (stable-token idempotency **done**).
 4. **Step 10 residual** — live GHA after PR (offline browser matrix closed: resume + fields DnD).
 5. **Step 11 residual** — full ARCHITECTURE current/history split; optional Field(description=) on every Settings key.
-6. **Step 12 residual** — live SLO, mutmut; mypy-strict **started** (auth+artifacts); grow allowlist.
+6. **Step 12 residual** — live SLO; extend mutation coverage beyond SQL guard;
+   grow the four-module mypy-strict allowlist.
 7. **Step 13 residual** — live integration/browser/Space/tag evidence on pushed SHA.
 
 ## Что не является source of truth
