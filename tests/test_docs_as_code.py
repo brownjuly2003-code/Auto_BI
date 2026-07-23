@@ -176,8 +176,19 @@ def test_generator_check_mode_exits_zero() -> None:
     assert code == 0
 
 
-@pytest.mark.parametrize("target", ["auto_bi/ir/validate.py", "auto_bi/ir/spec.py"])
-def test_ir_targets_are_in_every_strict_mypy_job_and_slo(target: str) -> None:
+@pytest.mark.parametrize(
+    "target",
+    [
+        "auto_bi/auth.py",
+        "auto_bi/adapters/artifacts.py",
+        "auto_bi/errors.py",
+        "auto_bi/config.py",
+        "auto_bi/ir/validate.py",
+        "auto_bi/ir/spec.py",
+        "auto_bi/semantic/model.py",
+    ],
+)
+def test_strict_targets_are_in_every_mypy_job_and_slo(target: str) -> None:
     workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
     strict_steps = [
         step
