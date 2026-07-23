@@ -104,6 +104,11 @@ omit = ["*/__init__.py"]
 [tool.mypy]
 python_version = "3.12"
 files = ["auto_bi"]
+# plan_sol step 12 residual — module-by-module strict rollout (do NOT set global
+# `strict = true` here: a per-module override with `strict` polluted the whole
+# package in our mypy version). Instead CI runs a second command on the list:
+#   mypy --strict auto_bi/auth.py auto_bi/adapters/artifacts.py
+# See docs/operations/SLO.md «Mypy strict modules».
 
 [[tool.mypy.overrides]]
 # anthropic / clickhouse_connect ship no usable py.typed stubs for our mypy gate.

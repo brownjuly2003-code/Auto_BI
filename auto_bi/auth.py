@@ -17,14 +17,14 @@ import hmac
 import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 if TYPE_CHECKING:
     from auto_bi.config import Settings
     from auto_bi.ir.spec import DashboardSpec
-    from auto_bi.semantic.model import SemanticModel
+    from auto_bi.semantic.model import Join, SemanticModel
     from auto_bi.store import Store
 
 _ALGO = "pbkdf2_sha256"
@@ -103,7 +103,7 @@ def filter_model_by_schemas(model: SemanticModel, allowed_schemas: list[str]) ->
     tables = [t for t in model.tables if schema_of(t.name) in allowed]
     names = {t.name for t in tables}
 
-    def _join_ok(join) -> bool:
+    def _join_ok(join: Join) -> bool:
         # left/right are 'schema.table.column' -> the table is the first two segments
         left_table = ".".join(join.left.split(".")[:2])
         right_table = ".".join(join.right.split(".")[:2])
@@ -146,7 +146,7 @@ def forbidden_tables(spec: DashboardSpec, allowed_schemas: list[str]) -> list[st
 # --- users file + seeding -----------------------------------------------------
 
 
-def load_users_file(path: str | Path) -> list[dict]:
+def load_users_file(path: str | Path) -> list[dict[str, Any]]:
     """Parse the users YAML: a top-level `users:` list of {username,password,role,schemas}.
 
     Passwords are plaintext here (an operator-managed secret, like .env — keep the file
@@ -156,8 +156,10 @@ def load_users_file(path: str | Path) -> list[dict]:
     users = data.get("users", [])
     if not isinstance(users, list):
         raise ValueError("users file: top-level `users` must be a list")
-    parsed: list[dict] = []
+    parsed: list[dict[str, Any]] = []
     for i, u in enumerate(users):
+        if not isinstance(u, dict):
+            raise ValueError(f"users file: entry #{i} must be a mapping")
         if not u.get("username") or not u.get("password"):
             raise ValueError(f"users file: entry #{i} needs both username and password")
         parsed.append(

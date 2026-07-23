@@ -33,6 +33,27 @@ No paid LLM, no Docker, no DWH in these probes. Local timings may be written to
 | SQL guard allow/deny + multi-statement | `tests/test_property_quality.py` |
 | IR validate unknown table/measure, duplicate ids | same |
 | normalize idempotence | same |
+| RBAC schema filters (membership, filter joins, forbidden monotonicity, raw_sql hatch) | same |
+
+## Mypy strict modules (plan_sol step 12 residual)
+
+Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
+
+**Strict allowlist** (CI job `Mypy strict (boundary modules)`):
+
+| Module | Why first |
+|---|---|
+| `auto_bi/auth.py` | pure RBAC + passwords; security-sensitive |
+| `auto_bi/adapters/artifacts.py` | pure build namespace / naming |
+
+```bash
+uv run --with mypy --with types-PyYAML mypy --strict \
+  auto_bi/auth.py auto_bi/adapters/artifacts.py
+```
+
+Do **not** set `strict = true` as a global or per-module override in `pyproject`
+without verifying: on our mypy version that polluted the package-wide check.
+Grow the allowlist module-by-module after each target is clean under `--strict`.
 
 ## Residual (not yet gates)
 
@@ -40,4 +61,4 @@ No paid LLM, no Docker, no DWH in these probes. Local timings may be written to
 - Full mutmut/cosmic-ray mutation score for `ir/validate`, `sql_guard`, dataset
   planning, ownership cleanup — characterization via property tests only for now.
 - Process memory / cold-start process budget on release image.
-- Mypy strict rollout module-by-module.
+- Expand mypy-strict allowlist beyond `auth` + `artifacts`.

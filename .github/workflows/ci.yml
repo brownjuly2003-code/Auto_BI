@@ -55,6 +55,14 @@ jobs:
       - name: Mypy (types)
         run: uv run --with mypy --with types-PyYAML mypy auto_bi
 
+      # plan_sol step 12 residual: strict on pure boundary modules (rollout list in SLO.md).
+      # Separate from package-wide mypy — per-module `strict = true` in overrides was
+      # observed to pollute the whole package check on our mypy version.
+      - name: Mypy strict (boundary modules)
+        run: >-
+          uv run --with mypy --with types-PyYAML mypy --strict
+          auto_bi/auth.py auto_bi/adapters/artifacts.py
+
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
       # so CI stays hermetic. pytest-cov + duckdb are pulled in ephemerally to avoid
@@ -154,6 +162,11 @@ jobs:
 
       - name: Mypy (types)
         run: uv run --python 3.13 --with mypy --with types-PyYAML mypy auto_bi
+
+      - name: Mypy strict (boundary modules)
+        run: >-
+          uv run --python 3.13 --with mypy --with types-PyYAML mypy --strict
+          auto_bi/auth.py auto_bi/adapters/artifacts.py
 
       - name: Pytest + coverage gate
         run: >

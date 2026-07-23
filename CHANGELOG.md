@@ -13,6 +13,12 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: RBAC property suite + mypy-strict start** —
+  `tests/test_property_quality.py`: schema membership, `filter_model_by_schemas`
+  join consistency, forbidden-set monotonicity, raw_sql RBAC hatch. CI
+  `Mypy strict (boundary modules)` for `auth.py` + `adapters/artifacts.py`
+  (`mypy --strict`); allowlist documented in `docs/operations/SLO.md`.
+
 - **plan_sol шаг 8 residual: stable build_token idempotency** —
   `stable_build_token(session_id, spec_id)`; `compile_and_build` reuses an already
   delivered dashboard (`ok` / `delivered_pending`) for the same durable revision

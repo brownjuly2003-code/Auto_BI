@@ -2,7 +2,7 @@
 
 No hypothesis dependency — stdlib random with fixed seeds keeps CI deterministic
 and under the Windows memory budget. Targets: SQL guard, IR validation shapes,
-normalize idempotence.
+normalize idempotence, RBAC schema filters.
 """
 
 from __future__ import annotations
@@ -13,10 +13,18 @@ import pytest
 
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.sql_guard import SQLGuardError, extract_table_names, guard_sql
+from auto_bi.auth import (
+    filter_model_by_schemas,
+    forbidden_tables,
+    is_table_allowed,
+    schema_of,
+    spec_tables,
+)
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
     DashboardSpec,
+    JoinSpec,
     Measure,
     TargetBI,
     Viz,
@@ -26,6 +34,7 @@ from auto_bi.semantic.model import (
     Aggregation,
     Column,
     ColumnRole,
+    Join,
     Physical,
     SemanticModel,
     Table,
@@ -241,3 +250,207 @@ def test_label_joins_idempotent_on_valid_spec(tiny_model: SemanticModel) -> None
 def test_normalize_then_validate_stays_clean(tiny_model: SemanticModel) -> None:
     spec = apply_label_joins(apply_chart_defaults(_valid_spec(tiny_model), tiny_model), tiny_model)
     assert validate_spec(spec, tiny_model) == []
+
+
+# --- RBAC schema filters (plan_sol step 12 residual) --------------------------
+
+
+def _multi_schema_model() -> SemanticModel:
+    """Three schemas with one cross-schema join (dm ↔ ext) and an isolated finance table."""
+    return SemanticModel(
+        tables=[
+            Table(
+                name="dm.sales",
+                columns=[
+                    Column(name="k", type="String", role=ColumnRole.DIMENSION),
+                    Column(
+                        name="revenue",
+                        type="Float64",
+                        role=ColumnRole.MEASURE,
+                        agg=Aggregation.SUM,
+                    ),
+                ],
+            ),
+            Table(
+                name="dm.stores",
+                columns=[Column(name="id", type="UInt32", role=ColumnRole.DIMENSION)],
+            ),
+            Table(
+                name="ext.rates",
+                columns=[Column(name="k", type="String", role=ColumnRole.DIMENSION)],
+            ),
+            Table(
+                name="finance.ledger",
+                columns=[
+                    Column(
+                        name="amount",
+                        type="Float64",
+                        role=ColumnRole.MEASURE,
+                        agg=Aggregation.SUM,
+                    )
+                ],
+            ),
+        ],
+        joins=[Join(left="dm.sales.k", right="ext.rates.k")],
+    )
+
+
+def _spec_touching(*tables: str) -> DashboardSpec:
+    """One chart per table; first chart may join the second when ≥2 tables."""
+    charts: list[ChartSpec] = []
+    for i, table in enumerate(tables):
+        joins: list[JoinSpec] = []
+        if i == 0 and len(tables) > 1:
+            other = tables[1]
+            joins = [
+                JoinSpec(
+                    table=other,
+                    on_left=f"{table}.k",
+                    on_right=f"{other}.k",
+                )
+            ]
+        charts.append(
+            ChartSpec(
+                id=f"c{i}",
+                title=table,
+                viz=Viz.TABLE,
+                query=ChartQuery(
+                    table=table,
+                    measures=[Measure(column="x", agg="sum")],
+                    joins=joins,
+                ),
+            )
+        )
+    return DashboardSpec(title="rbac", charts=charts, target_bi=TargetBI.SUPERSET)
+
+
+def test_is_table_allowed_matches_schema_membership() -> None:
+    rng = random.Random(42)
+    schemas = ["dm", "ext", "finance", "ops"]
+    for _ in range(40):
+        table_schema = rng.choice(schemas)
+        table = f"{table_schema}.t{rng.randint(0, 9)}"
+        allowed = list({rng.choice(schemas) for _ in range(rng.randint(0, 3))})
+        if rng.random() < 0.15:
+            allowed = ["*"]
+        expected = "*" in allowed or table_schema in set(allowed)
+        assert is_table_allowed(table, allowed) is expected
+        assert schema_of(table) == table_schema
+
+
+def test_filter_model_only_keeps_allowed_tables_and_internal_joins() -> None:
+    model = _multi_schema_model()
+    rng = random.Random(7)
+    candidates = [["dm"], ["ext"], ["finance"], ["dm", "ext"], ["dm", "finance"], ["*"], []]
+    for allowed in candidates:
+        scoped = filter_model_by_schemas(model, allowed)
+        if "*" in allowed:
+            assert scoped is model
+            continue
+        for t in scoped.tables:
+            assert is_table_allowed(t.name, allowed)
+        kept = {t.name for t in scoped.tables}
+        for j in scoped.joins:
+            left_table = ".".join(j.left.split(".")[:2])
+            right_table = ".".join(j.right.split(".")[:2])
+            assert left_table in kept
+            assert right_table in kept
+        # idempotent
+        again = filter_model_by_schemas(scoped, allowed)
+        assert [t.name for t in again.tables] == [t.name for t in scoped.tables]
+        assert len(again.joins) == len(scoped.joins)
+    # random subsets stay consistent with membership
+    all_schemas = ["dm", "ext", "finance"]
+    for _ in range(20):
+        k = rng.randint(0, len(all_schemas))
+        allowed = rng.sample(all_schemas, k)
+        scoped = filter_model_by_schemas(model, allowed)
+        assert all(is_table_allowed(t.name, allowed) for t in scoped.tables)
+
+
+def test_forbidden_tables_subset_and_wildcard_empty() -> None:
+    specs = [
+        _spec_touching("dm.sales"),
+        _spec_touching("dm.sales", "ext.rates"),
+        _spec_touching("finance.ledger"),
+        _spec_touching("dm.sales", "finance.ledger"),
+    ]
+    for spec in specs:
+        tables = spec_tables(spec)
+        assert forbidden_tables(spec, ["*"]) == []
+        # allow exactly the schemas present → empty forbidden
+        present = sorted({schema_of(t) for t in tables})
+        assert forbidden_tables(spec, present) == []
+        # deny all → every touched table is forbidden (sorted)
+        assert forbidden_tables(spec, []) == sorted(tables)
+        # allow only dm → any non-dm table is forbidden
+        denied = forbidden_tables(spec, ["dm"])
+        assert denied == sorted(t for t in tables if schema_of(t) != "dm")
+        assert set(denied).issubset(tables)
+
+
+def test_forbidden_metamorphic_wider_allowlist_never_adds_denials() -> None:
+    """Expanding allowed schemas is monotonic: forbidden set can only shrink."""
+    rng = random.Random(99)
+    model_tables = ["dm.sales", "ext.rates", "finance.ledger", "ops.metrics"]
+    for _ in range(30):
+        n = rng.randint(1, 3)
+        touched = rng.sample(model_tables, n)
+        spec = _spec_touching(*touched)
+        base = list({schema_of(t) for t in touched})
+        # start from a random subset of base schemas (possibly empty)
+        k = rng.randint(0, len(base))
+        narrow = rng.sample(base, k)
+        wide = list(set(narrow) | {rng.choice(base)})
+        denied_n = set(forbidden_tables(spec, narrow))
+        denied_w = set(forbidden_tables(spec, wide))
+        assert denied_w.issubset(denied_n)
+
+
+def test_filter_model_drops_tables_forbidden_in_specs() -> None:
+    """Any table remaining after filter is allowed for a synthetic all-tables spec."""
+    model = _multi_schema_model()
+    for allowed in (["dm"], ["ext"], ["dm", "ext"], ["finance"], []):
+        scoped = filter_model_by_schemas(model, allowed)
+        if not scoped.tables:
+            continue
+        # spec over every remaining table — RBAC must report nothing forbidden
+        names = [t.name for t in scoped.tables]
+        spec = _spec_touching(*names[:2] if len(names) > 1 else names)
+        assert forbidden_tables(spec, allowed) == []
+        # original model tables outside allowlist stay forbidden if used
+        outside = [t.name for t in model.tables if not is_table_allowed(t.name, allowed)]
+        if outside:
+            bad = _spec_touching(outside[0])
+            assert outside[0] in forbidden_tables(bad, allowed)
+
+
+def test_raw_sql_label_cannot_smuggle_other_schema() -> None:
+    """Property: raw_sql AST tables participate in RBAC regardless of query.table label."""
+    rng = random.Random(3)
+    labels = ["dm.allowed", "dm.sales", "public.view"]
+    secrets = ["finance.secret", "hr.salary", "audit.trail"]
+    for _ in range(15):
+        label = rng.choice(labels)
+        secret = rng.choice(secrets)
+        spec = DashboardSpec(
+            title="hatch",
+            charts=[
+                ChartSpec(
+                    id="raw",
+                    title="raw",
+                    viz=Viz.TABLE,
+                    query=ChartQuery(
+                        table=label,
+                        dimensions=["id"],
+                        raw_sql=f"SELECT id FROM {secret}",
+                    ),
+                )
+            ],
+        )
+        # label schema only → secret always forbidden
+        label_schema = schema_of(label)
+        denied = forbidden_tables(spec, [label_schema])
+        assert secret in denied
+        # wildcard still empty
+        assert forbidden_tables(spec, ["*"]) == []
