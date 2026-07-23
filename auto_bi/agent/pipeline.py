@@ -68,7 +68,7 @@ def build_dashboard(
     adapter_for: AdapterFor,
     log: Callable[[str], None] = print,
     *,
-    include_samples: bool = True,
+    include_samples: bool = False,
     store: Store | None = None,
     session_id: str | None = None,
     target_bi: TargetBI | None = None,

@@ -115,7 +115,7 @@ class AgentSession:
         *,
         store: Store | None = None,
         session_id: str | None = None,
-        include_samples: bool = True,
+        include_samples: bool = False,
     ) -> None:
         self._model = model
         self._llm = llm
@@ -145,7 +145,7 @@ class AgentSession:
         *,
         store: Store,
         session_id: str,
-        include_samples: bool = True,
+        include_samples: bool = False,
         phase: AgentPhase,
         request: str,
         clarifications: list[str] | None = None,

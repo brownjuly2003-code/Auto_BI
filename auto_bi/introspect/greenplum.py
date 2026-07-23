@@ -27,6 +27,7 @@ from auto_bi.semantic.model import (
     SemanticModel,
     Table,
 )
+from auto_bi.semantic.prompt_data import SAMPLE_MAX_COUNT, sanitize_samples
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # PostgreSQL numeric type names that make a column a measure candidate
@@ -229,9 +230,11 @@ class GreenplumIntrospector:
             return []
         result = self._run(
             f'SELECT "{_ident(column)}"::text AS v, count(*) AS cnt '
-            f'FROM "{schema}"."{_ident(table)}" GROUP BY v ORDER BY cnt DESC LIMIT 20'
+            f'FROM "{schema}"."{_ident(table)}" '
+            f"GROUP BY v ORDER BY cnt DESC LIMIT {SAMPLE_MAX_COUNT}"
         )
-        return [r["v"] for r in result if r["v"] is not None]
+        # Sanitize at capture (same contract as ClickHouse introspector).
+        return sanitize_samples([str(r["v"]) for r in result if r["v"] is not None])
 
 
 def make_run_query_pg(settings: Settings) -> RunQuery:

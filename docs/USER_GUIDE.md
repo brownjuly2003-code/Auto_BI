@@ -235,7 +235,7 @@ vs Greenplum/Greengage).
 | `AUTO_BI_LLM_PROVIDER` | LLM-провайдер: `anthropic` (прямой Messages API) или `gracekelly` (локальный сервис) | `anthropic` |
 | `ANTHROPIC_API_KEY` / `AUTO_BI_ANTHROPIC_MODEL` / `_MAX_TOKENS` | Прямой Anthropic API (провайдер `anthropic`). Ключ — стандартная переменная SDK, без префикса `AUTO_BI_`; `AUTO_BI_ANTHROPIC_API_KEY` тоже работает, если ключ нужно держать рядом с остальным `.env` | `` / `claude-sonnet-5` / `16000` |
 | `AUTO_BI_GRACEKELLY_URL` / `_MODEL` | Локальный LLM-сервис (провайдер `gracekelly`) | `http://127.0.0.1:8011` / `claude-sonnet-5` |
-| `AUTO_BI_SEND_SAMPLES` | слать ли примеры значений в grounding | `true` |
+| `AUTO_BI_SEND_SAMPLES` | слать ли top-N значений колонок в grounding/propose (только `public`/`internal`; см. `docs/MIGRATION_SEND_SAMPLES.md`) | `false` |
 | `AUTO_BI_STORE_PATH` | SQLite-стор (сессии, spec'ы, сборки, llm_calls, заявки DM, users) | `data/auto_bi.sqlite` |
 | `AUTO_BI_PRUNE_ON_REBUILD` | удалять ли BI-артефакты прошлой ревизии сессии сразу после успешного ребилда (по владению, не по имени; сбой прунинга не валит билд). `false` — ревизии копятся до ручной чистки `auto_bi prune` | `true` |
 | `AUTO_BI_AUTH_ENABLED` | включить аутентификацию + RBAC (см. §8) | `false` |

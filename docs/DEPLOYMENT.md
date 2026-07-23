@@ -425,7 +425,7 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
   `AUTO_BI_ADMIN_PASSWORD`, при v2/Greenplum — `AUTO_BI_GP_PASSWORD`.
 - Права на файлы: `.env`, `data/auto_bi.sqlite` (хэши токенов/паролей, но всё равно не
   публичный файл), `logs/*.jsonl` (может нести значения данных из DM, если
-  `AUTO_BI_SEND_SAMPLES=true` — ARCHITECTURE §4) — `chmod 600` / непривилегированный
+  `AUTO_BI_SEND_SAMPLES=true` — ARCHITECTURE §4; default is `false`) — `chmod 600` / непривилегированный
   пользователь в контейнере.
 - `AUTO_BI_AUTH_COOKIE_SECURE=true` выставлен явно за любым reverse-proxy (см. §3) —
   не полагаться на авто-эвристику по `--host`.

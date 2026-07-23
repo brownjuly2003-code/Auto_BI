@@ -693,6 +693,15 @@ def _serve(  # pragma: no cover — wiring only
     from auto_bi.llm.base import DisabledLLM, LLMClient
 
     llm: LLMClient
+    # plan_sol step 2: log only the policy decision + eligible classes, never values.
+    if settings.send_samples:
+        logger.warning(
+            "AUTO_BI_SEND_SAMPLES=true: DWH top-values may be sent to the LLM for "
+            "public/internal columns only; confidential/restricted never leave the process"
+        )
+    else:
+        logger.info("AUTO_BI_SEND_SAMPLES=false: DWH values stay local (safe default)")
+
     if settings.demo_auto_only:
         # P8 public demo: no LLM provider/key at all — the API 403-gates every
         # LLM-triggering path, DisabledLLM is the wiring-bug backstop behind it.

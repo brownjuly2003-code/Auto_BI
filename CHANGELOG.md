@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Security
+
+- **plan_sol шаг 2: prompt data boundary / samples opt-in** — default
+  `AUTO_BI_SEND_SAMPLES=false` (раньше `true`): clean install не отправляет
+  top-N значений DWH внешнему LLM. Classification на table/column
+  (`public`/`internal`/`confidential`/`restricted`); samples только при
+  explicit opt-in и только для public/internal. Free-text (description,
+  synonyms, top-values) санитизируется и рендерится в untrusted-envelope.
+  Лимиты: ≤10 values/column, ≤64 chars/value. Интроспектор пишет уже
+  sanitized samples в model.yaml. Миграция: `docs/MIGRATION_SEND_SAMPLES.md`.
+  Leak-canary: `tests/test_prompt_data.py`.
+
 ### Added
 
 - **plan_sol шаг 1: стабильный публичный demo-профиль** — `/health` отдаёт

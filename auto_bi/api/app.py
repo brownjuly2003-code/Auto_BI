@@ -107,7 +107,7 @@ def create_app(
     builder: Builder | None = None,
     bi_healthcheck: Callable[[], AdapterHealth] | None = None,  # B-6: /ready BI reachability
     llm_healthcheck: Callable[[], AdapterHealth] | None = None,  # B-6: /ready LLM reachability
-    include_samples: bool = True,
+    include_samples: bool = False,
     model_path: str | Path | None = None,  # enables enrichment writes (task 2.7)
     auth_enabled: bool = False,  # Phase 4 auth/RBAC, opt-in (default: open, single-user)
     auth_token_ttl_hours: int = 24,

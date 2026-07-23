@@ -103,7 +103,7 @@ class SessionManager:
         llm: LLMClient,
         advisor: Advisor | None = None,
         store: Store | None = None,
-        include_samples: bool = True,
+        include_samples: bool = False,
         # target -> BI host (same mapping create_app gets, F-1): hydration re-absolutizes
         # the dashboard url stored by the build pipeline, which is BI-relative
         bi_base_urls: Mapping[TargetBI, str] | None = None,

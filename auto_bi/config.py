@@ -80,7 +80,10 @@ class Settings(BaseSettings):
     # non-streaming requests whose estimated duration would outrun the HTTP timeout.
     anthropic_max_tokens: int = 16000
 
-    send_samples: bool = True
+    # plan_sol step 2 / audit P0-2: DWH values (top-N) leave the process only on
+    # explicit opt-in. Default false — clean install never sends samples to an
+    # external LLM. Set true only for public/internal classes after classification.
+    send_samples: bool = False
 
     # Auth + RBAC (Phase 4) — OPT-IN. Off by default: the CLI, tests and the single-user
     # §2.1 flow stay unauthenticated. When enabled, the API requires a bearer token and

@@ -17,7 +17,7 @@ import re
 from collections.abc import Iterable
 
 from auto_bi.semantic.model import Column, SemanticModel, Table
-from auto_bi.semantic.render import render_model, render_table
+from auto_bi.semantic.render import render_model, render_table, untrusted_envelope_overhead
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def select_context(
     request: str,
     *,
     budget_chars: int,
-    include_samples: bool = True,
+    include_samples: bool = False,
     pinned: Iterable[str] = (),
 ) -> SemanticModel:
     """Sub-model whose rendered text fits budget_chars, most request-relevant first.
@@ -80,11 +80,14 @@ def select_context(
         key=lambda item: (-_table_score(item[1], request_stems), item[0]),
     )
 
-    # joins/metrics render into the same prompt: reserve their (upper-bound) cost
-    overhead = 0
+    # joins/metrics render into the same prompt: reserve their (upper-bound) cost.
+    # Also reserve the untrusted envelope once (added by render_model for LLM prompts).
+    overhead = untrusted_envelope_overhead()
     if model.joins or model.metrics:
         extras = SemanticModel(tables=[], joins=model.joins, metrics=model.metrics)
-        overhead = len(render_model(extras, include_samples=include_samples)) + 2
+        overhead += (
+            len(render_model(extras, include_samples=include_samples, wrap_untrusted=False)) + 2
+        )
     budget = budget_chars - overhead
 
     pinned_names = set(pinned)
