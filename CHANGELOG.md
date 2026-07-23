@@ -13,6 +13,11 @@
 
 ### Added
 
+- **plan_sol шаг 10 residual: fields drag-drop E2E** —
+  Offline browser test `test_fields_drag_drop_seed_to_approve`: HTML5 drop into
+  seed groups, click-fallback field add, multi-group, seed submit → propose →
+  build (ScriptedLLM, no paid LLM). Step 10 offline E2E matrix complete (5 cases).
+
 - **plan_sol шаг 10 residual: browser UI resume after reload** —
   `sessionStorage` key `auto_bi.session_id`; `resumeSession()` restores chip /
   build panel / approve button from `GET /sessions/{id}`. `SessionState` /
@@ -48,8 +53,8 @@
   test, live-stand E2E auth/viewport; **offline browser E2E** job
   `Browser E2E (offline, no stand)` — text path via ScriptedLLM, failed-build retry,
   SSE late-connect replay (`tests/test_web_e2e_offline.py` + helper subprocess).
-  No paid LLM. Residual was UI resume + fields DnD; **UI resume closed** (see
-  Unreleased Added above). Residual: fields drag-drop E2E; live GHA after merge.
+  No paid LLM. Residual was UI resume + fields DnD; both **closed** offline (see
+  Unreleased Added). Residual: live GHA after merge.
   Step 11 start: fixed USER_GUIDE audit falsehoods (session owner-bound, Anthropic
   token usage, work quota on auto, empty DataLens password default); `tests/test_docs_defaults.py`
   (Settings defaults without local `.env`, version, CLI subcommands, `.env.example`);

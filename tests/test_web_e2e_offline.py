@@ -7,7 +7,8 @@ asyncio Proactor ResourceWarning under pytest filterwarnings=error) with Scripte
 * text session → approve → build (scripted LLM, not paid);
 * failed build → approve retry → success;
 * SSE late-connect / reconnect-style replay of the terminal event;
-* browser reload resume (sessionStorage + GET /sessions/{id} hydrate).
+* browser reload resume (sessionStorage + GET /sessions/{id} hydrate);
+* fields-first: drag-and-drop + click fallback into seed groups → propose.
 
 Deselected by default (`-m 'not e2e'`). CI job `browser-offline-e2e` runs this module.
 """
@@ -238,5 +239,88 @@ def test_browser_reload_resumes_built_session(offline_server):
             expect(page.locator("#approve-btn")).to_have_text("Пересобрать дашборд")
             # resume banner in chat
             expect(page.locator(".msg-agent").filter(has_text="восстановлена")).to_be_visible()
+        finally:
+            browser.close()
+
+
+def _html5_drag_drop(page, source_sel: str, target_sel: str) -> None:
+    """Fire HTML5 DnD events (Playwright drag_to does not always set dataTransfer)."""
+    page.evaluate(
+        """([sourceSel, targetSel]) => {
+          const source = document.querySelector(sourceSel);
+          const target = document.querySelector(targetSel);
+          if (!source || !target) {
+            throw new Error(
+              'drag source or target missing: ' + sourceSel + ' -> ' + targetSel
+            );
+          }
+          const dt = new DataTransfer();
+          const opts = { bubbles: true, cancelable: true, dataTransfer: dt };
+          source.dispatchEvent(new DragEvent('dragstart', opts));
+          target.dispatchEvent(new DragEvent('dragover', opts));
+          target.dispatchEvent(new DragEvent('drop', opts));
+          source.dispatchEvent(new DragEvent('dragend', opts));
+        }""",
+        [source_sel, target_sel],
+    )
+
+
+def test_fields_drag_drop_seed_to_approve(offline_server):
+    """Fields-first: HTML5 drop + click fallback → seed submit → approve + build."""
+    base = offline_server
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.set_default_timeout(15_000)
+        try:
+            page.goto(f"{base}/")
+            expect(page.locator("#tab-fields")).to_be_enabled()
+            page.click("#tab-fields")
+            expect(page.locator("#builder")).to_be_visible()
+            expect(page.locator("#field-tables .field-item").first).to_be_visible(
+                timeout=SPEC_TIMEOUT_MS
+            )
+            expect(page.locator(".group-card")).to_have_count(1)
+
+            # Real HTML5 path used by the UI (dataTransfer carries the FQ field ref).
+            date_sel = 'button.field-item[data-ref="dm.sales_daily.date"]'
+            group_sel = ".group-card"
+            expect(page.locator(date_sel)).to_be_visible()
+            _html5_drag_drop(page, date_sel, group_sel)
+            expect(
+                page.locator(".field-chip").filter(has_text="dm.sales_daily.date")
+            ).to_be_visible()
+
+            # Click fallback (touch / keyboard path) into the same active group.
+            page.locator('button.field-item[data-ref="dm.sales_daily.revenue"]').click()
+            expect(
+                page.locator(".field-chip").filter(has_text="dm.sales_daily.revenue")
+            ).to_be_visible()
+
+            # Second group via + and drop into it.
+            page.click("#add-group")
+            expect(page.locator(".group-card")).to_have_count(2)
+            page.locator(".group-card").nth(1).click()
+            city_sel = 'button.field-item[data-ref="dm.stores.city"]'
+            _html5_drag_drop(page, city_sel, ".group-card:nth-child(2)")
+            expect(page.locator(".field-chip").filter(has_text="dm.stores.city")).to_be_visible()
+
+            page.fill(".group-label", "Тренд")
+            page.fill("#seed-comment", "за последний квартал")
+            page.click("#seed-submit")
+
+            expect(page.locator("#approve-btn")).to_be_enabled(timeout=SPEC_TIMEOUT_MS)
+            expect(page.locator("#spec")).to_be_visible()
+            expect(page.locator("#session-chip")).to_have_text("превью")
+            # builder hands off to chat after seed start
+            expect(page.locator("#builder")).to_be_hidden()
+            expect(page.locator("#chat-form")).to_be_visible()
+            # user seed summary rendered in chat
+            expect(page.locator(".msg-user").filter(has_text="dm.sales_daily.date")).to_be_visible()
+
+            page.click("#approve-btn")
+            expect(page.locator("#session-chip")).to_have_text("построен", timeout=BUILD_TIMEOUT_MS)
+            href = page.locator("#build-result a").get_attribute("href")
+            assert href and "superset/dashboard" in href
         finally:
             browser.close()
