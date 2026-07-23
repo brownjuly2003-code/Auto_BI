@@ -1,5 +1,10 @@
 {
   "case_id": "g8_stacked_by_store",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -41,7 +46,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "a29ad3e138708f12e366228a870914bd6096aa4c90d8f2e8a98ffaafb6690938"
     },
     {
       "step": "propose_spec",
@@ -322,7 +328,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "fb5bd15ef583a02343a6a6300c716e649f73d07322a760ea81913e0eeeaf285c"
     }
   ]
 }

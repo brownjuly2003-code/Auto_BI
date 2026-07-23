@@ -1,5 +1,10 @@
 {
   "case_id": "g17_yoy_monthly",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -19,7 +24,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "d71ad9eb619704b8fb324db9d118454c7ee020ed7b71b506fa0da9a405e0570b"
     },
     {
       "step": "propose_spec",
@@ -205,7 +211,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "a44ab038c3580c0da17c44f42312ad0131029d469c968fac2d01ec04d9849907"
     }
   ]
 }

@@ -1,5 +1,10 @@
 {
   "case_id": "g16_weekly_trend",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -26,7 +31,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "633a169befeb1d17075bcab5501b45f72515bf83977003a0ed58efed01a2a941"
     },
     {
       "step": "propose_spec",
@@ -240,7 +246,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "d172cd959e5a6a2923bdaa803f03bd3f43de44d7574188688a1953bd3fdca083"
     }
   ]
 }

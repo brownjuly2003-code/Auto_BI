@@ -1,5 +1,10 @@
 {
   "case_id": "g10_avg_price_by_category",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -26,7 +31,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "e725a376fe5e535cc8647aa7491829a2c030aa46d7d0e548cde57521074e036f"
     },
     {
       "step": "propose_spec",
@@ -210,7 +216,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "6f14ed6fc53f4bd06a313a4b253668c8250ed10f9ef8881f1db5d3267965fb20"
     }
   ]
 }

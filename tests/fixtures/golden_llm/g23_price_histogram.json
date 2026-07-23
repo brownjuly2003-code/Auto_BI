@@ -1,5 +1,10 @@
 {
   "case_id": "g23_price_histogram",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -19,7 +24,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "e5e70394deff37ddecd2d735a2247cc2cbfcdabd84ddee309b28705690d7725b"
     },
     {
       "step": "propose_spec",
@@ -189,7 +195,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "6a984502b0206258e966243ba2f6bef89e0fc805c2fb7ced2470b3ffc03a5151"
     }
   ]
 }

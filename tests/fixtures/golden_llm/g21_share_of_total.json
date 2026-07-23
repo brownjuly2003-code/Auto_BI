@@ -1,5 +1,10 @@
 {
   "case_id": "g21_share_of_total",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -27,7 +32,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "3ed3d1f6c9acf8160646a60e79054608fd6d265598d7ee17d564a4ee7f2571de"
     },
     {
       "step": "propose_spec",
@@ -270,7 +276,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "82b0474fd1d9ad819e4d978e083125664381b35a45197cd7f2b59701320dfb9f"
     }
   ]
 }

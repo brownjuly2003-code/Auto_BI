@@ -1,5 +1,10 @@
 {
   "case_id": "gp_g9_avg_ticket_ratio",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -20,7 +25,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "084337018d6a5938850c61cf34f25a3030cdb553f1740d8bbcc77f90d32129d9"
     },
     {
       "step": "propose_spec",
@@ -277,7 +283,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "922520e17227607436a188d6f0c375e73cbc263120d6b03350dd145d9b88776b"
     }
   ]
 }

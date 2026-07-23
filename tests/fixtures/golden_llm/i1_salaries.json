@@ -1,5 +1,10 @@
 {
   "case_id": "i1_salaries",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -43,7 +48,8 @@
         "unmatched": [
           "Зарплата"
         ]
-      }
+      },
+      "prompt_sha256": "be02cdd26df2c14ea68db04d6a256174081ec3d12c7307c3998e9710a1dcf081"
     }
   ]
 }

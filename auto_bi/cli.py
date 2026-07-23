@@ -108,11 +108,13 @@ def main(argv: list[str] | None = None) -> int:
     ev.add_argument("--cases", default="", help="Comma-separated case ids to run (subset)")
     ev.add_argument(
         "--llm-mode",
-        choices=["live", "replay", "record"],
+        choices=["live", "replay", "record", "refresh-fingerprints"],
         default="live",
         help="golden suite only: 'live' calls the configured provider (default); "
-        "'replay' answers from recorded fixtures, offline, no provider/key needed "
-        "(CI); 'record' calls the configured provider and writes fixtures for later replay",
+        "'replay' answers from recorded fixtures, offline, enforces prompt fingerprints "
+        "(CI); 'record' calls the provider and writes fixtures; "
+        "'refresh-fingerprints' offline-stamps prompt/template hashes onto existing "
+        "responses (no provider — reviewed procedure before commit)",
     )
     ev.add_argument(
         "--fixtures-dir",
@@ -965,10 +967,18 @@ def _eval(
         if llm_mode == "replay":
             from auto_bi.llm.fixture import FixtureLLMClient
 
-            llm = FixtureLLMClient(fixtures_dir)
+            llm = FixtureLLMClient(fixtures_dir, enforce_fingerprint=True)
             console.print(
                 f"[dim]golden: {len(golden_selected)} cases, replay из {fixtures_dir}"
-                " (офлайн, без провайдера/ключа)…[/dim]"
+                " (офлайн, fingerprint enforced, без провайдера/ключа)…[/dim]"
+            )
+        elif llm_mode == "refresh-fingerprints":
+            from auto_bi.llm.fixture import FixtureLLMClient
+
+            llm = FixtureLLMClient(fixtures_dir, refresh_fingerprints=True)
+            console.print(
+                f"[dim]golden: {len(golden_selected)} cases, refresh fingerprints в "
+                f"{fixtures_dir} (офлайн, ответы не меняются)…[/dim]"
             )
         else:
             from auto_bi.llm.factory import make_llm
@@ -978,15 +988,18 @@ def _eval(
             store = Store(settings.store_path)
             live_llm = make_llm(settings, store=store)
             provider = settings.llm_provider.strip().lower()
+            model_id = (
+                settings.gracekelly_model if provider == "gracekelly" else settings.anthropic_model
+            )
             provider_detail = (
-                f"{settings.gracekelly_url}, {settings.gracekelly_model}"
-                if provider == "gracekelly"
-                else settings.anthropic_model
+                f"{settings.gracekelly_url}, {model_id}" if provider == "gracekelly" else model_id
             )
             if llm_mode == "record":
                 from auto_bi.llm.fixture import RecordingLLMClient
 
-                llm = RecordingLLMClient(live_llm, fixtures_dir)
+                llm = RecordingLLMClient(
+                    live_llm, fixtures_dir, provider=provider, model_id=model_id
+                )
                 console.print(
                     f"[dim]golden: {len(golden_selected)} cases через {provider} "
                     f"({provider_detail}), запись фикстур в {fixtures_dir}…[/dim]"
@@ -1006,12 +1019,18 @@ def _eval(
                 + ("[green]PASS[/green]" if r.passed else f"[red]FAIL[/red] {r.detail}")
             ),
         )
-        mode_label = {"live": "live LLM", "replay": "offline replay", "record": "recording"}[
-            llm_mode
-        ]
+        mode_label = {
+            "live": "live LLM",
+            "replay": "offline replay",
+            "record": "recording",
+            "refresh-fingerprints": "fingerprint refresh",
+        }[llm_mode]
         _render(f"Golden dialogue suite ({mode_label})", report)
         if not wanted:  # thresholds only make sense on the full set
-            ok &= golden_suite_ok(report)
+            ok &= golden_suite_ok(report, mode=llm_mode)
+        elif llm_mode in ("replay", "refresh-fingerprints"):
+            # subset still must be fully green under deterministic modes
+            ok &= all(r.passed for r in report.results)
 
     return 0 if ok else 1
 

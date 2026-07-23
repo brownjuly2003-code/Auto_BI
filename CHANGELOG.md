@@ -6,6 +6,14 @@
 
 ### Changed
 
+- **plan_sol шаг 9: replay/live eval trust** — golden fixtures format v2 with
+  `prompt_sha256`, `template_version`, `schema_version`, `provider`, `model_id`.
+  Replay raises `FixtureStaleError` on contract mismatch (not silent reuse).
+  Thresholds split honestly: offline replay **100%**; live clear ≥ 80%.
+  CLI: `--llm-mode refresh-fingerprints` (offline stamp). CI: Greenplum advisor
+  suite; path-filtered live sentinel workflow (3 cases, budget cap, skip without
+  secrets). Procedure: `docs/EVAL_FIXTURES.md`. All 53 fixtures refreshed offline.
+
 - **plan_sol шаг 8: atomic build state (core)** — after `adapter.build` returns,
   build row + session status + ownership ledger commit in **one SQLite transaction**
   (`Store.commit_build_success`). Failure path is atomic too (`commit_build_failure`).

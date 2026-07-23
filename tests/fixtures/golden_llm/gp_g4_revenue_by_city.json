@@ -1,5 +1,10 @@
 {
   "case_id": "gp_g4_revenue_by_city",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -27,7 +32,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "7d46804652d903086ad936074c6b76a8bdb64442a0a08a0fe8905e5e4b54fb95"
     },
     {
       "step": "propose_spec",
@@ -289,7 +295,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "6eb7722dc823a00f461c380817f6d729373067844cebd9623726040c5e1cf415"
     }
   ]
 }

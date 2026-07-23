@@ -1,5 +1,10 @@
 {
   "case_id": "f1_fields_revenue_trend",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -26,7 +31,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "e05b59c8ae8109ffa460875df8e2281dc18ac94f94392e679d627e943c772f7c"
     },
     {
       "step": "propose_spec",
@@ -184,7 +190,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "6107d548a7302f877887b1a0b1567bfa4571fcda104ac2ae998672f0d88436fc"
     }
   ]
 }

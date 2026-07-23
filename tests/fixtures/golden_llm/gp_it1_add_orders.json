@@ -1,5 +1,10 @@
 {
   "case_id": "gp_it1_add_orders",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -33,7 +38,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "c8c9b23b583cff8e46b519718536d110281ee23d8c3573a198d785032bd57d64"
     },
     {
       "step": "propose_spec",
@@ -247,7 +253,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "df62353c9872a210c16b26891fe46820d948f77d0e022f56e8aa4bb4a846b82c"
     },
     {
       "step": "patch_spec",
@@ -508,7 +515,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "ebf571156a4301198fd5327584a7599876663798a9392bf2ed909f5f7197daa1"
     }
   ]
 }

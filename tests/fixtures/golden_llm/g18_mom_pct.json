@@ -1,5 +1,10 @@
 {
   "case_id": "g18_mom_pct",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -19,7 +24,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "0487e74bdbdc8441df492e73b1e318a26891c02b1f4f636c48574758b6b8c1dd"
     },
     {
       "step": "propose_spec",
@@ -207,7 +213,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "d5d67cb7d1b4b7aae74555c43bbd2beec8ddf82bdef29865535c5c9832fda0ab"
     }
   ]
 }

@@ -1,5 +1,10 @@
 {
   "case_id": "a1_quantity",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -28,7 +33,8 @@
           }
         ],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "f171c645856400506e1d6b870bedadba738dfdff1b007f0db9be51030efb6ad7"
     }
   ]
 }

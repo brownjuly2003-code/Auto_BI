@@ -1,5 +1,10 @@
 {
   "case_id": "g9_city_share",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -26,7 +31,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "89c12e857a7094d902a8f4ee4a5e3c8a2b8fa6e3c7cfc5ac6cdcec5ee513cbe1"
     },
     {
       "step": "propose_spec",
@@ -203,7 +209,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "3425190efe7c0287836da09e71368d3b502bfb9f89e50030da6bef17b17f78bc"
     }
   ]
 }

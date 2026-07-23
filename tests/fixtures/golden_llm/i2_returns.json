@@ -1,5 +1,10 @@
 {
   "case_id": "i2_returns",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -13,7 +18,8 @@
         "unmatched": [
           "возвратов"
         ]
-      }
+      },
+      "prompt_sha256": "1fdff188536af7788326e8715e1d8275d3171ae1574966d550b6810c268000f9"
     }
   ]
 }

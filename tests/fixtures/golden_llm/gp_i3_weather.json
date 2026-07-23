@@ -1,5 +1,10 @@
 {
   "case_id": "gp_i3_weather",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -41,7 +46,8 @@
           "прогноз погоды",
           "июнь 2026"
         ]
-      }
+      },
+      "prompt_sha256": "b97e35d3af3dbf651e3607572cd64344cfc3bb56ceaeb4d20dd1579d213a0518"
     }
   ]
 }

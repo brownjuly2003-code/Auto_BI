@@ -1,5 +1,10 @@
 {
   "case_id": "f2_fields_two_groups",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -40,7 +45,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "827a1163824d25310efed0e7c9de7b13fdb35834631f03647cd159a16d6d482a"
     },
     {
       "step": "propose_spec",
@@ -203,7 +209,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "dc9572749f80dcd1ea2e1e8aceb9e972a18b8741e72fb8fef64b6676da7201e3"
     }
   ]
 }

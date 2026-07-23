@@ -1,5 +1,10 @@
 {
   "case_id": "f3_fields_then_edit",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -26,7 +31,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "552a34288e53c5b91261241fce9bcc50646198f5770001347d626a4de78e1116"
     },
     {
       "step": "propose_spec",
@@ -237,7 +243,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "233c0fa1719dfb44360b9ea2b3e5a5ba49dbe651d2c7902e7649322b41a76e5e"
     },
     {
       "step": "patch_spec",
@@ -495,7 +502,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "e95e882010eea80f0db50965feb6d209a7c8a36c96bc6e509d0e1749856187cb"
     }
   ]
 }

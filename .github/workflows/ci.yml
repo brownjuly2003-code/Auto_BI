@@ -68,16 +68,18 @@ jobs:
 
       # The advisor eval suite is deterministic (rule-pack findings, no LLM/stand) —
       # running it in CI machinizes part of invariant 8 (don't ship a prompt/advisor
-      # change that regresses the golden anti-patterns).
-      - name: Eval — advisor suite (offline)
+      # change that regresses the golden anti-patterns). plan_sol step 9: both engines.
+      - name: Eval — advisor suite (offline, ClickHouse)
         run: uv run auto_bi eval --suite advisor --model-path semantic/model.yaml
 
-      # T-2 (S11): golden dialogue suite replayed from recorded fixtures — pure
-      # offline replay (llm/fixture.py::FixtureLLMClient), no provider/key needed, so
-      # it stays in the secret-free `quality` job. Catches regressions in everything
-      # around the LLM call (spec validation, SQL generation, advisor, adapters) on
-      # every PR; it does NOT catch live prompt/model drift (docs/ARCHITECTURE.md
-      # §3.14) — that still needs an occasional live run against a real provider.
+      - name: Eval — advisor suite (offline, Greenplum)
+        run: uv run auto_bi eval --suite advisor --model-path semantic/model_gp.yaml
+
+      # T-2 (S11) + plan_sol step 9: golden dialogue suite replayed from recorded
+      # fixtures with prompt/template/schema fingerprints enforced. Pure offline
+      # (FixtureLLMClient), no provider/key. 100% pass threshold. Catches scaffold
+      # regressions AND stale fixtures after prompt edits. Live model quality is
+      # eval-live-sentinel.yml (optional secret), not this job.
       # Case ids don't collide between the CH (g*/it*/f*/a*/i*) and GP (gp_*) sets,
       # so both engines' fixtures share one directory.
       - name: Eval — golden suite replay (offline, ClickHouse fixtures)

@@ -1,5 +1,10 @@
 {
   "case_id": "it2_remove_chart",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -33,7 +38,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "1eacbbc8e04210e0bf513ec417629575d682a011950debffcfbd7a24c4f41847"
     },
     {
       "step": "propose_spec",
@@ -267,7 +273,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "d3fd8597e86663254a1d1e203548f0122d076fc7a2d5c861d2202e4d20683c8a"
     },
     {
       "step": "patch_spec",
@@ -376,7 +383,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "bf8a931fcaf64606220d662e13b8bd928e97ef50a0b66a87ba11026ccbc51e01"
     }
   ]
 }

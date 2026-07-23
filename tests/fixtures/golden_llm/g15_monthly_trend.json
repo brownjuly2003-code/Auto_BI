@@ -1,5 +1,10 @@
 {
   "case_id": "g15_monthly_trend",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -19,7 +24,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "8f72fad9f4f4290dd2439378cb5f19638a36779dd8f89c31384cf17f2c5947c2"
     },
     {
       "step": "propose_spec",
@@ -199,7 +205,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "1b7c85d16369c48f5ab04eb8197cba523de6571e1aa0c03c507199d40dc9bf76"
     }
   ]
 }
