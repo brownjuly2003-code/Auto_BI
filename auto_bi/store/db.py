@@ -50,7 +50,7 @@ import threading
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 def _row_id(cur: sqlite3.Cursor) -> int:
@@ -403,7 +403,9 @@ class Store:
 
     # --- specs / builds ---------------------------------------------------------
 
-    def save_spec(self, session_id: str, spec_json: dict, status: str = "proposed") -> int:
+    def save_spec(
+        self, session_id: str, spec_json: dict[str, Any], status: str = "proposed"
+    ) -> int:
         with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO specs (session_id, spec_json, status) VALUES (?, ?, ?)",
@@ -1194,4 +1196,4 @@ class Store:
 
     def _db_one(self, sql: str, params: tuple[Any, ...]) -> sqlite3.Row:
         with self._lock:
-            return self._db.execute(sql, params).fetchone()
+            return cast(sqlite3.Row, self._db.execute(sql, params).fetchone())

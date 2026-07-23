@@ -3,6 +3,7 @@
 import os
 from collections.abc import Mapping
 from functools import lru_cache
+from logging import Logger
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -238,7 +239,7 @@ def unknown_env_settings(environ: Mapping[str, str] | None = None) -> list[str]:
     return sorted(k for k in env if k.upper().startswith(prefix) and k.upper() not in known)
 
 
-def warn_unknown_env_settings(log, environ: Mapping[str, str] | None = None) -> list[str]:
+def warn_unknown_env_settings(log: Logger, environ: Mapping[str, str] | None = None) -> list[str]:
     """Log a warning per unknown AUTO_BI_* variable; returns what was flagged."""
     unknown = unknown_env_settings(environ)
     for var in unknown:

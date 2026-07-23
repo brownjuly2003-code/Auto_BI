@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict Settings boundary** —
+  `auto_bi/config.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  security-sensitive defaults и детектор опечаток `AUTO_BI_*` теперь проверяются
+  с `mypy --strict`.
+
 - **plan_sol шаг 12 residual: mypy-strict error boundary** —
   `auto_bi/errors.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
   SafeError, redaction и provider mapping теперь проверяются с `mypy --strict`.

@@ -109,8 +109,8 @@ class SupersetClient:
         method: str,
         path: str,
         *,
-        json: dict | None = None,
-        params: dict | None = None,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self._access_token is None:
             self.login()
@@ -136,13 +136,13 @@ class SupersetClient:
             )
         return response.json() if response.content else {}
 
-    def get(self, path: str, *, params: dict | None = None) -> dict[str, Any]:
+    def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.request("GET", path, params=params)
 
-    def post(self, path: str, json: dict) -> dict[str, Any]:
+    def post(self, path: str, json: dict[str, Any]) -> dict[str, Any]:
         return self.request("POST", path, json=json)
 
-    def put(self, path: str, json: dict) -> dict[str, Any]:
+    def put(self, path: str, json: dict[str, Any]) -> dict[str, Any]:
         return self.request("PUT", path, json=json)
 
     def delete(self, path: str) -> dict[str, Any]:

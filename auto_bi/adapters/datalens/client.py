@@ -103,7 +103,7 @@ class DataLensClient:
         self._logged_in = True
         logger.info("datalens signin ok")
 
-    def gateway(self, service: str, method: str, body: dict) -> dict[str, Any]:
+    def gateway(self, service: str, method: str, body: dict[str, Any]) -> dict[str, Any]:
         """One UI-gateway RPC, e.g. gateway("bi", "createConnection", {...})."""
         if not self._logged_in:
             self.login()
@@ -126,7 +126,7 @@ class DataLensClient:
             )
         return response.json() if response.content else {}
 
-    def post(self, path: str, body: dict) -> dict[str, Any]:
+    def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         """POST to a non-gateway endpoint (e.g. the charts engine `/api/charts/v1/charts`
         or `/api/run`), carrying the `auth` cookie. Logs in first if needed."""
         if not self._logged_in:

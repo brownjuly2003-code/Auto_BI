@@ -61,7 +61,7 @@ jobs:
       - name: Mypy strict (boundary modules)
         run: >-
           uv run --with mypy --with types-PyYAML mypy --strict
-          auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py
+          auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py auto_bi/config.py
 
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
@@ -176,7 +176,7 @@ jobs:
       - name: Mypy strict (boundary modules)
         run: >-
           uv run --python 3.13 --with mypy --with types-PyYAML mypy --strict
-          auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py
+          auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py auto_bi/config.py
 
       - name: Pytest + coverage gate
         run: >
