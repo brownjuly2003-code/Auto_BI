@@ -32,6 +32,9 @@
 - [ ] USER_GUIDE / DEPLOYMENT / ARCHITECTURE / SECURITY / CHANGELOG updated when public behaviour or defaults change
 - [ ] `.env.example` matches new Settings fields and defaults
 - [ ] Migration note added if a default flips or a public response shape breaks
+- [ ] Documented defaults still match `Settings` (`tests/test_docs_defaults.py` green)
+- [ ] No new claim wider than CI release gates (see `tests/test_compatibility_matrix.py`)
+- [ ] Version string consistent: `pyproject.toml` ↔ `auto_bi.__version__`
 
 ## Release / deploy (if this PR touches publish paths)
 

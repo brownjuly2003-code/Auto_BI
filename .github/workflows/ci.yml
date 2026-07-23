@@ -205,6 +205,35 @@ jobs:
           uv pip install --python .venv-wheel $whl
           & .\.venv-wheel\Scripts\auto_bi.exe --version
 
+  # plan_sol step 10 residual: offline browser E2E (ScriptedLLM + fake builder, no DWH/BI).
+  # Separate from the live integration job so auth/retry/SSE paths stay green without
+  # docker-compose. Not in REQUIRED_CHECKS yet (optional until next ruleset re-apply).
+  browser-offline-e2e:
+    name: Browser E2E (offline, no stand)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install Playwright Chromium
+        run: uv run --with playwright playwright install --with-deps chromium
+
+      - name: Offline browser E2E (text / failed-build retry / SSE late-connect)
+        run: >
+          uv run --with playwright pytest -m e2e
+          tests/test_web_e2e_offline.py -q --tb=short
+
   # C-5: known-CVE gate over the LOCKED dependency set (uv.lock is the source of truth;
   # --all-extras covers the anthropic extra too). uv export pins everything, so pip-audit
   # runs offline-resolution-free with --disable-pip.

@@ -213,10 +213,11 @@ vs Greenplum/Greengage).
 исходом, и агрегаты по вызовам LLM. API: `GET /api/v1/sessions/{id}/trace` и
 `GET /api/v1/observability/llm`.
 
-> **Честность по данным:** GraceKelly не возвращает токены/стоимость, поэтому «расходы LLM»
-> построены на измеримом — число вызовов, латентность и **объём в символах** (промпт +
-> ответ). Символьные метрики — это **size-прокси, НЕ токены и НЕ доллары**. Точный
-> токен/$-учёт появится, когда оркестратор начнёт отдавать usage. Подробнее — ARCHITECTURE §3.9.
+> **Честность по данным:** при провайдере `anthropic` usage (input/output tokens) пишется
+> в Store/`llm_calls` и участвует в opt-in LLM budget (`AUTO_BI_LLM_BUDGET_*`, цены в
+> `AUTO_BI_LLM_BUDGET_PRICES`). GraceKelly usage может быть неполным — тогда UI показывает
+> измеримое: число вызовов, латентность и **объём в символах** (size-прокси, не доллары).
+> Подробнее — ARCHITECTURE §3.9.
 
 ---
 
@@ -230,7 +231,7 @@ vs Greenplum/Greengage).
 | `AUTO_BI_CH_HOST_FROM_BI` / `_PORT_FROM_BI` | CH адрес, как его видит сервер BI (если отличается от CLI-стороны, напр. через туннель) | `` / `0` |
 | `AUTO_BI_GP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_DATABASE` / `_SCHEMA` | Greenplum/Greengage DWH (v2) | `localhost` / `5432` / `auto_bi_ro` / `` / `postgres` / `dm` |
 | `AUTO_BI_SUPERSET_URL` / `_USER` / `_PASSWORD` | Apache Superset | `http://localhost:8088` / `admin` / `` |
-| `AUTO_BI_DATALENS_URL` / `_USER` / `_PASSWORD` / `_WORKBOOK_ID` | self-hosted DataLens (v2) | `http://localhost:8090` / `admin` / `admin` / `ra7f79yirtumb` |
+| `AUTO_BI_DATALENS_URL` / `_USER` / `_PASSWORD` / `_WORKBOOK_ID` | self-hosted DataLens (v2, experimental live) | `http://localhost:8090` / `admin` / `` (пустой — fail-loud, без shipped default) / `ra7f79yirtumb` |
 | `AUTO_BI_CH_HOST_FROM_DATALENS` | CH-хост, как его достаёт DataLens-коннекшн | `host.docker.internal` |
 | `AUTO_BI_LLM_PROVIDER` | LLM-провайдер: `anthropic` (прямой Messages API) или `gracekelly` (локальный сервис) | `anthropic` |
 | `ANTHROPIC_API_KEY` / `AUTO_BI_ANTHROPIC_MODEL` / `_MAX_TOKENS` | Прямой Anthropic API (провайдер `anthropic`). Ключ — стандартная переменная SDK, без префикса `AUTO_BI_`; `AUTO_BI_ANTHROPIC_API_KEY` тоже работает, если ключ нужно держать рядом с остальным `.env` | `` / `claude-sonnet-5` / `16000` |
@@ -244,7 +245,9 @@ vs Greenplum/Greengage).
 | `AUTO_BI_AUTH_TOKEN_TTL_HOURS` | срок жизни токена/сессии | `24` |
 | `AUTO_BI_AUTH_COOKIE_SECURE` | `Secure`-флаг login-cookie: пусто = авто (вкл., если сервер не на loopback-хосте); `true`/`false` форсирует | (авто) |
 | `AUTO_BI_SESSION_RATE_ENABLED` | включить per-IP/per-day квоту на LLM-эндпоинты сессий (см. §7) | `false` |
-| `AUTO_BI_SESSION_RATE_PER_DAY` | лимит вызовов в сутки на IP, когда квота включена | `100` |
+| `AUTO_BI_SESSION_RATE_PER_DAY` | лимит LLM-вызовов в сутки на IP, когда квота включена | `100` |
+| `AUTO_BI_WORK_RATE_ENABLED` | квота на дорогую non-LLM работу (auto/approve/insights); forced ON при `DEMO_AUTO_ONLY` | `false` |
+| `AUTO_BI_WORK_RATE_PER_DAY` | лимит work-операций в сутки на IP | `50` |
 | `AUTO_BI_FORWARDED_ALLOW_IPS` | каким прокси доверять `X-Forwarded-For` (реальные IP для квот за reverse-proxy; DEPLOYMENT §3): адреса через запятую или `*`, пусто = только loopback | (пусто) |
 | `AUTO_BI_PROFILE` | deployment profile: `local` (dev, без hard-fail), `demo` (auto-only или text+LLM-ready+quota), `production` (auth, strict BI fingerprint, non-default secrets, limits, retention; см. DEPLOYMENT §2) | `local` |
 | `AUTO_BI_DEMO_AUTO_ONLY` | режим публичного демо: открыт только авто-обзор, text/fields/правки/enrichment → 403, LLM не подключается вовсе; `/health.capabilities` отражает доступные режимы | `false` |
@@ -292,18 +295,19 @@ users:
 `AUTO_BI_AUTH_COOKIE_SECURE`. Токены в SQLite хранятся как `sha256(token)`, не сырым
 значением; протухшие строки подчищаются фоновым потоком раз в час.
 
-> Ограничение MVP: сессии не привязаны к владельцу (RBAC защищает **данные**, а не адресацию
-> сессии по id) — это следующий шаг.
+**Владелец сессии:** при `AUTH_ENABLED=true` каждая сессия привязана к username; чужой
+не-admin получает **404** на session-scoped эндпоинтах (существование скрыто). Admin видит
+все. При auth off — single-user, owner не проверяется.
 
-**Квота на LLM-вызовы (O-2):** отдельно от логин-лимитера — `POST /api/v1/sessions` и
-`POST /api/v1/sessions/{id}/reply` (оба дёргают LLM) можно ограничить per-IP/per-day, чтобы
-перед публичным демо защитить бюджет ключа от неограниченного расхода. Выключено по
-умолчанию (`AUTO_BI_SESSION_RATE_ENABLED=false`) — локальная разработка и тесты не
-затронуты; включив, лимит суточных вызовов на IP задаётся `AUTO_BI_SESSION_RATE_PER_DAY`
-(по умолчанию 100). Превышение — тот же формат, что у логина: 429 + `Retry-After`, но лок-аут
-не растёт экспоненциально — это бюджетный потолок, а не защита от подбора, поэтому
-превышение просто блокирует IP до конца текущих суток. `POST /api/v1/sessions/auto`
-(авто-обзор) квоты не касается — этот путь детерминированный, LLM не вызывает.
+**Квота на LLM-вызовы (O-2):** `POST /api/v1/sessions` и `POST /api/v1/sessions/{id}/reply`
+(оба дёргают LLM) — opt-in per-IP/per-day (`AUTO_BI_SESSION_RATE_ENABLED`, default off;
+`AUTO_BI_SESSION_RATE_PER_DAY=100`). Превышение: 429 + `Retry-After` (плоский суточный
+потолок, без экспоненциального lockout).
+
+**Квота на дорогую non-LLM работу (P0-3):** `POST /sessions/auto`, approve/build и insights
+жгут DWH/BI/CPU даже без LLM. Opt-in `AUTO_BI_WORK_RATE_ENABLED` / `_PER_DAY` (default 50);
+в публичном `demo_auto_only` work-quota **форсируется**, чтобы аноним не зафлудил стенд.
+Авто-обзор **не** входит в session/LLM-квоту O-2, но **входит** в work-quota.
 
 ---
 

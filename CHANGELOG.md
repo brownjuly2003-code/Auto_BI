@@ -6,19 +6,17 @@
 
 ### Added
 
-- **plan_sol шаг 10 (partial): compatibility + E2E matrix** —
-  (1) CI job `Lint & tests (Python latest)` on CPython 3.13 (primary quality stays
-  3.12 so required-check name is stable under main ruleset).
-  (2) CI job `Windows package/CLI smoke` (locked install + wheel install).
-  (3) Honest support matrix test `tests/test_compatibility_matrix.py`: release-gated
-  vs offline-contract vs experimental (DataLens live + GP live stand marked
-  experimental; GP advisor/golden stay offline CI).
-  (4) Browser E2E expansion: mobile viewport landing+axe; auth analyst/admin login;
-  finance analyst forbidden-schema (no dm.* in auto picker); bad credentials.
-  Desktop happy path retained. No paid LLM in E2E.
-  Residual: failed-build retry UI, browser restart/resume, SSE reconnect mid-stream,
-  text/fields via FixtureLLM (serve has no fixture mode yet); live GP/DataLens
-  integration remain experimental/Mac-only.
+- **plan_sol шаг 10 (mostly closed) + шаг 11 start** —
+  Step 10: CI `quality-py-latest` (3.13), `windows-cli-smoke`, compatibility matrix
+  test, live-stand E2E auth/viewport; **offline browser E2E** job
+  `Browser E2E (offline, no stand)` — text path via ScriptedLLM, failed-build retry,
+  SSE late-connect replay (`tests/test_web_e2e_offline.py` + helper subprocess).
+  No paid LLM. Residual: full browser process-restart resume UI (API covered);
+  fields drag-drop E2E; live GHA after merge.
+  Step 11 start: fixed USER_GUIDE audit falsehoods (session owner-bound, Anthropic
+  token usage, work quota on auto, empty DataLens password default); `tests/test_docs_defaults.py`
+  (Settings defaults without local `.env`, version, CLI subcommands, `.env.example`);
+  PR template docs checklist expanded.
 
 ### Changed
 

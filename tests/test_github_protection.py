@@ -75,6 +75,7 @@ def _workflow_job_names(path: Path) -> set[str]:
                 "Lint, format & tests (offline)",
                 "Lint & tests (Python latest)",
                 "Windows package/CLI smoke",
+                "Browser E2E (offline, no stand)",
                 "Dependency audit (pip-audit)",
                 "Dependency resolution (locked / latest / lowest-direct)",
                 "Docker image build (drift check)",
