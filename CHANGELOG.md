@@ -4,7 +4,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **plan_sol шаг 13 reaudit R1** — SafeError leak-canary pipeline test used pre-step-7
+  `adapter.build(spec)` signature; `TypeError` mapped to `internal.error` instead of
+  proving `SupersetAPIError` → `bi.http_error` store channel. Fake updated to
+  `build(spec, ctx=None)` + contract methods.
+
 ### Added
+
+- **plan_sol шаг 13 (offline adversarial re-audit core)** —
+  Evidence doc `docs/operations/REAUDIT_plan_sol_23_07_26.md` (score 8.8/10 offline;
+  gates: ruff/mypy/hygiene, security suite, advisor 9+6, golden 37+16, rulesets active,
+  restore-drill, docs ratchets). Residual: live GHA/Space/tag, mutmut, full cov run.
 
 - **plan_sol шаг 12 (SLO / recovery core)** —
   `Store.backup_to` + `integrity_check` (online SQLite backup); operator script

@@ -79,6 +79,12 @@ browser session hydrate after reload; fields DnD E2E; live GHA after merge PR pa
 Residual step 12: live p50/p95, full mutation score (mutmut), mypy-strict module roll-out,
 process memory / cold-start on release image.
 
+## Re-audit (plan_sol 13 core offline)
+
+Evidence: [operations/REAUDIT_plan_sol_23_07_26.md](operations/REAUDIT_plan_sol_23_07_26.md).
+Offline score **8.8/10** (was 8.2). Finding R1 fixed (SafeError test fake vs `build(spec, ctx)`).
+Live Space / GHA / `v*` tag / mutmut remain residual.
+
 ## Открытый residual (не блокирует core claims)
 
 1. **Release live evidence** — next `v*` tag: image digest ↔ SBOM ↔ provenance.
@@ -87,7 +93,7 @@ process memory / cold-start on release image.
 4. **Step 10 residual** — UI resume after reload; fields drag-drop E2E.
 5. **Step 11 residual** — full ARCHITECTURE current/history split; optional Field(description=) on every Settings key.
 6. **Step 12 residual** — live SLO, mutmut score, mypy-strict modules (core offline gates done).
-7. **Step 13** — final adversarial re-audit.
+7. **Step 13 residual** — live integration/browser/Space/tag evidence on pushed SHA.
 
 ## Что не является source of truth
 

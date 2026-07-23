@@ -276,11 +276,19 @@ def test_pipeline_store_channel_strips_marker_on_adapter_error(tmp_path) -> None
         def healthcheck(self) -> AdapterHealth:
             return AdapterHealth(ok=True)
 
-        def build(self, spec: DashboardSpec) -> DashboardRef:
+        # plan_sol step 7: pipeline always calls build(spec, ctx) — old single-arg
+        # fakes raised TypeError and collapsed to internal.error (reaudit 23.07).
+        def build(self, spec: DashboardSpec, ctx=None) -> DashboardRef:
             raise SupersetAPIError(
                 "POST /api/v1/dashboard/ -> HTTP 500",
                 status_code=500,
             )
+
+        def delete_artifact(self, kind: str, native_id: str | int) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
 
     with pytest.raises(SafeError) as ei:
         compile_and_build(
