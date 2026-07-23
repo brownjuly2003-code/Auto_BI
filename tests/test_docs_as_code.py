@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from auto_bi.config import Settings
 from auto_bi.eval.cases import (
@@ -26,6 +27,8 @@ README = REPO / "README.md"
 ENV_EXAMPLE = REPO / ".env.example"
 FIXTURES_DIR = REPO / "tests" / "fixtures" / "golden_llm"
 GEN_SCRIPT = REPO / "scripts" / "generate_env_reference.py"
+CI_WORKFLOW = REPO / ".github" / "workflows" / "ci.yml"
+SLO = DOCS / "operations" / "SLO.md"
 
 # Markdown files that participate in the public doc graph (internal links checked).
 PUBLIC_MD = [
@@ -171,6 +174,19 @@ def test_generator_check_mode_exits_zero() -> None:
     gen = _load_generator()
     code = gen.main(["--check"])
     assert code == 0
+
+
+def test_ir_validate_is_in_every_strict_mypy_job_and_slo() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    strict_steps = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if step.get("name") == "Mypy strict (boundary modules)"
+    ]
+    assert len(strict_steps) == 2
+    assert all("auto_bi/ir/validate.py" in step["run"] for step in strict_steps)
+    assert "`auto_bi/ir/validate.py`" in SLO.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

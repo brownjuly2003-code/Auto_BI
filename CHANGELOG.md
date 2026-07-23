@@ -17,6 +17,10 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict IR validation boundary** —
+  `auto_bi/ir/validate.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  semantic-model/spec validation теперь проверяется с `mypy --strict`.
+
 - **plan_sol шаг 12 residual: SQL guard mutation gate** — `mutmut 3.6.0`
   ограничен `auto_bi/agent/sql_guard.py`; CI отклоняет выжившие, непокрытые,
   пропущенные, suspicious, timed-out и crashed mutants. Evidence run уничтожил
