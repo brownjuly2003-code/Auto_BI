@@ -533,6 +533,69 @@ ARCHITECTURE §3.15.
 
 ---
 
+## 11. GitHub repository protection (plan_sol step 5)
+
+Публичный репозиторий должен закрывать прямой merge/push в `main` и перезапись
+release-тегов. **Локальный scaffolding уже в git:**
+
+| Артефакт | Назначение |
+|---|---|
+| [`.github/CODEOWNERS`](../.github/CODEOWNERS) | владелец review (solo: `@brownjuly2003-code`) |
+| [`.github/pull_request_template.md`](../.github/pull_request_template.md) | security / data / docs / release checklist |
+| [`.github/dependabot.yml`](../.github/dependabot.yml) | version updates (uv + actions + docker), minor/patch groups |
+| [`scripts/apply_github_protection.py`](../scripts/apply_github_protection.py) | dry-run / apply rulesets + Dependabot security updates |
+
+Обязательные check-run names (должны совпадать с `name:` job в workflows):
+
+1. `Lint, format & tests (offline)`
+2. `Dependency audit (pip-audit)`
+3. `Docker image build (drift check)`
+4. `Integration (ClickHouse + Superset stand)`
+5. `gitleaks`
+6. `analyze (python)`
+
+Сверка имён — `tests/test_github_protection.py`.
+
+### Внешние операции (только с явным разрешением оператора)
+
+```bash
+# только план
+python scripts/apply_github_protection.py
+python scripts/apply_github_protection.py --status
+
+# мутация GitHub (rulesets + security updates) — GATE
+python scripts/apply_github_protection.py --apply
+```
+
+Что делает `--apply`:
+
+- ruleset **main protection**: PR required, conversation resolution, required checks
+  выше, no force-push (`non_fast_forward`), no branch delete;
+- ruleset **release tags v\***: запрет update/delete/force на `refs/tags/v*`;
+- включает `dependabot_security_updates` на репозитории.
+
+### Solo-maintainer residuals (намеренно)
+
+- `require_code_owner_review` и `required_approving_review_count` **выключены** в
+  ruleset payload — иначе единственный владелец не смержит свой PR. CODEOWNERS всё
+  равно документирует ownership; включить review enforcement, когда появится второй
+  reviewer.
+- Environment `pypi`: **`prevent_self_review=false`** — иначе solo release deadlock.
+  `can_admins_bypass` на environment сейчас true; сужать после появления второго
+  человека.
+- Coverage badge commit-back в CI **soft-skip** при отказе push (ruleset); badge может
+  отставать, quality job не краснеет.
+- Открытые Dependabot PR разбираются **малыми совместимыми группами** (не bulk-merge
+  major actions major+uv в одном окне).
+
+### Аварийный bypass
+
+Постоянных `bypass_actors` в ruleset нет. Временный обход — UI ruleset
+`enforcement: disabled` / bypass на конкретный PR, с записью в CHANGELOG/ops note и
+немедленным возвратом `active`. Не force-push в `main` и не переписывать `v*` tags.
+
+---
+
 См. также: [ARCHITECTURE.md](ARCHITECTURE.md) §3.8 (Store), §3.11 (Ops-hardening), §3.15
 (Session-resume), §4
 (Безопасность); [USER_GUIDE.md](USER_GUIDE.md) §4 (Web UI/логи/готовность), §6

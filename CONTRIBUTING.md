@@ -59,6 +59,8 @@ This requires a working LLM provider (`ANTHROPIC_API_KEY` or a running GraceKell
 - Code, identifiers, and commit messages are in English; documentation and issue/PR discussion may be in Russian or English.
 - Keep PRs scoped to one change; don't bundle an unrelated refactor with a feature or fix.
 - Secrets never go in code, logs, or docs — `.env` is git-ignored for exactly this reason. If you accidentally commit one, tell the maintainer immediately (via a Security Advisory if it's a live credential) rather than just force-pushing a fix.
+- New PRs use [`.github/pull_request_template.md`](.github/pull_request_template.md) — fill the security, data, docs, and test sections that apply.
+- Default review owner is listed in [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
 ## Reporting bugs / requesting features
 

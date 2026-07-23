@@ -32,4 +32,16 @@ Still recommended: run `auto_bi serve` behind a reverse proxy that terminates TL
 
 ## Dependencies
 
-Dependency updates, including security patches, are tracked via Dependabot (`.github/dependabot.yml`) and go through the same CI gate as any other change.
+Dependency updates, including security patches, are tracked via Dependabot (`.github/dependabot.yml`) and go through the same CI gate as any other change. Version bumps are grouped (minor/patch) to keep review load small; major bumps stay as separate PRs.
+
+**Dependabot security updates** (auto-PRs for known advisories) are a repository security setting separate from `dependabot.yml`. Enable with the operator script in [DEPLOYMENT.md §11](docs/DEPLOYMENT.md#11-github-repository-protection-plan_sol-step-5) after an explicit admin gate — do not assume the UI toggle is on.
+
+## Repository protection
+
+`main` and `v*` tags are meant to be enforced by GitHub **repository rulesets** (required CI/CodeQL/gitleaks checks, PR-only main, no force-push/delete, immutable release tags). Local scaffolding:
+
+- [`.github/CODEOWNERS`](.github/CODEOWNERS)
+- [`.github/pull_request_template.md`](.github/pull_request_template.md) (security / data / docs / release checklists)
+- [`scripts/apply_github_protection.py`](scripts/apply_github_protection.py) (dry-run by default)
+
+Applying rulesets or flipping security-updates is an **admin external operation** — see DEPLOYMENT §11. Solo-maintainer residual: code-owner *required* review and environment `pypi` `prevent_self_review` stay off until a second human reviewer exists (otherwise merges and releases deadlock).

@@ -1,0 +1,13 @@
+# Default owner for the whole tree. Solo maintainer today; expand when a second
+# reviewer joins so require_code_owner_review can be turned on in the main ruleset.
+# See docs/DEPLOYMENT.md § GitHub repository protection (plan_sol step 5).
+*       @brownjuly2003-code
+
+# Security-sensitive paths — same owner, called out so PR review UI highlights them.
+/.github/                       @brownjuly2003-code
+/deploy/                        @brownjuly2003-code
+/docker/                        @brownjuly2003-code
+/auto_bi/errors.py              @brownjuly2003-code
+/auto_bi/deployment_profile.py  @brownjuly2003-code
+/auto_bi/semantic/prompt_data.py @brownjuly2003-code
+/SECURITY.md                    @brownjuly2003-code

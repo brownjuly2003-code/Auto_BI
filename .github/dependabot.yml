@@ -7,10 +7,24 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     groups:
+      # One weekly PR for non-major bumps; major stays separate so CI can fail isolated.
       python-dependencies:
         patterns: ["*"]
-  # GitHub Actions used by the CI workflow
+        update-types: ["minor", "patch"]
+  # GitHub Actions used by CI / release / gitleaks / CodeQL
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+  # Docker base images referenced by Dockerfiles (digest pins still need manual bump
+  # of the digest comment; version PRs are a heads-up only).
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3

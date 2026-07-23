@@ -12,6 +12,8 @@ on:
 
 jobs:
   scan:
+    # Stable check-run name for repository rulesets (plan_sol step 5).
+    name: gitleaks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

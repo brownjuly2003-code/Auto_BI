@@ -6,6 +6,17 @@
 
 ### Security
 
+- **plan_sol шаг 5 (partial): GitHub checks scaffolding** —
+  `.github/CODEOWNERS`, PR template (security/data/docs/release), Dependabot
+  groups (uv + github-actions minor/patch) + docker ecosystem, stable
+  `gitleaks` check-run name, coverage-badge push soft-skip under branch
+  protection. Operator script `scripts/apply_github_protection.py` (dry-run
+  default) prepares main + `v*` tag rulesets and Dependabot security updates;
+  **apply is an admin gate** (not run in-session). Docs: DEPLOYMENT §11,
+  SECURITY. Tests: `tests/test_github_protection.py`. Residuals: live rulesets
+  empty until `--apply`; solo `pypi` prevent_self_review stays false; open
+  Dependabot PRs not bulk-merged.
+
 - **plan_sol шаг 4: Compose loopback + validated profiles** —
   `docker-compose.yml` публикует ClickHouse/Superset только на `127.0.0.1`
   (LAN-соседи больше не видят local-only defaults). Внешняя публикация —

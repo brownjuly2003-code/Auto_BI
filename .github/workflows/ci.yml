@@ -114,7 +114,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/badges/coverage.json
           git commit -m "chore(ci): update coverage badge [skip ci]"
-          git push
+          # plan_sol step 5: main ruleset may require PR + block direct push.
+          # Soft-skip so quality stays green; badge lags until a human merges an
+          # update or the ruleset gains a narrow Actions bypass.
+          if ! git push; then
+            echo "coverage badge push skipped (branch protection / ruleset)"
+          fi
 
   # C-5: known-CVE gate over the LOCKED dependency set (uv.lock is the source of truth;
   # --all-extras covers the anthropic extra too). uv export pins everything, so pip-audit
