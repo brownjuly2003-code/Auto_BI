@@ -86,17 +86,17 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
         exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create, exp.Alter,
         exp.TruncateTable, exp.Grant, exp.Command, exp.Set,
     )  # fmt: skip
-    cte_names = {(cte.alias_or_name or "").lower() for cte in root.find_all(exp.CTE)}
+    cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
     for node in root.walk():
         if isinstance(node, forbidden):
             raise SQLGuardError(f"forbidden construct in SQL: {type(node).__name__}")
         # Table-valued remote sources: `FROM url(...)` / `FROM s3(...)` etc.
         if isinstance(node, exp.Anonymous):
-            name = (node.this or "").lower() if isinstance(node.this, str) else ""
+            name = str(node.this).lower()
             if name in _FORBIDDEN_TABLE_FUNCS:
                 raise SQLGuardError(f"forbidden table function in SQL: {name}()")
         if isinstance(node, exp.Func):
-            name = (node.sql_name() or "").lower()
+            name = node.sql_name().lower()
             if name in _FORBIDDEN_TABLE_FUNCS:
                 raise SQLGuardError(f"forbidden table function in SQL: {name}()")
         # sqlglot(clickhouse) parses some table functions as plain Tables (e.g.
@@ -104,7 +104,7 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
         # UNQUALIFIED table whose name is denylisted. A real table of that name is
         # still reachable schema-qualified (dm.dictionary); CTE alias refs are fine.
         if isinstance(node, exp.Table) and not node.args.get("db"):
-            name = (node.name or "").lower()
+            name = node.name.lower()
             if name in _FORBIDDEN_TABLE_FUNCS and name not in cte_names:
                 raise SQLGuardError(f"forbidden table function in SQL: {name}()")
 
@@ -119,11 +119,11 @@ def extract_table_names(sql: str, *, dialect: str = DIALECT) -> frozenset[str]:
     the bare name is not an allowed schema).
     """
     root = _parse_one_select(sql, dialect=dialect)
-    cte_names = {(cte.alias_or_name or "").lower() for cte in root.find_all(exp.CTE)}
+    cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
     tables: set[str] = set()
     for table in root.find_all(exp.Table):
         name = table.name
-        if not name:
+        if not name:  # pragma: no mutate block - sqlglot never emits an unnamed Table
             continue
         # CTE self-reference: bare name matching a WITH alias, no db/catalog.
         if name.lower() in cte_names and not table.db and not table.catalog:
@@ -173,12 +173,10 @@ class LiveSQLValidator:
             except Exception as e:
                 raise SQLGuardError(f"EXPLAIN failed: {e}") from e
         try:
-            trial_rows: list[dict] = []
-            for stmt in _trial_statements(sql, self._dialect):
-                result = self._run(stmt)
-                # Postgres/Greenplum emit a SET before the SELECT; only the SELECT yields rows.
-                if not stmt.lstrip().upper().startswith("SET"):
-                    trial_rows = list(result)
+            statements = _trial_statements(sql, self._dialect)
+            for stmt in statements[:-1]:
+                self._run(stmt)
+            trial_rows = list(self._run(statements[-1]))
             if plans is not None:
                 plans.record_trial(sql, trial_rows, trial_limit=TRIAL_LIMIT)
         except Exception as e:

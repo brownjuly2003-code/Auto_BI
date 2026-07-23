@@ -10,6 +10,7 @@ the advisor a measurement of a query the BI never runs.
 import pytest
 
 from auto_bi.advisor.core import Advisor
+from auto_bi.agent import sql_guard as sql_guard_module
 from auto_bi.agent.pipeline import build_dashboard, compile_and_build, review_and_log
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sql_guard import LiveSQLValidator, SQLGuardError
@@ -128,6 +129,44 @@ def test_guard_without_cache_does_not_require_trial_store() -> None:
     assert any(s.startswith("SELECT * FROM") for s in run.statements)
 
 
+def test_guard_forwards_dialect_and_records_only_the_select_trial() -> None:
+    sql = "SELECT TOP 1 * FROM dbo.sales"
+    statements: list[str] = []
+
+    def run_query(statement: str) -> list[dict]:
+        statements.append(statement)
+        if statement.startswith("SET"):
+            return [{"ignored": True}]
+        if statement.startswith("SELECT * FROM"):
+            return [{"sale": 1}]
+        return [{"explain": "ok"}]
+
+    cache = PlanCache()
+    LiveSQLValidator(run_query, dialect="tsql").validate(sql, plans=cache)
+
+    trial = cache.get_trial(sql)
+    assert trial is not None
+    assert trial.rows == ({"sale": 1},)
+    assert statements == [
+        f"EXPLAIN {sql}",
+        "SET statement_timeout = '30s'",
+        f"SELECT * FROM ({sql}) AS _auto_bi_trial LIMIT 10",
+    ]
+
+
+def test_guard_uses_its_trial_limit_for_cache_completeness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sql_guard_module, "TRIAL_LIMIT", 1)
+    cache = PlanCache()
+
+    LiveSQLValidator(RecordingRunQuery()).validate(SQL, plans=cache)
+
+    trial = cache.get_trial(SQL)
+    assert trial is not None
+    assert trial.complete is False
+
+
 # --- guard: skips its EXPLAIN only on a hit ------------------------------------------
 
 
@@ -157,6 +196,17 @@ def test_guard_explains_when_the_cached_plan_failed() -> None:
     LiveSQLValidator(run).validate(SQL, plans=cache)
 
     assert run.count("EXPLAIN") == 1
+
+
+def test_guard_wraps_explain_failure_with_context() -> None:
+    def failing_explain(sql: str) -> list[dict]:
+        if sql.startswith("EXPLAIN"):
+            raise RuntimeError("boom")
+        return []
+
+    with pytest.raises(SQLGuardError, match=r"^EXPLAIN failed: boom$") as caught:
+        LiveSQLValidator(failing_explain).validate(SQL)
+    assert isinstance(caught.value.__cause__, RuntimeError)
 
 
 def test_guard_still_rejects_non_select_on_a_cache_hit() -> None:

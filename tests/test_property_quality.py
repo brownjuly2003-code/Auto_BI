@@ -15,6 +15,7 @@ from auto_bi.adapters.superset.native_filters import (
     build_native_filter_configuration,
     participating_chart_ids,
 )
+from auto_bi.agent import sql_guard as sql_guard_module
 from auto_bi.agent.dataset_plan import chart_accepts_filter, plan_datasets
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.sql_guard import SQLGuardError, extract_table_names, guard_sql
@@ -127,10 +128,72 @@ def test_guard_metamorphic_append_write_always_fails() -> None:
                 guard_sql(base + tail)
 
 
+def test_guard_and_table_extraction_forward_explicit_dialect() -> None:
+    sql = "SELECT TOP 1 * FROM dbo.sales"
+    guard_sql(sql, dialect="tsql")
+    assert extract_table_names(sql, dialect="tsql") == frozenset({"dbo.sales"})
+
+
+@pytest.mark.parametrize(
+    ("sql", "message"),
+    [
+        ("SELECT (", r"^SQL does not parse:"),
+        ("SELECT 1; SELECT 2", r"^expected exactly one statement, got 2$"),
+        ("DELETE FROM dm.sales", r"^only SELECT is allowed, got Delete$"),
+    ],
+)
+def test_guard_errors_identify_the_rejected_stage(sql: str, message: str) -> None:
+    with pytest.raises(SQLGuardError, match=message):
+        guard_sql(sql)
+
+
+def test_guard_reports_nested_forbidden_construct(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = sql_guard_module.exp.Select(expressions=[sql_guard_module.exp.Update()])
+    monkeypatch.setattr(
+        sql_guard_module,
+        "_parse_one_select",
+        lambda sql, *, dialect: root,
+    )
+
+    with pytest.raises(SQLGuardError, match=r"^forbidden construct in SQL: Update$"):
+        guard_sql("SELECT 1")
+
+
+def test_guard_rejects_typed_forbidden_function(monkeypatch: pytest.MonkeyPatch) -> None:
+    function = sql_guard_module.exp.Sum(this=sql_guard_module.exp.Literal.number(1))
+    monkeypatch.setattr(
+        type(function),
+        "sql_name",
+        classmethod(lambda cls: "DICTIONARY"),
+    )
+    root = sql_guard_module.exp.Select(expressions=[function])
+    monkeypatch.setattr(
+        sql_guard_module,
+        "_parse_one_select",
+        lambda sql, *, dialect: root,
+    )
+
+    with pytest.raises(
+        SQLGuardError,
+        match=r"^forbidden table function in SQL: dictionary\(\)$",
+    ):
+        guard_sql("SELECT 1")
+
+
 def test_extract_table_names_ignores_cte_aliases() -> None:
     names = extract_table_names("WITH cte AS (SELECT 1 AS x FROM dm.sales) SELECT x FROM cte")
     assert "dm.sales" in names or "sales" in {n.split(".")[-1] for n in names}
     assert "cte" not in {n.lower() for n in names}
+
+
+def test_guard_and_extraction_match_cte_names_case_insensitively() -> None:
+    sql = "WITH MeRgE AS (SELECT 1 AS x) SELECT x FROM merge"
+    guard_sql(sql)
+    assert extract_table_names(sql) == frozenset()
+
+
+def test_extract_table_names_keeps_bare_physical_tables() -> None:
+    assert extract_table_names("SELECT * FROM sales") == frozenset({"sales"})
 
 
 def test_guard_fuzz_random_identifier_selects_seeded() -> None:

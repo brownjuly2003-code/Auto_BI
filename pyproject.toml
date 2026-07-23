@@ -98,6 +98,18 @@ filterwarnings = [
 source = ["auto_bi"]
 omit = ["*/__init__.py"]
 
+# plan_sol step 12: bounded mutation smoke. mutmut 3 requires fork support, so this
+# runs in the primary Ubuntu CI job (or WSL locally), never in native Windows Python.
+[tool.mutmut]
+source_paths = ["auto_bi/"]
+only_mutate = ["auto_bi/agent/sql_guard.py"]
+pytest_add_cli_args_test_selection = [
+    "tests/test_property_quality.py",
+    "tests/test_x5_raw_sql.py",
+    "tests/test_query_plan.py",
+]
+also_copy = ["semantic/"]
+
 # mypy is run on auto_bi (not tests, whose fixtures use loose typing by design). Run via:
 #   uv run --with mypy --with types-PyYAML mypy auto_bi
 # types-PyYAML is pulled in ephemerally to keep uv.lock lean, mirroring pytest-cov in CI.

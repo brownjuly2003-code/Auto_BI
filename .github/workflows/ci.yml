@@ -74,6 +74,16 @@ jobs:
       - name: Pytest + coverage
         run: uv run --with pytest-cov --with duckdb pytest -q --cov=auto_bi --cov-report=term-missing --cov-fail-under=90
 
+      # plan_sol step 12: narrow mutation gate for the SELECT-only/RBAC SQL boundary.
+      # mutmut itself exits zero with surviving mutants, so export its machine-readable
+      # stats and enforce the zero-survivor/no-untested policy in a stdlib script.
+      - name: Mutation smoke (SQL guard)
+        timeout-minutes: 8
+        run: |
+          uv run --with mutmut==3.6.0 mutmut run --max-children 4
+          uv run --with mutmut==3.6.0 mutmut export-cicd-stats
+          uv run python scripts/check_mutation_stats.py mutants/mutmut-cicd-stats.json
+
       # The advisor eval suite is deterministic (rule-pack findings, no LLM/stand) —
       # running it in CI machinizes part of invariant 8 (don't ship a prompt/advisor
       # change that regresses the golden anti-patterns). plan_sol step 9: both engines.
