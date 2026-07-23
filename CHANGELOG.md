@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- **plan_sol шаг 1: стабильный публичный demo-профиль** — `/health` отдаёт
+  `capabilities` (auto_overview / text_session / fields_session / word_edit /
+  enrichment / llm_wired) из реальной wiring, не только из флага; UI баннер +
+  disable вкладок по capabilities; `AUTO_BI_REQUIRE_LLM_READY` (в
+  `start-autobi.sh` forced true при text-mode) не даёт процессу стартовать с
+  text-профилем при мёртвом LLM; `deploy/hf-demo/assert_demo_profile.py` —
+  post-deploy / CI smoke (flag + capabilities + 403 на text/fields/enrichment);
+  demo-image workflow вызывает assert-скрипт.
+
 ### Fixed
 
 - **DataLens: LIMIT-drop scope = семантика селекторов DataLens, не роли Superset** —

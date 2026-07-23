@@ -700,6 +700,20 @@ def _serve(  # pragma: no cover — wiring only
         logger.info("demo_auto_only: text/fields/enrichment disabled, LLM not wired")
     else:
         llm = make_llm(settings, store=store)
+        # plan_sol step 1: a text-enabled public profile must not come up advertising
+        # text/fields while the LLM is unreachable (audit P0-1). Local dev leaves
+        # require_llm_ready false so a missing GraceKelly still starts the API.
+        if settings.require_llm_ready:
+            llm_ready = llm_healthcheck()
+            if not llm_ready.ok:
+                print(
+                    "Refusing to serve text-enabled profile: LLM is not ready.\n"
+                    f"  {llm_ready.message}\n"
+                    "Fix the LLM (GraceKelly tunnel / provider credentials) or set "
+                    "AUTO_BI_DEMO_AUTO_ONLY=true for auto-overview only."
+                )
+                return 2
+            logger.info("require_llm_ready: LLM probe ok (%s)", llm_ready.message or "ok")
     app = create_app(
         model=model,
         llm=llm,

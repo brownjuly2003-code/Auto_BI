@@ -267,10 +267,16 @@ port — до него дотягивается только Caddy.
 `deploy/hf-demo/README.md`; это ДЕМО-упаковка, для прода используйте схему выше.
 
 **Текстовый путь на демо (по требованию).** По умолчанию демо — auto-only (без LLM, нулевой
-бюджет). Чтобы открыть ввод текста/полей, задайте в Space secrets `AUTO_BI_DEMO_AUTO_ONLY=false`:
-`start-autobi.sh` тогда подключит LLM-провайдера и ПРИНУДИТЕЛЬНО включит per-IP session-квоту
-(`AUTO_BI_SESSION_RATE_ENABLED=true`, `_PER_DAY` по умолчанию 50). Провайдер по умолчанию —
-GraceKelly (`claude-sonnet-5`); контейнер Space НЕ достучится до `127.0.0.1` на вашей машине,
+бюджет). Чтобы открыть ввод текста/полей, задайте в Space secrets `AUTO_BI_DEMO_AUTO_ONLY=false`
+**и** рабочий LLM (`AUTO_BI_GRACEKELLY_URL` или Anthropic): `start-autobi.sh` тогда
+подключит провайдера, ПРИНУДИТЕЛЬНО включит per-IP session-квоту
+(`AUTO_BI_SESSION_RATE_ENABLED=true`, `_PER_DAY` по умолчанию 50) и
+`AUTO_BI_REQUIRE_LLM_READY=true` — процесс **не стартует**, если LLM-probe падает
+(иначе health показывал бы text-режим при мёртвом GraceKelly). `/health.capabilities`
+описывает реально доступные режимы; post-deploy:
+`python deploy/hf-demo/assert_demo_profile.py https://<space>.hf.space`.
+Провайдер по умолчанию — GraceKelly (`claude-sonnet-5`); контейнер Space НЕ достучится
+до `127.0.0.1` на вашей машине,
 поэтому `AUTO_BI_GRACEKELLY_URL` должен указывать на ПУБЛИЧНЫЙ туннель (ngrok/cloudflared) к
 запущенному GraceKelly — демо живёт, только пока ваша машина и туннель включены, и каждый запрос
 анонима тратит вашу LLM-квоту. Альтернатива без туннеля — прямой Anthropic API

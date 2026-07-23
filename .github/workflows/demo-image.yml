@@ -37,12 +37,9 @@ jobs:
           [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:7860/)" = "302" ]
           curl -fsS http://localhost:7860/agent/ | grep -q 'src="static/app.js"'
           curl -fsS http://localhost:7860/agent/static/app.js >/dev/null
-          # text sessions are 403-gated in the demo; health carries the flag for the UI
-          [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
-              http://localhost:7860/agent/api/v1/sessions \
-              -H 'Content-Type: application/json' -d '{"request":"revenue"}')" = "403" ]
-          curl -fsS http://localhost:7860/agent/api/v1/health \
-            | python3 -c 'import json,sys; assert json.load(sys.stdin)["demo_auto_only"] is True'
+          # plan_sol step 1: full auto-only profile (flag + capabilities + 403 gates)
+          # before any LLM path; also exercised by assert_demo_profile.py post-deploy.
+          python3 deploy/hf-demo/assert_demo_profile.py http://localhost:7860 --prefix /agent
 
       - name: Smoke — anonymous auto-overview builds a public dashboard, twice
         run: |

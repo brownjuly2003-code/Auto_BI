@@ -150,6 +150,11 @@ class Settings(BaseSettings):
     # writes (mutate the shared model.yaml) return 403; the UI greys those tabs out.
     # The server is wired with DisabledLLM, so no provider/key is needed at all.
     demo_auto_only: bool = False
+    # Text-enabled public deploy (plan_sol step 1): refuse to serve when the LLM is
+    # not ready. OPT-IN for local dev (default false — 502 on text paths is fine).
+    # HF demo start-autobi.sh forces this true whenever DEMO_AUTO_ONLY=false so a
+    # Space cannot advertise text/fields while GraceKelly is down.
+    require_llm_ready: bool = False
     # Fail-closed remote bind (audit P0-3): serving on a non-loopback host with auth
     # off and demo_auto_only off refuses to start unless this is true. Docker images
     # and trusted internal networks set it explicitly; never leave it true on the

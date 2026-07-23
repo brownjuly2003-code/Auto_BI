@@ -35,6 +35,7 @@ from auto_bi.agent.insights import analyze_spec
 from auto_bi.agent.machine import AgentPhase, AgentTurn
 from auto_bi.agent.propose import SpecValidationError
 from auto_bi.agent.seed import validate_seed
+from auto_bi.api.capabilities import build_capabilities
 from auto_bi.api.metrics import LiveMetrics
 from auto_bi.api.metrics import render as render_metrics
 from auto_bi.api.ratelimit import LoginRateLimiter, SSEGate
@@ -283,13 +284,18 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health() -> dict:
-        # demo_auto_only rides on /health so the UI can grey out the text/fields tabs
-        # without a dedicated endpoint
+        # demo_auto_only + capabilities ride on /health so the UI greys out modes that
+        # cannot work (config flag alone is not enough: text needs a wired LLM too).
         return {
             "ok": True,
             "auth": auth_enabled,
             "version": __version__,
             "demo_auto_only": demo_auto_only,
+            "capabilities": build_capabilities(
+                demo_auto_only=demo_auto_only,
+                llm=llm,
+                model_path=model_path,
+            ),
         }
 
     @app.get("/api/v1/ready")

@@ -84,6 +84,14 @@ def test_health(demo_model) -> None:
         "auth": False,
         "version": __version__,
         "demo_auto_only": False,
+        "capabilities": {
+            "auto_overview": True,
+            "text_session": True,
+            "fields_session": True,
+            "word_edit": True,
+            "enrichment": False,
+            "llm_wired": True,
+        },
     }
     # L-3: the OpenAPI/docs page reports the package version, not a hardcoded drifting one
     assert client.get("/openapi.json").json()["info"]["version"] == __version__

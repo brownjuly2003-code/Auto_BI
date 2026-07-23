@@ -988,19 +988,50 @@ function onAuthed(me) {
   startApp();
 }
 
-function applyDemoMode(health) {
-  // P8 public demo: text/fields call the LLM and are 403-gated server-side —
-  // grey the tabs out and land on «Авто» instead of letting users hit the 403.
-  if (!health.demo_auto_only) return;
+function applyCapabilities(health) {
+  // Modes follow runtime capabilities from /health (demo flag + LLM wiring),
+  // not a local guess. Disabled tabs match server 403 gates; banner explains why.
+  const caps = health.capabilities || {};
+  const textOn = caps.text_session === true;
+  const fieldsOn = caps.fields_session === true;
+  const autoOn = caps.auto_overview !== false;
+  const titles = {
+    text: textOn
+      ? ""
+      : health.demo_auto_only
+        ? "В публичном демо доступен только режим «Авто» — полный текстовый цикл показан в видео в README"
+        : "Текстовый режим недоступен: LLM не подключён на этом стенде",
+    fields: fieldsOn
+      ? ""
+      : health.demo_auto_only
+        ? "В публичном демо доступен только режим «Авто» — полный текстовый цикл показан в видео в README"
+        : "Режим «Полями» недоступен: LLM не подключён на этом стенде",
+    auto: autoOn ? "" : "Авто-обзор недоступен на этом стенде",
+  };
   for (const tab of document.querySelectorAll(".mode-tab")) {
-    if (tab.dataset.mode !== "auto") {
-      tab.disabled = true;
-      tab.title =
-        "В публичном демо доступен только режим «Авто» — " +
-        "полный текстовый цикл показан в видео в README";
+    const mode = tab.dataset.mode;
+    let on = true;
+    if (mode === "text") on = textOn;
+    else if (mode === "fields") on = fieldsOn;
+    else if (mode === "auto") on = autoOn;
+    tab.disabled = !on;
+    tab.title = titles[mode] || "";
+  }
+  const banner = $("capability-banner");
+  if (banner) {
+    if (!textOn && !fieldsOn && autoOn) {
+      banner.hidden = false;
+      banner.textContent = health.demo_auto_only
+        ? "Публичное демо: доступен только режим «Авто» (без LLM). Полный текстовый цикл — в README."
+        : "Доступен только авто-обзор: LLM на этом стенде не подключён.";
+    } else {
+      banner.hidden = true;
+      banner.textContent = "";
     }
   }
-  setMode("auto");
+  if (!textOn && !fieldsOn && autoOn) {
+    setMode("auto");
+  }
 }
 
 async function initAuth() {
@@ -1010,7 +1041,7 @@ async function initAuth() {
   } catch {
     /* health is open; if it fails the API is down — startApp surfaces errors */
   }
-  applyDemoMode(health);
+  applyCapabilities(health);
   if (!health.auth) {
     startApp(); // auth disabled -> behave as the single-user app
     return;
