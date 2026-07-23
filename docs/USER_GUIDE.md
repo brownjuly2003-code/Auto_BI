@@ -225,6 +225,11 @@ vs Greenplum/Greengage).
 
 Префикс `AUTO_BI_`, читается из окружения или `.env` в корне. Ключевые:
 
+> **Полный перечень** всех полей `Settings` (тип + default) — генерируемый
+> [ENV_REFERENCE.md](ENV_REFERENCE.md). После смены default в `auto_bi/config.py`:
+> `uv run python scripts/generate_env_reference.py`. Текущее состояние продукта —
+> [CURRENT_STATE.md](CURRENT_STATE.md).
+
 | Переменная | Назначение | По умолчанию |
 |---|---|---|
 | `AUTO_BI_CH_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_DATABASE` | ClickHouse DWH (read-only роль) | `localhost` / `8123` / `auto_bi_ro` / `` / `dm` |

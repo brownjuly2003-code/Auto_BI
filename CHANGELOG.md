@@ -6,6 +6,15 @@
 
 ### Added
 
+- **plan_sol шаг 11 (docs-as-code closed core)** —
+  `docs/CURRENT_STATE.md` as the single current-status entry point; generated
+  `docs/ENV_REFERENCE.md` from `Settings` (`scripts/generate_env_reference.py`,
+  `--check` mode); `tests/test_docs_as_code.py` (env-ref freshness, `.env.example`
+  covers every Settings key, internal markdown link resolve, golden/advisor counts
+  ↔ 53 fixtures). USER_GUIDE §6 / README / PLAN / ARCHITECTURE / root `plan.md`
+  point at CURRENT_STATE + ENV_REFERENCE. Residual: full ARCHITECTURE current/history
+  split; optional `Field(description=)` on every Settings key.
+
 - **plan_sol шаг 10 (mostly closed) + шаг 11 start** —
   Step 10: CI `quality-py-latest` (3.13), `windows-cli-smoke`, compatibility matrix
   test, live-stand E2E auth/viewport; **offline browser E2E** job

@@ -30,7 +30,10 @@
 ## Docs
 
 - [ ] USER_GUIDE / DEPLOYMENT / ARCHITECTURE / SECURITY / CHANGELOG updated when public behaviour or defaults change
+- [ ] `docs/CURRENT_STATE.md` updated when product status or residual roadmap changes
 - [ ] `.env.example` matches new Settings fields and defaults
+- [ ] After Settings field/default change: regenerate `docs/ENV_REFERENCE.md`
+  (`uv run python scripts/generate_env_reference.py`) and keep `test_docs_as_code` green
 - [ ] Migration note added if a default flips or a public response shape breaks
 - [ ] Documented defaults still match `Settings` (`tests/test_docs_defaults.py` green)
 - [ ] No new claim wider than CI release gates (see `tests/test_compatibility_matrix.py`)

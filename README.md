@@ -23,7 +23,9 @@
 
 ## Статус
 
-**Phase 0–4 + бэклог адекватности дашбордов (B1–B4) закрыты.** Работает end-to-end: текст/поля → spec → валидация → сборка дашборда. v1-стек (ClickHouse + Superset) и v2-стек (Greenplum/Greengage интроспекция + advisor; self-hosted DataLens-адаптер) live-проверены; web UI с двумя режимами ввода, итерациями, Feasibility Advisor, заявками владельцу DM и панелью наблюдаемости. Остаток — owner/стенд-зависимый (адаптеры Visiology/Luxms). История фаз и план — в [docs/PLAN.md](docs/PLAN.md).
+**Phase 0–4 + бэклог адекватности дашбордов (B1–B4) закрыты.** Работает end-to-end: текст/поля → spec → валидация → сборка дашборда. v1-стек (ClickHouse + Superset) и v2-стек (Greenplum/Greengage интроспекция + advisor; self-hosted DataLens-адаптер) live-проверены; web UI с двумя режимами ввода, итерациями, Feasibility Advisor, заявками владельцу DM и панелью наблюдаемости.
+
+**Актуальное состояние и residual roadmap** — [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md). История фаз — [docs/PLAN.md](docs/PLAN.md). Полный env inventory (generated) — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md).
 
 ## Чем отличается
 

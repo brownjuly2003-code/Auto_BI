@@ -3,10 +3,10 @@
 Дата: 2026-06-11 (переработан под скоуп «RU-рынок, v1 = ClickHouse + Superset», см. ARCHITECTURE §1.1).
 Оценки — в неделях фуллтайм-эквивалента (FTE); вечерами умножать на ~2.
 
-> **Этот PLAN.md — фазовая история (Phase 0–4).** Что осталось и что берётся дальше —
-> [plan.md](../plan.md) в корне; полный roadmap с гейт-статусом каждого пункта
-> (🟢АВТО / 🟡S2 / 🟠S4 / 🔵стенд / 🟣владелец / 🔴наружу) ведётся во внутреннем
-> `internal/2026-06-29-roadmap-maximal.md`.
+> **Этот PLAN.md — фазовая история (Phase 0–4), не current roadmap.**
+> Актуальный статус продукта, residual и gates — **[CURRENT_STATE.md](CURRENT_STATE.md)**.
+> Legacy stub: [plan.md](../plan.md). Внутренний remediation-план (`plan_sol_*.md` в
+> корне) gitignored; не путать с этим файлом.
 
 ## Definition of «полноценный продукт»
 
