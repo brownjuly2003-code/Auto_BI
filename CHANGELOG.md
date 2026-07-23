@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict prompt-data boundary** —
+  `auto_bi/semantic/prompt_data.py` добавлен в строгий CI allowlist на Python
+  3.12 и 3.13; sample classification и prompt-data policy теперь проверяются с
+  `mypy --strict`.
+
 - **plan_sol шаг 12 residual: mypy-strict semantic rendering boundary** —
   `auto_bi/semantic/render.py` добавлен в строгий CI allowlist на Python 3.12 и
   3.13; deterministic prompt rendering теперь проверяется с `mypy --strict`.

@@ -76,7 +76,7 @@ resume / **fields DnD seed**). Residual: live GHA after merge PR path.
 | Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
 | Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**, Superset native-filter scope) |
 | Mutation smoke | SQL guard gated in CI: 106/106 generated mutants killed; every weak outcome is rejected |
-| Mypy --strict allowlist | `auth.py`, `adapters/artifacts.py`, `errors.py`, `config.py`, `ir/validate.py`, `ir/spec.py`, `semantic/model.py`, `semantic/select.py`, `semantic/render.py` (CI; grow via SLO.md) |
+| Mypy --strict allowlist | `auth.py`, `adapters/artifacts.py`, `errors.py`, `config.py`, `ir/validate.py`, `ir/spec.py`, `semantic/model.py`, `semantic/select.py`, `semantic/render.py`, `semantic/prompt_data.py` (CI; grow via SLO.md) |
 | Ops doc | [operations/SLO.md](operations/SLO.md) |
 
 Residual step 12: live p50/p95, mutation coverage for `ir/validate`, dataset
@@ -98,7 +98,7 @@ bounded SQL guard target remains a separate local residual.
 4. **Step 10 residual** — live GHA after PR (offline browser matrix closed: resume + fields DnD).
 5. **Step 11 residual** — full ARCHITECTURE current/history split; optional Field(description=) on every Settings key.
 6. **Step 12 residual** — live SLO; extend mutation coverage beyond SQL guard;
-   grow the nine-module mypy-strict allowlist.
+   grow the ten-module mypy-strict allowlist.
 7. **Step 13 residual** — live integration/browser/Space/tag evidence on pushed SHA.
 
 ## Что не является source of truth
