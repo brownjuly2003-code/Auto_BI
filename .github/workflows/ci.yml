@@ -63,7 +63,7 @@ jobs:
           uv run --with mypy --with types-PyYAML mypy --strict
           auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py auto_bi/config.py
           auto_bi/ir/validate.py auto_bi/ir/spec.py auto_bi/semantic/model.py
-          auto_bi/semantic/select.py
+          auto_bi/semantic/select.py auto_bi/semantic/render.py
 
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
@@ -180,7 +180,7 @@ jobs:
           uv run --python 3.13 --with mypy --with types-PyYAML mypy --strict
           auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py auto_bi/config.py
           auto_bi/ir/validate.py auto_bi/ir/spec.py auto_bi/semantic/model.py
-          auto_bi/semantic/select.py
+          auto_bi/semantic/select.py auto_bi/semantic/render.py
 
       - name: Pytest + coverage gate
         run: >

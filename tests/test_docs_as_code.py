@@ -187,6 +187,7 @@ def test_generator_check_mode_exits_zero() -> None:
         "auto_bi/ir/spec.py",
         "auto_bi/semantic/model.py",
         "auto_bi/semantic/select.py",
+        "auto_bi/semantic/render.py",
     ],
 )
 def test_strict_targets_are_in_every_mypy_job_and_slo(target: str) -> None:

@@ -17,6 +17,10 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict semantic rendering boundary** —
+  `auto_bi/semantic/render.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; deterministic prompt rendering теперь проверяется с `mypy --strict`.
+
 - **plan_sol шаг 12 residual: mypy-strict semantic selection boundary** —
   `auto_bi/semantic/select.py` добавлен в строгий CI allowlist на Python 3.12 и
   3.13; deterministic context selection теперь проверяется с `mypy --strict`.
