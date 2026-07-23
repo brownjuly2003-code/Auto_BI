@@ -65,6 +65,11 @@ def test_is_space_clone_marker(tmp_path) -> None:
     assert publish_space.is_space_clone(real)
 
 
+def test_whitelist_includes_uv_lock_for_frozen_demo_install() -> None:
+    # plan_sol step 6: Space payload must carry uv.lock for Dockerfile `uv sync --frozen`.
+    assert "uv.lock" in publish_space.WHITELIST_FILES
+
+
 def test_missing_token_fails_closed_unless_dry_run(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.delenv("HF_TOKEN")
     victim = tmp_path / "d"

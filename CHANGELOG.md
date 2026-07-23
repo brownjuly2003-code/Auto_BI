@@ -6,6 +6,19 @@
 
 ### Security
 
+- **plan_sol шаг 6 (partial): reproducible release promotion** —
+  (1) Demo/HF: `uv.lock` в Space whitelist; `deploy/hf-demo/Dockerfile` —
+  `uv sync --frozen`; `clickhouse-connect==1.5.0` + Superset digest pin в
+  demo и `docker/superset/Dockerfile` (согласовано с `uv.lock`).
+  (2) `release.yml`: `image-security` = local build → Trivy **до** push →
+  image SBOM → push только `:version` → attest; `finalize` (после image +
+  pypi + provenance) = `:latest` + GitHub Release (source + image SBOM);
+  `release-status` ловит partial. (3) `demo-image.yml` path-triggers на
+  demo graph / lock / workflows. (4) CI job `dependency-resolution`
+  matrix: locked / latest-compatible / lowest-direct smoke.
+  Tests: `tests/test_release_promotion.py`. Residual: live tag dry-run;
+  partial PyPI-without-image still possible (wheel unpublish manual).
+
 - **plan_sol шаг 5 (partial): GitHub checks scaffolding** —
   `.github/CODEOWNERS`, PR template (security/data/docs/release), Dependabot
   groups (uv + github-actions minor/patch) + docker ecosystem, stable

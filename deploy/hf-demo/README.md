@@ -25,12 +25,19 @@ Superset пересоздаются при каждом старте (~2–4 м�
 CH и Superset слушают только localhost внутри контейнера, пароли — демо-заглушки,
 `SECRET_KEY` генерируется на старте.
 
+## Воспроизводимость (plan_sol шаг 6)
+
+- Space payload включает **`uv.lock`** (`publish_space.py` whitelist).
+- `Dockerfile` ставит auto_bi через **`uv sync --frozen`** (тот же graph, что CI/GHCR app).
+- `clickhouse-connect==1.5.0` (pin = `uv.lock`; bump вместе с lock).
+- Base Superset — digest-пин (как в `docker/superset/Dockerfile`).
+
 ## Проверка перед пушем в Space
 
-GitHub Actions → **Demo image (HF Space)** (workflow_dispatch): собирает образ и гоняет
-smoke — роутинг, `assert_demo_profile.py` (flag + capabilities + 403 на text/fields/
-enrichment), анонимная auto-сессия до `built`, публичная ссылка на дашборд без
-login-редиректа.
+GitHub Actions → **Demo image (HF Space)**: `workflow_dispatch` **или** PR/push в
+`main` при изменении `deploy/hf-demo/**`, `uv.lock`, `pyproject.toml`, demo docker
+assets, `demo-image.yml` / `release.yml`. Smoke: роутинг, `assert_demo_profile.py`
+(flag + capabilities + 403), анонимный auto-build до `built` + public dashboard URL.
 
 После деплоя живого Space:
 

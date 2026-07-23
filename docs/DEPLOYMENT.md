@@ -98,31 +98,31 @@ docker compose -f docker-compose.yml -f docker-compose.publish.yml up -d
 **Docker — готовый образ из GHCR (после того, как вырезан хотя бы один тег `vX.Y.Z` —
 `release.yml`, S10) или сборка локально:**
 
-> **Релизный preflight (P1-7).** Тег `vX.Y.Z` публикует образ GHCR и пакет PyPI только после
-> job `preflight` в `release.yml`: версия тега обязана совпадать с `pyproject.toml
-> [project].version` и `auto_bi.__version__`, `CHANGELOG.md` — нести непустую секцию
-> `## [<версия>]`, а собранные `uv build` sdist+wheel — пройти `twine check` и clean-install
-> smoke (`auto_bi --help` из свежего окружения). `release` (GHCR + GitHub Release) и `pypi`
-> гейтятся на `preflight`, причём `pypi` публикует ровно те артефакты, что preflight собрал и
-> проверил (через `upload-artifact`/`download-artifact`, без пересборки). Рассинхрон версий
-> отклоняется ДО любой публикации — частичный релиз (GHCR одной версии, PyPI другой) невозможен.
-> Логика когерентности вынесена в `scripts/release_preflight.py` и юнит-тестируется офлайн.
-
-> **Supply-chain на релизе (P1-7 доп., GitHub-native).** Тег дополнительно даёт: **SLSA build
-> provenance** на sdist+wheel (job `provenance`, `actions/attest-build-provenance` → Sigstore +
-> GitHub attestation store; проверка — `gh attestation verify <файл> --repo
-> brownjuly2003-code/Auto_BI`), **PEP 740 аттестации на PyPI** (у `gh-action-pypi-publish` под
-> trusted publishing включены по умолчанию, выставлены явно) и **SBOM** в формате SPDX-JSON,
-> приложенный к GitHub Release ассетом (`anchore/sbom-action` по `pyproject.toml`+`uv.lock`).
-> Всё исполняется только на push тега `vX.Y.Z`.
+> **Релизный preflight (P1-7).** Тег `vX.Y.Z` стартует `release.yml` только после
+> job `preflight`: версия тега = `pyproject.toml [project].version` = `auto_bi.__version__`,
+> `CHANGELOG.md` — непустая секция `## [<версия>]`, sdist+wheel проходят `twine check` и
+> clean-install smoke. `pypi` публикует **ровно** артефакты preflight (artifact, без
+> пересборки). Логика — `scripts/release_preflight.py` (офлайн-тесты).
 >
-> **Ручной аппрув публикации на PyPI (опционально).** Job `pypi` привязан к окружению
-> `environment: pypi`. Чтобы каждая публикация требовала ручного подтверждения: Settings →
-> Environments → `pypi` → **Required reviewers** (добавить себя/команду; при желании
-> «Prevent self-review»). После этого прогон `pypi` встаёт на паузу «Waiting» до аппрува в
-> Actions-UI; при отклонении job падает, а `preflight`/`release`/GHCR уже отработали
-> независимо (провенанс/образ публикуются, PyPI-заливка ждёт). Настраивается в repo settings,
-> `release.yml` менять не нужно; по умолчанию reviewers нет — поведение не меняется.
+> **Promotion order (plan_sol шаг 6 / P1-4).** После preflight параллельно:
+> `image-security` (local build → **Trivy до push** → image SBOM → push только
+> `:version` → attest), `pypi`, `provenance` (sdist/wheel). Job **`finalize`**
+> (нужны все три зелёные): retag **`:latest`** с уже просканированного digest,
+> GitHub Release с source SBOM + **image SBOM**. Mutable `:latest` и Release
+> **не** появляются до security gates. Job `release-status` (always) падает при
+> любом partial.
+>
+> **Partial release residual.** Если `pypi=success`, а `image-security` упал —
+> wheel уже на PyPI (unpublish вручную), но `:latest` и GitHub Release **не**
+> создаются. Обратный partial (image ok, pypi fail) оставляет `:version` в GHCR
+> без `:latest`/Release. Полный успех = зелёный `finalize`.
+>
+> **Supply-chain.** SLSA provenance (image + sdist/wheel), PEP 740 на PyPI,
+> SBOM source (`pyproject`+`uv.lock`) и runtime image (OS+Python) — ассеты Release.
+>
+> **Ручной аппрув PyPI (опционально).** `environment: pypi` → Required reviewers.
+> Пока `pypi` ждёт аппрува, `image-security` может уже запушить `:version`;
+> `:latest`/Release всё равно ждут `finalize` (и аппрува pypi). Solo: см. §11.
 
 ```bash
 # вариант A: тег уже опубликован в GHCR — просто стянуть (замените версию на нужный тег)
