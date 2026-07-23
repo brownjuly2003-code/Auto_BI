@@ -2,8 +2,7 @@
 
 **Date:** 2026-07-23
 **Repo:** Auto_BI (`brownjuly2003-code/Auto_BI`)
-**Evidence SHA (local main after this reaudit commit):** see git log
-`git rev-parse HEAD` at authoring time of the finding fix: parent `5cfb518` + this commit.
+**Evidence SHA:** `6e926fe` (local main; parent `5cfb518`).
 **Package version:** `0.4.0` (`auto_bi.__version__` / `pyproject.toml`)
 **Prior audit:** root `audit_gpt_23_07_26.md` (internal/gitignored), base `5fc5c7d`, score **8.2/10**.
 **Size (tracked):** ~187 `*.py`, ~19.4k LOC `auto_bi/`, ~23.6k LOC `tests/`, ~308 tracked files.
@@ -11,7 +10,7 @@
 ## 1. Verdict
 
 Offline + API-verified governance evidence supports **production use of the v1 path
-(ClickHouse + Superset)** with **accepted residual risks** listed in §5. Public demo and
+(ClickHouse + Superset)** with **accepted residual risks** listed in Â§5. Public demo and
 local/production profiles are fail-closed relative to the July 22 audit P0s.
 
 **Updated score (offline re-audit): 8.8 / 10** (was 8.2).
@@ -56,20 +55,20 @@ integration/browser/Space/tag evidence remains residual until a release SHA is o
 | Live integration E2E @ this SHA | **not run** | residual (Mac/CI after push) |
 | Live browser E2E @ this SHA | **not run** | residual |
 | Public Space assert @ this SHA | **not run** | residual |
-| Live `v*` release digest↔SBOM | **not run** | residual step 6 |
+| Live `v*` release digestâ†”SBOM | **not run** | residual step 6 |
 | Paid live LLM sentinel | **not run** | protocol: no paid without budget |
 | Full pytest+cov 90% | **not run this session** | memory budget; CI quality job remains SoT |
 | mutmut score | **not run** | residual step 12 |
 
 ## 3. Finding fixed during re-audit
 
-### R1 — SafeError BI HTTP path broken for step-7 adapter signature (test + signal)
+### R1 â€” SafeError BI HTTP path broken for step-7 adapter signature (test + signal)
 
 - **Symptom:** `tests/test_safe_error.py::test_pipeline_store_channel_strips_marker_on_adapter_error`
   expected `bi.http_error`, got `internal.error`.
 - **Root cause:** pipeline always calls `adapter.build(spec, ctx)` (plan_sol step 7).
-  The leak-canary fake still used `build(self, spec)` only → `TypeError` → mapped to
-  `internal.error`, so the suite no longer proved SupersetAPIError → store channel mapping.
+  The leak-canary fake still used `build(self, spec)` only â†’ `TypeError` â†’ mapped to
+  `internal.error`, so the suite no longer proved SupersetAPIError â†’ store channel mapping.
 - **Fix:** update fake to `build(self, spec, ctx=None)` + required `delete_artifact`/`close`.
 - **Impact:** test defect after step 7; production adapters already use the new signature.
   No production SafeError mapping bug for real SupersetAPIError (unit-proved separately).
@@ -148,5 +147,5 @@ Live residual (after PR merge; Mac/CI as appropriate):
 ```bash
 # CI quality + integration + browser E2E on the merged SHA
 # deploy/hf-demo/assert_demo_profile.py https://<space>.hf.space
-# next v* tag: image digest ↔ SBOM ↔ provenance
+# next v* tag: image digest â†” SBOM â†” provenance
 ```
