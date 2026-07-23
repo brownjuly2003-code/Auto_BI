@@ -11,6 +11,11 @@ import random
 
 import pytest
 
+from auto_bi.adapters.superset.native_filters import (
+    build_native_filter_configuration,
+    participating_chart_ids,
+)
+from auto_bi.agent.dataset_plan import chart_accepts_filter, plan_datasets
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.sql_guard import SQLGuardError, extract_table_names, guard_sql
 from auto_bi.auth import (
@@ -23,9 +28,11 @@ from auto_bi.auth import (
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
+    DashboardFilter,
     DashboardSpec,
     JoinSpec,
     Measure,
+    MeasureTransform,
     TargetBI,
     Viz,
 )
@@ -454,3 +461,148 @@ def test_raw_sql_label_cannot_smuggle_other_schema() -> None:
         assert secret in denied
         # wildcard still empty
         assert forbidden_tables(spec, ["*"]) == []
+
+
+# --- Superset native-filter scope --------------------------------------------
+
+
+def _native_filter_model() -> SemanticModel:
+    return SemanticModel(
+        tables=[
+            Table(
+                name="dm.sales",
+                grain=["date", "store_id"],
+                columns=[
+                    Column(name="date", type="Date", role=ColumnRole.TIME),
+                    Column(name="store_id", type="UInt32", role=ColumnRole.DIMENSION),
+                    Column(
+                        name="revenue",
+                        type="Float64",
+                        role=ColumnRole.MEASURE,
+                        agg=Aggregation.SUM,
+                    ),
+                ],
+            ),
+            Table(
+                name="dm.stores",
+                grain=["id"],
+                columns=[
+                    Column(name="id", type="UInt32", role=ColumnRole.DIMENSION),
+                    Column(name="name", type="String", role=ColumnRole.DIMENSION),
+                ],
+            ),
+        ],
+        joins=[Join(left="dm.sales.store_id", right="dm.stores.id")],
+    )
+
+
+def _native_filter_charts() -> list[ChartSpec]:
+    joined = JoinSpec(
+        table="dm.stores",
+        on_left="dm.sales.store_id",
+        on_right="dm.stores.id",
+    )
+    return [
+        ChartSpec(
+            id="source_kpi",
+            title="Revenue",
+            viz=Viz.BIG_NUMBER,
+            query=ChartQuery(
+                table="dm.sales",
+                measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            ),
+        ),
+        ChartSpec(
+            id="source_joined",
+            title="Revenue by store",
+            viz=Viz.BAR,
+            query=ChartQuery(
+                table="dm.sales",
+                dimensions=["dm.stores.name"],
+                measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+                joins=[joined],
+            ),
+        ),
+        ChartSpec(
+            id="own_store",
+            title="Share by store id",
+            viz=Viz.BAR,
+            query=ChartQuery(
+                table="dm.sales",
+                dimensions=["store_id"],
+                measures=[
+                    Measure(
+                        column="revenue",
+                        agg=Aggregation.SUM,
+                        transform=MeasureTransform.SHARE_OF_TOTAL,
+                    )
+                ],
+            ),
+        ),
+        ChartSpec(
+            id="own_joined",
+            title="Share by store name",
+            viz=Viz.BAR,
+            query=ChartQuery(
+                table="dm.sales",
+                dimensions=["dm.stores.name"],
+                measures=[
+                    Measure(
+                        column="revenue",
+                        agg=Aggregation.SUM,
+                        transform=MeasureTransform.SHARE_OF_TOTAL,
+                    )
+                ],
+                joins=[joined],
+            ),
+        ),
+    ]
+
+
+def test_native_filter_scope_is_order_invariant_and_partitions_placements() -> None:
+    """Spec-side scope and compiled Superset scope stay equivalent under reordering."""
+    model = _native_filter_model()
+    charts = _native_filter_charts()
+    filters = [
+        DashboardFilter(column="dm.sales.store_id", type="value"),
+        DashboardFilter(column="dm.sales.date", type="time_range"),
+        DashboardFilter(column="dm.stores.name", type="value"),
+        DashboardFilter(column="dm.missing.ghost", type="value"),
+    ]
+    rng = random.Random(20260723)
+    expected_participants = {"source_kpi", "source_joined", "own_store"}
+
+    for _ in range(24):
+        spec = DashboardSpec(
+            title="native filter properties",
+            target_bi=TargetBI.SUPERSET,
+            charts=rng.sample(charts, len(charts)),
+            filters=rng.sample(filters, len(filters)),
+        )
+        placements = [(chart, 100 + index, 500 + index) for index, chart in enumerate(spec.charts)]
+        plan = plan_datasets(spec)
+        config, applied = build_native_filter_configuration(spec, placements, model, plan)
+        all_slice_ids = [slice_id for _, slice_id, _ in placements]
+        slice_by_chart = {chart.id: slice_id for chart, slice_id, _ in placements}
+
+        wired_participants: set[str] = set()
+        assert len(config) == len(applied)
+        for compiled, (filter_, in_scope, excluded) in zip(config, applied, strict=True):
+            expected_ids = {
+                chart.id
+                for chart in spec.charts
+                if chart_accepts_filter(chart, filter_, spec, plan, model)
+            }
+            expected_slices = [
+                slice_by_chart[chart.id] for chart in spec.charts if chart.id in expected_ids
+            ]
+            assert in_scope == expected_slices
+            assert compiled["chartsInScope"] == expected_slices
+            assert excluded == [sid for sid in all_slice_ids if sid not in expected_slices]
+            assert compiled["scope"]["excluded"] == excluded
+            assert set(in_scope).isdisjoint(excluded)
+            assert set(in_scope) | set(excluded) == set(all_slice_ids)
+            wired_participants.update(expected_ids)
+
+        assert participating_chart_ids(spec, model) == expected_participants
+        assert wired_participants == expected_participants

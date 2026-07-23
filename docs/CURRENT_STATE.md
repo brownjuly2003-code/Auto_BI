@@ -74,7 +74,7 @@ resume / **fields DnD seed**). Residual: live GHA after merge PR path.
 | Online SQLite backup + integrity | `Store.backup_to` / `integrity_check`; `scripts/store_backup.py` |
 | Restore drill | script + `tests/test_store_backup.py` |
 | Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
-| Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**) |
+| Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**, Superset native-filter scope) |
 | Mypy --strict allowlist | `auth.py`, `adapters/artifacts.py` (CI; grow via SLO.md) |
 | Ops doc | [operations/SLO.md](operations/SLO.md) |
 

@@ -34,6 +34,7 @@ No paid LLM, no Docker, no DWH in these probes. Local timings may be written to
 | IR validate unknown table/measure, duplicate ids | same |
 | normalize idempotence | same |
 | RBAC schema filters (membership, filter joins, forbidden monotonicity, raw_sql hatch) | same |
+| Superset native filters (spec/wiring equivalence, order invariance, scope partition) | same |
 
 ## Mypy strict modules (plan_sol step 12 residual)
 

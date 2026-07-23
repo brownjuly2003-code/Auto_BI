@@ -6,12 +6,21 @@
 
 ### Fixed
 
+- **Единый Black gate** — pre-commit Black обновлён с 24.10.0 до 26.5.1,
+  совпадающей с проектным `uv`-окружением. Один и тот же файл больше не
+  форматируется противоположно локальным gate и commit hook.
+
 - **plan_sol шаг 13 reaudit R1** — SafeError leak-canary pipeline test used pre-step-7
   `adapter.build(spec)` signature; `TypeError` mapped to `internal.error` instead of
   proving `SupersetAPIError` → `bi.http_error` store channel. Fake updated to
   `build(spec, ctx=None)` + contract methods.
 
 ### Added
+
+- **plan_sol шаг 12 residual: Superset native-filter metamorphic suite** —
+  детерминированные перестановки SOURCE/OWN-чартов и mart/joined/unwired-фильтров
+  проверяют эквивалентность `participating_chart_ids` и скомпилированных
+  `chartsInScope`, а также точное разбиение каждого placement на scope/excluded.
 
 - **plan_sol шаг 12 residual: RBAC property suite + mypy-strict start** —
   `tests/test_property_quality.py`: schema membership, `filter_model_by_schemas`
