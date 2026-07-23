@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict SQL guard boundary** —
+  `auto_bi/agent/sql_guard.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; SELECT-only, complexity и table-access guard теперь одновременно
+  защищены mutation и static-typing gates.
+
 - **plan_sol шаг 12 residual: mypy-strict dbt import boundary** —
   `auto_bi/semantic/dbt_import.py` добавлен в строгий CI allowlist на Python
   3.12 и 3.13; dbt artifact mappings получили параметризованный `JsonObject`
