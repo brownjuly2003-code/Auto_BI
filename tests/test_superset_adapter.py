@@ -804,15 +804,13 @@ def test_build_source_vs_own_dataset_roles() -> None:
 
 
 def test_build_drains_all_four_artifact_kinds() -> None:
-    # ownership ledger (P0-2 criterion 4): build() records every BI entity it creates on the
-    # concrete adapter; drain_build_artifacts returns them (NOT a BIAdapter Protocol method).
+    # ownership ledger (P0-2 criterion 4 / plan_sol step 7): BuildResult.artifacts.
     spec = make_spec()
     fake = FakeSuperset()
     adapter = make_adapter(fake, model=MODEL)
     adapter.set_artifact_namespace("sess:abc")
-    dashboard = adapter.build(spec)
-
-    arts = adapter.drain_build_artifacts()
+    result = adapter.build(spec)
+    arts = list(result.artifacts)
     by_kind: dict[str, list] = {}
     for a in arts:
         by_kind.setdefault(a.kind, []).append(a)
@@ -825,7 +823,7 @@ def test_build_drains_all_four_artifact_kinds() -> None:
     assert by_kind["database"][0].name == "Auto_BI ClickHouse"
     # native ids are stringified; the dashboard's matches the returned ref
     assert all(isinstance(a.native_id, str) for a in arts)
-    assert by_kind["dashboard"][0].native_id == str(dashboard.id)
+    assert by_kind["dashboard"][0].native_id == str(result.dashboard.id)
     # schema_set carries the DWH schema.table for datasets/charts, None for db/dashboard
     assert all(a.schema_set == "dm.sales_daily" for a in by_kind["dataset"])
     assert all(a.schema_set == "dm.sales_daily" for a in by_kind["chart"])
@@ -834,7 +832,7 @@ def test_build_drains_all_four_artifact_kinds() -> None:
     # the dataset technical name is display/debug only (carries the P0-2 namespace fingerprint)
     assert by_kind["dataset"][0].name.startswith("auto_bi__")
     assert "source" in by_kind["dataset"][0].name
-    # draining clears the buffer -> a second drain is empty (no double-report)
+    # successful build already cleared the internal buffer
     assert adapter.drain_build_artifacts() == []
 
 

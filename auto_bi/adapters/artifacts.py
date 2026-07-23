@@ -5,8 +5,8 @@ datasets (and DataLens widgets/dashboards) must include a short non-secret
 fingerprint of a build/session namespace so two independent sessions with the
 same title/chart ids never share or overwrite each other's BI artifacts.
 
-The BIAdapter Protocol is unchanged (CLAUDE.md S4): callers set the namespace on
-the concrete adapter via `set_artifact_namespace` before `build()`.
+plan_sol step 7: namespace travels through `BuildContext` on `build(spec, ctx)`;
+the deprecated `set_artifact_namespace` helper remains for unit tests only.
 """
 
 from __future__ import annotations
@@ -21,13 +21,12 @@ from dataclasses import dataclass
 class BuildArtifact:
     """One BI entity created during a build(), for the ownership ledger (Store.bi_artifacts).
 
-    Accumulated on the concrete adapter as build() creates database -> datasets -> charts ->
-    dashboard, then drained by the orchestrator (`drain_build_artifacts`, a concrete adapter
-    helper — NOT a BIAdapter Protocol method, like `set_artifact_namespace`) and written to the
-    durable ledger keyed on session/owner/build_token. `name` is a technical/display name for
-    debug ONLY: ownership-based orphan cleanup keys on the build_token/owner, NEVER on name/title
-    (audit P0-2 criterion 4). `schema_set` is the DWH schema.table a dataset/chart reads, carried
-    for RBAC scoping; None for a database connection or a dashboard (they read no single table).
+    Accumulated during `build()` and returned on `BuildResult.artifacts` (plan_sol step 7),
+    then written to the durable ledger keyed on session/owner/build_token. `name` is a
+    technical/display name for debug ONLY: ownership-based orphan cleanup keys on the
+    build_token/owner, NEVER on name/title (audit P0-2 criterion 4). `schema_set` is the
+    DWH schema.table a dataset/chart reads, carried for RBAC scoping; None for a database
+    connection or a dashboard (they read no single table).
     """
 
     kind: str  # 'database' | 'dataset' | 'chart' | 'dashboard'

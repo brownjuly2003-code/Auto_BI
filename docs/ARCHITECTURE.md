@@ -198,14 +198,27 @@ Pydantic v2 + экспорт JSON Schema (она же вставляется в 
 ```python
 class BIAdapter(Protocol):
     def healthcheck(self) -> AdapterHealth
-    def ensure_database(self, dwh: DWHConfig) -> DatabaseRef      # connection внутри BI
-    def ensure_dataset(self, query: ChartQuery) -> DatasetRef     # physical table или SQL-датасет
+    def ensure_database(self, dwh: DWHConfig) -> DatabaseRef
+    def ensure_dataset(self, query: ChartQuery) -> DatasetRef
     def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef
     def assemble_dashboard(self, spec: DashboardSpec, charts: list[ChartRef]) -> DashboardRef
-    def build(self, spec: DashboardSpec) -> DashboardRef          # оркестратор: full compile
+    def build(self, spec: DashboardSpec, ctx: BuildContext | None = None) -> BuildResult
+    def delete_artifact(self, kind: str, native_id: str) -> None   # ownership prune
+    def close(self) -> None                                        # HTTP pool release
 ```
 
-`build(spec)` оркеструет шаги одинаково для обоих адаптеров (Phase 4 F1): семантическая модель, нужная адаптеру (скоупинг нативных фильтров по роли/grain колонки у Superset; типы полей датасета у DataLens), **инжектится в конструктор**, поэтому `build` принимает только spec — единая сигнатура позволяет пайплайну диспетчить один spec в любой BI по `spec.target_bi`. Без модели фильтры Superset деградируют в задокументированное предупреждение. `assemble_dashboard` принимает доп. `datasets`/`model` (Superset) или `placements` (DataLens) — аддитивно к Protocol, для прямых вызовов в контракт-тестах.
+**plan_sol шаг 7 / ADR 0001.** `BuildContext` несёт `namespace` (build_token), `plans`
+(PlanCache), `session_id`/`owner`. `BuildResult` = `dashboard: DashboardRef` +
+`artifacts: tuple[BuildArtifact, …]` для ownership ledger. Pipeline больше **не**
+использует `getattr` на `set_artifact_namespace` / `set_query_plans` /
+`drain_build_artifacts` / `delete_artifact` / `close`. Фабрика
+`validate_adapter_contract` отказывает partial fake до первого build. Устаревшие
+set_*/drain_* helpers остаются на concrete adapters только для unit-тестов.
+
+`build(spec, ctx)` оркеструет шаги одинаково для обоих адаптеров (Phase 4 F1):
+семантическая модель **инжектится в конструктор**. Без модели фильтры Superset
+деградируют в задокументированное предупреждение. `assemble_dashboard` принимает
+доп. `datasets`/`model` (Superset) или `placements` (DataLens) — аддитивно к Protocol.
 
 **Фабрика `adapters/factory.py::make_adapter(target_bi, settings, model) -> BIAdapter`** — единственная точка, знающая о конкретных адаптерах: собирает клиент + DWHConfig из настроек. Пайплайн (`agent/pipeline.py`) типизирован на `BIAdapter` и получает резолвер `Callable[[TargetBI], BIAdapter]` (фабрика с зафиксированными settings+model); `compile_and_build` вызывает `adapter_for(spec.target_bi)`, так что spec с `target_bi="datalens"` не может молча собраться в Superset (инвариант 2 на границе BI). `cli build` принимает `--target {superset|datalens}` (переопределяет дефолт spec); API/UI-селектор BI ставит `spec.target_bi` (Phase 4 F8, реализовано): `POST /sessions {target_bi}` фиксирует цель на сессию (как режим text/fields), и она (пере)штампуется на spec после каждого turn — IR BI-агностичен, а LLM-patch сбрасывает `target_bi` в дефолт, поэтому выбор переприменяется до build.
 
@@ -462,7 +475,7 @@ namespace = session_id:random8   # new_build_namespace(session_id)
 dataset   = auto_bi__{title}__{chart_id}__{ns6}__{hash8(chart_id+namespace)}
 ```
 
-`compile_and_build` вызывает optional `adapter.set_artifact_namespace(...)` перед `build()`
+`compile_and_build` передаёт namespace через `BuildContext` в `build(spec, ctx)` (plan_sol шаг 7; ранее optional `set_artifact_namespace`)
 (Protocol `BIAdapter` **не** меняется — S4; concrete helpers на Superset/DataLens). Критерий:
 два независимо собранных дашборда с одинаковыми title/chart ids и разным SQL **не** делят
 один virtual dataset; rebuild одной сессии тоже получает новый random token, поэтому старый

@@ -417,12 +417,10 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
                 )
                 skipped_total += len(target_rows)
                 continue
-            delete = getattr(adapter, "delete_artifact", None)
-            if not callable(delete):
-                print(f"{target}: адаптер без delete_artifact — {len(target_rows)} строк пропущено")
-                skipped_total += len(target_rows)
-                continue
-            removed, failed = prune_artifact_rows(store, target_rows, delete, print)
+            # delete_artifact is a required BIAdapter method (plan_sol step 7)
+            removed, failed = prune_artifact_rows(
+                store, target_rows, adapter.delete_artifact, print
+            )
             removed_total += removed
             failed_total += failed
         finally:

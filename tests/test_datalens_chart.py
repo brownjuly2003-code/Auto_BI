@@ -560,10 +560,11 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
     assert fake.posts[1][0] == "/api/charts/v1/charts"
     assert fake.posts[1][1]["template"] == "datalens"
     assert fake.posts[1][1]["data"]["visualization"]["id"] == "line"
-    # build returns a dashboard ref; its blob links the created widget by entryId
-    from auto_bi.adapters.base import DashboardRef
+    # build returns BuildResult; dashboard ref links the created widget by entryId
+    from auto_bi.adapters.base import BuildResult, DashboardRef
 
-    assert isinstance(ref, DashboardRef)
+    assert isinstance(ref, BuildResult)
+    assert isinstance(ref.dashboard, DashboardRef)
     assert str(ref.id).startswith("dash-") and ref.url == f"/{ref.id}"
     dash_body = next(c[2] for c in fake.gateway_calls if c[1] == "createDashboardV1")
     linked = dash_body["entry"]["data"]["tabs"][0]["items"][0]["data"]["tabs"][0]["chartId"]
@@ -571,8 +572,8 @@ def test_adapter_build_calls_connection_dataset_chart_dashboard() -> None:
 
 
 def test_build_drains_all_four_artifact_kinds() -> None:
-    # ownership ledger (P0-2 criterion 4): build() records every BI entity it creates on the
-    # concrete adapter; drain_build_artifacts returns them (NOT a BIAdapter Protocol method).
+    # ownership ledger (P0-2 criterion 4 / plan_sol step 7): build() returns
+    # BuildResult.artifacts (no post-build getattr drain).
     fake = FakeClient()
     spec = DashboardSpec(
         title="dash",
@@ -591,9 +592,8 @@ def test_build_drains_all_four_artifact_kinds() -> None:
     )
     adapter = _adapter(fake)
     adapter.set_artifact_namespace("sess:abc")
-    dash = adapter.build(spec)
-
-    arts = adapter.drain_build_artifacts()
+    result = adapter.build(spec)
+    arts = list(result.artifacts)
     assert [a.kind for a in arts] == ["database", "dataset", "chart", "dashboard"]
     by_kind = {a.kind: a for a in arts}
     # CANONICAL (post-promote) names recorded, never the transient __wip name
@@ -601,12 +601,12 @@ def test_build_drains_all_four_artifact_kinds() -> None:
     assert not by_kind["chart"].name.endswith("__wip")
     assert not by_kind["dashboard"].name.endswith("__wip")
     # dashboard native id matches the returned ref; schema_set on dataset/chart only
-    assert by_kind["dashboard"].native_id == str(dash.id)
+    assert by_kind["dashboard"].native_id == str(result.dashboard.id)
     assert by_kind["dataset"].schema_set == "dm.sales_daily"
     assert by_kind["chart"].schema_set == "dm.sales_daily"
     assert by_kind["database"].schema_set is None
     assert by_kind["dashboard"].schema_set is None
-    # draining clears the buffer -> a second drain is empty (no double-report)
+    # successful build already cleared the internal buffer
     assert adapter.drain_build_artifacts() == []
 
 

@@ -216,12 +216,12 @@ def test_compile_and_build_second_build_makes_first_an_orphan(tmp_path) -> None:
 class RecordingAdapter:
     """A build-capable adapter that records its `delete_artifact` calls instead of hitting a BI.
 
-    Wraps a real SupersetAdapter (`make_adapter(FakeSuperset())`) for healthcheck/namespace/
-    build/drain — the same fake the ownership-ledger tests use — and intercepts the concrete
-    `delete_artifact` helper the auto-prune reaches for via getattr. Recording the calls lets a
-    test assert the prune fed the right prior-build ids to the BI, in the right order, with no
-    live delete. `fail_ids` marks native ids whose delete raises (a per-row failure the prune
-    must tolerate without failing the already-delivered build).
+    Wraps a real SupersetAdapter (`make_adapter(FakeSuperset())`) for healthcheck / build —
+    the same fake the ownership-ledger tests use — and intercepts `delete_artifact` (required
+    Protocol method, plan_sol step 7). Recording the calls lets a test assert the prune fed
+    the right prior-build ids to the BI, in the right order, with no live delete. `fail_ids`
+    marks native ids whose delete raises (a per-row failure the prune must tolerate without
+    failing the already-delivered build).
     """
 
     def __init__(self, inner, fail_ids=()) -> None:
@@ -232,38 +232,16 @@ class RecordingAdapter:
     def healthcheck(self):
         return self._inner.healthcheck()
 
-    def set_artifact_namespace(self, namespace: str) -> None:
-        self._inner.set_artifact_namespace(namespace)
-
-    def build(self, spec):
-        return self._inner.build(spec)
-
-    def drain_build_artifacts(self):
-        return self._inner.drain_build_artifacts()
+    def build(self, spec, ctx=None):
+        return self._inner.build(spec, ctx)
 
     def delete_artifact(self, kind: str, native_id: str) -> None:
         self.deleted.append((kind, native_id))
         if native_id in self._fail_ids:
             raise RuntimeError(f"BI refused to delete {kind} {native_id}")
 
-
-class NoDeleteAdapter:
-    """A build-capable adapter that LACKS delete_artifact (a bare-protocol prune target)."""
-
-    def __init__(self, inner) -> None:
-        self._inner = inner
-
-    def healthcheck(self):
-        return self._inner.healthcheck()
-
-    def set_artifact_namespace(self, namespace: str) -> None:
-        self._inner.set_artifact_namespace(namespace)
-
-    def build(self, spec):
-        return self._inner.build(spec)
-
-    def drain_build_artifacts(self):
-        return self._inner.drain_build_artifacts()
+    def close(self) -> None:
+        self._inner.close()
 
 
 def _compile(spec, store, sid, adapter_for, *, log=lambda s: None, prune_orphans=True):
@@ -364,23 +342,34 @@ def test_auto_prune_tolerates_a_failed_delete(tmp_path) -> None:
     store.close()
 
 
-def test_auto_prune_noop_when_adapter_lacks_delete(tmp_path) -> None:
-    # a bare-protocol adapter with no delete_artifact: the prune is a silent no-op, no error,
-    # and the prior build's rows all stay 'live'.
+def test_auto_prune_requires_delete_artifact_on_adapter(tmp_path) -> None:
+    # plan_sol step 7: delete_artifact is required. A partial adapter that only implements
+    # healthcheck/build fails at rebuild prune (AttributeError) after the second build
+    # already delivered — prune swallows errors, so prior rows may stay live; factory
+    # validation is the hard gate for production adapters (see test_adapter_contract).
+    from auto_bi.adapters.base import BuildResult, DashboardRef
     from auto_bi.store import Store
+
+    class PartialAdapter:
+        def healthcheck(self):
+            return make_adapter(FakeSuperset()).healthcheck()
+
+        def build(self, spec, ctx=None) -> BuildResult:
+            return BuildResult(
+                dashboard=DashboardRef(id=1, title=spec.title, url="/superset/dashboard/1/"),
+                artifacts=(),
+            )
+
+        def close(self) -> None:
+            return None
 
     store = Store(tmp_path / "s.sqlite")
     sid = store.create_session("выручка по дням", owner="alice")
     spec = DashboardSpec.model_validate(GOOD_SPEC)
-
-    fake = FakeSuperset()
-
-    def adapter_for(_target):
-        return NoDeleteAdapter(make_adapter(fake))
-
-    _compile(spec, store, sid, adapter_for)
-    _compile(spec, store, sid, adapter_for)  # rebuild; adapter cannot delete -> nothing pruned
-    assert all(r["status"] == "live" for r in store.bi_artifacts(sid))
+    _compile(spec, store, sid, lambda _t: PartialAdapter())
+    _compile(spec, store, sid, lambda _t: PartialAdapter())
+    # no artifacts recorded (empty BuildResult) — contract suite enforces real adapters
+    assert store.bi_artifacts(sid) == []
     store.close()
 
 
@@ -460,7 +449,7 @@ def demo_model_fixtureless():
 
 def test_datalens_target_gates_every_chart_sql() -> None:
     """Finding 4: D-1 source-once gating is Superset-only; DataLens keeps per-chart gate."""
-    from auto_bi.adapters.base import AdapterHealth, DashboardRef
+    from auto_bi.adapters.base import AdapterHealth, BuildResult, DashboardRef
     from auto_bi.ir.spec import TargetBI
     from tests.test_query_plan import RecordingRunQuery
 
@@ -468,8 +457,11 @@ def test_datalens_target_gates_every_chart_sql() -> None:
         def healthcheck(self) -> AdapterHealth:
             return AdapterHealth(ok=True, message="ok")
 
-        def build(self, spec: DashboardSpec) -> DashboardRef:
-            return DashboardRef(id="dl-1", title=spec.title, url="/dl/1")
+        def build(self, spec: DashboardSpec, ctx=None) -> BuildResult:
+            return BuildResult(dashboard=DashboardRef(id="dl-1", title=spec.title, url="/dl/1"))
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            return None
 
         def close(self) -> None:
             return None

@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 from auto_bi.adapters.artifacts import BuildArtifact, dataset_table_name
 from auto_bi.adapters.base import (
     AdapterHealth,
+    BuildContext,
+    BuildResult,
     ChartRef,
     DashboardRef,
     DatabaseRef,
@@ -141,29 +143,25 @@ class SupersetAdapter:
     # --- BIAdapter ----------------------------------------------------------
 
     def set_artifact_namespace(self, namespace: str) -> None:
-        """P0-2: pin this build's technical names to a session/build namespace.
+        """Deprecated: prefer `BuildContext.namespace` on `build(spec, ctx)`.
 
-        Not part of the BIAdapter Protocol (optional concrete helper); the pipeline
-        calls it when present so two sessions never share dataset table_names.
+        Kept for unit tests that stage namespace before a bare `build(spec)`.
         """
         self._artifact_namespace = (namespace or "").strip()
 
     def set_query_plans(self, plans: PlanCache | None) -> None:
-        """D-2 §5: hand the build-local PlanCache so OWN magnitude can reuse trial rows.
+        """Deprecated: prefer `BuildContext.plans` on `build(spec, ctx)`.
 
-        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace).
-        The pipeline calls it when present after SQL gating has filled the trial store.
-        Lifetime is one build; the adapter is created per build and closed in finally.
+        Kept for unit tests that stage PlanCache before a bare `build(spec)`.
         """
         self._query_plans = plans
 
     def drain_build_artifacts(self) -> list[BuildArtifact]:
-        """Return and clear the BI artifacts the last build() created (P0-2 criterion 4).
+        """Deprecated: prefer `BuildResult.artifacts` from `build()`.
 
-        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace):
-        the orchestrator (compile_and_build) drains after a successful build() and records the
-        rows in Store.bi_artifacts (the ownership ledger). Draining clears the buffer so a
-        reused adapter never double-reports. See docs/ARCHITECTURE §3.5 (artifact identity)."""
+        Kept for tests that drain after a partial path; a successful `build()` already
+        clears the buffer into BuildResult.
+        """
         drained = list(self._build_artifacts)
         self._build_artifacts = []
         return drained
@@ -171,10 +169,9 @@ class SupersetAdapter:
     def delete_artifact(self, kind: str, native_id: str) -> None:
         """Delete one owned BI entity by native id (ownership ledger live-cleanup).
 
-        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts).
-        Returns normally when the entity was deleted OR was already gone (404 — e.g. removed
-        by hand between builds); raises on any other failure so the caller keeps the ledger
-        row 'live' and retries on a later prune. Never accepts a shared kind.
+        Required BIAdapter method (plan_sol step 7). Returns normally when the entity was
+        deleted OR was already gone (404); raises on any other failure so the caller keeps
+        the ledger row 'live' and retries on a later prune. Never accepts a shared kind.
         """
         path = _DELETE_PATHS.get(kind)
         if path is None:
@@ -189,11 +186,7 @@ class SupersetAdapter:
         logger.info("superset %s %s deleted (live-cleanup)", kind, native_id)
 
     def close(self) -> None:
-        """Release the client's HTTP pool (D-2 lifecycle: adapters are created per build).
-
-        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts);
-        callers release through auto_bi.adapters.factory.close_adapter, which tolerates
-        adapters without it. The adapter is single-use after close."""
+        """Release the client's HTTP pool (D-2 lifecycle; required BIAdapter method)."""
         self._client.close()
 
     def healthcheck(self) -> AdapterHealth:
@@ -638,7 +631,7 @@ class SupersetAdapter:
 
     # --- happy path ----------------------------------------------------------
 
-    def build(self, spec: DashboardSpec) -> DashboardRef:
+    def build(self, spec: DashboardSpec, ctx: BuildContext | None = None) -> BuildResult:
         """Full compile: database -> datasets -> charts -> dashboard.
 
         D-1 (variant A): with a model, `plan_datasets` picks one shared semantic-grain
@@ -649,10 +642,17 @@ class SupersetAdapter:
         The constructor-injected model also wires native filters (scope = SOURCE charts
         on that mart, plus OWN charts whose grain exposes the column). Signature mirrors
         DataLensAdapter.build so the pipeline can dispatch by `spec.target_bi` (Phase 4 F1).
+
+        `ctx` (plan_sol step 7) supplies namespace + PlanCache; when omitted, any values
+        staged via the deprecated set_* helpers still apply (unit tests).
         """
+        if ctx is not None:
+            if ctx.namespace:
+                self._artifact_namespace = ctx.namespace.strip()
+            self._query_plans = ctx.plans
         model = self._model
         # Ownership ledger (P0-2 criterion 4): reset the buffer, then record each entity as it
-        # is created so the orchestrator can drain a complete set after a successful build.
+        # is created; returned via BuildResult.artifacts (no post-build drain getattr).
         self._build_artifacts = []
         db = self.ensure_database()
         self._build_artifacts.append(BuildArtifact("database", str(db.id), db.name))
@@ -705,4 +705,6 @@ class SupersetAdapter:
             refs.append(ref)
         dash = self.assemble_dashboard(spec, refs, datasets=datasets, model=model, plan=plan)
         self._build_artifacts.append(BuildArtifact("dashboard", str(dash.id), dash.title))
-        return dash
+        arts = tuple(self._build_artifacts)
+        self._build_artifacts = []
+        return BuildResult(dashboard=dash, artifacts=arts)

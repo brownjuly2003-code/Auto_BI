@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **plan_sol шаг 7: formal BI adapter contract** — `BuildContext` / `BuildResult` in
+  `auto_bi/adapters/base.py`; Protocol requires `build(spec, ctx=None) -> BuildResult`,
+  `delete_artifact`, `close`. Pipeline passes namespace+PlanCache via context and
+  records ledger from `BuildResult.artifacts` (no getattr). Factory
+  `validate_adapter_contract` at `make_adapter`. ADR:
+  `docs/adr/0001-bi-adapter-contract.md`. Contract suite:
+  `tests/test_adapter_contract.py` (fake third adapter). Deprecated set_*/drain_*
+  remain on concrete adapters for unit tests only.
+
 ### Security
 
 - **plan_sol шаг 6 (partial): reproducible release promotion** —

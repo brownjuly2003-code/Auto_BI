@@ -8,7 +8,7 @@ import logging
 from collections.abc import Callable
 
 from auto_bi.adapters.artifacts import new_build_namespace
-from auto_bi.adapters.base import BIAdapter, DashboardRef
+from auto_bi.adapters.base import BIAdapter, BuildContext, BuildResult, DashboardRef
 from auto_bi.adapters.factory import close_adapter
 from auto_bi.advisor.core import Advisor
 from auto_bi.advisor.narrate import ChartVerdict, worst_verdicts
@@ -227,22 +227,21 @@ def compile_and_build(
                     provider_class=type(adapter).__name__,
                 )
 
-            # P0-2: pin technical BI artifact names to this build/session so two independent
-            # sessions with the same title/chart ids never share or overwrite datasets. The same
-            # namespace is the build's `build_token` = its revision id in the ownership ledger
-            # (P0-2 criterion 4). Optional helper on concrete adapters (Protocol unchanged — S4).
+            # P0-2 + plan_sol step 7: namespace isolation and PlanCache travel through
+            # BuildContext (not getattr set_*). build_token = ownership ledger revision id.
             build_token = new_build_namespace(session_id)
-            set_ns = getattr(adapter, "set_artifact_namespace", None)
-            if callable(set_ns):
-                set_ns(build_token)
-            # D-2 §5: hand the build-local trial store to the concrete adapter so OWN
-            # magnitude can reuse complete LIMIT-trial rows. Optional helper (Protocol
-            # unchanged), same pattern as set_artifact_namespace.
-            set_plans = getattr(adapter, "set_query_plans", None)
-            if callable(set_plans):
-                set_plans(plans)
-
-            ref = adapter.build(spec)
+            owner: str | None = None
+            if store is not None and session_id is not None:
+                session_row = store.session_row(session_id)
+                owner = session_row.get("owner") if session_row else None
+            ctx = BuildContext(
+                namespace=build_token,
+                plans=plans,
+                session_id=session_id,
+                owner=owner,
+            )
+            result: BuildResult = adapter.build(spec, ctx)
+            ref = result.dashboard
         except Exception as exc:
             if store is not None and session_id is not None:
                 # Durable row must never hold raw provider bodies / DSN / tokens.
@@ -261,9 +260,8 @@ def compile_and_build(
         if store is not None and session_id is not None:
             store.save_build(session_id, spec_id, dashboard_id=ref.id, url=ref.url, status="ok")
             store.set_session_status(session_id, "built")
-            # ownership ledger (P0-2 criterion 4): build_token/adapter are in scope here —
-            # reaching this point means adapter.build(spec) returned without raising
-            _record_bi_artifacts(store, session_id, spec, adapter, build_token)
+            # ownership ledger from BuildResult.artifacts (no drain getattr)
+            _record_bi_artifacts(store, session_id, spec, result, build_token)
             if prune_orphans:
                 _prune_superseded_artifacts(store, session_id, build_token, adapter, log)
         return ref
@@ -281,32 +279,28 @@ def _record_bi_artifacts(
     store: Store,
     session_id: str,
     spec: DashboardSpec,
-    adapter: BIAdapter,
+    result: BuildResult,
     build_token: str,
 ) -> None:
-    """Ownership ledger (audit P0-2 criterion 4): after a successful build, drain the BI
-    artifacts the adapter created and record them in `Store.bi_artifacts` keyed on
+    """Ownership ledger (audit P0-2 criterion 4): after a successful build, record the BI
+    artifacts from `BuildResult.artifacts` into `Store.bi_artifacts` keyed on
     session/owner/build_token, so a future ownership-based orphan cleanup can select prior
     revisions' OWNED artifacts by id — NEVER by name (two dashboards may share a title).
 
-    `drain_build_artifacts` is a concrete adapter helper, not a BIAdapter Protocol method
-    (like `set_artifact_namespace`); a bare-protocol adapter lacks it, in which case nothing is
-    recorded. `owner` is the session's persisted owner (NULL when auth is off); `schema_set`
-    per dataset/chart comes from the chart query's table (RBAC scoping).
+    plan_sol step 7: artifacts come from BuildResult, not getattr(drain_build_artifacts).
+    `owner` is the session's persisted owner (NULL when auth is off); `schema_set` per
+    dataset/chart comes from the chart query's table (RBAC scoping).
 
     Live-cleanup IS wired (2026-07-18): right after this record, `compile_and_build` calls
     `_prune_superseded_artifacts`, which deletes THIS session's prior-revision orphans that
-    `Store.orphan_bi_artifacts` selects — by native id via a concrete adapter `delete_artifact`,
+    `Store.orphan_bi_artifacts` selects — by native id via `adapter.delete_artifact`,
     then `Store.mark_bi_artifacts_superseded` — and never fails the build. The operator path for
     superseded revisions is `auto_bi prune` (selection `Store.stale_bi_artifacts`).
     """
-    drain = getattr(adapter, "drain_build_artifacts", None)
-    if not callable(drain):
-        return
     session = store.session_row(session_id)
     owner = session.get("owner") if session else None
     target_bi = spec.target_bi.value
-    for art in drain():
+    for art in result.artifacts:
         store.record_bi_artifact(
             session_id=session_id,
             build_token=build_token,
@@ -367,9 +361,9 @@ def _prune_superseded_artifacts(
     Runs after a successful build + ledger record, so the freshly delivered dashboard is
     never touched (its rows carry `current_build_token`). Selection is `orphan_bi_artifacts`
     — ownership-keyed (session/owner/build_token, never name/title), shared kinds excluded
-    in SQL. `delete_artifact` is a concrete adapter helper; a bare-protocol adapter lacks it
-    and the prune is a no-op. NEVER fails the build: the dashboard is already delivered, so
-    any error here is logged and the leftover rows stay 'live' for a later prune.
+    in SQL. `delete_artifact` is a required BIAdapter method (plan_sol step 7). NEVER fails
+    the build: the dashboard is already delivered, so any error here is logged and the
+    leftover rows stay 'live' for a later prune.
     Kill-switch: AUTO_BI_PRUNE_ON_REBUILD=false (wired via the `prune_orphans` parameter).
 
     INVARIANT (builds of ONE session are serial): `orphan_bi_artifacts` selects every ledger
@@ -379,16 +373,13 @@ def _prune_superseded_artifacts(
     with 409, the CLI creates a fresh session per run), but a future parallel executor MUST
     keep per-session builds serial or rework this selection (see ARCHITECTURE §3.17).
     """
-    delete = getattr(adapter, "delete_artifact", None)
-    if not callable(delete):
-        return
     try:
         session = store.session_row(session_id)
         owner = session.get("owner") if session else None
         orphans = store.orphan_bi_artifacts(session_id, current_build_token, owner=owner)
         if not orphans:
             return
-        removed, failed = prune_artifact_rows(store, orphans, delete, log)
+        removed, failed = prune_artifact_rows(store, orphans, adapter.delete_artifact, log)
         line = f"prune: удалены артефакты прошлых сборок сессии: {removed}"
         if failed:
             line += f" (не удалось: {failed}, будут повторены следующим прунингом)"
