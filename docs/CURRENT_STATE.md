@@ -38,7 +38,8 @@ ADR — [adr/](adr/); операторский roadmap-аудит (внутре�
 
 - BI adapter: `BuildContext` / `BuildResult`, required `delete_artifact` / `close`.
 - Atomic Store commit for build + session + ledger; `delivered_pending` on ledger
-  fault after BI delivery. Residual: stable build_token idempotency; BI pre-return outbox.
+  fault after BI delivery. Stable `build_token` per `(session, spec_row)` —
+  idempotent retry (no second BI create). Residual: BI pre-return outbox.
 
 ## Eval / CI matrix (plan_sol 9–10)
 
@@ -89,7 +90,7 @@ Live Space / GHA / `v*` tag / mutmut remain residual.
 
 1. **Release live evidence** — next `v*` tag: image digest ↔ SBOM ↔ provenance.
 2. **Dependabot PR triage** — no bulk-merge; one-by-one after CI green.
-3. **Step 8 residual** — stable build_token from approve; durable outbox before adapter return.
+3. **Step 8 residual** — durable outbox before adapter return (stable-token idempotency **done**).
 4. **Step 10 residual** — live GHA after PR (offline browser matrix closed: resume + fields DnD).
 5. **Step 11 residual** — full ARCHITECTURE current/history split; optional Field(description=) on every Settings key.
 6. **Step 12 residual** — live SLO, mutmut score, mypy-strict modules (core offline gates done).

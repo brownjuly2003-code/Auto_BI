@@ -36,15 +36,30 @@ class BuildArtifact:
 
 
 def new_build_namespace(session_id: str | None = None) -> str:
-    """Stable-enough, non-secret namespace for one build.
+    """Fresh random namespace for one build attempt.
 
     Prefer the durable session id when present (rebuilds of the same dialogue share
     a family of names for ops readability). Always append a short random token so
     two concurrent builds of the same session still never collide, and so a rebuild
     never PUTs over a dataset still referenced by a previous dashboard.
+
+    Prefer `stable_build_token` when a durable spec revision id is known (idempotent
+    approve/retry — plan_sol step 8 residual).
     """
     base = (session_id or "local").strip() or "local"
     return f"{base}:{uuid.uuid4().hex[:8]}"
+
+
+def stable_build_token(session_id: str, spec_id: int) -> str:
+    """Deterministic build namespace for one (session, approved-spec-row) pair.
+
+    Same approve intent → same token → pipeline can short-circuit on an already
+    delivered build (ok / delivered_pending) instead of creating a second BI
+    dashboard. A new proposed/approved spec row gets a new id → new token → full
+    rebuild + orphan prune of the prior revision.
+    """
+    sid = (session_id or "").strip() or "local"
+    return f"{sid}:spec{int(spec_id)}"
 
 
 def namespace_fingerprint(namespace: str, *, length: int = 8) -> str:

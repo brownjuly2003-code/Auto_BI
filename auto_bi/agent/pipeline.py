@@ -7,7 +7,7 @@ All collaborators are injected; the CLI wires real ones from settings.
 import logging
 from collections.abc import Callable
 
-from auto_bi.adapters.artifacts import new_build_namespace
+from auto_bi.adapters.artifacts import new_build_namespace, stable_build_token
 from auto_bi.adapters.base import BIAdapter, BuildContext, BuildResult, DashboardRef
 from auto_bi.adapters.factory import close_adapter
 from auto_bi.advisor.core import Advisor
@@ -24,7 +24,12 @@ from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import SHARED_BI_KINDS, Store
-from auto_bi.store.db import SESSION_BUILT, SESSION_BUILT_DEGRADED
+from auto_bi.store.db import (
+    BUILD_DELIVERED_PENDING,
+    BUILD_OK,
+    SESSION_BUILT,
+    SESSION_BUILT_DEGRADED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -149,13 +154,48 @@ def compile_and_build(
     """
     if plans is None:
         plans = PlanCache()
+
+    # plan_sol step 8 residual: durable (session, spec_row) → stable token so a retry of
+    # the same approve (or re-approve after delivered_pending) does not create a second
+    # BI dashboard. Without a known spec revision, fall back to a random namespace so
+    # intentional multi-build tests / CLI one-shots still get distinct revisions.
+    resolved_spec_id = spec_id
+    if resolved_spec_id is None and store is not None and session_id is not None:
+        specs = store.specs(session_id)
+        if specs:
+            resolved_spec_id = int(specs[-1]["id"])
+    build_token = (
+        stable_build_token(session_id, resolved_spec_id)
+        if session_id is not None and resolved_spec_id is not None
+        else ""
+    )
+    if store is not None and session_id is not None and build_token:
+        existing = store.build_by_token(build_token)
+        if existing is not None and existing.get("status") in (
+            BUILD_OK,
+            BUILD_DELIVERED_PENDING,
+        ):
+            log(
+                f"BUILD idempotent: reusing delivered dashboard for token "
+                f"{build_token} (no second BI create)"
+            )
+            if existing.get("status") == BUILD_DELIVERED_PENDING:
+                store.set_session_status(session_id, SESSION_BUILT_DEGRADED)
+            else:
+                store.set_session_status(session_id, SESSION_BUILT)
+            dash_id = existing.get("dashboard_id")
+            return DashboardRef(
+                id=dash_id if dash_id is not None else 0,
+                title=spec.title,
+                url=existing.get("url") or "",
+            )
+
     if store is not None and session_id is not None:
         store.set_session_status(session_id, "building")
     # D-2 lifecycle: the adapter (and its HTTP pool) is created per build, so it must be
     # released on EVERY exit — after the ledger/prune on success, and on any failure. The
     # outer finally is the single release point.
     adapter: BIAdapter | None = None
-    build_token = ""
     try:
         try:
             # deterministic dashboard-adequacy normalization, before SQL_GEN + adapter so BOTH
@@ -234,11 +274,10 @@ def compile_and_build(
                     provider_class=type(adapter).__name__,
                 )
 
-            # P0-2 + plan_sol step 7: namespace isolation and PlanCache travel through
-            # BuildContext (not getattr set_*). build_token = ownership ledger revision id.
-            # A fresh random token per attempt: durable lookup is `build_by_token` for ops
-            # and for a future stable-token approve path (idempotent retry residual).
-            build_token = new_build_namespace(session_id)
+            # P0-2 + plan_sol step 7/8: namespace isolation via BuildContext.
+            # Stable token when (session, spec_row) known; else random per attempt.
+            if not build_token:
+                build_token = new_build_namespace(session_id)
             owner: str | None = None
             if store is not None and session_id is not None:
                 session_row = store.session_row(session_id)
@@ -256,9 +295,11 @@ def compile_and_build(
                 # Durable row must never hold raw provider bodies / DSN / tokens.
                 # Atomic with session status (plan_sol step 8) so a crash mid-write
                 # cannot leave session=building with a half-failed build row.
+                if not build_token:
+                    build_token = new_build_namespace(session_id)
                 store.commit_build_failure(
                     session_id,
-                    spec_id,
+                    resolved_spec_id if resolved_spec_id is not None else spec_id,
                     error=store_error_text(exc),
                     build_token=build_token,
                 )
@@ -273,7 +314,7 @@ def compile_and_build(
             _commit_delivery(
                 store,
                 session_id,
-                spec_id,
+                resolved_spec_id if resolved_spec_id is not None else spec_id,
                 spec,
                 result,
                 build_token,

@@ -13,6 +13,13 @@
 
 ### Added
 
+- **plan_sol шаг 8 residual: stable build_token idempotency** —
+  `stable_build_token(session_id, spec_id)`; `compile_and_build` reuses an already
+  delivered dashboard (`ok` / `delivered_pending`) for the same durable revision
+  instead of calling `adapter.build` again. Failed attempts with the same token
+  may rebuild. Without a known `spec_id` (or store specs), namespace stays random
+  so multi-build orphan/prune tests keep distinct revisions.
+
 - **plan_sol шаг 10 residual: fields drag-drop E2E** —
   Offline browser test `test_fields_drag_drop_seed_to_approve`: HTML5 drop into
   seed groups, click-fallback field add, multi-group, seed submit → propose →

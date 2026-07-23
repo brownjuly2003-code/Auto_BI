@@ -225,6 +225,121 @@ def test_compile_and_build_ledger_fault_does_not_fail_delivery(tmp_path) -> None
     store.close()
 
 
+def test_compile_and_build_stable_token_is_idempotent(tmp_path) -> None:
+    """plan_sol step 8 residual: same (session, spec_row) does not create a second BI.
+
+    First call delivers; second call with the same durable revision reuses the dashboard
+    URL and does not invoke adapter.build again (no duplicate BI artifacts).
+    """
+    from auto_bi.adapters.artifacts import stable_build_token
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
+    builds = {"n": 0}
+    fake = FakeSuperset()
+
+    class CountingAdapter:
+        def __init__(self) -> None:
+            self._inner = make_adapter(fake)
+
+        def healthcheck(self):
+            return self._inner.healthcheck()
+
+        def build(self, spec, ctx=None):
+            builds["n"] += 1
+            return self._inner.build(spec, ctx)
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self._inner.delete_artifact(kind, native_id)
+
+        def close(self) -> None:
+            self._inner.close()
+
+    kwargs = dict(
+        model=demo_model_fixtureless(),
+        sql_validator=LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _t: CountingAdapter(),
+        store=store,
+        session_id=sid,
+        spec_id=spec_id,
+        prune_orphans=False,
+        log=lambda _s: None,
+    )
+    first = compile_and_build(spec, **kwargs)
+    assert builds["n"] == 1
+    assert store.build_by_token(stable_build_token(sid, spec_id)) is not None
+
+    second = compile_and_build(spec, **kwargs)
+    assert builds["n"] == 1  # no second BI create
+    assert second.url == first.url
+    assert second.id == first.id
+    assert store.session_status(sid) == "built"
+    # still a single delivered build row for this token
+    rows = [b for b in store.builds(sid) if b["build_token"] == stable_build_token(sid, spec_id)]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "ok"
+    store.close()
+
+
+def test_compile_and_build_stable_token_retries_after_failure(tmp_path) -> None:
+    """Failed attempt with the same stable token may rebuild (not short-circuit)."""
+    from auto_bi.adapters.base import AdapterHealth
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
+    state = {"health_calls": 0, "builds": 0}
+    # Shared FakeSuperset so native ids stay consistent; new adapter shell each call
+    # (compile_and_build closes the adapter after every attempt).
+    fake = FakeSuperset()
+
+    class FailOnceAdapter:
+        def __init__(self) -> None:
+            self._inner = make_adapter(fake)
+
+        def healthcheck(self):
+            state["health_calls"] += 1
+            if state["health_calls"] == 1:
+                return AdapterHealth(ok=False, message="BI down once")
+            return self._inner.healthcheck()
+
+        def build(self, spec, ctx=None):
+            state["builds"] += 1
+            return self._inner.build(spec, ctx)
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self._inner.delete_artifact(kind, native_id)
+
+        def close(self) -> None:
+            self._inner.close()
+
+    kwargs = dict(
+        model=demo_model_fixtureless(),
+        sql_validator=LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _t: FailOnceAdapter(),
+        store=store,
+        session_id=sid,
+        spec_id=spec_id,
+        prune_orphans=False,
+        log=lambda _s: None,
+    )
+    with pytest.raises(SafeError) as exc:
+        compile_and_build(spec, **kwargs)
+    assert exc.value.code == CODE_BI_HEALTH
+    assert store.session_status(sid) == "failed"
+
+    ref = compile_and_build(spec, **kwargs)
+    assert state["builds"] == 1  # one successful build after the failed healthcheck
+    assert ref.url.startswith("/superset/dashboard/")
+    assert store.session_status(sid) == "built"
+    store.close()
+
+
 def test_compile_and_build_second_build_makes_first_an_orphan(tmp_path) -> None:
     # a rebuild in the same session gets a fresh build_token, so the prior build's OWNED
     # artifacts become the orphan-cleanup candidates — selected on ownership, never on name.
