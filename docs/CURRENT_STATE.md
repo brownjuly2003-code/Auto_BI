@@ -75,7 +75,7 @@ resume / **fields DnD seed**). Residual: live GHA after merge PR path.
 | Restore drill | script + `tests/test_store_backup.py` |
 | Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
 | Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**, Superset native-filter scope) |
-| Mypy --strict allowlist | `auth.py`, `adapters/artifacts.py` (CI; grow via SLO.md) |
+| Mypy --strict allowlist | `auth.py`, `adapters/artifacts.py`, `errors.py` (CI; grow via SLO.md) |
 | Ops doc | [operations/SLO.md](operations/SLO.md) |
 
 Residual step 12: live p50/p95, full mutation score (mutmut), expand mypy-strict

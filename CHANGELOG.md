@@ -17,6 +17,10 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict error boundary** —
+  `auto_bi/errors.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  SafeError, redaction и provider mapping теперь проверяются с `mypy --strict`.
+
 - **plan_sol шаг 12 residual: Superset native-filter metamorphic suite** —
   детерминированные перестановки SOURCE/OWN-чартов и mart/joined/unwired-фильтров
   проверяют эквивалентность `participating_chart_ids` и скомпилированных

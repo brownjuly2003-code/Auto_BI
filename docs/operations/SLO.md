@@ -46,10 +46,11 @@ Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
 |---|---|
 | `auto_bi/auth.py` | pure RBAC + passwords; security-sensitive |
 | `auto_bi/adapters/artifacts.py` | pure build namespace / naming |
+| `auto_bi/errors.py` | public/store/SSE/log redaction and provider error boundary |
 
 ```bash
 uv run --with mypy --with types-PyYAML mypy --strict \
-  auto_bi/auth.py auto_bi/adapters/artifacts.py
+  auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py
 ```
 
 Do **not** set `strict = true` as a global or per-module override in `pyproject`
@@ -62,4 +63,4 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
 - Full mutmut/cosmic-ray mutation score for `ir/validate`, `sql_guard`, dataset
   planning, ownership cleanup — characterization via property tests only for now.
 - Process memory / cold-start process budget on release image.
-- Expand mypy-strict allowlist beyond `auth` + `artifacts`.
+- Expand mypy-strict allowlist beyond `auth` + `artifacts` + `errors`.
