@@ -18,10 +18,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 from auto_bi.semantic.model import Join, SemanticModel
 
 RELATIONSHIP_JOIN_TYPE = "many_to_one"  # dbt relationships test asserts exactly this shape
+JsonObject = dict[str, Any]
 
 
 @dataclass
@@ -44,12 +46,12 @@ class DbtImportReport:
         )
 
 
-def load_artifact(path: str | Path) -> dict:
+def load_artifact(path: str | Path) -> JsonObject:
     with open(path, encoding="utf-8") as f:
-        return json.load(f)
+        return cast(JsonObject, json.load(f))
 
 
-def _node_table(node: dict) -> str:
+def _node_table(node: JsonObject) -> str:
     """dbt node -> fully qualified semantic-model table name ("dm.sales_daily").
 
     Models materialize under `alias` (defaults to name); sources point at the
@@ -60,7 +62,7 @@ def _node_table(node: dict) -> str:
     return f"{node.get('schema', '')}.{relation}"
 
 
-def _model_nodes(manifest: dict) -> dict[str, dict]:
+def _model_nodes(manifest: JsonObject) -> dict[str, JsonObject]:
     """node_id -> node for models AND sources (both can describe DM tables)."""
     nodes = {
         node_id: node
@@ -71,7 +73,7 @@ def _model_nodes(manifest: dict) -> dict[str, dict]:
     return nodes
 
 
-def _catalog_comment(catalog: dict | None, node_id: str, column: str) -> str:
+def _catalog_comment(catalog: JsonObject | None, node_id: str, column: str) -> str:
     if catalog is None:
         return ""
     for section in ("nodes", "sources"):
@@ -84,7 +86,9 @@ def _catalog_comment(catalog: dict | None, node_id: str, column: str) -> str:
     return ""
 
 
-def _relationship_tests(manifest: dict, models: dict[str, dict]) -> list[tuple[str, str, str, str]]:
+def _relationship_tests(
+    manifest: JsonObject, models: dict[str, JsonObject]
+) -> list[tuple[str, str, str, str]]:
     """-> (left_table, left_column, right_table, right_column), deterministic order.
 
     `attached_node` (dbt >= 1.4) names the model under test; the other model in
@@ -119,7 +123,7 @@ def _relationship_tests(manifest: dict, models: dict[str, dict]) -> list[tuple[s
 
 
 def dbt_enrich(
-    model: SemanticModel, manifest: dict, catalog: dict | None = None
+    model: SemanticModel, manifest: JsonObject, catalog: JsonObject | None = None
 ) -> DbtImportReport:
     """Merge dbt artifacts into the model IN PLACE; returns what changed and what didn't."""
     report = DbtImportReport()

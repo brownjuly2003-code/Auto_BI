@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict dbt import boundary** —
+  `auto_bi/semantic/dbt_import.py` добавлен в строгий CI allowlist на Python
+  3.12 и 3.13; dbt artifact mappings получили параметризованный `JsonObject`
+  contract без изменения merge policy.
+
 - **plan_sol шаг 12 residual: mypy-strict prompt-data boundary** —
   `auto_bi/semantic/prompt_data.py` добавлен в строгий CI allowlist на Python
   3.12 и 3.13; sample classification и prompt-data policy теперь проверяются с

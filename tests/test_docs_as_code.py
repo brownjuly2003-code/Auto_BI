@@ -189,6 +189,7 @@ def test_generator_check_mode_exits_zero() -> None:
         "auto_bi/semantic/select.py",
         "auto_bi/semantic/render.py",
         "auto_bi/semantic/prompt_data.py",
+        "auto_bi/semantic/dbt_import.py",
     ],
 )
 def test_strict_targets_are_in_every_mypy_job_and_slo(target: str) -> None:
