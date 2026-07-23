@@ -115,16 +115,14 @@ def _start_text_to_approve(page, base: str) -> None:
 
 
 def _recover_session_id(page) -> str | None:
-    return page.evaluate(
-        """() => {
+    return page.evaluate("""() => {
           const entries = performance.getEntriesByType('resource');
           for (const e of entries) {
             const m = e.name.match(/\\/api\\/v1\\/sessions\\/([0-9a-fA-F-]+)/);
             if (m) return m[1];
           }
           return null;
-        }"""
-    )
+        }""")
 
 
 def test_text_session_builds_with_scripted_llm(offline_server):
