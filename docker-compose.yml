@@ -3,14 +3,24 @@
 #   docker compose up -d
 # First start generates the demo data (~100M fact rows by default; override
 # DEMO_FACT_ROWS for a lighter stand, e.g. DEMO_FACT_ROWS=10000000).
+#
+# plan_sol step 4 / audit P0-3: published ports bind 127.0.0.1 only so a machine
+# on office/home/VPN/cloud LAN does not expose ClickHouse/Superset (and their
+# local-only default passwords) to neighbours. Everyday `docker compose up` is
+# localhost-only.
+#
+# Explicit LAN publish (escape hatch, requires real secrets):
+#   docker compose -f docker-compose.yml -f docker-compose.publish.yml up -d
+# See docker-compose.publish.yml and docs/DEPLOYMENT.md § local stand.
 
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
     container_name: auto_bi_clickhouse
     ports:
-      - "8123:8123"   # HTTP (clickhouse-connect); native 9000 is not published —
-                      # it clashes with other stacks (MinIO) and nothing external needs it
+      # HTTP (clickhouse-connect); native 9000 is not published —
+      # it clashes with other stacks (MinIO) and nothing external needs it.
+      - "127.0.0.1:8123:8123"
     environment:
       CLICKHOUSE_DB: dm
       CLICKHOUSE_USER: admin
@@ -34,7 +44,7 @@ services:
     build: ./docker/superset
     container_name: auto_bi_superset
     ports:
-      - "8088:8088"
+      - "127.0.0.1:8088:8088"
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-dev_secret_local_only}
       ADMIN_USERNAME: ${AUTO_BI_SUPERSET_USER:-admin}

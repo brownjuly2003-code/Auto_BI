@@ -27,13 +27,73 @@ USER_GUIDE.md отвечает на «как пользоваться», ARCHITE
 - Один `auto_bi serve` процесс на деплой. Масштабирование — только вертикальное (больше
   CPU/RAM хосту), не горизонтальное.
 - Рестарт процесса безопасен для истории (specs/builds/llm_calls/trace_events — в Store),
-  но роняет все диалоги, находящиеся в процессе (см. §9).
+  но роняет все диалоги, находящиеся в процессе (см. §10).
 - Полный resume сессий после рестарта — размеченный опциональный трек (`X-4` в
   `plan.md`), не требуется для этого скоупа.
 
 ---
 
-## 2. Запуск процесса
+## 2. Deployment profiles (`AUTO_BI_PROFILE`)
+
+`serve` проверяет комбинацию флагов **до** bind сокета. Профиль задаётся
+`AUTO_BI_PROFILE=local|demo|production` (default `local`). Неизвестное значение
+логируется как warning и трактуется как `local`.
+
+| Профиль | Когда | Что валидируется |
+|---|---|---|
+| `local` | CLI, тесты, разработка | без hard-fail; warning если `SEND_SAMPLES=true` |
+| `demo` | публичный Space / demo | auto-only **или** (`REQUIRE_LLM_READY` + session/work/LLM budget); samples off в auto-only |
+| `production` | боевой single-host | auth on, `AUTH_COOKIE_SECURE=true`, `BI_CONNECTION_STRICT=true`, `SEND_SAMPLES=false`, `ALLOW_INSECURE_REMOTE=false`, не demo_auto_only, non-default CH/Superset/admin secrets, work/session/LLM limits, `RETENTION_ENABLED=true` |
+
+Код: `auto_bi/deployment_profile.py`. Матрица allow/deny — `tests/test_deployment_profile.py`.
+
+**Минимальный production `.env` (фрагмент):**
+
+```bash
+AUTO_BI_PROFILE=production
+AUTO_BI_AUTH_ENABLED=true
+AUTO_BI_ADMIN_PASSWORD=<strong-secret>   # или AUTO_BI_AUTH_USERS_FILE=...
+AUTO_BI_AUTH_COOKIE_SECURE=true
+AUTO_BI_BI_CONNECTION_STRICT=true
+AUTO_BI_SEND_SAMPLES=false
+AUTO_BI_ALLOW_INSECURE_REMOTE=false
+AUTO_BI_CH_PASSWORD=<strong-secret>
+AUTO_BI_SUPERSET_PASSWORD=<strong-secret>
+AUTO_BI_WORK_RATE_ENABLED=true
+AUTO_BI_RETENTION_ENABLED=true
+# рекомендуется:
+AUTO_BI_METRICS_ENABLED=true
+AUTO_BI_LLM_BUDGET_ENABLED=true
+AUTO_BI_LLM_BUDGET_DAY_MAX_CALLS=500
+```
+
+Небезопасный production profile завершается с exit 2 **до** запуска uvicorn и печатает
+список нарушений.
+
+**Локальный docker-compose стенд (ClickHouse + Superset).** Порты по умолчанию
+привязаны к loopback (`127.0.0.1:8123`, `127.0.0.1:8088`) — соседняя машина в LAN/VPN
+не видит CH/Superset с local-only defaults. Обычный старт:
+
+```bash
+docker compose up -d
+```
+
+Явная публикация на все интерфейсы — только через override и **заданные** секреты
+(compose откажет, если плейсхолдеры не заменены):
+
+```bash
+export CH_ADMIN_PASSWORD=...
+export AUTO_BI_CH_PASSWORD=...
+export SUPERSET_SECRET_KEY=...
+export AUTO_BI_SUPERSET_PASSWORD=...
+docker compose -f docker-compose.yml -f docker-compose.publish.yml up -d
+```
+
+Предпочтительнее SSH-туннель/VPN, а не LAN-publish.
+
+---
+
+## 3. Запуск процесса
 
 **Docker — готовый образ из GHCR (после того, как вырезан хотя бы один тег `vX.Y.Z` —
 `release.yml`, S10) или сборка локально:**
@@ -85,7 +145,7 @@ docker run -d --name auto_bi \
 
 (Замените `auto_bi` на `ghcr.io/brownjuly2003-code/auto_bi:X.Y.Z`, если тянули по варианту A.)
 Дефолтный `CMD` в образе (`auto_bi serve --host 0.0.0.0 --port 8200`) уже подходит для
-контейнера — переопределяйте команду только чтобы добавить `--log-format json` (см. §7) или
+контейнера — переопределяйте команду только чтобы добавить `--log-format json` (см. §8) или
 сменить `--log-level`. Версия запущенного образа проверяется без входа в контейнер: `GET
 /api/v1/health` возвращает поле `version`.
 
@@ -93,9 +153,10 @@ docker run -d --name auto_bi \
 демо-профиля (`AUTO_BI_DEMO_AUTO_ONLY`) **отказывается стартовать**, пока нет явного
 `AUTO_BI_ALLOW_INSECURE_REMOTE=true` (доверие к сети) или включённого auth. Для локальной
 разработки биндитесь на `127.0.0.1` (дефолт CLI) — флаг не нужен. Публичный HF-demo слушает
-`127.0.0.1` за nginx внутри контейнера. На проде предпочтительнее `AUTH_ENABLED=true`, а не
-insecure-флаг. Дополнительно: `AUTO_BI_MAX_CONCURRENT_BUILDS` (default 2) и
+`127.0.0.1` за nginx внутри контейнера. На проде предпочтительнее `AUTO_BI_PROFILE=production`
+(+ auth), а не insecure-флаг. Дополнительно: `AUTO_BI_MAX_CONCURRENT_BUILDS` (default 2) и
 `AUTO_BI_WORK_RATE_*` (форсируется в demo) ограничивают дорогие auto/approve/insights.
+См. §2 (deployment profiles).
 
 **Без Docker (`uv`):**
 
@@ -111,10 +172,10 @@ AUTO_BI_ALLOW_INSECURE_REMOTE=true uv run auto_bi serve --host 0.0.0.0 --port 82
 | Путь (по умолчанию) | Что там | Переменная |
 |---|---|---|
 | `data/auto_bi.sqlite` | Store: sessions/specs/builds/llm_calls/dm_change_requests/trace_events/users/auth_tokens | `AUTO_BI_STORE_PATH` |
-| `logs/llm_calls.jsonl` | построчный лог метаданных LLM-вызовов (hash промпта/размеры/latency/статус — НЕ сырые промпты; Anthropic/GraceKelly) | — (путь зашит в клиентах, см. §7) |
+| `logs/llm_calls.jsonl` | построчный лог метаданных LLM-вызовов (hash промпта/размеры/latency/статус — НЕ сырые промпты; Anthropic/GraceKelly) | — (путь зашит в клиентах, см. §8) |
 
 Без этих двух volume-маунтов каждый `docker run`/пересоздание контейнера тихо теряет всю
-историю — не только бэкап (§6) становится бессмысленным, но и наблюдаемость/трейс сессий.
+историю — не только бэкап (§7) становится бессмысленным, но и наблюдаемость/трейс сессий.
 
 `semantic/model.yaml` уже копируется в образ (`Dockerfile`); если модель правится через
 enrichment UI (fields-first) на живом проде, а не пересборкой образа — смонтируйте её тоже
@@ -122,7 +183,7 @@ enrichment UI (fields-first) на живом проде, а не пересбо�
 
 ---
 
-## 3. Reverse-proxy + TLS
+## 4. Reverse-proxy + TLS
 
 Процесс сам TLS не терминирует — это задача proxy перед ним. Два примера ниже покрывают
 основной эндпоинт (`/`, `/api/v1/*`) и обязательно правильно проксируют SSE
@@ -175,7 +236,7 @@ IP клиента (`request.client`). За reverse-proxy каждый запро
 (nginx-пример выше; Caddy делает это сам), (2) uvicorn доверяет этим заголовкам от адреса
 прокси — `auto_bi serve` включает `proxy_headers` всегда, но доверяет по умолчанию только
 loopback: для same-host прокси (`127.0.0.1` → `127.0.0.1:8200`) этого достаточно, для
-контейнерного прокси (compose/k8s, §5) выставьте `AUTO_BI_FORWARDED_ALLOW_IPS` — адрес(а)
+контейнерного прокси (compose/k8s, §6) выставьте `AUTO_BI_FORWARDED_ALLOW_IPS` — адрес(а)
 прокси через запятую, либо `*`, если порт приложения доступен ТОЛЬКО прокси (внутренняя
 compose-сеть без published port). `*` при публично доступном порте приложения — дыра:
 любой клиент подделает свой IP одним заголовком.
@@ -191,7 +252,7 @@ serve --host 127.0.0.1` за локальным nginx/Caddy — эвристик
 
 ---
 
-## 4. Готовность для оркестратора
+## 5. Готовность для оркестратора
 
 - `GET /api/v1/health` — процесс жив (liveness).
 - `GET /api/v1/ready` — глубокая готовность: store (`SELECT 1`) + DWH (`SELECT 1`) + BI
@@ -203,11 +264,11 @@ serve --host 127.0.0.1` за локальным nginx/Caddy — эвристик
 `{"configured": false}` встречается только в юнит-тестах, вызывающих `create_app()` напрямую
 без этих зависимостей.
 
-Пример healthcheck для compose/systemd — см. §5.
+Пример healthcheck для compose/systemd — см. §6.
 
 ---
 
-## 5. Docker Compose — пример прод-запуска
+## 6. Docker Compose — пример прод-запуска
 
 Этот пример — слой «приложение + reverse-proxy». Демо-стенд ClickHouse+Superset
 (`docker-compose.yml` в корне) — отдельная история для разработки/eval; в проде DWH и BI
@@ -254,10 +315,10 @@ volumes:
   caddy_data:
 ```
 
-`Caddyfile` — как в §3, только `reverse_proxy auto_bi:8200` (имя compose-сервиса вместо
+`Caddyfile` — как в §4, только `reverse_proxy auto_bi:8200` (имя compose-сервиса вместо
 `127.0.0.1`). В этой схеме прокси приходит НЕ с loopback (compose-сеть), поэтому в `.env`
 обязательно `AUTO_BI_FORWARDED_ALLOW_IPS=*` — иначе per-IP квоты увидят адрес Caddy вместо
-клиентов (F-2, §3); `*` здесь безопасен, потому что у сервиса `auto_bi` нет published
+клиентов (F-2, §4); `*` здесь безопасен, потому что у сервиса `auto_bi` нет published
 port — до него дотягивается только Caddy.
 
 **Публичное игровое демо (P8)** живёт отдельным вариантом упаковки —
@@ -312,7 +373,7 @@ WantedBy=multi-user.target
 
 ---
 
-## 6. Бэкап SQLite
+## 7. Бэкап SQLite
 
 Store — один файл SQLite (`AUTO_BI_STORE_PATH`, по умолчанию `data/auto_bi.sqlite`),
 открытый без WAL (`store/db.py` — обычный rollback-journal, одно соединение,
@@ -384,7 +445,7 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
 
 ---
 
-## 7. Ротация `logs/*.jsonl`
+## 8. Ротация `logs/*.jsonl`
 
 `logs/llm_calls.jsonl` — построчный append-лог метаданных вызовов LLM: hash промпта,
 размеры, latency, статус — сырые промпты/ответы туда НЕ пишутся
@@ -416,7 +477,7 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
 
 ---
 
-## 8. Чеклист секретов перед деплоем
+## 9. Чеклист секретов перед деплоем
 
 - `.env` не в git (уже в `.gitignore`) — перед первым пушем с новой машины проверить
   `git check-ignore .env`.
@@ -427,7 +488,9 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
   публичный файл), `logs/*.jsonl` (может нести значения данных из DM, если
   `AUTO_BI_SEND_SAMPLES=true` — ARCHITECTURE §4; default is `false`) — `chmod 600` / непривилегированный
   пользователь в контейнере.
-- `AUTO_BI_AUTH_COOKIE_SECURE=true` выставлен явно за любым reverse-proxy (см. §3) —
+- `AUTO_BI_PROFILE=production` (или `demo`) согласован с флагами §2 — `serve` откажется
+  стартовать при небезопасной комбинации.
+- `AUTO_BI_AUTH_COOKIE_SECURE=true` выставлен явно за любым reverse-proxy (см. §4) —
   не полагаться на авто-эвристику по `--host`.
 - Если `AUTO_BI_AUTH_ENABLED=true`: `AUTO_BI_AUTH_USERS_FILE` вне VCS — плейнтекст-пароли в
   нём реальный секрет до хэширования при старте (USER_GUIDE §7).
@@ -446,7 +509,7 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
   вызовам/токенам/стоимости/времени, на сессию и на актора/24ч; агрегат — из леджера `llm_calls`
   (переживает рестарт, в отличие от in-process квот). Задайте нужные `AUTO_BI_LLM_BUDGET_*` (0 =
   без лимита по измерению). Выключен по умолчанию.
-- Квоты за прокси реально per-IP, а не один общий bucket (F-2, §3): прокси шлёт
+- Квоты за прокси реально per-IP, а не один общий bucket (F-2, §4): прокси шлёт
   `X-Forwarded-For`, и если он не на loopback (compose/k8s) — выставлен
   `AUTO_BI_FORWARDED_ALLOW_IPS` (адреса прокси; `*` только когда порт приложения не
   опубликован наружу). Проверка: залогируйте/дерните `/api/v1/auth/me` с двух внешних
@@ -454,7 +517,7 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
 
 ---
 
-## 9. После рестарта / восстановление
+## 10. После рестарта / восстановление
 
 `Store.reap_stuck_builds()` вызывается при каждом старте `auto_bi serve` (S07) —
 сессии, застрявшие в `building` из-за убитого предыдущего процесса, автоматически получают

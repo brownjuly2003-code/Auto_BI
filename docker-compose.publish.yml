@@ -1,0 +1,30 @@
+# Optional override: publish ClickHouse + Superset on all interfaces.
+#
+# Default docker-compose.yml binds only 127.0.0.1 (plan_sol step 4 / audit P0-3).
+# Use this file ONLY when a neighbour host must reach the stand, and ONLY with
+# real secrets (compose fails if the required env vars are unset/empty).
+#
+#   # refuse default placeholders — set these in the environment or .env first:
+#   export CH_ADMIN_PASSWORD=...
+#   export AUTO_BI_CH_PASSWORD=...
+#   export SUPERSET_SECRET_KEY=...
+#   export AUTO_BI_SUPERSET_PASSWORD=...
+#   docker compose -f docker-compose.yml -f docker-compose.publish.yml up -d
+#
+# Prefer SSH tunnels / VPN over LAN publish. This profile is an explicit escape
+# hatch, not the everyday developer path.
+
+services:
+  clickhouse:
+    ports:
+      - "8123:8123"
+    environment:
+      CLICKHOUSE_PASSWORD: ${CH_ADMIN_PASSWORD:?set CH_ADMIN_PASSWORD for publish profile}
+      AUTO_BI_RO_PASSWORD: ${AUTO_BI_CH_PASSWORD:?set AUTO_BI_CH_PASSWORD for publish profile}
+
+  superset:
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?set SUPERSET_SECRET_KEY for publish profile}
+      ADMIN_PASSWORD: ${AUTO_BI_SUPERSET_PASSWORD:?set AUTO_BI_SUPERSET_PASSWORD for publish profile}

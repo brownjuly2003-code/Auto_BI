@@ -10,6 +10,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AUTO_BI_", env_file=".env", extra="ignore")
 
+    # Deployment profile (plan_sol step 4 / audit P0-3, P2-4). Selects serve-time
+    # validation strictness: local (default, developer-friendly), demo (public Space),
+    # production (fail closed on weak secrets / missing auth / unbounded resources).
+    # Env: AUTO_BI_PROFILE. Unknown values fall back to local with a warning in serve.
+    profile: str = "local"
+
     # ClickHouse demo-DM / DWH (read-only role)
     ch_host: str = "localhost"
     ch_port: int = 8123

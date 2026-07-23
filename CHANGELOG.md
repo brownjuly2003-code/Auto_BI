@@ -6,6 +6,17 @@
 
 ### Security
 
+- **plan_sol шаг 4: Compose loopback + validated profiles** —
+  `docker-compose.yml` публикует ClickHouse/Superset только на `127.0.0.1`
+  (LAN-соседи больше не видят local-only defaults). Внешняя публикация —
+  явный override `docker-compose.publish.yml` с обязательными секретами
+  (compose `:?` fail). `AUTO_BI_PROFILE=local|demo|production` валидирует
+  комбинации до bind: production требует auth, secure cookie, strict BI
+  fingerprint, `SEND_SAMPLES=false`, non-default secrets, resource limits,
+  retention; demo — auto-only или text+LLM-ready+quota. Код:
+  `auto_bi/deployment_profile.py`; матрица — `tests/test_deployment_profile.py`.
+  Док: `docs/DEPLOYMENT.md` §2.
+
 - **plan_sol шаг 3: SafeError + центральная редактиру** — публичные HTTP/SSE,
   durable Store (builds/trace) и structured logs больше не несут raw provider
   bodies, DSN, Authorization/cookies/API keys. Новый `auto_bi/errors.py`:

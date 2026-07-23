@@ -599,10 +599,34 @@ def _serve(  # pragma: no cover — wiring only
     # C-2: a misspelled AUTO_BI_* variable is silently ignored by pydantic
     # (extra="ignore") — surface it so a typo'd security flag is never silently inert.
     from auto_bi.config import warn_unknown_env_settings
+    from auto_bi.deployment_profile import (
+        VALID_PROFILES,
+        normalize_profile,
+        validate_deployment_profile,
+    )
 
     warn_unknown_env_settings(logger)
+
+    # plan_sol step 4: validated deployment profiles (local|demo|production).
+    raw_profile = (settings.profile or "local").strip().lower()
+    if raw_profile not in VALID_PROFILES:
+        logger.warning(
+            "unknown AUTO_BI_PROFILE=%r — treating as 'local' (valid: %s)",
+            settings.profile,
+            ", ".join(sorted(VALID_PROFILES)),
+        )
+    profile_check = validate_deployment_profile(settings, bind_host=host)
+    for w in profile_check.warnings:
+        logger.warning("profile %s: %s", profile_check.profile, w)
+    if not profile_check.ok:
+        print(profile_check.format_message())
+        return 2
+    logger.info("deployment profile: %s", normalize_profile(settings.profile))
+
     # P0-3 fail-closed remote bind: non-loopback + auth off + not a demo profile requires
     # an explicit operator consent flag (Docker/trusted LAN). HF demo binds 127.0.0.1.
+    # (Also enforced inside validate_deployment_profile for demo/production; this keeps
+    # the local-profile path fail-closed without forcing AUTO_BI_PROFILE=demo.)
     loopback = {"127.0.0.1", "localhost", "::1"}
     if host not in loopback and not (
         settings.auth_enabled or settings.demo_auto_only or settings.allow_insecure_remote
@@ -770,7 +794,7 @@ def _serve(  # pragma: no cover — wiring only
     if settings.forwarded_allow_ips is not None:
         # which peers are trusted to SET those headers; uvicorn's default trusts
         # loopback only — enough for a same-host proxy, must be widened for a
-        # containerized one (DEPLOYMENT §3/§5).
+        # containerized one (DEPLOYMENT §4/§6).
         uvicorn_kwargs["forwarded_allow_ips"] = settings.forwarded_allow_ips
         logger.info("trusting proxy headers from: %s", settings.forwarded_allow_ips)
     if log_format == "json":
