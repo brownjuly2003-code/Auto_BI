@@ -13,6 +13,13 @@
 
 ### Added
 
+- **plan_sol шаг 10 residual: browser UI resume after reload** —
+  `sessionStorage` key `auto_bi.session_id`; `resumeSession()` restores chip /
+  build panel / approve button from `GET /sessions/{id}`. `SessionState` /
+  `SessionSnapshot` carry optional `spec` for IR preview re-render. Offline E2E
+  `test_browser_reload_resumes_built_session`. Logout clears stored id. Chat
+  transcript not rehydrated in the browser (server Store remains SoT for dialogue).
+
 - **plan_sol шаг 13 (offline adversarial re-audit core)** —
   Evidence doc `docs/operations/REAUDIT_plan_sol_23_07_26.md` (score 8.8/10 offline;
   gates: ruff/mypy/hygiene, security suite, advisor 9+6, golden 37+16, rulesets active,
@@ -41,8 +48,8 @@
   test, live-stand E2E auth/viewport; **offline browser E2E** job
   `Browser E2E (offline, no stand)` — text path via ScriptedLLM, failed-build retry,
   SSE late-connect replay (`tests/test_web_e2e_offline.py` + helper subprocess).
-  No paid LLM. Residual: full browser process-restart resume UI (API covered);
-  fields drag-drop E2E; live GHA after merge.
+  No paid LLM. Residual was UI resume + fields DnD; **UI resume closed** (see
+  Unreleased Added above). Residual: fields drag-drop E2E; live GHA after merge.
   Step 11 start: fixed USER_GUIDE audit falsehoods (session owner-bound, Anthropic
   token usage, work quota on auto, empty DataLens password default); `tests/test_docs_defaults.py`
   (Settings defaults without local `.env`, version, CLI subcommands, `.env.example`);

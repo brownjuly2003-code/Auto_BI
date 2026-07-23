@@ -57,12 +57,14 @@ def test_approve_phase_session_survives_restart_and_accepts_word_edit(demo_model
     restarted = make_client(ScriptedLLM([PATCHED_SPEC]), demo_model, store=store)
     state = restarted.get(f"/api/v1/sessions/{sid}")
     assert state.status_code == 200
-    assert state.json() == {
-        "session_id": sid,
-        "phase": "approve",
-        "build_status": "idle",
-        "dashboard_url": "",
-    }
+    body = state.json()
+    assert body["session_id"] == sid
+    assert body["phase"] == "approve"
+    assert body["build_status"] == "idle"
+    assert body["dashboard_url"] == ""
+    # plan_sol step 10 residual: GET carries IR for browser UI hydrate
+    assert body["spec"] is not None
+    assert body["spec"]["title"] == GOOD_SPEC["title"]
     turn = restarted.post(f"/api/v1/sessions/{sid}/reply", json={"text": "переименуй"}).json()
     assert turn["phase"] == "approve"
     assert turn["spec"]["title"] == "Продажи (обновлено)"

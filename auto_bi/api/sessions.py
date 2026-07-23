@@ -58,6 +58,10 @@ class SessionSnapshot:
     phase: str
     build_status: str
     dashboard_url: str
+    # Optional dump of agent.spec for browser UI resume (plan_sol step 10 residual).
+    # Not part of the lock-consistency contract for URL/status; read under the same lock
+    # so a concurrent patch cannot yield a torn phase/spec pair on GET.
+    spec: dict | None = None
 
 
 class ManagedSession:
@@ -85,13 +89,15 @@ class ManagedSession:
         self._events_cond = threading.Condition()
 
     def snapshot(self) -> SessionSnapshot:
-        """Publish phase + build_status + dashboard_url under one lock."""
+        """Publish phase + build_status + dashboard_url (+ optional spec) under one lock."""
         with self.lock:
+            agent_spec = self.agent.spec
             return SessionSnapshot(
                 session_id=self.session_id,
                 phase=self.agent.phase.value,
                 build_status=self.build_status,
                 dashboard_url=self.dashboard_url,
+                spec=(agent_spec.model_dump(mode="json") if agent_spec is not None else None),
             )
 
     def apply_build_success(self, url: str, *, title: str = "", degraded: bool = False) -> None:

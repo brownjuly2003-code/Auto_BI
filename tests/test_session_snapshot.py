@@ -40,6 +40,7 @@ def test_snapshot_is_immutable_and_consistent() -> None:
     assert snap.phase == AgentPhase.APPROVED.value
     assert snap.build_status == "building"
     assert snap.dashboard_url == ""
+    assert snap.spec is None  # no agent.spec in this fixture
     # frozen: cannot mutate
     try:
         snap.build_status = "built"  # type: ignore[misc]

@@ -9,7 +9,8 @@ Paths covered (no paid LLM — demo_auto_only + DisabledLLM, or auth-only UI che
 Needs playwright (+ chromium) and axe-playwright-python — pulled ephemerally in CI.
 Deselected by default via addopts (`-m 'not e2e'`).
 
-Residual (not in this file yet): failed-build retry UI, process restart/resume browser,
+Residual (not in this file yet): fields drag-drop E2E; browser resume covered offline
+in test_web_e2e_offline. Historical note — failed-build retry / restart/resume browser,
 SSE reconnect mid-stream, text/fields via FixtureLLM (serve has no fixture mode).
 """
 

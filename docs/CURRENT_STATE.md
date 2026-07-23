@@ -51,8 +51,8 @@ ADR — [adr/](adr/); операторский roadmap-аудит (внутре�
 | Advisor GP | 6 | offline |
 
 CI: Python 3.12 primary quality, 3.13 latest, Windows CLI smoke, dependency-resolution
-matrix, offline browser E2E (text / failed-build retry / SSE late-connect). Residual:
-browser session hydrate after reload; fields DnD E2E; live GHA after merge PR path.
+matrix, offline browser E2E (text / failed-build retry / SSE late-connect / **reload
+resume**). Residual: fields DnD E2E; live GHA after merge PR path.
 
 ## Docs-as-code (plan_sol 11)
 
@@ -90,7 +90,7 @@ Live Space / GHA / `v*` tag / mutmut remain residual.
 1. **Release live evidence** — next `v*` tag: image digest ↔ SBOM ↔ provenance.
 2. **Dependabot PR triage** — no bulk-merge; one-by-one after CI green.
 3. **Step 8 residual** — stable build_token from approve; durable outbox before adapter return.
-4. **Step 10 residual** — UI resume after reload; fields drag-drop E2E.
+4. **Step 10 residual** — fields drag-drop E2E (UI resume after reload **done**).
 5. **Step 11 residual** — full ARCHITECTURE current/history split; optional Field(description=) on every Settings key.
 6. **Step 12 residual** — live SLO, mutmut score, mypy-strict modules (core offline gates done).
 7. **Step 13 residual** — live integration/browser/Space/tag evidence on pushed SHA.

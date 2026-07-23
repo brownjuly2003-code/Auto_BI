@@ -18,6 +18,36 @@ const state = {
   activeGroup: 0, // куда падает клик по полю (DnD-фоллбек)
 };
 
+// Browser resume after reload (plan_sol step 10 residual). sessionStorage so a tab
+// close ends the dialogue address; same-tab reload keeps the id. Server still owns
+// durable hydrate via Store (X-4).
+const SESSION_STORAGE_KEY = "auto_bi.session_id";
+
+function persistSessionId(id) {
+  if (!id) return;
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, id);
+  } catch {
+    /* private mode / quota — UI still works for this page lifetime */
+  }
+}
+
+function loadStoredSessionId() {
+  try {
+    return sessionStorage.getItem(SESSION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredSessionId() {
+  try {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /* ---------- chat rendering ---------- */
 
 function addMessage(kind, text, meta) {
@@ -187,11 +217,16 @@ function renderSpec(spec, verdicts, notes) {
 
 /* ---------- turn handling ---------- */
 
+function lockEntryControls() {
+  $("mode-tabs").hidden = true; // вход (текст/поля) зафиксирован стартом сессии
+  $("bi-target").disabled = true; // целевая BI зафиксирована стартом сессии (как режим)
+}
+
 function handleTurn(turn) {
   state.sessionId = turn.session_id;
   state.phase = turn.phase;
-  $("mode-tabs").hidden = true; // вход (текст/поля) зафиксирован стартом сессии
-  $("bi-target").disabled = true; // целевая BI зафиксирована стартом сессии (как режим)
+  persistSessionId(turn.session_id);
+  lockEntryControls();
 
   if (turn.error) {
     addMessage("error", `Правка не применена: ${turn.error}\nТекущий дашборд без изменений.`, "ошибка");
@@ -259,6 +294,64 @@ async function send(text) {
 
 /* ---------- build ---------- */
 
+function showBuildResult(url, { failed = false, message = "" } = {}) {
+  const result = $("build-result");
+  $("build").hidden = false;
+  if (failed) {
+    result.className = "build-result failed";
+    result.textContent = message || "Сборка не удалась";
+    result.hidden = false;
+    return;
+  }
+  result.className = "build-result";
+  result.replaceChildren("Дашборд готов: ");
+  const link = document.createElement("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.textContent = url;
+  result.appendChild(link);
+  result.hidden = false;
+}
+
+function attachBuildStream() {
+  // Shared by approve POST and browser resume mid-build / late connect after reload.
+  const events = new EventSource(apiUrl(`/api/v1/sessions/${state.sessionId}/events`));
+  const logLine = (text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    $("build-log").appendChild(li);
+  };
+  events.addEventListener("log", (e) => logLine(JSON.parse(e.data).text));
+  events.addEventListener("done", (e) => {
+    events.close();
+    state.building = false;
+    state.built = true;
+    const data = JSON.parse(e.data);
+    showBuildResult(data.url);
+    setChip("построен", "built");
+    addMessage("agent", "Готово. Дальше можно дорабатывать правками словами — пересоберу.", "агент");
+    $("approve-btn").disabled = false;
+    $("approve-btn").textContent = "Пересобрать дашборд";
+    refreshDcr();
+    refreshObservability();
+    refreshInsights();
+  });
+  events.addEventListener("error", (e) => {
+    if (!e.data) return; // transport-level noise, EventSource ретраится сам
+    events.close();
+    state.building = false;
+    showBuildResult("", {
+      failed: true,
+      message: `Сборка не удалась: ${JSON.parse(e.data).text}`,
+    });
+    setChip("ошибка сборки", "failed");
+    $("approve-btn").disabled = false;
+    refreshObservability();
+  });
+  return events;
+}
+
 function approve() {
   if (!state.sessionId || state.building) return;
   state.building = true;
@@ -271,53 +364,90 @@ function approve() {
 
   api(`/api/v1/sessions/${state.sessionId}/approve`, { method: "POST" })
     .then(() => {
-      const events = new EventSource(apiUrl(`/api/v1/sessions/${state.sessionId}/events`));
-      const logLine = (text) => {
-        const li = document.createElement("li");
-        li.textContent = text;
-        $("build-log").appendChild(li);
-      };
-      events.addEventListener("log", (e) => logLine(JSON.parse(e.data).text));
-      events.addEventListener("done", (e) => {
-        events.close();
-        state.building = false;
-        state.built = true;
-        const data = JSON.parse(e.data);
-        const result = $("build-result");
-        result.className = "build-result";
-        result.replaceChildren("Дашборд готов: ");
-        const link = document.createElement("a");
-        link.href = data.url;
-        link.target = "_blank";
-        link.rel = "noopener";
-        link.textContent = data.url;
-        result.appendChild(link);
-        result.hidden = false;
-        setChip("построен", "built");
-        addMessage("agent", "Готово. Дальше можно дорабатывать правками словами — пересоберу.", "агент");
-        $("approve-btn").textContent = "Пересобрать дашборд";
-        refreshDcr();
-        refreshObservability();
-        refreshInsights();
-      });
-      events.addEventListener("error", (e) => {
-        if (!e.data) return; // transport-level noise, EventSource ретраится сам
-        events.close();
-        state.building = false;
-        const result = $("build-result");
-        result.className = "build-result failed";
-        result.textContent = `Сборка не удалась: ${JSON.parse(e.data).text}`;
-        result.hidden = false;
-        setChip("ошибка сборки", "failed");
-        $("approve-btn").disabled = false;
-        refreshObservability();
-      });
+      attachBuildStream();
     })
     .catch((err) => {
       state.building = false;
       $("approve-btn").disabled = false;
       addMessage("error", String(err.message || err), "ошибка");
     });
+}
+
+async function resumeSession() {
+  // plan_sol step 10 residual: after reload, restore sessionId + UI from GET state.
+  // Chat transcript is not durable in the browser; durable dialogue is server Store.
+  const sid = loadStoredSessionId();
+  if (!sid) return;
+  let data;
+  try {
+    data = await api(`/api/v1/sessions/${sid}`);
+  } catch {
+    clearStoredSessionId();
+    return;
+  }
+  state.sessionId = data.session_id;
+  state.phase = data.phase;
+  persistSessionId(data.session_id);
+  lockEntryControls();
+  $("chat-form").hidden = false;
+  $("chat").hidden = false;
+  $("builder").hidden = true;
+  $("auto-panel").hidden = true;
+
+  const status = data.build_status || "idle";
+  if (data.spec) {
+    renderSpec(data.spec, [], []);
+  }
+  if (status === "built" || status === "built_with_cleanup_degraded") {
+    state.built = true;
+    state.building = false;
+    if (data.dashboard_url) showBuildResult(data.dashboard_url);
+    setChip(status === "built_with_cleanup_degraded" ? "построен*" : "построен", "built");
+    $("approve-btn").disabled = false;
+    $("approve-btn").textContent = "Пересобрать дашборд";
+    addMessage(
+      "agent",
+      "Сессия восстановлена после перезагрузки. Дашборд доступен; можно править словами или пересобрать.",
+      "сессия"
+    );
+    refreshInsights();
+  } else if (status === "failed") {
+    state.built = false;
+    state.building = false;
+    showBuildResult("", { failed: true, message: "Предыдущая сборка не удалась — можно повторить." });
+    setChip("ошибка сборки", "failed");
+    $("approve-btn").disabled = false;
+    $("approve-btn").textContent = "Собрать дашборд";
+    addMessage("agent", "Сессия восстановлена. Можно повторить сборку или править спецификацию словами.", "сессия");
+  } else if (status === "building") {
+    state.building = true;
+    state.built = false;
+    $("build").hidden = false;
+    $("build-log").replaceChildren();
+    $("build-result").hidden = true;
+    $("approve-btn").disabled = true;
+    setChip("сборка…", "active");
+    addMessage("agent", "Сессия восстановлена — сборка ещё идёт, подключаюсь к потоку…", "сессия");
+    attachBuildStream();
+  } else if (data.phase === "approve" || data.phase === "approved") {
+    state.built = false;
+    state.building = false;
+    setChip("превью", "active");
+    $("approve-btn").disabled = false;
+    $("approve-btn").textContent = "Собрать дашборд";
+    addMessage(
+      "agent",
+      "Сессия восстановлена после перезагрузки. Превью справа (если есть) — «Собрать дашборд» или правка словами.",
+      "сессия"
+    );
+  } else if (data.phase === "clarify") {
+    setChip("уточнение", "active");
+    addMessage("agent", "Сессия восстановлена — продолжите уточнение в чате.", "сессия");
+  } else {
+    setChip("сессия", "active");
+    addMessage("agent", "Сессия восстановлена. Продолжайте в чате.", "сессия");
+  }
+  refreshObservability();
 }
 
 /* ---------- dm change requests ---------- */
@@ -977,6 +1107,10 @@ function startApp() {
   refreshDcr();
   refreshGaps();
   refreshObservability();
+  // Fire-and-forget: resume must not block DCR/gaps if Store is slow.
+  resumeSession().catch(() => {
+    /* stale id already cleared inside resumeSession */
+  });
 }
 
 function onAuthed(me) {
@@ -1078,6 +1212,7 @@ $("logout-btn").addEventListener("click", async () => {
   } catch {
     /* clear client state regardless */
   }
+  clearStoredSessionId();
   location.reload();
 });
 

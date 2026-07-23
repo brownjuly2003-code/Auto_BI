@@ -60,6 +60,9 @@ class SessionState(StrictModel):
     # idle | building | built | failed | built_with_cleanup_degraded (plan_sol step 8)
     build_status: str
     dashboard_url: str = ""
+    # Latest IR when the session has a proposed/approved spec (browser UI hydrate after
+    # reload — plan_sol step 10 residual). None while still clarifying / no propose yet.
+    spec: dict | None = None
 
 
 class DCRStatusUpdate(StrictModel):

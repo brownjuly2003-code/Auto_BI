@@ -823,6 +823,8 @@ def create_app(
             phase=snap.phase,
             build_status=snap.build_status,
             dashboard_url=snap.dashboard_url,
+            # plan_sol step 10 residual: browser reloads re-render the IR preview.
+            spec=snap.spec,
         )
 
     def _store() -> Store:

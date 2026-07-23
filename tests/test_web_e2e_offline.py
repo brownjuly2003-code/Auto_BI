@@ -6,7 +6,8 @@ asyncio Proactor ResourceWarning under pytest filterwarnings=error) with Scripte
 
 * text session → approve → build (scripted LLM, not paid);
 * failed build → approve retry → success;
-* SSE late-connect / reconnect-style replay of the terminal event.
+* SSE late-connect / reconnect-style replay of the terminal event;
+* browser reload resume (sessionStorage + GET /sessions/{id} hydrate).
 
 Deselected by default (`-m 'not e2e'`). CI job `browser-offline-e2e` runs this module.
 """
@@ -205,5 +206,37 @@ def test_sse_late_connect_replays_terminal_event(offline_server):
                 {"base": base, "sid": sid},
             )
             assert "dashboard" in (late.get("url") or "")
+        finally:
+            browser.close()
+
+
+def test_browser_reload_resumes_built_session(offline_server):
+    """After reload, sessionStorage + GET hydrate restore chip, URL and sessionId."""
+    base = offline_server
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.set_default_timeout(15_000)
+        try:
+            _start_text_to_approve(page, base)
+            page.click("#approve-btn")
+            expect(page.locator("#session-chip")).to_have_text("построен", timeout=BUILD_TIMEOUT_MS)
+            href_before = page.locator("#build-result a").get_attribute("href")
+            assert href_before and "superset/dashboard" in href_before
+            stored = page.evaluate("() => sessionStorage.getItem('auto_bi.session_id')")
+            assert stored, "session id must be persisted before reload"
+
+            page.reload()
+            expect(page.locator("#session-chip")).to_have_text("построен", timeout=SPEC_TIMEOUT_MS)
+            expect(page.locator("#build-result a")).to_be_visible()
+            href_after = page.locator("#build-result a").get_attribute("href")
+            assert href_after == href_before
+            stored_after = page.evaluate("() => sessionStorage.getItem('auto_bi.session_id')")
+            assert stored_after == stored
+            # mode tabs stay locked for an ongoing session
+            expect(page.locator("#mode-tabs")).to_be_hidden()
+            expect(page.locator("#approve-btn")).to_have_text("Пересобрать дашборд")
+            # resume banner in chat
+            expect(page.locator(".msg-agent").filter(has_text="восстановлена")).to_be_visible()
         finally:
             browser.close()
