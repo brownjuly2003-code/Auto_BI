@@ -54,6 +54,18 @@ flowchart LR
 Установка, команды CLI, web UI, конфигурация — [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 Подключение новой витрины DWH за ≤ 1 ч — [docs/ONBOARDING_DWH.md](docs/ONBOARDING_DWH.md).
 
+Local-first — три ступени:
+
+1. **Офлайн golden path** — без DWH, BI, LLM и API-ключа:
+
+```bash
+uv run python scripts/demo_golden_path.py
+```
+
+2. **HF Space** — детерминированный auto-only, пользовательский ключ не нужен; текстовый режим там намеренно недоступен (см. «Демо» выше).
+
+3. **Полный локальный путь.** Скопируйте `.env.example` в `.env` (`cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`). Задайте свой `ANTHROPIC_API_KEY` **или** `AUTO_BI_LLM_PROVIDER=gracekelly` и `AUTO_BI_GRACEKELLY_URL`. Для DWH/BI — `AUTO_BI_CH_HOST`, `AUTO_BI_CH_PASSWORD`, `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_PASSWORD` (полный inventory — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md)). `docker compose up -d` поднимает **только ClickHouse и Superset**, не Auto_BI; агент локально: `auto_bi serve` → http://127.0.0.1:8200.
+
 ```bash
 pip install autobi-agent                          # или pip install -e . из корня репозитория
 auto_bi introspect --output semantic/model.yaml   # DWH -> черновик модели
