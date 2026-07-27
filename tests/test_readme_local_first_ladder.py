@@ -50,3 +50,7 @@ def test_readme_local_first_ladder() -> None:
     assert "auto_bi introspect" in section
     assert 'auto_bi build "Выручка по магазинам за июнь 2026"' in section
     assert "auto_bi build --auto dm.sales_daily" in section
+
+    # The offline demo validates the full IR but prints SQL for two representative charts.
+    assert "валидированный SQL по каждому чарту" not in section
+    assert "скомпилированные примеры SQL" in section

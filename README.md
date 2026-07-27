@@ -81,7 +81,7 @@ uv run python scripts/demo_golden_path.py
 ```
 
 Скрипт прогоняет детерминированную часть end-to-end: семантическая модель → курируемый
-обзорный дашборд → валидированный SQL по каждому чарту → вердикт Feasibility Advisor
+обзорный дашборд → скомпилированные примеры SQL для KPI и разреза с JOIN → вердикт Feasibility Advisor
 (включая `dm_change_request` — «витрина не предусматривает такой разрез, вот evidence»).
 Живым остаётся только финальный BUILD (HTTP к Superset/DataLens + EXPLAIN на стенде).
 
