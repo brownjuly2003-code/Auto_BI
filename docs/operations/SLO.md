@@ -66,6 +66,7 @@ Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
 | `auto_bi/semantic/dbt_import.py` | typed dbt artifact enrichment boundary |
 | `auto_bi/agent/sql_guard.py` | SELECT-only, complexity, and table-access security boundary |
 | `auto_bi/agent/query_plan.py` | compiled query-plan and runtime probe boundary |
+| `auto_bi/agent/dataset_plan.py` | dataset ownership and native-filter planning boundary |
 
 ```bash
 uv run --with mypy --with types-PyYAML mypy --strict \
@@ -73,7 +74,8 @@ uv run --with mypy --with types-PyYAML mypy --strict \
   auto_bi/ir/validate.py auto_bi/ir/spec.py auto_bi/semantic/model.py \
   auto_bi/semantic/select.py auto_bi/semantic/render.py \
   auto_bi/semantic/prompt_data.py auto_bi/semantic/dbt_import.py \
-  auto_bi/agent/sql_guard.py auto_bi/agent/query_plan.py
+  auto_bi/agent/sql_guard.py auto_bi/agent/query_plan.py \
+  auto_bi/agent/dataset_plan.py
 ```
 
 Do **not** set `strict = true` as a global or per-module override in `pyproject`
@@ -89,4 +91,4 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
 - Expand mypy-strict allowlist beyond `auth` + `artifacts` + `errors` + `config`
   + `ir/validate` + `ir/spec` + `semantic/model` + `semantic/select`
   + `semantic/render` + `semantic/prompt_data` + `semantic/dbt_import`
-  + `agent/sql_guard` + `agent/query_plan`.
+  + `agent/sql_guard` + `agent/query_plan` + `agent/dataset_plan`.

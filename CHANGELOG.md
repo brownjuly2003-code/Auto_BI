@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict dataset-plan boundary** —
+  `auto_bi/agent/dataset_plan.py` добавлен в строгий CI allowlist на Python 3.12
+  и 3.13; dataset ownership и native-filter planning теперь проверяются с
+  `mypy --strict`.
+
 - **plan_sol шаг 12 residual: mypy-strict query-plan boundary** —
   `auto_bi/agent/query_plan.py` добавлен в строгий CI allowlist на Python 3.12 и
   3.13; compiled query plan и runtime probe contracts теперь проверяются с
