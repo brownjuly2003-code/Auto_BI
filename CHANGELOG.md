@@ -17,6 +17,12 @@
 
 ### Added
 
+- **Project closure contract** — `docs/PROJECT_CLOSURE.md` фиксирует финальный
+  v1 scope, переводит open-ended residual в явные `future` / `retired` /
+  `won't-run` и отделяет их от обязательных publish/release/deploy evidence
+  gates. `docs/CURRENT_STATE.md` больше не представляет бессрочное
+  улучшательство как активный backlog.
+
 - **plan_sol шаг 12 residual: mypy-strict dataset-plan boundary** —
   `auto_bi/agent/dataset_plan.py` добавлен в строгий CI allowlist на Python 3.12
   и 3.13; dataset ownership и native-filter planning теперь проверяются с

@@ -8,6 +8,10 @@ ADR — [adr/](adr/); операторский roadmap-аудит (внутре�
 **Версия пакета:** см. `auto_bi.__version__` / `pyproject.toml` (ratchet в
 `tests/test_docs_defaults.py`).
 
+**Режим:** closure candidate; закрываемый scope и финальная судьба residual
+зафиксированы в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). Полное закрытие требует
+внешних publish/release/deploy evidence gates из этого документа.
+
 ## Продукт
 
 | Слой | Статус | Gate |
@@ -90,16 +94,12 @@ Offline score **8.8/10** (was 8.2). Finding R1 fixed (SafeError test fake vs `bu
 Live Space / GHA / `v*` tag remain residual. Mutation coverage outside the
 bounded SQL guard target remains a separate local residual.
 
-## Открытый residual (не блокирует core claims)
+## Closure disposition
 
-1. **Release live evidence** — next `v*` tag: image digest ↔ SBOM ↔ provenance.
-2. **Dependabot PR triage** — no bulk-merge; one-by-one after CI green.
-3. **Step 8 residual** — durable outbox before adapter return (stable-token idempotency **done**).
-4. **Step 10 residual** — live GHA after PR (offline browser matrix closed: resume + fields DnD).
-5. **Step 11 residual** — full ARCHITECTURE current/history split; optional Field(description=) on every Settings key.
-6. **Step 12 residual** — live SLO; extend mutation coverage beyond SQL guard;
-   grow the fourteen-module mypy-strict allowlist.
-7. **Step 13 residual** — live integration/browser/Space/tag evidence on pushed SHA.
+Прежний open-ended residual больше не является активным backlog. Решения
+`future` / `retired` / `won't-run` и обязательные внешние closure gates
+перечислены в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). До прохождения внешних
+гейтов статус остаётся `closure candidate`, а не `closed`.
 
 ## Что не является source of truth
 
