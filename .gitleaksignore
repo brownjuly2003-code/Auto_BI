@@ -4,3 +4,7 @@
 3845cb9dc52ba3da5bde4b51513cb734febdf05d:tests/test_safe_error.py:generic-api-key:45
 d8056cde7a0f7b632dfd8a098a33317312e630e4:tests/test_deployment_profile.py:generic-api-key:152
 d8056cde7a0f7b632dfd8a098a33317312e630e4:tests/test_deployment_profile.py:generic-api-key:153
+960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_prompt_data.py:generic-api-key:31
+960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_safe_error.py:generic-api-key:45
+960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_deployment_profile.py:generic-api-key:152
+960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_deployment_profile.py:generic-api-key:153
