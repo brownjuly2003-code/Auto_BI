@@ -213,7 +213,7 @@
 
 - **plan_sol шаг 6 (partial): reproducible release promotion** —
   (1) Demo/HF: `uv.lock` в Space whitelist; `deploy/hf-demo/Dockerfile` —
-  `uv sync --frozen`; `clickhouse-connect==1.5.0` + Superset digest pin в
+  `uv sync --frozen`; `clickhouse-connect==1.6.0` + Superset digest pin в
   demo и `docker/superset/Dockerfile` (согласовано с `uv.lock`).
   (2) `release.yml`: `image-security` = local build → Trivy **до** push →
   image SBOM → push только `:version` → attest; `finalize` (после image +

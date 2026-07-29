@@ -30,7 +30,7 @@ RUN ln -s /usr/bin/clickhouse /usr/bin/clickhouse-server \
 # Superset talks to ClickHouse through clickhouse-connect (mirrors docker/superset).
 # Exact pin = uv.lock resolution for the app driver (plan_sol step 6 / P1-3); bump
 # together with uv.lock when upgrading the CH Python client.
-RUN pip install --no-cache-dir "clickhouse-connect==1.5.0"
+RUN pip install --no-cache-dir "clickhouse-connect==1.6.0"
 
 # --- auto_bi in its own Python 3.12 venv (uv-managed interpreter) -------------------
 # The managed interpreter must live on a world-readable path: the build runs as root
