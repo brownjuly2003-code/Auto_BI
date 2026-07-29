@@ -79,6 +79,7 @@ jobs:
           auto_bi/adapters/superset/native_filters.py auto_bi/adapters/superset/form_data.py
           auto_bi/adapters/superset/adapter.py
           auto_bi/api/app.py
+          auto_bi/cli.py
 
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
@@ -211,6 +212,7 @@ jobs:
           auto_bi/adapters/superset/native_filters.py auto_bi/adapters/superset/form_data.py
           auto_bi/adapters/superset/adapter.py
           auto_bi/api/app.py
+          auto_bi/cli.py
 
       - name: Pytest + coverage gate
         run: >

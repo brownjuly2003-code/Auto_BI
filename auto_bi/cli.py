@@ -3,8 +3,17 @@
 import argparse
 import logging
 import sys
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from auto_bi import __version__
+
+if TYPE_CHECKING:
+    from rich.console import Console
+
+    from auto_bi.agent.machine import AgentTurn
+    from auto_bi.config import Settings
+    from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +395,7 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
         print("Сирот прошлых ревизий нет.")
         return 0
 
-    by_target: dict[str, list[dict]] = {}
+    by_target: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         by_target.setdefault(row["target_bi"], []).append(row)
     print(f"Кандидаты на удаление (прошлые ревизии, всего {len(rows)}):")
@@ -573,7 +582,7 @@ def _serve(  # pragma: no cover — wiring only
 
     import uvicorn
 
-    from auto_bi.adapters.base import AdapterHealth
+    from auto_bi.adapters.base import AdapterHealth, DashboardRef
     from auto_bi.adapters.factory import make_adapter, probe_health
     from auto_bi.advisor.core import Advisor
     from auto_bi.agent.pipeline import compile_and_build, reconcile_interrupted_builds
@@ -581,7 +590,7 @@ def _serve(  # pragma: no cover — wiring only
     from auto_bi.api import create_app
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
-    from auto_bi.ir.spec import TargetBI
+    from auto_bi.ir.spec import DashboardSpec, TargetBI
     from auto_bi.llm.budget import parse_prices
     from auto_bi.llm.factory import make_llm
     from auto_bi.logging_setup import configure_logging
@@ -697,7 +706,7 @@ def _serve(  # pragma: no cover — wiring only
         else host not in {"127.0.0.1", "localhost", "::1"}
     )
 
-    def builder(spec, log, session_id):
+    def builder(spec: DashboardSpec, log: Callable[[str], None], session_id: str) -> DashboardRef:
         return compile_and_build(
             spec,
             model,
@@ -798,7 +807,7 @@ def _serve(  # pragma: no cover — wiring only
         # guard, so a listed-model change moves both together
         llm_prices=parse_prices(settings.llm_budget_prices),
     )
-    uvicorn_kwargs: dict = {
+    uvicorn_kwargs: dict[str, Any] = {
         "host": host,
         "port": port,
         "log_level": log_level.lower(),
@@ -831,7 +840,7 @@ def _serve(  # pragma: no cover — wiring only
 
 
 def _start_token_purge_thread(  # pragma: no cover — wiring only
-    store, interval_seconds: float = 3600.0
+    store: "Store", interval_seconds: float = 3600.0
 ) -> None:
     """Daemon thread that sweeps expired `auth_tokens` rows once an hour (B-4 follow-up):
     `token_user` already filters expired rows out, so this is just housekeeping against
@@ -851,7 +860,9 @@ def _start_token_purge_thread(  # pragma: no cover — wiring only
     threading.Thread(target=_loop, name="auth-token-purge", daemon=True).start()
 
 
-def _start_retention_thread(store, settings) -> None:  # pragma: no cover — wiring only
+def _start_retention_thread(
+    store: "Store", settings: "Settings"
+) -> None:  # pragma: no cover — wiring only
     """Daemon thread that ages out the telemetry tables (D-3).
 
     Sweeps ONCE at startup and every `retention_sweep_hours` after: a server that restarts
@@ -886,7 +897,9 @@ def _start_retention_thread(store, settings) -> None:  # pragma: no cover — wi
     threading.Thread(target=_loop, name="store-retention", daemon=True).start()
 
 
-def _render_turn(console, turn) -> None:  # pragma: no cover — presentation only
+def _render_turn(
+    console: "Console", turn: "AgentTurn"
+) -> None:  # pragma: no cover — presentation only
     from rich.panel import Panel
 
     if turn.message:
@@ -922,6 +935,7 @@ def _eval(
     from auto_bi.config import get_settings
     from auto_bi.eval.cases import advisor_cases_for_engine, golden_cases_for_engine
     from auto_bi.eval.runner import (
+        EvalReport,
         advisor_suite_ok,
         golden_suite_ok,
         run_advisor_suite,
@@ -939,7 +953,7 @@ def _eval(
     engine = next((t.physical.engine for t in model.tables if t.physical), "clickhouse")
     console.print(f"[dim]model engine: {engine}[/dim]")
 
-    def _render(title: str, report) -> None:
+    def _render(title: str, report: EvalReport) -> None:
         table = RichTable(title=title)
         table.add_column("case")
         table.add_column("kind")

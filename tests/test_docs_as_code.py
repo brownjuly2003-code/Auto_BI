@@ -385,6 +385,7 @@ def test_generator_check_mode_exits_zero() -> None:
         "auto_bi/adapters/superset/form_data.py",
         "auto_bi/adapters/superset/adapter.py",
         "auto_bi/api/app.py",
+        "auto_bi/cli.py",
     ],
 )
 def test_strict_targets_are_in_every_mypy_job_and_slo(target: str) -> None:
