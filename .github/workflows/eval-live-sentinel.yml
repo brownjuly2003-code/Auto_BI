@@ -53,7 +53,7 @@ jobs:
     # No secret → skip (exit 0). Do not fail the PR matrix when operator has not
     # provisioned a key for this repo.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Decide whether a provider secret is available
         id: gate
