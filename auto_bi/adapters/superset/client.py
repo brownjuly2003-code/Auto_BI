@@ -82,9 +82,8 @@ class SupersetClient:
         )
         if response.status_code != 200:
             logger.debug(
-                "superset login failed HTTP %s body=%s",
+                "superset login failed HTTP %s",
                 response.status_code,
-                redact_secrets(response.text[:300]),
             )
             raise SupersetAPIError(
                 f"login failed: HTTP {response.status_code}",
@@ -95,9 +94,8 @@ class SupersetClient:
         csrf = self._http.get("/api/v1/security/csrf_token/", headers=self._auth_headers())
         if csrf.status_code != 200:
             logger.debug(
-                "superset csrf fetch failed HTTP %s body=%s",
+                "superset csrf fetch failed HTTP %s",
                 csrf.status_code,
-                redact_secrets(csrf.text[:300]),
             )
             raise SupersetAPIError(
                 f"csrf fetch failed: HTTP {csrf.status_code}",

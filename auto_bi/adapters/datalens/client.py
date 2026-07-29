@@ -89,9 +89,8 @@ class DataLensClient:
         )
         if response.status_code != 200:
             logger.debug(
-                "datalens signin failed HTTP %s body=%s",
+                "datalens signin failed HTTP %s",
                 response.status_code,
-                redact_secrets(response.text[:300]),
             )
             raise DataLensAPIError(
                 f"signin failed: HTTP {response.status_code}",

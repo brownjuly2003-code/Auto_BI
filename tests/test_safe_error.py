@@ -193,6 +193,87 @@ def test_datalens_client_error_omits_response_body() -> None:
     assert "HTTP 403" in msg
 
 
+# Innocuous diagnostics are intentionally not secret-shaped, so the ratchet proves that
+# auth response bodies are omitted rather than merely pattern-redacted.
+_AUTH_BODY_SS_LOGIN = '{"reason":"gate_closed","diag":"SAFEERR_AUTH_BODY_DIAG_ss_login_7f3a"}'
+_AUTH_BODY_SS_CSRF = '{"reason":"csrf_unavailable","diag":"SAFEERR_AUTH_BODY_DIAG_ss_csrf_9c1e"}'
+_AUTH_BODY_DL_SIGNIN = '{"reason":"signin_rejected","diag":"SAFEERR_AUTH_BODY_DIAG_dl_signin_2b8d"}'
+_AUTH_DIAG_SS_LOGIN = "SAFEERR_AUTH_BODY_DIAG_ss_login_7f3a"
+_AUTH_DIAG_SS_CSRF = "SAFEERR_AUTH_BODY_DIAG_ss_csrf_9c1e"
+_AUTH_DIAG_DL_SIGNIN = "SAFEERR_AUTH_BODY_DIAG_dl_signin_2b8d"
+
+
+@pytest.mark.parametrize(
+    ("kind", "status", "body", "diag", "logger_name", "exc_type"),
+    [
+        (
+            "superset_login",
+            401,
+            _AUTH_BODY_SS_LOGIN,
+            _AUTH_DIAG_SS_LOGIN,
+            "auto_bi.adapters.superset.client",
+            SupersetAPIError,
+        ),
+        (
+            "superset_csrf",
+            503,
+            _AUTH_BODY_SS_CSRF,
+            _AUTH_DIAG_SS_CSRF,
+            "auto_bi.adapters.superset.client",
+            SupersetAPIError,
+        ),
+        (
+            "datalens_signin",
+            403,
+            _AUTH_BODY_DL_SIGNIN,
+            _AUTH_DIAG_DL_SIGNIN,
+            "auto_bi.adapters.datalens.client",
+            DataLensAPIError,
+        ),
+    ],
+)
+def test_bi_auth_failure_logs_omit_response_body(
+    kind: str,
+    status: int,
+    body: str,
+    diag: str,
+    logger_name: str,
+    exc_type: type[SupersetAPIError] | type[DataLensAPIError],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Auth-path DEBUG logs must keep status but never the provider response body."""
+    if kind == "superset_login":
+        http = _FakeHttp([_FakeResp(status, body)])
+        client: SupersetClient | DataLensClient = SupersetClient(
+            "http://bi.test", "u", "p", http=http  # type: ignore[arg-type]
+        )
+    elif kind == "superset_csrf":
+        http = _FakeHttp(
+            [
+                _FakeResp(200, "{}", json_data={"access_token": "x"}),
+                _FakeResp(status, body),
+            ]
+        )
+        client = SupersetClient("http://bi.test", "u", "p", http=http)  # type: ignore[arg-type]
+    else:
+        http = _FakeHttp([_FakeResp(status, body)])
+        client = DataLensClient("http://dl.test", "u", "p", http=http)  # type: ignore[arg-type]
+
+    with (
+        caplog.at_level(logging.DEBUG, logger=logger_name),
+        pytest.raises(exc_type) as ei,
+    ):
+        client.login()
+
+    assert ei.value.status_code == status
+    joined = "\n".join(
+        record.getMessage() for record in caplog.records if record.name == logger_name
+    )
+    assert body not in joined
+    assert diag not in joined
+    assert f"HTTP {status}" in joined
+
+
 # --- five channels: HTTP ready, SSE, Store, logs, public helpers ----------------------
 
 
