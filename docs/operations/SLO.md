@@ -83,6 +83,8 @@ Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
 | `auto_bi/advisor/greenplum.py` | Greenplum EXPLAIN evidence and rule pack boundary |
 | `auto_bi/introspect/clickhouse.py` | ClickHouse engine metadata ingestion boundary |
 | `auto_bi/introspect/greenplum.py` | Greenplum engine metadata ingestion boundary |
+| `auto_bi/eval/cases.py` | offline eval case inventory boundary |
+| `auto_bi/eval/runner.py` | deterministic eval/replay runner boundary |
 
 ```bash
 uv run --with mypy --with types-PyYAML mypy --strict \
@@ -96,7 +98,8 @@ uv run --with mypy --with types-PyYAML mypy --strict \
   auto_bi/llm/budget.py auto_bi/api/ratelimit.py auto_bi/api/schemas.py \
   auto_bi/advisor/findings.py auto_bi/advisor/clickhouse.py auto_bi/advisor/core.py \
   auto_bi/advisor/explain.py auto_bi/advisor/greenplum.py \
-  auto_bi/introspect/clickhouse.py auto_bi/introspect/greenplum.py
+  auto_bi/introspect/clickhouse.py auto_bi/introspect/greenplum.py \
+  auto_bi/eval/cases.py auto_bi/eval/runner.py
 ```
 
 Do **not** set `strict = true` as a global or per-module override in `pyproject`
@@ -117,4 +120,5 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
   + `agent/pipeline` + `deployment_profile` + `llm/budget` + `api/ratelimit` + `api/schemas`
   + `advisor/findings` + `advisor/clickhouse` + `advisor/core` + `advisor/explain`
   + `advisor/greenplum`
-  + `introspect/clickhouse` + `introspect/greenplum`.
+  + `introspect/clickhouse` + `introspect/greenplum`
+  + `eval/cases` + `eval/runner`.

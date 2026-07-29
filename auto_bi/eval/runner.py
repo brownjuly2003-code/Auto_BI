@@ -13,6 +13,7 @@ with the right rule and 0 false positives on clean cases.
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from auto_bi.advisor.core import Advisor
@@ -229,7 +230,7 @@ def run_golden_suite(
     *,
     advisor: Advisor | None = None,
     cases: list[GoldenCase] | None = None,
-    progress=None,
+    progress: Callable[[CaseResult], None] | None = None,
 ) -> EvalReport:
     report = EvalReport()
     for case in cases or GOLDEN_CASES:

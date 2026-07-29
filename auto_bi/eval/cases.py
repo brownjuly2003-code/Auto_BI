@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -451,7 +452,7 @@ def _seed_collapsing_engine(model: SemanticModel) -> None:
     _physical(model, "dm.sales_daily").table_engine = "ReplacingMergeTree"
 
 
-def _chart(cid: str, viz: Viz, **query) -> ChartSpec:
+def _chart(cid: str, viz: Viz, **query: Any) -> ChartSpec:
     query.setdefault("table", "dm.sales_daily")
     query.setdefault("measures", [REVENUE])
     return ChartSpec(id=cid, title=cid, viz=viz, query=ChartQuery(**query))
@@ -561,7 +562,7 @@ def _seed_gp_high_cardinality(model: SemanticModel) -> None:
     _physical(model, "dm.sales").cardinality["product_id"] = 150_000
 
 
-def _gp_chart(cid: str, viz: Viz, **query) -> ChartSpec:
+def _gp_chart(cid: str, viz: Viz, **query: Any) -> ChartSpec:
     query.setdefault("table", "dm.sales")
     query.setdefault("measures", [REVENUE])
     return ChartSpec(id=cid, title=cid, viz=viz, query=ChartQuery(**query))

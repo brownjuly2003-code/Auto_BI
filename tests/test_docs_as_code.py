@@ -374,6 +374,8 @@ def test_generator_check_mode_exits_zero() -> None:
         "auto_bi/advisor/greenplum.py",
         "auto_bi/introspect/clickhouse.py",
         "auto_bi/introspect/greenplum.py",
+        "auto_bi/eval/cases.py",
+        "auto_bi/eval/runner.py",
     ],
 )
 def test_strict_targets_are_in_every_mypy_job_and_slo(target: str) -> None:
