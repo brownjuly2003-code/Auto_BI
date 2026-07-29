@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict adapter contract boundary** —
+  `auto_bi/adapters/base.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; shared adapter types, contract validation и lifecycle protocol теперь
+  проверяются с `mypy --strict`.
+
 - **plan_sol шаг 12 residual: mypy-strict Store boundary** —
   `auto_bi/store/db.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
   durable session/build/artifact persistence теперь проверяется с

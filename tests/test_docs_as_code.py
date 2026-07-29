@@ -181,6 +181,7 @@ def test_generator_check_mode_exits_zero() -> None:
     [
         "auto_bi/auth.py",
         "auto_bi/adapters/artifacts.py",
+        "auto_bi/adapters/base.py",
         "auto_bi/errors.py",
         "auto_bi/config.py",
         "auto_bi/api/sessions.py",
