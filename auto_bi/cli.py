@@ -376,7 +376,7 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
     from pathlib import Path
 
     from auto_bi.adapters.factory import close_adapter, make_adapter
-    from auto_bi.agent.pipeline import prune_artifact_rows
+    from auto_bi.agent.cleanup import prune_artifact_rows
     from auto_bi.config import get_settings
     from auto_bi.ir.spec import TargetBI
     from auto_bi.semantic.model import SemanticModel

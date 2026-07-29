@@ -721,6 +721,117 @@ def test_prune_artifact_rows_skips_shared_kinds_and_counts(tmp_path) -> None:
     store.close()
 
 
+def test_prune_artifact_rows_continues_and_counts_failed() -> None:
+    # continue vs break + failed += vs =: chart/dashboard raise, shared database + unknown
+    # widget share default priority (database first), only widget is marked superseded.
+    marked: list[list[int]] = []
+
+    class FakeStore:
+        def mark_bi_artifacts_superseded(self, ids) -> None:
+            marked.append(list(ids))
+
+    # database before widget so stable sort keeps shared kind first at default priority
+    rows = [
+        {"id": 10, "kind": "database", "native_id": "db1"},
+        {"id": 40, "kind": "widget", "native_id": "w1"},
+        {"id": 20, "kind": "chart", "native_id": "c1"},
+        {"id": 30, "kind": "dashboard", "native_id": "d1"},
+    ]
+    calls: list[tuple[str, str]] = []
+    log: list[str] = []
+
+    def delete(kind: str, native_id: str) -> None:
+        calls.append((kind, native_id))
+        if kind in ("chart", "dashboard"):
+            raise RuntimeError("nope")
+
+    removed, failed = prune_artifact_rows(FakeStore(), rows, delete, log=log.append)
+
+    assert calls == [("chart", "c1"), ("dashboard", "d1"), ("widget", "w1")]
+    assert ("database", "db1") not in calls
+    assert (removed, failed) == (1, 2)
+    assert marked == [[40]]  # only the successful widget id
+    assert log == [
+        "prune: chart c1 не удалён (nope) — остаётся в леджере",
+        "prune: dashboard d1 не удалён (nope) — остаётся в леджере",
+    ]
+
+
+def test_prune_superseded_artifacts_partial_delete_success() -> None:
+    from auto_bi.agent.cleanup import _prune_superseded_artifacts
+
+    session_lookups: list[str] = []
+    orphan_calls: list[tuple[str, str, str | None]] = []
+    marked: list[list[int]] = []
+
+    class SpyStore:
+        def session_row(self, session_id: str):
+            session_lookups.append(session_id)
+            return {"owner": "alice"}
+
+        def orphan_bi_artifacts(self, session_id, current_build_token, owner=None):
+            orphan_calls.append((session_id, current_build_token, owner))
+            return [
+                {"id": 1, "kind": "chart", "native_id": "c1"},
+                {"id": 2, "kind": "dashboard", "native_id": "d1"},
+                {"id": 3, "kind": "dataset", "native_id": "s1"},
+            ]
+
+        def mark_bi_artifacts_superseded(self, ids) -> None:
+            marked.append(list(ids))
+
+    class SpyAdapter:
+        def __init__(self) -> None:
+            self.deleted: list[tuple[str, str]] = []
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self.deleted.append((kind, native_id))
+            if native_id == "d1":
+                raise RuntimeError("bi-down")
+
+    adapter = SpyAdapter()
+    log: list[str] = []
+    ok = _prune_superseded_artifacts(SpyStore(), "sess-1", "current-tok", adapter, log.append)
+
+    assert ok is True
+    assert session_lookups == ["sess-1"]
+    assert orphan_calls == [("sess-1", "current-tok", "alice")]
+    assert adapter.deleted == [
+        ("chart", "c1"),
+        ("dashboard", "d1"),
+        ("dataset", "s1"),
+    ]
+    assert marked == [[1, 3]]
+    assert log == [
+        "prune: dashboard d1 не удалён (bi-down) — остаётся в леджере",
+        "prune: удалены артефакты прошлых сборок сессии: 2 "
+        "(не удалось: 1, будут повторены следующим прунингом)",
+    ]
+
+
+def test_prune_superseded_artifacts_structural_failure() -> None:
+    from auto_bi.agent.cleanup import _prune_superseded_artifacts
+
+    class BoomStore:
+        def session_row(self, session_id: str):
+            raise RuntimeError("boom")
+
+    class SpyAdapter:
+        def __init__(self) -> None:
+            self.deleted: list[tuple[str, str]] = []
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self.deleted.append((kind, native_id))
+
+    adapter = SpyAdapter()
+    log: list[str] = []
+    ok = _prune_superseded_artifacts(BoomStore(), "sess-1", "current-tok", adapter, log.append)
+
+    assert ok is False
+    assert adapter.deleted == []
+    assert log == ["prune: пропущен (boom)"]
+
+
 def demo_model_fixtureless():
     """conftest's demo_model as a plain call (this test composes fixtures manually)."""
     from tests.conftest import demo_model
