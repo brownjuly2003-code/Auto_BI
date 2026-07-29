@@ -71,6 +71,7 @@ jobs:
           auto_bi/llm/budget.py auto_bi/api/ratelimit.py auto_bi/api/schemas.py
           auto_bi/advisor/findings.py auto_bi/advisor/clickhouse.py auto_bi/advisor/core.py
           auto_bi/advisor/explain.py auto_bi/advisor/greenplum.py
+          auto_bi/introspect/clickhouse.py auto_bi/introspect/greenplum.py
 
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
@@ -195,6 +196,7 @@ jobs:
           auto_bi/llm/budget.py auto_bi/api/ratelimit.py auto_bi/api/schemas.py
           auto_bi/advisor/findings.py auto_bi/advisor/clickhouse.py auto_bi/advisor/core.py
           auto_bi/advisor/explain.py auto_bi/advisor/greenplum.py
+          auto_bi/introspect/clickhouse.py auto_bi/introspect/greenplum.py
 
       - name: Pytest + coverage gate
         run: >

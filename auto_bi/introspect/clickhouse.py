@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from typing import Any
 
 from auto_bi.config import Settings
 from auto_bi.introspect.base import RunQuery, rate_like
@@ -208,7 +209,7 @@ def make_run_query(settings: Settings) -> RunQuery:
         password=settings.ch_password,
     )
 
-    def run(sql: str) -> list[dict]:
+    def run(sql: str) -> list[dict[str, Any]]:
         return list(client.query(sql).named_results())
 
     return run

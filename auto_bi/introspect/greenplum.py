@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from typing import Any
 
 from auto_bi.config import Settings
 from auto_bi.engine import GREENPLUM
@@ -160,7 +161,7 @@ class GreenplumIntrospector:
 
         return SemanticModel(tables=tables, joins=joins)
 
-    def _columns(self, schema: str, table: str) -> list[dict]:
+    def _columns(self, schema: str, table: str) -> list[dict[str, Any]]:
         return self._run(
             "SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type, "
             "col_description(a.attrelid, a.attnum) AS comment "
@@ -255,9 +256,9 @@ def make_run_query_pg(settings: Settings) -> RunQuery:
         row_factory=dict_row,
     )
 
-    def run(sql: str) -> list[dict]:
+    def run(sql: str) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
-            cur.execute(sql)  # type: ignore[arg-type]
+            cur.execute(sql)
             if cur.description is None:
                 return []
             return list(cur.fetchall())
