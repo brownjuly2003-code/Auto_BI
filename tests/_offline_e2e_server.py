@@ -2,9 +2,11 @@
 
 Run from repo root (cwd set by the test). Env:
 
-  AUTO_BI_E2E_PORT       — bind port
-  AUTO_BI_E2E_STORE      — sqlite path
-  AUTO_BI_E2E_FAIL_TIMES — how many builder calls fail before success (default 0)
+  AUTO_BI_E2E_PORT            — bind port
+  AUTO_BI_E2E_STORE           — sqlite path
+  AUTO_BI_E2E_FAIL_TIMES      — how many builder calls fail before success (default 0)
+  AUTO_BI_E2E_AUTH            — "1" enables auth and seeds alice (default off)
+  AUTO_BI_E2E_DEMO_AUTO_ONLY  — "1" passes demo_auto_only=True to create_app (default off)
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import uvicorn
 
 from auto_bi.adapters.base import DashboardRef
 from auto_bi.api import create_app
+from auto_bi.auth import hash_password
 from auto_bi.ir.spec import TargetBI
 from auto_bi.semantic.model import (
     Aggregation,
@@ -108,7 +111,11 @@ def main() -> None:
     port = int(os.environ["AUTO_BI_E2E_PORT"])
     store_path = os.environ["AUTO_BI_E2E_STORE"]
     fail_times = int(os.environ.get("AUTO_BI_E2E_FAIL_TIMES", "0"))
+    auth_enabled = os.environ.get("AUTO_BI_E2E_AUTH") == "1"
+    demo_auto_only = os.environ.get("AUTO_BI_E2E_DEMO_AUTO_ONLY") == "1"
     store = Store(store_path)
+    if auth_enabled:
+        store.upsert_user("alice", hash_password("alice-secret"), "analyst", ["dm"])
     builder = _Builder(fail_times)
     llm = ScriptedLLM([CLEAR_REPORT, GOOD_SPEC, GOOD_SPEC, GOOD_SPEC, GOOD_SPEC])
     app = create_app(
@@ -116,7 +123,8 @@ def main() -> None:
         llm=llm,
         store=store,
         builder=builder,
-        demo_auto_only=False,
+        auth_enabled=auth_enabled,
+        demo_auto_only=demo_auto_only,
         bi_base_urls={TargetBI.SUPERSET: "http://bi.example:8088"},
     )
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

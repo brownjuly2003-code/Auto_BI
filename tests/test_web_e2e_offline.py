@@ -44,14 +44,17 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _spawn_server(tmp_path: Path, *, fail_times: int = 0):
+def _spawn_server(tmp_path: Path, *, fail_times: int = 0, auth_demo: bool = False):
     port = _free_port()
     store = tmp_path / "e2e.sqlite"
     log_path = tmp_path / "server.log"
+    flag = "1" if auth_demo else "0"
     env = os.environ | {
         "AUTO_BI_E2E_PORT": str(port),
         "AUTO_BI_E2E_STORE": str(store),
         "AUTO_BI_E2E_FAIL_TIMES": str(fail_times),
+        "AUTO_BI_E2E_AUTH": flag,
+        "AUTO_BI_E2E_DEMO_AUTO_ONLY": flag,
     }
     with log_path.open("wb") as log:
         proc = subprocess.Popen(
@@ -98,6 +101,15 @@ def offline_server(tmp_path):
 @pytest.fixture
 def offline_server_fail_once(tmp_path):
     proc, base, _log = _spawn_server(tmp_path, fail_times=1)
+    try:
+        yield base
+    finally:
+        _stop(proc)
+
+
+@pytest.fixture
+def offline_server_auth_demo(tmp_path):
+    proc, base, _log = _spawn_server(tmp_path, auth_demo=True)
     try:
         yield base
     finally:
@@ -320,5 +332,31 @@ def test_fields_drag_drop_seed_to_approve(offline_server):
             expect(page.locator("#session-chip")).to_have_text("построен", timeout=BUILD_TIMEOUT_MS)
             href = page.locator("#build-result a").get_attribute("href")
             assert href and "superset/dashboard" in href
+        finally:
+            browser.close()
+
+
+def test_login_overlay_seeds_user_and_loads_fields(offline_server_auth_demo):
+    """Auth demo: login overlay → alice → fields load + auto panel + dm option."""
+    base = offline_server_auth_demo
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.set_default_timeout(15_000)
+        try:
+            page.goto(f"{base}/")
+            expect(page.locator("#login-overlay")).to_be_visible()
+            page.fill("#login-user", "alice")
+            page.fill("#login-pass", "alice-secret")
+            with page.expect_response(
+                lambda r: r.status == 200 and r.url.endswith("/api/v1/model/fields")
+            ):
+                page.click("#login-form button[type='submit']")
+            expect(page.locator("#login-overlay")).to_be_hidden()
+            user_chip = page.locator("#user-chip")
+            expect(user_chip).to_contain_text("alice")
+            expect(user_chip).to_contain_text("analyst")
+            expect(page.locator("#auto-panel")).to_be_visible()
+            expect(page.locator('#auto-table option[value="dm.sales_daily"]')).to_be_attached()
         finally:
             browser.close()

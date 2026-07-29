@@ -1103,6 +1103,10 @@ $("obs").addEventListener("toggle", () => {
 
 /* ---------- auth (Phase 4, opt-in) ---------- */
 
+// Module-level /health snapshot: applyCapabilities runs only after auth when
+// auth is on, so setMode("auto") → loadAutoTables never fires without a cookie.
+let bootHealth = {};
+
 function startApp() {
   refreshDcr();
   refreshGaps();
@@ -1114,6 +1118,9 @@ function startApp() {
 }
 
 function onAuthed(me) {
+  // Valid cookie and form-login both land here: activate Auto mode only with
+  // an authenticated session so protected fetches (e.g. loadAutoTables) succeed.
+  applyCapabilities(bootHealth);
   $("login-overlay").hidden = true;
   const chip = $("user-chip");
   chip.textContent = `${me.username} · ${me.role}`;
@@ -1169,17 +1176,19 @@ function applyCapabilities(health) {
 }
 
 async function initAuth() {
-  let health = {};
+  bootHealth = {};
   try {
-    health = await api("/api/v1/health");
+    bootHealth = await api("/api/v1/health");
   } catch {
     /* health is open; if it fails the API is down — startApp surfaces errors */
   }
-  applyCapabilities(health);
-  if (!health.auth) {
+  if (!bootHealth.auth) {
+    applyCapabilities(bootHealth);
     startApp(); // auth disabled -> behave as the single-user app
     return;
   }
+  // Auth on: do not applyCapabilities yet — that can setMode("auto") and hit
+  // protected /model/fields before a session cookie exists (stale 401 in chat).
   try {
     onAuthed(await api("/api/v1/auth/me")); // a valid session cookie -> straight in
   } catch {
