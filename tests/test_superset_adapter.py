@@ -1087,7 +1087,9 @@ def test_build_full_flow_scales_ruble_kpi_and_humanizes_legend() -> None:
     assert 'SUM("revenue")' in line_params["metrics"][0]["sqlExpression"]
 
 
-def test_build_embeds_full_attempt_token_in_chart_and_dashboard_metadata() -> None:
+def test_build_embeds_full_attempt_token_in_chart_params_and_dashboard_css_marker() -> None:
+    # Superset 4.1.2 drops unknown json_metadata keys on save; dashboard ownership is
+    # carried by an invisible CSS comment, while charts keep the raw token in params.
     fake = FakeSuperset()
     token = "session-123:spec7"
     make_adapter(fake).build(make_spec(), BuildContext(namespace=token))
@@ -1098,7 +1100,11 @@ def test_build_embeds_full_attempt_token_in_chart_and_dashboard_metadata() -> No
     (dashboard_body,) = (
         body for method, path, body in fake.requests if path == "/api/v1/dashboard/"
     )
-    assert json.loads(dashboard_body["json_metadata"])["auto_bi_build_token"] == token
+    meta = json.loads(dashboard_body["json_metadata"])
+    assert "auto_bi_build_token" not in meta
+    assert set(meta) <= {"chart_configuration", "native_filter_configuration"}
+    marker = f"/*auto_bi_bt:{token.encode('utf-8').hex()}*/"
+    assert marker in dashboard_body["css"]
 
 
 class FakeReconcileSuperset:
@@ -1149,14 +1155,25 @@ class FakeReconcileSuperset:
                 },
             )
         if request.method == "GET" and path == "/api/v1/dashboard/21":
+            # Owned dashboard: supported json_metadata only; token lives in CSS hex marker.
             return httpx.Response(
                 200,
-                json={"result": {"json_metadata": json.dumps({"auto_bi_build_token": self.token})}},
+                json={
+                    "result": {
+                        "json_metadata": json.dumps({"chart_configuration": {}}),
+                        "css": f"/*auto_bi_bt:{self.token.encode('utf-8').hex()}*/",
+                    }
+                },
             )
         if request.method == "GET" and path == "/api/v1/dashboard/22":
             return httpx.Response(
                 200,
-                json={"result": {"json_metadata": json.dumps({"auto_bi_build_token": "foreign"})}},
+                json={
+                    "result": {
+                        "json_metadata": json.dumps({"chart_configuration": {}}),
+                        "css": f"/*auto_bi_bt:{b'foreign'.hex()}*/",
+                    }
+                },
             )
         if request.method == "GET" and path == "/api/v1/dataset/":
             return httpx.Response(

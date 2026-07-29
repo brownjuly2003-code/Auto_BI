@@ -102,6 +102,21 @@ _DELETE_PATHS = {
 # Full attempt token embedded at create time. Human titles only narrow a list query;
 # this exact marker is the authority for chart/dashboard crash cleanup.
 _BUILD_TOKEN_KEY = "auto_bi_build_token"
+# Superset 4.1.2 strips unknown top-level json_metadata keys on save, so dashboard
+# ownership is an invisible CSS comment: /*auto_bi_bt:<utf-8-hex>*/ (not raw token).
+_BUILD_TOKEN_CSS_RE = re.compile(r"/\*auto_bi_bt:([0-9a-f]+)\*/")
+
+
+def _build_token_css_marker(namespace: str) -> str:
+    """Invisible ownership comment; hex so the raw namespace never enters CSS."""
+    return f"/*auto_bi_bt:{namespace.encode('utf-8').hex()}*/"
+
+
+def _dashboard_css(namespace: str) -> str:
+    """KPI_CENTER_CSS alone when namespace is empty; else append the ownership marker."""
+    if not namespace:
+        return KPI_CENTER_CSS
+    return f"{KPI_CENTER_CSS}{_build_token_css_marker(namespace)}"
 
 
 def _slug(text: str, max_len: int = 40) -> str:
@@ -200,9 +215,10 @@ class SupersetAdapter:
     def reconcile_build_attempt(self, attempt: BuildAttempt) -> BuildReconcileResult:
         """Delete only artifacts provably owned by an interrupted attempt.
 
-        Charts/dashboards require an exact full-token marker in their stored JSON.
-        Datasets use exact attempt-namespaced technical names. List searches paginate;
-        an incomplete/provider-failed scan raises and leaves Store CLEANUP_REQUIRED.
+        Charts require an exact full-token key in stored params JSON; dashboards require
+        a complete CSS hex marker. Datasets use exact attempt-namespaced technical names.
+        List searches paginate; an incomplete/provider-failed scan raises and leaves
+        Store CLEANUP_REQUIRED.
         """
         self._artifact_namespace = attempt.build_token.strip()
         owned: list[tuple[str, str]] = []
@@ -239,7 +255,7 @@ class SupersetAdapter:
                 if exc.status_code == 404:
                     continue
                 raise
-            if self._detail_has_build_token(detail, "json_metadata", attempt.build_token):
+            if self._detail_css_has_build_token(detail, attempt.build_token):
                 key = ("dashboard", native_id)
                 if key not in seen:
                     seen.add(key)
@@ -301,6 +317,7 @@ class SupersetAdapter:
         field: str,
         build_token: str,
     ) -> bool:
+        """Chart ownership: exact full-token equality in stored JSON params."""
         body = detail.get("result", detail)
         if not isinstance(body, dict):
             return False
@@ -315,6 +332,18 @@ class SupersetAdapter:
         else:
             return False
         return isinstance(metadata, dict) and metadata.get(_BUILD_TOKEN_KEY) == build_token
+
+    @staticmethod
+    def _detail_css_has_build_token(detail: dict[str, Any], build_token: str) -> bool:
+        """Dashboard ownership: complete CSS marker whose hex equals the token encoding."""
+        body = detail.get("result", detail)
+        if not isinstance(body, dict):
+            return False
+        css = body.get("css")
+        if not isinstance(css, str):
+            return False
+        expected = build_token.encode("utf-8").hex()
+        return any(match.group(1) == expected for match in _BUILD_TOKEN_CSS_RE.finditer(css))
 
     def _expected_dataset_names(self, spec: DashboardSpec) -> set[str]:
         plan = plan_datasets(spec) if self._model is not None else None
@@ -752,9 +781,9 @@ class SupersetAdapter:
 
         placed = list(zip(spec.charts, [_int_id(c.id) for c in charts], strict=True))
         position = build_position_json(spec, placed)
+        # Only supported json_metadata keys: Superset 4.1.2 drops unknown top-level
+        # entries (incl. auto_bi_build_token). Ownership lives in dashboard css instead.
         json_metadata: dict[str, Any] = {"chart_configuration": {}}
-        if self._artifact_namespace:
-            json_metadata[_BUILD_TOKEN_KEY] = self._artifact_namespace
         if native_filters:
             json_metadata["native_filter_configuration"] = native_filters
         created = self._client.post(
@@ -763,7 +792,7 @@ class SupersetAdapter:
                 "dashboard_title": spec.title,
                 "position_json": json.dumps(position, ensure_ascii=False),
                 "json_metadata": json.dumps(json_metadata, ensure_ascii=False),
-                "css": KPI_CENTER_CSS,
+                "css": _dashboard_css(self._artifact_namespace),
                 "published": True,
             },
         )
