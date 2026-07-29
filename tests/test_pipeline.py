@@ -340,6 +340,122 @@ def test_compile_and_build_stable_token_retries_after_failure(tmp_path) -> None:
     store.close()
 
 
+def test_compile_and_build_fallback_token_uses_latest_approved_revision(tmp_path) -> None:
+    """When spec_id is omitted, bind the stable token to the latest *approved* row.
+
+    Race: approved A is building while proposed B was already appended. Fallback must
+    not hijack A's delivery onto B's token (which would make B's later approve a no-op).
+    """
+    import copy
+
+    from auto_bi.adapters.artifacts import stable_build_token
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec_a = DashboardSpec.model_validate(GOOD_SPEC)
+    id_a = store.save_spec(sid, spec_a.model_dump(mode="json"), status="approved")
+    spec_b_raw = copy.deepcopy(GOOD_SPEC)
+    spec_b_raw["title"] = "Продажи (правка)"
+    spec_b_raw["charts"][0]["title"] = "Выручка по дням (правка)"
+    spec_b = DashboardSpec.model_validate(spec_b_raw)
+    id_b = store.save_spec(sid, spec_b.model_dump(mode="json"), status="proposed")
+    assert id_b > id_a
+
+    builds = {"n": 0}
+    fake = FakeSuperset()
+
+    class CountingAdapter:
+        def __init__(self) -> None:
+            self._inner = make_adapter(fake)
+
+        def healthcheck(self):
+            return self._inner.healthcheck()
+
+        def build(self, spec, ctx=None):
+            builds["n"] += 1
+            return self._inner.build(spec, ctx)
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self._inner.delete_artifact(kind, native_id)
+
+        def close(self) -> None:
+            self._inner.close()
+
+    base_kwargs = dict(
+        model=demo_model_fixtureless(),
+        sql_validator=LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _t: CountingAdapter(),
+        store=store,
+        session_id=sid,
+        spec_id=None,
+        prune_orphans=False,
+        log=lambda _s: None,
+    )
+
+    ref_a = compile_and_build(spec_a, **base_kwargs)
+    assert builds["n"] == 1
+    token_a = stable_build_token(sid, id_a)
+    token_b = stable_build_token(sid, id_b)
+    row_a = store.build_by_token(token_a)
+    assert row_a is not None
+    assert row_a["status"] == "ok"
+    assert row_a["spec_id"] == id_a
+    assert row_a["dashboard_id"] == ref_a.id
+    assert store.build_by_token(token_b) is None
+
+    store.set_spec_status(id_b, "approved")
+    ref_b = compile_and_build(spec_b, **base_kwargs)
+    assert builds["n"] == 2
+    assert ref_b.id != ref_a.id
+    assert ref_b.url != ref_a.url
+    row_b = store.build_by_token(token_b)
+    assert row_b is not None
+    assert row_b["status"] == "ok"
+    assert row_b["spec_id"] == id_b
+    assert row_b["dashboard_id"] == ref_b.id
+
+    ref_b_retry = compile_and_build(spec_b, **base_kwargs)
+    assert builds["n"] == 2  # genuine same-revision idempotency
+    assert ref_b_retry.id == ref_b.id
+    assert ref_b_retry.url == ref_b.url
+    store.close()
+
+
+def test_compile_and_build_fallback_does_not_bind_a_proposed_revision(tmp_path) -> None:
+    """Only-proposed session: no stable revision token; fresh namespace, builds.spec_id None."""
+    from auto_bi.adapters.artifacts import stable_build_token
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    proposed_id = store.save_spec(sid, spec.model_dump(mode="json"), status="proposed")
+
+    fake = FakeSuperset()
+    ref = compile_and_build(
+        spec,
+        demo_model_fixtureless(),
+        LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _t: make_adapter(fake),
+        store=store,
+        session_id=sid,
+        spec_id=None,
+        prune_orphans=False,
+        log=lambda _s: None,
+    )
+    assert ref.url.startswith("/superset/dashboard/")
+    proposed_token = stable_build_token(sid, proposed_id)
+    assert store.build_by_token(proposed_token) is None
+    rows = store.builds(sid)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["spec_id"] is None
+    assert rows[0]["build_token"] != proposed_token
+    assert rows[0]["build_token"]  # random namespace still recorded
+    store.close()
+
+
 def test_compile_and_build_second_build_makes_first_an_orphan(tmp_path) -> None:
     # a rebuild in the same session gets a fresh build_token, so the prior build's OWNED
     # artifacts become the orphan-cleanup candidates — selected on ownership, never on name.

@@ -157,13 +157,15 @@ def compile_and_build(
 
     # plan_sol step 8 residual: durable (session, spec_row) → stable token so a retry of
     # the same approve (or re-approve after delivered_pending) does not create a second
-    # BI dashboard. Without a known spec revision, fall back to a random namespace so
-    # intentional multi-build tests / CLI one-shots still get distinct revisions.
+    # BI dashboard. Implicit fallback may use only the latest *approved* durable row —
+    # a later proposed word-edit must not hijack an in-flight approve build's token.
+    # Without an approved revision, fall back to a random namespace so intentional
+    # multi-build tests / CLI one-shots still get distinct revisions.
     resolved_spec_id = spec_id
     if resolved_spec_id is None and store is not None and session_id is not None:
-        specs = store.specs(session_id)
-        if specs:
-            resolved_spec_id = int(specs[-1]["id"])
+        approved = [s for s in store.specs(session_id) if s.get("status") == "approved"]
+        if approved:
+            resolved_spec_id = int(approved[-1]["id"])
     build_token = (
         stable_build_token(session_id, resolved_spec_id)
         if session_id is not None and resolved_spec_id is not None
