@@ -13,7 +13,7 @@
 - atomic Store commit, durable pre-return build-attempt recovery, stable build-token retry
   и adapter lifecycle;
 - golden/advisor replay, offline browser E2E, backup/restore и docs-as-code;
-- текущий bounded mutation gate и mypy-strict boundary allowlist.
+- текущий cumulative bounded mutation gate и package-wide `mypy --strict auto_bi`.
 
 После финальной публикации этот scope считается feature-frozen. Новые функции и
 исследовательские расширения не являются незакрытым долгом проекта.
@@ -25,8 +25,8 @@
 | Durable outbox до возврата BI adapter | `closed` 2026-07-29: schema v9 + cleanup-only adapter reconciliation (ADR 0002) |
 | Полный current/history split ARCHITECTURE | `closed`: current design отделён от `ARCHITECTURE_HISTORY.md`, ADR остаются отдельными решениями |
 | `Field(description=)` на каждом Settings key | `closed` 2026-07-29: 66/66 descriptions + generated ENV_REFERENCE ratchet |
-| Mutation coverage шире SQL guard | `active closure work`; расширять по одному bounded target в отдельном Linux-окружении |
-| Дальнейшее расширение mypy-strict allowlist | `active closure work`; добавлять модули по одному с локальным gate |
+| Cumulative bounded mutation gate | `closed` 2026-07-29: настроенные production targets закреплены в CI, weak outcomes запрещены; snapshot evidence — в [operations/SLO.md](operations/SLO.md) |
+| Package-wide `mypy --strict auto_bi` | `closed` 2026-07-29: package-wide gate действует в обоих поддерживаемых CI jobs |
 | Live p50/p95, process-memory и cold-start campaign | `active closure work`; evidence собирается до публикации |
 | Paid live-LLM canary | `budget-gated`; запускать только после отдельного явного лимита расходов |
 

@@ -86,27 +86,24 @@ resume / **fields DnD seed**). Residual: live GHA after merge PR path.
 | Pre-return BI crash recovery | RR-4 durable attempts + exact Superset/DataLens cleanup ([ADR 0002](adr/0002-durable-build-attempt-reconciliation.md)) |
 | Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
 | Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**, Superset native-filter scope) |
-| Mutation smoke | SQL guard gated in CI: 106/106 generated mutants killed; every weak outcome is rejected |
-| Mypy --strict allowlist | 18 boundaries: auth, artifacts, adapter contracts, errors, config, session snapshot/hydration, Store persistence, IR, semantic model/context, dbt import, SQL guard, query plan, dataset plan, and pipeline orchestration (CI; full list in SLO.md) |
+| Cumulative bounded mutation gate | CI targets `auto_bi/agent/sql_guard.py`, `auto_bi/ir/validate.py`, `auto_bi/agent/dataset_plan.py`, `auto_bi/agent/cleanup.py`; weak outcomes rejected; detailed snapshot evidence in [operations/SLO.md](operations/SLO.md) |
+| Mypy package-wide strict | package-wide `mypy --strict auto_bi` in both supported CI jobs |
 | Ops doc | [operations/SLO.md](operations/SLO.md) |
 
-Residual step 12: live p50/p95, mutation coverage for `ir/validate`, dataset
-planning and ownership cleanup, expand mypy-strict allowlist, process memory /
-cold-start on release image.
+Residual step 12: live p50/p95 and process-memory/cold-start evidence.
 
 ## Re-audit (plan_sol 13 core offline)
 
 Evidence: [operations/REAUDIT_plan_sol_23_07_26.md](operations/REAUDIT_plan_sol_23_07_26.md).
 Offline score **8.8/10** (was 8.2). Finding R1 fixed (SafeError test fake vs `build(spec, ctx)`).
-Live Space / GHA / `v*` tag remain residual. Mutation coverage outside the
-bounded SQL guard target remains a separate local residual.
+Live Space / GHA / `v*` tag remain residual.
 
 ## Closure disposition
 
 Прежний open-ended residual больше не является активным backlog. Решения
-`future` / `retired` / `won't-run` и обязательные внешние closure gates
-перечислены в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). До прохождения внешних
-гейтов статус остаётся `closure candidate`, а не `closed`.
+`closed` / `active closure work` / `budget-gated` и обязательные внешние
+closure gates перечислены в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). До
+прохождения внешних гейтов статус остаётся `closure candidate`, а не `closed`.
 
 ## Что не является source of truth
 

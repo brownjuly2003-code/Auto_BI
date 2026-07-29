@@ -71,7 +71,8 @@ jobs:
       - name: Pytest + coverage
         run: uv run --with pytest-cov --with duckdb pytest -q --cov=auto_bi --cov-report=term-missing --cov-fail-under=90
 
-      # plan_sol step 12: bounded cumulative gate for SQL safety and IR validation.
+      # plan_sol step 12: bounded cumulative gate for SQL guard, IR validation,
+      # dataset planning, and ownership cleanup.
       # mutmut itself exits zero with surviving mutants, so export its machine-readable
       # stats and enforce the zero-survivor/no-untested policy in a stdlib script.
       - name: Mutation smoke (bounded core)

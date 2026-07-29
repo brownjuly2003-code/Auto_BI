@@ -127,16 +127,10 @@ also_copy = ["semantic/"]
 [tool.mypy]
 python_version = "3.12"
 files = ["auto_bi"]
-# plan_sol step 12 residual — module-by-module strict rollout (do NOT set global
-# `strict = true` here: a per-module override with `strict` polluted the whole
-# package in our mypy version). Instead CI runs a second command on the list:
-#   mypy --strict auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py
-#     auto_bi/config.py auto_bi/ir/validate.py auto_bi/ir/spec.py
-#     auto_bi/semantic/model.py auto_bi/semantic/select.py auto_bi/semantic/render.py
-#     auto_bi/semantic/prompt_data.py auto_bi/semantic/dbt_import.py
-#     auto_bi/agent/sql_guard.py auto_bi/agent/query_plan.py
-#     auto_bi/agent/dataset_plan.py
-# See docs/operations/SLO.md «Mypy strict modules».
+# The canonical strict gate is package-wide and explicit at the CLI/CI boundary:
+#   uv run --with mypy --with types-PyYAML mypy --strict auto_bi
+# Do NOT set global `strict = true` here: on our mypy version that polluted
+# package-wide checks. See docs/operations/SLO.md «Mypy package-wide strict gate».
 
 [[tool.mypy.overrides]]
 # anthropic / clickhouse_connect ship no usable py.typed stubs for our mypy gate.

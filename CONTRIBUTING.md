@@ -35,6 +35,7 @@ Every PR must pass, locally, before it's opened:
 uv run ruff check .
 uv run black --check auto_bi tests
 uv run --with mypy --with types-PyYAML mypy auto_bi
+uv run --with mypy --with types-PyYAML mypy --strict auto_bi
 uv run --with pytest-cov --with duckdb pytest -q --cov=auto_bi --cov-report=term-missing
 uv run auto_bi eval --suite advisor --model-path semantic/model.yaml
 ```

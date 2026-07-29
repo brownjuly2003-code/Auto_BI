@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -22,10 +23,12 @@ REPO = Path(__file__).resolve().parents[1]
 DOCS = REPO / "docs"
 ENV_REF = DOCS / "ENV_REFERENCE.md"
 CURRENT_STATE = DOCS / "CURRENT_STATE.md"
+PROJECT_CLOSURE = DOCS / "PROJECT_CLOSURE.md"
 ARCHITECTURE = DOCS / "ARCHITECTURE.md"
 ARCHITECTURE_HISTORY = DOCS / "ARCHITECTURE_HISTORY.md"
 USER_GUIDE = DOCS / "USER_GUIDE.md"
 README = REPO / "README.md"
+CONTRIBUTING = REPO / "CONTRIBUTING.md"
 ENV_EXAMPLE = REPO / ".env.example"
 FIXTURES_DIR = REPO / "tests" / "fixtures" / "golden_llm"
 GEN_SCRIPT = REPO / "scripts" / "generate_env_reference.py"
@@ -343,7 +346,7 @@ def test_generator_check_mode_exits_zero() -> None:
 
 
 def test_mypy_strict_package_gate_in_ci_and_slo() -> None:
-    """CI + SLO must document package-wide `mypy --strict auto_bi` (not allowlist)."""
+    """CI + operator docs must document package-wide `mypy --strict auto_bi`."""
     base_tokens = (
         "--with",
         "mypy",
@@ -372,6 +375,7 @@ def test_mypy_strict_package_gate_in_ci_and_slo() -> None:
     slo = SLO.read_text(encoding="utf-8")
     assert "`mypy --strict auto_bi`" in slo
     assert full_cmd in slo
+    assert full_cmd in CONTRIBUTING.read_text(encoding="utf-8")
     for obsolete in (
         "Strict allowlist",
         "Grow the allowlist",
@@ -379,6 +383,70 @@ def test_mypy_strict_package_gate_in_ci_and_slo() -> None:
         "Package-wide: `mypy auto_bi`",
     ):
         assert obsolete not in slo, f"obsolete SLO contract text still present: {obsolete!r}"
+
+
+def test_current_state_and_closure_match_closed_step12_gates() -> None:
+    """CURRENT_STATE + PROJECT_CLOSURE must match closed step-12 mutation/mypy gates."""
+    with (REPO / "pyproject.toml").open("rb") as fh:
+        pyproject = tomllib.load(fh)
+    only_mutate = pyproject["tool"]["mutmut"]["only_mutate"]
+    assert only_mutate
+
+    state = CURRENT_STATE.read_text(encoding="utf-8")
+    closure = PROJECT_CLOSURE.read_text(encoding="utf-8")
+
+    assert "mypy --strict auto_bi" in state
+
+    stale_phrases = (
+        "Mypy --strict allowlist",
+        "mypy-strict boundary allowlist",
+        "expand mypy-strict allowlist",
+        "Дальнейшее расширение mypy-strict allowlist",
+        "18 boundaries",
+    )
+    for phrase in stale_phrases:
+        assert phrase not in state, f"stale phrase still in CURRENT_STATE: {phrase!r}"
+        assert phrase not in closure, f"stale phrase still in PROJECT_CLOSURE: {phrase!r}"
+
+    for target in only_mutate:
+        assert target in state, f"mutmut only_mutate target missing from CURRENT_STATE: {target!r}"
+
+    for forbidden in (
+        "SQL guard gated in CI",
+        "bounded SQL guard target remains",
+    ):
+        assert forbidden not in state, f"stale residual text still in CURRENT_STATE: {forbidden!r}"
+
+    residual_match = re.search(
+        r"Residual step 12:.*?(?=\n## |\Z)",
+        state,
+        re.DOTALL,
+    )
+    assert residual_match is not None, "CURRENT_STATE missing 'Residual step 12:' paragraph"
+    residual = residual_match.group(0)
+    for pattern in (
+        r"ir/validate",
+        r"dataset planning",
+        r"ownership cleanup",
+        r"mypy-strict allowlist",
+    ):
+        assert (
+            re.search(pattern, residual) is None
+        ), f"Residual step 12 paragraph still mentions {pattern!r}"
+
+    mutation_row = re.search(
+        r"(?m)^\| Cumulative bounded mutation gate \|.*$",
+        closure,
+    )
+    assert mutation_row is not None, "PROJECT_CLOSURE missing Cumulative bounded mutation gate row"
+    assert "`closed`" in mutation_row.group(0)
+
+    mypy_row = re.search(
+        r"(?m)^\| Package-wide `mypy --strict auto_bi` \|.*$",
+        closure,
+    )
+    assert mypy_row is not None, "PROJECT_CLOSURE missing package-wide mypy --strict row"
+    assert "`closed`" in mypy_row.group(0)
 
 
 @pytest.mark.parametrize(
