@@ -378,6 +378,9 @@ def test_generator_check_mode_exits_zero() -> None:
         "auto_bi/eval/runner.py",
         "auto_bi/agent/sqlgen.py",
         "auto_bi/agent/insights.py",
+        "auto_bi/adapters/datalens/chart_config.py",
+        "auto_bi/adapters/datalens/dataset.py",
+        "auto_bi/adapters/datalens/adapter.py",
     ],
 )
 def test_strict_targets_are_in_every_mypy_job_and_slo(target: str) -> None:

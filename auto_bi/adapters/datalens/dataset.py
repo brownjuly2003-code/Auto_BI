@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import re
 import uuid
+from typing import Any
 
 from auto_bi.adapters.base import DWHConfig
 from auto_bi.agent.sqlgen import generate_chart_sql
@@ -197,7 +198,7 @@ def build_connection_payload(
     secure: str = "off",
     raw_sql_level: str = "subselect",
     cache_ttl_sec: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """`bi/createConnection` body (reversal §3). `raw_sql_level="subselect"` is REQUIRED
     for dataset-from-SQL. `secure` is a string flag: "off" for plain CH :8123, "on" for
     HTTPS/TLS."""
@@ -271,7 +272,7 @@ def build_dataset_payload(
     source_title: str | None = None,
     apply_limit: bool = True,
     measure_scale: tuple[float, list[str]] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """`bi/createDataset` body (reversal §4): one subselect source, columns + roles from
     the IR. No DB introspection / validateDataset needed.
 

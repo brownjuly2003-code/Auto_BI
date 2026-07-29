@@ -19,6 +19,7 @@ import json
 import logging
 import re
 import uuid
+from typing import Any, cast
 
 from auto_bi.adapters.artifacts import BuildArtifact
 from auto_bi.adapters.base import (
@@ -237,9 +238,13 @@ def selector_scope_chart_ids(spec: DashboardSpec) -> set[str]:
 def build_selectors(
     spec: DashboardSpec,
     placements: list[Placement],
-    fields_by_dataset: dict[str, dict[str, dict]],
+    fields_by_dataset: dict[str, dict[str, dict[str, Any]]],
     model: SemanticModel,
-) -> tuple[list[dict], list[list[str]], list[tuple[DashboardFilter, list[str], list[str]]]]:
+) -> tuple[
+    list[dict[str, Any]],
+    list[list[str]],
+    list[tuple[DashboardFilter, list[str], list[str]]],
+]:
     """Compile spec.filters -> (control items, alias groups, applied log).
 
     Scope-to-applicable (mirrors superset.native_filters): a filter applies to a chart
@@ -251,7 +256,7 @@ def build_selectors(
     selector's value propagates to every in-scope chart. A control binds to the first
     in-scope dataset's field; TIME columns become a date(range) selector, others a select.
     """
-    controls: list[dict] = []
+    controls: list[dict[str, Any]] = []
     alias_groups: list[list[str]] = []
     applied: list[tuple[DashboardFilter, list[str], list[str]]] = []
     all_ids = [chart.id for chart, _, _ in placements]
@@ -320,9 +325,9 @@ def build_selectors(
 def build_dashboard_data(
     spec: DashboardSpec,
     widget_ids: list[str],
-    controls: list[dict] | None = None,
+    controls: list[dict[str, Any]] | None = None,
     alias_groups: list[list[str]] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """US dash-entry `data` blob (reversal §5.3), shaped for the `mix/createDashboardV1`
     gateway action (zod `dataSchema` minus `schemeVersion`, which the action injects).
 
@@ -341,8 +346,8 @@ def build_dashboard_data(
     # Deterministic, non-empty salt; ids are explicit so the salt is not used to derive them.
     salt = uuid.uuid5(uuid.NAMESPACE_URL, f"auto_bi_dash:{spec.title}").hex
     tab_id = f"auto_bi_tab_{salt[:8]}"
-    items: list[dict] = []
-    layout: list[dict] = []
+    items: list[dict[str, Any]] = []
+    layout: list[dict[str, Any]] = []
 
     # controls fill their row evenly (a lone period selector spans the full width) so the top
     # row aligns to the same grid as the KPI / chart rows below — uniform tile widths per row
@@ -447,7 +452,7 @@ class DataLensAdapter:
         self._strict_connection = strict_connection
         self._connection_id: str | None = None
         # dataset id -> (name, fields_by_alias) for binding charts to dataset fields
-        self._datasets: dict[str, tuple[str, dict[str, dict]]] = {}
+        self._datasets: dict[str, tuple[str, dict[str, dict[str, Any]]]] = {}
         # P0-2: set via set_artifact_namespace() before build(); empty = legacy single-user.
         self._artifact_namespace: str = ""
         # Ownership ledger (P0-2 criterion 4): build() accumulates the BI entities it creates
@@ -630,7 +635,7 @@ class DataLensAdapter:
         for entry in res.get("entries", []):
             key = entry.get("key") or ""
             if key.rsplit("/", 1)[-1].casefold() == target:
-                return entry["entryId"]
+                return cast(str, entry["entryId"])
         return None
 
     def _delete_if_exists(self, scope: str, name: str) -> None:
@@ -761,7 +766,7 @@ class DataLensAdapter:
         # must omit schemeVersion (reversal §5.3); workbook entries take workbookId+name.
         # With `placements` (chart -> widget id -> dataset id) and spec.filters, compile
         # dashboard selectors; without them the dashboard is built filterless.
-        controls: list[dict] = []
+        controls: list[dict[str, Any]] = []
         alias_groups: list[list[str]] = []
         if placements and spec.filters:
             fields_by_dataset = {
