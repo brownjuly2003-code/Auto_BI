@@ -1,9 +1,13 @@
 # Auto_BI — текущее состояние
 
 Единая точка входа «что сейчас правда» для операторов и агентов.
-Фазовая история — [PLAN.md](PLAN.md); дизайн — [ARCHITECTURE.md](ARCHITECTURE.md);
-ADR — [adr/](adr/); операторский roadmap-аудит (внутренний) — `plan_sol_23_07_26.md`
-в корне (gitignored hygiene, не публичный).
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — текущий дизайн и обязательные инварианты.
+- [ARCHITECTURE_HISTORY.md](ARCHITECTURE_HISTORY.md) — история эволюции дизайна
+  и доказательств поставки.
+- [PLAN.md](PLAN.md) — фазовая история; [adr/](adr/) — принятые решения.
+- Операторский roadmap-аудит (внутренний) — `plan_sol_23_07_26.md` в корне
+  (gitignored hygiene, не публичный).
 
 **Версия пакета:** см. `auto_bi.__version__` / `pyproject.toml` (ratchet в
 `tests/test_docs_defaults.py`).

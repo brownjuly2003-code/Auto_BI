@@ -1,6 +1,7 @@
 # Project closure
 
-Дата фиксации scope: 2026-07-27.
+Дата фиксации scope: 2026-07-27. Владелец повторно открыл остаточные пункты
+аудита для финального closure-прохода 2026-07-29.
 
 ## Закрываемый scope
 
@@ -22,15 +23,15 @@
 | Residual | Решение при закрытии |
 |---|---|
 | Durable outbox до возврата BI adapter | `closed` 2026-07-29: schema v9 + cleanup-only adapter reconciliation (ADR 0002) |
-| Полный current/history split ARCHITECTURE | `retired`; CURRENT_STATE остаётся source of truth |
-| `Field(description=)` на каждом Settings key | `retired`; generated ENV_REFERENCE закрывает публичный контракт |
-| Mutation coverage шире SQL guard | `future`; текущий security boundary gate остаётся обязательным |
-| Дальнейшее расширение mypy-strict allowlist | `future`; зафиксированный allowlist остаётся обязательным |
-| Live p50/p95, process-memory и cold-start campaign | `future operations`; не часть offline product claim |
-| Регулярный paid live-LLM canary | `won't-run`; проект не создаёт постоянные расходы после закрытия |
+| Полный current/history split ARCHITECTURE | `closed`: current design отделён от `ARCHITECTURE_HISTORY.md`, ADR остаются отдельными решениями |
+| `Field(description=)` на каждом Settings key | `closed` 2026-07-29: 66/66 descriptions + generated ENV_REFERENCE ratchet |
+| Mutation coverage шире SQL guard | `active closure work`; расширять по одному bounded target в отдельном Linux-окружении |
+| Дальнейшее расширение mypy-strict allowlist | `active closure work`; добавлять модули по одному с локальным gate |
+| Live p50/p95, process-memory и cold-start campaign | `active closure work`; evidence собирается до публикации |
+| Paid live-LLM canary | `budget-gated`; запускать только после отдельного явного лимита расходов |
 
-`future` здесь означает новый отдельно санкционированный проект, а не активный
-backlog Auto_BI.
+Новые функции вне этой таблицы по-прежнему требуют отдельного проекта. Строки
+`active closure work` — текущий backlog, а не бессрочная future-категория.
 
 ## Обязательные внешние closure gates
 
@@ -44,7 +45,8 @@ backlog Auto_BI.
 - GitHub release, package/image provenance и опубликованный пакет проверены на
   финальной версии.
 
-Эти действия требуют отдельного разрешения владельца на push/release/deploy.
+Владелец разрешил эти внешние действия только после завершения всего локального
+closure-плана. До этого момента push/release/deploy не выполняются.
 
 ## Сохранённые локальные артефакты
 

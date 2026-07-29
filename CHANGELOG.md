@@ -160,8 +160,10 @@
   `--check` mode); `tests/test_docs_as_code.py` (env-ref freshness, `.env.example`
   covers every Settings key, internal markdown link resolve, golden/advisor counts
   ↔ 53 fixtures). USER_GUIDE §6 / README / PLAN / ARCHITECTURE / root `plan.md`
-  point at CURRENT_STATE + ENV_REFERENCE. Residual: full ARCHITECTURE current/history
-  split; optional `Field(description=)` on every Settings key.
+  point at CURRENT_STATE + ENV_REFERENCE. Follow-up closes the remaining docs
+  polish: `ARCHITECTURE.md` is current design, the original delivery narrative
+  lives in `ARCHITECTURE_HISTORY.md`, and all Settings keys carry
+  `Field(description=...)` metadata used by the generated reference.
 
 - **plan_sol шаг 10 (mostly closed) + шаг 11 start** —
   Step 10: CI `quality-py-latest` (3.13), `windows-cli-smoke`, compatibility matrix

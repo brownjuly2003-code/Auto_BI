@@ -22,6 +22,8 @@ REPO = Path(__file__).resolve().parents[1]
 DOCS = REPO / "docs"
 ENV_REF = DOCS / "ENV_REFERENCE.md"
 CURRENT_STATE = DOCS / "CURRENT_STATE.md"
+ARCHITECTURE = DOCS / "ARCHITECTURE.md"
+ARCHITECTURE_HISTORY = DOCS / "ARCHITECTURE_HISTORY.md"
 USER_GUIDE = DOCS / "USER_GUIDE.md"
 README = REPO / "README.md"
 ENV_EXAMPLE = REPO / ".env.example"
@@ -109,6 +111,157 @@ def test_current_state_exists_and_is_linked() -> None:
     assert "CURRENT_STATE" in readme or "docs/CURRENT_STATE.md" in readme
     plan = (DOCS / "PLAN.md").read_text(encoding="utf-8")
     assert "CURRENT_STATE" in plan
+
+
+def test_architecture_current_history_split_is_structural() -> None:
+    """ARCHITECTURE holds current design; diary/session markers belong in HISTORY."""
+    problems: list[str] = []
+
+    arch_text = ARCHITECTURE.read_text(encoding="utf-8")
+    state_text = CURRENT_STATE.read_text(encoding="utf-8")
+    arch_lines = arch_text.splitlines()
+    head = arch_lines[:20]
+    head_blob = "\n".join(head)
+
+    for token in (
+        "CURRENT_STATE.md",
+        "PLAN.md",
+        "adr/",
+        "ARCHITECTURE_HISTORY.md",
+    ):
+        if token not in head_blob:
+            problems.append(f"ARCHITECTURE first-20 nav missing token: {token}")
+
+    if not ARCHITECTURE_HISTORY.is_file():
+        problems.append(f"missing history file: {ARCHITECTURE_HISTORY.relative_to(REPO)}")
+    else:
+        history_text = ARCHITECTURE_HISTORY.read_text(encoding="utf-8")
+        history_head = "\n".join(history_text.splitlines()[:20])
+        if not re.search(r"(?i)(?:history|истори)", history_head):
+            problems.append("ARCHITECTURE_HISTORY first-20 lines must declare a history role")
+        if "ARCHITECTURE.md" not in history_head:
+            problems.append("ARCHITECTURE_HISTORY first-20 lines must link ARCHITECTURE.md")
+        history_lines = history_text.splitlines()
+        if len(history_lines) < 700:
+            problems.append(
+                "ARCHITECTURE_HISTORY must preserve the substantive pre-split archive "
+                f"(found {len(history_lines)} lines)"
+            )
+        for anchor in ("## 1. Концепция", "### 3.20", "## 6. Риски"):
+            if anchor not in history_text:
+                problems.append(f"ARCHITECTURE_HISTORY missing frozen archive anchor: {anchor}")
+        if "frozen pre-split snapshot" not in history_head.lower():
+            problems.append("ARCHITECTURE_HISTORY first-20 lines must declare snapshot precedence")
+
+    nav_lower = head_blob.lower()
+    if "current vs history" in nav_lower and "residual" in nav_lower:
+        problems.append(
+            "ARCHITECTURE first-20 nav must not mix 'current vs history' with 'residual'"
+        )
+
+    if not re.search(
+        r"(?i)ARCHITECTURE\.md.*(?:current|текущ)",
+        state_text,
+    ):
+        problems.append(
+            "CURRENT_STATE must mention ARCHITECTURE.md with current|текущ on the same line"
+        )
+    if not re.search(
+        r"(?i)ARCHITECTURE_HISTORY\.md.*(?:history|истори)",
+        state_text,
+    ):
+        problems.append(
+            "CURRENT_STATE must mention ARCHITECTURE_HISTORY.md with "
+            "history|истори on the same line"
+        )
+
+    def _strip_fenced_markdown_lines(lines: list[str]) -> list[tuple[int, str]]:
+        """Drop fenced code blocks; keep (1-based line no, text) for diary scanning."""
+        kept: list[tuple[int, str]] = []
+        in_fence = False
+        for i, line in enumerate(lines, start=1):
+            stripped = line.lstrip()
+            if stripped.startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            kept.append((i, line))
+        return kept
+
+    prose = _strip_fenced_markdown_lines(arch_lines)
+
+    marker_families: list[tuple[str, re.Pattern[str]]] = [
+        ("ISO dates (YYYY-MM-DD)", re.compile(r"20\d\d-\d\d-\d\d")),
+        ("Phase N", re.compile(r"Phase\s+\d", re.IGNORECASE)),
+        (
+            "ticket ids (S#, X-#, P#-#, L-#)",
+            re.compile(r"\b(?:S\d+|X-\d+|P\d+-\d+|[A-Z]-\d+)\b"),
+        ),
+        ("_Реализовано", re.compile(r"_Реализовано", re.IGNORECASE)),
+        ("задача N.N", re.compile(r"задача\s+\d+\.\d+", re.IGNORECASE)),
+        ("Live-verified", re.compile(r"Live-verified", re.IGNORECASE)),
+        ("live-провер variants", re.compile(r"live-провер\w*", re.IGNORECASE)),
+        ("закрывает", re.compile(r"закрывает", re.IGNORECASE)),
+        ("audit_", re.compile(r"audit_", re.IGNORECASE)),
+        ("plan_sol", re.compile(r"plan_sol", re.IGNORECASE)),
+    ]
+
+    for label, pattern in marker_families:
+        hits: list[str] = []
+        for lineno, line in prose:
+            for _match in pattern.finditer(line):
+                snippet = line.strip()
+                if len(snippet) > 120:
+                    snippet = snippet[:117] + "..."
+                hits.append(f"L{lineno}: {snippet}")
+        if hits:
+            examples = hits[:3]
+            problems.append(
+                f"diary marker family {label!r}: total={len(hits)}; "
+                f"examples: " + " | ".join(examples)
+            )
+
+    invariant_section = re.search(
+        r"Обязательные инварианты:\s*(.*?)(?=\n## 3\.)",
+        arch_text,
+        re.DOTALL,
+    )
+    if invariant_section is None:
+        problems.append("ARCHITECTURE missing the mandatory invariants section")
+    else:
+        invariant_items = re.findall(r"(?m)^\d+\.\s+", invariant_section.group(1))
+        if len(invariant_items) != 8:
+            problems.append(
+                "ARCHITECTURE mandatory invariants list must contain exactly 8 items "
+                f"(found {len(invariant_items)})"
+            )
+
+    positive_contracts = {
+        "lossless label join": (r"\blossless\b", r"\b0\.99\b", r"cardinality"),
+        "ownership is not title-based": (r"\bownership\b", r"\btitle\b"),
+        "durable build attempt": (r"\bbuild attempt\b", r"\bstable token\b"),
+        "eval fingerprint": (r"\bfingerprint", r"\beval\b"),
+        "native format pin": (r"reverse-engineered formats", r"contract tests"),
+        "exact-SQL evidence isolation": (
+            r"Evidence между разными statement не переиспользуется",
+            r"cache miss обязателен",
+        ),
+    }
+    for label, required_patterns in positive_contracts.items():
+        missing_patterns = [
+            pattern
+            for pattern in required_patterns
+            if re.search(pattern, arch_text, re.IGNORECASE) is None
+        ]
+        if missing_patterns:
+            problems.append(
+                f"ARCHITECTURE missing positive contract {label!r}: " + ", ".join(missing_patterns)
+            )
+
+    assert not problems, "architecture/history structural split problems:\n  " + "\n  ".join(
+        problems
+    )
 
 
 def test_user_guide_points_to_env_reference() -> None:
