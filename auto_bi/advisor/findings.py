@@ -8,8 +8,11 @@ it never blocks a build (CLAUDE.md invariant 5).
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
+
+Evidence = dict[str, Any]
 
 
 class Severity(StrEnum):
@@ -46,7 +49,7 @@ class Finding(BaseModel):
     verdict_class: VerdictClass
     chart_id: str
     title: str  # short machine summary; the LLM turns this into a verdict in 1.7
-    evidence: dict = Field(default_factory=dict)  # measured/derived facts behind the verdict
+    evidence: Evidence = Field(default_factory=dict)  # measured/derived facts behind the verdict
     suggestions: list[str] = Field(default_factory=list)  # mechanical alternatives
     # a concrete fix artifact for dm_change_request verdicts (None for spec_adjustment,
     # where the fix is "change the query", already spelled out in `suggestions`)

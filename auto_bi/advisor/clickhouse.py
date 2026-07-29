@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from auto_bi.advisor.findings import Finding, Remediation, Severity, VerdictClass
+from auto_bi.advisor.findings import Evidence, Finding, Remediation, Severity, VerdictClass
 from auto_bi.ir.spec import ChartQuery
 from auto_bi.semantic.model import Physical, SemanticModel, Table
 
@@ -44,7 +44,7 @@ class RuleContext:
     query: ChartQuery
     table: Table
     physical: Physical
-    evidence: dict = field(default_factory=dict)  # EXPLAIN-derived facts, may be empty
+    evidence: Evidence = field(default_factory=dict)  # EXPLAIN-derived facts, may be empty
     # the whole model — only rules that reason across tables (join_large_large) need it;
     # None keeps metadata-only callers and the existing single-table rules unaffected
     model: SemanticModel | None = None

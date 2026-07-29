@@ -367,6 +367,11 @@ def test_generator_check_mode_exits_zero() -> None:
         "auto_bi/llm/budget.py",
         "auto_bi/api/ratelimit.py",
         "auto_bi/api/schemas.py",
+        "auto_bi/advisor/findings.py",
+        "auto_bi/advisor/clickhouse.py",
+        "auto_bi/advisor/core.py",
+        "auto_bi/advisor/explain.py",
+        "auto_bi/advisor/greenplum.py",
     ],
 )
 def test_strict_targets_are_in_every_mypy_job_and_slo(target: str) -> None:

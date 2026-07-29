@@ -76,6 +76,11 @@ Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
 | `auto_bi/llm/budget.py` | fail-closed LLM spend/call budget boundary at the provider-call seam |
 | `auto_bi/api/ratelimit.py` | fail-closed login/session quota and SSE-concurrency boundary |
 | `auto_bi/api/schemas.py` | API request/response and session-hydration schema boundary |
+| `auto_bi/advisor/findings.py` | advisor finding and shared open evidence boundary |
+| `auto_bi/advisor/clickhouse.py` | ClickHouse rule context and evidence boundary |
+| `auto_bi/advisor/core.py` | advisor evidence gathering and rule orchestration boundary |
+| `auto_bi/advisor/explain.py` | ClickHouse EXPLAIN scan-estimate evidence boundary |
+| `auto_bi/advisor/greenplum.py` | Greenplum EXPLAIN evidence and rule pack boundary |
 
 ```bash
 uv run --with mypy --with types-PyYAML mypy --strict \
@@ -86,7 +91,9 @@ uv run --with mypy --with types-PyYAML mypy --strict \
   auto_bi/semantic/prompt_data.py auto_bi/semantic/dbt_import.py \
   auto_bi/agent/sql_guard.py auto_bi/agent/query_plan.py \
   auto_bi/agent/dataset_plan.py auto_bi/agent/pipeline.py auto_bi/deployment_profile.py \
-  auto_bi/llm/budget.py auto_bi/api/ratelimit.py auto_bi/api/schemas.py
+  auto_bi/llm/budget.py auto_bi/api/ratelimit.py auto_bi/api/schemas.py \
+  auto_bi/advisor/findings.py auto_bi/advisor/clickhouse.py auto_bi/advisor/core.py \
+  auto_bi/advisor/explain.py auto_bi/advisor/greenplum.py
 ```
 
 Do **not** set `strict = true` as a global or per-module override in `pyproject`
@@ -104,4 +111,6 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
   + `semantic/model` + `semantic/select`
   + `semantic/render` + `semantic/prompt_data` + `semantic/dbt_import`
   + `agent/sql_guard` + `agent/query_plan` + `agent/dataset_plan`
-  + `agent/pipeline` + `deployment_profile` + `llm/budget` + `api/ratelimit` + `api/schemas`.
+  + `agent/pipeline` + `deployment_profile` + `llm/budget` + `api/ratelimit` + `api/schemas`
+  + `advisor/findings` + `advisor/clickhouse` + `advisor/core` + `advisor/explain`
+  + `advisor/greenplum`.

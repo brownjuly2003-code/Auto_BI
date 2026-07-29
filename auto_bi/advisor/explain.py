@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 
+from auto_bi.advisor.findings import Evidence
 from auto_bi.introspect.base import RunQuery
 
 _TABLE_RE = re.compile(r"^(\w+)\.(\w+)$")
@@ -42,7 +43,7 @@ def live_row_count(run_query: RunQuery, table: str) -> int | None:
     return int(total) if total else None
 
 
-def estimate_scan(run_query: RunQuery, sql: str) -> dict | None:
+def estimate_scan(run_query: RunQuery, sql: str) -> Evidence | None:
     """`EXPLAIN ESTIMATE sql` -> {est_rows, est_marks, est_parts}; None if unavailable.
 
     Never raises: the advisor is advisory-only, so a failed estimate degrades to
