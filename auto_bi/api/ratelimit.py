@@ -16,6 +16,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
+from typing import cast
 
 
 class LoginRateLimiter:
@@ -89,7 +90,8 @@ class LoginRateLimiter:
                 strikes = self._strikes.get(key, 0) + 1
                 self._strikes[key] = strikes
                 lockout = min(
-                    self.base_lockout_seconds * (2 ** (strikes - 1)), self.lockout_cap_seconds
+                    self.base_lockout_seconds * cast(int, 2 ** (strikes - 1)),
+                    self.lockout_cap_seconds,
                 )
                 self._lockout_until[key] = now + lockout
                 self._attempts[key] = []

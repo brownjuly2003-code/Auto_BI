@@ -68,7 +68,7 @@ jobs:
           auto_bi/semantic/prompt_data.py auto_bi/semantic/dbt_import.py
           auto_bi/agent/sql_guard.py auto_bi/agent/query_plan.py
           auto_bi/agent/dataset_plan.py auto_bi/agent/pipeline.py auto_bi/deployment_profile.py
-          auto_bi/llm/budget.py
+          auto_bi/llm/budget.py auto_bi/api/ratelimit.py
 
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
@@ -190,7 +190,7 @@ jobs:
           auto_bi/semantic/prompt_data.py auto_bi/semantic/dbt_import.py
           auto_bi/agent/sql_guard.py auto_bi/agent/query_plan.py
           auto_bi/agent/dataset_plan.py auto_bi/agent/pipeline.py auto_bi/deployment_profile.py
-          auto_bi/llm/budget.py
+          auto_bi/llm/budget.py auto_bi/api/ratelimit.py
 
       - name: Pytest + coverage gate
         run: >
