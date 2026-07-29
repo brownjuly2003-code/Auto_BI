@@ -53,7 +53,7 @@ jobs:
     # No secret → skip (exit 0). Do not fail the PR matrix when operator has not
     # provisioned a key for this repo.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Decide whether a provider secret is available
         id: gate
@@ -70,7 +70,7 @@ jobs:
 
       - name: Install uv
         if: steps.gate.outputs.run == 'true'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
 
