@@ -76,6 +76,8 @@ jobs:
           auto_bi/agent/sqlgen.py auto_bi/agent/insights.py
           auto_bi/adapters/datalens/chart_config.py auto_bi/adapters/datalens/dataset.py
           auto_bi/adapters/datalens/adapter.py
+          auto_bi/adapters/superset/native_filters.py auto_bi/adapters/superset/form_data.py
+          auto_bi/adapters/superset/adapter.py
 
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
@@ -205,6 +207,8 @@ jobs:
           auto_bi/agent/sqlgen.py auto_bi/agent/insights.py
           auto_bi/adapters/datalens/chart_config.py auto_bi/adapters/datalens/dataset.py
           auto_bi/adapters/datalens/adapter.py
+          auto_bi/adapters/superset/native_filters.py auto_bi/adapters/superset/form_data.py
+          auto_bi/adapters/superset/adapter.py
 
       - name: Pytest + coverage gate
         run: >

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import Any
 from urllib.parse import urlparse
 
 from auto_bi.adapters.artifacts import BuildArtifact, dataset_table_name
@@ -38,7 +39,12 @@ from auto_bi.adapters.superset.native_filters import (
     build_native_filter_configuration,
     participating_chart_ids,
 )
-from auto_bi.agent.dataset_plan import DatasetRole, plan_datasets, source_dataset_inputs
+from auto_bi.agent.dataset_plan import (
+    DatasetPlan,
+    DatasetRole,
+    plan_datasets,
+    source_dataset_inputs,
+)
 from auto_bi.agent.normalize import is_horizontal_bar
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sqlgen import generate_chart_sql, generate_source_sql
@@ -254,11 +260,11 @@ class SupersetAdapter:
             self.delete_artifact(kind, native_id)
         return BuildReconcileResult(discovered=len(owned), deleted=len(owned))
 
-    def _list_exact(self, path: str, *, column: str, value: str) -> list[dict]:
+    def _list_exact(self, path: str, *, column: str, value: str) -> list[dict[str, Any]]:
         """Exhaustive exact-filter list; never trust a title substring as ownership."""
         page_size = 100
         page = 0
-        result: list[dict] = []
+        result: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
         while True:
             payload = self._client.get(
@@ -291,7 +297,7 @@ class SupersetAdapter:
 
     @staticmethod
     def _detail_has_build_token(
-        detail: dict,
+        detail: dict[str, Any],
         field: str,
         build_token: str,
     ) -> bool:
@@ -453,7 +459,7 @@ class SupersetAdapter:
                 metric = _adhoc_metric(measure, "kpimag", 0, from_source=True)
             else:
                 metric = _adhoc_metric(measure, "kpimag", 0, agg="MAX")
-            query: dict = {
+            query: dict[str, Any] = {
                 "metrics": [metric],
                 "row_limit": 1,
             }
@@ -707,12 +713,12 @@ class SupersetAdapter:
         charts: list[ChartRef],
         datasets: list[DatasetRef] | None = None,
         model: SemanticModel | None = None,
-        plan=None,
+        plan: DatasetPlan | None = None,
     ) -> DashboardRef:
         if len(charts) != len(spec.charts):
             raise ValueError(f"got {len(charts)} chart refs for {len(spec.charts)} spec charts")
 
-        native_filters: list[dict] = []
+        native_filters: list[dict[str, Any]] = []
         if spec.filters:
             if datasets is not None and model is not None:
                 placements = [
@@ -746,7 +752,7 @@ class SupersetAdapter:
 
         placed = list(zip(spec.charts, [_int_id(c.id) for c in charts], strict=True))
         position = build_position_json(spec, placed)
-        json_metadata: dict = {"chart_configuration": {}}
+        json_metadata: dict[str, Any] = {"chart_configuration": {}}
         if self._artifact_namespace:
             json_metadata[_BUILD_TOKEN_KEY] = self._artifact_namespace
         if native_filters:
