@@ -17,6 +17,7 @@ REPO = Path(__file__).resolve().parents[1]
 README = (REPO / "README.md").read_text(encoding="utf-8")
 CI = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 PYPROJECT = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+DOCKERFILE = (REPO / "Dockerfile").read_text(encoding="utf-8")
 
 # Support matrix: each public claim maps to the gate that proves it.
 # status:
@@ -109,6 +110,32 @@ def test_pyproject_requires_python_matches_badge() -> None:
     assert 'requires-python = ">=3.12"' in PYPROJECT
     assert "Programming Language :: Python :: 3.12" in PYPROJECT
     assert "Programming Language :: Python :: 3.13" in PYPROJECT
+
+
+def test_release_image_python_is_declared_and_ci_verified() -> None:
+    """Release Dockerfile Python minor must have a classifier and a CI uv install."""
+    matches = re.findall(
+        r"^FROM python:(\d+\.\d+)-slim@sha256:[0-9a-f]{64}\s*$",
+        DOCKERFILE,
+        flags=re.MULTILINE,
+    )
+    assert len(matches) == 1, (
+        "root Dockerfile must declare exactly one release base line "
+        "FROM python:X.Y-slim@sha256:<64 lowercase hex>; "
+        f"got {matches!r}"
+    )
+    version = matches[0]
+    classifier = f"Programming Language :: Python :: {version}"
+    assert classifier in PYPROJECT, (
+        f"release image Python {version} requires classifier {classifier!r} in "
+        "pyproject.toml (classifier + CI verification)"
+    )
+    ci_versions = set(re.findall(r"uv python install (\d+\.\d+)", CI))
+    assert version in ci_versions, (
+        f"release image Python {version} requires CI verification via "
+        f"'uv python install {version}'; verified set is {sorted(ci_versions)!r} "
+        "(classifier + CI verification)"
+    )
 
 
 def test_greenplum_offline_modules_import() -> None:
