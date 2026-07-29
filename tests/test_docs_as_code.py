@@ -34,6 +34,7 @@ FIXTURES_DIR = REPO / "tests" / "fixtures" / "golden_llm"
 GEN_SCRIPT = REPO / "scripts" / "generate_env_reference.py"
 CI_WORKFLOW = REPO / ".github" / "workflows" / "ci.yml"
 SLO = DOCS / "operations" / "SLO.md"
+PERF_README = REPO / "tests" / "performance" / "README.md"
 
 # Markdown files that participate in the public doc graph (internal links checked).
 PUBLIC_MD = [
@@ -383,6 +384,76 @@ def test_mypy_strict_package_gate_in_ci_and_slo() -> None:
         "Package-wide: `mypy auto_bi`",
     ):
         assert obsolete not in slo, f"obsolete SLO contract text still present: {obsolete!r}"
+
+
+def test_runtime_evidence_harness_is_wired_without_claiming_production_slo() -> None:
+    """CI samples must remain descriptive and distinct from production SLO evidence."""
+    assert (REPO / "scripts" / "collect_runtime_evidence.py").is_file()
+
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    integration_steps = workflow["jobs"]["integration"]["steps"]
+    latency_steps = [
+        step
+        for step in integration_steps
+        if step.get("name") == "Live end-to-end build + latency sample (no LLM)"
+    ]
+    assert len(latency_steps) == 1
+    latency_run = latency_steps[0]["run"]
+    for token in (
+        "scripts/collect_runtime_evidence.py latency",
+        "--warmups 1",
+        "--samples 3",
+        "--timeout-seconds 180",
+        "artifacts/runtime_evidence_latency.json",
+        "auto_bi build --auto dm.sales_daily --target superset " "--model-path semantic/model.yaml",
+    ):
+        assert token in latency_run
+    assert not any(
+        step.get("name") == "Live end-to-end build (auto-overview, no LLM)"
+        for step in integration_steps
+    )
+
+    docker_steps = workflow["jobs"]["docker"]["steps"]
+    smoke_steps = [
+        step
+        for step in docker_steps
+        if step.get("name") == "Smoke run — non-root user + HEALTHCHECK healthy"
+    ]
+    assert len(smoke_steps) == 1
+    smoke_run = smoke_steps[0]["run"]
+    assert re.search(
+        r"start_epoch_ms=\$\(date \+%s%3N\)\s*\n\s*" r"docker run -d --name smoke\b",
+        smoke_run,
+    )
+    for token in (
+        "scripts/collect_runtime_evidence.py container-snapshot",
+        "--container smoke",
+        "--max-cold-start-ms 90000",
+        "--max-memory-mib 1024",
+        "artifacts/runtime_evidence_container.json",
+    ):
+        assert token in smoke_run
+
+    artifact_paths = {
+        step.get("with", {}).get("name"): step.get("with", {}).get("path")
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    }
+    assert artifact_paths["runtime-evidence-latency"] == "artifacts/runtime_evidence_latency.json"
+    assert (
+        artifact_paths["runtime-evidence-container"] == "artifacts/runtime_evidence_container.json"
+    )
+
+    for path in (SLO, PERF_README):
+        text = path.read_text(encoding="utf-8")
+        assert "ci_sample_not_production_slo" in text
+        assert "not a production SLO" in text
+        assert "N=3" in text
+        assert "p95 = max" in text
+        assert "process RSS" in text
+        assert "/proc/1/status" in text
+        assert "Docker cgroup memory usage" in text
 
 
 def test_current_state_and_closure_match_closed_step12_gates() -> None:

@@ -69,7 +69,27 @@ without verifying: on our mypy version that polluted the package-wide check.
 The CLI/CI `--strict` gate is intentional; keep the config non-strict and apply
 strictness only at the gate.
 
+## Closing-SHA CI runtime samples
+
+The CI harness records two closing-SHA artifacts with
+`evidence_class=ci_sample_not_production_slo`. This evidence is not a production SLO:
+it is a descriptive sample and must not be presented as production latency or
+capacity.
+
+- `runtime-evidence-latency` runs one warmup followed by `N=3` measured
+  deterministic live Superset builds. It reports nearest-rank percentiles, where
+  `p95 = max` for N=3, with no latency threshold.
+- `runtime-evidence-container` measures release-image cold start from the epoch
+  immediately before the named `smoke` container starts until its healthcheck is
+  healthy. Exact process RSS comes from `/proc/1/status`; Docker cgroup memory usage
+  is recorded separately as context. Catastrophic CI gates are
+  cold start <= 90000 ms and process RSS <= 1024 MiB.
+
+The harness is installed, but closing-SHA artifacts remain pending until the
+external CI workflow runs. No live values or production-SLO closure are claimed
+here.
+
 ## Residual (not yet gates)
 
 - Tight p50/p95 production SLO from live stands (Mac/CI integration).
-- Process memory / cold-start process budget on release image.
+- Production-calibrated process memory and cold-start SLO for the release image.
