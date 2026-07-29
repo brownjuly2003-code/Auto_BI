@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -77,7 +77,7 @@ from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient, LLMError
 from auto_bi.llm.budget import ModelPrices
-from auto_bi.semantic.model import Additivity, Aggregation, ColumnRole, SemanticModel
+from auto_bi.semantic.model import Additivity, Aggregation, ColumnRole, SemanticModel, Table
 from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
@@ -238,7 +238,9 @@ def create_app(
         return getattr(request.state, "user", ANONYMOUS_ADMIN)
 
     @app.middleware("http")
-    async def gate(request: Request, call_next):
+    async def gate(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         # CSRF guard: browsers attach Origin to mutating requests, curl/CLI/SSE GETs carry
         # none and pass (F5). Only stops drive-by mutations from other sites.
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
@@ -292,7 +294,7 @@ def create_app(
         return managed
 
     @app.get("/api/v1/health")
-    def health() -> dict:
+    def health() -> dict[str, Any]:
         # demo_auto_only + capabilities ride on /health so the UI greys out modes that
         # cannot work (config flag alone is not enough: text needs a wired LLM too).
         return {
@@ -320,7 +322,7 @@ def create_app(
         response body.
         """
 
-        def _public_fail(code: str, exc: BaseException) -> dict:
+        def _public_fail(code: str, exc: BaseException) -> dict[str, Any]:
             from auto_bi.errors import PUBLIC_MESSAGES, SafeError
 
             # Component code (store/dwh/bi/llm) wins over generic classification so
@@ -350,14 +352,14 @@ def create_app(
                 "correlation_id": safe.correlation_id,
             }
 
-        def _probe(fn: Callable[[], Any], *, code: str) -> dict:
+        def _probe(fn: Callable[[], Any], *, code: str) -> dict[str, Any]:
             try:
                 fn()
                 return {"ok": True}
             except Exception as exc:
                 return _public_fail(code, exc)
 
-        def _adapter_probe(fn: Callable[[], AdapterHealth], *, code: str) -> dict:
+        def _adapter_probe(fn: Callable[[], AdapterHealth], *, code: str) -> dict[str, Any]:
             try:
                 health_result = fn()
                 if health_result.ok:
@@ -367,7 +369,7 @@ def create_app(
             except Exception as exc:
                 return _public_fail(code, exc)
 
-        checks: dict[str, dict] = {
+        checks: dict[str, dict[str, Any]] = {
             "store": (
                 _probe(store.ping, code=CODE_STORE)
                 if store is not None
@@ -394,11 +396,11 @@ def create_app(
 
     # --- auth (Phase 4, opt-in) ----------------------------------------------------
 
-    def _user_public(user: AuthUser) -> dict:
+    def _user_public(user: AuthUser) -> dict[str, Any]:
         return {"username": user.username, "role": user.role, "schemas": user.allowed_schemas}
 
     @app.post("/api/v1/auth/login")
-    def login(body: LoginRequest, request: Request, response: Response) -> dict:
+    def login(body: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
         if not auth_enabled:
             raise HTTPException(status_code=404, detail="auth is disabled")
         client_ip = request.client.host if request.client else "unknown"
@@ -438,7 +440,7 @@ def create_app(
         response.delete_cookie("auth_token")
 
     @app.get("/api/v1/auth/me")
-    def auth_me(request: Request) -> dict:
+    def auth_me(request: Request) -> dict[str, Any]:
         return _user_public(_user(request))
 
     @app.post("/api/v1/sessions", response_model=TurnResponse, response_model_exclude_none=True)
@@ -520,7 +522,7 @@ def create_app(
     model_write_lock = threading.Lock()
 
     @app.get("/api/v1/model/gaps")
-    def model_gaps(request: Request) -> dict:
+    def model_gaps(request: Request) -> dict[str, Any]:
         # offline checks only: live time-grain probes stay in `auto_bi gaps` (CLI).
         # RBAC: scope to the caller's allowed schemas (auth off -> full model).
         scoped = filter_model_by_schemas(model, _user(request).allowed_schemas)
@@ -533,7 +535,7 @@ def create_app(
             )
         return Path(model_path)
 
-    def _get_table(table_name: str):
+    def _get_table(table_name: str) -> Table:
         table = model.table(table_name)
         if table is None:
             raise HTTPException(status_code=404, detail=f"unknown table {table_name!r}")
@@ -546,7 +548,7 @@ def create_app(
             raise HTTPException(status_code=403, detail=f"not allowed to edit table {table_name!r}")
 
     @app.patch("/api/v1/model/tables/{table_name}")
-    def update_table(table_name: str, body: TableUpdate, request: Request) -> dict:
+    def update_table(table_name: str, body: TableUpdate, request: Request) -> dict[str, Any]:
         _check_demo_gate("Правка модели")  # P8: enrichment mutates the shared model.yaml
         _require_table_access(table_name, request)  # RBAC before anything else (403 > 503)
         path = _model_path()
@@ -559,7 +561,7 @@ def create_app(
     @app.patch("/api/v1/model/tables/{table_name}/columns/{column_name}")
     def update_column(
         table_name: str, column_name: str, body: ColumnUpdate, request: Request
-    ) -> dict:
+    ) -> dict[str, Any]:
         _check_demo_gate("Правка модели")  # P8: enrichment mutates the shared model.yaml
         _require_table_access(table_name, request)  # RBAC before anything else (403 > 503)
         path = _model_path()
@@ -620,7 +622,7 @@ def create_app(
         }
 
     @app.get("/api/v1/model/fields")
-    def model_fields(request: Request) -> list[dict]:
+    def model_fields(request: Request) -> list[dict[str, Any]]:
         """Field panel for the fields-first mode: the semantic model as the UI sees it.
         RBAC: only the caller's allowed-schema tables (auth off -> all tables)."""
         scoped = filter_model_by_schemas(model, _user(request).allowed_schemas)
@@ -676,7 +678,7 @@ def create_app(
             return _turn(managed, turn)
 
     @app.post("/api/v1/sessions/{session_id}/approve", status_code=202)
-    def approve(session_id: str, request: Request) -> dict:
+    def approve(session_id: str, request: Request) -> dict[str, Any]:
         if builder is None:
             raise HTTPException(status_code=503, detail="build is not wired (no BI configured)")
         _check_work_quota(request)
@@ -832,7 +834,7 @@ def create_app(
             raise HTTPException(status_code=503, detail="store is not configured")
         return store
 
-    def _dcr_visible(row: dict, user: AuthUser) -> bool:
+    def _dcr_visible(row: dict[str, Any], user: AuthUser) -> bool:
         """P1-4: non-admin sees only DCRs from own sessions whose table is in their schemas.
         Auth off -> caller is anonymous admin (full access). Unknown/foreign -> treat as
         invisible so list/detail/patch return the same 404 as sessions (no existence probe)."""
@@ -842,14 +844,16 @@ def create_app(
             return False
         return is_table_allowed(row.get("table_name") or "", user.allowed_schemas)
 
-    def _dcr_or_404(request_id: int, request: Request) -> dict:
+    def _dcr_or_404(request_id: int, request: Request) -> dict[str, Any]:
         row = _store().dm_change_request(request_id)
         if row is None or not _dcr_visible(row, _user(request)):
             raise HTTPException(status_code=404, detail=f"unknown dm_change_request {request_id}")
         return row
 
     @app.get("/api/v1/dm-change-requests")
-    def list_dm_change_requests(request: Request, status: str | None = None) -> list[dict]:
+    def list_dm_change_requests(
+        request: Request, status: str | None = None
+    ) -> list[dict[str, Any]]:
         # P1-4: analysts only list their own sessions' DCRs (schema-filtered); admin = all
         user = _user(request)
         owner = None if (not auth_enabled or user.is_admin) else user.username
@@ -859,12 +863,14 @@ def create_app(
         return rows
 
     @app.get("/api/v1/dm-change-requests/{request_id}")
-    def dm_change_request(request_id: int, request: Request) -> dict:
+    def dm_change_request(request_id: int, request: Request) -> dict[str, Any]:
         row = _dcr_or_404(request_id, request)
         return {**row, "markdown": render_dm_change_request(row)}
 
     @app.patch("/api/v1/dm-change-requests/{request_id}")
-    def update_dm_change_request(request_id: int, body: DCRStatusUpdate, request: Request) -> dict:
+    def update_dm_change_request(
+        request_id: int, body: DCRStatusUpdate, request: Request
+    ) -> dict[str, Any]:
         # P8: the DCR workflow state is shared like model.yaml — no anonymous writes in
         # the public demo (the demo never creates DCRs, so this is defense in depth)
         _check_demo_gate("Правка статуса DCR")
@@ -887,7 +893,7 @@ def create_app(
     # --- observability (Phase 4): per-session trace + LLM-usage dashboard ----------
 
     @app.get("/api/v1/sessions/{session_id}/trace")
-    def session_trace(session_id: str, request: Request) -> dict:
+    def session_trace(session_id: str, request: Request) -> dict[str, Any]:
         """Durable per-session timeline: agent/build steps + the LLM calls they made.
         Reads the store directly (survives registry eviction); unknown id -> empty.
         When auth is on, the session must be owned by the caller (admin sees all);
@@ -903,7 +909,7 @@ def create_app(
         }
 
     @app.get("/api/v1/observability/llm")
-    def observability_llm(request: Request) -> dict:
+    def observability_llm(request: Request) -> dict[str, Any]:
         """LLM-usage aggregates. Admin (or auth off) gets the global view; a non-admin
         analyst only sees spend on sessions they own (audit P1-4 — no cross-user leak).
         Char volumes are a universal size proxy; real input/output tokens are summed where
@@ -934,7 +940,7 @@ def create_app(
         return Response(content=text, media_type="text/plain; version=0.0.4; charset=utf-8")
 
     @app.get("/api/v1/sessions/{session_id}/insights")
-    def session_insights(session_id: str, request: Request) -> dict:
+    def session_insights(session_id: str, request: Request) -> dict[str, Any]:
         """Deterministic 'Что видно' observations over the session's current spec.
 
         Runs each chart read-only and reports trend / reversal or change of pace /
@@ -983,7 +989,7 @@ def create_app(
                 headers={"Retry-After": "5"},
             )
 
-        def _stream():
+        def _stream() -> Iterator[str]:
             try:
                 # None = idle heartbeat: an SSE comment clients ignore, but writing it
                 # surfaces a dropped connection and frees the worker thread (F4)

@@ -93,6 +93,7 @@ Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
 | `auto_bi/adapters/superset/native_filters.py` | Superset native-filter configuration typing boundary |
 | `auto_bi/adapters/superset/form_data.py` | Superset form_data and position_json typing boundary |
 | `auto_bi/adapters/superset/adapter.py` | Superset adapter orchestration typing boundary |
+| `auto_bi/api/app.py` | FastAPI auth/readiness/SSE boundary |
 
 ```bash
 uv run --with mypy --with types-PyYAML mypy --strict \
@@ -112,7 +113,8 @@ uv run --with mypy --with types-PyYAML mypy --strict \
   auto_bi/adapters/datalens/chart_config.py auto_bi/adapters/datalens/dataset.py \
   auto_bi/adapters/datalens/adapter.py \
   auto_bi/adapters/superset/native_filters.py auto_bi/adapters/superset/form_data.py \
-  auto_bi/adapters/superset/adapter.py
+  auto_bi/adapters/superset/adapter.py \
+  auto_bi/api/app.py
 ```
 
 Do **not** set `strict = true` as a global or per-module override in `pyproject`
@@ -139,4 +141,5 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
   + `adapters/datalens/chart_config` + `adapters/datalens/dataset`
   + `adapters/datalens/adapter`
   + `adapters/superset/native_filters` + `adapters/superset/form_data`
-  + `adapters/superset/adapter`.
+  + `adapters/superset/adapter`
+  + `api/app`.
