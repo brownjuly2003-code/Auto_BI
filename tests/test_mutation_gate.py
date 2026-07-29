@@ -48,10 +48,15 @@ def test_mutmut_scope_is_pinned_and_bounded() -> None:
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     mutmut = config["tool"]["mutmut"]
     assert mutmut["source_paths"] == ["auto_bi/"]
-    assert mutmut["only_mutate"] == ["auto_bi/agent/sql_guard.py"]
+    assert mutmut["only_mutate"] == [
+        "auto_bi/agent/sql_guard.py",
+        "auto_bi/ir/validate.py",
+    ]
     assert mutmut["pytest_add_cli_args_test_selection"] == [
         "tests/test_property_quality.py",
+        "tests/test_ir_validate.py",
         "tests/test_x5_raw_sql.py",
+        "tests/test_p1_6_governance.py",
         "tests/test_query_plan.py",
     ]
     assert mutmut["also_copy"] == ["semantic/"]
@@ -69,6 +74,21 @@ def test_slo_mutation_smoke_test_selection_matches_mutmut_config() -> None:
     )
     assert match is not None
     documented = re.findall(r"`(tests/test_[^`]+\.py)`", match.group(1))
+    assert documented == expected
+
+
+def test_slo_mutation_smoke_production_targets_match_mutmut_config() -> None:
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    expected = config["tool"]["mutmut"]["only_mutate"]
+
+    slo = (ROOT / "docs" / "operations" / "SLO.md").read_text(encoding="utf-8")
+    match = re.search(
+        r"^## Mutation smoke\n(.*?)(?=^## |\Z)",
+        slo,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None
+    documented = re.findall(r"`(auto_bi/[^`]+\.py)`", match.group(1))
     assert documented == expected
 
 
@@ -106,8 +126,9 @@ def test_slo_mutation_smoke_documents_timeout_as_effective_kill() -> None:
 
 def test_primary_quality_job_runs_pinned_mutation_gate() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "Mutation smoke (SQL guard)" in workflow
+    assert "Mutation smoke (bounded core)" in workflow
     assert "uv run --with mutmut==3.6.0 mutmut run" in workflow
+    assert "--max-children 4" in workflow
     assert "uv run --with mutmut==3.6.0 mutmut export-cicd-stats" in workflow
     assert "scripts/check_mutation_stats.py mutants/mutmut-cicd-stats.json" in workflow
 

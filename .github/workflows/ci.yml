@@ -71,10 +71,10 @@ jobs:
       - name: Pytest + coverage
         run: uv run --with pytest-cov --with duckdb pytest -q --cov=auto_bi --cov-report=term-missing --cov-fail-under=90
 
-      # plan_sol step 12: narrow mutation gate for the SELECT-only/RBAC SQL boundary.
+      # plan_sol step 12: bounded cumulative gate for SQL safety and IR validation.
       # mutmut itself exits zero with surviving mutants, so export its machine-readable
       # stats and enforce the zero-survivor/no-untested policy in a stdlib script.
-      - name: Mutation smoke (SQL guard)
+      - name: Mutation smoke (bounded core)
         timeout-minutes: 8
         run: |
           uv run --with mutmut==3.6.0 mutmut run --max-children 4
