@@ -5,6 +5,7 @@ Identifiers are always quoted, values go through sqlglot literals.
 """
 
 import re
+from collections.abc import Callable
 
 from sqlglot import expressions as exp
 
@@ -111,7 +112,7 @@ def _relative_period_bound(value: str, *, dialect: str = DIALECT) -> exp.Express
         # addMonths(today(), -12) — same calendar arithmetic Superset's relative tokens use
         return exp.func(_CH_ADD[unit], exp.func("today"), exp.Literal.number(-n))  # type: ignore[return-value]
     # Postgres / DuckDB: CURRENT_DATE - INTERVAL 'N unit'
-    return exp.Sub(  # type: ignore[return-value]
+    return exp.Sub(
         this=exp.CurrentDate(),
         expression=exp.Interval(
             this=exp.Literal.string(f"{n} {unit}"),
@@ -296,7 +297,7 @@ def generate_source_sql(
     return select.sql(dialect=dialect, identify=True)
 
 
-def _resolve_for(query: ChartQuery):
+def _resolve_for(query: ChartQuery) -> Callable[[str], str]:
     def resolve(ref: str) -> str:
         # with joins in play every bare reference is qualified with the base table:
         # joined tables can share column names (stores.name vs products.name) and an
@@ -608,8 +609,8 @@ def _generate_compare_kpi_sql(query: ChartQuery, *, dialect: str, apply_limit: b
     unit, count = _compare_offset(c.grain, c.kind)
     interval = exp.Interval(this=exp.Literal.number(count), unit=exp.Var(this=unit))
     bucket_b = _time_grain_expr(_grained_source(query, c.column), c.grain, dialect=dialect)
-    p_cur = exp.alias_(exp.func("max", bucket_b.copy()), "p_cur", quoted=True)  # type: ignore[arg-type]
-    p_prev = exp.alias_(  # type: ignore[arg-type]
+    p_cur = exp.alias_(exp.func("max", bucket_b.copy()), "p_cur", quoted=True)
+    p_prev = exp.alias_(
         exp.Sub(this=exp.func("max", bucket_b.copy()), expression=interval), "p_prev", quoted=True
     )
     sub = exp.select(p_cur, p_prev).from_(exp.to_table(query.table))
@@ -632,7 +633,7 @@ def _generate_compare_kpi_sql(query: ChartQuery, *, dialect: str, apply_limit: b
     else:
         body = exp.Sub(this=cur, expression=prev)
     select = (
-        exp.select(exp.alias_(body, measure_alias(measure), quoted=True))  # type: ignore[arg-type]
+        exp.select(exp.alias_(body, measure_alias(measure), quoted=True))
         .from_(exp.to_table(query.table))
         .join(sub.subquery(alias="b"), join_type="cross")
     )
@@ -697,8 +698,8 @@ def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: boo
     )
     width = exp.Div(this=exp.paren(span), expression=exp.Literal.number(query.bins))
     sub = exp.select(
-        exp.alias_(exp.func("min", col_bare_d.copy()), "mn", quoted=True),  # type: ignore[arg-type]
-        exp.alias_(width, "w", quoted=True),  # type: ignore[arg-type]
+        exp.alias_(exp.func("min", col_bare_d.copy()), "mn", quoted=True),
+        exp.alias_(width, "w", quoted=True),
     ).from_(exp.to_table(query.table))
     for qf in query.filters:
         sub = sub.where(_filter_expr(qf, dialect=dialect))
@@ -720,7 +721,7 @@ def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: boo
 
     measure_expr = _measure_expr(query.measures[0], query.measures[0].column)
     select = (
-        exp.select(exp.alias_(bucket, bare, quoted=True), measure_expr)  # type: ignore[arg-type]
+        exp.select(exp.alias_(bucket, bare, quoted=True), measure_expr)
         .from_(exp.to_table(query.table))
         .join(sub.subquery(alias="b"), join_type="cross")
     )

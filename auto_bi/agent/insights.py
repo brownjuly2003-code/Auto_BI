@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from statistics import fmean, median, pstdev
+from typing import Any
 
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.query_plan import PlanCache
@@ -169,7 +170,7 @@ def _observe_chart(
     primary = q.measures[0]
     m_alias = measure_alias(primary)
     sql = generate_chart_sql(q, dialect=dialect)
-    rows: list[dict] | None = None
+    rows: list[dict[str, Any]] | None = None
     if plans is not None:
         trial = plans.get_trial(sql)
         if trial is not None and trial.complete:
@@ -202,7 +203,7 @@ def _observe_chart(
 
 
 def _observe_line(
-    chart: ChartSpec, rows: list[dict], m_alias: str, t_alias: str
+    chart: ChartSpec, rows: list[dict[str, Any]], m_alias: str, t_alias: str
 ) -> list[Observation]:
     """The headline story of a time series: its trend, how its second half differs from the
     first (a reversal of that trend, or a change of pace — accelerating / decelerating), a
@@ -334,7 +335,7 @@ def _parse_date(value: object) -> date | None:
 
 
 def _seasonality(
-    chart: ChartSpec, rows: list[dict], m_alias: str, t_alias: str
+    chart: ChartSpec, rows: list[dict[str, Any]], m_alias: str, t_alias: str
 ) -> list[Observation]:
     """A standing day-of-week pattern: the weekday whose MEDIAN most exceeds the overall
     median (e.g. weekends run higher), plus the weakest weekday when it too is material.
@@ -427,7 +428,7 @@ def _extreme(
 
 
 def _observe_bar(
-    chart: ChartSpec, rows: list[dict], m_alias: str, d_alias: str
+    chart: ChartSpec, rows: list[dict[str, Any]], m_alias: str, d_alias: str
 ) -> list[Observation]:
     """The ranking's leader (share of the visible total) and, if the top dominates, its
     top-3 concentration. Rows arrive ordered by the measure descending (the chart is top-N
@@ -485,7 +486,7 @@ def _observe_bar(
 
 
 def _observe_share(
-    chart: ChartSpec, rows: list[dict], m_alias: str, d_alias: str
+    chart: ChartSpec, rows: list[dict[str, Any]], m_alias: str, d_alias: str
 ) -> list[Observation]:
     """The structure chart's largest part (a share_of_total measure: values are fractions)."""
     pts = [(_label(r.get(d_alias)), v) for r in rows if (v := _num(r.get(m_alias))) is not None]

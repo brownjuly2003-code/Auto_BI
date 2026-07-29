@@ -85,6 +85,8 @@ Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
 | `auto_bi/introspect/greenplum.py` | Greenplum engine metadata ingestion boundary |
 | `auto_bi/eval/cases.py` | offline eval case inventory boundary |
 | `auto_bi/eval/runner.py` | deterministic eval/replay runner boundary |
+| `auto_bi/agent/sqlgen.py` | deterministic ChartQuery → SQL generation boundary |
+| `auto_bi/agent/insights.py` | post-build observation / narrative boundary |
 
 ```bash
 uv run --with mypy --with types-PyYAML mypy --strict \
@@ -99,7 +101,8 @@ uv run --with mypy --with types-PyYAML mypy --strict \
   auto_bi/advisor/findings.py auto_bi/advisor/clickhouse.py auto_bi/advisor/core.py \
   auto_bi/advisor/explain.py auto_bi/advisor/greenplum.py \
   auto_bi/introspect/clickhouse.py auto_bi/introspect/greenplum.py \
-  auto_bi/eval/cases.py auto_bi/eval/runner.py
+  auto_bi/eval/cases.py auto_bi/eval/runner.py \
+  auto_bi/agent/sqlgen.py auto_bi/agent/insights.py
 ```
 
 Do **not** set `strict = true` as a global or per-module override in `pyproject`
@@ -121,4 +124,5 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
   + `advisor/findings` + `advisor/clickhouse` + `advisor/core` + `advisor/explain`
   + `advisor/greenplum`
   + `introspect/clickhouse` + `introspect/greenplum`
-  + `eval/cases` + `eval/runner`.
+  + `eval/cases` + `eval/runner`
+  + `agent/sqlgen` + `agent/insights`.
