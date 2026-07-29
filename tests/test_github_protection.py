@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "apply_github_protection.py"
+
+# Safe CI fingerprints only — no broad commit/path history suppression.
+_GITLEAKS_SAFE_FINGERPRINTS = frozenset(
+    {
+        "39bb6fae46711defa4e8f8f0c73708907e458f06:tests/test_prompt_data.py:generic-api-key:31",
+        "3845cb9dc52ba3da5bde4b51513cb734febdf05d:tests/test_safe_error.py:generic-api-key:45",
+        "d8056cde7a0f7b632dfd8a098a33317312e630e4:tests/test_deployment_profile.py:generic-api-key:152",
+        "d8056cde7a0f7b632dfd8a098a33317312e630e4:tests/test_deployment_profile.py:generic-api-key:153",
+    }
+)
 
 
 def _load_required_checks() -> list[str]:
@@ -124,3 +135,71 @@ def test_scaffolding_files_exist() -> None:
 def test_codeowners_mentions_maintainer() -> None:
     text = (REPO / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
     assert "@brownjuly2003-code" in text
+
+
+def test_gitleaks_ignore_is_exact_safe_fingerprints_only() -> None:
+    """Pin .gitleaksignore to four safe fingerprints; block broad TOML suppression."""
+    ignore_path = REPO / ".gitleaksignore"
+    assert ignore_path.is_file(), "root .gitleaksignore must exist"
+
+    active: set[str] = set()
+    for raw in ignore_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        active.add(line)
+    assert active == _GITLEAKS_SAFE_FINGERPRINTS, (
+        f".gitleaksignore active lines must be exactly the four safe CI fingerprints; "
+        f"got {sorted(active)}"
+    )
+
+    config_path = REPO / ".gitleaks.toml"
+    assert config_path.is_file(), ".gitleaks.toml must exist for allowlist policy checks"
+    with config_path.open("rb") as fh:
+        config = tomllib.load(fh)
+
+    disabled_rules = (config.get("extend") or {}).get("disabledRules") or []
+    assert (
+        "generic-api-key" not in disabled_rules
+    ), "generic-api-key must not be disabled through extend.disabledRules"
+
+    def _allowlist_entries(node: object) -> list[dict]:
+        if isinstance(node, dict):
+            return [node]
+        if isinstance(node, list):
+            return [e for e in node if isinstance(e, dict)]
+        return []
+
+    # Reject any commits entry in global allowlists (broad commit/path history suppression).
+    for key in ("allowlist", "allowlists"):
+        for entry in _allowlist_entries(config.get(key)):
+            assert (
+                "commits" not in entry
+            ), "global gitleaks allowlist must not contain commits entries"
+            rule_ids = entry.get("ruleIds") or entry.get("rules") or entry.get("ids") or []
+            if isinstance(rule_ids, str):
+                rule_ids = [rule_ids]
+            assert (
+                "generic-api-key" not in rule_ids
+            ), "global allowlist must not disable generic-api-key by rule id"
+
+    # Reject disabling generic-api-key via rules table.
+    rules = config.get("rules") or []
+    if isinstance(rules, list):
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            if str(rule.get("id", "")) == "generic-api-key":
+                assert (
+                    rule.get("disabled") is not True
+                ), "generic-api-key must not be disabled in .gitleaks.toml"
+
+    workflow = (REPO / ".github" / "workflows" / "gitleaks.yml").read_text(encoding="utf-8")
+    assert ".gitleaksignore" in workflow, (
+        "gitleaks.yml must explicitly mention .gitleaksignore so policy does not "
+        "falsely claim TOML is the only suppression mechanism"
+    )
+    lower = workflow.lower()
+    assert "fingerprint" in lower or "exact" in lower, (
+        "gitleaks.yml must mention exact/fingerprint suppression " "(not TOML-only allowlists)"
+    )

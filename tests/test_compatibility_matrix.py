@@ -10,6 +10,7 @@ The offline suite cannot stand up Greenplum or DataLens, but it can:
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -142,3 +143,61 @@ def test_release_gated_claims_have_ci_anchors() -> None:
         anchor = anchors.get(row["claim"])
         assert anchor is not None, f"missing anchor map for {row['claim']}"
         assert anchor in CI, f"CI missing anchor {anchor!r} for claim {row['claim']}"
+
+
+def _normalize_dist_name(name: str) -> str:
+    """PEP 503-ish normalize: lowercase, collapse [-_.] to hyphen."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _requirement_name(req: str) -> str:
+    """Extract distribution name from a PEP 508 requirement string."""
+    return re.split(r"[<>=!~;(\[]", req, maxsplit=1)[0].strip()
+
+
+def test_pyyaml_declared_floor_and_lowest_direct_gate() -> None:
+    """Ratchet PyYAML floor in pyproject + uv.lock metadata; keep lowest-direct CI gate.
+
+    Does not assert the resolved installed PyYAML package version — only the
+    declared specifier floor, lock requires-dist metadata, and CI gate command.
+    """
+    with (REPO / "pyproject.toml").open("rb") as fh:
+        pyproject = tomllib.load(fh)
+
+    deps = list(pyproject.get("project", {}).get("dependencies") or [])
+    pyyaml_deps = [
+        d for d in deps if _normalize_dist_name(_requirement_name(str(d))).startswith("pyyaml")
+    ]
+    assert pyyaml_deps == ["pyyaml>=6.0.1"], (
+        "sole project dependency whose normalized name starts with 'pyyaml' "
+        f"must be exactly 'pyyaml>=6.0.1'; got {pyyaml_deps!r}"
+    )
+
+    with (REPO / "uv.lock").open("rb") as fh:
+        lock = tomllib.load(fh)
+
+    packages = lock.get("package") or []
+    if isinstance(packages, dict):
+        packages = [packages]
+    autobi = next(
+        (p for p in packages if isinstance(p, dict) and p.get("name") == "autobi-agent"),
+        None,
+    )
+    assert autobi is not None, "uv.lock must contain package name 'autobi-agent'"
+
+    requires = (autobi.get("metadata") or {}).get("requires-dist") or []
+    pyyaml_reqs = [
+        r
+        for r in requires
+        if isinstance(r, dict) and _normalize_dist_name(str(r.get("name", ""))).startswith("pyyaml")
+    ]
+    assert len(pyyaml_reqs) == 1, (
+        f"autobi-agent metadata.requires-dist must have exactly one pyyaml entry; "
+        f"got {pyyaml_reqs!r}"
+    )
+    assert pyyaml_reqs[0].get("specifier") == ">=6.0.1", (
+        "autobi-agent pyyaml requires-dist specifier must be exactly '>=6.0.1'; "
+        f"got {pyyaml_reqs[0].get('specifier')!r}"
+    )
+
+    assert "uv sync --no-dev --resolution lowest-direct" in CI
