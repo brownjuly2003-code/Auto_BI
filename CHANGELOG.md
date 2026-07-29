@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict Store boundary** —
+  `auto_bi/store/db.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  durable session/build/artifact persistence теперь проверяется с
+  `mypy --strict`.
+
 - **plan_sol шаг 12 residual: mypy-strict pipeline boundary** —
   `auto_bi/agent/pipeline.py` добавлен в строгий CI allowlist на Python 3.12 и
   3.13; compile/build и ownership-cleanup orchestration теперь проверяются с
