@@ -40,8 +40,8 @@ No paid LLM, no Docker, no DWH in these probes. Local timings may be written to
 
 CI installs `mutmut==3.6.0` and mutates only
 `auto_bi/agent/sql_guard.py`. The bounded run uses
-`tests/test_property_quality.py`, `tests/test_query_plan.py`, and
-`tests/test_mutation_gate.py`; the evidence run killed all 106 generated mutants.
+`tests/test_property_quality.py`, `tests/test_x5_raw_sql.py`, and
+`tests/test_query_plan.py`; the evidence run killed all 106 generated mutants.
 `scripts/check_mutation_stats.py` rejects surviving, uncovered, skipped,
 suspicious, timed-out, and crashed mutants.
 

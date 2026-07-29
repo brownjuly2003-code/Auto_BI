@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tomllib
@@ -54,6 +55,21 @@ def test_mutmut_scope_is_pinned_and_bounded() -> None:
         "tests/test_query_plan.py",
     ]
     assert mutmut["also_copy"] == ["semantic/"]
+
+
+def test_slo_mutation_smoke_test_selection_matches_mutmut_config() -> None:
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    expected = config["tool"]["mutmut"]["pytest_add_cli_args_test_selection"]
+
+    slo = (ROOT / "docs" / "operations" / "SLO.md").read_text(encoding="utf-8")
+    match = re.search(
+        r"^## Mutation smoke\n(.*?)(?=^## |\Z)",
+        slo,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None
+    documented = re.findall(r"`(tests/test_[^`]+\.py)`", match.group(1))
+    assert documented == expected
 
 
 def test_primary_quality_job_runs_pinned_mutation_gate() -> None:
