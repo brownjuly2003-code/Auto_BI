@@ -12,9 +12,11 @@
 **Версия пакета:** см. `auto_bi.__version__` / `pyproject.toml` (ratchet в
 `tests/test_docs_defaults.py`).
 
-**Режим:** closure candidate; закрываемый scope и финальная судьба residual
-зафиксированы в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). Полное закрытие требует
-внешних publish/release/deploy evidence gates из этого документа.
+**Режим:** closure candidate (не fully closed). Software release **v0.5.0**
+complete на exact `main`/tag SHA
+`e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`. Закрываемый scope и residual —
+[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). Полное закрытие ждёт mandatory
+external gate: public HF demo sync to closing SHA or decommission.
 
 ## Продукт
 
@@ -24,9 +26,9 @@
 | ClickHouse + Superset | **v1 release-gated** | CI quality + integration |
 | Greenplum advisor + golden | **offline contract in CI** | advisor GP + golden GP replay |
 | Greenplum live DWH | experimental | operator stand |
-| DataLens compile path | offline unit | contract suite |
-| DataLens live stand | **experimental** (Mac-only) | not default release gate |
-| Public HF demo | live Space | auto-only default; assert_demo_profile |
+| DataLens compile path | offline contracts **passed** | contract suite |
+| DataLens live stand | **experimental** / unavailable (Mac-only stand absent) | not default release gate |
+| Public HF demo | **out of sync** | health reports `0.4.0`, `demo_auto_only=false`, no capabilities; live assertion fails; v0.5.0 publish dry-run OK; sync blocked (no local `HF_TOKEN`, no repo HF secret/workflow). Gate: sync to closing SHA or decommission |
 
 ## Безопасность и runtime (plan_sol 1–4)
 
@@ -37,9 +39,22 @@
 
 ## Governance / release (plan_sol 5–6)
 
-- GitHub main + `v*` tag rulesets **active**; Dependabot security updates on.
-- Release workflow: build → Trivy → image SBOM → push `:version` → attest;
-  `:latest` + GH Release only in `finalize`. Residual: evidence on next live `v*` tag.
+- GitHub `main` + `v*` tag rulesets **active without bypass**; Dependabot open
+  queue empty after sequential disposition.
+- **v0.5.0 external evidence (complete):**
+  - post-merge CI, CodeQL, Gitleaks, Demo image — passed on closing SHA
+    `e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`;
+  - protected annotated tag `v0.5.0`;
+  - release run
+    [30488281836](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30488281836)
+    passed preflight, PyPI trusted publish, Trivy-before-push, source/image SBOM,
+    Python/image provenance, latest promotion, GitHub Release, release status gate;
+  - public release
+    [v0.5.0](https://github.com/brownjuly2003-code/Auto_BI/releases/tag/v0.5.0);
+  - PyPI `autobi-agent` 0.5.0 wheel + sdist;
+  - GHCR `0.5.0` and `latest` share digest
+    `sha256:bff75bcef9d894e86c2be63a584284c02c2b2546425ac11a15e83ad83e4e84f1`;
+  - live Superset/browser integration passed.
 - Demo install uses `uv.lock` (`uv sync --frozen`).
 
 ## Архитектурные контракты (plan_sol 7–8)
@@ -63,7 +78,7 @@
 
 CI: Python 3.12 primary quality, 3.13 latest, Windows CLI smoke, dependency-resolution
 matrix, offline browser E2E (text / failed-build retry / SSE late-connect / reload
-resume / **fields DnD seed**). Residual: live GHA after merge PR path.
+resume / **fields DnD seed**). Post-merge CI on v0.5.0 closing SHA passed.
 
 ## Docs-as-code (plan_sol 11)
 
@@ -90,20 +105,27 @@ resume / **fields DnD seed**). Residual: live GHA after merge PR path.
 | Mypy package-wide strict | package-wide `mypy --strict auto_bi` in both supported CI jobs |
 | Ops doc | [operations/SLO.md](operations/SLO.md) |
 
-Residual step 12: live p50/p95 and process-memory/cold-start evidence.
+Residual step 12: closed on 2026-07-29. Descriptive CI samples (run
+[30481369602](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30481369602);
+**not** production SLO guarantees): p50 **2353.619 ms**, p95 **2359.740 ms**,
+container cold start **6341 ms**, PID1 RSS **89.594 MiB**, cgroup memory
+**74.93 MiB**.
 
 ## Re-audit (plan_sol 13 core offline)
 
 Evidence: [operations/REAUDIT_plan_sol_23_07_26.md](operations/REAUDIT_plan_sol_23_07_26.md).
 Offline score **8.8/10** (was 8.2). Finding R1 fixed (SafeError test fake vs `build(spec, ctx)`).
-Live Space / GHA / `v*` tag remain residual.
+GHA / protected `v0.5.0` tag / package-image publish evidence complete. Remaining
+external residual: public HF demo sync to closing SHA or decommission (not
+decommissioned; sync blocked by missing HF token/secret/workflow).
 
 ## Closure disposition
 
 Прежний open-ended residual больше не является активным backlog. Решения
-`closed` / `active closure work` / `budget-gated` и обязательные внешние
-closure gates перечислены в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). До
-прохождения внешних гейтов статус остаётся `closure candidate`, а не `closed`.
+`closed` / `budget-gated` и split completed vs remaining external gates —
+в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). Software release v0.5.0 complete;
+до mandatory HF gate статус остаётся `closure candidate`, а не `closed`.
+Paid live-LLM canary — budget-gated, **not run** (нет отдельного approved budget).
 
 ## Что не является source of truth
 
