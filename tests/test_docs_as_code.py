@@ -87,6 +87,19 @@ def test_env_example_covers_settings_keys() -> None:
     ), ".env.example missing Settings keys (add or comment them):\n  " + "\n  ".join(missing)
 
 
+def test_settings_fields_have_descriptions() -> None:
+    """Every Settings field needs a description so ENV_REFERENCE can avoid generic Notes."""
+    missing: list[str] = []
+    for name, field in Settings.model_fields.items():
+        desc = field.description
+        if desc is None or not str(desc).strip():
+            missing.append(name)
+    assert not missing, (
+        "Settings fields missing description (ENV_REFERENCE otherwise uses generic Notes):\n  "
+        + "\n  ".join(missing)
+    )
+
+
 def test_current_state_exists_and_is_linked() -> None:
     assert CURRENT_STATE.is_file()
     body = CURRENT_STATE.read_text(encoding="utf-8")
