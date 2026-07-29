@@ -65,6 +65,18 @@ body { display: flex; flex-direction: column; }
 .brand-sub { margin-left: 10px; color: var(--text-3); font-size: 13px; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
 
+/* plan_sol step 1: runtime capability status (demo auto-only / LLM not wired) */
+.capability-banner {
+  margin: 0 24px 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-dim);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.4;
+  border-left: 3px solid var(--info);
+}
+
 .bi-select { color: var(--text-2); font-size: 13px; }
 .bi-select select {
   margin-left: 6px;

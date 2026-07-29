@@ -27,7 +27,7 @@ def test_settings_defaults() -> None:
     settings = Settings(_env_file=None)
     assert settings.ch_port == 8123
     assert settings.gracekelly_model == "claude-sonnet-5"
-    assert settings.send_samples is True
+    assert settings.send_samples is False  # plan_sol step 2 / audit P0-2 safe default
 
 
 def test_cli_build_requires_semantic_model(tmp_path) -> None:

@@ -6,23 +6,48 @@ All collaborators are injected; the CLI wires real ones from settings.
 
 import logging
 from collections.abc import Callable
+from typing import Any
 
-from auto_bi.adapters.artifacts import new_build_namespace
-from auto_bi.adapters.base import BIAdapter, DashboardRef
+from auto_bi.adapters.artifacts import new_build_namespace, stable_build_token
+from auto_bi.adapters.base import (
+    BIAdapter,
+    BuildAttempt,
+    BuildContext,
+    BuildResult,
+    DashboardRef,
+)
 from auto_bi.adapters.factory import close_adapter
 from auto_bi.advisor.core import Advisor
 from auto_bi.advisor.narrate import ChartVerdict, worst_verdicts
+from auto_bi.agent.cleanup import (
+    _prune_superseded_artifacts,
+)
+from auto_bi.agent.cleanup import (
+    prune_artifact_rows as prune_artifact_rows,
+)
 from auto_bi.agent.dataset_plan import DatasetRole, plan_datasets, source_dataset_inputs
 from auto_bi.agent.normalize import apply_chart_defaults, apply_label_joins
 from auto_bi.agent.propose import SpecValidationError, propose_spec
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sql_guard import LiveSQLValidator
 from auto_bi.agent.sqlgen import generate_chart_sql, generate_source_sql
+from auto_bi.errors import CODE_BI_HEALTH, CODE_STORE, SafeError, store_error_text, to_safe_error
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
-from auto_bi.store import SHARED_BI_KINDS, Store
+from auto_bi.store import Store
+from auto_bi.store.db import (
+    ATTEMPT_ABORTED,
+    ATTEMPT_BUILDING,
+    ATTEMPT_CLEANED,
+    ATTEMPT_CLEANUP_REQUIRED,
+    ATTEMPT_PREPARED,
+    BUILD_DELIVERED_PENDING,
+    BUILD_OK,
+    SESSION_BUILT,
+    SESSION_BUILT_DEGRADED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +55,104 @@ logger = logging.getLogger(__name__)
 # partial-applied with settings+model). Injected as a resolver so the pipeline never names a
 # concrete adapter (Phase 4 F1) and tests can supply a fake.
 AdapterFor = Callable[[TargetBI], BIAdapter]
+
+
+def reconcile_interrupted_builds(
+    store: Store,
+    adapter_for: AdapterFor,
+    log: Callable[[str], None] = print,
+) -> list[dict[str, Any]]:
+    """Cleanup interrupted RR-4 attempts before the legacy stuck-build reaper.
+
+    PREPARED is non-destructive: BUILDING is committed before the first remote write,
+    so a PREPARED crash cannot own remote artifacts. BUILDING/CLEANUP_REQUIRED delegates
+    exact-token/name cleanup to the target adapter. Any provider/search failure keeps the
+    attempt nonterminal and therefore retry-blocking.
+    """
+    outcomes: list[dict[str, Any]] = []
+    for row in store.interrupted_build_attempts():
+        attempt_id = int(row["id"])
+        token = str(row["build_token"])
+        status = str(row["status"])
+        if status == ATTEMPT_PREPARED:
+            detail = "interrupted before remote build started"
+            store.finish_build_attempt_reconciliation(
+                attempt_id,
+                status=ATTEMPT_ABORTED,
+                error=detail,
+            )
+            outcomes.append(
+                {"attempt_id": attempt_id, "build_token": token, "status": ATTEMPT_ABORTED}
+            )
+            log(f"RECONCILE aborted prepared attempt {attempt_id} (no remote writes)")
+            continue
+
+        adapter: BIAdapter | None = None
+        try:
+            if status not in (ATTEMPT_BUILDING, ATTEMPT_CLEANUP_REQUIRED):
+                raise RuntimeError(f"unsupported build attempt status: {status}")
+            if not row.get("snapshot_valid"):
+                raise ValueError("build attempt spec snapshot fingerprint mismatch")
+            raw_spec = row.get("spec_json")
+            if not isinstance(raw_spec, dict):
+                raise ValueError("build attempt spec snapshot is not an object")
+            spec = DashboardSpec.model_validate(raw_spec)
+            target = TargetBI(str(row["target_bi"]))
+            spec_id_value = row.get("spec_id")
+            attempt = BuildAttempt(
+                build_token=token,
+                session_id=str(row["session_id"]),
+                spec_id=int(spec_id_value) if spec_id_value is not None else None,
+                owner=str(row["owner"]) if row.get("owner") is not None else None,
+                spec=spec,
+            )
+            adapter = adapter_for(target)
+            result = adapter.reconcile_build_attempt(attempt)
+            detail = (
+                f"interrupted build reconciled: deleted "
+                f"{result.deleted}/{result.discovered} owned artifact(s)"
+            )
+            store.finish_build_attempt_reconciliation(
+                attempt_id,
+                status=ATTEMPT_CLEANED,
+                error=detail,
+            )
+            outcomes.append(
+                {
+                    "attempt_id": attempt_id,
+                    "build_token": token,
+                    "status": ATTEMPT_CLEANED,
+                    "discovered": result.discovered,
+                    "deleted": result.deleted,
+                }
+            )
+            log(f"RECONCILE cleaned interrupted attempt {attempt_id}: {result.deleted} deleted")
+        except Exception as exc:
+            detail = store_error_text(exc)
+            store.finish_build_attempt_reconciliation(
+                attempt_id,
+                status=ATTEMPT_CLEANUP_REQUIRED,
+                error=detail,
+            )
+            outcomes.append(
+                {
+                    "attempt_id": attempt_id,
+                    "build_token": token,
+                    "status": ATTEMPT_CLEANUP_REQUIRED,
+                }
+            )
+            logger.warning(
+                "build attempt %s still requires cleanup: %s",
+                attempt_id,
+                detail,
+            )
+        finally:
+            if adapter is not None:
+                try:
+                    close_adapter(adapter)
+                except Exception:
+                    logger.debug("BI adapter close failed during reconciliation", exc_info=True)
+    return outcomes
 
 
 def review_and_log(
@@ -68,7 +191,7 @@ def build_dashboard(
     adapter_for: AdapterFor,
     log: Callable[[str], None] = print,
     *,
-    include_samples: bool = True,
+    include_samples: bool = False,
     store: Store | None = None,
     session_id: str | None = None,
     target_bi: TargetBI | None = None,
@@ -111,7 +234,7 @@ def build_dashboard(
 
 
 def compile_and_build(
-    spec,
+    spec: DashboardSpec,
     model: SemanticModel,
     sql_validator: LiveSQLValidator,
     adapter_for: AdapterFor,
@@ -126,12 +249,18 @@ def compile_and_build(
     """SQL_GEN -> VALIDATE -> BUILD for an already-produced spec (chat APPROVE path).
 
     The whole sequence below runs under one try/except (B-7): a session is marked
-    'building' before it starts, and ANY exception — spec validation, SQL guard,
-    adapter healthcheck, or the build call itself — records a 'failed' build row and
-    flips the session to 'failed'. Previously only `adapter.build()` failures were
-    recorded, so a SpecValidationError or a healthcheck failure vanished without a
-    trace. A process killed mid-build (SIGKILL/OOM) still leaves the session stuck at
-    'building' — `Store.reap_stuck_builds()` cleans those up on the next server start.
+    'building' before it starts, and ANY exception BEFORE adapter.build returns —
+    spec validation, SQL guard, adapter healthcheck, or the build call itself —
+    records a 'failed' build row and flips the session to 'failed' (atomic
+    `commit_build_failure`). After adapter.build returns a DashboardRef, the
+    dashboard is treated as delivered: build row + session + ownership ledger are
+    written in ONE SQLite transaction (`commit_build_success`, plan_sol step 8 /
+    audit P1-2). A ledger commit failure MUST NOT mark the build failed (UI split-
+    brain: BI has the dashboard, Store would say failed) — we fall back to
+    `delivered_pending` + `built_with_cleanup_degraded` and still return the ref.
+    Before the first remote mutation, RR-4 persists the exact spec/token attempt and
+    commits it as BUILDING. A process killed mid-build is therefore reconciled by the
+    target adapter on startup before the legacy pre-v9 stuck-session reaper runs.
 
     `plans` (D-2 §3) carries the advisor's EXPLAIN evidence from a review that ran in the
     same call, letting the guard skip a re-plan of a statement it would plan identically.
@@ -142,12 +271,65 @@ def compile_and_build(
     """
     if plans is None:
         plans = PlanCache()
+
+    # plan_sol step 8 residual: durable (session, spec_row) → stable token so a retry of
+    # the same approve (or re-approve after delivered_pending) does not create a second
+    # BI dashboard. Implicit fallback may use only the latest *approved* durable row —
+    # a later proposed word-edit must not hijack an in-flight approve build's token.
+    # Without an approved revision, fall back to a random namespace so intentional
+    # multi-build tests / CLI one-shots still get distinct revisions.
+    resolved_spec_id = spec_id
+    if resolved_spec_id is None and store is not None and session_id is not None:
+        approved = [s for s in store.specs(session_id) if s.get("status") == "approved"]
+        if approved:
+            resolved_spec_id = int(approved[-1]["id"])
+    build_token = (
+        stable_build_token(session_id, resolved_spec_id)
+        if session_id is not None and resolved_spec_id is not None
+        else ""
+    )
+    if store is not None and session_id is not None and build_token:
+        existing = store.build_by_token(build_token)
+        if existing is not None and existing.get("status") in (
+            BUILD_OK,
+            BUILD_DELIVERED_PENDING,
+        ):
+            log(
+                f"BUILD idempotent: reusing delivered dashboard for token "
+                f"{build_token} (no second BI create)"
+            )
+            if existing.get("status") == BUILD_DELIVERED_PENDING:
+                store.set_session_status(session_id, SESSION_BUILT_DEGRADED)
+            else:
+                store.set_session_status(session_id, SESSION_BUILT)
+            dash_id = existing.get("dashboard_id")
+            return DashboardRef(
+                id=dash_id if dash_id is not None else 0,
+                title=spec.title,
+                url=existing.get("url") or "",
+            )
+
+    if store is not None and session_id is not None:
+        active_attempt = store.active_build_attempt(session_id)
+        if active_attempt is not None:
+            raise SafeError(
+                CODE_STORE,
+                "Previous build cleanup is still required",
+                retryable=False,
+                internal_detail=(
+                    f"session {session_id} has active build attempt "
+                    f"{active_attempt.get('id')} status={active_attempt.get('status')}"
+                ),
+            )
+
     if store is not None and session_id is not None:
         store.set_session_status(session_id, "building")
     # D-2 lifecycle: the adapter (and its HTTP pool) is created per build, so it must be
     # released on EVERY exit — after the ledger/prune on success, and on any failure. The
     # outer finally is the single release point.
     adapter: BIAdapter | None = None
+    attempt_id: int | None = None
+    attempt_started = False
     try:
         try:
             # deterministic dashboard-adequacy normalization, before SQL_GEN + adapter so BOTH
@@ -217,38 +399,82 @@ def compile_and_build(
             adapter = adapter_for(spec.target_bi)
             health = adapter.healthcheck()
             if not health.ok:
-                raise RuntimeError(f"{spec.target_bi.value} healthcheck failed: {health.message}")
+                # SafeError: health.message may echo provider/network detail — keep it
+                # internal; public channels get a stable code (plan_sol step 3).
+                raise SafeError(
+                    CODE_BI_HEALTH,
+                    internal_detail=f"{spec.target_bi.value} healthcheck failed: {health.message}",
+                    retryable=True,
+                    provider_class=type(adapter).__name__,
+                )
 
-            # P0-2: pin technical BI artifact names to this build/session so two independent
-            # sessions with the same title/chart ids never share or overwrite datasets. The same
-            # namespace is the build's `build_token` = its revision id in the ownership ledger
-            # (P0-2 criterion 4). Optional helper on concrete adapters (Protocol unchanged — S4).
-            build_token = new_build_namespace(session_id)
-            set_ns = getattr(adapter, "set_artifact_namespace", None)
-            if callable(set_ns):
-                set_ns(build_token)
-            # D-2 §5: hand the build-local trial store to the concrete adapter so OWN
-            # magnitude can reuse complete LIMIT-trial rows. Optional helper (Protocol
-            # unchanged), same pattern as set_artifact_namespace.
-            set_plans = getattr(adapter, "set_query_plans", None)
-            if callable(set_plans):
-                set_plans(plans)
-
-            ref = adapter.build(spec)
+            # P0-2 + plan_sol step 7/8: namespace isolation via BuildContext.
+            # Stable token when (session, spec_row) known; else random per attempt.
+            if not build_token:
+                build_token = new_build_namespace(session_id)
+            owner: str | None = None
+            if store is not None and session_id is not None:
+                session_row = store.session_row(session_id)
+                owner = session_row.get("owner") if session_row else None
+            ctx = BuildContext(
+                namespace=build_token,
+                plans=plans,
+                session_id=session_id,
+                owner=owner,
+            )
+            if store is not None and session_id is not None:
+                attempt_id = store.prepare_build_attempt(
+                    session_id,
+                    resolved_spec_id if resolved_spec_id is not None else spec_id,
+                    build_token=build_token,
+                    target_bi=spec.target_bi.value,
+                    owner=owner,
+                    spec_json=spec.model_dump(mode="json"),
+                )
+                # Hard invariant: this transaction commits before adapter.build can make
+                # its first remote create/update call.
+                store.start_build_attempt(attempt_id)
+                attempt_started = True
+            result: BuildResult = adapter.build(spec, ctx)
+            ref = result.dashboard
         except Exception as exc:
             if store is not None and session_id is not None:
-                store.save_build(session_id, spec_id, status="failed", error=str(exc))
-                store.set_session_status(session_id, "failed")
-            raise
+                # Durable row must never hold raw provider bodies / DSN / tokens.
+                # Atomic with session status (plan_sol step 8) so a crash mid-write
+                # cannot leave session=building with a half-failed build row.
+                if not build_token:
+                    build_token = new_build_namespace(session_id)
+                store.commit_build_failure(
+                    session_id,
+                    resolved_spec_id if resolved_spec_id is not None else spec_id,
+                    error=store_error_text(exc),
+                    build_token=build_token,
+                    attempt_id=attempt_id if attempt_started else None,
+                )
+            # Re-raise as SafeError so API/SSE see the public face; preserve original chain.
+            if isinstance(exc, SafeError):
+                raise
+            raise to_safe_error(exc) from exc
         log(f"BUILD done: {ref.title} -> {ref.url}")
         if store is not None and session_id is not None:
-            store.save_build(session_id, spec_id, dashboard_id=ref.id, url=ref.url, status="ok")
-            store.set_session_status(session_id, "built")
-            # ownership ledger (P0-2 criterion 4): build_token/adapter are in scope here —
-            # reaching this point means adapter.build(spec) returned without raising
-            _record_bi_artifacts(store, session_id, spec, adapter, build_token)
-            if prune_orphans:
-                _prune_superseded_artifacts(store, session_id, build_token, adapter, log)
+            # plan_sol step 8: after BI delivery, never report failed. Atomic commit of
+            # build + session + ledger; on failure record delivered_pending and return ref.
+            _commit_delivery(
+                store,
+                session_id,
+                resolved_spec_id if resolved_spec_id is not None else spec_id,
+                spec,
+                result,
+                build_token,
+                attempt_id,
+            )
+            if prune_orphans and adapter is not None:
+                pruned_ok = _prune_superseded_artifacts(
+                    store, session_id, build_token, adapter, log
+                )
+                if not pruned_ok:
+                    # Dashboard + ledger are fine; only prior-revision cleanup degraded.
+                    store.set_session_status(session_id, SESSION_BUILT_DEGRADED)
         return ref
     finally:
         if adapter is not None:
@@ -260,121 +486,67 @@ def compile_and_build(
                 logger.debug("BI adapter close failed", exc_info=True)
 
 
-def _record_bi_artifacts(
+def _commit_delivery(
     store: Store,
     session_id: str,
+    spec_id: int | None,
     spec: DashboardSpec,
-    adapter: BIAdapter,
+    result: BuildResult,
     build_token: str,
+    attempt_id: int | None,
 ) -> None:
-    """Ownership ledger (audit P0-2 criterion 4): after a successful build, drain the BI
-    artifacts the adapter created and record them in `Store.bi_artifacts` keyed on
-    session/owner/build_token, so a future ownership-based orphan cleanup can select prior
-    revisions' OWNED artifacts by id — NEVER by name (two dashboards may share a title).
+    """Persist delivery after adapter.build: atomic success, or delivered_pending fallback.
 
-    `drain_build_artifacts` is a concrete adapter helper, not a BIAdapter Protocol method
-    (like `set_artifact_namespace`); a bare-protocol adapter lacks it, in which case nothing is
-    recorded. `owner` is the session's persisted owner (NULL when auth is off); `schema_set`
-    per dataset/chart comes from the chart query's table (RBAC scoping).
-
-    Live-cleanup IS wired (2026-07-18): right after this record, `compile_and_build` calls
-    `_prune_superseded_artifacts`, which deletes THIS session's prior-revision orphans that
-    `Store.orphan_bi_artifacts` selects — by native id via a concrete adapter `delete_artifact`,
-    then `Store.mark_bi_artifacts_superseded` — and never fails the build. The operator path for
-    superseded revisions is `auto_bi prune` (selection `Store.stale_bi_artifacts`).
+    Never raises to the caller — BI already has the dashboard. A raised exception here
+    would be turned into UI `failed` by the API build thread (the split-brain P1-2).
     """
-    drain = getattr(adapter, "drain_build_artifacts", None)
-    if not callable(drain):
-        return
+    ref = result.dashboard
     session = store.session_row(session_id)
     owner = session.get("owner") if session else None
-    target_bi = spec.target_bi.value
-    for art in drain():
-        store.record_bi_artifact(
-            session_id=session_id,
-            build_token=build_token,
-            target_bi=target_bi,
-            kind=art.kind,
-            native_id=art.native_id,
-            name=art.name,
-            owner=owner,
-            schema_set=art.schema_set,
-        )
-
-
-# Ownership live-cleanup delete order, proven live on the stand (2026-07-18): charts first,
-# then the dashboard, then datasets — a dataset is never deleted while a chart still reads it.
-_PRUNE_ORDER = {"chart": 0, "dashboard": 1, "dataset": 2}
-
-
-def prune_artifact_rows(
-    store: Store,
-    rows: list[dict],
-    delete: Callable[[str, str], None],
-    log: Callable[[str], None] = print,
-) -> tuple[int, int]:
-    """Feed ledger rows into a BI delete-by-id callable, superseding the removed ones.
-
-    The shared deletion engine of both prune paths (auto-prune on rebuild and the operator
-    `auto_bi prune`); `delete` is a concrete adapter's `delete_artifact`. Shared kinds are
-    skipped defensively even though both selections already exclude them in SQL. A per-row
-    failure keeps that row 'live' — it is re-selected and retried by a later prune — and
-    never propagates. Returns (removed, failed).
-    """
-    removed: list[int] = []
-    failed = 0
-    for row in sorted(rows, key=lambda r: _PRUNE_ORDER.get(r["kind"], 99)):
-        if row["kind"] in SHARED_BI_KINDS:
-            continue
-        try:
-            delete(row["kind"], str(row["native_id"]))
-        except Exception as exc:
-            failed += 1
-            log(f"prune: {row['kind']} {row['native_id']} не удалён ({exc}) — остаётся в леджере")
-            continue
-        removed.append(row["id"])
-    if removed:
-        store.mark_bi_artifacts_superseded(removed)
-    return len(removed), failed
-
-
-def _prune_superseded_artifacts(
-    store: Store,
-    session_id: str,
-    current_build_token: str,
-    adapter: BIAdapter,
-    log: Callable[[str], None],
-) -> None:
-    """Auto-prune on rebuild: delete THIS session's prior-revision BI artifacts by id.
-
-    Runs after a successful build + ledger record, so the freshly delivered dashboard is
-    never touched (its rows carry `current_build_token`). Selection is `orphan_bi_artifacts`
-    — ownership-keyed (session/owner/build_token, never name/title), shared kinds excluded
-    in SQL. `delete_artifact` is a concrete adapter helper; a bare-protocol adapter lacks it
-    and the prune is a no-op. NEVER fails the build: the dashboard is already delivered, so
-    any error here is logged and the leftover rows stay 'live' for a later prune.
-    Kill-switch: AUTO_BI_PRUNE_ON_REBUILD=false (wired via the `prune_orphans` parameter).
-
-    INVARIANT (builds of ONE session are serial): `orphan_bi_artifacts` selects every ledger
-    row of the session whose token differs from `current_build_token` — a CONCURRENT build of
-    the same session that already recorded its ledger rows would be deleted here as a "prior
-    revision". Today this is unreachable (the API rejects a second build of a running session
-    with 409, the CLI creates a fresh session per run), but a future parallel executor MUST
-    keep per-session builds serial or rework this selection (see ARCHITECTURE §3.17).
-    """
-    delete = getattr(adapter, "delete_artifact", None)
-    if not callable(delete):
-        return
+    arts = [
+        {
+            "kind": art.kind,
+            "native_id": art.native_id,
+            "name": art.name,
+            "schema_set": art.schema_set,
+        }
+        for art in result.artifacts
+    ]
     try:
-        session = store.session_row(session_id)
-        owner = session.get("owner") if session else None
-        orphans = store.orphan_bi_artifacts(session_id, current_build_token, owner=owner)
-        if not orphans:
-            return
-        removed, failed = prune_artifact_rows(store, orphans, delete, log)
-        line = f"prune: удалены артефакты прошлых сборок сессии: {removed}"
-        if failed:
-            line += f" (не удалось: {failed}, будут повторены следующим прунингом)"
-        log(line)
-    except Exception as exc:  # the build itself already succeeded — never re-raise
-        log(f"prune: пропущен ({exc})")
+        store.commit_build_success(
+            session_id,
+            spec_id,
+            dashboard_id=ref.id,
+            url=ref.url,
+            build_token=build_token,
+            target_bi=spec.target_bi.value,
+            owner=owner,
+            artifacts=arts,
+            session_status=SESSION_BUILT,
+            attempt_id=attempt_id,
+        )
+    except Exception as exc:
+        logger.exception(
+            "atomic build+ledger commit failed for session %s token %s; "
+            "recording delivered_pending (dashboard already in BI)",
+            session_id,
+            build_token,
+        )
+        try:
+            store.commit_build_delivered_pending(
+                session_id,
+                spec_id,
+                dashboard_id=ref.id,
+                url=ref.url,
+                build_token=build_token,
+                error=store_error_text(exc),
+                attempt_id=attempt_id,
+            )
+        except Exception:
+            logger.exception(
+                "could not record delivered_pending for session %s; "
+                "BI dashboard %s at %s has no durable row",
+                session_id,
+                ref.id,
+                ref.url,
+            )

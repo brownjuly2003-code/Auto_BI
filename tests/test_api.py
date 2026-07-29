@@ -84,6 +84,14 @@ def test_health(demo_model) -> None:
         "auth": False,
         "version": __version__,
         "demo_auto_only": False,
+        "capabilities": {
+            "auto_overview": True,
+            "text_session": True,
+            "fields_session": True,
+            "word_edit": True,
+            "enrichment": False,
+            "llm_wired": True,
+        },
     }
     # L-3: the OpenAPI/docs page reports the package version, not a hardcoded drifting one
     assert client.get("/openapi.json").json()["info"]["version"] == __version__
@@ -120,6 +128,8 @@ def test_word_edit_patches_spec(demo_model) -> None:
 
 
 def test_failed_edit_keeps_session_and_spec(demo_model) -> None:
+    from auto_bi.errors import CODE_LLM, PUBLIC_MESSAGES
+
     client = make_client(
         FlakyLLM([CLEAR_REPORT, GOOD_SPEC, LLMError("GraceKelly down")]), demo_model
     )
@@ -127,7 +137,10 @@ def test_failed_edit_keeps_session_and_spec(demo_model) -> None:
     response = client.post(f"/api/v1/sessions/{sid}/reply", json={"text": "правка"})
     assert response.status_code == 200  # not a protocol error: session survives
     turn = response.json()
-    assert "GraceKelly down" in turn["error"]
+    # Public SafeError face only — raw provider text stays in logs (plan_sol step 3).
+    assert PUBLIC_MESSAGES[CODE_LLM] in turn["error"]
+    assert "ref=" in turn["error"]
+    assert "GraceKelly down" not in turn["error"]
     assert turn["phase"] == "approve"
     assert turn["spec"]["title"] == "Продажи"  # previous valid spec intact
 
@@ -241,6 +254,8 @@ def test_observability_requires_store(demo_model) -> None:
 
 
 def test_failed_build_reports_error_event(demo_model) -> None:
+    from auto_bi.errors import CODE_BI_HEALTH, PUBLIC_MESSAGES
+
     def broken_builder(spec, log, session_id):
         log("SQL ok (c1)")
         raise RuntimeError("Superset healthcheck failed")
@@ -250,7 +265,10 @@ def test_failed_build_reports_error_event(demo_model) -> None:
     assert client.post(f"/api/v1/sessions/{sid}/approve").status_code == 202
     events = collect_events(client, sid)
     assert events[-1]["kind"] == "error"
-    assert "healthcheck" in events[-1]["text"]
+    # SSE carries public SafeError face only (plan_sol step 3).
+    assert PUBLIC_MESSAGES[CODE_BI_HEALTH] in events[-1]["text"]
+    assert "ref=" in events[-1]["text"]
+    assert "Superset healthcheck failed" not in events[-1]["text"]
 
     deadline = time.monotonic() + 5  # build thread flips the status right before the event
     while client.get(f"/api/v1/sessions/{sid}").json()["build_status"] != "failed":
@@ -596,10 +614,17 @@ def test_iteration_rebuild_over_http(demo_model) -> None:
 
 def test_failed_start_returns_502_without_zombie_session(demo_model) -> None:
     # F2: LLMError during grounding must not register a half-born session
+    from auto_bi.errors import CODE_LLM, PUBLIC_MESSAGES
+
     client = make_client(FlakyLLM([LLMError("GraceKelly down")]), demo_model)
     response = client.post("/api/v1/sessions", json={"request": "выручка"})
     assert response.status_code == 502
-    assert "GraceKelly down" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == CODE_LLM
+    assert detail["message"] == PUBLIC_MESSAGES[CODE_LLM]
+    assert "correlation_id" in detail
+    assert "GraceKelly down" not in json.dumps(detail)
 
 
 def test_delete_session_frees_registry_keeps_store(demo_model, tmp_path) -> None:

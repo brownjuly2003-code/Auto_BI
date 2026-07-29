@@ -21,6 +21,20 @@ class ColumnRole(StrEnum):
     MEASURE = "measure"
 
 
+class DataClassification(StrEnum):
+    """Sensitivity class for the prompt data boundary (plan_sol step 2 / audit P0-2).
+
+    Samples (top-N values) leave the process only on explicit opt-in
+    (AUTO_BI_SEND_SAMPLES) and only for public/internal. confidential/restricted
+    never send DWH values. Unset fields default to internal at render time.
+    """
+
+    PUBLIC = "public"
+    INTERNAL = "internal"
+    CONFIDENTIAL = "confidential"
+    RESTRICTED = "restricted"
+
+
 class Aggregation(StrEnum):
     SUM = "sum"
     AVG = "avg"
@@ -60,6 +74,8 @@ class Column(StrictModel):
     # words still finds the column (X-3). NOT auto-introspected — vocabulary is a modeling
     # decision, like description.
     synonyms: list[str] = Field(default_factory=list)
+    # prompt data boundary (plan_sol step 2): None = inherit table / default internal
+    classification: DataClassification | None = None
 
 
 class Physical(StrictModel):
@@ -89,6 +105,8 @@ class Table(StrictModel):
     # alternate names for the whole mart ("удержание"/"retention" for dm.cohort_retention);
     # same contract as Column.synonyms — see there
     synonyms: list[str] = Field(default_factory=list)
+    # prompt data boundary (plan_sol step 2): None = default internal at render time
+    classification: DataClassification | None = None
 
     def column(self, name: str) -> Column | None:
         return next((c for c in self.columns if c.name == name), None)

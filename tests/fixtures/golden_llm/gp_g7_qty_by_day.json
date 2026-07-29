@@ -1,5 +1,10 @@
 {
   "case_id": "gp_g7_qty_by_day",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -27,7 +32,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "2c12a22198600612b5aac6ec47881d1c5c2640b889f58bd955a771fb9a63ba36"
     },
     {
       "step": "propose_spec",
@@ -252,7 +258,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "2b4326d005672aa6426e9ee6c8c564dafb9c3ec33708677f3fd46afe0cc546e2"
     }
   ]
 }

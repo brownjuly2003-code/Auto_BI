@@ -1,5 +1,8 @@
 """Shared fixtures: demo semantic model mirroring the docker demo-DM star."""
 
+from collections.abc import Iterator
+from pathlib import Path
+
 import pytest
 
 from auto_bi.semantic.model import (
@@ -11,6 +14,26 @@ from auto_bi.semantic.model import (
     SemanticModel,
     Table,
 )
+from auto_bi.store import Store
+
+
+@pytest.fixture(autouse=True)
+def _close_real_stores(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    # CPython 3.13: GC of unclosed sqlite3 connections emits ResourceWarning; with
+    # filterwarnings=error that becomes PytestUnraisableExceptionWarning. Tests own
+    # every real Store they construct — close them here so call sites stay unchanged.
+    stores: list[Store] = []
+    original_init = Store.__init__
+    original_close = Store.close
+
+    def tracking_init(self: Store, path: str | Path = "data/auto_bi.sqlite") -> None:
+        original_init(self, path)
+        stores.append(self)
+
+    monkeypatch.setattr(Store, "__init__", tracking_init)
+    yield
+    for store in reversed(stores):
+        original_close(store)
 
 
 @pytest.fixture

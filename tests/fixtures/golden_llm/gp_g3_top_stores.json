@@ -1,5 +1,10 @@
 {
   "case_id": "gp_g3_top_stores",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -27,7 +32,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "2c1a9bc298c427293e9a851c025eabbc36e39c298d6137d99eec38285164cbe3"
     },
     {
       "step": "propose_spec",
@@ -298,7 +304,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "51234dff393340ec2b645dd08e052f305a43de20fe4a07576e9f0f881640598e"
     }
   ]
 }

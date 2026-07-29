@@ -1,5 +1,10 @@
 {
   "case_id": "g19_lag3_pct",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -19,7 +24,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "5ba6f4596edef5741effbdf80b903a74a122b71bca7646b77956b28b075a2fcf"
     },
     {
       "step": "propose_spec",
@@ -206,7 +212,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "928ba1048a797e0b064ece1edc07d611df22b76b1d75bfaa7f11c3dc2dde97bc"
     }
   ]
 }

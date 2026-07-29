@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from typing import Any
 
 from auto_bi.config import Settings
 from auto_bi.introspect.base import RunQuery, rate_like
@@ -23,6 +24,7 @@ from auto_bi.semantic.model import (
     SemanticModel,
     Table,
 )
+from auto_bi.semantic.prompt_data import SAMPLE_MAX_COUNT, sanitize_samples
 
 _IDENT_RE = re.compile(r"^\w+$")
 _NUMERIC_PREFIXES = ("Int", "UInt", "Float", "Decimal")
@@ -30,7 +32,8 @@ _TIME_PREFIXES = ("Date", "DateTime", "DateTime64", "Date32")
 
 SAMPLE_LIMIT = 1_000_000  # profile big facts on a LIMIT-ed subquery, not a full scan
 TOP_VALUES_MAX_CARDINALITY = 50
-TOP_VALUES_LIMIT = 20
+# Fetch a few extra for empty/control-only drop after sanitize; store capped count.
+TOP_VALUES_LIMIT = SAMPLE_MAX_COUNT
 
 
 def _ident(name: str) -> str:
@@ -190,7 +193,9 @@ class ClickHouseIntrospector:
                 f"FROM {self._source(db, table, rows)} "
                 f"GROUP BY v ORDER BY cnt DESC LIMIT {TOP_VALUES_LIMIT}"
             )
-            col.top_values = [r["v"] for r in result if r["v"] is not None]
+            # Sanitize at capture so model.yaml never holds control chars / oversize values
+            # (prompt boundary still re-sanitizes on render).
+            col.top_values = sanitize_samples([str(r["v"]) for r in result if r["v"] is not None])
 
 
 def make_run_query(settings: Settings) -> RunQuery:
@@ -204,7 +209,7 @@ def make_run_query(settings: Settings) -> RunQuery:
         password=settings.ch_password,
     )
 
-    def run(sql: str) -> list[dict]:
+    def run(sql: str) -> list[dict[str, Any]]:
         return list(client.query(sql).named_results())
 
     return run

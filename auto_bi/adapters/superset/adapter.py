@@ -11,11 +11,16 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import Any
 from urllib.parse import urlparse
 
 from auto_bi.adapters.artifacts import BuildArtifact, dataset_table_name
 from auto_bi.adapters.base import (
     AdapterHealth,
+    BuildAttempt,
+    BuildContext,
+    BuildReconcileResult,
+    BuildResult,
     ChartRef,
     DashboardRef,
     DatabaseRef,
@@ -34,7 +39,12 @@ from auto_bi.adapters.superset.native_filters import (
     build_native_filter_configuration,
     participating_chart_ids,
 )
-from auto_bi.agent.dataset_plan import DatasetRole, plan_datasets, source_dataset_inputs
+from auto_bi.agent.dataset_plan import (
+    DatasetPlan,
+    DatasetRole,
+    plan_datasets,
+    source_dataset_inputs,
+)
 from auto_bi.agent.normalize import is_horizontal_bar
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sqlgen import generate_chart_sql, generate_source_sql
@@ -89,6 +99,25 @@ _DELETE_PATHS = {
     "dataset": "/api/v1/dataset/",
 }
 
+# Full attempt token embedded at create time. Human titles only narrow a list query;
+# this exact marker is the authority for chart/dashboard crash cleanup.
+_BUILD_TOKEN_KEY = "auto_bi_build_token"
+# Superset 4.1.2 strips unknown top-level json_metadata keys on save, so dashboard
+# ownership is an invisible CSS comment: /*auto_bi_bt:<utf-8-hex>*/ (not raw token).
+_BUILD_TOKEN_CSS_RE = re.compile(r"/\*auto_bi_bt:([0-9a-f]+)\*/")
+
+
+def _build_token_css_marker(namespace: str) -> str:
+    """Invisible ownership comment; hex so the raw namespace never enters CSS."""
+    return f"/*auto_bi_bt:{namespace.encode('utf-8').hex()}*/"
+
+
+def _dashboard_css(namespace: str) -> str:
+    """KPI_CENTER_CSS alone when namespace is empty; else append the ownership marker."""
+    if not namespace:
+        return KPI_CENTER_CSS
+    return f"{KPI_CENTER_CSS}{_build_token_css_marker(namespace)}"
+
 
 def _slug(text: str, max_len: int = 40) -> str:
     return re.sub(r"\W+", "_", text.lower()).strip("_")[:max_len] or "dataset"
@@ -141,29 +170,25 @@ class SupersetAdapter:
     # --- BIAdapter ----------------------------------------------------------
 
     def set_artifact_namespace(self, namespace: str) -> None:
-        """P0-2: pin this build's technical names to a session/build namespace.
+        """Deprecated: prefer `BuildContext.namespace` on `build(spec, ctx)`.
 
-        Not part of the BIAdapter Protocol (optional concrete helper); the pipeline
-        calls it when present so two sessions never share dataset table_names.
+        Kept for unit tests that stage namespace before a bare `build(spec)`.
         """
         self._artifact_namespace = (namespace or "").strip()
 
     def set_query_plans(self, plans: PlanCache | None) -> None:
-        """D-2 §5: hand the build-local PlanCache so OWN magnitude can reuse trial rows.
+        """Deprecated: prefer `BuildContext.plans` on `build(spec, ctx)`.
 
-        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace).
-        The pipeline calls it when present after SQL gating has filled the trial store.
-        Lifetime is one build; the adapter is created per build and closed in finally.
+        Kept for unit tests that stage PlanCache before a bare `build(spec)`.
         """
         self._query_plans = plans
 
     def drain_build_artifacts(self) -> list[BuildArtifact]:
-        """Return and clear the BI artifacts the last build() created (P0-2 criterion 4).
+        """Deprecated: prefer `BuildResult.artifacts` from `build()`.
 
-        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace):
-        the orchestrator (compile_and_build) drains after a successful build() and records the
-        rows in Store.bi_artifacts (the ownership ledger). Draining clears the buffer so a
-        reused adapter never double-reports. See docs/ARCHITECTURE §3.5 (artifact identity)."""
+        Kept for tests that drain after a partial path; a successful `build()` already
+        clears the buffer into BuildResult.
+        """
         drained = list(self._build_artifacts)
         self._build_artifacts = []
         return drained
@@ -171,10 +196,9 @@ class SupersetAdapter:
     def delete_artifact(self, kind: str, native_id: str) -> None:
         """Delete one owned BI entity by native id (ownership ledger live-cleanup).
 
-        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts).
-        Returns normally when the entity was deleted OR was already gone (404 — e.g. removed
-        by hand between builds); raises on any other failure so the caller keeps the ledger
-        row 'live' and retries on a later prune. Never accepts a shared kind.
+        Required BIAdapter method (plan_sol step 7). Returns normally when the entity was
+        deleted OR was already gone (404); raises on any other failure so the caller keeps
+        the ledger row 'live' and retries on a later prune. Never accepts a shared kind.
         """
         path = _DELETE_PATHS.get(kind)
         if path is None:
@@ -188,12 +212,152 @@ class SupersetAdapter:
             raise
         logger.info("superset %s %s deleted (live-cleanup)", kind, native_id)
 
-    def close(self) -> None:
-        """Release the client's HTTP pool (D-2 lifecycle: adapters are created per build).
+    def reconcile_build_attempt(self, attempt: BuildAttempt) -> BuildReconcileResult:
+        """Delete only artifacts provably owned by an interrupted attempt.
 
-        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts);
-        callers release through auto_bi.adapters.factory.close_adapter, which tolerates
-        adapters without it. The adapter is single-use after close."""
+        Charts require an exact full-token key in stored params JSON; dashboards require
+        a complete CSS hex marker. Datasets use exact attempt-namespaced technical names.
+        List searches paginate; an incomplete/provider-failed scan raises and leaves
+        Store CLEANUP_REQUIRED.
+        """
+        self._artifact_namespace = attempt.build_token.strip()
+        owned: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+
+        for title in {chart.title for chart in attempt.spec.charts}:
+            for item in self._list_exact(
+                "/api/v1/chart/",
+                column="slice_name",
+                value=title,
+            ):
+                native_id = str(item["id"])
+                try:
+                    detail = self._client.get(f"/api/v1/chart/{_int_id(native_id)}")
+                except SupersetAPIError as exc:
+                    if exc.status_code == 404:
+                        continue
+                    raise
+                if self._detail_has_build_token(detail, "params", attempt.build_token):
+                    key = ("chart", native_id)
+                    if key not in seen:
+                        seen.add(key)
+                        owned.append(key)
+
+        for item in self._list_exact(
+            "/api/v1/dashboard/",
+            column="dashboard_title",
+            value=attempt.spec.title,
+        ):
+            native_id = str(item["id"])
+            try:
+                detail = self._client.get(f"/api/v1/dashboard/{_int_id(native_id)}")
+            except SupersetAPIError as exc:
+                if exc.status_code == 404:
+                    continue
+                raise
+            if self._detail_css_has_build_token(detail, attempt.build_token):
+                key = ("dashboard", native_id)
+                if key not in seen:
+                    seen.add(key)
+                    owned.append(key)
+
+        for name in self._expected_dataset_names(attempt.spec):
+            for item in self._list_exact(
+                "/api/v1/dataset/",
+                column="table_name",
+                value=name,
+            ):
+                key = ("dataset", str(item["id"]))
+                if key not in seen:
+                    seen.add(key)
+                    owned.append(key)
+
+        for kind, native_id in owned:
+            self.delete_artifact(kind, native_id)
+        return BuildReconcileResult(discovered=len(owned), deleted=len(owned))
+
+    def _list_exact(self, path: str, *, column: str, value: str) -> list[dict[str, Any]]:
+        """Exhaustive exact-filter list; never trust a title substring as ownership."""
+        page_size = 100
+        page = 0
+        result: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        while True:
+            payload = self._client.get(
+                path,
+                params={"q": rison_eq_filter(column, value, page_size, page=page)},
+            )
+            raw_items = payload.get("result", [])
+            if not isinstance(raw_items, list):
+                raise SupersetAPIError(f"GET {path} returned an invalid result list")
+            for item in raw_items:
+                if not isinstance(item, dict) or str(item.get(column) or "") != value:
+                    continue
+                native_id = str(item.get("id") or "")
+                if native_id and native_id not in seen_ids:
+                    seen_ids.add(native_id)
+                    result.append(item)
+            raw_count = payload.get("count")
+            if raw_count is None:
+                break
+            try:
+                count = int(raw_count)
+            except (TypeError, ValueError) as exc:
+                raise SupersetAPIError(f"GET {path} returned an invalid count") from exc
+            if len(result) >= count:
+                break
+            if not raw_items:
+                raise SupersetAPIError(f"GET {path} pagination ended before count={count}")
+            page += 1
+        return result
+
+    @staticmethod
+    def _detail_has_build_token(
+        detail: dict[str, Any],
+        field: str,
+        build_token: str,
+    ) -> bool:
+        """Chart ownership: exact full-token equality in stored JSON params."""
+        body = detail.get("result", detail)
+        if not isinstance(body, dict):
+            return False
+        raw = body.get(field)
+        if isinstance(raw, dict):
+            metadata = raw
+        elif isinstance(raw, str):
+            try:
+                metadata = json.loads(raw)
+            except (TypeError, ValueError):
+                return False
+        else:
+            return False
+        return isinstance(metadata, dict) and metadata.get(_BUILD_TOKEN_KEY) == build_token
+
+    @staticmethod
+    def _detail_css_has_build_token(detail: dict[str, Any], build_token: str) -> bool:
+        """Dashboard ownership: complete CSS marker whose hex equals the token encoding."""
+        body = detail.get("result", detail)
+        if not isinstance(body, dict):
+            return False
+        css = body.get("css")
+        if not isinstance(css, str):
+            return False
+        expected = build_token.encode("utf-8").hex()
+        return any(match.group(1) == expected for match in _BUILD_TOKEN_CSS_RE.finditer(css))
+
+    def _expected_dataset_names(self, spec: DashboardSpec) -> set[str]:
+        plan = plan_datasets(spec) if self._model is not None else None
+        names: set[str] = set()
+        if plan is not None:
+            for table in plan.source_tables:
+                names.add(_dataset_name(spec.title, f"source:{table}", self._artifact_namespace))
+        for chart in spec.charts:
+            if plan is None or plan.chart(chart.id).role is DatasetRole.OWN:
+                names.add(_dataset_name(spec.title, chart.id, self._artifact_namespace))
+        return names
+
+    def close(self) -> None:
+        """Release the client's HTTP pool (D-2 lifecycle; required BIAdapter method)."""
         self._client.close()
 
     def healthcheck(self) -> AdapterHealth:
@@ -324,7 +488,7 @@ class SupersetAdapter:
                 metric = _adhoc_metric(measure, "kpimag", 0, from_source=True)
             else:
                 metric = _adhoc_metric(measure, "kpimag", 0, agg="MAX")
-            query: dict = {
+            query: dict[str, Any] = {
                 "metrics": [metric],
                 "row_limit": 1,
             }
@@ -557,6 +721,8 @@ class SupersetAdapter:
             heatmap_y_pad=self._heatmap_y_pad(chart),
             from_source=from_source,
         )
+        if self._artifact_namespace:
+            form_data[_BUILD_TOKEN_KEY] = self._artifact_namespace
         created = self._client.post(
             "/api/v1/chart/",
             json={
@@ -576,12 +742,12 @@ class SupersetAdapter:
         charts: list[ChartRef],
         datasets: list[DatasetRef] | None = None,
         model: SemanticModel | None = None,
-        plan=None,
+        plan: DatasetPlan | None = None,
     ) -> DashboardRef:
         if len(charts) != len(spec.charts):
             raise ValueError(f"got {len(charts)} chart refs for {len(spec.charts)} spec charts")
 
-        native_filters: list[dict] = []
+        native_filters: list[dict[str, Any]] = []
         if spec.filters:
             if datasets is not None and model is not None:
                 placements = [
@@ -615,7 +781,9 @@ class SupersetAdapter:
 
         placed = list(zip(spec.charts, [_int_id(c.id) for c in charts], strict=True))
         position = build_position_json(spec, placed)
-        json_metadata: dict = {"chart_configuration": {}}
+        # Only supported json_metadata keys: Superset 4.1.2 drops unknown top-level
+        # entries (incl. auto_bi_build_token). Ownership lives in dashboard css instead.
+        json_metadata: dict[str, Any] = {"chart_configuration": {}}
         if native_filters:
             json_metadata["native_filter_configuration"] = native_filters
         created = self._client.post(
@@ -624,7 +792,7 @@ class SupersetAdapter:
                 "dashboard_title": spec.title,
                 "position_json": json.dumps(position, ensure_ascii=False),
                 "json_metadata": json.dumps(json_metadata, ensure_ascii=False),
-                "css": KPI_CENTER_CSS,
+                "css": _dashboard_css(self._artifact_namespace),
                 "published": True,
             },
         )
@@ -638,7 +806,7 @@ class SupersetAdapter:
 
     # --- happy path ----------------------------------------------------------
 
-    def build(self, spec: DashboardSpec) -> DashboardRef:
+    def build(self, spec: DashboardSpec, ctx: BuildContext | None = None) -> BuildResult:
         """Full compile: database -> datasets -> charts -> dashboard.
 
         D-1 (variant A): with a model, `plan_datasets` picks one shared semantic-grain
@@ -649,10 +817,17 @@ class SupersetAdapter:
         The constructor-injected model also wires native filters (scope = SOURCE charts
         on that mart, plus OWN charts whose grain exposes the column). Signature mirrors
         DataLensAdapter.build so the pipeline can dispatch by `spec.target_bi` (Phase 4 F1).
+
+        `ctx` (plan_sol step 7) supplies namespace + PlanCache; when omitted, any values
+        staged via the deprecated set_* helpers still apply (unit tests).
         """
+        if ctx is not None:
+            if ctx.namespace:
+                self._artifact_namespace = ctx.namespace.strip()
+            self._query_plans = ctx.plans
         model = self._model
         # Ownership ledger (P0-2 criterion 4): reset the buffer, then record each entity as it
-        # is created so the orchestrator can drain a complete set after a successful build.
+        # is created; returned via BuildResult.artifacts (no post-build drain getattr).
         self._build_artifacts = []
         db = self.ensure_database()
         self._build_artifacts.append(BuildArtifact("database", str(db.id), db.name))
@@ -705,4 +880,6 @@ class SupersetAdapter:
             refs.append(ref)
         dash = self.assemble_dashboard(spec, refs, datasets=datasets, model=model, plan=plan)
         self._build_artifacts.append(BuildArtifact("dashboard", str(dash.id), dash.title))
-        return dash
+        arts = tuple(self._build_artifacts)
+        self._build_artifacts = []
+        return BuildResult(dashboard=dash, artifacts=arts)

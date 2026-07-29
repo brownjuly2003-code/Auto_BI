@@ -167,6 +167,6 @@ def test_patch_keeps_spec_tables_on_huge_model(demo_model) -> None:
 def test_send_samples_false_strips_values(demo_model) -> None:
     with_values = build_propose_prompt("x", demo_model, include_samples=True)
     without_values = build_propose_prompt("x", demo_model, include_samples=False)
-    assert "Москва" in with_values  # top_values reach the LLM by default
-    assert "Москва" not in without_values  # suppressed for sensitive DMs
+    assert "Москва" in with_values  # only with explicit opt-in
+    assert "Москва" not in without_values  # default/safe path strips DWH values
     assert "dm.sales_daily" in without_values  # schema/metadata still sent

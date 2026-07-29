@@ -4,6 +4,7 @@ import pytest
 
 from auto_bi.agent.pipeline import build_dashboard, compile_and_build, prune_artifact_rows
 from auto_bi.agent.sql_guard import LiveSQLValidator, SQLGuardError
+from auto_bi.errors import CODE_BI_HEALTH, CODE_SQL, SafeError
 from auto_bi.ir.spec import DashboardSpec
 from tests.test_propose import GOOD_SPEC, FakeLLM
 from tests.test_superset_adapter import FakeSuperset, make_adapter
@@ -34,7 +35,7 @@ def test_build_dashboard_stops_on_sql_failure() -> None:
         raise RuntimeError("Unknown column")
 
     fake_superset = FakeSuperset()
-    with pytest.raises(SQLGuardError):
+    with pytest.raises(SafeError) as ei:
         build_dashboard(
             "выручка по дням",
             demo_model_fixtureless(),
@@ -43,6 +44,8 @@ def test_build_dashboard_stops_on_sql_failure() -> None:
             adapter_for=lambda _target: make_adapter(fake_superset),
             log=lambda s: None,
         )
+    assert ei.value.code == CODE_SQL
+    assert isinstance(ei.value.__cause__, SQLGuardError)
     # nothing was created in the BI after SQL validation failed
     assert not any(m == "POST" and "chart" in p for m, p, _ in fake_superset.requests)
 
@@ -85,7 +88,7 @@ def test_compile_and_build_marks_session_building_then_failed_on_sql_error(tmp_p
     spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
     fake_superset = FakeSuperset()
 
-    with pytest.raises(SQLGuardError):
+    with pytest.raises(SafeError) as ei:
         compile_and_build(
             spec,
             demo_model_fixtureless(),
@@ -95,10 +98,14 @@ def test_compile_and_build_marks_session_building_then_failed_on_sql_error(tmp_p
             session_id=sid,
             spec_id=spec_id,
         )
+    assert ei.value.code == CODE_SQL
 
     assert store.session_status(sid) == "failed"
     (build,) = store.builds(sid)
     assert build["status"] == "failed"
+    # Store holds the public SafeError face only (plan_sol step 3).
+    assert CODE_SQL in build["error"]
+    assert "Unknown column" not in build["error"]
     assert not any(m == "POST" and "chart" in p for m, p, _ in fake_superset.requests)
     store.close()
 
@@ -115,7 +122,7 @@ def test_compile_and_build_marks_session_failed_on_healthcheck_failure(tmp_path)
         def healthcheck(self) -> AdapterHealth:
             return AdapterHealth(ok=False, message="superset unreachable")
 
-    with pytest.raises(RuntimeError, match="healthcheck failed"):
+    with pytest.raises(SafeError) as ei:
         compile_and_build(
             spec,
             demo_model_fixtureless(),
@@ -124,11 +131,15 @@ def test_compile_and_build_marks_session_failed_on_healthcheck_failure(tmp_path)
             store=store,
             session_id=sid,
         )
+    assert ei.value.code == CODE_BI_HEALTH
+    assert "superset unreachable" in ei.value.internal_detail
+    assert "superset unreachable" not in ei.value.public_message
 
     assert store.session_status(sid) == "failed"
     (build,) = store.builds(sid)
     assert build["status"] == "failed"
-    assert "healthcheck failed" in build["error"]
+    assert CODE_BI_HEALTH in build["error"]
+    assert "superset unreachable" not in build["error"]
     store.close()
 
 
@@ -161,6 +172,287 @@ def test_compile_and_build_records_bi_artifacts_in_ownership_ledger(tmp_path) ->
     # datasets carry the DWH schema.table (RBAC scoping); all rows start 'live'
     assert all(a["schema_set"] for a in arts if a["kind"] == "dataset")
     assert all(a["status"] == "live" for a in arts)
+    # plan_sol step 8: builds row carries the same token as the ledger
+    (build,) = store.builds(sid)
+    assert build["status"] == "ok"
+    assert build["build_token"] == arts[0]["build_token"]
+    assert store.session_status(sid) == "built"
+    store.close()
+
+
+def test_compile_and_build_ledger_fault_does_not_fail_delivery(tmp_path) -> None:
+    """plan_sol step 8 / audit P1-2: after BI deliver, ledger failure ≠ failed build.
+
+    Fault-injection: commit_build_success raises; pipeline must still return DashboardRef
+    and durable state must be delivered_pending / built_with_cleanup_degraded — never
+    the pre-step-8 split-brain (Store failed while BI has the dashboard).
+    """
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
+
+    real_commit = store.commit_build_success
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated ledger commit failure")
+
+    store.commit_build_success = boom  # type: ignore[method-assign]
+
+    ref = compile_and_build(
+        spec,
+        demo_model_fixtureless(),
+        LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _target: make_adapter(FakeSuperset()),
+        store=store,
+        session_id=sid,
+        spec_id=spec_id,
+        prune_orphans=False,
+    )
+    assert ref.url.startswith("/superset/dashboard/")
+    # Delivery recorded as pending — NOT failed
+    assert store.session_status(sid) == "built_with_cleanup_degraded"
+    (build,) = store.builds(sid)
+    assert build["status"] == "delivered_pending"
+    assert build["url"] == ref.url
+    assert build["dashboard_id"] is not None
+    # no ledger rows (commit never succeeded)
+    assert store.bi_artifacts(sid) == []
+    # restore so close/path cleanup is normal
+    store.commit_build_success = real_commit  # type: ignore[method-assign]
+    store.close()
+
+
+def test_compile_and_build_stable_token_is_idempotent(tmp_path) -> None:
+    """plan_sol step 8 residual: same (session, spec_row) does not create a second BI.
+
+    First call delivers; second call with the same durable revision reuses the dashboard
+    URL and does not invoke adapter.build again (no duplicate BI artifacts).
+    """
+    from auto_bi.adapters.artifacts import stable_build_token
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
+    builds = {"n": 0}
+    fake = FakeSuperset()
+
+    class CountingAdapter:
+        def __init__(self) -> None:
+            self._inner = make_adapter(fake)
+
+        def healthcheck(self):
+            return self._inner.healthcheck()
+
+        def build(self, spec, ctx=None):
+            builds["n"] += 1
+            return self._inner.build(spec, ctx)
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self._inner.delete_artifact(kind, native_id)
+
+        def close(self) -> None:
+            self._inner.close()
+
+    kwargs = dict(
+        model=demo_model_fixtureless(),
+        sql_validator=LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _t: CountingAdapter(),
+        store=store,
+        session_id=sid,
+        spec_id=spec_id,
+        prune_orphans=False,
+        log=lambda _s: None,
+    )
+    first = compile_and_build(spec, **kwargs)
+    assert builds["n"] == 1
+    assert store.build_by_token(stable_build_token(sid, spec_id)) is not None
+
+    second = compile_and_build(spec, **kwargs)
+    assert builds["n"] == 1  # no second BI create
+    assert second.url == first.url
+    assert second.id == first.id
+    assert store.session_status(sid) == "built"
+    # still a single delivered build row for this token
+    rows = [b for b in store.builds(sid) if b["build_token"] == stable_build_token(sid, spec_id)]
+    assert len(rows) == 1
+    assert rows[0]["status"] == "ok"
+    store.close()
+
+
+def test_compile_and_build_stable_token_retries_after_failure(tmp_path) -> None:
+    """Failed attempt with the same stable token may rebuild (not short-circuit)."""
+    from auto_bi.adapters.base import AdapterHealth
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    spec_id = store.save_spec(sid, spec.model_dump(mode="json"))
+    state = {"health_calls": 0, "builds": 0}
+    # Shared FakeSuperset so native ids stay consistent; new adapter shell each call
+    # (compile_and_build closes the adapter after every attempt).
+    fake = FakeSuperset()
+
+    class FailOnceAdapter:
+        def __init__(self) -> None:
+            self._inner = make_adapter(fake)
+
+        def healthcheck(self):
+            state["health_calls"] += 1
+            if state["health_calls"] == 1:
+                return AdapterHealth(ok=False, message="BI down once")
+            return self._inner.healthcheck()
+
+        def build(self, spec, ctx=None):
+            state["builds"] += 1
+            return self._inner.build(spec, ctx)
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self._inner.delete_artifact(kind, native_id)
+
+        def close(self) -> None:
+            self._inner.close()
+
+    kwargs = dict(
+        model=demo_model_fixtureless(),
+        sql_validator=LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _t: FailOnceAdapter(),
+        store=store,
+        session_id=sid,
+        spec_id=spec_id,
+        prune_orphans=False,
+        log=lambda _s: None,
+    )
+    with pytest.raises(SafeError) as exc:
+        compile_and_build(spec, **kwargs)
+    assert exc.value.code == CODE_BI_HEALTH
+    assert store.session_status(sid) == "failed"
+
+    ref = compile_and_build(spec, **kwargs)
+    assert state["builds"] == 1  # one successful build after the failed healthcheck
+    assert ref.url.startswith("/superset/dashboard/")
+    assert store.session_status(sid) == "built"
+    store.close()
+
+
+def test_compile_and_build_fallback_token_uses_latest_approved_revision(tmp_path) -> None:
+    """When spec_id is omitted, bind the stable token to the latest *approved* row.
+
+    Race: approved A is building while proposed B was already appended. Fallback must
+    not hijack A's delivery onto B's token (which would make B's later approve a no-op).
+    """
+    import copy
+
+    from auto_bi.adapters.artifacts import stable_build_token
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec_a = DashboardSpec.model_validate(GOOD_SPEC)
+    id_a = store.save_spec(sid, spec_a.model_dump(mode="json"), status="approved")
+    spec_b_raw = copy.deepcopy(GOOD_SPEC)
+    spec_b_raw["title"] = "Продажи (правка)"
+    spec_b_raw["charts"][0]["title"] = "Выручка по дням (правка)"
+    spec_b = DashboardSpec.model_validate(spec_b_raw)
+    id_b = store.save_spec(sid, spec_b.model_dump(mode="json"), status="proposed")
+    assert id_b > id_a
+
+    builds = {"n": 0}
+    fake = FakeSuperset()
+
+    class CountingAdapter:
+        def __init__(self) -> None:
+            self._inner = make_adapter(fake)
+
+        def healthcheck(self):
+            return self._inner.healthcheck()
+
+        def build(self, spec, ctx=None):
+            builds["n"] += 1
+            return self._inner.build(spec, ctx)
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self._inner.delete_artifact(kind, native_id)
+
+        def close(self) -> None:
+            self._inner.close()
+
+    base_kwargs = dict(
+        model=demo_model_fixtureless(),
+        sql_validator=LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _t: CountingAdapter(),
+        store=store,
+        session_id=sid,
+        spec_id=None,
+        prune_orphans=False,
+        log=lambda _s: None,
+    )
+
+    ref_a = compile_and_build(spec_a, **base_kwargs)
+    assert builds["n"] == 1
+    token_a = stable_build_token(sid, id_a)
+    token_b = stable_build_token(sid, id_b)
+    row_a = store.build_by_token(token_a)
+    assert row_a is not None
+    assert row_a["status"] == "ok"
+    assert row_a["spec_id"] == id_a
+    assert row_a["dashboard_id"] == ref_a.id
+    assert store.build_by_token(token_b) is None
+
+    store.set_spec_status(id_b, "approved")
+    ref_b = compile_and_build(spec_b, **base_kwargs)
+    assert builds["n"] == 2
+    assert ref_b.id != ref_a.id
+    assert ref_b.url != ref_a.url
+    row_b = store.build_by_token(token_b)
+    assert row_b is not None
+    assert row_b["status"] == "ok"
+    assert row_b["spec_id"] == id_b
+    assert row_b["dashboard_id"] == ref_b.id
+
+    ref_b_retry = compile_and_build(spec_b, **base_kwargs)
+    assert builds["n"] == 2  # genuine same-revision idempotency
+    assert ref_b_retry.id == ref_b.id
+    assert ref_b_retry.url == ref_b.url
+    store.close()
+
+
+def test_compile_and_build_fallback_does_not_bind_a_proposed_revision(tmp_path) -> None:
+    """Only-proposed session: no stable revision token; fresh namespace, builds.spec_id None."""
+    from auto_bi.adapters.artifacts import stable_build_token
+    from auto_bi.store import Store
+
+    store = Store(tmp_path / "s.sqlite")
+    sid = store.create_session("выручка по дням", owner="alice")
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    proposed_id = store.save_spec(sid, spec.model_dump(mode="json"), status="proposed")
+
+    fake = FakeSuperset()
+    ref = compile_and_build(
+        spec,
+        demo_model_fixtureless(),
+        LiveSQLValidator(stub_run_query),
+        adapter_for=lambda _t: make_adapter(fake),
+        store=store,
+        session_id=sid,
+        spec_id=None,
+        prune_orphans=False,
+        log=lambda _s: None,
+    )
+    assert ref.url.startswith("/superset/dashboard/")
+    proposed_token = stable_build_token(sid, proposed_id)
+    assert store.build_by_token(proposed_token) is None
+    rows = store.builds(sid)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["spec_id"] is None
+    assert rows[0]["build_token"] != proposed_token
+    assert rows[0]["build_token"]  # random namespace still recorded
     store.close()
 
 
@@ -205,12 +497,12 @@ def test_compile_and_build_second_build_makes_first_an_orphan(tmp_path) -> None:
 class RecordingAdapter:
     """A build-capable adapter that records its `delete_artifact` calls instead of hitting a BI.
 
-    Wraps a real SupersetAdapter (`make_adapter(FakeSuperset())`) for healthcheck/namespace/
-    build/drain — the same fake the ownership-ledger tests use — and intercepts the concrete
-    `delete_artifact` helper the auto-prune reaches for via getattr. Recording the calls lets a
-    test assert the prune fed the right prior-build ids to the BI, in the right order, with no
-    live delete. `fail_ids` marks native ids whose delete raises (a per-row failure the prune
-    must tolerate without failing the already-delivered build).
+    Wraps a real SupersetAdapter (`make_adapter(FakeSuperset())`) for healthcheck / build —
+    the same fake the ownership-ledger tests use — and intercepts `delete_artifact` (required
+    Protocol method, plan_sol step 7). Recording the calls lets a test assert the prune fed
+    the right prior-build ids to the BI, in the right order, with no live delete. `fail_ids`
+    marks native ids whose delete raises (a per-row failure the prune must tolerate without
+    failing the already-delivered build).
     """
 
     def __init__(self, inner, fail_ids=()) -> None:
@@ -221,38 +513,16 @@ class RecordingAdapter:
     def healthcheck(self):
         return self._inner.healthcheck()
 
-    def set_artifact_namespace(self, namespace: str) -> None:
-        self._inner.set_artifact_namespace(namespace)
-
-    def build(self, spec):
-        return self._inner.build(spec)
-
-    def drain_build_artifacts(self):
-        return self._inner.drain_build_artifacts()
+    def build(self, spec, ctx=None):
+        return self._inner.build(spec, ctx)
 
     def delete_artifact(self, kind: str, native_id: str) -> None:
         self.deleted.append((kind, native_id))
         if native_id in self._fail_ids:
             raise RuntimeError(f"BI refused to delete {kind} {native_id}")
 
-
-class NoDeleteAdapter:
-    """A build-capable adapter that LACKS delete_artifact (a bare-protocol prune target)."""
-
-    def __init__(self, inner) -> None:
-        self._inner = inner
-
-    def healthcheck(self):
-        return self._inner.healthcheck()
-
-    def set_artifact_namespace(self, namespace: str) -> None:
-        self._inner.set_artifact_namespace(namespace)
-
-    def build(self, spec):
-        return self._inner.build(spec)
-
-    def drain_build_artifacts(self):
-        return self._inner.drain_build_artifacts()
+    def close(self) -> None:
+        self._inner.close()
 
 
 def _compile(spec, store, sid, adapter_for, *, log=lambda s: None, prune_orphans=True):
@@ -353,23 +623,34 @@ def test_auto_prune_tolerates_a_failed_delete(tmp_path) -> None:
     store.close()
 
 
-def test_auto_prune_noop_when_adapter_lacks_delete(tmp_path) -> None:
-    # a bare-protocol adapter with no delete_artifact: the prune is a silent no-op, no error,
-    # and the prior build's rows all stay 'live'.
+def test_auto_prune_requires_delete_artifact_on_adapter(tmp_path) -> None:
+    # plan_sol step 7: delete_artifact is required. A partial adapter that only implements
+    # healthcheck/build fails at rebuild prune (AttributeError) after the second build
+    # already delivered — prune swallows errors, so prior rows may stay live; factory
+    # validation is the hard gate for production adapters (see test_adapter_contract).
+    from auto_bi.adapters.base import BuildResult, DashboardRef
     from auto_bi.store import Store
+
+    class PartialAdapter:
+        def healthcheck(self):
+            return make_adapter(FakeSuperset()).healthcheck()
+
+        def build(self, spec, ctx=None) -> BuildResult:
+            return BuildResult(
+                dashboard=DashboardRef(id=1, title=spec.title, url="/superset/dashboard/1/"),
+                artifacts=(),
+            )
+
+        def close(self) -> None:
+            return None
 
     store = Store(tmp_path / "s.sqlite")
     sid = store.create_session("выручка по дням", owner="alice")
     spec = DashboardSpec.model_validate(GOOD_SPEC)
-
-    fake = FakeSuperset()
-
-    def adapter_for(_target):
-        return NoDeleteAdapter(make_adapter(fake))
-
-    _compile(spec, store, sid, adapter_for)
-    _compile(spec, store, sid, adapter_for)  # rebuild; adapter cannot delete -> nothing pruned
-    assert all(r["status"] == "live" for r in store.bi_artifacts(sid))
+    _compile(spec, store, sid, lambda _t: PartialAdapter())
+    _compile(spec, store, sid, lambda _t: PartialAdapter())
+    # no artifacts recorded (empty BuildResult) — contract suite enforces real adapters
+    assert store.bi_artifacts(sid) == []
     store.close()
 
 
@@ -440,6 +721,117 @@ def test_prune_artifact_rows_skips_shared_kinds_and_counts(tmp_path) -> None:
     store.close()
 
 
+def test_prune_artifact_rows_continues_and_counts_failed() -> None:
+    # continue vs break + failed += vs =: chart/dashboard raise, shared database + unknown
+    # widget share default priority (database first), only widget is marked superseded.
+    marked: list[list[int]] = []
+
+    class FakeStore:
+        def mark_bi_artifacts_superseded(self, ids) -> None:
+            marked.append(list(ids))
+
+    # database before widget so stable sort keeps shared kind first at default priority
+    rows = [
+        {"id": 10, "kind": "database", "native_id": "db1"},
+        {"id": 40, "kind": "widget", "native_id": "w1"},
+        {"id": 20, "kind": "chart", "native_id": "c1"},
+        {"id": 30, "kind": "dashboard", "native_id": "d1"},
+    ]
+    calls: list[tuple[str, str]] = []
+    log: list[str] = []
+
+    def delete(kind: str, native_id: str) -> None:
+        calls.append((kind, native_id))
+        if kind in ("chart", "dashboard"):
+            raise RuntimeError("nope")
+
+    removed, failed = prune_artifact_rows(FakeStore(), rows, delete, log=log.append)
+
+    assert calls == [("chart", "c1"), ("dashboard", "d1"), ("widget", "w1")]
+    assert ("database", "db1") not in calls
+    assert (removed, failed) == (1, 2)
+    assert marked == [[40]]  # only the successful widget id
+    assert log == [
+        "prune: chart c1 не удалён (nope) — остаётся в леджере",
+        "prune: dashboard d1 не удалён (nope) — остаётся в леджере",
+    ]
+
+
+def test_prune_superseded_artifacts_partial_delete_success() -> None:
+    from auto_bi.agent.cleanup import _prune_superseded_artifacts
+
+    session_lookups: list[str] = []
+    orphan_calls: list[tuple[str, str, str | None]] = []
+    marked: list[list[int]] = []
+
+    class SpyStore:
+        def session_row(self, session_id: str):
+            session_lookups.append(session_id)
+            return {"owner": "alice"}
+
+        def orphan_bi_artifacts(self, session_id, current_build_token, owner=None):
+            orphan_calls.append((session_id, current_build_token, owner))
+            return [
+                {"id": 1, "kind": "chart", "native_id": "c1"},
+                {"id": 2, "kind": "dashboard", "native_id": "d1"},
+                {"id": 3, "kind": "dataset", "native_id": "s1"},
+            ]
+
+        def mark_bi_artifacts_superseded(self, ids) -> None:
+            marked.append(list(ids))
+
+    class SpyAdapter:
+        def __init__(self) -> None:
+            self.deleted: list[tuple[str, str]] = []
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self.deleted.append((kind, native_id))
+            if native_id == "d1":
+                raise RuntimeError("bi-down")
+
+    adapter = SpyAdapter()
+    log: list[str] = []
+    ok = _prune_superseded_artifacts(SpyStore(), "sess-1", "current-tok", adapter, log.append)
+
+    assert ok is True
+    assert session_lookups == ["sess-1"]
+    assert orphan_calls == [("sess-1", "current-tok", "alice")]
+    assert adapter.deleted == [
+        ("chart", "c1"),
+        ("dashboard", "d1"),
+        ("dataset", "s1"),
+    ]
+    assert marked == [[1, 3]]
+    assert log == [
+        "prune: dashboard d1 не удалён (bi-down) — остаётся в леджере",
+        "prune: удалены артефакты прошлых сборок сессии: 2 "
+        "(не удалось: 1, будут повторены следующим прунингом)",
+    ]
+
+
+def test_prune_superseded_artifacts_structural_failure() -> None:
+    from auto_bi.agent.cleanup import _prune_superseded_artifacts
+
+    class BoomStore:
+        def session_row(self, session_id: str):
+            raise RuntimeError("boom")
+
+    class SpyAdapter:
+        def __init__(self) -> None:
+            self.deleted: list[tuple[str, str]] = []
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            self.deleted.append((kind, native_id))
+
+    adapter = SpyAdapter()
+    log: list[str] = []
+    ok = _prune_superseded_artifacts(BoomStore(), "sess-1", "current-tok", adapter, log.append)
+
+    assert ok is False
+    assert adapter.deleted == []
+    assert log == ["prune: пропущен (boom)"]
+
+
 def demo_model_fixtureless():
     """conftest's demo_model as a plain call (this test composes fixtures manually)."""
     from tests.conftest import demo_model
@@ -449,7 +841,7 @@ def demo_model_fixtureless():
 
 def test_datalens_target_gates_every_chart_sql() -> None:
     """Finding 4: D-1 source-once gating is Superset-only; DataLens keeps per-chart gate."""
-    from auto_bi.adapters.base import AdapterHealth, DashboardRef
+    from auto_bi.adapters.base import AdapterHealth, BuildResult, DashboardRef
     from auto_bi.ir.spec import TargetBI
     from tests.test_query_plan import RecordingRunQuery
 
@@ -457,8 +849,11 @@ def test_datalens_target_gates_every_chart_sql() -> None:
         def healthcheck(self) -> AdapterHealth:
             return AdapterHealth(ok=True, message="ok")
 
-        def build(self, spec: DashboardSpec) -> DashboardRef:
-            return DashboardRef(id="dl-1", title=spec.title, url="/dl/1")
+        def build(self, spec: DashboardSpec, ctx=None) -> BuildResult:
+            return BuildResult(dashboard=DashboardRef(id="dl-1", title=spec.title, url="/dl/1"))
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            return None
 
         def close(self) -> None:
             return None

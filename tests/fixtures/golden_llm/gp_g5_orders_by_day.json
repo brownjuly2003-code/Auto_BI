@@ -1,5 +1,10 @@
 {
   "case_id": "gp_g5_orders_by_day",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -19,7 +24,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "4e61c8f41ab0ca0435c45c3da50c4435508ab6e41f441aec68d8d5d5d7f0cb9d"
     },
     {
       "step": "propose_spec",
@@ -244,7 +250,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "a29a11c1ae1e51e9afa121c09621024ca436665014ce295d813c412d073ba826"
     }
   ]
 }

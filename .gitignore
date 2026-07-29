@@ -23,6 +23,10 @@ logs/
 .coverage.*
 coverage.xml
 htmlcov/
+/mutants/
+
+# local perf timings (machine-specific; CI uses soft budgets only)
+tests/performance/last_local_baseline.json
 
 # docker volumes / local data
 data/

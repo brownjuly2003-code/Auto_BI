@@ -1,5 +1,10 @@
 {
   "case_id": "i4_weather",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -11,7 +16,8 @@
         "unmatched": [
           "Прогноз погоды по дням за июнь 2026"
         ]
-      }
+      },
+      "prompt_sha256": "a8b3998e556dc49c0760f18f47c2b3a59657ecd0fe5d43ba50e1e8c7c645fa95"
     }
   ]
 }

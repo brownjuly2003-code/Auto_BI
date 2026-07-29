@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -35,6 +35,7 @@ from auto_bi.agent.insights import analyze_spec
 from auto_bi.agent.machine import AgentPhase, AgentTurn
 from auto_bi.agent.propose import SpecValidationError
 from auto_bi.agent.seed import validate_seed
+from auto_bi.api.capabilities import build_capabilities
 from auto_bi.api.metrics import LiveMetrics
 from auto_bi.api.metrics import render as render_metrics
 from auto_bi.api.ratelimit import LoginRateLimiter, SSEGate
@@ -61,13 +62,22 @@ from auto_bi.auth import (
     verify_password,
 )
 from auto_bi.dmcr import DCR_STATUSES, render_dm_change_request
+from auto_bi.errors import (
+    CODE_BI_HEALTH,
+    CODE_DWH,
+    CODE_LLM,
+    CODE_STORE,
+    redact_secrets,
+    store_error_text,
+    to_safe_error,
+)
 from auto_bi.introspect.base import RunQuery
 from auto_bi.introspect.gaps import find_gaps
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient, LLMError
 from auto_bi.llm.budget import ModelPrices
-from auto_bi.semantic.model import Additivity, Aggregation, ColumnRole, SemanticModel
+from auto_bi.semantic.model import Additivity, Aggregation, ColumnRole, SemanticModel, Table
 from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
@@ -106,7 +116,7 @@ def create_app(
     builder: Builder | None = None,
     bi_healthcheck: Callable[[], AdapterHealth] | None = None,  # B-6: /ready BI reachability
     llm_healthcheck: Callable[[], AdapterHealth] | None = None,  # B-6: /ready LLM reachability
-    include_samples: bool = True,
+    include_samples: bool = False,
     model_path: str | Path | None = None,  # enables enrichment writes (task 2.7)
     auth_enabled: bool = False,  # Phase 4 auth/RBAC, opt-in (default: open, single-user)
     auth_token_ttl_hours: int = 24,
@@ -228,7 +238,9 @@ def create_app(
         return getattr(request.state, "user", ANONYMOUS_ADMIN)
 
     @app.middleware("http")
-    async def gate(request: Request, call_next):
+    async def gate(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         # CSRF guard: browsers attach Origin to mutating requests, curl/CLI/SSE GETs carry
         # none and pass (F5). Only stops drive-by mutations from other sites.
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
@@ -282,14 +294,19 @@ def create_app(
         return managed
 
     @app.get("/api/v1/health")
-    def health() -> dict:
-        # demo_auto_only rides on /health so the UI can grey out the text/fields tabs
-        # without a dedicated endpoint
+    def health() -> dict[str, Any]:
+        # demo_auto_only + capabilities ride on /health so the UI greys out modes that
+        # cannot work (config flag alone is not enough: text needs a wired LLM too).
         return {
             "ok": True,
             "auth": auth_enabled,
             "version": __version__,
             "demo_auto_only": demo_auto_only,
+            "capabilities": build_capabilities(
+                demo_auto_only=demo_auto_only,
+                llm=llm,
+                model_path=model_path,
+            ),
         }
 
     @app.get("/api/v1/ready")
@@ -298,36 +315,78 @@ def create_app(
         (compose healthcheck, Fly checks) needs to know the store, DWH and BI account are
         actually reachable before routing traffic here. LLM reachability is reported but
         never gates `ok` — a transient LLM/GraceKelly outage still lets an already-built
-        dashboard serve traffic (ARCHITECTURE §3.11)."""
+        dashboard serve traffic (ARCHITECTURE §3.11).
 
-        def _probe(fn: Callable[[], Any]) -> dict:
+        Public response is boolean + stable code/message/correlation_id only (plan_sol
+        step 3). Redacted internal_detail is written to operator logs, never to the
+        response body.
+        """
+
+        def _public_fail(code: str, exc: BaseException) -> dict[str, Any]:
+            from auto_bi.errors import PUBLIC_MESSAGES, SafeError
+
+            # Component code (store/dwh/bi/llm) wins over generic classification so
+            # orchestrators can tell which dependency failed.
+            base = to_safe_error(exc, default_code=code)
+            safe = SafeError(
+                code,
+                PUBLIC_MESSAGES.get(code, base.public_message),
+                retryable=True,
+                correlation_id=base.correlation_id,
+                internal_detail=base.internal_detail or redact_secrets(str(exc)),
+                provider_class=type(exc).__name__,
+            )
+            logger.warning(
+                "ready check failed code=%s ref=%s detail=%s",
+                safe.code,
+                safe.correlation_id,
+                safe.internal_detail or safe.public_message,
+            )
+            # Public readiness is boolean + stable code/message/ref only. Redacted
+            # internal_detail stays in logs (and future admin diagnostics); never in
+            # the unauthenticated response body (plan_sol step 3).
+            return {
+                "ok": False,
+                "code": safe.code,
+                "message": safe.public_message,
+                "correlation_id": safe.correlation_id,
+            }
+
+        def _probe(fn: Callable[[], Any], *, code: str) -> dict[str, Any]:
             try:
                 fn()
                 return {"ok": True}
             except Exception as exc:
-                return {"ok": False, "message": str(exc)}
+                return _public_fail(code, exc)
 
-        def _adapter_probe(fn: Callable[[], AdapterHealth]) -> dict:
+        def _adapter_probe(fn: Callable[[], AdapterHealth], *, code: str) -> dict[str, Any]:
             try:
                 health_result = fn()
-                return {"ok": health_result.ok, "message": health_result.message}
+                if health_result.ok:
+                    return {"ok": True}
+                # Unhealthy but non-raising: treat message as internal only.
+                return _public_fail(code, RuntimeError(health_result.message or "unhealthy"))
             except Exception as exc:
-                return {"ok": False, "message": str(exc)}
+                return _public_fail(code, exc)
 
-        checks: dict[str, dict] = {
-            "store": _probe(store.ping) if store is not None else {"ok": True, "configured": False},
+        checks: dict[str, dict[str, Any]] = {
+            "store": (
+                _probe(store.ping, code=CODE_STORE)
+                if store is not None
+                else {"ok": True, "configured": False}
+            ),
             "dwh": (
-                _probe(lambda: run_query("SELECT 1"))
+                _probe(lambda: run_query("SELECT 1"), code=CODE_DWH)
                 if run_query is not None
                 else {"ok": True, "configured": False}
             ),
             "bi": (
-                _adapter_probe(bi_healthcheck)
+                _adapter_probe(bi_healthcheck, code=CODE_BI_HEALTH)
                 if bi_healthcheck is not None
                 else {"ok": True, "configured": False}
             ),
             "llm": (
-                _adapter_probe(llm_healthcheck)
+                _adapter_probe(llm_healthcheck, code=CODE_LLM)
                 if llm_healthcheck is not None
                 else {"ok": True, "configured": False}
             ),
@@ -337,11 +396,11 @@ def create_app(
 
     # --- auth (Phase 4, opt-in) ----------------------------------------------------
 
-    def _user_public(user: AuthUser) -> dict:
+    def _user_public(user: AuthUser) -> dict[str, Any]:
         return {"username": user.username, "role": user.role, "schemas": user.allowed_schemas}
 
     @app.post("/api/v1/auth/login")
-    def login(body: LoginRequest, request: Request, response: Response) -> dict:
+    def login(body: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
         if not auth_enabled:
             raise HTTPException(status_code=404, detail="auth is disabled")
         client_ip = request.client.host if request.client else "unknown"
@@ -381,7 +440,7 @@ def create_app(
         response.delete_cookie("auth_token")
 
     @app.get("/api/v1/auth/me")
-    def auth_me(request: Request) -> dict:
+    def auth_me(request: Request) -> dict[str, Any]:
         return _user_public(_user(request))
 
     @app.post("/api/v1/sessions", response_model=TurnResponse, response_model_exclude_none=True)
@@ -406,8 +465,17 @@ def create_app(
                 owner=_user(request).username if auth_enabled else None,
             )
         except LLMError as exc:
-            # nothing was registered (F2): tell the client plainly instead of a bare 500
-            raise HTTPException(status_code=502, detail=f"LLM failed to start: {exc}") from None
+            # nothing was registered (F2): public SafeError face (no raw provider text)
+            safe = to_safe_error(exc, default_code=CODE_LLM)
+            logger.warning(
+                "LLM failed to start ref=%s detail=%s",
+                safe.correlation_id,
+                safe.internal_detail,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=safe.for_public(),
+            ) from None
         _apply_target_bi(managed)
         return _turn(managed, turn)
 
@@ -454,7 +522,7 @@ def create_app(
     model_write_lock = threading.Lock()
 
     @app.get("/api/v1/model/gaps")
-    def model_gaps(request: Request) -> dict:
+    def model_gaps(request: Request) -> dict[str, Any]:
         # offline checks only: live time-grain probes stay in `auto_bi gaps` (CLI).
         # RBAC: scope to the caller's allowed schemas (auth off -> full model).
         scoped = filter_model_by_schemas(model, _user(request).allowed_schemas)
@@ -467,7 +535,7 @@ def create_app(
             )
         return Path(model_path)
 
-    def _get_table(table_name: str):
+    def _get_table(table_name: str) -> Table:
         table = model.table(table_name)
         if table is None:
             raise HTTPException(status_code=404, detail=f"unknown table {table_name!r}")
@@ -480,7 +548,7 @@ def create_app(
             raise HTTPException(status_code=403, detail=f"not allowed to edit table {table_name!r}")
 
     @app.patch("/api/v1/model/tables/{table_name}")
-    def update_table(table_name: str, body: TableUpdate, request: Request) -> dict:
+    def update_table(table_name: str, body: TableUpdate, request: Request) -> dict[str, Any]:
         _check_demo_gate("Правка модели")  # P8: enrichment mutates the shared model.yaml
         _require_table_access(table_name, request)  # RBAC before anything else (403 > 503)
         path = _model_path()
@@ -493,7 +561,7 @@ def create_app(
     @app.patch("/api/v1/model/tables/{table_name}/columns/{column_name}")
     def update_column(
         table_name: str, column_name: str, body: ColumnUpdate, request: Request
-    ) -> dict:
+    ) -> dict[str, Any]:
         _check_demo_gate("Правка модели")  # P8: enrichment mutates the shared model.yaml
         _require_table_access(table_name, request)  # RBAC before anything else (403 > 503)
         path = _model_path()
@@ -554,7 +622,7 @@ def create_app(
         }
 
     @app.get("/api/v1/model/fields")
-    def model_fields(request: Request) -> list[dict]:
+    def model_fields(request: Request) -> list[dict[str, Any]]:
         """Field panel for the fields-first mode: the semantic model as the UI sees it.
         RBAC: only the caller's allowed-schema tables (auth off -> all tables)."""
         scoped = filter_model_by_schemas(model, _user(request).allowed_schemas)
@@ -590,17 +658,27 @@ def create_app(
             agent = managed.agent
             try:
                 turn = agent.reply(body.text)
-            except (SpecValidationError, LLMError) as exc:
-                # the machine kept the previous valid spec and stayed in its phase
+            except SpecValidationError as exc:
+                # IR validation messages are user-facing field diagnostics (no provider body).
                 current = AgentTurn(phase=agent.phase, spec=agent.spec, verdicts=agent.verdicts)
                 return _turn(managed, current, error=str(exc))
+            except LLMError as exc:
+                # Public face only — provider transport text stays in logs (plan_sol step 3).
+                safe = to_safe_error(exc, default_code=CODE_LLM)
+                logger.warning(
+                    "reply LLM failed ref=%s detail=%s",
+                    safe.correlation_id,
+                    safe.internal_detail,
+                )
+                current = AgentTurn(phase=agent.phase, spec=agent.spec, verdicts=agent.verdicts)
+                return _turn(managed, current, error=safe.for_sse())
             except RuntimeError as exc:  # no user turn expected in this phase
                 raise HTTPException(status_code=409, detail=str(exc)) from None
             _apply_target_bi(managed)  # the patch reset spec.target_bi -> re-stamp the choice
             return _turn(managed, turn)
 
     @app.post("/api/v1/sessions/{session_id}/approve", status_code=202)
-    def approve(session_id: str, request: Request) -> dict:
+    def approve(session_id: str, request: Request) -> dict[str, Any]:
         if builder is None:
             raise HTTPException(status_code=503, detail="build is not wired (no BI configured)")
         _check_work_quota(request)
@@ -642,9 +720,14 @@ def create_app(
                                 f"{denied}"
                             ),
                         )
-                if managed.build_status == "failed" and managed.agent.phase == AgentPhase.APPROVED:
-                    # a failed build leaves the machine in APPROVED with no pending edit:
+                if (
+                    managed.build_status in ("failed", "built_with_cleanup_degraded")
+                    and managed.agent.phase == AgentPhase.APPROVED
+                ):
+                    # failed / degraded leaves the machine in APPROVED with no pending edit:
                     # retry must rebuild the same approved spec, not dead-end on 409
+                    # (degraded = BI delivered but ledger/prune residual — rebuild is a
+                    # valid recovery path, plan_sol step 8).
                     spec = managed.agent.spec
                     assert spec is not None
                 else:
@@ -669,7 +752,8 @@ def create_app(
                     kind=kind,
                     status=status,
                     latency_ms=latency_ms,
-                    detail=detail,
+                    # Trace is durable and may be shown in observability UI — redact always.
+                    detail=redact_secrets(detail)[:200],
                 )
             except Exception:  # tracing must never kill the build
                 logger.exception("failed to record build trace event")
@@ -685,28 +769,44 @@ def create_app(
                     managed.session_id,
                 )
             except Exception as exc:
-                logger.exception("build failed for session %s", managed.session_id)
-                managed.build_status = "failed"
-                managed.add_event(BuildEvent(kind="error", text=str(exc)))
+                safe = to_safe_error(exc)
+                logger.exception(
+                    "build failed for session %s ref=%s code=%s detail=%s",
+                    managed.session_id,
+                    safe.correlation_id,
+                    safe.code,
+                    safe.internal_detail,
+                )
+                # plan_sol step 8: status + SSE error under one lock (no split GET).
+                managed.apply_build_failure(safe.for_sse())
                 _trace_build(
                     "build_error",
                     status="error",
                     latency_ms=round((time.monotonic() - started) * 1000),
-                    detail=str(exc)[:200],
+                    detail=store_error_text(safe),
                 )
                 return
             finally:
                 _build_slots.release()
                 _live_metrics.build_finished()
-            managed.build_status = "built"
             # F-1: adapters return a BI-relative url; a relative href in the UI would resolve
             # against the Auto_BI host (:8200), not the BI host (:8088) -> 404 on click. Glue
             # the configured BI base here (same convention as the CLI: base.rstrip("/") + url).
             base = (bi_base_urls or {}).get(spec.target_bi, "").rstrip("/")
             absolute = bool(base) and not ref.url.startswith(("http://", "https://"))
             url = base + ref.url if absolute else ref.url
-            managed.dashboard_url = url
-            managed.add_event(BuildEvent(kind="done", text=ref.title, url=url))
+            # Degraded when Store session was marked built_with_cleanup_degraded (ledger
+            # pending or prune residual) — still a success for the user (live URL).
+            degraded = False
+            if store is not None:
+                try:
+                    degraded = (
+                        store.session_status(managed.session_id) == "built_with_cleanup_degraded"
+                    )
+                except Exception:
+                    degraded = False
+            # plan_sol step 8: status + URL + SSE done under one lock.
+            managed.apply_build_success(url, title=ref.title, degraded=degraded)
             _trace_build(
                 "build_done",
                 latency_ms=round((time.monotonic() - started) * 1000),
@@ -719,11 +819,14 @@ def create_app(
     @app.get("/api/v1/sessions/{session_id}", response_model=SessionState)
     def session_state(session_id: str, request: Request) -> SessionState:
         managed = _owned(session_id, request)
+        snap = managed.snapshot()
         return SessionState(
-            session_id=managed.session_id,
-            phase=managed.agent.phase.value,
-            build_status=managed.build_status,
-            dashboard_url=managed.dashboard_url,
+            session_id=snap.session_id,
+            phase=snap.phase,
+            build_status=snap.build_status,
+            dashboard_url=snap.dashboard_url,
+            # plan_sol step 10 residual: browser reloads re-render the IR preview.
+            spec=snap.spec,
         )
 
     def _store() -> Store:
@@ -731,7 +834,7 @@ def create_app(
             raise HTTPException(status_code=503, detail="store is not configured")
         return store
 
-    def _dcr_visible(row: dict, user: AuthUser) -> bool:
+    def _dcr_visible(row: dict[str, Any], user: AuthUser) -> bool:
         """P1-4: non-admin sees only DCRs from own sessions whose table is in their schemas.
         Auth off -> caller is anonymous admin (full access). Unknown/foreign -> treat as
         invisible so list/detail/patch return the same 404 as sessions (no existence probe)."""
@@ -741,14 +844,16 @@ def create_app(
             return False
         return is_table_allowed(row.get("table_name") or "", user.allowed_schemas)
 
-    def _dcr_or_404(request_id: int, request: Request) -> dict:
+    def _dcr_or_404(request_id: int, request: Request) -> dict[str, Any]:
         row = _store().dm_change_request(request_id)
         if row is None or not _dcr_visible(row, _user(request)):
             raise HTTPException(status_code=404, detail=f"unknown dm_change_request {request_id}")
         return row
 
     @app.get("/api/v1/dm-change-requests")
-    def list_dm_change_requests(request: Request, status: str | None = None) -> list[dict]:
+    def list_dm_change_requests(
+        request: Request, status: str | None = None
+    ) -> list[dict[str, Any]]:
         # P1-4: analysts only list their own sessions' DCRs (schema-filtered); admin = all
         user = _user(request)
         owner = None if (not auth_enabled or user.is_admin) else user.username
@@ -758,12 +863,14 @@ def create_app(
         return rows
 
     @app.get("/api/v1/dm-change-requests/{request_id}")
-    def dm_change_request(request_id: int, request: Request) -> dict:
+    def dm_change_request(request_id: int, request: Request) -> dict[str, Any]:
         row = _dcr_or_404(request_id, request)
         return {**row, "markdown": render_dm_change_request(row)}
 
     @app.patch("/api/v1/dm-change-requests/{request_id}")
-    def update_dm_change_request(request_id: int, body: DCRStatusUpdate, request: Request) -> dict:
+    def update_dm_change_request(
+        request_id: int, body: DCRStatusUpdate, request: Request
+    ) -> dict[str, Any]:
         # P8: the DCR workflow state is shared like model.yaml — no anonymous writes in
         # the public demo (the demo never creates DCRs, so this is defense in depth)
         _check_demo_gate("Правка статуса DCR")
@@ -786,7 +893,7 @@ def create_app(
     # --- observability (Phase 4): per-session trace + LLM-usage dashboard ----------
 
     @app.get("/api/v1/sessions/{session_id}/trace")
-    def session_trace(session_id: str, request: Request) -> dict:
+    def session_trace(session_id: str, request: Request) -> dict[str, Any]:
         """Durable per-session timeline: agent/build steps + the LLM calls they made.
         Reads the store directly (survives registry eviction); unknown id -> empty.
         When auth is on, the session must be owned by the caller (admin sees all);
@@ -802,7 +909,7 @@ def create_app(
         }
 
     @app.get("/api/v1/observability/llm")
-    def observability_llm(request: Request) -> dict:
+    def observability_llm(request: Request) -> dict[str, Any]:
         """LLM-usage aggregates. Admin (or auth off) gets the global view; a non-admin
         analyst only sees spend on sessions they own (audit P1-4 — no cross-user leak).
         Char volumes are a universal size proxy; real input/output tokens are summed where
@@ -833,7 +940,7 @@ def create_app(
         return Response(content=text, media_type="text/plain; version=0.0.4; charset=utf-8")
 
     @app.get("/api/v1/sessions/{session_id}/insights")
-    def session_insights(session_id: str, request: Request) -> dict:
+    def session_insights(session_id: str, request: Request) -> dict[str, Any]:
         """Deterministic 'Что видно' observations over the session's current spec.
 
         Runs each chart read-only and reports trend / reversal or change of pace /
@@ -882,7 +989,7 @@ def create_app(
                 headers={"Retry-After": "5"},
             )
 
-        def _stream():
+        def _stream() -> Iterator[str]:
             try:
                 # None = idle heartbeat: an SSE comment clients ignore, but writing it
                 # surfaces a dropped connection and frees the worker thread (F4)

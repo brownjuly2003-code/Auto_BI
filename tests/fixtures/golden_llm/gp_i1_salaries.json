@@ -1,5 +1,10 @@
 {
   "case_id": "gp_i1_salaries",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -11,7 +16,8 @@
         "unmatched": [
           "Зарплата сотрудников по месяцам за 2026 год"
         ]
-      }
+      },
+      "prompt_sha256": "aea3c54e05986c77091c5bb9de149c1ff6ccdc014bde8ce488a67b39ec4a6971"
     }
   ]
 }

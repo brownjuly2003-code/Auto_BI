@@ -18,11 +18,15 @@ Two dataset shapes (D-1 variant A):
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 from auto_bi.agent.dataset_plan import source_column_alias
 from auto_bi.ir.spec import (
     ChartSpec,
     DashboardSpec,
     Measure,
+    OrderBy,
     TimeGrain,
     Viz,
     column_alias,
@@ -119,7 +123,7 @@ def _adhoc_metric(
     *,
     label: str | None = None,
     from_source: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Adhoc SQL metric for form_data.
 
     OWN: identity re-aggregation over the pre-computed measure alias (`SUM("sum_revenue")`
@@ -191,7 +195,7 @@ def _chart_format(measures: list[Measure]) -> str:
     return _measure_d3(measures[0]) if measures else ""
 
 
-def _base_form_data(chart: ChartSpec, dataset_id: int) -> dict:
+def _base_form_data(chart: ChartSpec, dataset_id: int) -> dict[str, Any]:
     return {
         "datasource": f"{dataset_id}__table",
         "viz_type": VIZ_TYPE[chart.viz],
@@ -199,7 +203,7 @@ def _base_form_data(chart: ChartSpec, dataset_id: int) -> dict:
     }
 
 
-def _apply_time_grain(form_data: dict, chart: ChartSpec, *, from_source: bool) -> None:
+def _apply_time_grain(form_data: dict[str, Any], chart: ChartSpec, *, from_source: bool) -> None:
     """SOURCE only: bucket the temporal axis via Superset's time_grain_sqla (not toStartOf*)."""
     if not from_source:
         return
@@ -209,7 +213,7 @@ def _apply_time_grain(form_data: dict, chart: ChartSpec, *, from_source: bool) -
     form_data["time_grain_sqla"] = _TIME_GRAIN_SQLA[grain]
 
 
-def _apply_series_limit(form_data: dict, chart: ChartSpec, *, from_source: bool) -> None:
+def _apply_series_limit(form_data: dict[str, Any], chart: ChartSpec, *, from_source: bool) -> None:
     """SOURCE only: top-N lives in form_data (no LIMIT in the shared source SQL)."""
     if not from_source:
         return
@@ -218,7 +222,7 @@ def _apply_series_limit(form_data: dict, chart: ChartSpec, *, from_source: bool)
         form_data["series_limit"] = q.limit
 
 
-def _fd_raw(chart: ChartSpec, base: dict) -> dict:
+def _fd_raw(chart: ChartSpec, base: dict[str, Any]) -> dict[str, Any]:
     # X-5 escape hatch: the dataset is the operator's raw SELECT (not an aggregated IR
     # query), so the table shows its result columns verbatim — RAW query mode, no
     # groupby/metrics. `dimensions`, if given, name the columns to display; empty => Superset
@@ -231,12 +235,12 @@ def _fd_raw(chart: ChartSpec, base: dict) -> dict:
 
 def _fd_big_number(
     chart: ChartSpec,
-    base: dict,
+    base: dict[str, Any],
     *,
-    label_of,
+    label_of: Callable[[Measure], str | None],
     kpi_scale: tuple[float, str, float] | None,
     from_source: bool,
-) -> dict:
+) -> dict[str, Any]:
     q = chart.query
     m0 = q.measures[0]
     # OWN single-row dataset: MAX is the identity. SOURCE multi-row grain: use the IR agg
@@ -277,8 +281,13 @@ def _fd_big_number(
 
 
 def _fd_pie(
-    chart: ChartSpec, base: dict, metrics: list[dict], fmt: str, *, from_source: bool
-) -> dict:
+    chart: ChartSpec,
+    base: dict[str, Any],
+    metrics: list[dict[str, Any]],
+    fmt: str,
+    *,
+    from_source: bool,
+) -> dict[str, Any]:
     # shape-validated to exactly one dimension + one measure
     mart = chart.query.table
     fd = {
@@ -295,8 +304,13 @@ def _fd_pie(
 
 
 def _fd_table(
-    chart: ChartSpec, base: dict, metrics: list[dict], *, label_of, from_source: bool
-) -> dict:
+    chart: ChartSpec,
+    base: dict[str, Any],
+    metrics: list[dict[str, Any]],
+    *,
+    label_of: Callable[[Measure], str | None],
+    from_source: bool,
+) -> dict[str, Any]:
     q = chart.query
     mart = q.table
     fd = {
@@ -320,7 +334,13 @@ def _fd_table(
     return fd
 
 
-def _fd_pivot(chart: ChartSpec, base: dict, metrics: list[dict], *, from_source: bool) -> dict:
+def _fd_pivot(
+    chart: ChartSpec,
+    base: dict[str, Any],
+    metrics: list[dict[str, Any]],
+    *,
+    from_source: bool,
+) -> dict[str, Any]:
     # OWN: cells re-aggregate with Sum over a one-row-per-cell grain (identity).
     # SOURCE: Sum over raw rows is the real aggregate (IR measures are SUM-family for pivots
     # in practice; Superset's pivot aggregateFunction is chart-level, not per-metric).
@@ -339,17 +359,17 @@ def _fd_pivot(chart: ChartSpec, base: dict, metrics: list[dict], *, from_source:
 
 def _fd_heatmap(
     chart: ChartSpec,
-    base: dict,
-    metrics: list[dict],
+    base: dict[str, Any],
+    metrics: list[dict[str, Any]],
     *,
     heatmap_y_pad: int | None,
     from_source: bool,
-) -> dict:
+) -> dict[str, Any]:
     q = chart.query
     mart = q.table
     x_axis, y_axis = q.dimensions  # shape-validated to exactly two
     y_alias = _dim_dataset_alias(y_axis, mart, from_source=from_source)
-    groupby: str | dict = y_alias
+    groupby: str | dict[str, Any] = y_alias
     if heatmap_y_pad is not None:
         # zero-pad an ordinal numeric y (cohort periods 0..N): value 0 otherwise renders
         # as <NULL> on the axis and alpha sort shuffles numbers (see the docstring).
@@ -374,16 +394,16 @@ def _fd_heatmap(
 
 def _fd_timeseries(
     chart: ChartSpec,
-    base: dict,
-    metrics: list[dict],
+    base: dict[str, Any],
+    metrics: list[dict[str, Any]],
     *,
-    label_of,
+    label_of: Callable[[Measure], str | None],
     horizontal: bool,
     axis_scale: tuple[float, str, float] | None,
     time_column: str | None,
     fmt: str,
     from_source: bool,
-) -> dict:
+) -> dict[str, Any]:
     # echarts timeseries family: line, bar, stacked_bar, area
     q = chart.query
     mart = q.table
@@ -476,7 +496,7 @@ def build_form_data(
     time_column: str | None = None,
     heatmap_y_pad: int | None = None,
     from_source: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Superset chart params for the pinned 4.1, on top of a virtual dataset.
 
     `horizontal` orients a categorical bar chart horizontally (see
@@ -574,7 +594,9 @@ def build_form_data(
     )
 
 
-def _ordering_measure(measures: list[Measure], order_by: list) -> tuple[Measure, str] | None:
+def _ordering_measure(
+    measures: list[Measure], order_by: list[OrderBy]
+) -> tuple[Measure, str] | None:
     """The measure the spec's first ORDER BY refers to (by column or alias), if any.
 
     Sorting categories by the measure is only correct when the spec itself orders
@@ -620,9 +642,9 @@ def _pack_rows(
     return rows
 
 
-def build_position_json(spec: DashboardSpec, placed: list[tuple[ChartSpec, int]]) -> dict:
+def build_position_json(spec: DashboardSpec, placed: list[tuple[ChartSpec, int]]) -> dict[str, Any]:
     """12-column grid from layout_hints: charts packed into ROWs (overflow wraps)."""
-    position: dict = {
+    position: dict[str, Any] = {
         "DASHBOARD_VERSION_KEY": "v2",
         "ROOT_ID": {"type": "ROOT", "id": "ROOT_ID", "children": ["GRID_ID"]},
         "HEADER_ID": {"type": "HEADER", "id": "HEADER_ID", "meta": {"text": spec.title}},

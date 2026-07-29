@@ -13,6 +13,7 @@ with the right rule and 0 false positives on clean cases.
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from auto_bi.advisor.core import Advisor
@@ -22,7 +23,10 @@ from auto_bi.ir.spec import DashboardSpec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 
+# Live / record: statistical clear-case gate (model non-determinism).
 CLEAR_PASS_THRESHOLD = 0.8
+# plan_sol step 9: offline replay is fully deterministic — any single fail is a bug.
+REPLAY_PASS_THRESHOLD = 1.0
 
 
 @dataclass
@@ -47,6 +51,10 @@ class EvalReport:
 
     def by_kind(self, kind: str) -> list[CaseResult]:
         return [r for r in self.results if r.kind == kind]
+
+    @property
+    def pass_rate(self) -> float:
+        return (self.passed / self.total) if self.total else 0.0
 
 
 # --- advisor suite (deterministic) ---------------------------------------------------
@@ -222,7 +230,7 @@ def run_golden_suite(
     *,
     advisor: Advisor | None = None,
     cases: list[GoldenCase] | None = None,
-    progress=None,
+    progress: Callable[[CaseResult], None] | None = None,
 ) -> EvalReport:
     report = EvalReport()
     for case in cases or GOLDEN_CASES:
@@ -233,9 +241,20 @@ def run_golden_suite(
     return report
 
 
-def golden_suite_ok(report: EvalReport) -> bool:
-    """Exit criteria: clear >= 80% (each pass implies zero stray questions);
-    every ambiguous/infeasible case flagged."""
+def golden_suite_ok(report: EvalReport, *, mode: str = "live") -> bool:
+    """Exit criteria for the golden suite.
+
+    plan_sol step 9 splits guarantees honestly:
+
+    - **replay** (and refresh-fingerprints): 100% of cases must pass — fixtures and
+      prompt fingerprints are deterministic; a single fail is a contract regression.
+    - **live** / **record**: clear cases >= CLEAR_PASS_THRESHOLD (default 80%); every
+      ambiguous/infeasible case must still be flagged (no statistical slack there).
+    """
+    if not report.results:
+        return False
+    if mode in ("replay", "refresh-fingerprints"):
+        return all(r.passed for r in report.results)
     clear = report.by_kind("clear")
     flagged = report.by_kind("ambiguous") + report.by_kind("infeasible")
     clear_ok = bool(clear) and sum(r.passed for r in clear) / len(clear) >= CLEAR_PASS_THRESHOLD

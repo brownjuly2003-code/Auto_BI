@@ -1,5 +1,10 @@
 {
   "case_id": "gp_i2_returns",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -22,7 +27,8 @@
         "unmatched": [
           "возвратов товаров"
         ]
-      }
+      },
+      "prompt_sha256": "795f3d1fc97af74712bc06ed0387321ece071eba7cedde40c1749b245d64c322"
     }
   ]
 }

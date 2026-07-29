@@ -27,42 +27,102 @@ USER_GUIDE.md отвечает на «как пользоваться», ARCHITE
 - Один `auto_bi serve` процесс на деплой. Масштабирование — только вертикальное (больше
   CPU/RAM хосту), не горизонтальное.
 - Рестарт процесса безопасен для истории (specs/builds/llm_calls/trace_events — в Store),
-  но роняет все диалоги, находящиеся в процессе (см. §9).
+  но роняет все диалоги, находящиеся в процессе (см. §10).
 - Полный resume сессий после рестарта — размеченный опциональный трек (`X-4` в
   `plan.md`), не требуется для этого скоупа.
 
 ---
 
-## 2. Запуск процесса
+## 2. Deployment profiles (`AUTO_BI_PROFILE`)
+
+`serve` проверяет комбинацию флагов **до** bind сокета. Профиль задаётся
+`AUTO_BI_PROFILE=local|demo|production` (default `local`). Неизвестное значение
+логируется как warning и трактуется как `local`.
+
+| Профиль | Когда | Что валидируется |
+|---|---|---|
+| `local` | CLI, тесты, разработка | без hard-fail; warning если `SEND_SAMPLES=true` |
+| `demo` | публичный Space / demo | auto-only **или** (`REQUIRE_LLM_READY` + session/work/LLM budget); samples off в auto-only |
+| `production` | боевой single-host | auth on, `AUTH_COOKIE_SECURE=true`, `BI_CONNECTION_STRICT=true`, `SEND_SAMPLES=false`, `ALLOW_INSECURE_REMOTE=false`, не demo_auto_only, non-default CH/Superset/admin secrets, work/session/LLM limits, `RETENTION_ENABLED=true` |
+
+Код: `auto_bi/deployment_profile.py`. Матрица allow/deny — `tests/test_deployment_profile.py`.
+
+**Минимальный production `.env` (фрагмент):**
+
+```bash
+AUTO_BI_PROFILE=production
+AUTO_BI_AUTH_ENABLED=true
+AUTO_BI_ADMIN_PASSWORD=<strong-secret>   # или AUTO_BI_AUTH_USERS_FILE=...
+AUTO_BI_AUTH_COOKIE_SECURE=true
+AUTO_BI_BI_CONNECTION_STRICT=true
+AUTO_BI_SEND_SAMPLES=false
+AUTO_BI_ALLOW_INSECURE_REMOTE=false
+AUTO_BI_CH_PASSWORD=<strong-secret>
+AUTO_BI_SUPERSET_PASSWORD=<strong-secret>
+AUTO_BI_WORK_RATE_ENABLED=true
+AUTO_BI_RETENTION_ENABLED=true
+# рекомендуется:
+AUTO_BI_METRICS_ENABLED=true
+AUTO_BI_LLM_BUDGET_ENABLED=true
+AUTO_BI_LLM_BUDGET_DAY_MAX_CALLS=500
+```
+
+Небезопасный production profile завершается с exit 2 **до** запуска uvicorn и печатает
+список нарушений.
+
+**Локальный docker-compose стенд (ClickHouse + Superset).** Порты по умолчанию
+привязаны к loopback (`127.0.0.1:8123`, `127.0.0.1:8088`) — соседняя машина в LAN/VPN
+не видит CH/Superset с local-only defaults. Обычный старт:
+
+```bash
+docker compose up -d
+```
+
+Явная публикация на все интерфейсы — только через override и **заданные** секреты
+(compose откажет, если плейсхолдеры не заменены):
+
+```bash
+export CH_ADMIN_PASSWORD=...
+export AUTO_BI_CH_PASSWORD=...
+export SUPERSET_SECRET_KEY=...
+export AUTO_BI_SUPERSET_PASSWORD=...
+docker compose -f docker-compose.yml -f docker-compose.publish.yml up -d
+```
+
+Предпочтительнее SSH-туннель/VPN, а не LAN-publish.
+
+---
+
+## 3. Запуск процесса
 
 **Docker — готовый образ из GHCR (после того, как вырезан хотя бы один тег `vX.Y.Z` —
 `release.yml`, S10) или сборка локально:**
 
-> **Релизный preflight (P1-7).** Тег `vX.Y.Z` публикует образ GHCR и пакет PyPI только после
-> job `preflight` в `release.yml`: версия тега обязана совпадать с `pyproject.toml
-> [project].version` и `auto_bi.__version__`, `CHANGELOG.md` — нести непустую секцию
-> `## [<версия>]`, а собранные `uv build` sdist+wheel — пройти `twine check` и clean-install
-> smoke (`auto_bi --help` из свежего окружения). `release` (GHCR + GitHub Release) и `pypi`
-> гейтятся на `preflight`, причём `pypi` публикует ровно те артефакты, что preflight собрал и
-> проверил (через `upload-artifact`/`download-artifact`, без пересборки). Рассинхрон версий
-> отклоняется ДО любой публикации — частичный релиз (GHCR одной версии, PyPI другой) невозможен.
-> Логика когерентности вынесена в `scripts/release_preflight.py` и юнит-тестируется офлайн.
-
-> **Supply-chain на релизе (P1-7 доп., GitHub-native).** Тег дополнительно даёт: **SLSA build
-> provenance** на sdist+wheel (job `provenance`, `actions/attest-build-provenance` → Sigstore +
-> GitHub attestation store; проверка — `gh attestation verify <файл> --repo
-> brownjuly2003-code/Auto_BI`), **PEP 740 аттестации на PyPI** (у `gh-action-pypi-publish` под
-> trusted publishing включены по умолчанию, выставлены явно) и **SBOM** в формате SPDX-JSON,
-> приложенный к GitHub Release ассетом (`anchore/sbom-action` по `pyproject.toml`+`uv.lock`).
-> Всё исполняется только на push тега `vX.Y.Z`.
+> **Релизный preflight (P1-7).** Тег `vX.Y.Z` стартует `release.yml` только после
+> job `preflight`: версия тега = `pyproject.toml [project].version` = `auto_bi.__version__`,
+> `CHANGELOG.md` — непустая секция `## [<версия>]`, sdist+wheel проходят `twine check` и
+> clean-install smoke. `pypi` публикует **ровно** артефакты preflight (artifact, без
+> пересборки). Логика — `scripts/release_preflight.py` (офлайн-тесты).
 >
-> **Ручной аппрув публикации на PyPI (опционально).** Job `pypi` привязан к окружению
-> `environment: pypi`. Чтобы каждая публикация требовала ручного подтверждения: Settings →
-> Environments → `pypi` → **Required reviewers** (добавить себя/команду; при желании
-> «Prevent self-review»). После этого прогон `pypi` встаёт на паузу «Waiting» до аппрува в
-> Actions-UI; при отклонении job падает, а `preflight`/`release`/GHCR уже отработали
-> независимо (провенанс/образ публикуются, PyPI-заливка ждёт). Настраивается в repo settings,
-> `release.yml` менять не нужно; по умолчанию reviewers нет — поведение не меняется.
+> **Promotion order (plan_sol шаг 6 / P1-4).** После preflight параллельно:
+> `image-security` (local build → **Trivy до push** → image SBOM → push только
+> `:version` → attest), `pypi`, `provenance` (sdist/wheel). Job **`finalize`**
+> (нужны все три зелёные): retag **`:latest`** с уже просканированного digest,
+> GitHub Release с source SBOM + **image SBOM**. Mutable `:latest` и Release
+> **не** появляются до security gates. Job `release-status` (always) падает при
+> любом partial.
+>
+> **Partial release residual.** Если `pypi=success`, а `image-security` упал —
+> wheel уже на PyPI (unpublish вручную), но `:latest` и GitHub Release **не**
+> создаются. Обратный partial (image ok, pypi fail) оставляет `:version` в GHCR
+> без `:latest`/Release. Полный успех = зелёный `finalize`.
+>
+> **Supply-chain.** SLSA provenance (image + sdist/wheel), PEP 740 на PyPI,
+> SBOM source (`pyproject`+`uv.lock`) и runtime image (OS+Python) — ассеты Release.
+>
+> **Ручной аппрув PyPI (опционально).** `environment: pypi` → Required reviewers.
+> Пока `pypi` ждёт аппрува, `image-security` может уже запушить `:version`;
+> `:latest`/Release всё равно ждут `finalize` (и аппрува pypi). Solo: см. §11.
 
 ```bash
 # вариант A: тег уже опубликован в GHCR — просто стянуть (замените версию на нужный тег)
@@ -85,7 +145,7 @@ docker run -d --name auto_bi \
 
 (Замените `auto_bi` на `ghcr.io/brownjuly2003-code/auto_bi:X.Y.Z`, если тянули по варианту A.)
 Дефолтный `CMD` в образе (`auto_bi serve --host 0.0.0.0 --port 8200`) уже подходит для
-контейнера — переопределяйте команду только чтобы добавить `--log-format json` (см. §7) или
+контейнера — переопределяйте команду только чтобы добавить `--log-format json` (см. §8) или
 сменить `--log-level`. Версия запущенного образа проверяется без входа в контейнер: `GET
 /api/v1/health` возвращает поле `version`.
 
@@ -93,9 +153,10 @@ docker run -d --name auto_bi \
 демо-профиля (`AUTO_BI_DEMO_AUTO_ONLY`) **отказывается стартовать**, пока нет явного
 `AUTO_BI_ALLOW_INSECURE_REMOTE=true` (доверие к сети) или включённого auth. Для локальной
 разработки биндитесь на `127.0.0.1` (дефолт CLI) — флаг не нужен. Публичный HF-demo слушает
-`127.0.0.1` за nginx внутри контейнера. На проде предпочтительнее `AUTH_ENABLED=true`, а не
-insecure-флаг. Дополнительно: `AUTO_BI_MAX_CONCURRENT_BUILDS` (default 2) и
+`127.0.0.1` за nginx внутри контейнера. На проде предпочтительнее `AUTO_BI_PROFILE=production`
+(+ auth), а не insecure-флаг. Дополнительно: `AUTO_BI_MAX_CONCURRENT_BUILDS` (default 2) и
 `AUTO_BI_WORK_RATE_*` (форсируется в demo) ограничивают дорогие auto/approve/insights.
+См. §2 (deployment profiles).
 
 **Без Docker (`uv`):**
 
@@ -111,10 +172,10 @@ AUTO_BI_ALLOW_INSECURE_REMOTE=true uv run auto_bi serve --host 0.0.0.0 --port 82
 | Путь (по умолчанию) | Что там | Переменная |
 |---|---|---|
 | `data/auto_bi.sqlite` | Store: sessions/specs/builds/llm_calls/dm_change_requests/trace_events/users/auth_tokens | `AUTO_BI_STORE_PATH` |
-| `logs/llm_calls.jsonl` | построчный лог метаданных LLM-вызовов (hash промпта/размеры/latency/статус — НЕ сырые промпты; Anthropic/GraceKelly) | — (путь зашит в клиентах, см. §7) |
+| `logs/llm_calls.jsonl` | построчный лог метаданных LLM-вызовов (hash промпта/размеры/latency/статус — НЕ сырые промпты; Anthropic/GraceKelly) | — (путь зашит в клиентах, см. §8) |
 
 Без этих двух volume-маунтов каждый `docker run`/пересоздание контейнера тихо теряет всю
-историю — не только бэкап (§6) становится бессмысленным, но и наблюдаемость/трейс сессий.
+историю — не только бэкап (§7) становится бессмысленным, но и наблюдаемость/трейс сессий.
 
 `semantic/model.yaml` уже копируется в образ (`Dockerfile`); если модель правится через
 enrichment UI (fields-first) на живом проде, а не пересборкой образа — смонтируйте её тоже
@@ -122,7 +183,7 @@ enrichment UI (fields-first) на живом проде, а не пересбо�
 
 ---
 
-## 3. Reverse-proxy + TLS
+## 4. Reverse-proxy + TLS
 
 Процесс сам TLS не терминирует — это задача proxy перед ним. Два примера ниже покрывают
 основной эндпоинт (`/`, `/api/v1/*`) и обязательно правильно проксируют SSE
@@ -175,7 +236,7 @@ IP клиента (`request.client`). За reverse-proxy каждый запро
 (nginx-пример выше; Caddy делает это сам), (2) uvicorn доверяет этим заголовкам от адреса
 прокси — `auto_bi serve` включает `proxy_headers` всегда, но доверяет по умолчанию только
 loopback: для same-host прокси (`127.0.0.1` → `127.0.0.1:8200`) этого достаточно, для
-контейнерного прокси (compose/k8s, §5) выставьте `AUTO_BI_FORWARDED_ALLOW_IPS` — адрес(а)
+контейнерного прокси (compose/k8s, §6) выставьте `AUTO_BI_FORWARDED_ALLOW_IPS` — адрес(а)
 прокси через запятую, либо `*`, если порт приложения доступен ТОЛЬКО прокси (внутренняя
 compose-сеть без published port). `*` при публично доступном порте приложения — дыра:
 любой клиент подделает свой IP одним заголовком.
@@ -191,7 +252,7 @@ serve --host 127.0.0.1` за локальным nginx/Caddy — эвристик
 
 ---
 
-## 4. Готовность для оркестратора
+## 5. Готовность для оркестратора
 
 - `GET /api/v1/health` — процесс жив (liveness).
 - `GET /api/v1/ready` — глубокая готовность: store (`SELECT 1`) + DWH (`SELECT 1`) + BI
@@ -203,11 +264,11 @@ serve --host 127.0.0.1` за локальным nginx/Caddy — эвристик
 `{"configured": false}` встречается только в юнит-тестах, вызывающих `create_app()` напрямую
 без этих зависимостей.
 
-Пример healthcheck для compose/systemd — см. §5.
+Пример healthcheck для compose/systemd — см. §6.
 
 ---
 
-## 5. Docker Compose — пример прод-запуска
+## 6. Docker Compose — пример прод-запуска
 
 Этот пример — слой «приложение + reverse-proxy». Демо-стенд ClickHouse+Superset
 (`docker-compose.yml` в корне) — отдельная история для разработки/eval; в проде DWH и BI
@@ -254,10 +315,10 @@ volumes:
   caddy_data:
 ```
 
-`Caddyfile` — как в §3, только `reverse_proxy auto_bi:8200` (имя compose-сервиса вместо
+`Caddyfile` — как в §4, только `reverse_proxy auto_bi:8200` (имя compose-сервиса вместо
 `127.0.0.1`). В этой схеме прокси приходит НЕ с loopback (compose-сеть), поэтому в `.env`
 обязательно `AUTO_BI_FORWARDED_ALLOW_IPS=*` — иначе per-IP квоты увидят адрес Caddy вместо
-клиентов (F-2, §3); `*` здесь безопасен, потому что у сервиса `auto_bi` нет published
+клиентов (F-2, §4); `*` здесь безопасен, потому что у сервиса `auto_bi` нет published
 port — до него дотягивается только Caddy.
 
 **Публичное игровое демо (P8)** живёт отдельным вариантом упаковки —
@@ -267,10 +328,16 @@ port — до него дотягивается только Caddy.
 `deploy/hf-demo/README.md`; это ДЕМО-упаковка, для прода используйте схему выше.
 
 **Текстовый путь на демо (по требованию).** По умолчанию демо — auto-only (без LLM, нулевой
-бюджет). Чтобы открыть ввод текста/полей, задайте в Space secrets `AUTO_BI_DEMO_AUTO_ONLY=false`:
-`start-autobi.sh` тогда подключит LLM-провайдера и ПРИНУДИТЕЛЬНО включит per-IP session-квоту
-(`AUTO_BI_SESSION_RATE_ENABLED=true`, `_PER_DAY` по умолчанию 50). Провайдер по умолчанию —
-GraceKelly (`claude-sonnet-5`); контейнер Space НЕ достучится до `127.0.0.1` на вашей машине,
+бюджет). Чтобы открыть ввод текста/полей, задайте в Space secrets `AUTO_BI_DEMO_AUTO_ONLY=false`
+**и** рабочий LLM (`AUTO_BI_GRACEKELLY_URL` или Anthropic): `start-autobi.sh` тогда
+подключит провайдера, ПРИНУДИТЕЛЬНО включит per-IP session-квоту
+(`AUTO_BI_SESSION_RATE_ENABLED=true`, `_PER_DAY` по умолчанию 50) и
+`AUTO_BI_REQUIRE_LLM_READY=true` — процесс **не стартует**, если LLM-probe падает
+(иначе health показывал бы text-режим при мёртвом GraceKelly). `/health.capabilities`
+описывает реально доступные режимы; post-deploy:
+`python deploy/hf-demo/assert_demo_profile.py https://<space>.hf.space`.
+Провайдер по умолчанию — GraceKelly (`claude-sonnet-5`); контейнер Space НЕ достучится
+до `127.0.0.1` на вашей машине,
 поэтому `AUTO_BI_GRACEKELLY_URL` должен указывать на ПУБЛИЧНЫЙ туннель (ngrok/cloudflared) к
 запущенному GraceKelly — демо живёт, только пока ваша машина и туннель включены, и каждый запрос
 анонима тратит вашу LLM-квоту. Альтернатива без туннеля — прямой Anthropic API
@@ -306,13 +373,25 @@ WantedBy=multi-user.target
 
 ---
 
-## 6. Бэкап SQLite
+## 7. Бэкап SQLite
 
 Store — один файл SQLite (`AUTO_BI_STORE_PATH`, по умолчанию `data/auto_bi.sqlite`),
 открытый без WAL (`store/db.py` — обычный rollback-journal, одно соединение,
 `check_same_thread=False`). Простое копирование файла (`cp`) во время работы процесса
 рискует зацепить файл в момент записи (torn read) — используйте встроенный SQLite
-online-backup, который безопасен на живой БД:
+online-backup, который безопасен на живой БД.
+
+**В коде / CLI-скрипте (plan_sol step 12):** `Store.backup_to(path)`,
+`Store.integrity_check()`, операторский wrapper:
+
+```bash
+uv run python scripts/store_backup.py backup data/auto_bi.sqlite \
+  /backup/auto_bi/auto_bi-$(date +%Y%m%d%H%M%S).sqlite
+uv run python scripts/store_backup.py check /backup/auto_bi/….sqlite
+uv run python scripts/store_backup.py restore-drill data/auto_bi.sqlite
+```
+
+Эквивалент через CLI sqlite3:
 
 ```bash
 mkdir -p /backup/auto_bi
@@ -322,8 +401,10 @@ sqlite3 data/auto_bi.sqlite ".backup /backup/auto_bi/auto_bi-$(date +%Y%m%d%H%M%
 Cron (ежедневно в 03:00, хранить 14 копий):
 
 ```cron
-0 3 * * * cd /opt/auto_bi && sqlite3 data/auto_bi.sqlite ".backup /backup/auto_bi/auto_bi-$(date +\%Y\%m\%d).sqlite" && find /backup/auto_bi -mtime +14 -delete
+0 3 * * * cd /opt/auto_bi && uv run python scripts/store_backup.py backup data/auto_bi.sqlite /backup/auto_bi/auto_bi-$(date +\%Y\%m\%d).sqlite && find /backup/auto_bi -mtime +14 -delete
 ```
+
+Автотесты: `tests/test_store_backup.py`. SLO/recovery overview — [operations/SLO.md](operations/SLO.md).
 
 Что теряется без бэкапа: история сессий/spec'ов/билдов/LLM-вызовов/заявок владельцу DM и
 пользователи auth (ARCHITECTURE §3.8) — сами дашборды в Superset/DataLens не пострадают
@@ -378,7 +459,7 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
 
 ---
 
-## 7. Ротация `logs/*.jsonl`
+## 8. Ротация `logs/*.jsonl`
 
 `logs/llm_calls.jsonl` — построчный append-лог метаданных вызовов LLM: hash промпта,
 размеры, latency, статус — сырые промпты/ответы туда НЕ пишутся
@@ -410,7 +491,7 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
 
 ---
 
-## 8. Чеклист секретов перед деплоем
+## 9. Чеклист секретов перед деплоем
 
 - `.env` не в git (уже в `.gitignore`) — перед первым пушем с новой машины проверить
   `git check-ignore .env`.
@@ -419,9 +500,11 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
   `AUTO_BI_ADMIN_PASSWORD`, при v2/Greenplum — `AUTO_BI_GP_PASSWORD`.
 - Права на файлы: `.env`, `data/auto_bi.sqlite` (хэши токенов/паролей, но всё равно не
   публичный файл), `logs/*.jsonl` (может нести значения данных из DM, если
-  `AUTO_BI_SEND_SAMPLES=true` — ARCHITECTURE §4) — `chmod 600` / непривилегированный
+  `AUTO_BI_SEND_SAMPLES=true` — ARCHITECTURE §4; default is `false`) — `chmod 600` / непривилегированный
   пользователь в контейнере.
-- `AUTO_BI_AUTH_COOKIE_SECURE=true` выставлен явно за любым reverse-proxy (см. §3) —
+- `AUTO_BI_PROFILE=production` (или `demo`) согласован с флагами §2 — `serve` откажется
+  стартовать при небезопасной комбинации.
+- `AUTO_BI_AUTH_COOKIE_SECURE=true` выставлен явно за любым reverse-proxy (см. §4) —
   не полагаться на авто-эвристику по `--host`.
 - Если `AUTO_BI_AUTH_ENABLED=true`: `AUTO_BI_AUTH_USERS_FILE` вне VCS — плейнтекст-пароли в
   нём реальный секрет до хэширования при старте (USER_GUIDE §7).
@@ -440,7 +523,7 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
   вызовам/токенам/стоимости/времени, на сессию и на актора/24ч; агрегат — из леджера `llm_calls`
   (переживает рестарт, в отличие от in-process квот). Задайте нужные `AUTO_BI_LLM_BUDGET_*` (0 =
   без лимита по измерению). Выключен по умолчанию.
-- Квоты за прокси реально per-IP, а не один общий bucket (F-2, §3): прокси шлёт
+- Квоты за прокси реально per-IP, а не один общий bucket (F-2, §4): прокси шлёт
   `X-Forwarded-For`, и если он не на loopback (compose/k8s) — выставлен
   `AUTO_BI_FORWARDED_ALLOW_IPS` (адреса прокси; `*` только когда порт приложения не
   опубликован наружу). Проверка: залогируйте/дерните `/api/v1/auth/me` с двух внешних
@@ -448,7 +531,7 @@ retention. Счётчики процесса (`in_flight`, `dwh_*`) обнуля
 
 ---
 
-## 9. После рестарта / восстановление
+## 10. После рестарта / восстановление
 
 `Store.reap_stuck_builds()` вызывается при каждом старте `auto_bi serve` (S07) —
 сессии, застрявшие в `building` из-за убитого предыдущего процесса, автоматически получают
@@ -461,6 +544,69 @@ Store — фаза диалога (уточнения/превью/собран�
 ходом вещи (вердикты Advisor, grounding report). Билд, оборванный рестартом, воскресает как
 `failed` — повторная кнопка «Собрать» пересобирает тот же одобренный spec. Подробнее —
 ARCHITECTURE §3.15.
+
+---
+
+## 11. GitHub repository protection (plan_sol step 5)
+
+Публичный репозиторий должен закрывать прямой merge/push в `main` и перезапись
+release-тегов. **Локальный scaffolding уже в git:**
+
+| Артефакт | Назначение |
+|---|---|
+| [`.github/CODEOWNERS`](../.github/CODEOWNERS) | владелец review (solo: `@brownjuly2003-code`) |
+| [`.github/pull_request_template.md`](../.github/pull_request_template.md) | security / data / docs / release checklist |
+| [`.github/dependabot.yml`](../.github/dependabot.yml) | version updates (uv + actions + docker), minor/patch groups |
+| [`scripts/apply_github_protection.py`](../scripts/apply_github_protection.py) | dry-run / apply rulesets + Dependabot security updates |
+
+Обязательные check-run names (должны совпадать с `name:` job в workflows):
+
+1. `Lint, format & tests (offline)`
+2. `Dependency audit (pip-audit)`
+3. `Docker image build (drift check)`
+4. `Integration (ClickHouse + Superset stand)`
+5. `gitleaks`
+6. `analyze (python)`
+
+Сверка имён — `tests/test_github_protection.py`.
+
+### Внешние операции (только с явным разрешением оператора)
+
+```bash
+# только план
+python scripts/apply_github_protection.py
+python scripts/apply_github_protection.py --status
+
+# мутация GitHub (rulesets + security updates) — GATE
+python scripts/apply_github_protection.py --apply
+```
+
+Что делает `--apply`:
+
+- ruleset **main protection**: PR required, conversation resolution, required checks
+  выше, no force-push (`non_fast_forward`), no branch delete;
+- ruleset **release tags v\***: запрет update/delete/force на `refs/tags/v*`;
+- включает `dependabot_security_updates` на репозитории.
+
+### Solo-maintainer residuals (намеренно)
+
+- `require_code_owner_review` и `required_approving_review_count` **выключены** в
+  ruleset payload — иначе единственный владелец не смержит свой PR. CODEOWNERS всё
+  равно документирует ownership; включить review enforcement, когда появится второй
+  reviewer.
+- Environment `pypi`: **`prevent_self_review=false`** — иначе solo release deadlock.
+  `can_admins_bypass` на environment сейчас true; сужать после появления второго
+  человека.
+- Coverage badge commit-back в CI **soft-skip** при отказе push (ruleset); badge может
+  отставать, quality job не краснеет.
+- Открытые Dependabot PR разбираются **малыми совместимыми группами** (не bulk-merge
+  major actions major+uv в одном окне).
+
+### Аварийный bypass
+
+Постоянных `bypass_actors` в ruleset нет. Временный обход — UI ruleset
+`enforcement: disabled` / bypass на конкретный PR, с записью в CHANGELOG/ops note и
+немедленным возвратом `active`. Не force-push в `main` и не переписывать `v*` tags.
 
 ---
 

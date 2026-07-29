@@ -130,8 +130,7 @@ def source_column_alias(ref: str, mart_table: str) -> str:
     table_qual, _, col = ref.rpartition(".")
     if table_qual == mart_table:
         return col
-    table_name = table_qual.rpartition(".")[2]
-    return f"{table_name}_{col}"
+    return f"{column_alias(table_qual)}_{col}"
 
 
 def collect_source_aliases(
@@ -147,7 +146,7 @@ def collect_source_aliases(
     alias_owner: dict[str, str] = {}
     out: dict[str, str] = {}
     for col in columns:
-        alias = source_column_alias(col, mart_table)
+        alias = col
         if alias in alias_owner:
             raise SourceAliasCollisionError(
                 f"source dataset alias {alias!r} collides between "
@@ -156,7 +155,8 @@ def collect_source_aliases(
         alias_owner[alias] = col
         out[col] = alias
     for ref in joined_refs:
-        alias = source_column_alias(ref, mart_table)
+        table_qual, _, col = ref.rpartition(".")
+        alias = f"{column_alias(table_qual)}_{col}"
         if alias in alias_owner:
             raise SourceAliasCollisionError(
                 f"source dataset alias {alias!r} collides between "
@@ -205,15 +205,14 @@ def source_exposes_column(
 ) -> bool:
     """Whether the shared source dataset for `table` carries `filter_column`."""
     inputs = source_dataset_inputs(spec, plan, model, table)
-    target = qualified_column_ref(filter_column, table)
     # mart's own column: filter names schema.table.col and the bare name is in columns
     ft, _, fname = filter_column.rpartition(".")
     if ft == table and fname in inputs.columns:
         return True
-    if target in inputs.joined_refs or filter_column in inputs.joined_refs:
+    if filter_column in inputs.joined_refs:
         return True
     # bare filter (unusual for DashboardFilter) against mart columns
-    return "." not in filter_column and filter_column in inputs.columns
+    return column_alias(filter_column) == filter_column and filter_column in inputs.columns
 
 
 def filter_binding_alias(
@@ -316,7 +315,7 @@ def filter_preview_notes(spec: DashboardSpec, model: SemanticModel | None = None
         if model is None:
             # without a model neither the scope rule nor the binding is computable
             # (both read the source dataset shape) — keep the coarse pre-model badge
-            if cp.role is DatasetRole.OWN and cp.fallback_reason:
+            if cp.fallback_reason is not None:
                 notes.append(f"«{chart.title}»: фильтр не влияет: {cp.fallback_reason}")
             continue
         # the badge must not lie in either direction: an OWN chart that some control

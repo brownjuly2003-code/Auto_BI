@@ -1,5 +1,10 @@
 {
   "case_id": "g14_ratio_by_store",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -28,7 +33,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "b8c3c6b2cfb0b33e43dd2eb69e1f673c2daefa5ea05b991acb19648f713c88b5"
     },
     {
       "step": "propose_spec",
@@ -316,7 +322,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "2c8dcd7168f6be131309a8942fa9d538433d8a5f773449e262ffe6ad879075c2"
     }
   ]
 }

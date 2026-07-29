@@ -100,7 +100,7 @@ def build_grounding_prompt(
     request: str,
     model: SemanticModel,
     *,
-    include_samples: bool = True,
+    include_samples: bool = False,
     pinned: Iterable[str] = (),
 ) -> str:
     schema = json.dumps(GroundingReport.model_json_schema(), ensure_ascii=False)
@@ -125,7 +125,7 @@ def ground(
     request: str,
     *,
     session_id: str | None = None,
-    include_samples: bool = True,
+    include_samples: bool = False,
     pinned: Iterable[str] = (),
 ) -> GroundingReport:
     prompt = build_grounding_prompt(request, model, include_samples=include_samples, pinned=pinned)

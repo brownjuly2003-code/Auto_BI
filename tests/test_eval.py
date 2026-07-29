@@ -99,16 +99,26 @@ def test_golden_infeasible_case_requires_flagging(demo_model) -> None:
 
 
 def test_golden_suite_thresholds(demo_model) -> None:
-    # 80% threshold applies to clear cases; flagged cases are all-or-nothing
+    # live: 80% on clear; flagged all-or-nothing. replay: 100% (plan_sol step 9).
     from auto_bi.eval.runner import CaseResult, EvalReport
 
     report = EvalReport(
         results=[CaseResult(case_id=f"g{i}", kind="clear", passed=i > 1) for i in range(10)]
         + [CaseResult(case_id="a1", kind="ambiguous", passed=True)]
     )
-    assert golden_suite_ok(report)  # 8/10 clear = 80%
+    assert golden_suite_ok(report, mode="live")  # 8/10 clear = 80%
+    assert not golden_suite_ok(report, mode="replay")  # deterministic: any fail fails
     report.results.append(CaseResult(case_id="i1", kind="infeasible", passed=False))
-    assert not golden_suite_ok(report)
+    assert not golden_suite_ok(report, mode="live")
+
+    all_green = EvalReport(
+        results=[
+            CaseResult(case_id="g1", kind="clear", passed=True),
+            CaseResult(case_id="a1", kind="ambiguous", passed=True),
+        ]
+    )
+    assert golden_suite_ok(all_green, mode="replay")
+    assert golden_suite_ok(all_green, mode="refresh-fingerprints")
 
 
 def test_golden_iteration_case_checks_patched_spec(demo_model) -> None:

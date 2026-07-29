@@ -67,7 +67,11 @@ def validate_spec(
 
 
 def _validate_raw_chart(
-    chart: ChartSpec, prefix: str, *, target_bi: str | None = None
+    chart: ChartSpec,
+    prefix: str,
+    raw_sql: str,
+    *,
+    target_bi: str | None = None,
 ) -> list[str]:
     """Validate the X-5 raw_sql escape hatch: a manual SELECT that bypasses model validation.
 
@@ -92,7 +96,7 @@ def _validate_raw_chart(
             f"{prefix}: raw_sql is supported only with target_bi=superset, got {target_bi!r}"
         )
     try:
-        guard_sql(chart.query.raw_sql or "")
+        guard_sql(raw_sql)
     except SQLGuardError as e:
         errors.append(f"{prefix}: raw_sql is not a single plain SELECT: {e}")
     q = chart.query
@@ -137,7 +141,7 @@ def _validate_chart(
                 "LLM/text/fields paths must use IR measures and dimensions only"
             ]
         target = spec.target_bi.value if spec is not None else None
-        return _validate_raw_chart(chart, prefix, target_bi=target)
+        return _validate_raw_chart(chart, prefix, chart.query.raw_sql, target_bi=target)
 
     table = model.table(chart.query.table)
     if table is None:
@@ -179,7 +183,7 @@ def _validate_chart(
         hint = ""
         if col.startswith(f"{table.name}.") and table.column(col.removeprefix(f"{table.name}.")):
             hint = f" — укажи имя без префикса таблицы: {col.removeprefix(f'{table.name}.')!r}"
-        elif "." not in col:
+        elif column_alias(col) == col:
             owners = [
                 t.name for t in model.tables if t.name != table.name and t.column(col) is not None
             ]
@@ -289,8 +293,6 @@ def _validate_chart(
     for m in chart.query.measures:
         orderable.add(m.column)
         orderable.add(measure_alias(m))  # the SELECT alias SQL_GEN actually orders by
-        if m.label:
-            orderable.add(m.label)
     for ob in chart.query.order_by:
         if ob.by not in orderable:
             errors.append(
@@ -315,7 +317,7 @@ def _first_dimension_is_time(chart: ChartSpec, model: SemanticModel) -> bool:
     if not dims:
         return False
     ref = dims[0]
-    table_name, _, col = ref.rpartition(".") if "." in ref else ("", "", ref)
+    table_name, _, col = ref.rpartition(".")
     table = model.table(table_name) if table_name else model.table(chart.query.table)
     column = table.column(col) if table is not None else None
     return column is not None and column.role == ColumnRole.TIME
@@ -435,8 +437,8 @@ def _validate_compare(chart: ChartSpec, model: SemanticModel, prefix: str) -> li
                 f"{prefix}: compare.grain должен задавать период "
                 "(week/month/quarter/year), не day"
             )
-        col_name = c.column.rpartition(".")[2] if "." in c.column else c.column
-        ref_table = model.table(c.column.rpartition(".")[0]) if "." in c.column else base_table
+        table_name, _, col_name = c.column.rpartition(".")
+        ref_table = model.table(table_name) if table_name else base_table
         column = ref_table.column(col_name) if ref_table is not None else None
         if column is None:
             errors.append(f"{prefix}: compare.column {c.column!r} — неизвестная колонка")

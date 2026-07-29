@@ -2,14 +2,13 @@
 
 `make_adapter` runs per build (pipeline) and per readiness probe (serve), so an
 unreleased client pool accumulates for the life of a `serve` process. close() is a
-concrete helper on adapters/clients, NOT part of the Protocols — release goes through
-`close_adapter`/getattr so fakes without a pool stay valid.
+required BIAdapter method (plan_sol step 7); release goes through close_adapter.
 """
 
 import httpx
 import pytest
 
-from auto_bi.adapters.base import AdapterHealth, DashboardRef
+from auto_bi.adapters.base import AdapterHealth, BuildResult, DashboardRef
 from auto_bi.adapters.datalens.adapter import DataLensAdapter
 from auto_bi.adapters.datalens.client import DataLensClient
 from auto_bi.adapters.factory import close_adapter, probe_health
@@ -53,9 +52,10 @@ def test_datalens_adapter_close_releases_http_pool() -> None:
     assert http.is_closed
 
 
-def test_close_adapter_tolerates_adapter_without_close() -> None:
-    # fakes and minimal adapters (Protocol has no close — S4) must pass through unharmed
-    close_adapter(object())  # type: ignore[arg-type]
+def test_close_adapter_requires_close() -> None:
+    # plan_sol step 7: close is required; bare objects no longer pass silently
+    with pytest.raises(AttributeError):
+        close_adapter(object())  # type: ignore[arg-type]
 
 
 # --- probe_health (per-probe adapter in /ready) -------------------------------------
@@ -111,9 +111,12 @@ def test_compile_and_build_closes_adapter_on_success() -> None:
 
 
 def test_compile_and_build_closes_adapter_on_failure() -> None:
+    from auto_bi.errors import CODE_BI_HEALTH, SafeError
+
     dead = _ClosableProbe(ok=False)  # healthcheck fails before build
-    with pytest.raises(RuntimeError, match="healthcheck failed"):
+    with pytest.raises(SafeError) as ei:
         _compile(lambda _target: dead)
+    assert ei.value.code == CODE_BI_HEALTH
     assert dead.closed
 
 
@@ -122,8 +125,13 @@ def test_compile_and_build_close_failure_never_masks_the_build_outcome() -> None
         def healthcheck(self) -> AdapterHealth:
             return AdapterHealth(ok=True)
 
-        def build(self, spec) -> DashboardRef:
-            return DashboardRef(id=1, title="t", url="/superset/dashboard/1/")
+        def build(self, spec, ctx=None) -> BuildResult:
+            return BuildResult(
+                dashboard=DashboardRef(id=1, title="t", url="/superset/dashboard/1/")
+            )
+
+        def delete_artifact(self, kind: str, native_id: str) -> None:
+            return None
 
         def close(self) -> None:
             raise RuntimeError("pool already broken")

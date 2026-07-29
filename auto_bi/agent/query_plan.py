@@ -39,6 +39,7 @@ not the aggregated magnitude.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 # Same constant the guard uses for its LIMIT trial (`sql_guard.TRIAL_LIMIT`). Duplicated
 # here so this module stays free of a reverse import into the guard; both sites must stay
@@ -51,7 +52,7 @@ class PlanEntry:
     """Outcome of planning one statement on the DWH."""
 
     ok: bool  # the engine planned it without raising (=> it resolves; the guard may skip)
-    evidence: dict | None  # parsed measurement, None when the engine gave none
+    evidence: dict[str, Any] | None  # parsed measurement, None when the engine gave none
 
 
 @dataclass(frozen=True)
@@ -63,7 +64,7 @@ class TrialEntry:
     and must not be reused for magnitude or insights.
     """
 
-    rows: tuple[dict, ...]  # at most TRIAL_LIMIT dict rows as returned by RunQuery
+    rows: tuple[dict[str, Any], ...]  # at most TRIAL_LIMIT rows returned by RunQuery
     complete: bool
 
 
@@ -80,7 +81,7 @@ class PlanCache:
         """The recorded plan for this exact statement, or None if it was never planned."""
         return self._plans.get(sql)
 
-    def record(self, sql: str, *, ok: bool, evidence: dict | None) -> PlanEntry:
+    def record(self, sql: str, *, ok: bool, evidence: dict[str, Any] | None) -> PlanEntry:
         """Remember the outcome of planning `sql`; the first record for a statement wins."""
         entry = self._plans.get(sql)
         if entry is None:
@@ -98,7 +99,7 @@ class PlanCache:
         return self._trials.get(sql)
 
     def record_trial(
-        self, sql: str, rows: list[dict], *, trial_limit: int = TRIAL_LIMIT
+        self, sql: str, rows: list[dict[str, Any]], *, trial_limit: int = TRIAL_LIMIT
     ) -> TrialEntry:
         """Remember the LIMIT-trial result for `sql`; the first record for a statement wins.
 

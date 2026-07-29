@@ -16,6 +16,8 @@ keyed by the bare alias (column_alias / measure_alias) the SQL_GEN subselect emi
 
 from __future__ import annotations
 
+from typing import Any
+
 from auto_bi.ir.spec import (
     ChartSpec,
     Viz,
@@ -66,7 +68,7 @@ _PERCENT_FORMATTING = {
 # ("236 млрд ₽"). Display-only: the scaled headline is a round figure (precision 0) — except
 # in the 1–10 band, where whole-number rounding would lose up to a third of the figure
 # ("1,5 млрд" -> "2 млрд"), so one decimal is kept there (L-1). No SI unit either way.
-def _ru_kpi_formatting(unit: str, precision: int = 0) -> dict:
+def _ru_kpi_formatting(unit: str, precision: int = 0) -> dict[str, Any]:
     return {
         "format": "number",
         "showRankDelimiter": True,
@@ -130,19 +132,19 @@ _EXTRA_SETTINGS = {"titleMode": "hide", "title": "", "legendMode": "show"}
 _NUMERIC_DATA_TYPES = frozenset({"integer", "float"})
 
 
-def _is_numeric_dimension(field: dict) -> bool:
+def _is_numeric_dimension(field: dict[str, Any]) -> bool:
     return field.get("type") == "DIMENSION" and field.get("data_type") in _NUMERIC_DATA_TYPES
 
 
 def _field_item(
-    field: dict,
+    field: dict[str, Any],
     field_id: str,
     dataset_id: str,
     dataset_name: str,
     *,
     as_string: bool = False,
     title: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """One placeholder item: a dataset field bound into a chart section.
 
     Shape reversed from the demo Wizard charts (reversal §5.2); the chart binds to the
@@ -187,13 +189,13 @@ def build_chart_shared(
     chart: ChartSpec,
     dataset_id: str,
     dataset_name: str,
-    fields_by_alias: dict[str, dict],
+    fields_by_alias: dict[str, dict[str, Any]],
     *,
     horizontal: bool = False,
     kpi_unit: str | None = None,
     kpi_precision: int = 0,
     axis_unit: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """IR chart -> DataLens `shared` config. `fields_by_alias` maps a bare alias to its
     dataset result_schema descriptor (guid/avatar_id/data_type/type/aggregation/cast).
 
@@ -236,7 +238,7 @@ def build_chart_shared(
     # ratio-transform aliases (pop_pct, share) that display as a percent
     percent_aliases = {measure_alias(m) for m in q.measures if is_percent_measure(m)}
 
-    def item(alias: str, *, discrete: bool = False, title: str | None = None) -> dict:
+    def item(alias: str, *, discrete: bool = False, title: str | None = None) -> dict[str, Any]:
         used.setdefault(alias, None)
         field = fields_by_alias[alias]
         # on a column chart, a numeric dimension must be string-cast to render as categories
@@ -250,15 +252,15 @@ def build_chart_shared(
             out["formatting"] = dict(_COMPACT_FORMATTING)
         return out
 
-    def dims(refs: list[str], *, discrete: bool = False) -> list[dict]:
+    def dims(refs: list[str], *, discrete: bool = False) -> list[dict[str, Any]]:
         return [item(column_alias(r), discrete=discrete) for r in refs]
 
-    def measures() -> list[dict]:
+    def measures() -> list[dict[str, Any]]:
         return [item(measure_alias(m)) for m in q.measures]
 
-    colors: list[dict] = []
-    sort: list[dict] = []
-    labels: list[dict] = []
+    colors: list[dict[str, Any]] = []
+    sort: list[dict[str, Any]] = []
+    labels: list[dict[str, Any]] = []
 
     extra_settings = dict(_EXTRA_SETTINGS)
     if chart.viz == Viz.BIG_NUMBER:
@@ -294,7 +296,7 @@ def build_chart_shared(
         # (dimension -> "y", measures -> "x") in the same positional order, or axis
         # formatting (C1 percent) would land on the category axis and be dropped.
         dim_ph_id, values_ph_id = ("y", "x") if viz_id == "bar" else ("x", "y")
-        values_placeholder: dict = {"id": values_ph_id, "items": measures()}
+        values_placeholder: dict[str, Any] = {"id": values_ph_id, "items": measures()}
         if q.measures and measure_alias(q.measures[0]) in percent_aliases:
             # C1: the value axis reads the primary measure's percent `formatting` only with
             # this flag (the engine takes placeholder.items[0], so the primary measure decides).

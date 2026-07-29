@@ -36,6 +36,7 @@ excluded KPI untouched). Round-trip is pinned by tests/test_superset_contract.py
 from __future__ import annotations
 
 import hashlib
+from typing import Any
 
 from auto_bi.agent.dataset_plan import (
     DatasetPlan,
@@ -47,7 +48,7 @@ from auto_bi.agent.dataset_plan import (
     source_exposes_column,
 )
 from auto_bi.ir.spec import ChartSpec, DashboardFilter, DashboardSpec, column_alias
-from auto_bi.semantic.model import ColumnRole, SemanticModel
+from auto_bi.semantic.model import Column, ColumnRole, SemanticModel
 
 # Re-export scope helpers so existing imports from this module keep working.
 __all__ = [
@@ -69,7 +70,7 @@ def _filter_id(column: str) -> str:
     return f"NATIVE_FILTER-auto_bi_{column_alias(column)}_{digest}"
 
 
-def _column(column: str, model: SemanticModel):
+def _column(column: str, model: SemanticModel) -> Column | None:
     table_name, _, col = column.rpartition(".")
     table = model.table(table_name)
     return table.column(col) if table else None
@@ -112,14 +113,14 @@ def build_native_filter_configuration(
     placements: list[Placement],
     model: SemanticModel,
     plan: DatasetPlan | None = None,
-) -> tuple[list[dict], list[tuple[DashboardFilter, list[int], list[int]]]]:
+) -> tuple[list[dict[str, Any]], list[tuple[DashboardFilter, list[int], list[int]]]]:
     """(native_filter_configuration, applied) where `applied` pairs each WIRED filter
     with the slice ids it scopes to and the ones it skips — for an honest preview/log.
     A filter no chart can honor is skipped entirely; the baked query.filters still
     constrain OWN charts, so nothing silently breaks.
     """
     plan = plan or plan_datasets(spec)
-    config: list[dict] = []
+    config: list[dict[str, Any]] = []
     applied: list[tuple[DashboardFilter, list[int], list[int]]] = []
     all_ids = [sid for _, sid, _ in placements]
 
@@ -149,7 +150,7 @@ def build_native_filter_configuration(
     return config, applied
 
 
-def _scope(excluded: list[int]) -> dict:
+def _scope(excluded: list[int]) -> dict[str, Any]:
     return {"rootPath": ["ROOT_ID"], "excluded": excluded}
 
 
@@ -166,7 +167,7 @@ def superset_time_range(default: str) -> str:
     return s
 
 
-def _time_default_mask(default: str) -> dict:
+def _time_default_mask(default: str) -> dict[str, Any]:
     """defaultDataMask for a time filter: preset the dashboard's time_range (B5).
 
     Empty default => the neutral empty mask (no preset, unchanged behavior). A non-empty
@@ -178,7 +179,7 @@ def _time_default_mask(default: str) -> dict:
     return {"extraFormData": {"time_range": tr}, "filterState": {"value": tr}}
 
 
-def _select_default_mask(default: str, alias: str) -> dict:
+def _select_default_mask(default: str, alias: str) -> dict[str, Any]:
     """defaultDataMask for a select filter: preset a single categorical value (B5).
 
     extraFormData.filters is what re-scopes the in-scope charts (a WHERE alias IN [value]);
@@ -199,7 +200,7 @@ def _select_filter(
     dataset_id: int,
     in_scope: list[int],
     excluded: list[int],
-) -> dict:
+) -> dict[str, Any]:
     return {
         "id": _filter_id(filter_.column),
         "name": name,
@@ -225,7 +226,7 @@ def _time_filter(
     name: str,
     in_scope: list[int],
     excluded: list[int],
-) -> dict:
+) -> dict[str, Any]:
     # a time-range filter targets no specific column: Superset applies it to each
     # in-scope dataset's main datetime column (auto-detected on the virtual dataset)
     return {

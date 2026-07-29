@@ -1,5 +1,10 @@
 {
   "case_id": "g6_heatmap_day_store",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -40,7 +45,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "b3993e8ce99a117a254a562b5756dbf177aa94325a2920c3e96cce00ccc514e7"
     },
     {
       "step": "propose_spec",
@@ -329,7 +335,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "e8375e0d1c9faf2a1d1dac919d86e2525ea6a06d4f93c900ff96b5e185febd8b"
     }
   ]
 }

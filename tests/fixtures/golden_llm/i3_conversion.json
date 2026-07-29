@@ -1,5 +1,10 @@
 {
   "case_id": "i3_conversion",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -21,7 +26,8 @@
         "unmatched": [
           "Конверсия сайта"
         ]
-      }
+      },
+      "prompt_sha256": "471708570af0f3c6d5b24c1be5bcda1c95fef0b35cdf8139e0dd226261fccb13"
     }
   ]
 }

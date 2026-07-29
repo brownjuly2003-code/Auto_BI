@@ -51,6 +51,14 @@ def test_health_is_open_and_reports_auth(demo_model, tmp_path) -> None:
         "auth": True,
         "version": __version__,
         "demo_auto_only": False,
+        "capabilities": {
+            "auto_overview": True,
+            "text_session": True,
+            "fields_session": True,
+            "word_edit": True,
+            "enrichment": False,
+            "llm_wired": True,
+        },
     }
 
 

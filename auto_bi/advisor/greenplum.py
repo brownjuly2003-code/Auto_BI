@@ -16,7 +16,7 @@ from auto_bi.advisor.clickhouse import (
     group_by_high_cardinality,
     no_filter_on_large_fact,
 )
-from auto_bi.advisor.findings import Finding, Remediation, Severity, VerdictClass
+from auto_bi.advisor.findings import Evidence, Finding, Remediation, Severity, VerdictClass
 from auto_bi.introspect.base import RunQuery
 
 # a distribution key with few distinct values can't spread rows evenly across segments
@@ -27,7 +27,7 @@ _PARTITIONS_RE = re.compile(r"Partitions selected:\s*(\d+)\s*\(out of\s*(\d+)\)"
 _MOTION_RE = re.compile(r"(Broadcast|Redistribute) Motion")
 
 
-def gp_explain_evidence(run_query: RunQuery, sql: str) -> dict | None:
+def gp_explain_evidence(run_query: RunQuery, sql: str) -> Evidence | None:
     """`EXPLAIN sql` -> {motions, partitions_selected, partitions_total}; None on failure.
 
     Never raises: advisory-only, a failed EXPLAIN degrades to "no measured evidence".
@@ -37,7 +37,7 @@ def gp_explain_evidence(run_query: RunQuery, sql: str) -> dict | None:
     except Exception:  # advisory only: any failure => no measured evidence, never raise
         return None
     plan = "\n".join(str(v) for r in rows for v in r.values())
-    evidence: dict = {}
+    evidence: Evidence = {}
     motions = sorted(set(_MOTION_RE.findall(plan)))
     if motions:
         evidence["motions"] = motions  # e.g. ["Broadcast", "Redistribute"]

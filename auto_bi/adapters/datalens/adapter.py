@@ -19,10 +19,15 @@ import json
 import logging
 import re
 import uuid
+from typing import Any, cast
 
 from auto_bi.adapters.artifacts import BuildArtifact
 from auto_bi.adapters.base import (
     AdapterHealth,
+    BuildAttempt,
+    BuildContext,
+    BuildReconcileResult,
+    BuildResult,
     ChartRef,
     DashboardRef,
     DatabaseRef,
@@ -233,9 +238,13 @@ def selector_scope_chart_ids(spec: DashboardSpec) -> set[str]:
 def build_selectors(
     spec: DashboardSpec,
     placements: list[Placement],
-    fields_by_dataset: dict[str, dict[str, dict]],
+    fields_by_dataset: dict[str, dict[str, dict[str, Any]]],
     model: SemanticModel,
-) -> tuple[list[dict], list[list[str]], list[tuple[DashboardFilter, list[str], list[str]]]]:
+) -> tuple[
+    list[dict[str, Any]],
+    list[list[str]],
+    list[tuple[DashboardFilter, list[str], list[str]]],
+]:
     """Compile spec.filters -> (control items, alias groups, applied log).
 
     Scope-to-applicable (mirrors superset.native_filters): a filter applies to a chart
@@ -247,7 +256,7 @@ def build_selectors(
     selector's value propagates to every in-scope chart. A control binds to the first
     in-scope dataset's field; TIME columns become a date(range) selector, others a select.
     """
-    controls: list[dict] = []
+    controls: list[dict[str, Any]] = []
     alias_groups: list[list[str]] = []
     applied: list[tuple[DashboardFilter, list[str], list[str]]] = []
     all_ids = [chart.id for chart, _, _ in placements]
@@ -316,9 +325,9 @@ def build_selectors(
 def build_dashboard_data(
     spec: DashboardSpec,
     widget_ids: list[str],
-    controls: list[dict] | None = None,
+    controls: list[dict[str, Any]] | None = None,
     alias_groups: list[list[str]] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """US dash-entry `data` blob (reversal §5.3), shaped for the `mix/createDashboardV1`
     gateway action (zod `dataSchema` minus `schemeVersion`, which the action injects).
 
@@ -337,8 +346,8 @@ def build_dashboard_data(
     # Deterministic, non-empty salt; ids are explicit so the salt is not used to derive them.
     salt = uuid.uuid5(uuid.NAMESPACE_URL, f"auto_bi_dash:{spec.title}").hex
     tab_id = f"auto_bi_tab_{salt[:8]}"
-    items: list[dict] = []
-    layout: list[dict] = []
+    items: list[dict[str, Any]] = []
+    layout: list[dict[str, Any]] = []
 
     # controls fill their row evenly (a lone period selector spans the full width) so the top
     # row aligns to the same grid as the KPI / chart rows below — uniform tile widths per row
@@ -443,7 +452,7 @@ class DataLensAdapter:
         self._strict_connection = strict_connection
         self._connection_id: str | None = None
         # dataset id -> (name, fields_by_alias) for binding charts to dataset fields
-        self._datasets: dict[str, tuple[str, dict[str, dict]]] = {}
+        self._datasets: dict[str, tuple[str, dict[str, dict[str, Any]]]] = {}
         # P0-2: set via set_artifact_namespace() before build(); empty = legacy single-user.
         self._artifact_namespace: str = ""
         # Ownership ledger (P0-2 criterion 4): build() accumulates the BI entities it creates
@@ -455,30 +464,15 @@ class DataLensAdapter:
     # --- BIAdapter ----------------------------------------------------------
 
     def set_artifact_namespace(self, namespace: str) -> None:
-        """P0-2: pin this build's technical names to a session/build namespace.
-
-        Dataset names and DataLens widget/dashboard entry names include a short
-        fingerprint so two sessions never promote/delete over each other.
-        """
+        """Deprecated: prefer `BuildContext.namespace` on `build(spec, ctx)`."""
         self._artifact_namespace = (namespace or "").strip()
 
     def set_query_plans(self, plans: PlanCache | None) -> None:
-        """D-2 §5: hand the build-local PlanCache so magnitude can reuse trial rows.
-
-        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace).
-        Every DataLens chart is per-chart gated, so a complete trial of the chart SQL is
-        the full aggregated answer when under the limit.
-        """
+        """Deprecated: prefer `BuildContext.plans` on `build(spec, ctx)`."""
         self._query_plans = plans
 
     def drain_build_artifacts(self) -> list[BuildArtifact]:
-        """Return and clear the BI artifacts the last build() created (P0-2 criterion 4).
-
-        Concrete helper, NOT part of the BIAdapter Protocol (like set_artifact_namespace):
-        the orchestrator (compile_and_build) drains after a successful build() and records the
-        rows in Store.bi_artifacts (the ownership ledger). Entries carry the CANONICAL entry
-        names/ids (post-promote), so the ledger never references a transient `__wip` entry.
-        Draining clears the buffer so a reused adapter never double-reports."""
+        """Deprecated: prefer `BuildResult.artifacts` from `build()`."""
         drained = list(self._build_artifacts)
         self._build_artifacts = []
         return drained
@@ -486,11 +480,9 @@ class DataLensAdapter:
     def delete_artifact(self, kind: str, native_id: str) -> None:
         """Delete one owned workbook entry by entryId (ownership ledger live-cleanup).
 
-        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts).
-        Returns normally when the entry was deleted OR was already gone (404 — canonical
-        names carry the build fingerprint, but an entry may still have been removed by hand
-        or by a same-name replace); raises on any other failure so the caller keeps the
-        ledger row 'live' and retries on a later prune. Never accepts a shared kind.
+        Required BIAdapter method (plan_sol step 7). Returns normally when the entry was
+        deleted OR was already gone (404); raises on any other failure so the caller keeps
+        the ledger row 'live'. Never accepts a shared kind.
         """
         scope = _DELETE_SCOPES.get(kind)
         if scope is None:
@@ -504,12 +496,47 @@ class DataLensAdapter:
             raise
         logger.info("datalens %s %s deleted (live-cleanup)", kind, native_id)
 
-    def close(self) -> None:
-        """Release the client's HTTP pool (D-2 lifecycle: adapters are created per build).
+    def reconcile_build_attempt(self, attempt: BuildAttempt) -> BuildReconcileResult:
+        """Delete the attempt's exact canonical/WIP entries, never shared connections."""
+        self._artifact_namespace = attempt.build_token.strip()
+        expected: list[tuple[str, str, str]] = []
+        for chart in attempt.spec.charts:
+            dataset_canonical = dataset_name(
+                attempt.spec.title,
+                chart.id,
+                self._artifact_namespace,
+            )
+            chart_canonical = self._owned_entry_name(chart.title)
+            expected.extend(
+                [
+                    ("chart", "widget", chart_canonical),
+                    ("chart", "widget", _wip_name(chart_canonical)),
+                    ("dataset", "dataset", dataset_canonical),
+                    ("dataset", "dataset", _wip_name(dataset_canonical)),
+                ]
+            )
+        dashboard_canonical = self._owned_entry_name(attempt.spec.title)
+        # Delete dependencies before datasets. Exact names are produced by the same
+        # functions build() uses; there is no prefix/title fallback.
+        expected[0:0] = [
+            ("dashboard", "dash", dashboard_canonical),
+            ("dashboard", "dash", _wip_name(dashboard_canonical)),
+        ]
+        order = {"chart": 0, "dashboard": 1, "dataset": 2}
+        discovered: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for kind, scope, name in sorted(expected, key=lambda item: order[item[0]]):
+            native_id = self._find_entry_id(scope, name)
+            key = (kind, native_id or "")
+            if native_id is not None and key not in seen:
+                seen.add(key)
+                discovered.append(key)
+        for kind, native_id in discovered:
+            self.delete_artifact(kind, native_id)
+        return BuildReconcileResult(discovered=len(discovered), deleted=len(discovered))
 
-        Concrete helper, NOT part of the BIAdapter Protocol (like drain_build_artifacts);
-        callers release through auto_bi.adapters.factory.close_adapter, which tolerates
-        adapters without it. The adapter is single-use after close."""
+    def close(self) -> None:
+        """Release the client's HTTP pool (D-2 lifecycle; required BIAdapter method)."""
         self._client.close()
 
     def _owned_entry_name(self, title: str) -> str:
@@ -608,7 +635,7 @@ class DataLensAdapter:
         for entry in res.get("entries", []):
             key = entry.get("key") or ""
             if key.rsplit("/", 1)[-1].casefold() == target:
-                return entry["entryId"]
+                return cast(str, entry["entryId"])
         return None
 
     def _delete_if_exists(self, scope: str, name: str) -> None:
@@ -739,7 +766,7 @@ class DataLensAdapter:
         # must omit schemeVersion (reversal §5.3); workbook entries take workbookId+name.
         # With `placements` (chart -> widget id -> dataset id) and spec.filters, compile
         # dashboard selectors; without them the dashboard is built filterless.
-        controls: list[dict] = []
+        controls: list[dict[str, Any]] = []
         alias_groups: list[list[str]] = []
         if placements and spec.filters:
             fields_by_dataset = {
@@ -930,7 +957,7 @@ class DataLensAdapter:
 
     # --- happy path ----------------------------------------------------------
 
-    def build(self, spec: DashboardSpec) -> DashboardRef:
+    def build(self, spec: DashboardSpec, ctx: BuildContext | None = None) -> BuildResult:
         """Full compile: connection -> per-chart datasets -> charts -> dashboard entry
         (mirrors SupersetAdapter.build, ARCHITECTURE §3.5).
 
@@ -950,9 +977,17 @@ class DataLensAdapter:
         build. Writes only to the dedicated Auto_BI workbook (F3). A failed build cleans up
         the temp `__wip` entries it created (`_cleanup_wip` in the except branch), so they do
         not linger as orphans even if the next attempt's title/chart set differs (F2 audit
-        P3)."""
+        P3).
+
+        `ctx` (plan_sol step 7) supplies namespace + PlanCache; when omitted, any values
+        staged via the deprecated set_* helpers still apply (unit tests).
+        """
+        if ctx is not None:
+            if ctx.namespace:
+                self._artifact_namespace = ctx.namespace.strip()
+            self._query_plans = ctx.plans
         # Ownership ledger (P0-2 criterion 4): reset the buffer, then record each canonical
-        # entity as it is created so the orchestrator can drain a complete set on success.
+        # entity; returned via BuildResult.artifacts (no post-build drain getattr).
         self._build_artifacts = []
         db = self.ensure_database()
         self._build_artifacts.append(BuildArtifact("database", str(db.id), db.name))
@@ -1038,7 +1073,9 @@ class DataLensAdapter:
             # Build fully succeeded under temp names -> promote them to canonical (delete stale
             # + rename). Reached only on success, so the old version survives any earlier failure.
             self._promote_to_canonical(to_promote)
-            return dash
+            arts = tuple(self._build_artifacts)
+            self._build_artifacts = []
+            return BuildResult(dashboard=dash, artifacts=arts)
         except Exception:
             self._cleanup_wip(wip_created)  # don't leave temp entries behind on failure
             raise

@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Callable
-from typing import Protocol
+from typing import Any, Protocol
 
 from auto_bi.semantic.model import SemanticModel
 
@@ -24,7 +24,7 @@ def rate_like(column_name: str) -> bool:
 # run_query(sql) -> rows as dicts; the read-only seam to the real DWH client, shared by
 # introspection, the SQL guard and the advisor (stubbed in tests). Engine-neutral so a
 # Greengage/PG path can implement the same callable without importing the ClickHouse module.
-RunQuery = Callable[[str], list[dict]]
+RunQuery = Callable[[str], list[dict[str, Any]]]
 
 
 class Introspector(Protocol):

@@ -1,5 +1,10 @@
 {
   "case_id": "g2_total_revenue_kpi",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -19,7 +24,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "bbd74eeecb000e0c611827501b51324ea54cf3f1c746b0c347660f99fbd19d9c"
     },
     {
       "step": "propose_spec",
@@ -244,7 +250,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "50c1cb4f2bbb34e4c58ba7a9252983d4f290e4d4fa2a4c30ce756c5ba9fe9138"
     }
   ]
 }

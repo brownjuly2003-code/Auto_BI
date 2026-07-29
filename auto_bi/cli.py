@@ -3,8 +3,17 @@
 import argparse
 import logging
 import sys
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from auto_bi import __version__
+
+if TYPE_CHECKING:
+    from rich.console import Console
+
+    from auto_bi.agent.machine import AgentTurn
+    from auto_bi.config import Settings
+    from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
 
@@ -108,11 +117,13 @@ def main(argv: list[str] | None = None) -> int:
     ev.add_argument("--cases", default="", help="Comma-separated case ids to run (subset)")
     ev.add_argument(
         "--llm-mode",
-        choices=["live", "replay", "record"],
+        choices=["live", "replay", "record", "refresh-fingerprints"],
         default="live",
         help="golden suite only: 'live' calls the configured provider (default); "
-        "'replay' answers from recorded fixtures, offline, no provider/key needed "
-        "(CI); 'record' calls the configured provider and writes fixtures for later replay",
+        "'replay' answers from recorded fixtures, offline, enforces prompt fingerprints "
+        "(CI); 'record' calls the provider and writes fixtures; "
+        "'refresh-fingerprints' offline-stamps prompt/template hashes onto existing "
+        "responses (no provider — reviewed procedure before commit)",
     )
     ev.add_argument(
         "--fixtures-dir",
@@ -365,7 +376,7 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
     from pathlib import Path
 
     from auto_bi.adapters.factory import close_adapter, make_adapter
-    from auto_bi.agent.pipeline import prune_artifact_rows
+    from auto_bi.agent.cleanup import prune_artifact_rows
     from auto_bi.config import get_settings
     from auto_bi.ir.spec import TargetBI
     from auto_bi.semantic.model import SemanticModel
@@ -384,7 +395,7 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
         print("Сирот прошлых ревизий нет.")
         return 0
 
-    by_target: dict[str, list[dict]] = {}
+    by_target: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         by_target.setdefault(row["target_bi"], []).append(row)
     print(f"Кандидаты на удаление (прошлые ревизии, всего {len(rows)}):")
@@ -417,12 +428,10 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
                 )
                 skipped_total += len(target_rows)
                 continue
-            delete = getattr(adapter, "delete_artifact", None)
-            if not callable(delete):
-                print(f"{target}: адаптер без delete_artifact — {len(target_rows)} строк пропущено")
-                skipped_total += len(target_rows)
-                continue
-            removed, failed = prune_artifact_rows(store, target_rows, delete, print)
+            # delete_artifact is a required BIAdapter method (plan_sol step 7)
+            removed, failed = prune_artifact_rows(
+                store, target_rows, adapter.delete_artifact, print
+            )
             removed_total += removed
             failed_total += failed
         finally:
@@ -573,15 +582,15 @@ def _serve(  # pragma: no cover — wiring only
 
     import uvicorn
 
-    from auto_bi.adapters.base import AdapterHealth
+    from auto_bi.adapters.base import AdapterHealth, DashboardRef
     from auto_bi.adapters.factory import make_adapter, probe_health
     from auto_bi.advisor.core import Advisor
-    from auto_bi.agent.pipeline import compile_and_build
+    from auto_bi.agent.pipeline import compile_and_build, reconcile_interrupted_builds
     from auto_bi.agent.sql_guard import LiveSQLValidator
     from auto_bi.api import create_app
     from auto_bi.config import get_settings
     from auto_bi.introspect.clickhouse import make_run_query
-    from auto_bi.ir.spec import TargetBI
+    from auto_bi.ir.spec import DashboardSpec, TargetBI
     from auto_bi.llm.budget import parse_prices
     from auto_bi.llm.factory import make_llm
     from auto_bi.logging_setup import configure_logging
@@ -599,10 +608,34 @@ def _serve(  # pragma: no cover — wiring only
     # C-2: a misspelled AUTO_BI_* variable is silently ignored by pydantic
     # (extra="ignore") — surface it so a typo'd security flag is never silently inert.
     from auto_bi.config import warn_unknown_env_settings
+    from auto_bi.deployment_profile import (
+        VALID_PROFILES,
+        normalize_profile,
+        validate_deployment_profile,
+    )
 
     warn_unknown_env_settings(logger)
+
+    # plan_sol step 4: validated deployment profiles (local|demo|production).
+    raw_profile = (settings.profile or "local").strip().lower()
+    if raw_profile not in VALID_PROFILES:
+        logger.warning(
+            "unknown AUTO_BI_PROFILE=%r — treating as 'local' (valid: %s)",
+            settings.profile,
+            ", ".join(sorted(VALID_PROFILES)),
+        )
+    profile_check = validate_deployment_profile(settings, bind_host=host)
+    for w in profile_check.warnings:
+        logger.warning("profile %s: %s", profile_check.profile, w)
+    if not profile_check.ok:
+        print(profile_check.format_message())
+        return 2
+    logger.info("deployment profile: %s", normalize_profile(settings.profile))
+
     # P0-3 fail-closed remote bind: non-loopback + auth off + not a demo profile requires
     # an explicit operator consent flag (Docker/trusted LAN). HF demo binds 127.0.0.1.
+    # (Also enforced inside validate_deployment_profile for demo/production; this keeps
+    # the local-profile path fail-closed without forcing AUTO_BI_PROFILE=demo.)
     loopback = {"127.0.0.1", "localhost", "::1"}
     if host not in loopback and not (
         settings.auth_enabled or settings.demo_auto_only or settings.allow_insecure_remote
@@ -617,13 +650,32 @@ def _serve(  # pragma: no cover — wiring only
 
     model = SemanticModel.load(model_path)
     run_query = make_run_query(settings)
+    # Build target is dispatched per durable spec; recovery needs the same resolver
+    # before the legacy stuck-session reaper runs.
+    adapter_for = partial(make_adapter, settings=settings, model=model)
     store = Store(settings.store_path)
+    reconciled = reconcile_interrupted_builds(store, adapter_for, log=logger.info)
+    if reconciled:
+        logger.info(
+            "reconciled %d durable interrupted build attempt(s): %s",
+            len(reconciled),
+            [r.get("attempt_id") for r in reconciled],
+        )
     reaped = store.reap_stuck_builds()  # B-7: trace for builds a previous crash/restart lost
     if reaped:
         logger.info(
             "reaped %d orphaned build(s) interrupted by a previous restart: %s",
             len(reaped),
             reaped,
+        )
+    # plan_sol step 8: surface delivered_pending ledger gaps as audit trace (no invented
+    # ledger rows — operator rebuild / manual repair is the recovery path).
+    pending = store.reconcile_pending_ledgers()
+    if pending:
+        logger.warning(
+            "reconcile: %d delivered_pending build(s) need ledger attention: %s",
+            len(pending),
+            [r.get("id") for r in pending],
         )
     if settings.auth_enabled:
         from auto_bi.auth import seed_users
@@ -653,10 +705,8 @@ def _serve(  # pragma: no cover — wiring only
         if settings.auth_cookie_secure is not None
         else host not in {"127.0.0.1", "localhost", "::1"}
     )
-    # the build target is dispatched per-spec (spec.target_bi); the API/UI selector sets it
-    adapter_for = partial(make_adapter, settings=settings, model=model)
 
-    def builder(spec, log, session_id):
+    def builder(spec: DashboardSpec, log: Callable[[str], None], session_id: str) -> DashboardRef:
         return compile_and_build(
             spec,
             model,
@@ -693,6 +743,15 @@ def _serve(  # pragma: no cover — wiring only
     from auto_bi.llm.base import DisabledLLM, LLMClient
 
     llm: LLMClient
+    # plan_sol step 2: log only the policy decision + eligible classes, never values.
+    if settings.send_samples:
+        logger.warning(
+            "AUTO_BI_SEND_SAMPLES=true: DWH top-values may be sent to the LLM for "
+            "public/internal columns only; confidential/restricted never leave the process"
+        )
+    else:
+        logger.info("AUTO_BI_SEND_SAMPLES=false: DWH values stay local (safe default)")
+
     if settings.demo_auto_only:
         # P8 public demo: no LLM provider/key at all — the API 403-gates every
         # LLM-triggering path, DisabledLLM is the wiring-bug backstop behind it.
@@ -700,6 +759,20 @@ def _serve(  # pragma: no cover — wiring only
         logger.info("demo_auto_only: text/fields/enrichment disabled, LLM not wired")
     else:
         llm = make_llm(settings, store=store)
+        # plan_sol step 1: a text-enabled public profile must not come up advertising
+        # text/fields while the LLM is unreachable (audit P0-1). Local dev leaves
+        # require_llm_ready false so a missing GraceKelly still starts the API.
+        if settings.require_llm_ready:
+            llm_ready = llm_healthcheck()
+            if not llm_ready.ok:
+                print(
+                    "Refusing to serve text-enabled profile: LLM is not ready.\n"
+                    f"  {llm_ready.message}\n"
+                    "Fix the LLM (GraceKelly tunnel / provider credentials) or set "
+                    "AUTO_BI_DEMO_AUTO_ONLY=true for auto-overview only."
+                )
+                return 2
+            logger.info("require_llm_ready: LLM probe ok (%s)", llm_ready.message or "ok")
     app = create_app(
         model=model,
         llm=llm,
@@ -734,7 +807,7 @@ def _serve(  # pragma: no cover — wiring only
         # guard, so a listed-model change moves both together
         llm_prices=parse_prices(settings.llm_budget_prices),
     )
-    uvicorn_kwargs: dict = {
+    uvicorn_kwargs: dict[str, Any] = {
         "host": host,
         "port": port,
         "log_level": log_level.lower(),
@@ -747,7 +820,7 @@ def _serve(  # pragma: no cover — wiring only
     if settings.forwarded_allow_ips is not None:
         # which peers are trusted to SET those headers; uvicorn's default trusts
         # loopback only — enough for a same-host proxy, must be widened for a
-        # containerized one (DEPLOYMENT §3/§5).
+        # containerized one (DEPLOYMENT §4/§6).
         uvicorn_kwargs["forwarded_allow_ips"] = settings.forwarded_allow_ips
         logger.info("trusting proxy headers from: %s", settings.forwarded_allow_ips)
     if log_format == "json":
@@ -767,7 +840,7 @@ def _serve(  # pragma: no cover — wiring only
 
 
 def _start_token_purge_thread(  # pragma: no cover — wiring only
-    store, interval_seconds: float = 3600.0
+    store: "Store", interval_seconds: float = 3600.0
 ) -> None:
     """Daemon thread that sweeps expired `auth_tokens` rows once an hour (B-4 follow-up):
     `token_user` already filters expired rows out, so this is just housekeeping against
@@ -787,7 +860,9 @@ def _start_token_purge_thread(  # pragma: no cover — wiring only
     threading.Thread(target=_loop, name="auth-token-purge", daemon=True).start()
 
 
-def _start_retention_thread(store, settings) -> None:  # pragma: no cover — wiring only
+def _start_retention_thread(
+    store: "Store", settings: "Settings"
+) -> None:  # pragma: no cover — wiring only
     """Daemon thread that ages out the telemetry tables (D-3).
 
     Sweeps ONCE at startup and every `retention_sweep_hours` after: a server that restarts
@@ -822,7 +897,9 @@ def _start_retention_thread(store, settings) -> None:  # pragma: no cover — wi
     threading.Thread(target=_loop, name="store-retention", daemon=True).start()
 
 
-def _render_turn(console, turn) -> None:  # pragma: no cover — presentation only
+def _render_turn(
+    console: "Console", turn: "AgentTurn"
+) -> None:  # pragma: no cover — presentation only
     from rich.panel import Panel
 
     if turn.message:
@@ -858,6 +935,7 @@ def _eval(
     from auto_bi.config import get_settings
     from auto_bi.eval.cases import advisor_cases_for_engine, golden_cases_for_engine
     from auto_bi.eval.runner import (
+        EvalReport,
         advisor_suite_ok,
         golden_suite_ok,
         run_advisor_suite,
@@ -875,7 +953,7 @@ def _eval(
     engine = next((t.physical.engine for t in model.tables if t.physical), "clickhouse")
     console.print(f"[dim]model engine: {engine}[/dim]")
 
-    def _render(title: str, report) -> None:
+    def _render(title: str, report: EvalReport) -> None:
         table = RichTable(title=title)
         table.add_column("case")
         table.add_column("kind")
@@ -911,10 +989,18 @@ def _eval(
         if llm_mode == "replay":
             from auto_bi.llm.fixture import FixtureLLMClient
 
-            llm = FixtureLLMClient(fixtures_dir)
+            llm = FixtureLLMClient(fixtures_dir, enforce_fingerprint=True)
             console.print(
                 f"[dim]golden: {len(golden_selected)} cases, replay из {fixtures_dir}"
-                " (офлайн, без провайдера/ключа)…[/dim]"
+                " (офлайн, fingerprint enforced, без провайдера/ключа)…[/dim]"
+            )
+        elif llm_mode == "refresh-fingerprints":
+            from auto_bi.llm.fixture import FixtureLLMClient
+
+            llm = FixtureLLMClient(fixtures_dir, refresh_fingerprints=True)
+            console.print(
+                f"[dim]golden: {len(golden_selected)} cases, refresh fingerprints в "
+                f"{fixtures_dir} (офлайн, ответы не меняются)…[/dim]"
             )
         else:
             from auto_bi.llm.factory import make_llm
@@ -924,15 +1010,18 @@ def _eval(
             store = Store(settings.store_path)
             live_llm = make_llm(settings, store=store)
             provider = settings.llm_provider.strip().lower()
+            model_id = (
+                settings.gracekelly_model if provider == "gracekelly" else settings.anthropic_model
+            )
             provider_detail = (
-                f"{settings.gracekelly_url}, {settings.gracekelly_model}"
-                if provider == "gracekelly"
-                else settings.anthropic_model
+                f"{settings.gracekelly_url}, {model_id}" if provider == "gracekelly" else model_id
             )
             if llm_mode == "record":
                 from auto_bi.llm.fixture import RecordingLLMClient
 
-                llm = RecordingLLMClient(live_llm, fixtures_dir)
+                llm = RecordingLLMClient(
+                    live_llm, fixtures_dir, provider=provider, model_id=model_id
+                )
                 console.print(
                     f"[dim]golden: {len(golden_selected)} cases через {provider} "
                     f"({provider_detail}), запись фикстур в {fixtures_dir}…[/dim]"
@@ -952,12 +1041,18 @@ def _eval(
                 + ("[green]PASS[/green]" if r.passed else f"[red]FAIL[/red] {r.detail}")
             ),
         )
-        mode_label = {"live": "live LLM", "replay": "offline replay", "record": "recording"}[
-            llm_mode
-        ]
+        mode_label = {
+            "live": "live LLM",
+            "replay": "offline replay",
+            "record": "recording",
+            "refresh-fingerprints": "fingerprint refresh",
+        }[llm_mode]
         _render(f"Golden dialogue suite ({mode_label})", report)
         if not wanted:  # thresholds only make sense on the full set
-            ok &= golden_suite_ok(report)
+            ok &= golden_suite_ok(report, mode=llm_mode)
+        elif llm_mode in ("replay", "refresh-fingerprints"):
+            # subset still must be fully green under deterministic modes
+            ok &= all(r.passed for r in report.results)
 
     return 0 if ok else 1
 

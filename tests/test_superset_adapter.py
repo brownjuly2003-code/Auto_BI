@@ -9,7 +9,8 @@ import json
 import httpx
 import pytest
 
-from auto_bi.adapters.base import DatasetRef, DWHConfig
+from auto_bi.adapters.artifacts import dataset_table_name
+from auto_bi.adapters.base import BuildAttempt, BuildContext, DatasetRef, DWHConfig
 from auto_bi.adapters.superset.adapter import SupersetAdapter
 from auto_bi.adapters.superset.client import SupersetAPIError, SupersetClient
 from auto_bi.adapters.superset.form_data import build_form_data, build_position_json, ru_kpi_scale
@@ -804,15 +805,13 @@ def test_build_source_vs_own_dataset_roles() -> None:
 
 
 def test_build_drains_all_four_artifact_kinds() -> None:
-    # ownership ledger (P0-2 criterion 4): build() records every BI entity it creates on the
-    # concrete adapter; drain_build_artifacts returns them (NOT a BIAdapter Protocol method).
+    # ownership ledger (P0-2 criterion 4 / plan_sol step 7): BuildResult.artifacts.
     spec = make_spec()
     fake = FakeSuperset()
     adapter = make_adapter(fake, model=MODEL)
     adapter.set_artifact_namespace("sess:abc")
-    dashboard = adapter.build(spec)
-
-    arts = adapter.drain_build_artifacts()
+    result = adapter.build(spec)
+    arts = list(result.artifacts)
     by_kind: dict[str, list] = {}
     for a in arts:
         by_kind.setdefault(a.kind, []).append(a)
@@ -825,7 +824,7 @@ def test_build_drains_all_four_artifact_kinds() -> None:
     assert by_kind["database"][0].name == "Auto_BI ClickHouse"
     # native ids are stringified; the dashboard's matches the returned ref
     assert all(isinstance(a.native_id, str) for a in arts)
-    assert by_kind["dashboard"][0].native_id == str(dashboard.id)
+    assert by_kind["dashboard"][0].native_id == str(result.dashboard.id)
     # schema_set carries the DWH schema.table for datasets/charts, None for db/dashboard
     assert all(a.schema_set == "dm.sales_daily" for a in by_kind["dataset"])
     assert all(a.schema_set == "dm.sales_daily" for a in by_kind["chart"])
@@ -834,7 +833,7 @@ def test_build_drains_all_four_artifact_kinds() -> None:
     # the dataset technical name is display/debug only (carries the P0-2 namespace fingerprint)
     assert by_kind["dataset"][0].name.startswith("auto_bi__")
     assert "source" in by_kind["dataset"][0].name
-    # draining clears the buffer -> a second drain is empty (no double-report)
+    # successful build already cleared the internal buffer
     assert adapter.drain_build_artifacts() == []
 
 
@@ -1086,6 +1085,139 @@ def test_build_full_flow_scales_ruble_kpi_and_humanizes_legend() -> None:
     # SOURCE metrics aggregate the raw column, not the pre-computed measure alias
     assert 'SUM("revenue")' in kpi_params["metric"]["sqlExpression"]
     assert 'SUM("revenue")' in line_params["metrics"][0]["sqlExpression"]
+
+
+def test_build_embeds_full_attempt_token_in_chart_params_and_dashboard_css_marker() -> None:
+    # Superset 4.1.2 drops unknown json_metadata keys on save; dashboard ownership is
+    # carried by an invisible CSS comment, while charts keep the raw token in params.
+    fake = FakeSuperset()
+    token = "session-123:spec7"
+    make_adapter(fake).build(make_spec(), BuildContext(namespace=token))
+
+    chart_posts = [body for method, path, body in fake.requests if path == "/api/v1/chart/"]
+    assert chart_posts
+    assert all(json.loads(body["params"])["auto_bi_build_token"] == token for body in chart_posts)
+    (dashboard_body,) = (
+        body for method, path, body in fake.requests if path == "/api/v1/dashboard/"
+    )
+    meta = json.loads(dashboard_body["json_metadata"])
+    assert "auto_bi_build_token" not in meta
+    assert set(meta) <= {"chart_configuration", "native_filter_configuration"}
+    marker = f"/*auto_bi_bt:{token.encode('utf-8').hex()}*/"
+    assert marker in dashboard_body["css"]
+
+
+class FakeReconcileSuperset:
+    """Same-title foreign objects are visible but must survive exact-token cleanup."""
+
+    def __init__(self, spec: DashboardSpec, token: str) -> None:
+        self.spec = spec
+        self.token = token
+        self.deletes: list[str] = []
+        self.dataset_names = [
+            dataset_table_name(spec.title, chart.id, token) for chart in spec.charts
+        ]
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/v1/security/login":
+            return httpx.Response(200, json={"access_token": "jwt"})
+        if path == "/api/v1/security/csrf_token/":
+            return httpx.Response(200, json={"result": "csrf"})
+        if request.method == "GET" and path == "/api/v1/chart/":
+            return httpx.Response(
+                200,
+                json={
+                    "result": [
+                        {"id": 11, "slice_name": self.spec.charts[0].title},
+                        {"id": 12, "slice_name": self.spec.charts[0].title},
+                    ]
+                },
+            )
+        if request.method == "GET" and path == "/api/v1/chart/11":
+            return httpx.Response(
+                200,
+                json={"result": {"params": json.dumps({"auto_bi_build_token": self.token})}},
+            )
+        if request.method == "GET" and path == "/api/v1/chart/12":
+            return httpx.Response(
+                200,
+                json={"result": {"params": json.dumps({"auto_bi_build_token": "foreign"})}},
+            )
+        if request.method == "GET" and path == "/api/v1/dashboard/":
+            return httpx.Response(
+                200,
+                json={
+                    "result": [
+                        {"id": 21, "dashboard_title": self.spec.title},
+                        {"id": 22, "dashboard_title": self.spec.title},
+                    ]
+                },
+            )
+        if request.method == "GET" and path == "/api/v1/dashboard/21":
+            # Owned dashboard: supported json_metadata only; token lives in CSS hex marker.
+            return httpx.Response(
+                200,
+                json={
+                    "result": {
+                        "json_metadata": json.dumps({"chart_configuration": {}}),
+                        "css": f"/*auto_bi_bt:{self.token.encode('utf-8').hex()}*/",
+                    }
+                },
+            )
+        if request.method == "GET" and path == "/api/v1/dashboard/22":
+            return httpx.Response(
+                200,
+                json={
+                    "result": {
+                        "json_metadata": json.dumps({"chart_configuration": {}}),
+                        "css": f"/*auto_bi_bt:{b'foreign'.hex()}*/",
+                    }
+                },
+            )
+        if request.method == "GET" and path == "/api/v1/dataset/":
+            return httpx.Response(
+                200,
+                json={
+                    "result": [
+                        {"id": 31 + i, "table_name": name}
+                        for i, name in enumerate(self.dataset_names)
+                    ]
+                    + [{"id": 39, "table_name": "auto_bi__foreign"}]
+                },
+            )
+        if request.method == "DELETE":
+            self.deletes.append(path)
+            return httpx.Response(200, json={"message": "OK"})
+        return httpx.Response(404, json={"message": f"unexpected {request.method} {path}"})
+
+
+def test_reconcile_deletes_only_exact_attempt_owned_superset_objects() -> None:
+    spec = make_spec()
+    token = "session-123:spec7"
+    fake = FakeReconcileSuperset(spec, token)
+    adapter = make_adapter(fake)
+
+    result = adapter.reconcile_build_attempt(
+        BuildAttempt(
+            build_token=token,
+            session_id="session-123",
+            spec_id=7,
+            owner="alice",
+            spec=spec,
+        )
+    )
+
+    assert result.discovered == result.deleted == 4
+    assert set(fake.deletes) == {
+        "/api/v1/chart/11",
+        "/api/v1/dashboard/21",
+        "/api/v1/dataset/31",
+        "/api/v1/dataset/32",
+    }
+    assert "/api/v1/chart/12" not in fake.deletes
+    assert "/api/v1/dashboard/22" not in fake.deletes
+    assert "/api/v1/dataset/39" not in fake.deletes
 
 
 # --- delete_artifact (ownership live-cleanup) -------------------------------

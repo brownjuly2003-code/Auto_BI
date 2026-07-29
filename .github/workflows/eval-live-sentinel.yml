@@ -1,0 +1,96 @@
+# plan_sol step 9: small live golden sentinel when the prompt/LLM contract changes.
+#
+# Does NOT run on every push. Triggers:
+#   - workflow_dispatch (manual)
+#   - pull_request / push that touch prompts, LLM SDK wiring, semantic models, or fixtures
+#
+# Skips entirely when no provider secret is configured (forks / default CI stay free).
+# Budget is hard-capped so a runaway loop cannot spend unrestricted quota.
+#
+# Cases: tiny fixed list (clear + ambiguous + infeasible). Full suite stays offline replay.
+
+name: Eval live sentinel
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "auto_bi/agent/grounding.py"
+      - "auto_bi/agent/propose.py"
+      - "auto_bi/llm/**"
+      - "auto_bi/eval/**"
+      - "semantic/model.yaml"
+      - "tests/fixtures/golden_llm/**"
+      - ".github/workflows/eval-live-sentinel.yml"
+  push:
+    branches: [main]
+    paths:
+      - "auto_bi/agent/grounding.py"
+      - "auto_bi/agent/propose.py"
+      - "auto_bi/llm/**"
+      - "auto_bi/eval/**"
+      - "semantic/model.yaml"
+      - "tests/fixtures/golden_llm/**"
+      - ".github/workflows/eval-live-sentinel.yml"
+
+permissions:
+  contents: read
+
+# Sentinel case list: one clear, one ambiguous, one infeasible (CH demo model).
+# Keep short — paid tokens. Extend only with an explicit budget review.
+env:
+  SENTINEL_CASES: g1_revenue_by_day,a1_quantity,i2_returns
+  AUTO_BI_LLM_BUDGET_ENABLED: "true"
+  AUTO_BI_LLM_BUDGET_SESSION_MAX_CALLS: "24"
+  AUTO_BI_LLM_BUDGET_SESSION_MAX_COST_USD: "1.50"
+  AUTO_BI_LLM_BUDGET_DAY_MAX_COST_USD: "3.00"
+  AUTO_BI_SEND_SAMPLES: "false"
+
+jobs:
+  live-sentinel:
+    name: Live golden sentinel (budget-capped)
+    runs-on: ubuntu-latest
+    # No secret → skip (exit 0). Do not fail the PR matrix when operator has not
+    # provisioned a key for this repo.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decide whether a provider secret is available
+        id: gate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AUTO_BI_GRACEKELLY_URL: ${{ secrets.AUTO_BI_GRACEKELLY_URL }}
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY}" ] || [ -n "${AUTO_BI_GRACEKELLY_URL}" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No ANTHROPIC_API_KEY / AUTO_BI_GRACEKELLY_URL secret — sentinel skipped (offline replay still gates quality)."
+          fi
+
+      - name: Install uv
+        if: steps.gate.outputs.run == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Python + project
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          uv python install 3.12
+          uv sync --frozen
+
+      - name: Live sentinel (subset, budget-capped)
+        if: steps.gate.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AUTO_BI_LLM_PROVIDER: ${{ secrets.AUTO_BI_LLM_PROVIDER }}
+          AUTO_BI_GRACEKELLY_URL: ${{ secrets.AUTO_BI_GRACEKELLY_URL }}
+          AUTO_BI_GRACEKELLY_MODEL: ${{ secrets.AUTO_BI_GRACEKELLY_MODEL }}
+        run: |
+          export AUTO_BI_LLM_PROVIDER="${AUTO_BI_LLM_PROVIDER:-anthropic}"
+          uv run auto_bi eval \
+            --suite golden \
+            --llm-mode live \
+            --cases "${SENTINEL_CASES}" \
+            --model-path semantic/model.yaml

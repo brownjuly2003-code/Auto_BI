@@ -5,8 +5,8 @@ datasets (and DataLens widgets/dashboards) must include a short non-secret
 fingerprint of a build/session namespace so two independent sessions with the
 same title/chart ids never share or overwrite each other's BI artifacts.
 
-The BIAdapter Protocol is unchanged (CLAUDE.md S4): callers set the namespace on
-the concrete adapter via `set_artifact_namespace` before `build()`.
+plan_sol step 7: namespace travels through `BuildContext` on `build(spec, ctx)`;
+the deprecated `set_artifact_namespace` helper remains for unit tests only.
 """
 
 from __future__ import annotations
@@ -21,13 +21,12 @@ from dataclasses import dataclass
 class BuildArtifact:
     """One BI entity created during a build(), for the ownership ledger (Store.bi_artifacts).
 
-    Accumulated on the concrete adapter as build() creates database -> datasets -> charts ->
-    dashboard, then drained by the orchestrator (`drain_build_artifacts`, a concrete adapter
-    helper — NOT a BIAdapter Protocol method, like `set_artifact_namespace`) and written to the
-    durable ledger keyed on session/owner/build_token. `name` is a technical/display name for
-    debug ONLY: ownership-based orphan cleanup keys on the build_token/owner, NEVER on name/title
-    (audit P0-2 criterion 4). `schema_set` is the DWH schema.table a dataset/chart reads, carried
-    for RBAC scoping; None for a database connection or a dashboard (they read no single table).
+    Accumulated during `build()` and returned on `BuildResult.artifacts` (plan_sol step 7),
+    then written to the durable ledger keyed on session/owner/build_token. `name` is a
+    technical/display name for debug ONLY: ownership-based orphan cleanup keys on the
+    build_token/owner, NEVER on name/title (audit P0-2 criterion 4). `schema_set` is the
+    DWH schema.table a dataset/chart reads, carried for RBAC scoping; None for a database
+    connection or a dashboard (they read no single table).
     """
 
     kind: str  # 'database' | 'dataset' | 'chart' | 'dashboard'
@@ -37,15 +36,30 @@ class BuildArtifact:
 
 
 def new_build_namespace(session_id: str | None = None) -> str:
-    """Stable-enough, non-secret namespace for one build.
+    """Fresh random namespace for one build attempt.
 
     Prefer the durable session id when present (rebuilds of the same dialogue share
     a family of names for ops readability). Always append a short random token so
     two concurrent builds of the same session still never collide, and so a rebuild
     never PUTs over a dataset still referenced by a previous dashboard.
+
+    Prefer `stable_build_token` when a durable spec revision id is known (idempotent
+    approve/retry — plan_sol step 8 residual).
     """
     base = (session_id or "local").strip() or "local"
     return f"{base}:{uuid.uuid4().hex[:8]}"
+
+
+def stable_build_token(session_id: str, spec_id: int) -> str:
+    """Deterministic build namespace for one (session, approved-spec-row) pair.
+
+    Same approve intent → same token → pipeline can short-circuit on an already
+    delivered build (ok / delivered_pending) instead of creating a second BI
+    dashboard. A new proposed/approved spec row gets a new id → new token → full
+    rebuild + orphan prune of the prior revision.
+    """
+    sid = (session_id or "").strip() or "local"
+    return f"{sid}:spec{int(spec_id)}"
 
 
 def namespace_fingerprint(namespace: str, *, length: int = 8) -> str:

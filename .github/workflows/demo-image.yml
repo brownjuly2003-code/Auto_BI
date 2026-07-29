@@ -2,10 +2,32 @@ name: Demo image (HF Space)
 
 # P8: builds the single-container public demo (deploy/hf-demo) and smokes the full
 # viewer path — routing, demo gates, an anonymous auto-overview build with a public
-# dashboard link. Manual trigger only: the image is heavy and changes rarely; run it
-# before pushing to the Space.
+# dashboard link.
+# plan_sol step 6: also on PRs/pushes that touch the demo image graph (Dockerfile,
+# lock, publish script, demo assets, related compose bits). Still dispatchable by hand.
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "deploy/hf-demo/**"
+      - "docker/clickhouse/**"
+      - "docker/superset/**"
+      - "semantic/model.yaml"
+      - "uv.lock"
+      - "pyproject.toml"
+      - ".github/workflows/demo-image.yml"
+      - ".github/workflows/release.yml"
+  push:
+    branches: [main]
+    paths:
+      - "deploy/hf-demo/**"
+      - "docker/clickhouse/**"
+      - "docker/superset/**"
+      - "semantic/model.yaml"
+      - "uv.lock"
+      - "pyproject.toml"
+      - ".github/workflows/demo-image.yml"
+      - ".github/workflows/release.yml"
 
 jobs:
   smoke:
@@ -37,12 +59,9 @@ jobs:
           [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:7860/)" = "302" ]
           curl -fsS http://localhost:7860/agent/ | grep -q 'src="static/app.js"'
           curl -fsS http://localhost:7860/agent/static/app.js >/dev/null
-          # text sessions are 403-gated in the demo; health carries the flag for the UI
-          [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
-              http://localhost:7860/agent/api/v1/sessions \
-              -H 'Content-Type: application/json' -d '{"request":"revenue"}')" = "403" ]
-          curl -fsS http://localhost:7860/agent/api/v1/health \
-            | python3 -c 'import json,sys; assert json.load(sys.stdin)["demo_auto_only"] is True'
+          # plan_sol step 1: full auto-only profile (flag + capabilities + 403 gates)
+          # before any LLM path; also exercised by assert_demo_profile.py post-deploy.
+          python3 deploy/hf-demo/assert_demo_profile.py http://localhost:7860 --prefix /agent
 
       - name: Smoke — anonymous auto-overview builds a public dashboard, twice
         run: |

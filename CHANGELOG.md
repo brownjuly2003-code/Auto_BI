@@ -6,6 +6,281 @@
 
 ### Fixed
 
+- **RR-4 pre-return BI crash window** — schema v9 durably records a
+  fingerprint-verified build attempt before `BIAdapter.build`, and server startup
+  reconciles it through the owning adapter before the legacy stuck-build reaper.
+  Superset cleanup requires exact full-token chart/dashboard metadata (datasets use
+  exact names); DataLens removes only exact canonical/`__wip` entries and never shared
+  connections. Attempt commit, build row, session and ownership ledger are one success
+  transaction; failed cleanup remains retry-blocking.
+
+- **Единый Black gate** — pre-commit Black обновлён с 24.10.0 до 26.5.1,
+  совпадающей с проектным `uv`-окружением. Один и тот же файл больше не
+  форматируется противоположно локальным gate и commit hook.
+
+- **plan_sol шаг 13 reaudit R1** — SafeError leak-canary pipeline test used pre-step-7
+  `adapter.build(spec)` signature; `TypeError` mapped to `internal.error` instead of
+  proving `SupersetAPIError` → `bi.http_error` store channel. Fake updated to
+  `build(spec, ctx=None)` + contract methods.
+
+### Added
+
+- **plan_sol шаг 12 residual: mypy-strict adapter contract boundary** —
+  `auto_bi/adapters/base.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; shared adapter types, contract validation и lifecycle protocol теперь
+  проверяются с `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict Store boundary** —
+  `auto_bi/store/db.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  durable session/build/artifact persistence теперь проверяется с
+  `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict pipeline boundary** —
+  `auto_bi/agent/pipeline.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; compile/build и ownership-cleanup orchestration теперь проверяются с
+  `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict session boundary** —
+  `auto_bi/api/sessions.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; session snapshot, restart hydration и registry contracts теперь
+  проверяются с `mypy --strict`.
+
+- **Project closure contract** — `docs/PROJECT_CLOSURE.md` фиксирует финальный
+  v1 scope, переводит open-ended residual в явные `future` / `retired` /
+  `won't-run` и отделяет их от обязательных publish/release/deploy evidence
+  gates. `docs/CURRENT_STATE.md` больше не представляет бессрочное
+  улучшательство как активный backlog.
+
+- **plan_sol шаг 12 residual: mypy-strict dataset-plan boundary** —
+  `auto_bi/agent/dataset_plan.py` добавлен в строгий CI allowlist на Python 3.12
+  и 3.13; dataset ownership и native-filter planning теперь проверяются с
+  `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict query-plan boundary** —
+  `auto_bi/agent/query_plan.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; compiled query plan и runtime probe contracts теперь проверяются с
+  `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict SQL guard boundary** —
+  `auto_bi/agent/sql_guard.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; SELECT-only, complexity и table-access guard теперь одновременно
+  защищены mutation и static-typing gates.
+
+- **plan_sol шаг 12 residual: mypy-strict dbt import boundary** —
+  `auto_bi/semantic/dbt_import.py` добавлен в строгий CI allowlist на Python
+  3.12 и 3.13; dbt artifact mappings получили параметризованный `JsonObject`
+  contract без изменения merge policy.
+
+- **plan_sol шаг 12 residual: mypy-strict prompt-data boundary** —
+  `auto_bi/semantic/prompt_data.py` добавлен в строгий CI allowlist на Python
+  3.12 и 3.13; sample classification и prompt-data policy теперь проверяются с
+  `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict semantic rendering boundary** —
+  `auto_bi/semantic/render.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; deterministic prompt rendering теперь проверяется с `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict semantic selection boundary** —
+  `auto_bi/semantic/select.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; deterministic context selection теперь проверяется с `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict semantic-model boundary** —
+  `auto_bi/semantic/model.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; semantic schema и lookup helpers теперь проверяются с `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict IR schema boundary** —
+  `auto_bi/ir/spec.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  DashboardSpec schema и alias helpers теперь проверяются с `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict IR validation boundary** —
+  `auto_bi/ir/validate.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  semantic-model/spec validation теперь проверяется с `mypy --strict`.
+
+- **plan_sol шаг 12 residual: SQL guard mutation gate** — `mutmut 3.6.0`
+  ограничен `auto_bi/agent/sql_guard.py`; CI отклоняет выжившие, непокрытые,
+  пропущенные, suspicious, timed-out и crashed mutants. Evidence run уничтожил
+  все 106 сгенерированных мутаций.
+
+- **plan_sol шаг 12 residual: mypy-strict Settings boundary** —
+  `auto_bi/config.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  security-sensitive defaults и детектор опечаток `AUTO_BI_*` теперь проверяются
+  с `mypy --strict`.
+
+- **plan_sol шаг 12 residual: mypy-strict error boundary** —
+  `auto_bi/errors.py` добавлен в строгий CI allowlist на Python 3.12 и 3.13;
+  SafeError, redaction и provider mapping теперь проверяются с `mypy --strict`.
+
+- **plan_sol шаг 12 residual: Superset native-filter metamorphic suite** —
+  детерминированные перестановки SOURCE/OWN-чартов и mart/joined/unwired-фильтров
+  проверяют эквивалентность `participating_chart_ids` и скомпилированных
+  `chartsInScope`, а также точное разбиение каждого placement на scope/excluded.
+
+- **plan_sol шаг 12 residual: RBAC property suite + mypy-strict start** —
+  `tests/test_property_quality.py`: schema membership, `filter_model_by_schemas`
+  join consistency, forbidden-set monotonicity, raw_sql RBAC hatch. CI
+  `Mypy strict (boundary modules)` for `auth.py` + `adapters/artifacts.py`
+  (`mypy --strict`); allowlist documented in `docs/operations/SLO.md`.
+
+- **plan_sol шаг 8 residual: stable build_token idempotency** —
+  `stable_build_token(session_id, spec_id)`; `compile_and_build` reuses an already
+  delivered dashboard (`ok` / `delivered_pending`) for the same durable revision
+  instead of calling `adapter.build` again. Failed attempts with the same token
+  may rebuild. Without a known `spec_id` (or store specs), namespace stays random
+  so multi-build orphan/prune tests keep distinct revisions.
+
+- **plan_sol шаг 10 residual: fields drag-drop E2E** —
+  Offline browser test `test_fields_drag_drop_seed_to_approve`: HTML5 drop into
+  seed groups, click-fallback field add, multi-group, seed submit → propose →
+  build (ScriptedLLM, no paid LLM). Step 10 offline E2E matrix complete (5 cases).
+
+- **plan_sol шаг 10 residual: browser UI resume after reload** —
+  `sessionStorage` key `auto_bi.session_id`; `resumeSession()` restores chip /
+  build panel / approve button from `GET /sessions/{id}`. `SessionState` /
+  `SessionSnapshot` carry optional `spec` for IR preview re-render. Offline E2E
+  `test_browser_reload_resumes_built_session`. Logout clears stored id. Chat
+  transcript not rehydrated in the browser (server Store remains SoT for dialogue).
+
+- **plan_sol шаг 13 (offline adversarial re-audit core)** —
+  Evidence doc `docs/operations/REAUDIT_plan_sol_23_07_26.md` (score 8.8/10 offline;
+  gates: ruff/mypy/hygiene, security suite, advisor 9+6, golden 37+16, rulesets active,
+  restore-drill, docs ratchets). Residual: live GHA/Space/tag, mutmut, full cov run.
+
+- **plan_sol шаг 12 (SLO / recovery core)** —
+  `Store.backup_to` + `integrity_check` (online SQLite backup); operator script
+  `scripts/store_backup.py` (backup / check / restore-drill); unit restore drill
+  `tests/test_store_backup.py`. Offline performance baseline with soft absolute
+  ceilings and large/small ratios (`tests/test_perf_baseline.py`); property/
+  metamorphic tests for SQL guard, IR validate, normalize idempotence
+  (`tests/test_property_quality.py`). Ops: `docs/operations/SLO.md`, DEPLOYMENT §7
+  points at the script. Residual: live p50/p95, mutmut score, mypy-strict modules.
+
+- **plan_sol шаг 11 (docs-as-code closed core)** —
+  `docs/CURRENT_STATE.md` as the single current-status entry point; generated
+  `docs/ENV_REFERENCE.md` from `Settings` (`scripts/generate_env_reference.py`,
+  `--check` mode); `tests/test_docs_as_code.py` (env-ref freshness, `.env.example`
+  covers every Settings key, internal markdown link resolve, golden/advisor counts
+  ↔ 53 fixtures). USER_GUIDE §6 / README / PLAN / ARCHITECTURE / root `plan.md`
+  point at CURRENT_STATE + ENV_REFERENCE. Follow-up closes the remaining docs
+  polish: `ARCHITECTURE.md` is current design, the original delivery narrative
+  lives in `ARCHITECTURE_HISTORY.md`, and all Settings keys carry
+  `Field(description=...)` metadata used by the generated reference.
+
+- **plan_sol шаг 10 (mostly closed) + шаг 11 start** —
+  Step 10: CI `quality-py-latest` (3.13), `windows-cli-smoke`, compatibility matrix
+  test, live-stand E2E auth/viewport; **offline browser E2E** job
+  `Browser E2E (offline, no stand)` — text path via ScriptedLLM, failed-build retry,
+  SSE late-connect replay (`tests/test_web_e2e_offline.py` + helper subprocess).
+  No paid LLM. Residual was UI resume + fields DnD; both **closed** offline (see
+  Unreleased Added). Residual: live GHA after merge.
+  Step 11 start: fixed USER_GUIDE audit falsehoods (session owner-bound, Anthropic
+  token usage, work quota on auto, empty DataLens password default); `tests/test_docs_defaults.py`
+  (Settings defaults without local `.env`, version, CLI subcommands, `.env.example`);
+  PR template docs checklist expanded.
+
+### Changed
+
+- **plan_sol шаг 9: replay/live eval trust** — golden fixtures format v2 with
+  `prompt_sha256`, `template_version`, `schema_version`, `provider`, `model_id`.
+  Replay raises `FixtureStaleError` on contract mismatch (not silent reuse).
+  Thresholds split honestly: offline replay **100%**; live clear ≥ 80%.
+  CLI: `--llm-mode refresh-fingerprints` (offline stamp). CI: Greenplum advisor
+  suite; path-filtered live sentinel workflow (3 cases, budget cap, skip without
+  secrets). Procedure: `docs/EVAL_FIXTURES.md`. All 53 fixtures refreshed offline.
+
+- **plan_sol шаг 8: atomic build state (core)** — after `adapter.build` returns,
+  build row + session status + ownership ledger commit in **one SQLite transaction**
+  (`Store.commit_build_success`). Failure path is atomic too (`commit_build_failure`).
+  Ledger/commit fault after BI delivery never marks the build failed: durable
+  `builds.status=delivered_pending` + `sessions.status=built_with_cleanup_degraded`
+  and the DashboardRef is still returned (audit P1-2 split-brain closed). Schema v8:
+  `builds.build_token`. API: immutable `SessionSnapshot` under lock; terminal
+  success/failure apply status + `dashboard_url` + SSE together
+  (`apply_build_success` / `apply_build_failure`). Startup:
+  `reconcile_pending_ledgers` audit traces. Residual: durable outbox *before*
+  adapter return; stable build_token idempotency from approve. Tests:
+  `tests/test_session_snapshot.py`, store/pipeline fault-injection.
+
+- **plan_sol шаг 7: formal BI adapter contract** — `BuildContext` / `BuildResult` in
+  `auto_bi/adapters/base.py`; Protocol requires `build(spec, ctx=None) -> BuildResult`,
+  `delete_artifact`, `close`. Pipeline passes namespace+PlanCache via context and
+  records ledger from `BuildResult.artifacts` (no getattr). Factory
+  `validate_adapter_contract` at `make_adapter`. ADR:
+  `docs/adr/0001-bi-adapter-contract.md`. Contract suite:
+  `tests/test_adapter_contract.py` (fake third adapter). Deprecated set_*/drain_*
+  remain on concrete adapters for unit tests only.
+
+### Security
+
+- **plan_sol шаг 6 (partial): reproducible release promotion** —
+  (1) Demo/HF: `uv.lock` в Space whitelist; `deploy/hf-demo/Dockerfile` —
+  `uv sync --frozen`; `clickhouse-connect==1.5.0` + Superset digest pin в
+  demo и `docker/superset/Dockerfile` (согласовано с `uv.lock`).
+  (2) `release.yml`: `image-security` = local build → Trivy **до** push →
+  image SBOM → push только `:version` → attest; `finalize` (после image +
+  pypi + provenance) = `:latest` + GitHub Release (source + image SBOM);
+  `release-status` ловит partial. (3) `demo-image.yml` path-triggers на
+  demo graph / lock / workflows. (4) CI job `dependency-resolution`
+  matrix: locked / latest-compatible / lowest-direct smoke.
+  Tests: `tests/test_release_promotion.py`. Residual: live tag dry-run;
+  partial PyPI-without-image still possible (wheel unpublish manual).
+
+- **plan_sol шаг 5: GitHub checks scaffolding + live apply** —
+  `.github/CODEOWNERS`, PR template, Dependabot groups, stable `gitleaks`
+  check-run name, coverage-badge push soft-skip.
+  `scripts/apply_github_protection.py` applied (operator gate 2026-07-23):
+  main ruleset `19601118` (PR required, 6 status checks, conversation
+  resolution, no force-push/delete), tag ruleset `19601122` (`v*`: no
+  update/delete/non-ff), Dependabot security updates **enabled**. Payload fix:
+  `dismiss_stale_reviews_on_push` (API rejected `dismiss_stale_reviews`).
+  Residual: solo `pypi` prevent_self_review=false; open Dependabot PRs not
+  bulk-merged; direct push to main is blocked — use PRs.
+
+- **plan_sol шаг 4: Compose loopback + validated profiles** —
+  `docker-compose.yml` публикует ClickHouse/Superset только на `127.0.0.1`
+  (LAN-соседи больше не видят local-only defaults). Внешняя публикация —
+  явный override `docker-compose.publish.yml` с обязательными секретами
+  (compose `:?` fail). `AUTO_BI_PROFILE=local|demo|production` валидирует
+  комбинации до bind: production требует auth, secure cookie, strict BI
+  fingerprint, `SEND_SAMPLES=false`, non-default secrets, resource limits,
+  retention; demo — auto-only или text+LLM-ready+quota. Код:
+  `auto_bi/deployment_profile.py`; матрица — `tests/test_deployment_profile.py`.
+  Док: `docs/DEPLOYMENT.md` §2.
+
+- **plan_sol шаг 3: SafeError + центральная редактиру** — публичные HTTP/SSE,
+  durable Store (builds/trace) и structured logs больше не несут raw provider
+  bodies, DSN, Authorization/cookies/API keys. Новый `auto_bi/errors.py`:
+  `SafeError` (code, public_message, retryable, correlation_id,
+  internal_detail, provider_status/class), `redact_secrets`,
+  `to_safe_error` / `store_error_text` / `public_error_text`,
+  `SecretRedactFilter` на root logging. BI-клиенты (Superset/DataLens) не
+  кладут `response.text` в exception message (только HTTP status; body в
+  debug-log после redact). `/ready` отдаёт boolean + stable
+  code/message/correlation_id без raw health text. Leak-canary:
+  `tests/test_safe_error.py` (+ обновлены ready/api/pipeline/machine).
+
+- **plan_sol шаг 2: prompt data boundary / samples opt-in** — default
+  `AUTO_BI_SEND_SAMPLES=false` (раньше `true`): clean install не отправляет
+  top-N значений DWH внешнему LLM. Classification на table/column
+  (`public`/`internal`/`confidential`/`restricted`); samples только при
+  explicit opt-in и только для public/internal. Free-text (description,
+  synonyms, top-values) санитизируется и рендерится в untrusted-envelope.
+  Лимиты: ≤10 values/column, ≤64 chars/value. Интроспектор пишет уже
+  sanitized samples в model.yaml. Миграция: `docs/MIGRATION_SEND_SAMPLES.md`.
+  Leak-canary: `tests/test_prompt_data.py`.
+
+### Added
+
+- **plan_sol шаг 1: стабильный публичный demo-профиль** — `/health` отдаёт
+  `capabilities` (auto_overview / text_session / fields_session / word_edit /
+  enrichment / llm_wired) из реальной wiring, не только из флага; UI баннер +
+  disable вкладок по capabilities; `AUTO_BI_REQUIRE_LLM_READY` (в
+  `start-autobi.sh` forced true при text-mode) не даёт процессу стартовать с
+  text-профилем при мёртвом LLM; `deploy/hf-demo/assert_demo_profile.py` —
+  post-deploy / CI smoke (flag + capabilities + 403 на text/fields/enrichment);
+  demo-image workflow вызывает assert-скрипт.
+
+### Fixed
+
 - **DataLens: LIMIT-drop scope = семантика селекторов DataLens, не роли Superset** —
   `selector_scope_chart_ids` (bare per-chart alias по grain, зеркалит правило
   `build_selectors`) вместо `participating_chart_ids`: OWN-размеченный чарт по

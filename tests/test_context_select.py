@@ -2,8 +2,13 @@
 
 from auto_bi.agent.propose import build_propose_prompt
 from auto_bi.semantic.model import Column, ColumnRole, Join, Metric, SemanticModel, Table
-from auto_bi.semantic.render import render_model, render_table
+from auto_bi.semantic.render import render_model, render_table, untrusted_envelope_overhead
 from auto_bi.semantic.select import PROMPT_CHAR_BUDGET, select_context
+
+
+def _body_len(model: SemanticModel, **kwargs) -> int:
+    """Char cost of model body without the untrusted envelope (matches select costs)."""
+    return len(render_model(model, wrap_untrusted=False, **kwargs))
 
 
 def _table(name: str, description: str = "", n_cols: int = 5, top_values: bool = False) -> Table:
@@ -54,7 +59,8 @@ def test_relevant_tables_win_under_budget() -> None:
     # so sales and stores must survive and HR must be dropped
     filler = [_table(f"dm.filler_{i}", "Технические данные загрузок", n_cols=15) for i in range(5)]
     model = SemanticModel(tables=[HR, *filler, SALES, STORES])
-    budget = len(render_model(SemanticModel(tables=[SALES, STORES]))) + 40
+    # Body cost + envelope overhead (select reserves envelope once) + small slack.
+    budget = _body_len(SemanticModel(tables=[SALES, STORES])) + untrusted_envelope_overhead() + 40
     out = select_context(model, "выручка по магазинам и городам", budget_chars=budget)
     names = [t.name for t in out.tables]
     assert "dm.sales_daily" in names
@@ -87,7 +93,7 @@ def test_synonyms_pull_table_and_render_into_prompt() -> None:
         ],
     )
     filler = [_table(f"dm.filler_{i}", "Технические данные загрузок", n_cols=15) for i in range(5)]
-    budget = len(render_model(SemanticModel(tables=[cohorts]))) + 40
+    budget = _body_len(SemanticModel(tables=[cohorts])) + untrusted_envelope_overhead() + 40
     out = select_context(
         SemanticModel(tables=[*filler, cohorts]), "покажи удержание клиентов", budget_chars=budget
     )
@@ -122,19 +128,28 @@ def test_joins_survive_only_with_both_endpoints() -> None:
     join_dropped = Join(left="dm.sales_daily.manager_id", right="hr.salaries.employee_id")
     model = SemanticModel(tables=[SALES, STORES, HR], joins=[join_kept, join_dropped])
     # joins are charged against the budget up front (upper bound: all of them)
-    joins_overhead = len(render_model(SemanticModel(joins=[join_kept, join_dropped]))) + 2
-    budget = len(render_model(SemanticModel(tables=[SALES, STORES]))) + joins_overhead + 40
+    joins_overhead = _body_len(SemanticModel(joins=[join_kept, join_dropped])) + 2
+    budget = (
+        _body_len(SemanticModel(tables=[SALES, STORES]))
+        + joins_overhead
+        + untrusted_envelope_overhead()
+        + 40
+    )
     out = select_context(model, "выручка магазинов по городам", budget_chars=budget)
     assert out.joins == [join_kept]
 
 
 def test_samples_dropped_before_table_dropped() -> None:
     fat = _table("dm.fat", "продажи и выручка", n_cols=10, top_values=True)
-    with_samples = len(render_model(SemanticModel(tables=[fat])))
-    without = len(render_model(SemanticModel(tables=[fat]), include_samples=False))
+    with_samples = _body_len(SemanticModel(tables=[fat]), include_samples=True)
+    without = _body_len(SemanticModel(tables=[fat]), include_samples=False)
     assert without < with_samples
+    # budget between body-without-samples and body-with-samples; envelope reserved by select
     out = select_context(
-        model=SemanticModel(tables=[fat]), request="выручка", budget_chars=without + 2
+        model=SemanticModel(tables=[fat]),
+        request="выручка",
+        budget_chars=without + untrusted_envelope_overhead() + 2,
+        include_samples=True,
     )
     assert [t.name for t in out.tables] == ["dm.fat"]
 
@@ -149,7 +164,7 @@ def test_pinned_table_survives_zero_lexical_score() -> None:
     # overlap with HR, yet HR must stay in the sub-model
     filler = [_table(f"dm.filler_{i}", "переименование заголовков", n_cols=15) for i in range(5)]
     model = SemanticModel(tables=[*filler, HR])
-    budget = len(render_model(SemanticModel(tables=[HR]))) + 40
+    budget = _body_len(SemanticModel(tables=[HR])) + untrusted_envelope_overhead() + 40
     out = select_context(model, "переименуй дашборд", budget_chars=budget, pinned={"hr.salaries"})
     assert "hr.salaries" in [t.name for t in out.tables]
 

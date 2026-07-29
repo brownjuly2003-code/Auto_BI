@@ -2,8 +2,10 @@ name: gitleaks
 
 # Secret scan on every push and PR (audit C-5). The action scans the pushed commit
 # range (full history on schedule), so a leaked credential fails CI the moment it
-# lands instead of living quietly in the public repo. Suppressions, when ever needed,
-# go into an explicit .gitleaks.toml allowlist — never inline "it's fine" comments.
+# lands instead of living quietly in the public repo.
+# Policy: current-tree synthetic canaries use narrow path+regex entries in
+# .gitleaks.toml; exact historical false positives use fingerprint entries in
+# .gitleaksignore. Never use inline suppression or broad commit/path exceptions.
 on:
   push:
   pull_request:
@@ -12,6 +14,8 @@ on:
 
 jobs:
   scan:
+    # Stable check-run name for repository rulesets (plan_sol step 5).
+    name: gitleaks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

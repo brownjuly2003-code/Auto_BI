@@ -11,7 +11,7 @@ from auto_bi.advisor.clickhouse import RULES as CH_RULES
 from auto_bi.advisor.clickhouse import RuleContext
 from auto_bi.advisor.effective import effective_filters
 from auto_bi.advisor.explain import estimate_scan, live_row_count
-from auto_bi.advisor.findings import Finding
+from auto_bi.advisor.findings import Evidence, Finding
 from auto_bi.advisor.greenplum import RULES as GP_RULES
 from auto_bi.advisor.greenplum import gp_explain_evidence
 from auto_bi.agent.query_plan import PlanCache
@@ -43,7 +43,7 @@ class Advisor:
             self._live_rows[table_name] = live_row_count(self._run_query, table_name)
         return self._live_rows[table_name]
 
-    def _gather_evidence(self, sql: str, plans: PlanCache | None = None) -> dict:
+    def _gather_evidence(self, sql: str, plans: PlanCache | None = None) -> Evidence:
         """Measured evidence for one statement, recorded in `plans` when one is given.
 
         `plans` (D-2 §3) is a per-build memo keyed by the exact SQL: an identical statement

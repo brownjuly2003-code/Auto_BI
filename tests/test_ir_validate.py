@@ -717,3 +717,866 @@ def test_compare_with_transform_is_mutually_exclusive(demo_model) -> None:
     )
     errors = validate_spec(spec(bad), demo_model)
     assert any("не может одновременно" in e for e in errors)
+
+
+def test_validate_repair_loop_error_contract(demo_model) -> None:
+    """Exact repair-loop errors are a stable behavioral contract, including their order."""
+    from auto_bi.ir.spec import (
+        FilterOp,
+        JoinSpec,
+        MeasureTransform,
+        QueryFilter,
+        TimeGrain,
+    )
+    from auto_bi.ir.validate import _validate_chart
+
+    # Dashboard-level validation and the qualification hint.
+    assert validate_spec(spec(chart(), filters=[DashboardFilter(column="date")]), demo_model) == [
+        "dashboard filter references unknown column: 'date' — укажи полное имя: "
+        "'dm.sales_daily.date'"
+    ]
+    assert validate_spec(
+        spec(chart(), filters=[DashboardFilter(column="dm.sales_daily.nope")]),
+        demo_model,
+    ) == ["dashboard filter references unknown column: 'dm.sales_daily.nope'"]
+    assert validate_spec(spec(chart(), chart()), demo_model) == [
+        "chart ids are not unique: ['c1', 'c1']"
+    ]
+
+    # Table/column resolution and actionable repair hints.
+    assert validate_spec(spec(chart(table="dm.nope")), demo_model) == [
+        "chart 'c1': unknown table 'dm.nope' (known tables: dm.sales_daily, dm.stores)"
+    ]
+    assert validate_spec(
+        spec(
+            chart(
+                dimensions=["nope_dim"],
+                measures=[Measure(column="nope_measure", agg=Aggregation.SUM)],
+            )
+        ),
+        demo_model,
+    ) == [
+        "chart 'c1': unknown dimension column 'nope_dim' in dm.sales_daily",
+        "chart 'c1': unknown measure column 'nope_measure' in dm.sales_daily",
+    ]
+    assert validate_spec(spec(chart(dimensions=["city"])), demo_model) == [
+        "chart 'c1': unknown dimension column 'city' in dm.sales_daily — колонка есть в "
+        "dm.stores: укажи 'dm.stores.city' и добавь соответствующий JOIN в query.joins"
+    ]
+    assert validate_spec(spec(chart(dimensions=["dm.stores.city"])), demo_model) == [
+        "chart 'c1': dimension column 'dm.stores.city' references table 'dm.stores' "
+        "without a matching entry in query.joins"
+    ]
+    assert validate_spec(spec(chart(dimensions=["dm.sales_daily.date"])), demo_model) == [
+        "chart 'c1': unknown dimension column 'dm.sales_daily.date' in dm.sales_daily — "
+        "укажи имя без префикса таблицы: 'date'"
+    ]
+
+    # Every join failure mode is distinct and must retain its exact repair text.
+    unknown_join = JoinSpec(
+        table="dm.nope",
+        on_left="dm.sales_daily.store_id",
+        on_right="dm.nope.id",
+    )
+    assert validate_spec(spec(chart(joins=[unknown_join])), demo_model) == [
+        "chart 'c1': join references unknown table 'dm.nope'"
+    ]
+    bad_left = JoinSpec(
+        table="dm.stores",
+        on_left="dm.sales_daily.nope",
+        on_right="dm.stores.id",
+    )
+    assert validate_spec(spec(chart(joins=[bad_left])), demo_model) == [
+        "chart 'c1': join on_left 'dm.sales_daily.nope' must be a column of the chart's "
+        "table dm.sales_daily"
+    ]
+    bad_right = JoinSpec(
+        table="dm.stores",
+        on_left="dm.sales_daily.store_id",
+        on_right="dm.stores.nope",
+    )
+    assert validate_spec(spec(chart(joins=[bad_right])), demo_model) == [
+        "chart 'c1': join on_right 'dm.stores.nope' must be a column of dm.stores"
+    ]
+    non_edge = JoinSpec(
+        table="dm.stores",
+        on_left="dm.sales_daily.orders",
+        on_right="dm.stores.id",
+    )
+    assert validate_spec(spec(chart(joins=[non_edge])), demo_model) == [
+        "chart 'c1': join dm.sales_daily.orders = dm.stores.id is not an edge of the "
+        "semantic model (допустимые джойны: dm.sales_daily.store_id = dm.stores.id)"
+    ]
+    assert validate_spec(spec(_join_chart(dimensions=["store_id"])), demo_model) == [
+        "chart 'j': join to dm.stores is declared but no column of it is used"
+    ]
+
+    # Alias, measure, filter, and ordering contracts.
+    duplicate_measures = chart(
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM),
+            Measure(column="revenue", agg=Aggregation.SUM),
+        ]
+    )
+    assert validate_spec(spec(duplicate_measures), demo_model) == [
+        "chart 'c1': measures collide by alias ['sum_revenue'] — две меры дают одинаковый "
+        "SELECT-алиас (задайте label одной из них)"
+    ]
+    cross_alias = chart(
+        dimensions=["store_id"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM, label="store_id")],
+    )
+    assert validate_spec(spec(cross_alias), demo_model) == [
+        "chart 'c1': measure alias collides with dimension column ['store_id'] — мера и "
+        "размерность дают одинаковый SELECT-алиас (задайте мере другой label)"
+    ]
+    assert validate_spec(
+        spec(chart(measures=[Measure(column="date", agg=Aggregation.MAX)])), demo_model
+    ) == ["chart 'c1': time column 'date' cannot be a measure"]
+    assert validate_spec(
+        spec(chart(measures=[Measure(column="store_id", agg=Aggregation.SUM)])),
+        demo_model,
+    ) == [
+        "chart 'c1': sum over dimension column 'store_id' — для неё допустимы только "
+        "count/count_distinct"
+    ]
+    assert validate_spec(
+        spec(chart(filters=[QueryFilter(column="store_id", op=FilterOp.IN, value=[])])),
+        demo_model,
+    ) == ["chart 'c1': filter on 'store_id' uses IN with an empty value list"]
+    assert validate_spec(spec(chart(order_by=[OrderBy(by="unknown", dir="desc")])), demo_model) == [
+        "chart 'c1': order_by 'unknown' is neither a dimension nor a measure of the chart"
+    ]
+
+    # The public and private defaults both keep the operator raw-SQL path enabled.
+    raw_sql = "SELECT store_id FROM dm.sales_daily"
+
+    def raw_chart(viz: Viz = Viz.TABLE, **query_overrides) -> ChartSpec:
+        query = dict(table="dm.sales_daily", dimensions=["store_id"], raw_sql=raw_sql)
+        query.update(query_overrides)
+        return ChartSpec(
+            id="raw",
+            title="Raw",
+            viz=viz,
+            query=ChartQuery(**query),
+        )
+
+    raw = raw_chart()
+    raw_spec = spec(raw)
+    assert validate_spec(raw_spec, demo_model) == []
+    assert _validate_chart(raw, demo_model, spec=raw_spec) == []
+    assert validate_spec(raw_spec, demo_model, allow_raw_sql=False) == [
+        "chart 'raw': raw_sql is an operator-only hatch (CLI `auto_bi raw`); "
+        "LLM/text/fields paths must use IR measures and dimensions only"
+    ]
+    assert validate_spec(spec(raw_chart(viz=Viz.BAR)), demo_model) == [
+        "chart 'raw': raw_sql is supported only with viz=table, got bar"
+    ]
+    assert validate_spec(
+        spec(raw, target_bi=TargetBI.DATALENS),
+        demo_model,
+    ) == ["chart 'raw': raw_sql is supported only with target_bi=superset, got 'datalens'"]
+    assert validate_spec(
+        spec(
+            raw_chart(
+                dimensions=[],
+                measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            )
+        ),
+        demo_model,
+    ) == [
+        "chart 'raw': raw_sql cannot be combined with IR query fields ['measures'] "
+        "(a raw chart carries its whole query in the SQL; only `dimensions` — the display "
+        "columns — may accompany it)"
+    ]
+    assert validate_spec(
+        spec(
+            raw_chart(
+                dimensions=[],
+                measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+                series=["store_id"],
+                time_grain=TimeGrain.MONTH,
+                bins=5,
+            )
+        ),
+        demo_model,
+    ) == [
+        "chart 'raw': raw_sql cannot be combined with IR query fields "
+        "['bins', 'measures', 'series', 'time_grain'] (a raw chart carries its whole query "
+        "in the SQL; only `dimensions` — the display columns — may accompany it)"
+    ]
+    assert validate_spec(
+        spec(raw_chart(dimensions=[], raw_sql="DELETE FROM dm.sales_daily")),
+        demo_model,
+    ) == ["chart 'raw': raw_sql is not a single plain SELECT: only SELECT is allowed, got Delete"]
+
+    # Transform, ratio, and compare errors are ordered repair-loop output.
+    assert validate_spec(
+        spec(_t_chart(MeasureTransform.RUNNING_TOTAL, viz=Viz.BIG_NUMBER, dimensions=[])),
+        demo_model,
+    ) == [
+        "chart 'c1': преобразования мер (running_total) не поддерживаются для big_number — "
+        "нужен график с одной упорядоченной осью (line/area/bar/pie/table)"
+    ]
+    assert validate_spec(
+        spec(_t_chart(MeasureTransform.POP_ABS, viz=Viz.BAR, dimensions=["store_id"])),
+        demo_model,
+    ) == [
+        "chart 'c1': преобразование 'pop_abs' требует, чтобы первое измерение было колонкой "
+        "времени (ось x по времени)"
+    ]
+    assert validate_spec(spec(_t_chart(MeasureTransform.YOY_PCT)), demo_model) == [
+        "chart 'c1': преобразование 'yoy_pct' требует time_grain "
+        "(week/month/quarter/year), чтобы определить сдвиг на год"
+    ]
+    plain_lag = ChartSpec(
+        id="c1",
+        title="t",
+        viz=Viz.LINE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["date"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM, lag_periods=2)],
+        ),
+    )
+    assert validate_spec(spec(plain_lag), demo_model) == [
+        "chart 'c1': lag_periods применим только к pop_abs/pop_pct, не к обычной меры "
+        "(без transform)"
+    ]
+
+    bad_ratio = Measure(
+        column="orders",
+        agg=Aggregation.SUM,
+        label="ratio",
+        transform=MeasureTransform.POP_PCT,
+        denominator=Measure(column="revenue", agg=Aggregation.SUM),
+    )
+    ratio_after_plain = chart(
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM, label="plain"),
+            bad_ratio,
+        ]
+    )
+    assert validate_spec(spec(ratio_after_plain), demo_model) == [
+        "chart 'c1': мера-отношение не может одновременно иметь transform (pop_pct) "
+        "и denominator"
+    ]
+    assert validate_spec(
+        spec(
+            chart(
+                measures=[
+                    Measure(
+                        column="revenue",
+                        agg=Aggregation.SUM,
+                        denominator=Measure(
+                            column="orders",
+                            agg=Aggregation.SUM,
+                            denominator=Measure(column="orders", agg=Aggregation.SUM),
+                        ),
+                    )
+                ]
+            )
+        ),
+        demo_model,
+    ) == ["chart 'c1': вложенные отношения не поддерживаются (denominator у denominator)"]
+
+    assert validate_spec(spec(_cmp_chart(viz=Viz.LINE)), demo_model) == [
+        "chart 'c1': сравнение периодов (compare) поддерживается только для big_number "
+        "(получено line)",
+        "chart 'c1': line needs at least one dimension (x-axis)",
+    ]
+    assert validate_spec(spec(_cmp_chart(grain="day")), demo_model) == [
+        "chart 'c1': compare.grain должен задавать период (week/month/quarter/year), не day"
+    ]
+    assert validate_spec(spec(_cmp_chart(column="store_id")), demo_model) == [
+        "chart 'c1': compare.column 'store_id' должна быть колонкой времени (role=time)"
+    ]
+    assert validate_spec(spec(_cmp_chart(column="nope_col")), demo_model) == [
+        "chart 'c1': compare.column 'nope_col' — неизвестная колонка"
+    ]
+
+    # Time-axis and histogram contracts, including multi-error ordering.
+    assert validate_spec(
+        spec(chart(viz=Viz.BAR, dimensions=["store_id"], time_grain=TimeGrain.MONTH)),
+        demo_model,
+    ) == [
+        "chart 'c1': time_grain (month) требует, чтобы первое измерение было колонкой "
+        "времени (ось x по времени)"
+    ]
+    assert validate_spec(spec(_hist_chart(bins=None)), demo_model) == [
+        "chart 'c1': histogram требует bins (число корзин)"
+    ]
+    assert validate_spec(spec(_hist_chart(viz=Viz.BAR)), demo_model) == [
+        "chart 'c1': bins задаётся только для viz=histogram (получено bar)"
+    ]
+    assert validate_spec(spec(_hist_chart(dim="store_id")), demo_model) == [
+        "chart 'c1': histogram бинирует числовую меру — измерение 'store_id' имеет роль "
+        "dimension, нужна колонка role=measure (количественная)"
+    ]
+    assert validate_spec(spec(_hist_chart(agg=Aggregation.SUM)), demo_model) == [
+        "chart 'c1': мера гистограммы должна быть простым count (число строк в корзине), "
+        "без transform/denominator"
+    ]
+    assert validate_spec(
+        spec(_hist_chart(time_grain=TimeGrain.MONTH)),
+        demo_model,
+    ) == [
+        "chart 'c1': time_grain (month) требует, чтобы первое измерение было колонкой "
+        "времени (ось x по времени)",
+        "chart 'c1': histogram несовместима с time_grain",
+    ]
+    assert validate_spec(
+        spec(
+            _hist_chart(
+                joins=[
+                    JoinSpec(
+                        table="dm.stores",
+                        on_left="dm.sales_daily.store_id",
+                        on_right="dm.stores.id",
+                    )
+                ]
+            )
+        ),
+        demo_model,
+    ) == [
+        "chart 'c1': join to dm.stores is declared but no column of it is used",
+        "chart 'c1': histogram не поддерживает join — бинирование идёт по колонке базовой "
+        "таблицы (вынесите join-измерение в отдельный чарт)",
+    ]
+    assert validate_spec(spec(_hist_chart(dimensions=[])), demo_model) == [
+        "chart 'c1': histogram needs exactly one dimension to bin (got 0)"
+    ]
+
+    # Compact viz-shape matrix with exact role names and cardinalities.
+    assert validate_spec(spec(chart(viz=Viz.BIG_NUMBER)), demo_model) == [
+        "chart 'c1': big_number must not set dimensions (got ['date'])"
+    ]
+    assert validate_spec(spec(chart(viz=Viz.LINE, dimensions=[])), demo_model) == [
+        "chart 'c1': line needs at least one dimension (x-axis)"
+    ]
+    assert validate_spec(
+        spec(chart(viz=Viz.LINE, rows=["store_id"])),
+        demo_model,
+    ) == ["chart 'c1': line must not set rows (got ['store_id'])"]
+    assert validate_spec(
+        spec(chart(viz=Viz.PIE, dimensions=["store_id", "product_id"])),
+        demo_model,
+    ) == ["chart 'c1': pie needs exactly one dimension (got 2)"]
+    assert validate_spec(
+        spec(chart(viz=Viz.PIVOT, dimensions=[], rows=[])),
+        demo_model,
+    ) == ["chart 'c1': pivot needs at least one row dimension"]
+    assert validate_spec(
+        spec(chart(viz=Viz.HEATMAP, dimensions=["date"])),
+        demo_model,
+    ) == ["chart 'c1': heatmap needs exactly two dimensions x,y (got 1)"]
+
+    # The chart loop must keep validating after the first invalid chart.
+    first = chart(table="dm.first")
+    second = chart(table="dm.second").model_copy(update={"id": "c2"})
+    assert validate_spec(spec(first, second), demo_model) == [
+        "chart 'c1': unknown table 'dm.first' (known tables: dm.sales_daily, dm.stores)",
+        "chart 'c2': unknown table 'dm.second' (known tables: dm.sales_daily, dm.stores)",
+    ]
+
+
+def test_validate_branch_and_shape_contract(demo_model) -> None:
+    """Exercise multi-item, qualified-reference, and forbidden-role branches exactly."""
+    from auto_bi.ir.spec import (
+        FilterOp,
+        JoinSpec,
+        MeasureTransform,
+        QueryFilter,
+        ScalarCompare,
+        TimeGrain,
+    )
+    from auto_bi.semantic.model import Additivity, Join
+
+    valid_join = JoinSpec(
+        table="dm.stores",
+        on_left="dm.sales_daily.store_id",
+        on_right="dm.stores.id",
+    )
+    unknown_join = JoinSpec(
+        table="dm.nope",
+        on_left="dm.sales_daily.store_id",
+        on_right="dm.nope.id",
+    )
+    bad_left = JoinSpec(
+        table="dm.stores",
+        on_left="dm.sales_daily.nope",
+        on_right="dm.stores.id",
+    )
+    non_edge = JoinSpec(
+        table="dm.stores",
+        on_left="dm.sales_daily.orders",
+        on_right="dm.stores.id",
+    )
+
+    # Loops must continue after an invalid item, and edge-list rendering is deterministic.
+    assert validate_spec(spec(chart(joins=[unknown_join, bad_left])), demo_model) == [
+        "chart 'c1': join references unknown table 'dm.nope'",
+        "chart 'c1': join on_left 'dm.sales_daily.nope' must be a column of the chart's "
+        "table dm.sales_daily",
+    ]
+    two_edge_model = demo_model.model_copy(
+        update={
+            "joins": [
+                *demo_model.joins,
+                Join(left="dm.sales_daily.product_id", right="dm.stores.id"),
+            ]
+        }
+    )
+    assert validate_spec(spec(chart(joins=[non_edge])), two_edge_model) == [
+        "chart 'c1': join dm.sales_daily.orders = dm.stores.id is not an edge of the "
+        "semantic model (допустимые джойны: dm.sales_daily.store_id = dm.stores.id; "
+        "dm.sales_daily.product_id = dm.stores.id)"
+    ]
+    no_edge_model = demo_model.model_copy(update={"joins": []})
+    assert validate_spec(spec(chart(joins=[non_edge])), no_edge_model) == [
+        "chart 'c1': join dm.sales_daily.orders = dm.stores.id is not an edge of the "
+        "semantic model (допустимые джойны: нет)"
+    ]
+    assert validate_spec(
+        spec(chart(dimensions=["dm.stores.nope"], joins=[valid_join])),
+        demo_model,
+    ) == ["chart 'c1': unknown dimension column 'dm.stores.nope' in dm.stores"]
+    assert validate_spec(
+        spec(
+            chart(
+                viz=Viz.PIVOT,
+                dimensions=[],
+                rows=["nope_row"],
+                columns=["nope_col"],
+            )
+        ),
+        demo_model,
+    ) == [
+        "chart 'c1': unknown pivot row column 'nope_row' in dm.sales_daily",
+        "chart 'c1': unknown pivot column column 'nope_col' in dm.sales_daily",
+    ]
+
+    # Duplicate sets contain one repeated and one unique alias.
+    dim_collision = _join_chart(dimensions=["dm.stores.id", "id", "store_id"])
+    assert validate_spec(spec(dim_collision), demo_model) == [
+        "chart 'j': unknown dimension column 'id' in dm.sales_daily — колонка есть в "
+        "dm.stores: укажи 'dm.stores.id' и добавь соответствующий JOIN в query.joins",
+        "chart 'j': dimension columns collide by bare name ['id'] — одинаковые имена из "
+        "разных таблиц в одном чарте не поддерживаются",
+    ]
+    measure_collision = chart(
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM),
+            Measure(column="revenue", agg=Aggregation.SUM),
+            Measure(column="orders", agg=Aggregation.SUM),
+        ]
+    )
+    assert validate_spec(spec(measure_collision), demo_model) == [
+        "chart 'c1': measures collide by alias ['sum_revenue'] — две меры дают одинаковый "
+        "SELECT-алиас (задайте label одной из них)"
+    ]
+
+    # A joined table used only by a filter is not an orphaned join.
+    joined_filter = _join_chart(
+        dimensions=["store_id"],
+        filters=[
+            QueryFilter(
+                column="dm.stores.city",
+                op=FilterOp.EQ,
+                value="Москва",
+            )
+        ],
+    )
+    assert validate_spec(spec(joined_filter), demo_model) == []
+
+    # Non-additive governance, denominator labels, filter labels, and orderable columns.
+    sales = demo_model.table("dm.sales_daily")
+    assert sales is not None
+    non_additive_sales = sales.model_copy(
+        update={
+            "columns": [
+                (
+                    column.model_copy(update={"additivity": Additivity.NON_ADDITIVE})
+                    if column.name == "revenue"
+                    else column
+                )
+                for column in sales.columns
+            ]
+        }
+    )
+    non_additive_model = demo_model.model_copy(
+        update={
+            "tables": [
+                non_additive_sales if table.name == sales.name else table
+                for table in demo_model.tables
+            ]
+        }
+    )
+    assert validate_spec(spec(chart()), non_additive_model) == [
+        "chart 'c1': sum над неаддитивной колонкой 'revenue' (rate/ratio) бессмыслен — "
+        "используйте avg или ratio из numerator/denominator"
+    ]
+    assert validate_spec(
+        spec(chart(measures=[_ratio_measure(den="nope_col")])),
+        demo_model,
+    ) == ["chart 'c1': unknown denominator column 'nope_col' in dm.sales_daily"]
+    assert validate_spec(
+        spec(
+            chart(
+                filters=[
+                    QueryFilter(
+                        column="nope_col",
+                        op=FilterOp.EQ,
+                        value="x",
+                    )
+                ]
+            )
+        ),
+        demo_model,
+    ) == ["chart 'c1': unknown filter column 'nope_col' in dm.sales_daily"]
+    assert (
+        validate_spec(
+            spec(
+                chart(
+                    filters=[
+                        QueryFilter(
+                            column="store_id",
+                            op=FilterOp.EQ,
+                            value=[],
+                        )
+                    ]
+                )
+            ),
+            demo_model,
+        )
+        == []
+    )
+    assert (
+        validate_spec(
+            spec(chart(order_by=[OrderBy(by="revenue", dir="desc")])),
+            demo_model,
+        )
+        == []
+    )
+
+    # Qualified time references must be split at the final dot.
+    assert validate_spec(
+        spec(
+            chart(
+                dimensions=["dm.sales_daily.date"],
+                time_grain=TimeGrain.MONTH,
+            )
+        ),
+        demo_model,
+    ) == [
+        "chart 'c1': unknown dimension column 'dm.sales_daily.date' in dm.sales_daily — "
+        "укажи имя без префикса таблицы: 'date'"
+    ]
+    assert validate_spec(
+        spec(chart(dimensions=["dm.sales_daily.nope"])),
+        demo_model,
+    ) == ["chart 'c1': unknown dimension column 'dm.sales_daily.nope' in dm.sales_daily"]
+
+    # Multiple transform names, no-dimension share, and denominator transforms.
+    unsupported_transforms = chart(
+        viz=Viz.BIG_NUMBER,
+        dimensions=[],
+        measures=[
+            Measure(
+                column="revenue",
+                agg=Aggregation.SUM,
+                label="rt",
+                transform=MeasureTransform.RUNNING_TOTAL,
+            ),
+            Measure(
+                column="orders",
+                agg=Aggregation.SUM,
+                label="share",
+                transform=MeasureTransform.SHARE_OF_TOTAL,
+            ),
+        ],
+    )
+    assert validate_spec(spec(unsupported_transforms), demo_model) == [
+        "chart 'c1': преобразования мер (running_total, share_of_total) не поддерживаются "
+        "для big_number — нужен график с одной упорядоченной осью "
+        "(line/area/bar/pie/table)",
+        "chart 'c1': big_number needs exactly one measure (got 2)",
+    ]
+    share_without_dimension = chart(
+        viz=Viz.TABLE,
+        dimensions=[],
+        measures=[
+            Measure(
+                column="revenue",
+                agg=Aggregation.SUM,
+                transform=MeasureTransform.SHARE_OF_TOTAL,
+            )
+        ],
+    )
+    assert validate_spec(spec(share_without_dimension), demo_model) == [
+        "chart 'c1': преобразование 'share_of_total' требует хотя бы одно измерение"
+    ]
+    denominator_transform = Measure(
+        column="revenue",
+        agg=Aggregation.SUM,
+        denominator=Measure(
+            column="orders",
+            agg=Aggregation.SUM,
+            transform=MeasureTransform.POP_PCT,
+        ),
+    )
+    assert validate_spec(
+        spec(chart(measures=[denominator_transform])),
+        demo_model,
+    ) == ["chart 'c1': знаменатель отношения не может иметь transform"]
+
+    compare_ratio = Measure(
+        column="revenue",
+        agg=Aggregation.SUM,
+        denominator=Measure(column="orders", agg=Aggregation.SUM),
+        compare=ScalarCompare(column="date", grain=TimeGrain.MONTH),
+    )
+    assert validate_spec(
+        spec(
+            ChartSpec(
+                id="c1",
+                title="t",
+                viz=Viz.BIG_NUMBER,
+                query=ChartQuery(table="dm.sales_daily", measures=[compare_ratio]),
+            )
+        ),
+        demo_model,
+    ) == [
+        "chart 'c1': мера со сравнением периодов (compare) не может одновременно иметь "
+        "transform или denominator"
+    ]
+    assert (
+        validate_spec(
+            spec(_cmp_chart(column="dm.sales_daily.date")),
+            demo_model,
+        )
+        == []
+    )
+    assert validate_spec(spec(_cmp_chart(column="dm.nope.date")), demo_model) == [
+        "chart 'c1': compare.column 'dm.nope.date' — неизвестная колонка"
+    ]
+
+    # Raw populated-field labels are all part of the operator repair contract.
+    raw_all_fields = ChartSpec(
+        id="raw",
+        title="Raw",
+        viz=Viz.TABLE,
+        query=ChartQuery(
+            table="dm.sales_daily",
+            dimensions=["display"],
+            measures=[Measure(column="revenue", agg=Aggregation.SUM)],
+            series=["series"],
+            rows=["row"],
+            columns=["column"],
+            joins=[valid_join],
+            filters=[
+                QueryFilter(
+                    column="store_id",
+                    op=FilterOp.EQ,
+                    value=1,
+                )
+            ],
+            order_by=[OrderBy(by="display", dir="asc")],
+            time_grain=TimeGrain.MONTH,
+            bins=5,
+            raw_sql="SELECT 1 AS display",
+        ),
+    )
+    assert validate_spec(spec(raw_all_fields), demo_model) == [
+        "chart 'raw': raw_sql cannot be combined with IR query fields "
+        "['bins', 'columns', 'filters', 'joins', 'measures', 'order_by', 'rows', 'series', "
+        "'time_grain'] (a raw chart carries its whole query in the SQL; only `dimensions` — "
+        "the display columns — may accompany it)"
+    ]
+
+    # Histogram qualified-column parsing and each invalid measure component.
+    qualified_histogram = _hist_chart(dim="dm.sales_daily.store_id")
+    assert validate_spec(spec(qualified_histogram), demo_model) == [
+        "chart 'c1': unknown dimension column 'dm.sales_daily.store_id' in dm.sales_daily — "
+        "укажи имя без префикса таблицы: 'store_id'",
+        "chart 'c1': histogram бинирует числовую меру — измерение "
+        "'dm.sales_daily.store_id' имеет роль dimension, нужна колонка role=measure "
+        "(количественная)",
+    ]
+    histogram_transform = _hist_chart(
+        measures=[
+            Measure(
+                column="revenue",
+                agg=Aggregation.COUNT,
+                transform=MeasureTransform.SHARE_OF_TOTAL,
+            )
+        ]
+    )
+    assert validate_spec(spec(histogram_transform), demo_model) == [
+        "chart 'c1': мера гистограммы должна быть простым count (число строк в корзине), "
+        "без transform/denominator"
+    ]
+    histogram_ratio = _hist_chart(
+        measures=[
+            Measure(
+                column="revenue",
+                agg=Aggregation.COUNT,
+                denominator=Measure(column="orders", agg=Aggregation.COUNT),
+            )
+        ]
+    )
+    assert validate_spec(spec(histogram_ratio), demo_model) == [
+        "chart 'c1': мера гистограммы должна быть простым count (число строк в корзине), "
+        "без transform/denominator"
+    ]
+
+    # Viz-shape contracts cover every forbidden role and cardinality branch.
+    big_roles = chart(
+        viz=Viz.BIG_NUMBER,
+        dimensions=[],
+        series=["store_id"],
+        rows=["product_id"],
+        columns=["date"],
+    )
+    assert validate_spec(spec(big_roles), demo_model) == [
+        "chart 'c1': big_number must not set series (got ['store_id'])",
+        "chart 'c1': big_number must not set rows (got ['product_id'])",
+        "chart 'c1': big_number must not set columns (got ['date'])",
+    ]
+    big_two_measures = chart(
+        viz=Viz.BIG_NUMBER,
+        dimensions=[],
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM, label="revenue_sum"),
+            Measure(column="orders", agg=Aggregation.SUM, label="orders_sum"),
+        ],
+    )
+    assert validate_spec(spec(big_two_measures), demo_model) == [
+        "chart 'c1': big_number needs exactly one measure (got 2)"
+    ]
+    assert validate_spec(
+        spec(chart(viz=Viz.LINE, columns=["store_id"])),
+        demo_model,
+    ) == ["chart 'c1': line must not set columns (got ['store_id'])"]
+
+    pie_two_measures = chart(
+        viz=Viz.PIE,
+        dimensions=["store_id"],
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM, label="revenue_sum"),
+            Measure(column="orders", agg=Aggregation.SUM, label="orders_sum"),
+        ],
+    )
+    assert validate_spec(spec(pie_two_measures), demo_model) == [
+        "chart 'c1': pie needs exactly one measure (got 2)"
+    ]
+    pie_roles = chart(
+        viz=Viz.PIE,
+        dimensions=["store_id"],
+        series=["product_id"],
+        rows=["date"],
+        columns=["revenue"],
+    )
+    assert validate_spec(spec(pie_roles), demo_model) == [
+        "chart 'c1': pie must not set series (got ['product_id'])",
+        "chart 'c1': pie must not set rows (got ['date'])",
+        "chart 'c1': pie must not set columns (got ['revenue'])",
+    ]
+
+    table_template = chart(viz=Viz.TABLE)
+    empty_table = table_template.model_copy(
+        update={
+            "query": table_template.query.model_copy(
+                update={
+                    "dimensions": [],
+                    "measures": [],
+                }
+            )
+        }
+    )
+    assert validate_spec(spec(empty_table), demo_model) == [
+        "chart 'c1': table needs at least one dimension or measure"
+    ]
+    dimensions_only_table = table_template.model_copy(
+        update={
+            "query": table_template.query.model_copy(
+                update={
+                    "measures": [],
+                }
+            )
+        }
+    )
+    assert validate_spec(spec(dimensions_only_table), demo_model) == []
+    assert (
+        validate_spec(
+            spec(chart(viz=Viz.TABLE, dimensions=[])),
+            demo_model,
+        )
+        == []
+    )
+    table_roles = chart(
+        viz=Viz.TABLE,
+        series=["store_id"],
+        rows=["product_id"],
+        columns=["revenue"],
+    )
+    assert validate_spec(spec(table_roles), demo_model) == [
+        "chart 'c1': table must not set series (got ['store_id'])",
+        "chart 'c1': table must not set rows (got ['product_id'])",
+        "chart 'c1': table must not set columns (got ['revenue'])",
+    ]
+
+    pivot_series = chart(
+        viz=Viz.PIVOT,
+        dimensions=[],
+        rows=["store_id"],
+        series=["product_id"],
+    )
+    assert validate_spec(spec(pivot_series), demo_model) == [
+        "chart 'c1': pivot must not set series (got ['product_id'])"
+    ]
+
+    heatmap_two_measures = chart(
+        viz=Viz.HEATMAP,
+        dimensions=["store_id", "date"],
+        measures=[
+            Measure(column="revenue", agg=Aggregation.SUM, label="revenue_sum"),
+            Measure(column="orders", agg=Aggregation.SUM, label="orders_sum"),
+        ],
+    )
+    assert validate_spec(spec(heatmap_two_measures), demo_model) == [
+        "chart 'c1': heatmap needs exactly one measure (got 2)"
+    ]
+    heatmap_roles = chart(
+        viz=Viz.HEATMAP,
+        dimensions=["store_id", "product_id"],
+        series=["date"],
+        rows=["revenue"],
+        columns=["orders"],
+        measures=[Measure(column="revenue", agg=Aggregation.SUM, label="metric")],
+    )
+    assert validate_spec(spec(heatmap_roles), demo_model) == [
+        "chart 'c1': heatmap must not set series (got ['date'])",
+        "chart 'c1': heatmap must not set rows (got ['revenue'])",
+        "chart 'c1': heatmap must not set columns (got ['orders'])",
+    ]
+
+    histogram_two_measures = _hist_chart(
+        measures=[
+            Measure(column="revenue", agg=Aggregation.COUNT, label="revenue_count"),
+            Measure(column="orders", agg=Aggregation.COUNT, label="orders_count"),
+        ]
+    )
+    assert validate_spec(spec(histogram_two_measures), demo_model) == [
+        "chart 'c1': histogram needs exactly one measure (got 2)"
+    ]
+    histogram_roles = _hist_chart(
+        series=["store_id"],
+        rows=["product_id"],
+        columns=["date"],
+    )
+    assert validate_spec(spec(histogram_roles), demo_model) == [
+        "chart 'c1': histogram must not set series (got ['store_id'])",
+        "chart 'c1': histogram must not set rows (got ['product_id'])",
+        "chart 'c1': histogram must not set columns (got ['date'])",
+    ]

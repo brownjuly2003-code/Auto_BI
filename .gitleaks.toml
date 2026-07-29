@@ -1,0 +1,24 @@
+title = "Auto_BI Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic deployment-profile passwords used only by the profile contract test"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexes = ['''^prod-(ch|ss)-secret-9f3a$''']
+paths = ['''^tests/test_deployment_profile\.py$''']
+
+[[allowlists]]
+description = "Synthetic leak canaries used to verify prompt and error redaction"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexes = [
+  '''^SECRET_MARKER_LEAK_CANARY_9f3a2b$''',
+  '''^SECRET_MARKER_LEAK_CANARY_SAFEERR_4d9b$''',
+]
+paths = [
+  '''^tests/test_prompt_data\.py$''',
+  '''^tests/test_safe_error\.py$''',
+]

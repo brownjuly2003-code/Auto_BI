@@ -1,5 +1,10 @@
 {
   "case_id": "it3_change_viz",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -19,7 +24,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "edb2730584f485fb283067c81feacbefe9eea97e14869bda8e85a669594a76eb"
     },
     {
       "step": "propose_spec",
@@ -233,7 +239,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "45a88b4fd520bc4337320b40cbeda52e13367b3e1c1c791d9e102338a26fef53"
     },
     {
       "step": "patch_spec",
@@ -447,7 +454,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "1fd569b1b8cea124c15506d40f5e6515032658d4a8c852c32453aeba678a3cbf"
     }
   ]
 }

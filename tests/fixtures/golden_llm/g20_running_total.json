@@ -1,5 +1,10 @@
 {
   "case_id": "g20_running_total",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -26,7 +31,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "dad20c968591ac232a1503b238cacd17c7e3885dcf12d99a501b01b75bc59fed"
     },
     {
       "step": "propose_spec",
@@ -254,7 +260,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "c0ed2c277bb8cdd618720459b19641c4e2d19deee3ebc6f7026ea11c27b99dd9"
     }
   ]
 }

@@ -1,5 +1,10 @@
 {
   "case_id": "a4_quantity_dynamics",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -20,7 +25,8 @@
           }
         ],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "f2da3efd55d5ae7aaf6f0273807c284226f5061c2b04aef5750b0f4b6afb8f31"
     }
   ]
 }

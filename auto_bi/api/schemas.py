@@ -7,6 +7,8 @@ word edit that must NOT lose the session (F6 contract, now over HTTP).
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field, model_validator
 
 from auto_bi.agent.machine import AgentTurn
@@ -57,8 +59,12 @@ class TurnResponse(AgentTurn):
 class SessionState(StrictModel):
     session_id: str
     phase: str
-    build_status: str  # idle | building | built | failed
+    # idle | building | built | failed | built_with_cleanup_degraded (plan_sol step 8)
+    build_status: str
     dashboard_url: str = ""
+    # Latest IR when the session has a proposed/approved spec (browser UI hydrate after
+    # reload — plan_sol step 10 residual). None while still clarifying / no propose yet.
+    spec: dict[str, Any] | None = None
 
 
 class DCRStatusUpdate(StrictModel):

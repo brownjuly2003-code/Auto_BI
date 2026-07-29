@@ -2,6 +2,9 @@
 
 Pinned against Superset 4.1 (docker/superset/Dockerfile); endpoint drift is caught
 by the contract tests on the live stand, not here.
+
+Provider response bodies never enter exception messages (plan_sol step 3 / audit
+P0-3): status code + path are enough for callers; bodies are redacted at debug log.
 """
 
 from __future__ import annotations
@@ -11,23 +14,38 @@ from typing import Any
 
 import httpx
 
+from auto_bi.errors import redact_secrets
+
 logger = logging.getLogger(__name__)
 
 
 class SupersetAPIError(Exception):
     """API-level failure; `status_code` carries the HTTP status when one was received
     (None for login/CSRF failures raised before a request cycle completes), so callers
-    like `delete_artifact` can tell an already-gone 404 from a real error."""
+    like `delete_artifact` can tell an already-gone 404 from a real error.
+
+    ``message`` must stay free of response bodies and credentials — use
+    :func:`auto_bi.errors.to_safe_error` at API/store boundaries.
+    """
 
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
 
 
-def rison_eq_filter(column: str, value: str, page_size: int = 100) -> str:
+def rison_eq_filter(
+    column: str,
+    value: str,
+    page_size: int = 100,
+    *,
+    page: int | None = None,
+) -> str:
     """Minimal rison for the only list-filter shape we use."""
     escaped = value.replace("'", "''")
-    return f"(filters:!((col:{column},opr:eq,value:'{escaped}')),page_size:{page_size})"
+    page_part = f",page:{page}" if page is not None else ""
+    return (
+        f"(filters:!((col:{column},opr:eq,value:'{escaped}'))" f"{page_part},page_size:{page_size})"
+    )
 
 
 class SupersetClient:
@@ -63,12 +81,26 @@ class SupersetClient:
             },
         )
         if response.status_code != 200:
-            raise SupersetAPIError(f"login failed: {response.status_code} {response.text[:300]}")
+            logger.debug(
+                "superset login failed HTTP %s",
+                response.status_code,
+            )
+            raise SupersetAPIError(
+                f"login failed: HTTP {response.status_code}",
+                status_code=response.status_code,
+            )
         self._access_token = response.json()["access_token"]
 
         csrf = self._http.get("/api/v1/security/csrf_token/", headers=self._auth_headers())
         if csrf.status_code != 200:
-            raise SupersetAPIError(f"csrf fetch failed: {csrf.status_code} {csrf.text[:300]}")
+            logger.debug(
+                "superset csrf fetch failed HTTP %s",
+                csrf.status_code,
+            )
+            raise SupersetAPIError(
+                f"csrf fetch failed: HTTP {csrf.status_code}",
+                status_code=csrf.status_code,
+            )
         self._csrf_token = csrf.json()["result"]
         logger.info("superset login ok")
 
@@ -84,8 +116,8 @@ class SupersetClient:
         method: str,
         path: str,
         *,
-        json: dict | None = None,
-        params: dict | None = None,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self._access_token is None:
             self.login()
@@ -98,19 +130,26 @@ class SupersetClient:
                 method, path, json=json, params=params, headers=self._auth_headers()
             )
         if response.status_code >= 400:
+            logger.debug(
+                "superset %s %s failed HTTP %s body=%s",
+                method,
+                path,
+                response.status_code,
+                redact_secrets(response.text[:500]),
+            )
             raise SupersetAPIError(
-                f"{method} {path} -> {response.status_code}: {response.text[:500]}",
+                f"{method} {path} -> HTTP {response.status_code}",
                 status_code=response.status_code,
             )
         return response.json() if response.content else {}
 
-    def get(self, path: str, *, params: dict | None = None) -> dict[str, Any]:
+    def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.request("GET", path, params=params)
 
-    def post(self, path: str, json: dict) -> dict[str, Any]:
+    def post(self, path: str, json: dict[str, Any]) -> dict[str, Any]:
         return self.request("POST", path, json=json)
 
-    def put(self, path: str, json: dict) -> dict[str, Any]:
+    def put(self, path: str, json: dict[str, Any]) -> dict[str, Any]:
         return self.request("PUT", path, json=json)
 
     def delete(self, path: str) -> dict[str, Any]:

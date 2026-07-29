@@ -408,6 +408,7 @@ def test_own_joined_grain_excluded_when_alias_mismatches_bound() -> None:
     from auto_bi.agent.dataset_plan import (
         chart_accepts_filter,
         filter_preview_notes,
+        own_filter_alias_mismatch,
         plan_datasets,
     )
     from auto_bi.ir.spec import JoinSpec, MeasureTransform
@@ -469,6 +470,9 @@ def test_own_joined_grain_excluded_when_alias_mismatches_bound() -> None:
     assert chart_accepts_filter(source, joined_filt, joined_spec, plan, MODEL) is True
     assert chart_accepts_filter(own_joined, joined_filt, joined_spec, plan, MODEL) is False
     assert chart_accepts_filter(own_mart, joined_filt, joined_spec, plan, MODEL) is False
+    assert own_filter_alias_mismatch(source, joined_filt, joined_spec, plan, MODEL) is False
+    assert own_filter_alias_mismatch(own_joined, joined_filt, joined_spec, plan, MODEL) is True
+    assert own_filter_alias_mismatch(own_mart, joined_filt, joined_spec, plan, MODEL) is False
     placements = [
         (source, 201, 51),
         (own_joined, 202, 52),
@@ -478,7 +482,13 @@ def test_own_joined_grain_excluded_when_alias_mismatches_bound() -> None:
     assert config[0]["chartsInScope"] == [201]
     assert config[0]["targets"][0]["column"]["name"] == "stores_name"
     notes = filter_preview_notes(joined_spec, MODEL)
-    assert any("stores_name" in n and "Доля по магазинам" in n for n in notes)
+    share_reason = "оконная мера share_of_total: окно считается в SQL"
+    assert notes == [
+        f"«Доля по магазинам»: фильтр не влияет: {share_reason}",
+        "«Доля по магазинам»: фильтр «dm.stores.name» не влияет: "
+        "колонка датасета «name» ≠ bound «stores_name»",
+        f"«Доля по store_id»: фильтр не влияет: {share_reason}",
+    ]
 
     # direction 2: mart filter — OWN with store_id grain accepts (aliases match)
     mart_filt = DashboardFilter(column="dm.sales_daily.store_id", type="value")

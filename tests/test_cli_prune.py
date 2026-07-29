@@ -21,6 +21,7 @@ class _FakeAdapter:
         self.healthy = healthy
         self.fail_ids = fail_ids or set()
         self.deleted: list[tuple[str, str]] = []
+        self.closed = False
 
     def healthcheck(self) -> AdapterHealth:
         return AdapterHealth(ok=self.healthy, message="" if self.healthy else "down")
@@ -29,6 +30,9 @@ class _FakeAdapter:
         if native_id in self.fail_ids:
             raise RuntimeError("boom")
         self.deleted.append((kind, native_id))
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def _seed_two_builds(store: Store) -> str:

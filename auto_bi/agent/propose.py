@@ -205,7 +205,7 @@ def build_propose_prompt(
     request: str,
     model: SemanticModel,
     *,
-    include_samples: bool = True,
+    include_samples: bool = False,
     pinned: set[str] | None = None,
 ) -> str:
     model = _select_for_prompt(request, model, include_samples=include_samples, pinned=pinned)
@@ -222,7 +222,7 @@ def propose_spec(
     request: str,
     *,
     session_id: str | None = None,
-    include_samples: bool = True,
+    include_samples: bool = False,
     pinned: set[str] | None = None,
 ) -> DashboardSpec:
     # select once and use the SAME sub-model for prompting, validation and repair:
@@ -247,7 +247,7 @@ def patch_spec(
     edit_request: str,
     *,
     session_id: str | None = None,
-    include_samples: bool = True,
+    include_samples: bool = False,
 ) -> DashboardSpec:
     """Word edits in APPROVE (task 1.4): current spec + правка -> new validated spec.
 

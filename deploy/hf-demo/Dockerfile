@@ -27,19 +27,27 @@ COPY --from=clickhouse /etc/clickhouse-server /etc/clickhouse-server
 RUN ln -s /usr/bin/clickhouse /usr/bin/clickhouse-server \
     && ln -s /usr/bin/clickhouse /usr/bin/clickhouse-client
 
-# Superset talks to ClickHouse through clickhouse-connect (mirrors docker/superset)
-RUN pip install --no-cache-dir "clickhouse-connect>=0.8,<1"
+# Superset talks to ClickHouse through clickhouse-connect (mirrors docker/superset).
+# Exact pin = uv.lock resolution for the app driver (plan_sol step 6 / P1-3); bump
+# together with uv.lock when upgrading the CH Python client.
+RUN pip install --no-cache-dir "clickhouse-connect==1.5.0"
 
 # --- auto_bi in its own Python 3.12 venv (uv-managed interpreter) -------------------
 # The managed interpreter must live on a world-readable path: the build runs as root
 # but the container runs as UID 1000 — uv's default ~/.local/... under /root is 0700,
 # which made the venv shebang unlaunchable (exit 126).
+# plan_sol step 6: install from uv.lock (--frozen) so the Space rebuild of a SHA
+# gets the same dependency graph as CI / the GHCR app image.
 COPY --from=ghcr.io/astral-sh/uv:0.8.23@sha256:94390f20a83e2de83f63b2dadcca2efab2e6798f772edab52bf545696c86bdb4 /uv /usr/local/bin/uv
-ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
-COPY pyproject.toml README.md LICENSE /opt/autobi-src/
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+    UV_PROJECT_ENVIRONMENT=/opt/autobi \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock README.md LICENSE /opt/autobi-src/
 COPY auto_bi /opt/autobi-src/auto_bi
+WORKDIR /opt/autobi-src
 RUN uv venv --python 3.12 /opt/autobi \
-    && uv pip install --python /opt/autobi/bin/python /opt/autobi-src \
+    && uv sync --frozen --no-dev \
     && /opt/autobi/bin/auto_bi --version \
     && chmod -R a+rX /opt/uv-python /opt/autobi
 

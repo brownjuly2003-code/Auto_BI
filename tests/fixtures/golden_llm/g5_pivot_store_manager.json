@@ -1,5 +1,10 @@
 {
   "case_id": "g5_pivot_store_manager",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -34,7 +39,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "a58a2456c1c9bbea9bbe48653109ef4162cf365848c08e6e95e40ea274ff020e"
     },
     {
       "step": "propose_spec",
@@ -261,7 +267,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "8e6892ac9cf0102e0867628fc17645da6469ddced3d4a1e223f0167c510141e2"
     },
     {
       "step": "propose_spec",
@@ -326,7 +333,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "41058129aa7b88d7ef35c1858a84c474a60c542eed65ced948571c0e7c021a28"
     }
   ]
 }

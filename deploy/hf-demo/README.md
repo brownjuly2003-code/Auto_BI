@@ -7,22 +7,45 @@ Space отдаёт один порт (7860), nginx маршрутизирует:
 - всё остальное → Superset (:8088, ему нужен корень: `/superset/*`, `/static/assets`, его `/api/v1/*`);
 - `/` → 302 на `/agent/` (демо начинается с агента, не с логин-страницы Superset).
 
-Режим — `AUTO_BI_DEMO_AUTO_ONLY=true`: доступен только детерминированный авто-обзор
-(без LLM, без ключей, ноль расходов); text/fields и enrichment отвечают 403, вкладки в UI
-задизейблены. Зритель строит авто-дашборд и открывает его в Superset анонимно
+Режим по умолчанию — `AUTO_BI_DEMO_AUTO_ONLY=true`: доступен только детерминированный
+авто-обзор (без LLM, без ключей, ноль расходов); text/fields и enrichment отвечают 403,
+вкладки в UI задизейблены, `/health` отдаёт `capabilities` с `text_session=false` /
+`llm_wired=false`. Зритель строит авто-дашборд и открывает его в Superset анонимно
 (`PUBLIC_ROLE_LIKE="Gamma"` + `all_datasource_access` для Public — см.
 `superset_public_role.py`; адаптер создаёт дашборды `published: true`).
+
+Чтобы открыть text/fields, задайте в Space secrets `AUTO_BI_DEMO_AUTO_ONLY=false` **и**
+рабочий `AUTO_BI_GRACEKELLY_URL` (или Anthropic). `start-autobi.sh` тогда включает
+`AUTO_BI_REQUIRE_LLM_READY=true`: процесс **не стартует**, если LLM-probe не проходит —
+Space не должен рекламировать text-режим при мёртвом туннеле. Если туннель ненадёжен,
+**удалите** secret `AUTO_BI_DEMO_AUTO_ONLY` (не ставьте `false`) — дефолт снова auto-only.
 
 Всё эфемерно by design: диск Space не персистентен, демо-DM (1 млн строк) и метаданные
 Superset пересоздаются при каждом старте (~2–4 мин холодный старт). Секретов нет:
 CH и Superset слушают только localhost внутри контейнера, пароли — демо-заглушки,
 `SECRET_KEY` генерируется на старте.
 
+## Воспроизводимость (plan_sol шаг 6)
+
+- Space payload включает **`uv.lock`** (`publish_space.py` whitelist).
+- `Dockerfile` ставит auto_bi через **`uv sync --frozen`** (тот же graph, что CI/GHCR app).
+- `clickhouse-connect==1.5.0` (pin = `uv.lock`; bump вместе с lock).
+- Base Superset — digest-пин (как в `docker/superset/Dockerfile`).
+
 ## Проверка перед пушем в Space
 
-GitHub Actions → **Demo image (HF Space)** (workflow_dispatch): собирает образ и гоняет
-smoke — роутинг, 403-гейты, анонимная auto-сессия до `built`, публичная ссылка на дашборд
-без login-редиректа.
+GitHub Actions → **Demo image (HF Space)**: `workflow_dispatch` **или** PR/push в
+`main` при изменении `deploy/hf-demo/**`, `uv.lock`, `pyproject.toml`, demo docker
+assets, `demo-image.yml` / `release.yml`. Smoke: роутинг, `assert_demo_profile.py`
+(flag + capabilities + 403), анонимный auto-build до `built` + public dashboard URL.
+
+После деплоя живого Space:
+
+```bash
+python deploy/hf-demo/assert_demo_profile.py https://<space>.hf.space
+# text-профиль (только если намеренно включён LLM):
+python deploy/hf-demo/assert_demo_profile.py https://<space>.hf.space --text-enabled
+```
 
 ## Публикация в Space
 

@@ -11,6 +11,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Visualization",
     "Topic :: Database :: Front-Ends",
 ]
@@ -20,7 +21,7 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "httpx>=0.27",
     "sqlglot>=30.12.0",
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.1",
     "rich>=13.7",
     "clickhouse-connect>=1.4.2",
     "fastapi>=0.139.0",
@@ -97,12 +98,39 @@ filterwarnings = [
 source = ["auto_bi"]
 omit = ["*/__init__.py"]
 
+# plan_sol step 12: bounded mutation smoke. mutmut 3 requires fork support, so this
+# runs in the primary Ubuntu CI job (or WSL locally), never in native Windows Python.
+[tool.mutmut]
+source_paths = ["auto_bi/"]
+only_mutate = [
+    "auto_bi/agent/sql_guard.py",
+    "auto_bi/ir/validate.py",
+    "auto_bi/agent/dataset_plan.py",
+    "auto_bi/agent/cleanup.py",
+]
+pytest_add_cli_args_test_selection = [
+    "tests/test_property_quality.py",
+    "tests/test_ir_validate.py",
+    "tests/test_x5_raw_sql.py",
+    "tests/test_p1_6_governance.py",
+    "tests/test_query_plan.py",
+    "tests/test_dataset_plan.py",
+    "tests/test_native_filters.py",
+    "tests/test_pipeline.py",
+    "tests/test_cli_prune.py",
+]
+also_copy = ["semantic/"]
+
 # mypy is run on auto_bi (not tests, whose fixtures use loose typing by design). Run via:
 #   uv run --with mypy --with types-PyYAML mypy auto_bi
 # types-PyYAML is pulled in ephemerally to keep uv.lock lean, mirroring pytest-cov in CI.
 [tool.mypy]
 python_version = "3.12"
 files = ["auto_bi"]
+# The canonical strict gate is package-wide and explicit at the CLI/CI boundary:
+#   uv run --with mypy --with types-PyYAML mypy --strict auto_bi
+# Do NOT set global `strict = true` here: on our mypy version that polluted
+# package-wide checks. See docs/operations/SLO.md «Mypy package-wide strict gate».
 
 [[tool.mypy.overrides]]
 # anthropic / clickhouse_connect ship no usable py.typed stubs for our mypy gate.

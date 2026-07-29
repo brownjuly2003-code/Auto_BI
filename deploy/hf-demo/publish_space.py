@@ -30,7 +30,8 @@ SPACE = os.environ.get("HF_SPACE", "JuLioMe20/auto-bi-demo")
 SPACE_USER = SPACE.split("/")[0]
 REPO = Path(__file__).resolve().parents[2]
 WHITELIST_DIRS = ("auto_bi/", "deploy/", "docker/")
-WHITELIST_FILES = ("pyproject.toml", "LICENSE", "semantic/model.yaml")
+# uv.lock is required for deploy/hf-demo/Dockerfile `uv sync --frozen` (plan_sol step 6).
+WHITELIST_FILES = ("pyproject.toml", "uv.lock", "LICENSE", "semantic/model.yaml")
 
 
 def run(*args: str, **kwargs) -> subprocess.CompletedProcess:

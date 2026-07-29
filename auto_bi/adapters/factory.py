@@ -16,14 +16,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from auto_bi.adapters.base import AdapterHealth, BIAdapter, DWHConfig
+from auto_bi.adapters.base import AdapterHealth, BIAdapter, DWHConfig, validate_adapter_contract
 from auto_bi.config import Settings
 from auto_bi.ir.spec import TargetBI
 from auto_bi.semantic.model import SemanticModel
 
 
 def make_adapter(target_bi: TargetBI, settings: Settings, model: SemanticModel) -> BIAdapter:
-    """Build the adapter for `target_bi`, wired from settings + the semantic model."""
+    """Build the adapter for `target_bi`, wired from settings + the semantic model.
+
+    Validates the full BIAdapter contract (build + ownership + close) before return so a
+    partial implementation cannot be constructed and later skip ledger/cleanup silently
+    (plan_sol step 7 / audit P1-1).
+    """
     if target_bi == TargetBI.SUPERSET:
         from auto_bi.adapters.superset.adapter import SupersetAdapter
         from auto_bi.adapters.superset.client import SupersetClient
@@ -38,9 +43,11 @@ def make_adapter(target_bi: TargetBI, settings: Settings, model: SemanticModel) 
         superset_client = SupersetClient(
             settings.superset_url, settings.superset_user, settings.superset_password
         )
-        return SupersetAdapter(
+        adapter: BIAdapter = SupersetAdapter(
             superset_client, dwh, model, strict_connection=settings.bi_connection_strict
         )
+        validate_adapter_contract(adapter)
+        return adapter
 
     if target_bi == TargetBI.DATALENS:
         from auto_bi.adapters.datalens.adapter import DataLensAdapter
@@ -56,27 +63,25 @@ def make_adapter(target_bi: TargetBI, settings: Settings, model: SemanticModel) 
         datalens_client = DataLensClient(
             settings.datalens_url, settings.datalens_user, settings.datalens_password
         )
-        return DataLensAdapter(
+        adapter = DataLensAdapter(
             datalens_client,
             dwh,
             model,
             settings.datalens_workbook_id,
             strict_connection=settings.bi_connection_strict,
         )
+        validate_adapter_contract(adapter)
+        return adapter
 
     raise ValueError(f"unsupported BI target: {target_bi!r}")
 
 
 def close_adapter(adapter: BIAdapter) -> None:
-    """Release the adapter's HTTP pool, if it has one (D-2 lifecycle).
+    """Release the adapter's HTTP pool (D-2 lifecycle).
 
-    `close()` is a concrete helper on both real adapters, NOT part of the BIAdapter
-    Protocol (S4 — like drain_build_artifacts), so release goes through getattr: fakes
-    and minimal adapters without a pool are fine to pass here.
+    `close` is part of the BIAdapter Protocol (plan_sol step 7) — no getattr tolerance.
     """
-    close = getattr(adapter, "close", None)
-    if callable(close):
-        close()
+    adapter.close()
 
 
 def probe_health(

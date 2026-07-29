@@ -1,0 +1,6 @@
+# Exact-fingerprint suppressions for historical false positives (official gitleaks format).
+# Format: fingerprint (commit:file:rule:line). Do not add broad commit/path exceptions.
+39bb6fae46711defa4e8f8f0c73708907e458f06:tests/test_prompt_data.py:generic-api-key:31
+3845cb9dc52ba3da5bde4b51513cb734febdf05d:tests/test_safe_error.py:generic-api-key:45
+d8056cde7a0f7b632dfd8a098a33317312e630e4:tests/test_deployment_profile.py:generic-api-key:152
+d8056cde7a0f7b632dfd8a098a33317312e630e4:tests/test_deployment_profile.py:generic-api-key:153

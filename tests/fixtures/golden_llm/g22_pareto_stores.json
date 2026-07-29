@@ -1,5 +1,10 @@
 {
   "case_id": "g22_pareto_stores",
+  "format_version": 2,
+  "template_version": "f45da4cfb883d6ef",
+  "schema_version": "d351b1c143afcea6",
+  "provider": "fixture-refresh",
+  "model_id": "offline",
   "calls": [
     {
       "step": "grounding",
@@ -27,7 +32,8 @@
         ],
         "ambiguous": [],
         "unmatched": []
-      }
+      },
+      "prompt_sha256": "b16610126033662da35dbe107930a7921177dedfae658b4f1d25a95a0557fb2b"
     },
     {
       "step": "propose_spec",
@@ -258,7 +264,8 @@
             }
           }
         ]
-      }
+      },
+      "prompt_sha256": "a27e0490cdcc96306d112148522360ba485b0b6f79aceb04f83ead072ec737e4"
     }
   ]
 }
