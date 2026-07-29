@@ -72,6 +72,38 @@ def test_slo_mutation_smoke_test_selection_matches_mutmut_config() -> None:
     assert documented == expected
 
 
+def test_slo_mutation_smoke_documents_timeout_as_effective_kill() -> None:
+    slo = (ROOT / "docs" / "operations" / "SLO.md").read_text(encoding="utf-8")
+    match = re.search(
+        r"^## Mutation smoke\n(.*?)(?=^## |\Z)",
+        slo,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None
+    section = match.group(1)
+
+    reject_match = re.search(
+        r"check_mutation_stats\.py`\s+rejects\s+(.+?)\s+mutants\.",
+        section,
+        flags=re.DOTALL,
+    )
+    assert reject_match is not None
+    reject_clause = reject_match.group(1)
+    assert re.search(r"\binterrupted\b", reject_clause, flags=re.IGNORECASE)
+    assert not re.search(r"\btime(?:d)?[-\s]?outs?\b", reject_clause, flags=re.IGNORECASE)
+
+    assert re.search(
+        r"\btime(?:d)?[-\s]?outs?\s+mutants?\s+count(?:s)?\s+toward\s+" r"effective\s+kills?",
+        section,
+        flags=re.IGNORECASE,
+    )
+    assert re.search(
+        r"`killed\s*\+\s*timeout`\s+must\s+equal\s+`total`",
+        section,
+        flags=re.IGNORECASE,
+    )
+
+
 def test_primary_quality_job_runs_pinned_mutation_gate() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "Mutation smoke (SQL guard)" in workflow
