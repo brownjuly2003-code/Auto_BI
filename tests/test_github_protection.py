@@ -18,6 +18,10 @@ _GITLEAKS_SAFE_FINGERPRINTS = frozenset(
         "3845cb9dc52ba3da5bde4b51513cb734febdf05d:tests/test_safe_error.py:generic-api-key:45",
         "d8056cde7a0f7b632dfd8a098a33317312e630e4:tests/test_deployment_profile.py:generic-api-key:152",
         "d8056cde7a0f7b632dfd8a098a33317312e630e4:tests/test_deployment_profile.py:generic-api-key:153",
+        "960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_prompt_data.py:generic-api-key:31",
+        "960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_safe_error.py:generic-api-key:45",
+        "960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_deployment_profile.py:generic-api-key:152",
+        "960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_deployment_profile.py:generic-api-key:153",
     }
 )
 
@@ -138,7 +142,7 @@ def test_codeowners_mentions_maintainer() -> None:
 
 
 def test_gitleaks_ignore_is_exact_safe_fingerprints_only() -> None:
-    """Pin .gitleaksignore to four safe fingerprints; block broad TOML suppression."""
+    """Pin .gitleaksignore to eight safe fingerprints; block broad TOML suppression."""
     ignore_path = REPO / ".gitleaksignore"
     assert ignore_path.is_file(), "root .gitleaksignore must exist"
 
@@ -149,7 +153,7 @@ def test_gitleaks_ignore_is_exact_safe_fingerprints_only() -> None:
             continue
         active.add(line)
     assert active == _GITLEAKS_SAFE_FINGERPRINTS, (
-        f".gitleaksignore active lines must be exactly the four safe CI fingerprints; "
+        f".gitleaksignore active lines must be exactly the eight safe CI fingerprints; "
         f"got {sorted(active)}"
     )
 
