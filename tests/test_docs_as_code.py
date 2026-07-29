@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -320,7 +321,22 @@ def _resolve_md_target(source: Path, href: str) -> Path | None:
 
 
 def test_internal_markdown_links_resolve() -> None:
-    """Broken relative links in public markdown fail CI."""
+    """Broken relative links in public markdown fail CI.
+
+    Targets must be git-tracked (not merely present on disk). This gate requires
+    a Git checkout: git unavailable or non-zero is a hard failure, not a skip.
+    """
+    ls = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=REPO,
+        shell=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    tracked = {p for p in ls.stdout.split("\0") if p}
+
     broken: list[str] = []
     for md in PUBLIC_MD:
         if not md.is_file():
@@ -333,10 +349,19 @@ def test_internal_markdown_links_resolve() -> None:
             target = _resolve_md_target(md, href)
             if target is None:
                 continue
-            if target.is_file() or target.is_dir():
-                continue
-            # Allow links to paths that are only on GitHub (e.g. missing optional)
-            broken.append(f"{md.relative_to(REPO)}: {href} -> missing {target}")
+            rel = target.relative_to(REPO.resolve()).as_posix()
+            if target.is_file():
+                if rel in tracked:
+                    continue
+                broken.append(f"{md.relative_to(REPO)}: {href} -> untracked {target}")
+            elif target.is_dir():
+                prefix = rel + "/"
+                if any(p == rel or p.startswith(prefix) for p in tracked):
+                    continue
+                broken.append(f"{md.relative_to(REPO)}: {href} -> untracked {target}")
+            else:
+                # Missing relative targets are always broken in the public doc graph.
+                broken.append(f"{md.relative_to(REPO)}: {href} -> missing {target}")
     assert not broken, "broken internal markdown links:\n  " + "\n  ".join(broken[:40])
 
 

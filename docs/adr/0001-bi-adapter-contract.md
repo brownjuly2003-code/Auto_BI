@@ -1,8 +1,9 @@
 # ADR 0001: BIAdapter BuildContext / BuildResult / lifecycle
 
 **Status:** Accepted (2026-07-23)
-**Plan:** [plan_sol_23_07_26.md](../../plan_sol_23_07_26.md) шаг 7
-**Audit:** [audit_gpt_23_07_26.md](../../audit_gpt_23_07_26.md) P1-1
+**Plan:** [REAUDIT_plan_sol_23_07_26.md](../operations/REAUDIT_plan_sol_23_07_26.md)
+шаг 7; source `plan_sol_23_07_26.md` (internal/gitignored)
+**Audit:** `audit_gpt_23_07_26.md` (internal/gitignored) P1-1
 
 ## Context
 
