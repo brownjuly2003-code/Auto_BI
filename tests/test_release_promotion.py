@@ -20,7 +20,7 @@ DEMO_IMAGE_YML = REPO / ".github" / "workflows" / "demo-image.yml"
 UV_LOCK = REPO / "uv.lock"
 
 # Must stay aligned with uv.lock `clickhouse-connect` version and both Dockerfiles.
-PINNED_CLICKHOUSE_CONNECT = "1.5.0"
+PINNED_CLICKHOUSE_CONNECT = "1.6.0"
 SUPERSET_DIGEST = "sha256:15e110b8533d3cb6a0d529512ea71252b0ac62e3f72b1f7a5000f1361822ac26"
 
 

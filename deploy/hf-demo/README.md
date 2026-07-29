@@ -29,7 +29,7 @@ CH и Superset слушают только localhost внутри контейн
 
 - Space payload включает **`uv.lock`** (`publish_space.py` whitelist).
 - `Dockerfile` ставит auto_bi через **`uv sync --frozen`** (тот же graph, что CI/GHCR app).
-- `clickhouse-connect==1.5.0` (pin = `uv.lock`; bump вместе с lock).
+- `clickhouse-connect==1.6.0` (pin = `uv.lock`; bump вместе с lock).
 - Base Superset — digest-пин (как в `docker/superset/Dockerfile`).
 
 ## Проверка перед пушем в Space
