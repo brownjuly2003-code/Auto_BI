@@ -51,6 +51,7 @@ def test_mutmut_scope_is_pinned_and_bounded() -> None:
     assert mutmut["only_mutate"] == [
         "auto_bi/agent/sql_guard.py",
         "auto_bi/ir/validate.py",
+        "auto_bi/agent/dataset_plan.py",
     ]
     assert mutmut["pytest_add_cli_args_test_selection"] == [
         "tests/test_property_quality.py",
@@ -58,6 +59,8 @@ def test_mutmut_scope_is_pinned_and_bounded() -> None:
         "tests/test_x5_raw_sql.py",
         "tests/test_p1_6_governance.py",
         "tests/test_query_plan.py",
+        "tests/test_dataset_plan.py",
+        "tests/test_native_filters.py",
     ]
     assert mutmut["also_copy"] == ["semantic/"]
 

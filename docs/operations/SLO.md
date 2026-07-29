@@ -39,12 +39,14 @@ No paid LLM, no Docker, no DWH in these probes. Local timings may be written to
 ## Mutation smoke
 
 CI installs `mutmut==3.6.0` and mutates the cumulative ordered scope
-`auto_bi/agent/sql_guard.py`, `auto_bi/ir/validate.py`. The bounded run uses
+`auto_bi/agent/sql_guard.py`, `auto_bi/ir/validate.py`,
+`auto_bi/agent/dataset_plan.py`. The bounded run uses
 `tests/test_property_quality.py`, `tests/test_ir_validate.py`,
-`tests/test_x5_raw_sql.py`, `tests/test_p1_6_governance.py`, and
-`tests/test_query_plan.py`. The latest cumulative run in a separate Linux
-environment produced 696/696 effective kills with no weak outcomes and completed
-in 46 seconds wall-clock (mutmut: 21.62 mutations/second).
+`tests/test_x5_raw_sql.py`, `tests/test_p1_6_governance.py`,
+`tests/test_query_plan.py`, `tests/test_dataset_plan.py`, and
+`tests/test_native_filters.py`. The latest cumulative run in a separate Linux
+environment produced 963/963 effective kills with no weak outcomes and completed
+in 32 seconds wall-clock (mutmut: 33.48 mutations/second).
 `scripts/check_mutation_stats.py` rejects surviving, uncovered, skipped, suspicious,
 interrupted, and crashed mutants. Timed-out mutants count toward effective kills;
 `killed + timeout` must equal `total`.
@@ -67,5 +69,5 @@ strictness only at the gate.
 ## Residual (not yet gates)
 
 - Tight p50/p95 production SLO from live stands (Mac/CI integration).
-- Extend bounded mutation coverage to dataset planning and ownership cleanup.
+- Extend bounded mutation coverage to ownership cleanup.
 - Process memory / cold-start process budget on release image.
