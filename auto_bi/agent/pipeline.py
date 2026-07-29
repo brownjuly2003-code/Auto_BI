@@ -6,6 +6,7 @@ All collaborators are injected; the CLI wires real ones from settings.
 
 import logging
 from collections.abc import Callable
+from typing import Any
 
 from auto_bi.adapters.artifacts import new_build_namespace, stable_build_token
 from auto_bi.adapters.base import BIAdapter, BuildContext, BuildResult, DashboardRef
@@ -118,7 +119,7 @@ def build_dashboard(
 
 
 def compile_and_build(
-    spec,
+    spec: DashboardSpec,
     model: SemanticModel,
     sql_validator: LiveSQLValidator,
     adapter_for: AdapterFor,
@@ -409,7 +410,7 @@ _PRUNE_ORDER = {"chart": 0, "dashboard": 1, "dataset": 2}
 
 def prune_artifact_rows(
     store: Store,
-    rows: list[dict],
+    rows: list[dict[str, Any]],
     delete: Callable[[str, str], None],
     log: Callable[[str], None] = print,
 ) -> tuple[int, int]:

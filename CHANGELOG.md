@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict pipeline boundary** —
+  `auto_bi/agent/pipeline.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; compile/build и ownership-cleanup orchestration теперь проверяются с
+  `mypy --strict`.
+
 - **plan_sol шаг 12 residual: mypy-strict session boundary** —
   `auto_bi/api/sessions.py` добавлен в строгий CI allowlist на Python 3.12 и
   3.13; session snapshot, restart hydration и registry contracts теперь

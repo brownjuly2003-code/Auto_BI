@@ -80,7 +80,7 @@ resume / **fields DnD seed**). Residual: live GHA after merge PR path.
 | Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
 | Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**, Superset native-filter scope) |
 | Mutation smoke | SQL guard gated in CI: 106/106 generated mutants killed; every weak outcome is rejected |
-| Mypy --strict allowlist | 15 boundaries: auth, artifacts, errors, config, session snapshot/hydration, IR, semantic model/context, dbt import, SQL guard, query plan, and dataset plan (CI; full list in SLO.md) |
+| Mypy --strict allowlist | 16 boundaries: auth, artifacts, errors, config, session snapshot/hydration, IR, semantic model/context, dbt import, SQL guard, query plan, dataset plan, and pipeline orchestration (CI; full list in SLO.md) |
 | Ops doc | [operations/SLO.md](operations/SLO.md) |
 
 Residual step 12: live p50/p95, mutation coverage for `ir/validate`, dataset
