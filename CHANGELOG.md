@@ -4,7 +4,13 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-29
+
 ### Fixed
+
+- **Closing CI defects** — Superset 4.1.2-compatible exact ownership marker;
+  auth response bodies removed from logs; capability-driven Auto-table loading
+  deferred until authentication.
 
 - **RR-4 pre-return BI crash window** — schema v9 durably records a
   fingerprint-verified build attempt before `BIAdapter.build`, and server startup
@@ -24,6 +30,11 @@
   `build(spec, ctx=None)` + contract methods.
 
 ### Added
+
+- **Final closure gates** — package-wide `mypy --strict auto_bi` on Python
+  3.12/3.13; cumulative Linux mutation evidence 1034/1034 with no weak outcomes;
+  closing-SHA CI runtime-evidence artifacts; Settings/architecture/mutation
+  docs-as-code ratchets.
 
 - **plan_sol шаг 12 residual: mypy-strict adapter contract boundary** —
   `auto_bi/adapters/base.py` добавлен в строгий CI allowlist на Python 3.12 и
@@ -179,6 +190,9 @@
 
 ### Changed
 
+- **Final dependency refresh** — coordinated dependency refresh and
+  clickhouse-connect 1.6.0 lock/Docker pins.
+
 - **plan_sol шаг 9: replay/live eval trust** — golden fixtures format v2 with
   `prompt_sha256`, `template_version`, `schema_version`, `provider`, `model_id`.
   Replay raises `FixtureStaleError` on contract mismatch (not silent reuse).
@@ -210,6 +224,10 @@
   remain on concrete adapters for unit tests only.
 
 ### Security
+
+- **Release supply-chain hardening** — immutable SHA pins for GitHub Actions;
+  Gitleaks v3 exact-fingerprint policy; provenance action v4; release-image
+  Python compatibility ratchet.
 
 - **plan_sol шаг 6 (partial): reproducible release promotion** —
   (1) Demo/HF: `uv.lock` в Space whitelist; `deploy/hf-demo/Dockerfile` —
@@ -921,7 +939,8 @@ Phase 0–4 и последующего hardening-трека и вводит с�
   (после отсечения детальной таблицы по `max_charts`), растягивается на всю ширину — нет
   «рваного» полупустого ряда.
 
-[Unreleased]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.2.0...v0.3.0

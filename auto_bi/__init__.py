@@ -1,3 +1,3 @@
 """Auto_BI: text / field layout -> dashboard in selected BI on top of DWH DM layer."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
