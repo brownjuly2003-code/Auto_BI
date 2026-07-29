@@ -55,31 +55,10 @@ jobs:
       - name: Mypy (types)
         run: uv run --with mypy --with types-PyYAML mypy auto_bi
 
-      # plan_sol step 12 residual: strict on pure boundary modules (rollout list in SLO.md).
-      # Separate from package-wide mypy — per-module `strict = true` in overrides was
-      # observed to pollute the whole package check on our mypy version.
-      - name: Mypy strict (boundary modules)
-        run: >-
-          uv run --with mypy --with types-PyYAML mypy --strict
-          auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/adapters/base.py
-          auto_bi/errors.py auto_bi/config.py auto_bi/api/sessions.py auto_bi/store/db.py
-          auto_bi/ir/validate.py auto_bi/ir/spec.py auto_bi/semantic/model.py
-          auto_bi/semantic/select.py auto_bi/semantic/render.py
-          auto_bi/semantic/prompt_data.py auto_bi/semantic/dbt_import.py
-          auto_bi/agent/sql_guard.py auto_bi/agent/query_plan.py
-          auto_bi/agent/dataset_plan.py auto_bi/agent/pipeline.py auto_bi/deployment_profile.py
-          auto_bi/llm/budget.py auto_bi/api/ratelimit.py auto_bi/api/schemas.py
-          auto_bi/advisor/findings.py auto_bi/advisor/clickhouse.py auto_bi/advisor/core.py
-          auto_bi/advisor/explain.py auto_bi/advisor/greenplum.py
-          auto_bi/introspect/clickhouse.py auto_bi/introspect/greenplum.py
-          auto_bi/eval/cases.py auto_bi/eval/runner.py
-          auto_bi/agent/sqlgen.py auto_bi/agent/insights.py
-          auto_bi/adapters/datalens/chart_config.py auto_bi/adapters/datalens/dataset.py
-          auto_bi/adapters/datalens/adapter.py
-          auto_bi/adapters/superset/native_filters.py auto_bi/adapters/superset/form_data.py
-          auto_bi/adapters/superset/adapter.py
-          auto_bi/api/app.py
-          auto_bi/cli.py
+      # Keep strictness explicit at the package gate; pyproject remains the
+      # non-strict default for other mypy invocations.
+      - name: Mypy strict (package)
+        run: uv run --with mypy --with types-PyYAML mypy --strict auto_bi
 
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
@@ -191,28 +170,8 @@ jobs:
       - name: Mypy (types)
         run: uv run --python 3.13 --with mypy --with types-PyYAML mypy auto_bi
 
-      - name: Mypy strict (boundary modules)
-        run: >-
-          uv run --python 3.13 --with mypy --with types-PyYAML mypy --strict
-          auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/adapters/base.py
-          auto_bi/errors.py auto_bi/config.py auto_bi/api/sessions.py auto_bi/store/db.py
-          auto_bi/ir/validate.py auto_bi/ir/spec.py auto_bi/semantic/model.py
-          auto_bi/semantic/select.py auto_bi/semantic/render.py
-          auto_bi/semantic/prompt_data.py auto_bi/semantic/dbt_import.py
-          auto_bi/agent/sql_guard.py auto_bi/agent/query_plan.py
-          auto_bi/agent/dataset_plan.py auto_bi/agent/pipeline.py auto_bi/deployment_profile.py
-          auto_bi/llm/budget.py auto_bi/api/ratelimit.py auto_bi/api/schemas.py
-          auto_bi/advisor/findings.py auto_bi/advisor/clickhouse.py auto_bi/advisor/core.py
-          auto_bi/advisor/explain.py auto_bi/advisor/greenplum.py
-          auto_bi/introspect/clickhouse.py auto_bi/introspect/greenplum.py
-          auto_bi/eval/cases.py auto_bi/eval/runner.py
-          auto_bi/agent/sqlgen.py auto_bi/agent/insights.py
-          auto_bi/adapters/datalens/chart_config.py auto_bi/adapters/datalens/dataset.py
-          auto_bi/adapters/datalens/adapter.py
-          auto_bi/adapters/superset/native_filters.py auto_bi/adapters/superset/form_data.py
-          auto_bi/adapters/superset/adapter.py
-          auto_bi/api/app.py
-          auto_bi/cli.py
+      - name: Mypy strict (package)
+        run: uv run --python 3.13 --with mypy --with types-PyYAML mypy --strict auto_bi
 
       - name: Pytest + coverage gate
         run: >

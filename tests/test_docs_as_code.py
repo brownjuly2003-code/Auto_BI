@@ -342,63 +342,43 @@ def test_generator_check_mode_exits_zero() -> None:
     assert code == 0
 
 
-@pytest.mark.parametrize(
-    "target",
-    [
-        "auto_bi/auth.py",
-        "auto_bi/adapters/artifacts.py",
-        "auto_bi/adapters/base.py",
-        "auto_bi/errors.py",
-        "auto_bi/config.py",
-        "auto_bi/api/sessions.py",
-        "auto_bi/store/db.py",
-        "auto_bi/ir/validate.py",
-        "auto_bi/ir/spec.py",
-        "auto_bi/semantic/model.py",
-        "auto_bi/semantic/select.py",
-        "auto_bi/semantic/render.py",
-        "auto_bi/semantic/prompt_data.py",
-        "auto_bi/semantic/dbt_import.py",
-        "auto_bi/agent/sql_guard.py",
-        "auto_bi/agent/query_plan.py",
-        "auto_bi/agent/dataset_plan.py",
-        "auto_bi/agent/pipeline.py",
-        "auto_bi/deployment_profile.py",
-        "auto_bi/llm/budget.py",
-        "auto_bi/api/ratelimit.py",
-        "auto_bi/api/schemas.py",
-        "auto_bi/advisor/findings.py",
-        "auto_bi/advisor/clickhouse.py",
-        "auto_bi/advisor/core.py",
-        "auto_bi/advisor/explain.py",
-        "auto_bi/advisor/greenplum.py",
-        "auto_bi/introspect/clickhouse.py",
-        "auto_bi/introspect/greenplum.py",
-        "auto_bi/eval/cases.py",
-        "auto_bi/eval/runner.py",
-        "auto_bi/agent/sqlgen.py",
-        "auto_bi/agent/insights.py",
-        "auto_bi/adapters/datalens/chart_config.py",
-        "auto_bi/adapters/datalens/dataset.py",
-        "auto_bi/adapters/datalens/adapter.py",
-        "auto_bi/adapters/superset/native_filters.py",
-        "auto_bi/adapters/superset/form_data.py",
-        "auto_bi/adapters/superset/adapter.py",
-        "auto_bi/api/app.py",
-        "auto_bi/cli.py",
-    ],
-)
-def test_strict_targets_are_in_every_mypy_job_and_slo(target: str) -> None:
+def test_mypy_strict_package_gate_in_ci_and_slo() -> None:
+    """CI + SLO must document package-wide `mypy --strict auto_bi` (not allowlist)."""
+    base_tokens = (
+        "--with",
+        "mypy",
+        "--with",
+        "types-PyYAML",
+        "mypy",
+        "--strict",
+        "auto_bi",
+    )
+    expected_runs = {
+        ("uv", "run", *base_tokens),
+        ("uv", "run", "--python", "3.13", *base_tokens),
+    }
+    full_cmd = "uv run " + " ".join(base_tokens)
+
     workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
     strict_steps = [
         step
         for job in workflow["jobs"].values()
         for step in job.get("steps", [])
-        if step.get("name") == "Mypy strict (boundary modules)"
+        if step.get("name") == "Mypy strict (package)"
     ]
     assert len(strict_steps) == 2
-    assert all(target in step["run"] for step in strict_steps)
-    assert f"`{target}`" in SLO.read_text(encoding="utf-8")
+    assert {tuple(step["run"].split()) for step in strict_steps} == expected_runs
+
+    slo = SLO.read_text(encoding="utf-8")
+    assert "`mypy --strict auto_bi`" in slo
+    assert full_cmd in slo
+    for obsolete in (
+        "Strict allowlist",
+        "Grow the allowlist",
+        "Expand mypy-strict allowlist",
+        "Package-wide: `mypy auto_bi`",
+    ):
+        assert obsolete not in slo, f"obsolete SLO contract text still present: {obsolete!r}"
 
 
 @pytest.mark.parametrize(

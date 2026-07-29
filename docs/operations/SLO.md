@@ -46,82 +46,20 @@ CI installs `mutmut==3.6.0` and mutates only
 suspicious, interrupted, and crashed mutants. Timed-out mutants count toward
 effective kills; `killed + timeout` must equal `total`.
 
-## Mypy strict modules (plan_sol step 12 residual)
+## Mypy package-wide strict gate
 
-Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
-
-**Strict allowlist** (CI job `Mypy strict (boundary modules)`):
-
-| Module | Why first |
-|---|---|
-| `auto_bi/auth.py` | pure RBAC + passwords; security-sensitive |
-| `auto_bi/adapters/artifacts.py` | pure build namespace / naming |
-| `auto_bi/adapters/base.py` | shared adapter types, contract validation, and lifecycle protocol |
-| `auto_bi/errors.py` | public/store/SSE/log redaction and provider error boundary |
-| `auto_bi/config.py` | security-sensitive settings defaults and env typo detection |
-| `auto_bi/api/sessions.py` | session snapshot, restart hydration, and registry boundary |
-| `auto_bi/store/db.py` | durable session, build, and BI artifact persistence boundary |
-| `auto_bi/ir/validate.py` | pure semantic-model and dashboard-spec validation boundary |
-| `auto_bi/ir/spec.py` | typed dashboard-spec schema and alias boundary |
-| `auto_bi/semantic/model.py` | typed semantic-model schema and lookup boundary |
-| `auto_bi/semantic/select.py` | deterministic semantic-context selection boundary |
-| `auto_bi/semantic/render.py` | deterministic semantic-model prompt rendering boundary |
-| `auto_bi/semantic/prompt_data.py` | sample classification and prompt-data policy boundary |
-| `auto_bi/semantic/dbt_import.py` | typed dbt artifact enrichment boundary |
-| `auto_bi/agent/sql_guard.py` | SELECT-only, complexity, and table-access security boundary |
-| `auto_bi/agent/query_plan.py` | compiled query-plan and runtime probe boundary |
-| `auto_bi/agent/dataset_plan.py` | dataset ownership and native-filter planning boundary |
-| `auto_bi/agent/pipeline.py` | compile/build and ownership-cleanup orchestration boundary |
-| `auto_bi/deployment_profile.py` | fail-closed deployment-profile and serve-time safety boundary |
-| `auto_bi/llm/budget.py` | fail-closed LLM spend/call budget boundary at the provider-call seam |
-| `auto_bi/api/ratelimit.py` | fail-closed login/session quota and SSE-concurrency boundary |
-| `auto_bi/api/schemas.py` | API request/response and session-hydration schema boundary |
-| `auto_bi/advisor/findings.py` | advisor finding and shared open evidence boundary |
-| `auto_bi/advisor/clickhouse.py` | ClickHouse rule context and evidence boundary |
-| `auto_bi/advisor/core.py` | advisor evidence gathering and rule orchestration boundary |
-| `auto_bi/advisor/explain.py` | ClickHouse EXPLAIN scan-estimate evidence boundary |
-| `auto_bi/advisor/greenplum.py` | Greenplum EXPLAIN evidence and rule pack boundary |
-| `auto_bi/introspect/clickhouse.py` | ClickHouse engine metadata ingestion boundary |
-| `auto_bi/introspect/greenplum.py` | Greenplum engine metadata ingestion boundary |
-| `auto_bi/eval/cases.py` | offline eval case inventory boundary |
-| `auto_bi/eval/runner.py` | deterministic eval/replay runner boundary |
-| `auto_bi/agent/sqlgen.py` | deterministic ChartQuery → SQL generation boundary |
-| `auto_bi/agent/insights.py` | post-build observation / narrative boundary |
-| `auto_bi/adapters/datalens/chart_config.py` | DataLens chart shared-config typing boundary |
-| `auto_bi/adapters/datalens/dataset.py` | DataLens connection/dataset payload typing boundary |
-| `auto_bi/adapters/datalens/adapter.py` | DataLens adapter orchestration typing boundary |
-| `auto_bi/adapters/superset/native_filters.py` | Superset native-filter configuration typing boundary |
-| `auto_bi/adapters/superset/form_data.py` | Superset form_data and position_json typing boundary |
-| `auto_bi/adapters/superset/adapter.py` | Superset adapter orchestration typing boundary |
-| `auto_bi/api/app.py` | FastAPI auth/readiness/SSE boundary |
-| `auto_bi/cli.py` | CLI operations entrypoint boundary |
+Canonical gate: `mypy --strict auto_bi`. Both supported Python CI jobs run it.
+Targeting the package automatically covers current and future modules under
+`auto_bi`.
 
 ```bash
-uv run --with mypy --with types-PyYAML mypy --strict \
-  auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/adapters/base.py \
-  auto_bi/errors.py auto_bi/config.py auto_bi/api/sessions.py auto_bi/store/db.py \
-  auto_bi/ir/validate.py auto_bi/ir/spec.py auto_bi/semantic/model.py \
-  auto_bi/semantic/select.py auto_bi/semantic/render.py \
-  auto_bi/semantic/prompt_data.py auto_bi/semantic/dbt_import.py \
-  auto_bi/agent/sql_guard.py auto_bi/agent/query_plan.py \
-  auto_bi/agent/dataset_plan.py auto_bi/agent/pipeline.py auto_bi/deployment_profile.py \
-  auto_bi/llm/budget.py auto_bi/api/ratelimit.py auto_bi/api/schemas.py \
-  auto_bi/advisor/findings.py auto_bi/advisor/clickhouse.py auto_bi/advisor/core.py \
-  auto_bi/advisor/explain.py auto_bi/advisor/greenplum.py \
-  auto_bi/introspect/clickhouse.py auto_bi/introspect/greenplum.py \
-  auto_bi/eval/cases.py auto_bi/eval/runner.py \
-  auto_bi/agent/sqlgen.py auto_bi/agent/insights.py \
-  auto_bi/adapters/datalens/chart_config.py auto_bi/adapters/datalens/dataset.py \
-  auto_bi/adapters/datalens/adapter.py \
-  auto_bi/adapters/superset/native_filters.py auto_bi/adapters/superset/form_data.py \
-  auto_bi/adapters/superset/adapter.py \
-  auto_bi/api/app.py \
-  auto_bi/cli.py
+uv run --with mypy --with types-PyYAML mypy --strict auto_bi
 ```
 
 Do **not** set `strict = true` as a global or per-module override in `pyproject`
 without verifying: on our mypy version that polluted the package-wide check.
-Grow the allowlist module-by-module after each target is clean under `--strict`.
+The CLI/CI `--strict` gate is intentional; keep the config non-strict and apply
+strictness only at the gate.
 
 ## Residual (not yet gates)
 
@@ -129,20 +67,3 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
 - Extend bounded mutation coverage to `ir/validate`, dataset planning, and
   ownership cleanup; SQL guard is already gated.
 - Process memory / cold-start process budget on release image.
-- Expand mypy-strict allowlist beyond `auth` + `artifacts` + `errors` + `config`
-  + `adapters/base` + `api/sessions` + `store/db` + `ir/validate` + `ir/spec`
-  + `semantic/model` + `semantic/select`
-  + `semantic/render` + `semantic/prompt_data` + `semantic/dbt_import`
-  + `agent/sql_guard` + `agent/query_plan` + `agent/dataset_plan`
-  + `agent/pipeline` + `deployment_profile` + `llm/budget` + `api/ratelimit` + `api/schemas`
-  + `advisor/findings` + `advisor/clickhouse` + `advisor/core` + `advisor/explain`
-  + `advisor/greenplum`
-  + `introspect/clickhouse` + `introspect/greenplum`
-  + `eval/cases` + `eval/runner`
-  + `agent/sqlgen` + `agent/insights`
-  + `adapters/datalens/chart_config` + `adapters/datalens/dataset`
-  + `adapters/datalens/adapter`
-  + `adapters/superset/native_filters` + `adapters/superset/form_data`
-  + `adapters/superset/adapter`
-  + `api/app`
-  + `cli`.
