@@ -12,7 +12,7 @@
 # (Superset/DataLens) are external — configure them via AUTO_BI_* env vars / --env-file.
 # C-4: base images pinned by digest (multi-arch manifest list) — a re-tagged base
 # cannot silently change the build. Bump = update tag AND digest together.
-FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6
 
 # uv for fast, lockfile-pinned installs (pinned tag+digest for reproducible builds)
 COPY --from=ghcr.io/astral-sh/uv:0.8.23@sha256:94390f20a83e2de83f63b2dadcca2efab2e6798f772edab52bf545696c86bdb4 /uv /usr/local/bin/uv
