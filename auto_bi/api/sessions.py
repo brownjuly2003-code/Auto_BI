@@ -15,6 +15,7 @@ import threading
 import uuid
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from auto_bi.advisor.core import Advisor
 from auto_bi.agent.machine import AgentPhase, AgentSession, AgentTurn
@@ -61,7 +62,7 @@ class SessionSnapshot:
     # Optional dump of agent.spec for browser UI resume (plan_sol step 10 residual).
     # Not part of the lock-consistency contract for URL/status; read under the same lock
     # so a concurrent patch cannot yield a torn phase/spec pair on GET.
-    spec: dict | None = None
+    spec: dict[str, Any] | None = None
 
 
 class ManagedSession:

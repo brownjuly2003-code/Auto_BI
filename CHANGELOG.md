@@ -17,6 +17,11 @@
 
 ### Added
 
+- **plan_sol шаг 12 residual: mypy-strict session boundary** —
+  `auto_bi/api/sessions.py` добавлен в строгий CI allowlist на Python 3.12 и
+  3.13; session snapshot, restart hydration и registry contracts теперь
+  проверяются с `mypy --strict`.
+
 - **Project closure contract** — `docs/PROJECT_CLOSURE.md` фиксирует финальный
   v1 scope, переводит open-ended residual в явные `future` / `retired` /
   `won't-run` и отделяет их от обязательных publish/release/deploy evidence

@@ -57,6 +57,7 @@ Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
 | `auto_bi/adapters/artifacts.py` | pure build namespace / naming |
 | `auto_bi/errors.py` | public/store/SSE/log redaction and provider error boundary |
 | `auto_bi/config.py` | security-sensitive settings defaults and env typo detection |
+| `auto_bi/api/sessions.py` | session snapshot, restart hydration, and registry boundary |
 | `auto_bi/ir/validate.py` | pure semantic-model and dashboard-spec validation boundary |
 | `auto_bi/ir/spec.py` | typed dashboard-spec schema and alias boundary |
 | `auto_bi/semantic/model.py` | typed semantic-model schema and lookup boundary |
@@ -71,6 +72,7 @@ Package-wide: `mypy auto_bi` (default flags in `pyproject.toml`).
 ```bash
 uv run --with mypy --with types-PyYAML mypy --strict \
   auto_bi/auth.py auto_bi/adapters/artifacts.py auto_bi/errors.py auto_bi/config.py \
+  auto_bi/api/sessions.py \
   auto_bi/ir/validate.py auto_bi/ir/spec.py auto_bi/semantic/model.py \
   auto_bi/semantic/select.py auto_bi/semantic/render.py \
   auto_bi/semantic/prompt_data.py auto_bi/semantic/dbt_import.py \
@@ -89,6 +91,6 @@ Grow the allowlist module-by-module after each target is clean under `--strict`.
   ownership cleanup; SQL guard is already gated.
 - Process memory / cold-start process budget on release image.
 - Expand mypy-strict allowlist beyond `auth` + `artifacts` + `errors` + `config`
-  + `ir/validate` + `ir/spec` + `semantic/model` + `semantic/select`
+  + `api/sessions` + `ir/validate` + `ir/spec` + `semantic/model` + `semantic/select`
   + `semantic/render` + `semantic/prompt_data` + `semantic/dbt_import`
   + `agent/sql_guard` + `agent/query_plan` + `agent/dataset_plan`.
