@@ -64,7 +64,7 @@ uv run python scripts/demo_golden_path.py
 
 2. **HF Space** — детерминированный auto-only, пользовательский ключ не нужен; текстовый режим там намеренно недоступен (см. «Демо» выше).
 
-3. **Полный локальный путь.** Скопируйте `.env.example` в `.env` (`cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`). Задайте свой `ANTHROPIC_API_KEY` **или** `AUTO_BI_LLM_PROVIDER=gracekelly` и `AUTO_BI_GRACEKELLY_URL`. Для DWH/BI — `AUTO_BI_CH_HOST`, `AUTO_BI_CH_PASSWORD`, `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_PASSWORD` (полный inventory — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md)). `docker compose up -d` поднимает **только ClickHouse и Superset**, не Auto_BI; агент локально: `auto_bi serve` → http://127.0.0.1:8200.
+3. **Полный локальный путь.** Пошагово со своим Anthropic-ключом — [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md). Скопируйте `.env.example` в `.env` (`cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`). Задайте свой `ANTHROPIC_API_KEY` **или** `AUTO_BI_LLM_PROVIDER=gracekelly` и `AUTO_BI_GRACEKELLY_URL`. Для DWH/BI — `AUTO_BI_CH_HOST`, `AUTO_BI_CH_PASSWORD`, `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_PASSWORD` (полный inventory — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md)). `docker compose up -d` поднимает **только ClickHouse и Superset**, не Auto_BI; агент локально: `auto_bi serve` → http://127.0.0.1:8200.
 
 ```bash
 pip install autobi-agent                          # или pip install -e . из корня репозитория
@@ -90,6 +90,7 @@ uv run python scripts/demo_golden_path.py
 | Файл | Что внутри |
 |---|---|
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Руководство пользователя: установка, команды CLI, web UI, два режима ввода, advisor, наблюдаемость, конфигурация |
+| [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md) | Первый локальный запуск со своим Anthropic API key: clone, `.env`, Compose (CH+Superset), `uv run auto_bi serve`, health/ready |
 | [docs/ONBOARDING_DWH.md](docs/ONBOARDING_DWH.md) | Подключение нового DWH за ≤ 1 ч: доступы, `.env`, интроспекция, обогащение, проверка (ClickHouse + Greenplum) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура: скоуп, IR-first, семантическая модель с физическим слоем, агент, Feasibility Advisor, адаптеры, LLM-слой, решения D1–D10, риски |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Деплой в проде: workers=1, reverse-proxy/TLS, готовность, docker-compose, бэкап SQLite, ротация логов, чеклист секретов |

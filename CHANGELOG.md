@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Local BYOK runbook** — `docs/LOCAL_BYOK.md`: первый локальный запуск после
+  clone со своим `ANTHROPIC_API_KEY` (ClickHouse + Superset через Compose,
+  `uv run auto_bi serve`, health/ready, остановка и troubleshooting).
+
 ## [0.5.0] - 2026-07-29
 
 ### Fixed
