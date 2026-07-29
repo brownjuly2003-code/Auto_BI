@@ -85,7 +85,7 @@ integration/browser/Space/tag evidence remains residual until a release SHA is o
 | P1 GitHub required checks | Closed (rulesets active) |
 | P1 release promotion graph | Closed in workflow; live tag residual |
 | P1 adapter contract | Closed |
-| P1 atomic build state | Closed core; stable-token / pre-BI outbox residual |
+| P1 atomic build state | Closed, including RR-4 pre-return cleanup recovery (2026-07-29 follow-up) |
 | P1 eval fingerprint trust | Closed offline |
 | P1 compatibility matrix | Closed core offline |
 | P2 docs drift | Closed core (CURRENT_STATE + ENV_REFERENCE + ratchets) |
@@ -98,7 +98,7 @@ integration/browser/Space/tag evidence remains residual until a release SHA is o
 | RR-1 | Live tag never exercised new release graph | P2 | Offline workflow tests; no `:latest` before finalize | Next `v*` cut |
 | RR-2 | Solo pypi self-review allowed | P2 | Documented; admins_bypass exists | Second reviewer |
 | RR-3 | Stable build_token idempotency incomplete | P2 | New token per attempt; session 409 rules | Step 8 residual |
-| RR-4 | No durable BI outbox before adapter return | P2 | `delivered_pending` after delivery | Step 8 residual |
+| RR-4 | **Closed 2026-07-29:** durable attempt before adapter return + exact adapter cleanup | Closed | Schema v9 / ADR 0002 / process-death test | Maintain contract |
 | RR-5 | Browser UI no session hydrate after reload | P2 | API resume unit green | Step 10 residual |
 | RR-6 | Fields DnD E2E missing | P3 | Manual / unit paths | Step 10 residual |
 | RR-7 | Live GHA / Space not proven on unpushed SHA | P2 | Offline gates; PR path after push | Push via PR |

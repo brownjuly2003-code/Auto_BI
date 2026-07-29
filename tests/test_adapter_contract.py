@@ -14,7 +14,9 @@ from auto_bi.adapters.artifacts import BuildArtifact
 from auto_bi.adapters.base import (
     REQUIRED_ADAPTER_METHODS,
     AdapterHealth,
+    BuildAttempt,
     BuildContext,
+    BuildReconcileResult,
     BuildResult,
     ChartRef,
     DashboardRef,
@@ -58,6 +60,7 @@ def test_validate_adapter_contract_rejects_partial_fake() -> None:
 
 def test_required_methods_cover_ownership_and_lifecycle() -> None:
     assert "build" in REQUIRED_ADAPTER_METHODS
+    assert "reconcile_build_attempt" in REQUIRED_ADAPTER_METHODS
     assert "delete_artifact" in REQUIRED_ADAPTER_METHODS
     assert "close" in REQUIRED_ADAPTER_METHODS
     assert "set_artifact_namespace" not in REQUIRED_ADAPTER_METHODS
@@ -105,6 +108,9 @@ class FakeThirdAdapter:
 
     def delete_artifact(self, kind: str, native_id: str) -> None:
         self.deleted.append((kind, native_id))
+
+    def reconcile_build_attempt(self, attempt: BuildAttempt) -> BuildReconcileResult:
+        return BuildReconcileResult()
 
     def close(self) -> None:
         self.closed = True

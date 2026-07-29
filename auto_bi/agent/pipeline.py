@@ -9,7 +9,13 @@ from collections.abc import Callable
 from typing import Any
 
 from auto_bi.adapters.artifacts import new_build_namespace, stable_build_token
-from auto_bi.adapters.base import BIAdapter, BuildContext, BuildResult, DashboardRef
+from auto_bi.adapters.base import (
+    BIAdapter,
+    BuildAttempt,
+    BuildContext,
+    BuildResult,
+    DashboardRef,
+)
 from auto_bi.adapters.factory import close_adapter
 from auto_bi.advisor.core import Advisor
 from auto_bi.advisor.narrate import ChartVerdict, worst_verdicts
@@ -19,13 +25,18 @@ from auto_bi.agent.propose import SpecValidationError, propose_spec
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.agent.sql_guard import LiveSQLValidator
 from auto_bi.agent.sqlgen import generate_chart_sql, generate_source_sql
-from auto_bi.errors import CODE_BI_HEALTH, SafeError, store_error_text, to_safe_error
+from auto_bi.errors import CODE_BI_HEALTH, CODE_STORE, SafeError, store_error_text, to_safe_error
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.llm.base import LLMClient
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.store import SHARED_BI_KINDS, Store
 from auto_bi.store.db import (
+    ATTEMPT_ABORTED,
+    ATTEMPT_BUILDING,
+    ATTEMPT_CLEANED,
+    ATTEMPT_CLEANUP_REQUIRED,
+    ATTEMPT_PREPARED,
     BUILD_DELIVERED_PENDING,
     BUILD_OK,
     SESSION_BUILT,
@@ -38,6 +49,104 @@ logger = logging.getLogger(__name__)
 # partial-applied with settings+model). Injected as a resolver so the pipeline never names a
 # concrete adapter (Phase 4 F1) and tests can supply a fake.
 AdapterFor = Callable[[TargetBI], BIAdapter]
+
+
+def reconcile_interrupted_builds(
+    store: Store,
+    adapter_for: AdapterFor,
+    log: Callable[[str], None] = print,
+) -> list[dict[str, Any]]:
+    """Cleanup interrupted RR-4 attempts before the legacy stuck-build reaper.
+
+    PREPARED is non-destructive: BUILDING is committed before the first remote write,
+    so a PREPARED crash cannot own remote artifacts. BUILDING/CLEANUP_REQUIRED delegates
+    exact-token/name cleanup to the target adapter. Any provider/search failure keeps the
+    attempt nonterminal and therefore retry-blocking.
+    """
+    outcomes: list[dict[str, Any]] = []
+    for row in store.interrupted_build_attempts():
+        attempt_id = int(row["id"])
+        token = str(row["build_token"])
+        status = str(row["status"])
+        if status == ATTEMPT_PREPARED:
+            detail = "interrupted before remote build started"
+            store.finish_build_attempt_reconciliation(
+                attempt_id,
+                status=ATTEMPT_ABORTED,
+                error=detail,
+            )
+            outcomes.append(
+                {"attempt_id": attempt_id, "build_token": token, "status": ATTEMPT_ABORTED}
+            )
+            log(f"RECONCILE aborted prepared attempt {attempt_id} (no remote writes)")
+            continue
+
+        adapter: BIAdapter | None = None
+        try:
+            if status not in (ATTEMPT_BUILDING, ATTEMPT_CLEANUP_REQUIRED):
+                raise RuntimeError(f"unsupported build attempt status: {status}")
+            if not row.get("snapshot_valid"):
+                raise ValueError("build attempt spec snapshot fingerprint mismatch")
+            raw_spec = row.get("spec_json")
+            if not isinstance(raw_spec, dict):
+                raise ValueError("build attempt spec snapshot is not an object")
+            spec = DashboardSpec.model_validate(raw_spec)
+            target = TargetBI(str(row["target_bi"]))
+            spec_id_value = row.get("spec_id")
+            attempt = BuildAttempt(
+                build_token=token,
+                session_id=str(row["session_id"]),
+                spec_id=int(spec_id_value) if spec_id_value is not None else None,
+                owner=str(row["owner"]) if row.get("owner") is not None else None,
+                spec=spec,
+            )
+            adapter = adapter_for(target)
+            result = adapter.reconcile_build_attempt(attempt)
+            detail = (
+                f"interrupted build reconciled: deleted "
+                f"{result.deleted}/{result.discovered} owned artifact(s)"
+            )
+            store.finish_build_attempt_reconciliation(
+                attempt_id,
+                status=ATTEMPT_CLEANED,
+                error=detail,
+            )
+            outcomes.append(
+                {
+                    "attempt_id": attempt_id,
+                    "build_token": token,
+                    "status": ATTEMPT_CLEANED,
+                    "discovered": result.discovered,
+                    "deleted": result.deleted,
+                }
+            )
+            log(f"RECONCILE cleaned interrupted attempt {attempt_id}: {result.deleted} deleted")
+        except Exception as exc:
+            detail = store_error_text(exc)
+            store.finish_build_attempt_reconciliation(
+                attempt_id,
+                status=ATTEMPT_CLEANUP_REQUIRED,
+                error=detail,
+            )
+            outcomes.append(
+                {
+                    "attempt_id": attempt_id,
+                    "build_token": token,
+                    "status": ATTEMPT_CLEANUP_REQUIRED,
+                }
+            )
+            logger.warning(
+                "build attempt %s still requires cleanup: %s",
+                attempt_id,
+                detail,
+            )
+        finally:
+            if adapter is not None:
+                try:
+                    close_adapter(adapter)
+                except Exception:
+                    logger.debug("BI adapter close failed during reconciliation", exc_info=True)
+    return outcomes
 
 
 def review_and_log(
@@ -143,8 +252,9 @@ def compile_and_build(
     audit P1-2). A ledger commit failure MUST NOT mark the build failed (UI split-
     brain: BI has the dashboard, Store would say failed) — we fall back to
     `delivered_pending` + `built_with_cleanup_degraded` and still return the ref.
-    A process killed mid-build (SIGKILL/OOM) still leaves the session stuck at
-    'building' — `Store.reap_stuck_builds()` cleans those up on the next server start.
+    Before the first remote mutation, RR-4 persists the exact spec/token attempt and
+    commits it as BUILDING. A process killed mid-build is therefore reconciled by the
+    target adapter on startup before the legacy pre-v9 stuck-session reaper runs.
 
     `plans` (D-2 §3) carries the advisor's EXPLAIN evidence from a review that ran in the
     same call, letting the guard skip a re-plan of a statement it would plan identically.
@@ -194,11 +304,26 @@ def compile_and_build(
             )
 
     if store is not None and session_id is not None:
+        active_attempt = store.active_build_attempt(session_id)
+        if active_attempt is not None:
+            raise SafeError(
+                CODE_STORE,
+                "Previous build cleanup is still required",
+                retryable=False,
+                internal_detail=(
+                    f"session {session_id} has active build attempt "
+                    f"{active_attempt.get('id')} status={active_attempt.get('status')}"
+                ),
+            )
+
+    if store is not None and session_id is not None:
         store.set_session_status(session_id, "building")
     # D-2 lifecycle: the adapter (and its HTTP pool) is created per build, so it must be
     # released on EVERY exit — after the ledger/prune on success, and on any failure. The
     # outer finally is the single release point.
     adapter: BIAdapter | None = None
+    attempt_id: int | None = None
+    attempt_started = False
     try:
         try:
             # deterministic dashboard-adequacy normalization, before SQL_GEN + adapter so BOTH
@@ -291,6 +416,19 @@ def compile_and_build(
                 session_id=session_id,
                 owner=owner,
             )
+            if store is not None and session_id is not None:
+                attempt_id = store.prepare_build_attempt(
+                    session_id,
+                    resolved_spec_id if resolved_spec_id is not None else spec_id,
+                    build_token=build_token,
+                    target_bi=spec.target_bi.value,
+                    owner=owner,
+                    spec_json=spec.model_dump(mode="json"),
+                )
+                # Hard invariant: this transaction commits before adapter.build can make
+                # its first remote create/update call.
+                store.start_build_attempt(attempt_id)
+                attempt_started = True
             result: BuildResult = adapter.build(spec, ctx)
             ref = result.dashboard
         except Exception as exc:
@@ -305,6 +443,7 @@ def compile_and_build(
                     resolved_spec_id if resolved_spec_id is not None else spec_id,
                     error=store_error_text(exc),
                     build_token=build_token,
+                    attempt_id=attempt_id if attempt_started else None,
                 )
             # Re-raise as SafeError so API/SSE see the public face; preserve original chain.
             if isinstance(exc, SafeError):
@@ -321,6 +460,7 @@ def compile_and_build(
                 spec,
                 result,
                 build_token,
+                attempt_id,
             )
             if prune_orphans and adapter is not None:
                 pruned_ok = _prune_superseded_artifacts(
@@ -347,6 +487,7 @@ def _commit_delivery(
     spec: DashboardSpec,
     result: BuildResult,
     build_token: str,
+    attempt_id: int | None,
 ) -> None:
     """Persist delivery after adapter.build: atomic success, or delivered_pending fallback.
 
@@ -376,6 +517,7 @@ def _commit_delivery(
             owner=owner,
             artifacts=arts,
             session_status=SESSION_BUILT,
+            attempt_id=attempt_id,
         )
     except Exception as exc:
         logger.exception(
@@ -392,6 +534,7 @@ def _commit_delivery(
                 url=ref.url,
                 build_token=build_token,
                 error=store_error_text(exc),
+                attempt_id=attempt_id,
             )
         except Exception:
             logger.exception(

@@ -78,6 +78,34 @@ class BuildContext:
 
 
 @dataclass(frozen=True)
+class BuildAttempt:
+    """Durable evidence available to an adapter after an interrupted build.
+
+    The spec is the immutable snapshot stored before the first remote mutation. An
+    adapter must reconcile only entities provably owned by ``build_token``; shared
+    connections and title-only matches are outside this contract.
+    """
+
+    build_token: str
+    session_id: str
+    spec_id: int | None
+    owner: str | None
+    spec: DashboardSpec
+
+
+@dataclass(frozen=True)
+class BuildReconcileResult:
+    """Cleanup-only reconciliation summary.
+
+    Returning means every artifact the adapter can prove belongs to the attempt is
+    absent. Provider/search failures raise so Store keeps the attempt retry-blocking.
+    """
+
+    discovered: int = 0
+    deleted: int = 0
+
+
+@dataclass(frozen=True)
 class BuildResult:
     """Per-build output: delivered dashboard + ownership ledger payload.
 
@@ -113,6 +141,7 @@ REQUIRED_ADAPTER_METHODS: tuple[str, ...] = (
     "create_chart",
     "assemble_dashboard",
     "build",
+    "reconcile_build_attempt",
     "delete_artifact",
     "close",
 )
@@ -145,6 +174,9 @@ class BIAdapter(Protocol):
     # `ctx` carries namespace / query plans / session identity (plan_sol step 7). Semantic
     # model stays constructor-injected so both adapters share this signature.
     def build(self, spec: DashboardSpec, ctx: BuildContext | None = None) -> BuildResult: ...
+
+    # Process-death recovery: exact ownership proof only; never delete by human title.
+    def reconcile_build_attempt(self, attempt: BuildAttempt) -> BuildReconcileResult: ...
 
     # Ownership live-cleanup (ledger prune / `auto_bi prune`) — required, not getattr.
     def delete_artifact(self, kind: str, native_id: str) -> None: ...

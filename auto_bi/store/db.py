@@ -37,6 +37,11 @@ in one SQLite transaction (`commit_build_success`); failure path is also one tra
 `delivered_pending` (BI dashboard exists but ledger commit failed — reconcile later).
 Session status may be `built_with_cleanup_degraded` when prune after a successful build
 failed or ledger was only partially durable.
+
+Schema v9 (RR-4): `build_attempts` durably records the exact spec snapshot and ownership
+token before `BIAdapter.build` may mutate a remote BI. Interrupted attempts are reconciled
+before the legacy stuck-session reaper. Normal success commits the attempt, build row,
+session status and artifact ledger in the same SQLite transaction.
 """
 
 from __future__ import annotations
@@ -60,12 +65,26 @@ def _row_id(cur: sqlite3.Cursor) -> int:
     return cur.lastrowid
 
 
-_SCHEMA_VERSION = 8  # bump together with a migration when the schema changes
+_SCHEMA_VERSION = 9  # bump together with a migration when the schema changes
 
 # Build row status values (durable `builds.status`).
 BUILD_OK = "ok"
 BUILD_FAILED = "failed"
 BUILD_DELIVERED_PENDING = "delivered_pending"
+
+# Build-attempt status values (RR-4 crash recovery).
+ATTEMPT_PREPARED = "prepared"
+ATTEMPT_BUILDING = "building"
+ATTEMPT_CLEANUP_REQUIRED = "cleanup_required"
+ATTEMPT_COMMITTED = "committed"
+ATTEMPT_DELIVERED_PENDING = "delivered_pending"
+ATTEMPT_CLEANED = "cleaned"
+ATTEMPT_ABORTED = "aborted"
+_NONTERMINAL_ATTEMPT_STATUSES = (
+    ATTEMPT_PREPARED,
+    ATTEMPT_BUILDING,
+    ATTEMPT_CLEANUP_REQUIRED,
+)
 
 # Session status values used by the build state machine (durable `sessions.status`).
 SESSION_OPEN = "open"
@@ -86,6 +105,16 @@ SHARED_BI_KINDS = frozenset({"database"})
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _encode_spec_snapshot(spec_json: dict[str, Any]) -> tuple[str, str]:
+    raw = json.dumps(
+        spec_json,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return raw, hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 _SCHEMA = """
@@ -123,6 +152,24 @@ CREATE TABLE IF NOT EXISTS builds (
     error        TEXT NOT NULL DEFAULT '',
     build_token  TEXT NOT NULL DEFAULT ''   -- v8: ownership-ledger revision for this build
 );
+CREATE TABLE IF NOT EXISTS build_attempts (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id       TEXT NOT NULL REFERENCES sessions(id),
+    spec_id          INTEGER REFERENCES specs(id),
+    build_token      TEXT NOT NULL UNIQUE,
+    target_bi        TEXT NOT NULL,
+    owner            TEXT,
+    spec_json        TEXT NOT NULL,
+    spec_fingerprint TEXT NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'prepared',
+    error            TEXT NOT NULL DEFAULT '',
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_build_attempts_status ON build_attempts(status);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_build_attempts_active_session
+ON build_attempts(session_id)
+WHERE status IN ('prepared', 'building', 'cleanup_required');
 CREATE TABLE IF NOT EXISTS llm_calls (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id    TEXT,
@@ -250,7 +297,8 @@ class Store:
         (e.g. a v6 DB that somehow re-runs it) can never double-hash an already-hashed
         value. v7 adds sessions.owner/target_bi/pinned (guarded ALTERs, defaults cover
         legacy rows). v8 adds builds.build_token (ownership revision; default '' for
-        legacy rows).
+        legacy rows). v9 adds only the `build_attempts` table and indexes, which the
+        always-run schema creates before this migration stamps the version.
         Idempotent — guarded by the column check, so it is safe to run on any schema.
         """
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
@@ -423,6 +471,187 @@ class Store:
             row["spec_json"] = json.loads(row["spec_json"])
         return rows
 
+    # --- durable build attempts (RR-4) -------------------------------------------
+
+    def prepare_build_attempt(
+        self,
+        session_id: str,
+        spec_id: int | None,
+        *,
+        build_token: str,
+        target_bi: str,
+        owner: str | None,
+        spec_json: dict[str, Any],
+    ) -> int:
+        """Persist the immutable recovery evidence before any remote BI mutation.
+
+        One session may have only one nonterminal attempt. A cleanly reconciled attempt
+        may reuse its stable token on an explicit retry; committed/delivered attempts
+        remain terminal and are handled by the pipeline's build-row idempotency check.
+        """
+        if not build_token:
+            raise ValueError("build attempt requires a non-empty build_token")
+        raw_spec, fingerprint = _encode_spec_snapshot(spec_json)
+        with self._lock, self._db:
+            existing = self._db.execute(
+                "SELECT id, status FROM build_attempts WHERE build_token = ?",
+                (build_token,),
+            ).fetchone()
+            active = self._db.execute(
+                "SELECT id, build_token FROM build_attempts"
+                " WHERE session_id = ? AND status IN (?, ?, ?)",
+                (session_id, *_NONTERMINAL_ATTEMPT_STATUSES),
+            ).fetchone()
+            if active is not None and (existing is None or active["id"] != existing["id"]):
+                raise RuntimeError(
+                    f"session {session_id} already has a build attempt requiring reconciliation"
+                )
+            if existing is not None:
+                status = str(existing["status"])
+                if status in _NONTERMINAL_ATTEMPT_STATUSES:
+                    raise RuntimeError(
+                        f"build attempt {build_token} requires reconciliation before retry"
+                    )
+                if status in (ATTEMPT_COMMITTED, ATTEMPT_DELIVERED_PENDING):
+                    raise RuntimeError(f"build attempt {build_token} is already delivered")
+                self._db.execute(
+                    "UPDATE build_attempts"
+                    " SET session_id = ?, spec_id = ?, target_bi = ?, owner = ?,"
+                    " spec_json = ?, spec_fingerprint = ?, status = ?, error = '',"
+                    " updated_at = datetime('now') WHERE id = ?",
+                    (
+                        session_id,
+                        spec_id,
+                        target_bi,
+                        owner,
+                        raw_spec,
+                        fingerprint,
+                        ATTEMPT_PREPARED,
+                        existing["id"],
+                    ),
+                )
+                return int(existing["id"])
+            cur = self._db.execute(
+                "INSERT INTO build_attempts"
+                " (session_id, spec_id, build_token, target_bi, owner, spec_json,"
+                " spec_fingerprint, status)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    session_id,
+                    spec_id,
+                    build_token,
+                    target_bi,
+                    owner,
+                    raw_spec,
+                    fingerprint,
+                    ATTEMPT_PREPARED,
+                ),
+            )
+        return _row_id(cur)
+
+    def start_build_attempt(self, attempt_id: int) -> None:
+        """Commit BUILDING before the adapter is allowed its first remote write."""
+        with self._lock, self._db:
+            row = self._db.execute(
+                "SELECT session_id FROM build_attempts WHERE id = ? AND status = ?",
+                (attempt_id, ATTEMPT_PREPARED),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError(f"build attempt {attempt_id} is not prepared")
+            self._db.execute(
+                "UPDATE build_attempts SET status = ?, updated_at = datetime('now')"
+                " WHERE id = ?",
+                (ATTEMPT_BUILDING, attempt_id),
+            )
+            self._db.execute(
+                "UPDATE sessions SET status = ? WHERE id = ?",
+                (SESSION_BUILDING, row["session_id"]),
+            )
+
+    def build_attempt_by_token(self, build_token: str) -> dict[str, Any] | None:
+        if not build_token:
+            return None
+        rows = self._rows(
+            "SELECT * FROM build_attempts WHERE build_token = ?",
+            build_token,
+        )
+        return self._decode_build_attempt(rows[0]) if rows else None
+
+    def interrupted_build_attempts(self) -> list[dict[str, Any]]:
+        rows = self._rows(
+            "SELECT * FROM build_attempts WHERE status IN (?, ?, ?) ORDER BY id",
+            *_NONTERMINAL_ATTEMPT_STATUSES,
+        )
+        return [self._decode_build_attempt(row) for row in rows]
+
+    def active_build_attempt(self, session_id: str) -> dict[str, Any] | None:
+        rows = self._rows(
+            "SELECT * FROM build_attempts"
+            " WHERE session_id = ? AND status IN (?, ?, ?) ORDER BY id DESC LIMIT 1",
+            session_id,
+            *_NONTERMINAL_ATTEMPT_STATUSES,
+        )
+        return self._decode_build_attempt(rows[0]) if rows else None
+
+    @staticmethod
+    def _decode_build_attempt(row: dict[str, Any]) -> dict[str, Any]:
+        decoded = dict(row)
+        try:
+            spec_json = json.loads(str(decoded.get("spec_json") or ""))
+        except (TypeError, ValueError):
+            spec_json = None
+        decoded["spec_json"] = spec_json
+        if isinstance(spec_json, dict):
+            _, fingerprint = _encode_spec_snapshot(spec_json)
+            decoded["snapshot_valid"] = fingerprint == decoded.get("spec_fingerprint")
+        else:
+            decoded["snapshot_valid"] = False
+        return decoded
+
+    def finish_build_attempt_reconciliation(
+        self,
+        attempt_id: int,
+        *,
+        status: str,
+        error: str,
+    ) -> None:
+        """Atomically record cleanup outcome, a failed build row and failed session."""
+        if status not in (ATTEMPT_ABORTED, ATTEMPT_CLEANED, ATTEMPT_CLEANUP_REQUIRED):
+            raise ValueError(f"invalid reconciliation status: {status}")
+        with self._lock, self._db:
+            attempt = self._db.execute(
+                "SELECT session_id, spec_id, build_token FROM build_attempts WHERE id = ?",
+                (attempt_id,),
+            ).fetchone()
+            if attempt is None:
+                raise KeyError(f"build attempt {attempt_id} not found")
+            self._db.execute(
+                "UPDATE build_attempts SET status = ?, error = ?,"
+                " updated_at = datetime('now') WHERE id = ?",
+                (status, error, attempt_id),
+            )
+            prior = self._db.execute(
+                "SELECT id FROM builds WHERE build_token = ? AND status = ? LIMIT 1",
+                (attempt["build_token"], BUILD_FAILED),
+            ).fetchone()
+            if prior is None:
+                self._db.execute(
+                    "INSERT INTO builds"
+                    " (session_id, spec_id, dashboard_id, url, status, error, build_token)"
+                    " VALUES (?, ?, NULL, '', ?, ?, ?)",
+                    (
+                        attempt["session_id"],
+                        attempt["spec_id"],
+                        BUILD_FAILED,
+                        error,
+                        attempt["build_token"],
+                    ),
+                )
+            self._db.execute(
+                "UPDATE sessions SET status = ? WHERE id = ?",
+                (SESSION_FAILED, attempt["session_id"]),
+            )
+
     def save_build(
         self,
         session_id: str,
@@ -458,8 +687,9 @@ class Store:
         owner: str | None,
         artifacts: Iterable[dict[str, Any]],
         session_status: str = SESSION_BUILT,
+        attempt_id: int | None = None,
     ) -> int:
-        """Atomic terminal success: builds row + session status + ownership ledger.
+        """Atomic terminal success: attempt + build + session + ownership ledger.
 
         plan_sol step 8 / audit P1-2: previously `save_build` + `set_session_status` +
         per-artifact `record_bi_artifact` were separate transactions — a crash between
@@ -471,6 +701,21 @@ class Store:
         """
         arts = list(artifacts)
         with self._lock, self._db:
+            if attempt_id is not None:
+                updated = self._db.execute(
+                    "UPDATE build_attempts SET status = ?, error = '',"
+                    " updated_at = datetime('now')"
+                    " WHERE id = ? AND session_id = ? AND build_token = ? AND status = ?",
+                    (
+                        ATTEMPT_COMMITTED,
+                        attempt_id,
+                        session_id,
+                        build_token,
+                        ATTEMPT_BUILDING,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise RuntimeError(f"build attempt {attempt_id} is not active")
             cur = self._db.execute(
                 "INSERT INTO builds"
                 " (session_id, spec_id, dashboard_id, url, status, error, build_token)"
@@ -508,9 +753,28 @@ class Store:
         *,
         error: str,
         build_token: str = "",
+        attempt_id: int | None = None,
     ) -> int:
-        """Atomic terminal failure: failed builds row + session status=failed."""
+        """Atomic failure: failed build + session; active attempt remains cleanup-blocking."""
         with self._lock, self._db:
+            if attempt_id is not None:
+                updated = self._db.execute(
+                    "UPDATE build_attempts SET status = ?, error = ?,"
+                    " updated_at = datetime('now')"
+                    " WHERE id = ? AND session_id = ? AND build_token = ?"
+                    " AND status IN (?, ?)",
+                    (
+                        ATTEMPT_CLEANUP_REQUIRED,
+                        error,
+                        attempt_id,
+                        session_id,
+                        build_token,
+                        ATTEMPT_PREPARED,
+                        ATTEMPT_BUILDING,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise RuntimeError(f"build attempt {attempt_id} is not active")
             cur = self._db.execute(
                 "INSERT INTO builds"
                 " (session_id, spec_id, dashboard_id, url, status, error, build_token)"
@@ -533,6 +797,7 @@ class Store:
         url: str,
         build_token: str,
         error: str,
+        attempt_id: int | None = None,
     ) -> int:
         """Record that the BI dashboard was delivered but the full ledger commit failed.
 
@@ -541,6 +806,22 @@ class Store:
         the row and operators can finish ledger repair.
         """
         with self._lock, self._db:
+            if attempt_id is not None:
+                updated = self._db.execute(
+                    "UPDATE build_attempts SET status = ?, error = ?,"
+                    " updated_at = datetime('now')"
+                    " WHERE id = ? AND session_id = ? AND build_token = ? AND status = ?",
+                    (
+                        ATTEMPT_DELIVERED_PENDING,
+                        error,
+                        attempt_id,
+                        session_id,
+                        build_token,
+                        ATTEMPT_BUILDING,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise RuntimeError(f"build attempt {attempt_id} is not active")
             cur = self._db.execute(
                 "INSERT INTO builds"
                 " (session_id, spec_id, dashboard_id, url, status, error, build_token)"
@@ -590,14 +871,20 @@ class Store:
         """Sessions left at status='building' by a process that died mid-build (kill/OOM,
         crash) have no builds-table row and no 'failed' status — a daemon build thread
         dying with the process leaves no trace of its own (B-7). Call once at server
-        startup, before any new build starts: gives each orphan a synthetic 'failed'
-        build row and flips it to 'failed' so a restart never silently loses the fact
-        that a build was interrupted."""
+        startup, after RR-4 attempt reconciliation: gives each pre-v9 orphan a synthetic
+        'failed' build row and flips it to 'failed'. Sessions covered by a nonterminal
+        durable attempt are excluded so this legacy path cannot race reconciliation."""
         with self._lock, self._db:
             stuck = [
                 r["id"]
                 for r in self._db.execute(
-                    "SELECT id FROM sessions WHERE status = ?", (SESSION_BUILDING,)
+                    "SELECT s.id FROM sessions AS s"
+                    " WHERE s.status = ?"
+                    " AND NOT EXISTS ("
+                    "   SELECT 1 FROM build_attempts AS a"
+                    "   WHERE a.session_id = s.id AND a.status IN (?, ?, ?)"
+                    " )",
+                    (SESSION_BUILDING, *_NONTERMINAL_ATTEMPT_STATUSES),
                 )
             ]
             for session_id in stuck:

@@ -9,7 +9,8 @@
 - text / fields / auto → IR → SQL guard → ClickHouse + Superset;
 - offline-контракты Greenplum и DataLens;
 - default-deny prompt data policy, SafeError и capability-gated demo;
-- atomic Store commit, stable build-token retry и adapter lifecycle;
+- atomic Store commit, durable pre-return build-attempt recovery, stable build-token retry
+  и adapter lifecycle;
 - golden/advisor replay, offline browser E2E, backup/restore и docs-as-code;
 - текущий bounded mutation gate и mypy-strict boundary allowlist.
 
@@ -20,7 +21,7 @@
 
 | Residual | Решение при закрытии |
 |---|---|
-| Durable outbox до возврата BI adapter | `future`; stable-token idempotency остаётся границей v1 |
+| Durable outbox до возврата BI adapter | `closed` 2026-07-29: schema v9 + cleanup-only adapter reconciliation (ADR 0002) |
 | Полный current/history split ARCHITECTURE | `retired`; CURRENT_STATE остаётся source of truth |
 | `Field(description=)` на каждом Settings key | `retired`; generated ENV_REFERENCE закрывает публичный контракт |
 | Mutation coverage шире SQL guard | `future`; текущий security boundary gate остаётся обязательным |

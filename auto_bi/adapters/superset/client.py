@@ -33,10 +33,19 @@ class SupersetAPIError(Exception):
         self.status_code = status_code
 
 
-def rison_eq_filter(column: str, value: str, page_size: int = 100) -> str:
+def rison_eq_filter(
+    column: str,
+    value: str,
+    page_size: int = 100,
+    *,
+    page: int | None = None,
+) -> str:
     """Minimal rison for the only list-filter shape we use."""
     escaped = value.replace("'", "''")
-    return f"(filters:!((col:{column},opr:eq,value:'{escaped}')),page_size:{page_size})"
+    page_part = f",page:{page}" if page is not None else ""
+    return (
+        f"(filters:!((col:{column},opr:eq,value:'{escaped}'))" f"{page_part},page_size:{page_size})"
+    )
 
 
 class SupersetClient:

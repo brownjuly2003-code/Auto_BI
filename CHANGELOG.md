@@ -6,6 +6,14 @@
 
 ### Fixed
 
+- **RR-4 pre-return BI crash window** — schema v9 durably records a
+  fingerprint-verified build attempt before `BIAdapter.build`, and server startup
+  reconciles it through the owning adapter before the legacy stuck-build reaper.
+  Superset cleanup requires exact full-token chart/dashboard metadata (datasets use
+  exact names); DataLens removes only exact canonical/`__wip` entries and never shared
+  connections. Attempt commit, build row, session and ownership ledger are one success
+  transaction; failed cleanup remains retry-blocking.
+
 - **Единый Black gate** — pre-commit Black обновлён с 24.10.0 до 26.5.1,
   совпадающей с проектным `uv`-окружением. Один и тот же файл больше не
   форматируется противоположно локальным gate и commit hook.

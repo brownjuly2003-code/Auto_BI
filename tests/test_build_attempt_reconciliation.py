@@ -1,9 +1,4 @@
-"""RR-4 RED: pre-return BaseException leaves remote BI side effects unreconciled.
-
-Fault-injection against *current* production recovery only. No new adapter seam or
-Store attempt schema is implemented here — the final assertion encodes the desired
-safety property from ADR 0002 and is expected to fail on base HEAD.
-"""
+"""RR-4: pre-return process death is reconciled from a durable build attempt."""
 
 from __future__ import annotations
 
@@ -14,7 +9,9 @@ import pytest
 from auto_bi.adapters.artifacts import stable_build_token
 from auto_bi.adapters.base import (
     AdapterHealth,
+    BuildAttempt,
     BuildContext,
+    BuildReconcileResult,
     BuildResult,
     ChartRef,
     DashboardRef,
@@ -22,7 +19,7 @@ from auto_bi.adapters.base import (
     DatasetRef,
     DWHConfig,
 )
-from auto_bi.agent.pipeline import compile_and_build
+from auto_bi.agent.pipeline import compile_and_build, reconcile_interrupted_builds
 from auto_bi.agent.sql_guard import LiveSQLValidator
 from auto_bi.ir.spec import ChartQuery, ChartSpec, DashboardSpec
 from auto_bi.store import Store
@@ -103,19 +100,25 @@ class CrashBeforeReturnAdapter:
         )
 
     def delete_artifact(self, kind: str, native_id: str) -> None:
-        # Current startup recovery never calls this without durable native ids.
         for ns, rows in list(self.remote.by_namespace.items()):
             for row in rows:
                 if row["kind"] == kind and row["native_id"] == native_id:
                     self.remote.delete(ns, native_id)
                     return
 
+    def reconcile_build_attempt(self, attempt: BuildAttempt) -> BuildReconcileResult:
+        rows = self.remote.entities(attempt.build_token)
+        for row in rows:
+            self.remote.delete(attempt.build_token, row["native_id"])
+        return BuildReconcileResult(discovered=len(rows), deleted=len(rows))
+
     def close(self) -> None:
         self.closed = True
 
 
-def _startup_recovery(store: Store) -> list[str]:
-    """Mirror ``auto_bi.cli`` serve startup: reap stuck builds, then pending ledgers."""
+def _startup_recovery(store: Store, adapter: CrashBeforeReturnAdapter) -> list[str]:
+    """Mirror serve startup: reconcile durable attempts before the legacy reaper."""
+    reconcile_interrupted_builds(store, lambda _target: adapter, log=lambda _s: None)
     reaped = store.reap_stuck_builds()
     store.reconcile_pending_ledgers()
     return reaped
@@ -153,33 +156,35 @@ def test_pre_return_baseexception_leaves_remote_entity_unreconciled_after_startu
             prune_orphans=False,
         )
 
-    # BaseException bypassed commit_build_failure; session remains mid-build until reopen.
+    # BaseException bypassed commit_build_failure, but the pre-call attempt is durable.
     assert store.session_status(sid) == "building"
+    attempt = store.build_attempt_by_token(expected_namespace)
+    assert attempt is not None
+    assert attempt["status"] == "building"
     assert store.bi_artifacts(sid) == []
     assert remote.entities(expected_namespace), "fault must leave a remote side effect"
     assert adapter.last_ctx is not None
     assert adapter.last_ctx.namespace == expected_namespace
     store.close()
 
-    # Restart: new Store handle + current CLI recovery only.
+    # Restart: attempt reconciliation owns this build, so the legacy reaper skips it.
     store2 = Store(db_path)
-    reaped = _startup_recovery(store2)
-    assert sid in reaped
+    reaped = _startup_recovery(store2, adapter)
+    assert reaped == []
     assert store2.session_status(sid) == "failed"
     builds = store2.builds(sid)
-    assert builds, "reap_stuck_builds should insert a synthetic failed build row"
-    assert all(not (b.get("build_token") or "") for b in builds)
+    assert builds
+    assert builds[-1]["build_token"] == expected_namespace
+    assert builds[-1]["status"] == "failed"
+    recovered_attempt = store2.build_attempt_by_token(expected_namespace)
+    assert recovered_attempt is not None
+    assert recovered_attempt["status"] == "cleaned"
     assert store2.bi_artifacts(sid) == []
 
     remote_after = remote.entities(expected_namespace)
     ledger_ids = {a["native_id"] for a in store2.bi_artifacts(sid)}
     remote_ids = {e["native_id"] for e in remote_after}
 
-    # Preconditions that document the current gap (must hold for a meaningful RED).
-    assert remote_ids, "remote entity still present after startup recovery"
-    assert not ledger_ids, "no durable native artifact evidence after startup recovery"
-
-    # --- RR-4 safety property (not implemented): this assertion is the intended RED ---
     # After startup recovery, remote side effects of the interrupted attempt must be
     # reconciled: either cleaned from the remote registry or finalized into the ledger.
     try:

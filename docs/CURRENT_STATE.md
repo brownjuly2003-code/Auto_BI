@@ -40,10 +40,12 @@ ADR — [adr/](adr/); операторский roadmap-аудит (внутре�
 
 ## Архитектурные контракты (plan_sol 7–8)
 
-- BI adapter: `BuildContext` / `BuildResult`, required `delete_artifact` / `close`.
-- Atomic Store commit for build + session + ledger; `delivered_pending` on ledger
-  fault after BI delivery. Stable `build_token` per `(session, spec_row)` —
-  idempotent retry (no second BI create). Residual: BI pre-return outbox.
+- BI adapter: `BuildContext` / `BuildResult`, required `reconcile_build_attempt` /
+  `delete_artifact` / `close`.
+- Store schema v9: durable spec snapshot + fingerprint written before remote build;
+  startup cleanup-only reconciliation precedes the legacy reaper. Atomic success commits
+  attempt + build + session + ledger; `delivered_pending` handles a post-delivery ledger
+  fault. Stable `build_token` per `(session, spec_row)` keeps delivered retry idempotent.
 
 ## Eval / CI matrix (plan_sol 9–10)
 
@@ -77,6 +79,7 @@ resume / **fields DnD seed**). Residual: live GHA after merge PR path.
 |---|---|
 | Online SQLite backup + integrity | `Store.backup_to` / `integrity_check`; `scripts/store_backup.py` |
 | Restore drill | script + `tests/test_store_backup.py` |
+| Pre-return BI crash recovery | RR-4 durable attempts + exact Superset/DataLens cleanup ([ADR 0002](adr/0002-durable-build-attempt-reconciliation.md)) |
 | Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
 | Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**, Superset native-filter scope) |
 | Mutation smoke | SQL guard gated in CI: 106/106 generated mutants killed; every weak outcome is rejected |

@@ -23,7 +23,9 @@ import uuid
 from auto_bi.adapters.artifacts import BuildArtifact
 from auto_bi.adapters.base import (
     AdapterHealth,
+    BuildAttempt,
     BuildContext,
+    BuildReconcileResult,
     BuildResult,
     ChartRef,
     DashboardRef,
@@ -488,6 +490,45 @@ class DataLensAdapter:
                 return
             raise
         logger.info("datalens %s %s deleted (live-cleanup)", kind, native_id)
+
+    def reconcile_build_attempt(self, attempt: BuildAttempt) -> BuildReconcileResult:
+        """Delete the attempt's exact canonical/WIP entries, never shared connections."""
+        self._artifact_namespace = attempt.build_token.strip()
+        expected: list[tuple[str, str, str]] = []
+        for chart in attempt.spec.charts:
+            dataset_canonical = dataset_name(
+                attempt.spec.title,
+                chart.id,
+                self._artifact_namespace,
+            )
+            chart_canonical = self._owned_entry_name(chart.title)
+            expected.extend(
+                [
+                    ("chart", "widget", chart_canonical),
+                    ("chart", "widget", _wip_name(chart_canonical)),
+                    ("dataset", "dataset", dataset_canonical),
+                    ("dataset", "dataset", _wip_name(dataset_canonical)),
+                ]
+            )
+        dashboard_canonical = self._owned_entry_name(attempt.spec.title)
+        # Delete dependencies before datasets. Exact names are produced by the same
+        # functions build() uses; there is no prefix/title fallback.
+        expected[0:0] = [
+            ("dashboard", "dash", dashboard_canonical),
+            ("dashboard", "dash", _wip_name(dashboard_canonical)),
+        ]
+        order = {"chart": 0, "dashboard": 1, "dataset": 2}
+        discovered: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for kind, scope, name in sorted(expected, key=lambda item: order[item[0]]):
+            native_id = self._find_entry_id(scope, name)
+            key = (kind, native_id or "")
+            if native_id is not None and key not in seen:
+                seen.add(key)
+                discovered.append(key)
+        for kind, native_id in discovered:
+            self.delete_artifact(kind, native_id)
+        return BuildReconcileResult(discovered=len(discovered), deleted=len(discovered))
 
     def close(self) -> None:
         """Release the client's HTTP pool (D-2 lifecycle; required BIAdapter method)."""

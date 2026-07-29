@@ -143,6 +143,134 @@ def test_reap_stuck_builds_records_interrupted_build_and_fails_session(store: St
     assert store.reap_stuck_builds() == []
 
 
+def test_durable_build_attempt_precedes_remote_work_and_subordinates_reaper(
+    store: Store,
+) -> None:
+    sid = store.create_session("r", owner="alice", target_bi="superset")
+    spec_json = {"title": "Продажи", "charts": [], "target_bi": "superset"}
+    spec_id = store.save_spec(sid, spec_json, status="approved")
+    token = f"{sid}:spec{spec_id}"
+
+    attempt_id = store.prepare_build_attempt(
+        sid,
+        spec_id,
+        build_token=token,
+        target_bi="superset",
+        owner="alice",
+        spec_json=spec_json,
+    )
+    prepared = store.build_attempt_by_token(token)
+    assert prepared is not None
+    assert prepared["status"] == "prepared"
+    assert prepared["snapshot_valid"] is True
+    assert prepared["spec_json"] == spec_json
+
+    store.start_build_attempt(attempt_id)
+    assert store.session_status(sid) == "building"
+    assert store.reap_stuck_builds() == []
+
+    store.finish_build_attempt_reconciliation(
+        attempt_id,
+        status="cleaned",
+        error="interrupted build reconciled",
+    )
+    assert store.session_status(sid) == "failed"
+    assert store.build_attempt_by_token(token)["status"] == "cleaned"
+    (build,) = store.builds(sid)
+    assert build["status"] == "failed"
+    assert build["build_token"] == token
+
+
+def test_build_attempt_success_is_atomic_with_build_and_ledger(store: Store) -> None:
+    sid = store.create_session("r", owner="alice")
+    spec_json = {"title": "T", "charts": [], "target_bi": "superset"}
+    spec_id = store.save_spec(sid, spec_json)
+    token = f"{sid}:spec{spec_id}"
+    attempt_id = store.prepare_build_attempt(
+        sid,
+        spec_id,
+        build_token=token,
+        target_bi="superset",
+        owner="alice",
+        spec_json=spec_json,
+    )
+    store.start_build_attempt(attempt_id)
+
+    store.commit_build_success(
+        sid,
+        spec_id,
+        dashboard_id=42,
+        url="/superset/dashboard/42/",
+        build_token=token,
+        target_bi="superset",
+        owner="alice",
+        artifacts=[
+            {
+                "kind": "dashboard",
+                "native_id": "42",
+                "name": "T",
+                "schema_set": None,
+            }
+        ],
+        attempt_id=attempt_id,
+    )
+
+    attempt = store.build_attempt_by_token(token)
+    assert attempt is not None and attempt["status"] == "committed"
+    assert store.session_status(sid) == "built"
+    assert store.builds(sid)[-1]["status"] == "ok"
+    assert store.bi_artifacts(sid)[-1]["native_id"] == "42"
+
+
+def test_cleanup_required_attempt_blocks_retry_until_reconciled(store: Store) -> None:
+    sid = store.create_session("r")
+    spec_json = {"title": "T", "charts": [], "target_bi": "superset"}
+    spec_id = store.save_spec(sid, spec_json)
+    token = f"{sid}:spec{spec_id}"
+    attempt_id = store.prepare_build_attempt(
+        sid,
+        spec_id,
+        build_token=token,
+        target_bi="superset",
+        owner=None,
+        spec_json=spec_json,
+    )
+    store.start_build_attempt(attempt_id)
+    store.commit_build_failure(
+        sid,
+        spec_id,
+        error="provider failed",
+        build_token=token,
+        attempt_id=attempt_id,
+    )
+
+    with pytest.raises(RuntimeError, match="requires reconciliation"):
+        store.prepare_build_attempt(
+            sid,
+            spec_id,
+            build_token=token,
+            target_bi="superset",
+            owner=None,
+            spec_json=spec_json,
+        )
+
+    store.finish_build_attempt_reconciliation(
+        attempt_id,
+        status="cleaned",
+        error="cleanup complete",
+    )
+    retried_id = store.prepare_build_attempt(
+        sid,
+        spec_id,
+        build_token=token,
+        target_bi="superset",
+        owner=None,
+        spec_json=spec_json,
+    )
+    assert retried_id == attempt_id
+    assert store.build_attempt_by_token(token)["status"] == "prepared"
+
+
 def test_commit_build_success_is_atomic_with_ledger(store: Store) -> None:
     # plan_sol step 8: one transaction writes builds + session + bi_artifacts together.
     sid = store.create_session("r", owner="alice")
@@ -253,7 +381,7 @@ def test_foreign_keys_enforced(store: Store) -> None:
 
 def test_schema_version_stamped(store: Store) -> None:
     version = store._db.execute("PRAGMA user_version").fetchone()[0]
-    assert version == 8
+    assert version == 9
 
 
 def test_trace_events_ordered_by_seq(store: Store) -> None:
@@ -398,7 +526,7 @@ def test_migrates_v1_db_to_v2(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 9
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the pre-existing row survived and back-fills with defaults
@@ -431,7 +559,7 @@ def test_migrates_legacy_v0_db_with_old_llm_calls(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 9
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"step", "completion_chars"} <= cols
     # the first observability-aware write no longer crashes with "no such column: step"
@@ -476,7 +604,7 @@ def test_migrates_v3_db_adds_remediation_column(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 9
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(dm_change_requests)")}
     assert "remediation" in cols
     # the pre-existing row survived and back-fills the new column with its default
@@ -512,7 +640,7 @@ def test_migrates_v4_db_adds_token_columns(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 9
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(llm_calls)")}
     assert {"input_tokens", "output_tokens"} <= cols
     # the pre-existing row survived; its token columns back-fill to NULL (not a fake 0)
@@ -566,7 +694,7 @@ def test_migrates_v5_db_hashes_plaintext_tokens(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 9
     (row,) = store._rows("SELECT token, user_id FROM auth_tokens")
     assert row["token"] == _hash_token("plaintext-raw-token-value")
     assert row["user_id"] == 1
@@ -712,10 +840,11 @@ def test_mark_bi_artifacts_superseded_removes_from_orphan_selection(store: Store
 
 
 def test_bi_artifacts_table_present_without_version_bump(store: Store) -> None:
-    # the table is created via always-run CREATE IF NOT EXISTS; schema_version stays 7 (no bump)
+    # The table is created via always-run CREATE IF NOT EXISTS; later migrations still
+    # stamp the current schema version.
     tables = {r["name"] for r in store._db.execute("SELECT name FROM sqlite_master")}
     assert "bi_artifacts" in tables
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 9
 
 
 # --- Store.stale_bi_artifacts: ledger-wide prune candidates (operator `auto_bi prune`) ----
@@ -855,7 +984,7 @@ def test_migrates_v6_db_adds_session_resume_columns(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 9
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(sessions)")}
     assert {"owner", "target_bi", "pinned"} <= cols
     row = store.session_row("legacy1")
@@ -899,11 +1028,63 @@ def test_migrates_v7_db_adds_builds_build_token(tmp_path) -> None:
     db.close()
 
     store = Store(path)
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 9
     cols = {r["name"] for r in store._db.execute("PRAGMA table_info(builds)")}
     assert "build_token" in cols
     (build,) = store.builds("s1")
     assert build["build_token"] == ""  # legacy default
+    store.close()
+
+
+def test_migrates_v8_db_adds_durable_build_attempts(tmp_path) -> None:
+    import sqlite3
+
+    path = tmp_path / "v8.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE sessions ("
+        " id TEXT PRIMARY KEY,"
+        " created_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        " request TEXT NOT NULL DEFAULT '',"
+        " status TEXT NOT NULL DEFAULT 'open',"
+        " owner TEXT,"
+        " target_bi TEXT NOT NULL DEFAULT 'superset',"
+        " pinned TEXT NOT NULL DEFAULT '[]');"
+        "CREATE TABLE specs ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " session_id TEXT NOT NULL REFERENCES sessions(id),"
+        " created_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        " spec_json TEXT NOT NULL,"
+        " status TEXT NOT NULL DEFAULT 'proposed');"
+        "CREATE TABLE builds ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " session_id TEXT REFERENCES sessions(id),"
+        " spec_id INTEGER REFERENCES specs(id),"
+        " created_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        " dashboard_id INTEGER,"
+        " url TEXT NOT NULL DEFAULT '',"
+        " status TEXT NOT NULL DEFAULT 'ok',"
+        " error TEXT NOT NULL DEFAULT '',"
+        " build_token TEXT NOT NULL DEFAULT '');"
+    )
+    db.execute("PRAGMA user_version = 8")
+    db.commit()
+    db.close()
+
+    store = Store(path)
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 9
+    cols = {r["name"] for r in store._db.execute("PRAGMA table_info(build_attempts)")}
+    assert {
+        "session_id",
+        "spec_id",
+        "build_token",
+        "target_bi",
+        "owner",
+        "spec_json",
+        "spec_fingerprint",
+        "status",
+        "error",
+    } <= cols
     store.close()
 
 

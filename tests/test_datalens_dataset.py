@@ -11,7 +11,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from auto_bi.adapters.base import DWHConfig
+from auto_bi.adapters.base import BuildAttempt, DWHConfig
 from auto_bi.adapters.datalens.adapter import DataLensAdapter
 from auto_bi.adapters.datalens.client import DataLensAPIError, DataLensClient
 from auto_bi.adapters.datalens.dataset import (
@@ -21,7 +21,7 @@ from auto_bi.adapters.datalens.dataset import (
     dataset_name,
     safe_entry_name,
 )
-from auto_bi.ir.spec import ChartQuery, JoinSpec, Measure, column_alias
+from auto_bi.ir.spec import ChartQuery, DashboardSpec, JoinSpec, Measure, column_alias
 from auto_bi.semantic.model import (
     Aggregation,
     Column,
@@ -468,3 +468,82 @@ def test_delete_artifact_refuses_shared_and_unknown_kinds(demo_model: SemanticMo
     with pytest.raises(ValueError, match="shared/unknown"):
         adapter.delete_artifact("mystery", "x")
     assert fake.delete_bodies == []  # refused before any gateway call
+
+
+class FakeReconcileDataLensClient:
+    def __init__(self, entries: dict[tuple[str, str], str]) -> None:
+        self.entries = dict(entries)
+        self.deletes: list[dict] = []
+
+    def gateway(self, service: str, action: str, body: dict) -> dict:
+        if (service, action) == ("us", "getWorkbookEntries"):
+            scope = body["scope"]
+            name = body["filters"]["name"]
+            native_id = self.entries.get((scope, name))
+            return {
+                "entries": (
+                    [{"entryId": native_id, "key": f"wb/{name}"}] if native_id is not None else []
+                )
+            }
+        if (service, action) == ("mix", "deleteEntry"):
+            self.deletes.append(dict(body))
+            native_id = body["entryId"]
+            for key, value in list(self.entries.items()):
+                if value == native_id:
+                    del self.entries[key]
+            return {"done": True}
+        raise AssertionError(f"unexpected gateway call: {service}/{action}")
+
+    def close(self) -> None:
+        pass
+
+
+def test_reconcile_deletes_only_exact_datalens_canonical_and_wip_names(
+    demo_model: SemanticModel,
+) -> None:
+    from tests.test_propose import GOOD_SPEC
+
+    spec = DashboardSpec.model_validate(GOOD_SPEC)
+    token = "session-123:spec7"
+    seed_adapter = DataLensAdapter(
+        FakeReconcileDataLensClient({}),  # type: ignore[arg-type]
+        CH_DWH,
+        demo_model,
+        "wbtest",
+    )
+    seed_adapter.set_artifact_namespace(token)
+    chart_name = seed_adapter._owned_entry_name(spec.charts[0].title)
+    dashboard_name = seed_adapter._owned_entry_name(spec.title)
+    dataset_entry_name = dataset_name(spec.title, spec.charts[0].id, token)
+    foreign_name = "Foreign shared entry"
+    fake = FakeReconcileDataLensClient(
+        {
+            ("widget", chart_name): "chart-canonical",
+            ("widget", f"{chart_name}__wip"): "chart-wip",
+            ("dash", f"{dashboard_name}__wip"): "dash-wip",
+            ("dataset", dataset_entry_name): "dataset-canonical",
+            ("widget", foreign_name): "foreign-widget",
+            ("connection", "Auto_BI ClickHouse"): "shared-connection",
+        }
+    )
+    adapter = DataLensAdapter(fake, CH_DWH, demo_model, "wbtest")  # type: ignore[arg-type]
+
+    result = adapter.reconcile_build_attempt(
+        BuildAttempt(
+            build_token=token,
+            session_id="session-123",
+            spec_id=7,
+            owner="alice",
+            spec=spec,
+        )
+    )
+
+    assert result.discovered == result.deleted == 4
+    assert {body["entryId"] for body in fake.deletes} == {
+        "chart-canonical",
+        "chart-wip",
+        "dash-wip",
+        "dataset-canonical",
+    }
+    assert ("widget", foreign_name) in fake.entries
+    assert ("connection", "Auto_BI ClickHouse") in fake.entries

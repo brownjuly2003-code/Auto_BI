@@ -576,7 +576,7 @@ def _serve(  # pragma: no cover — wiring only
     from auto_bi.adapters.base import AdapterHealth
     from auto_bi.adapters.factory import make_adapter, probe_health
     from auto_bi.advisor.core import Advisor
-    from auto_bi.agent.pipeline import compile_and_build
+    from auto_bi.agent.pipeline import compile_and_build, reconcile_interrupted_builds
     from auto_bi.agent.sql_guard import LiveSQLValidator
     from auto_bi.api import create_app
     from auto_bi.config import get_settings
@@ -641,7 +641,17 @@ def _serve(  # pragma: no cover — wiring only
 
     model = SemanticModel.load(model_path)
     run_query = make_run_query(settings)
+    # Build target is dispatched per durable spec; recovery needs the same resolver
+    # before the legacy stuck-session reaper runs.
+    adapter_for = partial(make_adapter, settings=settings, model=model)
     store = Store(settings.store_path)
+    reconciled = reconcile_interrupted_builds(store, adapter_for, log=logger.info)
+    if reconciled:
+        logger.info(
+            "reconciled %d durable interrupted build attempt(s): %s",
+            len(reconciled),
+            [r.get("attempt_id") for r in reconciled],
+        )
     reaped = store.reap_stuck_builds()  # B-7: trace for builds a previous crash/restart lost
     if reaped:
         logger.info(
@@ -686,8 +696,6 @@ def _serve(  # pragma: no cover — wiring only
         if settings.auth_cookie_secure is not None
         else host not in {"127.0.0.1", "localhost", "::1"}
     )
-    # the build target is dispatched per-spec (spec.target_bi); the API/UI selector sets it
-    adapter_for = partial(make_adapter, settings=settings, model=model)
 
     def builder(spec, log, session_id):
         return compile_and_build(

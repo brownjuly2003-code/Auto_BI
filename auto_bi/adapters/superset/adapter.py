@@ -16,7 +16,9 @@ from urllib.parse import urlparse
 from auto_bi.adapters.artifacts import BuildArtifact, dataset_table_name
 from auto_bi.adapters.base import (
     AdapterHealth,
+    BuildAttempt,
     BuildContext,
+    BuildReconcileResult,
     BuildResult,
     ChartRef,
     DashboardRef,
@@ -90,6 +92,10 @@ _DELETE_PATHS = {
     "dashboard": "/api/v1/dashboard/",
     "dataset": "/api/v1/dataset/",
 }
+
+# Full attempt token embedded at create time. Human titles only narrow a list query;
+# this exact marker is the authority for chart/dashboard crash cleanup.
+_BUILD_TOKEN_KEY = "auto_bi_build_token"
 
 
 def _slug(text: str, max_len: int = 40) -> str:
@@ -184,6 +190,136 @@ class SupersetAdapter:
                 return
             raise
         logger.info("superset %s %s deleted (live-cleanup)", kind, native_id)
+
+    def reconcile_build_attempt(self, attempt: BuildAttempt) -> BuildReconcileResult:
+        """Delete only artifacts provably owned by an interrupted attempt.
+
+        Charts/dashboards require an exact full-token marker in their stored JSON.
+        Datasets use exact attempt-namespaced technical names. List searches paginate;
+        an incomplete/provider-failed scan raises and leaves Store CLEANUP_REQUIRED.
+        """
+        self._artifact_namespace = attempt.build_token.strip()
+        owned: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+
+        for title in {chart.title for chart in attempt.spec.charts}:
+            for item in self._list_exact(
+                "/api/v1/chart/",
+                column="slice_name",
+                value=title,
+            ):
+                native_id = str(item["id"])
+                try:
+                    detail = self._client.get(f"/api/v1/chart/{_int_id(native_id)}")
+                except SupersetAPIError as exc:
+                    if exc.status_code == 404:
+                        continue
+                    raise
+                if self._detail_has_build_token(detail, "params", attempt.build_token):
+                    key = ("chart", native_id)
+                    if key not in seen:
+                        seen.add(key)
+                        owned.append(key)
+
+        for item in self._list_exact(
+            "/api/v1/dashboard/",
+            column="dashboard_title",
+            value=attempt.spec.title,
+        ):
+            native_id = str(item["id"])
+            try:
+                detail = self._client.get(f"/api/v1/dashboard/{_int_id(native_id)}")
+            except SupersetAPIError as exc:
+                if exc.status_code == 404:
+                    continue
+                raise
+            if self._detail_has_build_token(detail, "json_metadata", attempt.build_token):
+                key = ("dashboard", native_id)
+                if key not in seen:
+                    seen.add(key)
+                    owned.append(key)
+
+        for name in self._expected_dataset_names(attempt.spec):
+            for item in self._list_exact(
+                "/api/v1/dataset/",
+                column="table_name",
+                value=name,
+            ):
+                key = ("dataset", str(item["id"]))
+                if key not in seen:
+                    seen.add(key)
+                    owned.append(key)
+
+        for kind, native_id in owned:
+            self.delete_artifact(kind, native_id)
+        return BuildReconcileResult(discovered=len(owned), deleted=len(owned))
+
+    def _list_exact(self, path: str, *, column: str, value: str) -> list[dict]:
+        """Exhaustive exact-filter list; never trust a title substring as ownership."""
+        page_size = 100
+        page = 0
+        result: list[dict] = []
+        seen_ids: set[str] = set()
+        while True:
+            payload = self._client.get(
+                path,
+                params={"q": rison_eq_filter(column, value, page_size, page=page)},
+            )
+            raw_items = payload.get("result", [])
+            if not isinstance(raw_items, list):
+                raise SupersetAPIError(f"GET {path} returned an invalid result list")
+            for item in raw_items:
+                if not isinstance(item, dict) or str(item.get(column) or "") != value:
+                    continue
+                native_id = str(item.get("id") or "")
+                if native_id and native_id not in seen_ids:
+                    seen_ids.add(native_id)
+                    result.append(item)
+            raw_count = payload.get("count")
+            if raw_count is None:
+                break
+            try:
+                count = int(raw_count)
+            except (TypeError, ValueError) as exc:
+                raise SupersetAPIError(f"GET {path} returned an invalid count") from exc
+            if len(result) >= count:
+                break
+            if not raw_items:
+                raise SupersetAPIError(f"GET {path} pagination ended before count={count}")
+            page += 1
+        return result
+
+    @staticmethod
+    def _detail_has_build_token(
+        detail: dict,
+        field: str,
+        build_token: str,
+    ) -> bool:
+        body = detail.get("result", detail)
+        if not isinstance(body, dict):
+            return False
+        raw = body.get(field)
+        if isinstance(raw, dict):
+            metadata = raw
+        elif isinstance(raw, str):
+            try:
+                metadata = json.loads(raw)
+            except (TypeError, ValueError):
+                return False
+        else:
+            return False
+        return isinstance(metadata, dict) and metadata.get(_BUILD_TOKEN_KEY) == build_token
+
+    def _expected_dataset_names(self, spec: DashboardSpec) -> set[str]:
+        plan = plan_datasets(spec) if self._model is not None else None
+        names: set[str] = set()
+        if plan is not None:
+            for table in plan.source_tables:
+                names.add(_dataset_name(spec.title, f"source:{table}", self._artifact_namespace))
+        for chart in spec.charts:
+            if plan is None or plan.chart(chart.id).role is DatasetRole.OWN:
+                names.add(_dataset_name(spec.title, chart.id, self._artifact_namespace))
+        return names
 
     def close(self) -> None:
         """Release the client's HTTP pool (D-2 lifecycle; required BIAdapter method)."""
@@ -550,6 +686,8 @@ class SupersetAdapter:
             heatmap_y_pad=self._heatmap_y_pad(chart),
             from_source=from_source,
         )
+        if self._artifact_namespace:
+            form_data[_BUILD_TOKEN_KEY] = self._artifact_namespace
         created = self._client.post(
             "/api/v1/chart/",
             json={
@@ -609,6 +747,8 @@ class SupersetAdapter:
         placed = list(zip(spec.charts, [_int_id(c.id) for c in charts], strict=True))
         position = build_position_json(spec, placed)
         json_metadata: dict = {"chart_configuration": {}}
+        if self._artifact_namespace:
+            json_metadata[_BUILD_TOKEN_KEY] = self._artifact_namespace
         if native_filters:
             json_metadata["native_filter_configuration"] = native_filters
         created = self._client.post(

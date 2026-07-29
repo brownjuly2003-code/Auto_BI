@@ -1,9 +1,9 @@
 # ADR 0002: Durable build-attempt reconciliation (pre-return BI crash window)
 
-**Status:** Proposed — owner approval required (S4)
+**Status:** Accepted and implemented (RR-4, 2026-07-29)
 **Related:** [ADR 0001](0001-bi-adapter-contract.md), plan_sol step 8 residual (RR-4),
 CLAUDE.md design invariants 1 / 7 and stopper S4
-**Scope of this ADR:** design + evidence only. No production implementation.
+**Scope of this ADR:** cleanup-only crash recovery for pre-return BI side effects.
 
 ## Context
 
@@ -16,7 +16,7 @@ open through the following Store commit as well: a process death after `BuildRes
 is in memory but before `commit_build_success` has the same restart symptom (remote
 delivery with no durable native-id evidence).
 
-Confirmed on current code (HEAD `9910f55`):
+The pre-fix evidence was:
 
 | Fact | Evidence |
 |---|---|
@@ -37,8 +37,8 @@ Post-return exception handling is already bounded (plan_sol step 8 / P1-2):
   for **already delivered** builds.
 
 `delivered_pending` is a different residual (operator ledger repair), not this
-design’s primary target. It does not execute after SIGKILL/OOM; the proposed attempt
-protocol therefore also covers the adjacent return-to-commit crash window without
+design’s primary target. It does not execute after SIGKILL/OOM; the durable attempt
+protocol also covers the adjacent return-to-commit crash window without
 claiming that the existing live exception path is broken.
 
 ### Compensating controls today (and their limits)
@@ -51,19 +51,16 @@ claiming that the existing live exception path is broken.
 4. Shared connections/databases are intentionally shared (`SHARED_BI_KINDS`); they must
    never be deleted as “orphans”.
 
-## Decision (proposed)
+## Decision
 
 ### Required safety property
 
-After process restart, a **stable build namespace** known before the first remote side
-effect must allow the **owning adapter** to deterministically discover side effects of an
-interrupted attempt and choose **exactly one** explicit outcome:
-
-1. **finalize** a delivery only after proving its complete expected manifest and
-   topology, then write build + ledger durably, or
-2. **cleanup** partial **owned** remote entities created by that attempt.
-
-If completeness cannot be proved, cleanup is the safe default. Shared
+After process restart, a **stable build namespace** stored before the first remote side
+effect lets the **owning adapter** deterministically discover and remove side effects of
+an interrupted attempt. RR-4 v1 is deliberately **cleanup-only**: startup never adopts a
+remote dashboard as successful without the normal in-process `BuildResult`. This may
+discard a fully-created dashboard when the process dies just before the local commit, but
+it prevents both an orphan and a fabricated ownership ledger. Shared
 connections/databases are never deleted by attempt recovery.
 
 ### Minimal durable state machine
@@ -71,36 +68,39 @@ connections/databases are never deleted by attempt recovery.
 Per build attempt (one stable namespace / attempt id):
 
 ```
-prepared → building → delivered → committed
-                 ↘ cleanup_required → failed
+prepared → building → committed
+    ↘ aborted       ↘ delivered_pending
+                    ↘ cleanup_required → cleaned
+                                         ↘ cleanup_required
 ```
 
 | State | Meaning |
 |---|---|
-| `prepared` | Durable attempt row exists **before** first remote create; carries namespace, target BI, session, owner, expected shape enough for ops |
+| `prepared` | Durable attempt row exists before the remote phase; exact normalized spec snapshot + fingerprint are stored |
 | `building` | At least one remote side effect may exist; process may die here |
-| `delivered` | Adapter returned complete `BuildResult` (post-return path; already largely covered) |
-| `committed` | Store success transaction finished (ledger included) |
+| `committed` | Attempt + build row + session success + ownership ledger committed in one transaction |
+| `delivered_pending` | BI delivery returned, but the full success transaction failed; existing degraded-delivery audit owns this terminal path |
 | `cleanup_required` | Incomplete attempt; adapter must discover and delete owned partials |
-| `failed` | Terminal after cleanup or after reaping with no remote work |
+| `cleaned` | Adapter proved all discoverable attempt-owned artifacts absent/deleted; failed build row carries the real token |
+| `aborted` | Process died while still `prepared`; no remote call was permitted, so recovery is non-destructive |
 
 Transitions must be idempotent under restart and concurrent startup.
 
 ### Adapter-owned reconciliation seam (typed; generic pipeline stays BI-agnostic)
 
-**Do not** put BI-native discovery in Store or generic pipeline. Proposed required seam
-on `BIAdapter` (S4 — changes Protocol / factory / fakes):
+**Do not** put BI-native discovery in Store or generic pipeline. The required `BIAdapter`
+seam (owner-approved S4 change) is:
 
 ```text
-reconcile_build_attempt(attempt: BuildAttemptRef) -> ReconcileOutcome
+reconcile_build_attempt(attempt: BuildAttempt) -> BuildReconcileResult
 ```
 
 Where:
 
-- `BuildAttemptRef` carries at least: `namespace`, `target_bi`, `session_id`,
-  `owner`, the durable `spec_id` and a normalized spec/expected-manifest fingerprint;
-- `ReconcileOutcome` is a closed set, e.g.
-  `nothing_found | finalized(BuildResult) | cleaned_partial | needs_operator`.
+- `BuildAttempt` carries the full stable `build_token`, `session_id`, `owner`,
+  `spec_id`, and the fingerprint-verified durable `DashboardSpec` snapshot;
+- returning `BuildReconcileResult(discovered, deleted)` proves exact owned cleanup
+  completed; provider/search/shape failures raise and keep `cleanup_required`.
 
 Minimum durable attempt data **before the first remote side effect**:
 
@@ -110,7 +110,7 @@ Minimum durable attempt data **before the first remote side effect**:
 | `session_id`, `spec_id`, `owner` | Ownership + Store linkage; load the durable approved spec |
 | `target_bi` | Which adapter factory to open at startup |
 | `status` (`prepared`/`building`/…) | State machine |
-| normalized spec / expected-manifest fingerprint | Prove the discovered set is complete before finalize |
+| normalized spec snapshot + fingerprint | Recompute the exact names used by the interrupted build and detect Store corruption |
 | `created_at` | Operator ordering / stale detection |
 
 The pipeline durably advances `prepared -> building` **before** invoking
@@ -119,15 +119,17 @@ The pipeline durably advances `prepared -> building` **before** invoking
 discovery first**; per-create durable recorder is an alternative (below).
 
 `delete_artifact(kind, native_id)` remains the only destructive primitive. Reconciliation
-**discovers** ids then deletes or finalizes; generic code never invents ids.
+**discovers** exact owned ids then deletes them; generic code never invents ids or adopts
+a remote delivery.
 
 ### Startup ordering, idempotence, concurrency
 
 1. Open Store; migrate schema if needed.
-2. List durable interrupted attempts (`building` / `cleanup_required`) without first
+2. List durable interrupted attempts (`prepared` / `building` / `cleanup_required`) without first
    converting their sessions to legacy synthetic failures.
 3. For each attempt, construct the **owning** adapter (read-only settings; no user request).
-4. Call `reconcile_build_attempt` once per attempt; record outcome durably.
+4. Mark `prepared` as `aborted` without a remote call; otherwise call
+   `reconcile_build_attempt` and record `cleaned` or `cleanup_required` durably.
 5. Run legacy `reap_stuck_builds` only for `building` sessions that have no durable
    attempt row.
 6. Keep existing `reconcile_pending_ledgers` for post-return `delivered_pending` (orthogonal).
@@ -137,13 +139,14 @@ Rules:
 
 - **Idempotent:** second startup with no remote leftovers → `nothing_found` / already
   terminal; no double-delete failures treated as success (404/already-gone = ok).
-- **Concurrency:** one reconciler per process at startup; if multi-worker ever appears,
-  take a Store lock / lease on the attempt row before remote work.
+- **Concurrency:** a partial unique SQLite index permits one nonterminal attempt per
+  session. Startup is single-process today; a future multi-worker startup still requires
+  a row lease/CAS before remote cleanup.
 - **Retry:** transient remote errors leave attempt in `cleanup_required` / `building` and
   surface to the operator; do not flip to silent `failed` without evidence.
-- **Operator visibility:** unresolved attempts appear as Store rows + trace events
-  (`build_reconcile` / new kind) with namespace, target_bi, status, last error — never
-  raw provider bodies (SafeError / store_error_text discipline).
+- **Operator visibility:** unresolved attempts appear as Store rows + startup logs with
+  namespace, target_bi, status and last safe error — never raw provider bodies
+  (`SafeError` / `store_error_text` discipline).
 
 ### BI-specific discoverability limits (must be truthful before claiming “bounded”)
 
@@ -153,13 +156,12 @@ Rules:
 |---|---|---|
 | database / connection | shared name | **Must not delete**; reuse only |
 | dataset | yes (`dataset_table_name` + namespace fingerprint) | By name pattern **if** naming is treated as contract |
-| chart | **no** — `slice_name` is human `chart.title` | **Not** by namespace alone |
-| dashboard | **no** — `dashboard_title` is human title | **Not** by namespace alone |
+| chart | full token in `params.auto_bi_build_token`; human `slice_name` unchanged | Exact-title candidate pagination, detail fetch, then exact full-token equality |
+| dashboard | full token in `json_metadata.auto_bi_build_token`; human title unchanged | Exact-title candidate pagination, detail fetch, then exact full-token equality |
 
-**Required before bounded cleanup is truthful:** charts and dashboards must carry the
-stable namespace in a durable, queryable place (name fingerprint and/or metadata /
-extra JSON that list+filter APIs can use). Until then, cleanup of charts/dashboards
-after process death is **not** bounded by namespace discovery alone.
+Human titles are candidate filters only and never deletion authority. A chart/dashboard
+without the exact marker is retained. Datasets are deleted only by the exact technical
+name recomputed from the durable spec snapshot and full namespace input.
 
 #### DataLens
 
@@ -168,39 +170,32 @@ after process death is **not** bounded by namespace discovery alone.
 | connection | shared | never delete as orphan |
 | dataset / widget / dash | fingerprint in entry name + `__wip` temp names | `__wip` cleanup only on `Exception`; process death leaves temps; promote loop is sequential |
 
-**Required before bounded cleanup is truthful:**
-
-1. Treat `__wip` + canonical fingerprint names as a **stable discovery contract**
-   (document charset, suffix, fingerprint length).
-2. Catch-up path must list workbook entries by name pattern / metadata for the attempt
-   namespace — not only in-memory `wip_created`.
-3. Promotion remains non-atomic across entries: reconcile must accept partial promote
-   (some canonical, some `__wip`) and either finish promote or roll back owned partials.
+Recovery recomputes canonical + `__wip` names with the same `dataset_name`,
+`_owned_entry_name`, and `_wip_name` functions used by `build()`, performs exact-name
+workbook lookups, and deletes both sides of a partial promotion. It never searches or
+deletes connection scope.
 
 ### Crash-window table (each window needs an idempotent recovery rule)
 
-| # | Window | Remote state | Local durable evidence today | Recovery rule (proposed) |
+| # | Window | Remote state | Durable evidence | Implemented recovery rule |
 |---|---|---|---|---|
-| W0 | Before first remote create | none | none / optional `prepared` | Mark `failed` or leave absent; no remote work |
-| W1 | After remote create response, before any per-entity evidence write | entity exists | durable attempt is already `building`, but has no native id | Adapter list-by-namespace; cleanup or attach |
-| W2 | Mid-build, memory buffer holds some artifacts | partial owned set | session `building`; no ledger | Discover all owned; if incomplete → cleanup; if complete set found → finalize |
-| W3 | DataLens after some creates, before promote | `__wip` entries | same | Delete owned `__wip` or complete promote if full set present |
-| W4 | DataLens mid-promote | mix of `__wip` + canonical | same | Finish promote **or** delete this attempt’s owned entries only |
-| W5 | `build()` returned, before Store commit | full dashboard | durable attempt + namespace, but `BuildResult` only in memory | Rediscover and finalize only if the full expected manifest/topology is proved; otherwise cleanup |
-| W6 | Process death during W1–W4 | orphaned partials | reap → `failed`, empty token, **no ids** | **Gap today** — this ADR |
-
-**Design is not “bounded” until every W1–W5 path has an idempotent rule that does not
-require guessing foreign entities.** Superset chart/dashboard naming is currently an
-**unresolved S4 blocker** for full truthfulness of W2 cleanup without a wider public
-naming/metadata contract change.
+| W0 | Before first remote create | none | `prepared` | Mark `aborted`; never call adapter cleanup |
+| W1 | After remote create response, before any per-entity evidence write | entity exists | `building` + snapshot + token | Adapter exact token/name discovery; cleanup |
+| W2 | Mid-build, memory buffer holds some artifacts | partial owned set | same | Discover and clean all provably owned objects |
+| W3 | DataLens after some creates, before promote | `__wip` entries | same | Delete exact owned `__wip` and canonical names |
+| W4 | DataLens mid-promote | mix of `__wip` + canonical | same | Delete both exact name sets; no promotion adoption |
+| W5 | `build()` returned, before Store commit | full dashboard | attempt still `building` | Cleanup-only; a restart never fabricates success |
+| W6 | Process death during W1–W5 | partial/full remote set | nonterminal attempt with real token | Startup adapter reconcile, then token-bearing failed build |
 
 ### Schema / migration / compatibility
 
-Likely Store schema **v9** (illustrative; not implemented here):
+Store schema **v9**:
 
-- `build_attempts` table **or** extended `builds` rows written at `prepared` with
-  non-empty `build_token` **before** remote work;
-- status enum expansion; indexes on `(status)`, `(build_token)`;
+- `build_attempts` stores session/spec linkage, unique non-empty `build_token`,
+  target, owner, exact canonical JSON snapshot, sha256 fingerprint, status/error and
+  timestamps;
+- indexes cover status and enforce one nonterminal attempt per session;
+- success updates attempt=`committed` in the same transaction as build/session/ledger;
 - migration default: legacy DBs have no open attempts → no behavior change for happy path.
 
 Compatibility:
@@ -218,7 +213,7 @@ Compatibility:
 - Auth: startup uses process credentials, not end-user tokens; attempt rows retain
   `owner` for RBAC of any later operator UI.
 
-### Affected consumers (when implemented)
+### Affected consumers
 
 - `auto_bi/adapters/base.py` (Protocol, types)
 - both production adapters + factory / `validate_adapter_contract`
@@ -235,42 +230,39 @@ Compatibility:
 | **C. Stable namespace discovery** (this ADR) | Matches ownership model; keeps Store BI-agnostic; restart-safe | Requires truthful naming/metadata on **all** owned kinds; Protocol change (S4) | **Preferred** |
 | **D. Accept v1 residual** | Zero code risk | Orphan BI entities accumulate under kill/OOM; ops burden | Acceptable only as explicit product freeze (`PROJECT_CLOSURE` future) |
 
-## Implementation gate (no code in this round)
+## Implementation record
 
-**S4:** changing `BIAdapter` / `BuildContext` / Store attempt schema / design invariants
-requires owner approval. Evidence (this ADR + RED test) is authorized; **implementation
-is not**.
+The owner explicitly authorized resolving the existing RR-4 RED and directed use of
+Grok instead of Claude for the second opinion. The local Grok CLI (`grok-4.5`) approved
+the cleanup-only shape with these mandatory corrections, all implemented here:
 
-Unresolved S4 blockers to resolve **in the approval** (do not hide):
+1. `BUILDING` commits before `adapter.build`.
+2. Attempt=`committed`, build, session and ledger share one success transaction.
+3. `prepared` recovery is non-destructive.
+4. Provider/search failures stay `cleanup_required` and block retry.
+5. Superset deletion requires exact full-token metadata; titles only narrow candidates.
+6. DataLens uses exact canonical/`__wip` names from the stored snapshot and never
+   deletes shared connections.
+7. Startup reconciles attempts before a reaper that excludes attempt-covered sessions.
 
-1. Add required `reconcile_build_attempt` (name finalizable) to Protocol + fakes.
-2. Durable attempt row **before** first remote create (schema v9-class).
-3. **Superset chart/dashboard discoverability** — public naming or metadata contract
-   change so cleanup is not a guess. Without (3), only dataset-level cleanup is honest;
-   claiming full bounded recovery would be false.
-4. Define the normalized expected manifest/topology used to prove “complete” before
-   finalization; otherwise interrupted attempts must take the cleanup outcome.
-
-### Staged GREEN plan (future, separate rounds)
-
-1. Owner approves this ADR + names the seam.
-2. RED stays red; implement Store attempt + pipeline `prepared` write (no remote yet).
-3. Fake adapter GREEN for fault-injection (finalize/cleanup).
-4. Superset: naming/metadata for charts/dashboards + discover + cleanup/finalize.
-5. DataLens: durable `__wip`/fingerprint discovery + promote/repair.
-6. Startup wiring + legacy-reap exclusion + ops trace; contract suite; no silent
-   schema drift.
+`tests/test_build_attempt_reconciliation.py` injects a `BaseException` after a fake
+remote create and before `BuildResult`; the persisted attempt is `building`, restart
+cleanup removes the entity, records a token-bearing failed build, and the legacy reaper
+does nothing. Store, adapter-contract, Superset and DataLens tests cover the remaining
+ordering and false-positive deletion rules.
 
 ## Consequences
 
-- Residual RR-4 remains open until GREEN stages land under S4 approval.
-- Closure docs may keep “future” until then; this ADR is the decision package.
-- Accepting alternative D is an explicit product decision, not silent tech debt.
+- RR-4 is closed for startup cleanup under the single-process server model.
+- A future multi-worker startup needs an attempt lease/CAS; the current unique active
+  index prevents concurrent build intents but is not a distributed cleanup lease.
+- Startup intentionally prefers cleanup over remote-success adoption when the process
+  dies before the atomic local success transaction.
 
 ## References
 
 - `auto_bi/agent/pipeline.py` — `compile_and_build`, `_commit_delivery`
-- `auto_bi/store/db.py` — schema v8, `reap_stuck_builds`, `reconcile_pending_ledgers`
+- `auto_bi/store/db.py` — schema v9, durable attempts, attempt-aware reaper
 - `auto_bi/cli.py` — startup recovery order
 - `auto_bi/adapters/superset/adapter.py` / `datalens/adapter.py` — build buffers, `__wip`
-- `tests/test_build_attempt_reconciliation.py` — reproducible RED for W1/W2 + BaseException
+- `tests/test_build_attempt_reconciliation.py` — RED-to-GREEN W1/W2 BaseException proof

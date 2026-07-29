@@ -211,6 +211,7 @@ class BIAdapter(Protocol):
     def create_chart(self, chart: ChartSpec, ds: DatasetRef) -> ChartRef
     def assemble_dashboard(self, spec: DashboardSpec, charts: list[ChartRef]) -> DashboardRef
     def build(self, spec: DashboardSpec, ctx: BuildContext | None = None) -> BuildResult
+    def reconcile_build_attempt(self, attempt: BuildAttempt) -> BuildReconcileResult
     def delete_artifact(self, kind: str, native_id: str) -> None   # ownership prune
     def close(self) -> None                                        # HTTP pool release
 ```
@@ -222,6 +223,13 @@ class BIAdapter(Protocol):
 `drain_build_artifacts` / `delete_artifact` / `close`. Фабрика
 `validate_adapter_contract` отказывает partial fake до первого build. Устаревшие
 set_*/drain_* helpers остаются на concrete adapters только для unit-тестов.
+
+**RR-4 / ADR 0002.** `reconcile_build_attempt` — обязательный cleanup-only seam для
+process-death до возврата `BuildResult`. Generic pipeline передаёт fingerprint-проверенный
+durable spec snapshot; только owning adapter знает, как доказать владение удаляемым объектом.
+Возврат `BuildReconcileResult` означает, что точный owned-набор отсутствует/удалён; ошибка
+оставляет attempt в `cleanup_required`. Superset требует full-token marker, DataLens —
+точные canonical/`__wip` имена; shared database/connection не удаляется.
 
 `build(spec, ctx)` оркеструет шаги одинаково для обоих адаптеров (Phase 4 F1):
 семантическая модель **инжектится в конструктор**. Без модели фильтры Superset
@@ -388,8 +396,8 @@ SQLite (одна машина, один пользователь — доста�
 - **`GET /api/v1/ready` (B-6)** — `/api/v1/health` доказывает только, что процесс жив; оркестратор (compose healthcheck, Fly checks) должен знать, что store/DWH/BI реально достижимы, ПЕРЕД тем как направить трафик. Проверки: `store` (`Store.ping()` — `SELECT 1` в SQLite), `dwh` (`run_query("SELECT 1")` — тот же read-only `RunQuery`-шов, что у интроспекции/guard'а/Advisor'а), `bi` (`adapter.healthcheck()` на **Superset** — v1 BI-таргет по скоуп-решению 2026-06-11; DataLens вне readiness, это v2/стенд). Каждая невырезанная зависимость (store/run_query/bi_healthcheck не переданы в `create_app`, напр. в юнит-тестах) не гейтит `ok` — репортится как `{"ok": true, "configured": false}`. Ответ: `{"ok": bool, "checks": {...}}`, HTTP 200/503; путь открыт даже при `auth_enabled` (как `/health`).
 - **LLM-проверка — опциональная, НЕ гейтит `ok`.** Anthropic — хостед API без отдельного процесса «жив/не жив», а реальный completion-вызов стоил бы токенов на каждый readiness-пинг → без живого вызова (уже доказано конструированием клиента при старте `create_app`/`make_llm`). GraceKelly — локальный сервис (частая причина затыков, см. CLAUDE.md «LLM»), поэтому для него `cli.py::_serve::llm_healthcheck` реально дёргает `GET {gracekelly_url}/health` с таймаутом 3с. Транзиентный сбой LLM не должен ронять готовность — уже построенный дашборд продолжает обслуживаться.
 - **Структурные логи (O-3)** — `auto_bi/logging_setup.py::configure_logging(level, format)`: один stdout-хендлер, `text` (по умолчанию, для локальной консоли) или `json` (по объекту в строку — формат, который ждут ELK/Loki/CloudWatch). `auto_bi serve --log-level/--log-format` — единственная точка входа; при `--log-format json` `uvicorn.run(..., log_config=None)` отключает собственный dictConfig uvicorn, так что его `uvicorn`/`uvicorn.access`-логгеры всплывают в тот же настроенный root-логгер — один консистентный JSON-поток на весь процесс, а не два разных формата.
-- **Durable failed-build запись (B-7).** Раньше `compile_and_build` писал `builds`-строку `failed`+`sessions.status=failed` только при падении `adapter.build()` — ошибка нормализации/`validate_spec`/SQL-guard/healthcheck ДО этой точки пропадала без следа. Теперь весь конвейер (label-joins → top-N → validate → SQL-guard → healthcheck → build) идёт под одним `try/except`: сессия помечается `building` в начале, любое исключение **до** возврата `adapter.build` пишет atomic `commit_build_failure` (failed-билд + session failed). Случай «процесс убит посреди билда» (SIGKILL/OOM — daemon build thread в `api/app.py` умирает вместе с процессом) чинится `Store.reap_stuck_builds()` при старте `auto_bi serve`.
-- **Atomic success + no split-brain after delivery (plan_sol step 8 / audit P1-2).** После `adapter.build` → `BuildResult` dashboard считается **delivered**: `Store.commit_build_success` в **одной** SQLite-транзакции пишет builds row (`ok` + `build_token`, schema v8), session `built` и все строки ownership ledger. Раньше три отдельных commit'а давали split-brain (Store=built, ledger пуст, exception → API failed при живом BI). Если atomic commit падает — `commit_build_delivered_pending` + session `built_with_cleanup_degraded`, ref всё равно возвращается; startup `reconcile_pending_ledgers` пишет audit-trace `build_reconcile`. UI: `SessionSnapshot` под lock; terminal SSE + `build_status` + `dashboard_url` применяются вместе (`apply_build_success`/`apply_build_failure`). Residual: durable outbox *до* return адаптера; stable build_token для идемпотентного approve.
+- **Durable failed-build + attempt recovery (B-7 / RR-4).** Весь конвейер (label-joins → top-N → validate → SQL-guard → healthcheck → build) идёт под одним `try/except`: сессия помечается `building`, обычное исключение пишет atomic `commit_build_failure`. Schema v9 дополнительно пишет `build_attempts.prepared` с точным spec snapshot/fingerprint и переводит его в `building` **до** первого remote mutate внутри `adapter.build`. При старте `auto_bi serve` `reconcile_interrupted_builds` сначала обрабатывает `prepared|building|cleanup_required`: `prepared` не вызывает destructive cleanup и становится `aborted`; остальные идут в owning adapter exact-token/name cleanup. Только затем `reap_stuck_builds` обрабатывает pre-v9 сессии без nonterminal attempt. Ошибка provider/search оставляет `cleanup_required` и блокирует retry.
+- **Atomic success + no split-brain after delivery (plan_sol step 8 / audit P1-2).** После `adapter.build` → `BuildResult` dashboard считается **delivered**: `Store.commit_build_success` в **одной** SQLite-транзакции пишет attempt=`committed`, builds row (`ok` + `build_token`), session `built` и все строки ownership ledger. Раньше отдельные commit'ы давали split-brain (Store=built, ledger пуст, exception → API failed при живом BI). Если atomic commit падает — `commit_build_delivered_pending` + attempt=`delivered_pending` + session `built_with_cleanup_degraded`, ref всё равно возвращается; startup `reconcile_pending_ledgers` пишет audit-trace `build_reconcile`. UI: `SessionSnapshot` под lock; terminal SSE + `build_status` + `dashboard_url` применяются вместе (`apply_build_success`/`apply_build_failure`). Process death до этой транзакции намеренно идёт в cleanup-only recovery, а не в непроверенное adoption.
 
 ### 3.12 CI-integration stand (S09)
 
@@ -437,7 +445,7 @@ SQLite (одна машина, один пользователь — доста�
 - **Ленивая гидрация, не eager-скан при старте.** Старый процесс мог накопить тысячи сессий — грузить их все в память на старте бессмысленно (реестр всё равно ограничен `MAX_SESSIONS`). Вместо этого воскрешается ровно та сессия, которую клиент реально адресовал; гонка двух одновременных `get()` по одному id разрешается двойной проверкой под registry-lock (проигравшая копия отбрасывается до того, как кто-либо мог взять её lock).
 - **Schema v7** — `sessions` получил `owner` (username при включённом auth, NULL иначе), `target_bi` (выбор BI на сессию, раньше жил только в памяти) и `pinned` (JSON-массив seed-таблиц) — три куска состояния, которые невозможно восстановить из messages/specs/builds. Legacy-строки бэкфиллятся безопасными дефолтами (NULL/'superset'/'[]').
 - **Фаза выводится из spec-строк**: последняя строка `approved` → APPROVED, любая другая → APPROVE (правки словами дописывают `proposed`-строки, так что последняя строка И ЕСТЬ текущий spec; auto-overview-сессии без user-message тоже покрыты — label сессии заменяет запрос). Spec-строк нет → сессия ещё уточнялась: CLARIFY восстанавливается только если хотя бы один clarify-раунд реально дошёл до пользователя (`trace_events`); `_clarify_rounds` = число clarify-событий (кап `MAX_CLARIFY_ROUNDS` переживает рестарт), ответы на уточнения = все user-messages после первого (word edits существуют только при наличии spec). Сессия, умершая до первого ответа агента, не воскрешается — клиент её id и не получал (F2).
-- **Билд-состояние из `builds`**: последняя строка `ok` → `built` + `dashboard_url` (pipeline хранит BI-относительный url — гидрация заново приклеивает базу из `bi_base_urls`, та же конвенция F-1), `failed` → `failed`; APPROVED без builds-строки (процесс умер в окне approve→build; mid-build случай закрывает `reap_stuck_builds`, §3.11) → синтетический `failed`, чтобы повторный approve пошёл retry-путём, а не в 409. SSE-буфер сеедится синтетическим терминальным событием (`done`/`error`) — поздний читатель `/events` получает закрытие потока, а не вечные heartbeat'ы.
+- **Билд-состояние из `builds`**: последняя строка `ok` → `built` + `dashboard_url` (pipeline хранит BI-относительный url — гидрация заново приклеивает базу из `bi_base_urls`, та же конвенция F-1), `failed` → `failed`; APPROVED без builds-строки (процесс умер до durable attempt) → legacy `reap_stuck_builds`, а mid-build attempt сначала проходит adapter reconciliation (§3.11) и получает failed-строку с реальным `build_token`. SSE-буфер сеедится синтетическим терминальным событием (`done`/`error`) — поздний читатель `/events` получает закрытие потока, а не вечные heartbeat'ы.
 - **RBAC переживает рестарт**: owner из v7-колонки; модель при гидрации заново скоупится `filter_model_by_schemas` по `allowed_schemas` владельца из `users`. Legacy-сессии (owner=NULL) при включённом auth доступны только админу — безопасный дефолт, ничья сессия не «достаётся» случайному аналитику. approve-гейт `forbidden_tables` действует как и раньше (defense in depth).
 - **DELETE = tombstone.** `manager.remove` теперь помечает durable-запись `status='deleted'` — иначе ленивая гидрация воскрешала бы удалённую сессию следующим GET и DELETE стал бы no-op. Строки (messages/specs/builds/trace) остаются: delete делает сессию неадресуемой, не незаписанной.
 - **Что осознанно НЕ восстанавливается** (регенерируется следующим ходом): grounding report (CLARIFY-ответ всё равно перезапускает grounding), вердикты Advisor (следующий propose/patch пересчитает; дедуп DCR-заявок при этом восстановлен из `dm_change_requests` — повторных заявок на ту же находку не будет), layout-анализ seed'а (его rendered-текст уже в `_request`, pinned-таблицы сохранены для context selection).
@@ -482,15 +490,16 @@ remote-источники (`url`/`s3`/`remote`/…).
 короткий non-secret fingerprint build/session namespace (`auto_bi.adapters.artifacts`):
 
 ```
-namespace = session_id:random8   # new_build_namespace(session_id)
+namespace = session_id:specN     # stable_build_token(session_id, approved_spec_id)
+# one-shot без durable spec: session_id:random8
 dataset   = auto_bi__{title}__{chart_id}__{ns6}__{hash8(chart_id+namespace)}
 ```
 
-`compile_and_build` передаёт namespace через `BuildContext` в `build(spec, ctx)` (plan_sol шаг 7; ранее optional `set_artifact_namespace`)
-(Protocol `BIAdapter` **не** меняется — S4; concrete helpers на Superset/DataLens). Критерий:
+`compile_and_build` передаёт namespace через `BuildContext` в `build(spec, ctx)` (plan_sol
+шаг 7; ранее optional `set_artifact_namespace`). Критерий:
 два независимо собранных дашборда с одинаковыми title/chart ids и разным SQL **не** делят
-один virtual dataset; rebuild одной сессии тоже получает новый random token, поэтому старый
-dashboard не получает PUT чужого SQL.
+один virtual dataset; новая approved spec-ревизия получает новый stable token, поэтому старый
+dashboard не получает PUT чужого SQL, а повтор того же approve идемпотентен.
 
 **Ownership ledger + live-cleanup (P0-2 критерий 4, 2026-07-17 леджер, 2026-07-18 wiring).**
 Namespace защищает от коллизий, но не отслеживает владение: Superset `build()` только создаёт
@@ -499,9 +508,9 @@ Namespace защищает от коллизий, но не отслеживае
 `bi_artifacts` пишет каждый созданный `database|dataset|chart|dashboard` с `build_token`
 (= namespace = ревизия), `owner` (из `sessions.owner`, NULL при auth off), `schema_set`
 (DWH `schema.table`, что читает датасет/чарт — для RBAC) и `status` (`live`). Оба адаптера
-накапливают сущности во время `build()` и отдают их concrete-методом `drain_build_artifacts()`
-(тоже **вне** `BIAdapter`-Protocol, как `set_artifact_namespace`); `compile_and_build` сливает их
-после успешного билда. Выбор кандидатов на чистку —
+накапливают сущности во время `build()` и возвращают их через обязательный
+`BuildResult.artifacts`; `compile_and_build` пишет их в atomic success-транзакции. Выбор
+кандидатов на чистку —
 `Store.orphan_bi_artifacts(session, current_build_token, *, owner=None)`: живые строки сессии из
 прошлых ревизий (`build_token != текущего`, опц. RBAC по owner), ключ — **владение, НИКОГДА имя/
 title**. Таблица идемпотентна (always-run `CREATE IF NOT EXISTS` + индексы, без bump'а версии —
@@ -515,9 +524,8 @@ dataset` — датасет не удаляется, пока его читае�
 `AUTO_BI_PRUNE_ON_REBUILD=false` (`prune_on_rebuild`, дефолт on). (2) **Операторская** `auto_bi
 prune [--session] [--dry-run]` по `Store.stale_bi_artifacts` — живые строки НЕ-последних билдов
 сессии (последний дашборд каждой сессии переживает прунинг). Удаление обоими путями идёт через
-concrete-хелпер адаптера `delete_artifact(kind, native_id)` (Superset `_DELETE_PATHS` / DataLens
-`_DELETE_SCOPES`; **вне** `BIAdapter`-Protocol, как `drain_build_artifacts`/
-`set_artifact_namespace`): 404 = уже удалена (норм), любой другой сбой → строка остаётся `live`;
+обязательный метод `BIAdapter.delete_artifact(kind, native_id)` (Superset `_DELETE_PATHS` /
+DataLens `_DELETE_SCOPES`): 404 = уже удалена (норм), любой другой сбой → строка остаётся `live`;
 удалённое помечается `Store.mark_bi_artifacts_superseded(ids)`. ⚠️ connection (`kind='database'`) идемпотентен-по-имени
 и **общий** между билдами — строку прошлой ревизии всё ещё держит текущий билд, поэтому селекция
 исключает `SHARED_BI_KINDS` **по умолчанию** (кодом, не только докстрингом): выдача
