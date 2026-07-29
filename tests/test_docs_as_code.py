@@ -366,6 +366,7 @@ def test_generator_check_mode_exits_zero() -> None:
         "auto_bi/deployment_profile.py",
         "auto_bi/llm/budget.py",
         "auto_bi/api/ratelimit.py",
+        "auto_bi/api/schemas.py",
     ],
 )
 def test_strict_targets_are_in_every_mypy_job_and_slo(target: str) -> None:
