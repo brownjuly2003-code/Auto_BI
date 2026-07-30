@@ -61,9 +61,13 @@ Deployment profile validation (`local` / `demo` / `production`) is described in
 | `AUTO_BI_LLM_BUDGET_SESSION_MAX_COST_USD` | `float` | `0.0` | Max estimated LLM spend in USD per session all-time when budget is on; 0.0 means unlimited. |
 | `AUTO_BI_LLM_BUDGET_SESSION_MAX_SECONDS` | `float` | `0.0` | Max LLM wall-clock seconds per session all-time when budget is on; 0.0 means unlimited. |
 | `AUTO_BI_LLM_BUDGET_SESSION_MAX_TOKENS` | `int` | `0` | Max LLM tokens per session all-time when budget is on; 0 means unlimited. |
-| `AUTO_BI_LLM_PROVIDER` | `str` | `anthropic` | LLM backend selector: "anthropic" for direct API or "gracekelly" for the local orchestration service. |
+| `AUTO_BI_LLM_PROVIDER` | `str` | `anthropic` | LLM backend selector: "anthropic" or "mistral" for direct API access, or "gracekelly" for the local orchestration service. |
 | `AUTO_BI_MAX_CONCURRENT_BUILDS` | `int` | `2` | Hard cap on concurrent builds in this process; excess approve calls return 503 with Retry-After. |
 | `AUTO_BI_METRICS_ENABLED` | `bool` | false | Expose GET /api/v1/metrics; off by default because it reveals global spend and build counts. |
+| `AUTO_BI_MISTRAL_API_KEY` | `str` | (empty) | Mistral API key for direct calls; empty lets the client fall back to MISTRAL_API_KEY. |
+| `AUTO_BI_MISTRAL_MAX_TOKENS` | `int` | (set; not printed) | Maximum output tokens requested from direct Mistral chat completions. |
+| `AUTO_BI_MISTRAL_MODEL` | `str` | `mistral-large-latest` | Mistral model id used when llm_provider is mistral. |
+| `AUTO_BI_MISTRAL_URL` | `str` | `https://api.mistral.ai` | Mistral API base URL; the client appends /v1/chat/completions. |
 | `AUTO_BI_PROFILE` | `str` | `local` | Serve-time validation profile: local, demo, or production; unknown values fall back to local. |
 | `AUTO_BI_PRUNE_ON_REBUILD` | `bool` | true | After a successful rebuild, delete this session's prior-revision BI artifacts; false keeps them for later prune. |
 | `AUTO_BI_REQUIRE_LLM_READY` | `bool` | false | When true, refuse to serve unless the configured LLM backend is ready. |
@@ -90,10 +94,11 @@ Deployment profile validation (`local` / `demo` / `production`) is described in
 | Variable | Notes | Default |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Anthropic SDK key when ``llm_provider=anthropic``. Also accepted as ``AUTO_BI_ANTHROPIC_API_KEY``. | (empty) |
+| `MISTRAL_API_KEY` | Mistral API key when ``llm_provider=mistral``. Also accepted as ``AUTO_BI_MISTRAL_API_KEY``. | (empty) |
 
 ## Counts
 
-- Settings fields / `AUTO_BI_*` keys: **66**
-- Companion vars listed above: **1**
+- Settings fields / `AUTO_BI_*` keys: **70**
+- Companion vars listed above: **2**
 
 <!-- generate_env_reference:end -->

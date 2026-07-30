@@ -12,11 +12,13 @@
 **Версия пакета:** см. `auto_bi.__version__` / `pyproject.toml` (ratchet в
 `tests/test_docs_defaults.py`).
 
-**Режим:** closure candidate (не fully closed). Software release **v0.5.0**
-complete на exact `main`/tag SHA
-`e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`. Закрываемый scope и residual —
-[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). Полное закрытие ждёт mandatory
-external gate: public HF demo sync to closing SHA or decommission.
+**Режим:** software release **v0.5.0** complete на exact `main`/tag SHA
+`e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`. Локальный/software closure scope
+закрыт; пять вынесенных external validations получили exact live evidence
+2026-07-29. Активная audit work = **0**. HF полностью исключён из current
+project scope и backlog; historical token `owner-de-scoped` сохраняется только
+для reconciliation исходных 24 строк. Scope и disposition —
+[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md).
 
 ## Продукт
 
@@ -27,8 +29,7 @@ external gate: public HF demo sync to closing SHA or decommission.
 | Greenplum advisor + golden | **offline contract in CI** | advisor GP + golden GP replay |
 | Greenplum live DWH | experimental | operator stand |
 | DataLens compile path | offline contracts **passed** | contract suite |
-| DataLens live stand | **experimental** / unavailable (Mac-only stand absent) | not default release gate |
-| Public HF demo | **out of sync** | health reports `0.4.0`, `demo_auto_only=false`, no capabilities; live assertion fails; v0.5.0 publish dry-run OK; sync blocked (no local `HF_TOKEN`, no repo HF secret/workflow). Gate: sync to closing SHA or decommission |
+| DataLens live stand | **`closed`** 2026-07-29: Mac-only self-hosted contract **15/15 passed**; текущий image seed использует workbook `z4wtz6tg5194o`, переданный через supported env override | experimental / non-default / **non-closure** |
 
 ## Безопасность и runtime (plan_sol 1–4)
 
@@ -41,6 +42,18 @@ external gate: public HF demo sync to closing SHA or decommission.
 
 - GitHub `main` + `v*` tag rulesets **active without bypass**; Dependabot open
   queue empty after sequential disposition.
+- Protected-tag mutation rejection **live-проверен 2026-07-29**: canary
+  [`v-retag-smoke-20260729`](https://github.com/brownjuly2003-code/Auto_BI/tree/v-retag-smoke-20260729)
+  создан на remote `main` `13fc855`; попытка force-update на другой remote
+  object отклонена GitHub с HTTP 422 (`Cannot update this protected ref` /
+  `Cannot force-push to this tag`), ref остался неизменным; release workflow
+  для canary не запускался.
+- Intentional Trivy-fail-before-promotion **live-проверен** run
+  [30512999822](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30512999822):
+  Trivy отклонил **23** исправимых HIGH/CRITICAL findings в probe-image,
+  workflow завершился ожидаемым failure, а GHCR `:latest` сохранил digest
+  `sha256:bff75bcef9d894e86c2be63a584284c02c2b2546425ac11a15e83ad83e4e84f1`;
+  временная remote branch удалена.
 - **v0.5.0 external evidence (complete):**
   - post-merge CI, CodeQL, Gitleaks, Demo image — passed on closing SHA
     `e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`;
@@ -98,7 +111,7 @@ resume / **fields DnD seed**). Post-merge CI on v0.5.0 closing SHA passed.
 |---|---|
 | Online SQLite backup + integrity | `Store.backup_to` / `integrity_check`; `scripts/store_backup.py` |
 | Restore drill | script + `tests/test_store_backup.py` |
-| Pre-return BI crash recovery | RR-4 durable attempts + exact Superset/DataLens cleanup ([ADR 0002](adr/0002-durable-build-attempt-reconciliation.md)) |
+| Pre-return BI crash recovery | RR-4 durable attempts + exact Superset/DataLens cleanup ([ADR 0002](adr/0002-durable-build-attempt-reconciliation.md)); live DataLens process-death smoke: child exit 97, remote delivery confirmed, discovered/deleted 3/3, session failed |
 | Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
 | Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**, Superset native-filter scope) |
 | Cumulative bounded mutation gate | CI targets `auto_bi/agent/sql_guard.py`, `auto_bi/ir/validate.py`, `auto_bi/agent/dataset_plan.py`, `auto_bi/agent/cleanup.py`; weak outcomes rejected; detailed snapshot evidence in [operations/SLO.md](operations/SLO.md) |
@@ -115,20 +128,63 @@ container cold start **6341 ms**, PID1 RSS **89.594 MiB**, cgroup memory
 
 Evidence: [operations/REAUDIT_plan_sol_23_07_26.md](operations/REAUDIT_plan_sol_23_07_26.md).
 Offline score **8.8/10** (was 8.2). Finding R1 fixed (SafeError test fake vs `build(spec, ctx)`).
-GHA / protected `v0.5.0` tag / package-image publish evidence complete. Remaining
-external residual: public HF demo sync to closing SHA or decommission (not
-decommissioned; sync blocked by missing HF token/secret/workflow).
+GHA / protected `v0.5.0` tag / package-image publish evidence complete. Scope,
+live evidence и final accounting закрыты; excluded external demo paths не
+являются residual или current product path.
 
 ## Closure disposition
 
-Прежний open-ended residual больше не является активным backlog. Решения
-`closed` / `budget-gated` и split completed vs remaining external gates —
-в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). Software release v0.5.0 complete;
-до mandatory HF gate статус остаётся `closure candidate`, а не `closed`.
-Paid live-LLM canary — budget-gated, **not run** (нет отдельного approved budget).
+Прежний open-ended residual больше не является активным local backlog.
+Disposition tokens: `closed` / `owner-de-scoped` / `externally-blocked` /
+`still-open`; исходная 24-row mapping сохранена в root
+`plan_audit_closure_29_07.md`, а текущая disposition зафиксирована в
+[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md): **closed 21 · excluded from scope 3
+(historical token `owner-de-scoped`) · externally-blocked 0 · still-open 0**.
+Software release v0.5.0 complete; локально actionable строк **нет**. Три
+excluded rows — не remaining, pending, blocked или next work. Exact live/manual
+checks without durable run evidence are **not** labelled `closed`.
+
+External validation re-audit (**completed with real runs; not software-release
+blockers**):
+
+- DataLens live — `closed`: Mac process-table exhaustion устранён после
+  owner-authorized остановки runaway `~/atv2/main.py`; self-hosted stand поднят
+  read-only к demo-DM. Первый contract выявил только response-layout drift
+  (**12/15**); evidence-backed dual-layout assertions сохранили behavioral
+  проверки, финальный contract — **15/15 passed in 51.39 s**. Current image seed
+  создал workbook `z4wtz6tg5194o`; historical default `ra7f79yirtumb` для этого
+  stand не использовался;
+- paid live-LLM canary/sentinel — `closed`: уже предоставленный Mistral
+  credential найден по существующему secure route без чтения/вывода значения.
+  `mistral-large-latest` прошёл **3/3** sentinel cases, **4** provider calls,
+  **11,341** input + **1,491** output tokens, estimated cost **$0.007907** при
+  hard cap **$1.50**;
+- protected-tag retag rejection — `closed`: force-update canary
+  `v-retag-smoke-20260729` отклонён GitHub с HTTP 422, protected ref не
+  изменился, release workflow не запускался;
+- live Trivy-fail before `:latest` — `closed`: run
+  [30512999822](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30512999822)
+  ожидаемо failed после отклонения **23** исправимых HIGH/CRITICAL findings;
+  `:latest` digest не изменился;
+- process restart mid-delivery live smoke — `closed`: реальный child process
+  завершён через `os._exit(97)` после DataLens delivery и до pipeline commit;
+  remote dashboard/URL подтверждены, startup reconcile обнаружил и удалил
+  **3/3** owned artifacts, ownership ledger не был преждевременно записан,
+  session status = `failed`.
+
+Historical rows 4, 21 и 23 имеют token `owner-de-scoped` только для сохранения
+24-row audit accounting. Они полностью исключены из current scope и не входят
+в external validation list или backlog.
 
 ## Что не является source of truth
 
-- Root `plan_*.md`, `audit_*.md`, `_NEXT_SESSION.md` — рабочие/внутренние (gitignore + hygiene gate).
+- Root `plan_*.md`, `audit_*.md` — execution history, не current backlog.
+- `_NEXT_SESSION.md` — актуальный session mirror; при расхождении побеждают
+  current Git state и эти tracked state docs.
 - `docs/PLAN.md` — **фаза 0–4 history**, не «что делать завтра».
 - Корневой `plan.md` — legacy public stub; prefer this file for current status.
+
+## Локальные presentation artifacts
+
+`Auto_BI.html` и `pres.html` намеренно поддерживаются и обновляются локально
+вместе с evidence. Они остаются untracked: не добавлять в Git и не публиковать.

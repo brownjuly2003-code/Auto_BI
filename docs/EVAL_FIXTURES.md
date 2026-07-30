@@ -23,7 +23,7 @@ One file per case: `tests/fixtures/golden_llm/<case_id>.json`.
   "format_version": 2,
   "template_version": "<16 hex of GROUNDING/SPEC_RULES/PROPOSE/PATCH templates>",
   "schema_version": "<16 hex of GroundingReport + DashboardSpec JSON schemas>",
-  "provider": "gracekelly|anthropic|fixture-refresh|...",
+  "provider": "gracekelly|anthropic|mistral|fixture-refresh|...",
   "model_id": "...",
   "calls": [
     {

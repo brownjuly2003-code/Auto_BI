@@ -9,7 +9,8 @@ stand only (tunnel :8090 -> Mac :8080):
     uv run pytest -m integration tests/test_datalens_contract.py
 
 Requires the DataLens compose stand up (admin/admin) + the ClickHouse demo-DM, and
-AUTO_BI_DATALENS_* settings (defaults target the local tunnel + OpenSource Demo workbook).
+AUTO_BI_DATALENS_* settings. Point `AUTO_BI_DATALENS_WORKBOOK_ID` at the workbook
+actually seeded by the pinned stand image (the id can drift between image generations).
 """
 
 from __future__ import annotations
@@ -172,6 +173,101 @@ def _rendered_with_data(run: dict) -> bool:
     return False
 
 
+def _run_categories(run: dict) -> list:
+    """Histogram discrete-axis categories from /api/run.
+
+    Old layout: data.categories
+    New layout: data.xAxis.categories
+    """
+    data = run.get("data")
+    if not isinstance(data, dict):
+        raise AssertionError(
+            f"expected data dict for categories, got {type(data).__name__}: keys={sorted(run)}"
+        )
+    if "categories" in data:
+        categories = data["categories"]
+    elif isinstance(data.get("xAxis"), dict) and "categories" in data["xAxis"]:
+        categories = data["xAxis"]["categories"]
+    else:
+        raise AssertionError(f"unknown categories layout: data keys={sorted(data)}")
+    if not isinstance(categories, list):
+        raise AssertionError(
+            f"categories must be a list, got {type(categories).__name__}: {categories!r}"
+        )
+    return categories
+
+
+def _run_series_points(run: dict) -> list:
+    """Series points from /api/run (line/bar and similar).
+
+    Old layout: data.graphs[0].data
+    New layout: data.series.data[0].data
+    """
+    data = run.get("data")
+    if not isinstance(data, dict):
+        raise AssertionError(
+            f"expected data dict for series points, got {type(data).__name__}: keys={sorted(run)}"
+        )
+    if "graphs" in data:
+        graphs = data["graphs"]
+        if not isinstance(graphs, list) or not graphs:
+            raise AssertionError(f"data.graphs missing first series: {graphs!r}")
+        points = graphs[0].get("data") if isinstance(graphs[0], dict) else None
+        if not isinstance(points, list):
+            raise AssertionError(f"data.graphs[0].data must be a list, got {points!r}")
+        return points
+    series = data.get("series")
+    if isinstance(series, dict) and isinstance(series.get("data"), list) and series["data"]:
+        first = series["data"][0]
+        points = first.get("data") if isinstance(first, dict) else None
+        if not isinstance(points, list):
+            raise AssertionError(f"data.series.data[0].data must be a list, got {points!r}")
+        return points
+    raise AssertionError(f"unknown series-points layout: data keys={sorted(data)}")
+
+
+def _run_percent_format(run: dict) -> str:
+    """Y-axis percent format token from /api/run.
+
+    Old layout: highchartsConfig.axesFormatting.yAxis[0].chartKitFormat
+    New layout: data.yAxis[0].labels.numberFormat.format
+    """
+    import json
+
+    data = run.get("data")
+    if isinstance(data, dict) and isinstance(data.get("yAxis"), list) and data["yAxis"]:
+        y0 = data["yAxis"][0]
+        if isinstance(y0, dict):
+            labels = y0.get("labels")
+            if isinstance(labels, dict):
+                number_format = labels.get("numberFormat")
+                if isinstance(number_format, dict) and "format" in number_format:
+                    return number_format["format"]
+
+    hc = run.get("highchartsConfig")
+    if isinstance(hc, str):
+        hc = json.loads(hc)
+    if isinstance(hc, dict):
+        axes = hc.get("axesFormatting")
+        if isinstance(axes, dict) and "yAxis" in axes:
+            y_formats = axes["yAxis"]
+            if not y_formats:
+                raise AssertionError(
+                    "axesFormatting.yAxis is empty — the by-field flag was not honored"
+                )
+            fmt = y_formats[0].get("chartKitFormat") if isinstance(y_formats[0], dict) else None
+            if fmt is None:
+                raise AssertionError(
+                    f"axesFormatting.yAxis[0] missing chartKitFormat: {y_formats[0]!r}"
+                )
+            return fmt
+
+    data_keys = sorted(data) if isinstance(data, dict) else type(data).__name__
+    raise AssertionError(
+        f"unknown percent-format layout: run keys={sorted(run)}; data keys={data_keys}"
+    )
+
+
 @pytest.fixture(scope="module")
 def model() -> SemanticModel:
     return SemanticModel.load("semantic/model.yaml")
@@ -228,7 +324,7 @@ def test_histogram_buckets_render_in_numeric_order(adapter: DataLensAdapter) -> 
     ref = adapter.create_chart(chart, ds)
     run = adapter._client.post("/api/run", {"id": str(ref.id), "workbookId": adapter._workbook_id})
     assert _rendered_with_data(run), f"histogram rendered no data: keys={sorted(run)}"
-    categories = run["data"]["categories"]  # the highcharts x-axis order as rendered
+    categories = _run_categories(run)  # old: data.categories; new: data.xAxis.categories
     values = [float(c) for c in categories]
     assert len(values) >= 2, f"expected multiple buckets, got {categories}"
     assert values == sorted(values), f"buckets not in ascending numeric order: {categories}"
@@ -237,11 +333,10 @@ def test_histogram_buckets_render_in_numeric_order(adapter: DataLensAdapter) -> 
 def test_percent_axis_formats_by_field(adapter: DataLensAdapter) -> None:
     """C1: a share-transform chart's VALUE axis renders as percent. The placeholder-item
     `formatting` alone is not enough — the engine reads it into the axis ONLY under
-    `settings.axisFormatMode="by-field"` (chart_config._AXIS_FORMAT_BY_FIELD): the run's
-    highchartsConfig must carry chartKitFormat="percent" in axesFormatting.yAxis (the
-    un-flagged baseline returns an empty axesFormatting — the pre-fix raw 0..1 axis)."""
-    import json
-
+    `settings.axisFormatMode="by-field"` (chart_config._AXIS_FORMAT_BY_FIELD). Legacy
+    responses expose `chartKitFormat="percent"` under `axesFormatting.yAxis`; current
+    responses expose `format="percent"` under `data.yAxis[].labels.numberFormat`. The
+    un-flagged baseline exposes neither — and renders the pre-fix raw 0..1 axis."""
     from auto_bi.ir.spec import MeasureTransform
 
     chart = ChartSpec(
@@ -264,12 +359,9 @@ def test_percent_axis_formats_by_field(adapter: DataLensAdapter) -> None:
     ref = adapter.create_chart(chart, ds)
     run = adapter._client.post("/api/run", {"id": str(ref.id), "workbookId": adapter._workbook_id})
     assert _rendered_with_data(run), f"percent chart rendered no data: keys={sorted(run)}"
-    hc = run["highchartsConfig"]
-    if isinstance(hc, str):
-        hc = json.loads(hc)
-    y_formats = hc["axesFormatting"]["yAxis"]
-    assert y_formats, "axesFormatting.yAxis is empty — the by-field flag was not honored"
-    assert y_formats[0]["chartKitFormat"] == "percent"
+    # old: highchartsConfig.axesFormatting.yAxis[0].chartKitFormat
+    # new: data.yAxis[0].labels.numberFormat.format
+    assert _run_percent_format(run) == "percent"
 
 
 def test_kpi_ru_units_scale_headline(adapter: DataLensAdapter) -> None:
@@ -331,8 +423,9 @@ def test_selector_default_period_narrows_chart_data(adapter: DataLensAdapter) ->
     narrowed = adapter._client.post(
         "/api/run", {"id": wid, "workbookId": adapter._workbook_id, "params": {guid: token}}
     )
-    n_full = len(full["data"]["graphs"][0]["data"])
-    n_narrowed = len(narrowed["data"]["graphs"][0]["data"])
+    # old: data.graphs[0].data; new: data.series.data[0].data
+    n_full = len(_run_series_points(full))
+    n_narrowed = len(_run_series_points(narrowed))
     assert 0 < n_narrowed < n_full, f"period param did not narrow: {n_narrowed} vs {n_full}"
     assert n_narrowed <= 100  # ~3 months of daily points, not the full history
 

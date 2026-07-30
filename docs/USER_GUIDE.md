@@ -14,8 +14,9 @@
   сделайте интроспекцию DWH (см. [ONBOARDING_DWH.md](ONBOARDING_DWH.md) или быстрый старт ниже).
 - **DWH** (ClickHouse — v1) с read-only ролью, доступный с машины, где запускается Auto_BI.
 - **BI** — Apache Superset (v1) или self-hosted Yandex DataLens (v2).
-- **LLM** — по умолчанию прямой **Anthropic API** (`ANTHROPIC_API_KEY`), опционально —
-  локальный сервис **GraceKelly** (`AUTO_BI_LLM_PROVIDER=gracekelly`, §6). Нужен для
+- **LLM** — по умолчанию прямой **Anthropic API** (`ANTHROPIC_API_KEY`); опционально —
+  прямой **Mistral API** (`AUTO_BI_LLM_PROVIDER=mistral`, `MISTRAL_API_KEY`) или локальный
+  сервис **GraceKelly** (`AUTO_BI_LLM_PROVIDER=gracekelly`, §6). Нужен для
   диалога/предложения spec'а; детерминированные шаги (валидация, advisor, сборка) от него не зависят.
 
 Все секреты и адреса — через переменные окружения с префиксом `AUTO_BI_` или файл `.env`
@@ -34,8 +35,9 @@ pip install -e .
 #    AUTO_BI_CH_DATABASE=dm
 #    AUTO_BI_SUPERSET_URL=http://localhost:8088   AUTO_BI_SUPERSET_PASSWORD=...
 #    ANTHROPIC_API_KEY=sk-ant-...
-#    (или ANTHROPIC_API_KEY отсутствует, но задан AUTO_BI_LLM_PROVIDER=gracekelly +
-#    AUTO_BI_GRACEKELLY_URL=http://127.0.0.1:8011 — локальный сервис-опция, см. §6)
+#    (или AUTO_BI_LLM_PROVIDER=mistral + MISTRAL_API_KEY;
+#     или AUTO_BI_LLM_PROVIDER=gracekelly +
+#     AUTO_BI_GRACEKELLY_URL=http://127.0.0.1:8011 — локальный сервис-опция, см. §6)
 
 # 3. интроспекция DWH -> черновик модели
 auto_bi introspect --output semantic/model.yaml
@@ -168,7 +170,8 @@ auto_bi prune --session <id>      # только одна сессия
 **Готовность (S07):** `GET /api/v1/ready` (открыт даже при включённом auth, как `/health`) —
 глубокая проверка для оркестратора (compose healthcheck, Fly checks): store + DWH
 (`SELECT 1`) + BI (`healthcheck()` на Superset) гейтят `{"ok": false}`/503; LLM-доступность
-репортится в том же ответе, но **не** гейтит `ok` (транзиентный сбой GraceKelly/Anthropic не
+репортится в том же ответе, но **не** гейтит `ok` (транзиентный сбой
+GraceKelly/Anthropic/Mistral не
 должен ронять готовность уже собранных дашбордов). Подробнее — ARCHITECTURE §3.11.
 
 **Рестарт (X-4):** сессии переживают перезапуск сервера — открытая вкладка продолжает
@@ -213,7 +216,8 @@ vs Greenplum/Greengage).
 исходом, и агрегаты по вызовам LLM. API: `GET /api/v1/sessions/{id}/trace` и
 `GET /api/v1/observability/llm`.
 
-> **Честность по данным:** при провайдере `anthropic` usage (input/output tokens) пишется
+> **Честность по данным:** при провайдерах `anthropic` и `mistral` usage
+> (input/output tokens) пишется
 > в Store/`llm_calls` и участвует в opt-in LLM budget (`AUTO_BI_LLM_BUDGET_*`, цены в
 > `AUTO_BI_LLM_BUDGET_PRICES`). GraceKelly usage может быть неполным — тогда UI показывает
 > измеримое: число вызовов, латентность и **объём в символах** (size-прокси, не доллары).
@@ -238,8 +242,9 @@ vs Greenplum/Greengage).
 | `AUTO_BI_SUPERSET_URL` / `_USER` / `_PASSWORD` | Apache Superset | `http://localhost:8088` / `admin` / `` |
 | `AUTO_BI_DATALENS_URL` / `_USER` / `_PASSWORD` / `_WORKBOOK_ID` | self-hosted DataLens (v2, experimental live) | `http://localhost:8090` / `admin` / `` (пустой — fail-loud, без shipped default) / `ra7f79yirtumb` |
 | `AUTO_BI_CH_HOST_FROM_DATALENS` | CH-хост, как его достаёт DataLens-коннекшн | `host.docker.internal` |
-| `AUTO_BI_LLM_PROVIDER` | LLM-провайдер: `anthropic` (прямой Messages API) или `gracekelly` (локальный сервис) | `anthropic` |
+| `AUTO_BI_LLM_PROVIDER` | LLM-провайдер: `anthropic` (прямой Messages API), `mistral` (прямой Chat Completions API) или `gracekelly` (локальный сервис) | `anthropic` |
 | `ANTHROPIC_API_KEY` / `AUTO_BI_ANTHROPIC_MODEL` / `_MAX_TOKENS` | Прямой Anthropic API (провайдер `anthropic`). Ключ — стандартная переменная SDK, без префикса `AUTO_BI_`; `AUTO_BI_ANTHROPIC_API_KEY` тоже работает, если ключ нужно держать рядом с остальным `.env` | `` / `claude-sonnet-5` / `16000` |
+| `MISTRAL_API_KEY` / `AUTO_BI_MISTRAL_API_KEY` / `_MODEL` / `_URL` / `_MAX_TOKENS` | Прямой Mistral API (провайдер `mistral`); стандартное и `AUTO_BI_`-имя ключа равноправны | `` / `` / `mistral-large-latest` / `https://api.mistral.ai` / `16000` |
 | `AUTO_BI_GRACEKELLY_URL` / `_MODEL` | Локальный LLM-сервис (провайдер `gracekelly`) | `http://127.0.0.1:8011` / `claude-sonnet-5` |
 | `AUTO_BI_SEND_SAMPLES` | слать ли top-N значений колонок в grounding/propose (только `public`/`internal`; см. `docs/MIGRATION_SEND_SAMPLES.md`) | `false` |
 | `AUTO_BI_STORE_PATH` | SQLite-стор (сессии, spec'ы, сборки, llm_calls, заявки DM, users) | `data/auto_bi.sqlite` |

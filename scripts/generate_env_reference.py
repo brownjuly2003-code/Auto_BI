@@ -37,6 +37,12 @@ EXTRA_ENV_ROWS: list[tuple[str, str, str]] = [
         "Also accepted as ``AUTO_BI_ANTHROPIC_API_KEY``.",
         "(empty)",
     ),
+    (
+        "MISTRAL_API_KEY",
+        "Mistral API key when ``llm_provider=mistral``. "
+        "Also accepted as ``AUTO_BI_MISTRAL_API_KEY``.",
+        "(empty)",
+    ),
 ]
 
 SECRET_NAME_MARKERS = ("password", "api_key", "token", "secret")

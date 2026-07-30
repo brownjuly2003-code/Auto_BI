@@ -29,8 +29,13 @@ def make_llm(settings: Settings, store: Store | None = None) -> LLMClient:
         from auto_bi.llm.anthropic import AnthropicClient
 
         return AnthropicClient(settings, store=store, budget=budget)
+    if provider == "mistral":
+        from auto_bi.llm.mistral import MistralClient
+
+        return MistralClient(settings, store=store, budget=budget)
     raise ValueError(
-        f"unknown AUTO_BI_LLM_PROVIDER {settings.llm_provider!r} (use 'gracekelly' or 'anthropic')"
+        f"unknown AUTO_BI_LLM_PROVIDER {settings.llm_provider!r} "
+        "(use 'gracekelly', 'anthropic', or 'mistral')"
     )
 
 

@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Direct Mistral provider** — `AUTO_BI_LLM_PROVIDER=mistral` routes through
+  Mistral Chat Completions with standard `MISTRAL_API_KEY` (or the
+  `AUTO_BI_MISTRAL_API_KEY` alias), the shared structured-repair and budget
+  hooks, token-usage logging, safe HTTP errors, and live-sentinel secret
+  routing. Default model: `mistral-large-latest`.
+
+- **Local BYOK runbook** — `docs/LOCAL_BYOK.md`: первый локальный запуск после
+  clone со своим `ANTHROPIC_API_KEY` (ClickHouse + Superset через Compose,
+  `uv run auto_bi serve`, health/ready, остановка и troubleshooting).
+
 ## [0.5.0] - 2026-07-29
 
 ### Fixed

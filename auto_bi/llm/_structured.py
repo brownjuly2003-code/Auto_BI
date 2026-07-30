@@ -1,6 +1,6 @@
 """Shared structured-output machinery for LLM clients (transport-agnostic).
 
-Both GraceKellyClient and AnthropicClient turn text-in/text-out completions into
+GraceKellyClient, AnthropicClient and MistralClient turn text-in/text-out completions into
 schema-validated objects via the SAME JSON-extraction + repair loop (invariant 1:
 the LLM emits only DashboardSpec/etc. as JSON; we parse and validate it here, never
 trusting native formats). Keeping this here means the two clients differ only in
@@ -134,8 +134,9 @@ def append_llm_log(
     """Append one LLM-call record to the jsonl log and (if present) the durable Store.
 
     The prompt itself is NEVER logged — only its sha256 prefix and length (security §4).
-    `input_tokens`/`output_tokens` are real usage from providers that report it (Anthropic);
-    None where the provider returns no usage (GraceKelly) or the call failed before a response.
+    `input_tokens`/`output_tokens` are real usage from providers that report it
+    (Anthropic/Mistral); None where the provider returns no usage (GraceKelly) or
+    the call failed before a response.
     Logging is best-effort: a failure here must never kill the pipeline.
     """
     prompt_sha256 = hashlib.sha256(prompt.encode()).hexdigest()[:16]

@@ -726,11 +726,13 @@ def _serve(  # pragma: no cover — wiring only
         return probe_health(adapter_for, TargetBI.SUPERSET)
 
     def llm_healthcheck() -> AdapterHealth:
-        if settings.llm_provider.strip().lower() != "gracekelly":
-            # Anthropic is a hosted API with no separate process to be "up/down" locally,
-            # and an actual completion call would cost tokens on every readiness probe —
-            # report configured-and-constructible (already proven by make_llm below).
-            return AdapterHealth(ok=True, message="anthropic: no live check (avoids token cost)")
+        provider = settings.llm_provider.strip().lower()
+        if provider != "gracekelly":
+            # Hosted providers (anthropic, mistral, …) have no separate process to be
+            # "up/down" locally, and an actual completion call would cost tokens on every
+            # readiness probe — report configured-and-constructible (already proven by
+            # make_llm below).
+            return AdapterHealth(ok=True, message=f"{provider}: no live check (avoids token cost)")
         import httpx
 
         try:
@@ -1010,9 +1012,11 @@ def _eval(
             store = Store(settings.store_path)
             live_llm = make_llm(settings, store=store)
             provider = settings.llm_provider.strip().lower()
-            model_id = (
-                settings.gracekelly_model if provider == "gracekelly" else settings.anthropic_model
-            )
+            model_id = {
+                "gracekelly": settings.gracekelly_model,
+                "anthropic": settings.anthropic_model,
+                "mistral": settings.mistral_model,
+            }.get(provider, provider)
             provider_detail = (
                 f"{settings.gracekelly_url}, {model_id}" if provider == "gracekelly" else model_id
             )

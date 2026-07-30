@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from functools import lru_cache
 from logging import Logger
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -154,14 +154,13 @@ class Settings(BaseSettings):
         ),
     )
 
-    # LLM provider seam (llm/factory.py): "anthropic" (default — direct Anthropic Messages
-    # API, works out of the box with just an API key) or "gracekelly" (local orchestration
-    # service, documented opt-in — ARCHITECTURE §3.6).
+    # LLM provider seam (llm/factory.py): direct Anthropic (default), direct Mistral,
+    # or GraceKelly (local orchestration service).
     llm_provider: str = Field(
         default="anthropic",
         description=(
-            'LLM backend selector: "anthropic" for direct API or "gracekelly" for the local'
-            " orchestration service."
+            'LLM backend selector: "anthropic" or "mistral" for direct API access, or'
+            ' "gracekelly" for the local orchestration service.'
         ),
     )
 
@@ -200,6 +199,33 @@ class Settings(BaseSettings):
             "Max output tokens for non-streaming Anthropic calls; kept moderate to avoid SDK"
             " timeout refusals."
         ),
+    )
+
+    # Direct Mistral chat-completions API. The client also accepts the standard
+    # MISTRAL_API_KEY process env when this AUTO_BI-prefixed field is empty.
+    mistral_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "mistral_api_key",
+            "AUTO_BI_MISTRAL_API_KEY",
+            "MISTRAL_API_KEY",
+        ),
+        description=(
+            "Mistral API key for direct calls; empty lets the client fall back to"
+            " MISTRAL_API_KEY."
+        ),
+    )
+    mistral_model: str = Field(
+        default="mistral-large-latest",
+        description="Mistral model id used when llm_provider is mistral.",
+    )
+    mistral_url: str = Field(
+        default="https://api.mistral.ai",
+        description="Mistral API base URL; the client appends /v1/chat/completions.",
+    )
+    mistral_max_tokens: int = Field(
+        default=16000,
+        description="Maximum output tokens requested from direct Mistral chat completions.",
     )
 
     # plan_sol step 2 / audit P0-2: DWH values (top-N) leave the process only on
@@ -380,7 +406,7 @@ class Settings(BaseSettings):
         ),
     )
     # cost price table (USD per 1000 tokens), "model:in/out,...". List prices as of
-    # 2026-07-18; override for your provider contract. Used only when a *_max_cost_usd
+    # 2026-07-29; override for your provider contract. Used only when a *_max_cost_usd
     # limit is set — an unlisted model prices at 0, so add yours before relying on a cap.
     # Sonnet 5 carries a lower introductory rate through 2026-08-31; the table keeps the
     # standard rate so the guard errs toward over-estimating spend, not under.
@@ -389,7 +415,8 @@ class Settings(BaseSettings):
             "claude-opus-4-8:0.005/0.025,"
             "claude-sonnet-5:0.003/0.015,"
             "claude-sonnet-4-6:0.003/0.015,"
-            "claude-haiku-4-5:0.001/0.005"
+            "claude-haiku-4-5:0.001/0.005,"
+            "mistral-large-latest:0.0005/0.0015"
         ),
         description=(
             "USD-per-1k-token price table as model:in/out pairs; unlisted models price at 0 until"
@@ -533,8 +560,8 @@ def unknown_env_settings(environ: Mapping[str, str] | None = None) -> list[str]:
     `extra="ignore"` silently drops typos — `AUTO_BI_AUTH_ENABLE=true` leaves auth OFF
     with no trace. `serve` reports every returned name as a warning so a misspelled
     security flag is visible in the log instead of silently inert. Compares against
-    `Settings.model_fields` plus any explicit string validation_alias (none today;
-    AliasChoices would need unpacking if ever introduced).
+    `Settings.model_fields` plus any explicit string validation_alias. Field-derived
+    `AUTO_BI_*` names remain recognised when a field also accepts non-prefixed aliases.
     """
     env = os.environ if environ is None else environ
     prefix = str(Settings.model_config.get("env_prefix", "")).upper()
