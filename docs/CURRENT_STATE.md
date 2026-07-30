@@ -14,10 +14,9 @@
 
 **Режим:** software release **v0.5.0** complete на exact `main`/tag SHA
 `e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`. Локальный/software closure scope
-закрыт; optional external validations (DataLens live, paid live-LLM) остаются
-`externally-blocked` и **не** блокируют software closure. HF Space —
-`owner-de-scoped` (не mandatory). Scope и disposition —
-[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md).
+закрыт; пять вынесенных external validations получили exact live evidence
+2026-07-29. HF Space остаётся `owner-de-scoped` (не mandatory). Scope и
+disposition — [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md).
 
 ## Продукт
 
@@ -28,7 +27,7 @@
 | Greenplum advisor + golden | **offline contract in CI** | advisor GP + golden GP replay |
 | Greenplum live DWH | experimental | operator stand |
 | DataLens compile path | offline contracts **passed** | contract suite |
-| DataLens live stand | **`externally-blocked`** / **not run** (каталоги/конфиг Mac-стенда на месте; на read-only probe 2026-07-29 сервисы остановлены/не ready; exact live contract не гонялся) | experimental / non-default / **non-closure** |
+| DataLens live stand | **`closed`** 2026-07-29: Mac-only self-hosted contract **15/15 passed**; текущий image seed использует workbook `z4wtz6tg5194o`, переданный через supported env override | experimental / non-default / **non-closure** |
 | Public HF demo | **`owner-de-scoped`** | not a project-closure target; **no** sync/publish/decommission. Last recorded evidence is **historical only**: Space served `0.4.0`, `demo_auto_only=false`, no capabilities (stale vs v0.5.0; not a verified current launch path) |
 
 ## Безопасность и runtime (plan_sol 1–4)
@@ -48,6 +47,12 @@
   object отклонена GitHub с HTTP 422 (`Cannot update this protected ref` /
   `Cannot force-push to this tag`), ref остался неизменным; release workflow
   для canary не запускался.
+- Intentional Trivy-fail-before-promotion **live-проверен** run
+  [30512999822](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30512999822):
+  Trivy отклонил **23** исправимых HIGH/CRITICAL findings в probe-image,
+  workflow завершился ожидаемым failure, а GHCR `:latest` сохранил digest
+  `sha256:bff75bcef9d894e86c2be63a584284c02c2b2546425ac11a15e83ad83e4e84f1`;
+  временная remote branch удалена.
 - **v0.5.0 external evidence (complete):**
   - post-merge CI, CodeQL, Gitleaks, Demo image — passed on closing SHA
     `e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`;
@@ -105,7 +110,7 @@ resume / **fields DnD seed**). Post-merge CI on v0.5.0 closing SHA passed.
 |---|---|
 | Online SQLite backup + integrity | `Store.backup_to` / `integrity_check`; `scripts/store_backup.py` |
 | Restore drill | script + `tests/test_store_backup.py` |
-| Pre-return BI crash recovery | RR-4 durable attempts + exact Superset/DataLens cleanup ([ADR 0002](adr/0002-durable-build-attempt-reconciliation.md)) |
+| Pre-return BI crash recovery | RR-4 durable attempts + exact Superset/DataLens cleanup ([ADR 0002](adr/0002-durable-build-attempt-reconciliation.md)); live DataLens process-death smoke: child exit 97, remote delivery confirmed, discovered/deleted 3/3, session failed |
 | Offline perf baseline | `tests/test_perf_baseline.py` (soft abs + relative ratios) |
 | Property / metamorphic | `tests/test_property_quality.py` (guard, validate, normalize, **RBAC**, Superset native-filter scope) |
 | Cumulative bounded mutation gate | CI targets `auto_bi/agent/sql_guard.py`, `auto_bi/ir/validate.py`, `auto_bi/agent/dataset_plan.py`, `auto_bi/agent/cleanup.py`; weak outcomes rejected; detailed snapshot evidence in [operations/SLO.md](operations/SLO.md) |
@@ -129,35 +134,37 @@ is **owner-de-scoped** (historical stale profile only; no sync/publish/decommiss
 
 Прежний open-ended residual больше не является активным local backlog.
 Disposition tokens: `closed` / `owner-de-scoped` / `externally-blocked` /
-`still-open` — в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md) и root
-`plan_audit_closure_29_07.md` (24-row re-audit: **closed 17 · owner-de-scoped 3 ·
-externally-blocked 4 · still-open 0**). Software release v0.5.0 complete;
+`still-open`; исходная 24-row mapping сохранена в root
+`plan_audit_closure_29_07.md`, а текущая disposition зафиксирована в
+[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md): **closed 21 · owner-de-scoped 3 ·
+externally-blocked 0 · still-open 0**. Software release v0.5.0 complete;
 локально actionable `still-open` строк **нет**. Exact live/manual checks without
 durable run evidence are **not** labelled `closed`.
 
-Optional external validations (**not** software-closure blockers; **not**
-claimed completed):
+External validation re-audit (**completed with real runs; not software-release
+blockers**):
 
-- DataLens live — `externally-blocked` (каталоги/конфиг Mac-стенда на месте;
-  container runtime остановлен; exact live contract **not run**. Launch
-  разрешён, но Mac process table исчерпан: 1210 zombie-процессов, 1198 из них
-  принадлежат unrelated `~/atv2/main.py`; `limactl`/shell получают
-  `fork: Resource temporarily unavailable`. Нужна owner-authorized очистка
-  unrelated process или reboot);
-- paid live-LLM canary/sentinel — `externally-blocked` (credential Mistral
-  предоставлена владельцем; direct Mistral runtime route и sentinel secret
-  mapping реализованы и offline-проверены. Boolean-check не нашёл binding в
-  текущем process/User/Machine/.env или GitHub Actions secrets; это проблема
-  маршрутизации уже предоставленного credential, не заявление об отсутствии
-  credential. Значение не инспектировалось; live API invocation **not run**;
-  нужен числовой budget cap);
-- live Trivy-fail before `:latest` — `externally-blocked` (**not run**;
-  tracked release workflow tag-only, без `workflow_dispatch`/fault injection;
-  при запрете push безопасно запустить exact remote failure-path нельзя;
-  happy-path Trivy ≠ intentional fail);
-- process restart mid-delivery live smoke — `externally-blocked` (**not run**;
-  на Windows container runtime отсутствует, а Mac live-BI runtime блокирован
-  тем же process-table exhaustion; RR-4 in-process unit only);
+- DataLens live — `closed`: Mac process-table exhaustion устранён после
+  owner-authorized остановки runaway `~/atv2/main.py`; self-hosted stand поднят
+  read-only к demo-DM. Первый contract выявил только response-layout drift
+  (**12/15**); evidence-backed dual-layout assertions сохранили behavioral
+  проверки, финальный contract — **15/15 passed in 51.39 s**. Current image seed
+  создал workbook `z4wtz6tg5194o`; historical default `ra7f79yirtumb` для этого
+  stand не использовался;
+- paid live-LLM canary/sentinel — `closed`: уже предоставленный Mistral
+  credential найден по существующему secure route без чтения/вывода значения.
+  `mistral-large-latest` прошёл **3/3** sentinel cases, **4** provider calls,
+  **11,341** input + **1,491** output tokens, estimated cost **$0.007907** при
+  hard cap **$1.50**;
+- live Trivy-fail before `:latest` — `closed`: run
+  [30512999822](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30512999822)
+  ожидаемо failed после отклонения **23** исправимых HIGH/CRITICAL findings;
+  `:latest` digest не изменился;
+- process restart mid-delivery live smoke — `closed`: реальный child process
+  завершён через `os._exit(97)` после DataLens delivery и до pipeline commit;
+  remote dashboard/URL подтверждены, startup reconcile обнаружил и удалил
+  **3/3** owned artifacts, ownership ledger не был преждевременно записан,
+  session status = `failed`;
 - public HF Space — `owner-de-scoped` (removed from closure scope);
 - live same-SHA demo-image rebuild (HF path) — `owner-de-scoped` (with HF).
 
