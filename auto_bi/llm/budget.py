@@ -17,7 +17,8 @@ Two scopes, both enforced per call:
 Usage is read back from the existing `llm_calls` ledger (Store), which already records
 every attempt with tokens/latency (`Store.log_llm_call`), so budgets survive across
 requests and restarts without a parallel table. Tokens are real where the provider
-reports them (Anthropic) and char-estimated (chars / 4) where it does not (GraceKelly).
+reports them (Anthropic/Mistral) and char-estimated (chars / 4) where it does not
+(GraceKelly).
 
 Fail closed: `check` raises `BudgetExceeded` BEFORE issuing the call that would cross a
 limit, naming the exceeded dimension. Opt-in, off by default (AUTO_BI_LLM_BUDGET_ENABLED),

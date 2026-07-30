@@ -11,10 +11,10 @@ so chars are the honest size proxy); `trace_events` is a durable per-session tim
 of agent steps (grounding/propose/advisor/approve) and build phases.
 
 Schema v5 (token accounting, E2): `llm_calls` gained nullable `input_tokens` /
-`output_tokens`. The Anthropic Messages API returns `usage.input_tokens/output_tokens`,
-so calls on that provider carry real tokens; GraceKelly reports no usage and a transport
-error has no response, so those rows stay NULL (NULL = "no usage reported", distinct from
-a real zero — `completion_chars` remains the universal size proxy for every call).
+`output_tokens`. Anthropic and Mistral return input/output token usage, so calls on those
+providers carry real tokens; GraceKelly reports no usage and a transport error has no
+response, so those rows stay NULL (NULL = "no usage reported", distinct from a real zero
+— `completion_chars` remains the universal size proxy for every call).
 
 Schema v6 (B-4 hardening): `auth_tokens.token` now stores sha256(raw token) hex, not the
 raw bearer token — a stolen SQLite file no longer yields live sessions directly. The
@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     step          TEXT NOT NULL DEFAULT '',
     completion_chars INTEGER NOT NULL DEFAULT 0,
     input_tokens  INTEGER,  -- NULL = provider reported no usage (GraceKelly / transport error)
-    output_tokens INTEGER   -- real tokens only where the provider returns usage (Anthropic)
+    output_tokens INTEGER   -- real tokens where the provider returns usage (Anthropic/Mistral)
 );
 -- llm/budget.py reads this ledger per session and per rolling window on every provider
 -- round-trip; index the two scope keys (created via always-run CREATE IF NOT EXISTS, no
@@ -309,7 +309,7 @@ class Store:
             # v4: dm_change_requests carries the advisor's concrete fix artifact (DDL)
             self._add_column("dm_change_requests", "remediation", "TEXT NOT NULL DEFAULT ''")
         if version < 5:
-            # v5: real token usage on providers that report it (Anthropic); nullable so
+            # v5: real token usage on providers that report it (Anthropic/Mistral); nullable so
             # legacy/GraceKelly rows stay NULL rather than a misleading zero
             self._add_column("llm_calls", "input_tokens", "INTEGER")
             self._add_column("llm_calls", "output_tokens", "INTEGER")
@@ -1019,10 +1019,10 @@ class Store:
     ) -> dict[str, Any]:
         """Aggregates for the LLM-usage dashboard. Char volumes are a universal size
         proxy (every call has them). Real `input_tokens`/`output_tokens` are summed
-        NULL-ignoring — they are populated only on providers that report usage (Anthropic);
-        GraceKelly reports none, so its rows stay NULL. `token_calls` counts the rows that
-        carry real tokens, so callers can show token figures only when they exist rather
-        than presenting a NULL-driven 0 as if it were measured.
+        NULL-ignoring — they are populated only on providers that report usage
+        (Anthropic/Mistral); GraceKelly reports none, so its rows stay NULL. `token_calls`
+        counts the rows that carry real tokens, so callers can show token figures only when
+        they exist rather than presenting a NULL-driven 0 as if it were measured.
 
         `owner` (P1-4): when set, only calls whose session is owned by that username —
         used for non-admin observability so a user never sees foreign spend.
@@ -1082,9 +1082,10 @@ class Store:
 
         Returns `calls`, `latency_ms`, total estimated `tokens`, and a per-`model`
         breakdown so the enforcer can price cost. Tokens are the provider's real usage
-        where reported (Anthropic), else char-estimated (chars / 4) so a token budget
-        still bites on GraceKelly, which reports none. Every attempt is counted (a repair
-        is a distinct row), independent of status — a budget must see all round-trips.
+        where reported (Anthropic/Mistral), else char-estimated (chars / 4) so a token
+        budget still bites on GraceKelly, which reports none. Every attempt is counted
+        (a repair is a distinct row), independent of status — a budget must see all
+        round-trips.
         """
         rows = self._rows(
             "SELECT model,"

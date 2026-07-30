@@ -68,7 +68,7 @@ def _retry_after_seconds(response: httpx.Response, attempt: int) -> float:
             return min(_BACKOFF_CAP_SECONDS, max(0.0, float(header)))
         except ValueError:
             pass
-    return min(_BACKOFF_CAP_SECONDS, _BACKOFF_BASE_SECONDS * (2**attempt))
+    return min(_BACKOFF_CAP_SECONDS, _BACKOFF_BASE_SECONDS * (2.0**attempt))
 
 
 class MistralClient:
