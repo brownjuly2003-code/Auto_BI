@@ -4,7 +4,7 @@
 
 Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом, drag&drop-раскладкой полей витрин или авто-обзором витрины** (детерминированный курируемый дашборд без LLM), уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
 
-**Скоуп v1 (RU-рынок, release-gated в CI):** ClickHouse (DM) + Apache Superset (BI). **v2 experimental:** Greengage/Greenplum (offline advisor/golden в CI; live DWH — operator stand) + Yandex DataLens (unit compile offline; live contract Mac-only, не default release gate). Универсальность — в швах (IR, адаптеры), не в имплементации.
+**Скоуп v1 (RU-рынок, release-gated в CI):** ClickHouse (DM) + Apache Superset (BI). **v2 experimental:** Greengage/Greenplum (offline advisor/golden в CI; live DWH — operator stand) + Yandex DataLens (offline compile contracts и повторный live contract **15/15** на Mac; не default release gate). Универсальность — в швах (IR, адаптеры), не в имплементации.
 **LLM:** прямой Anthropic Messages API по умолчанию; прямой Mistral Chat Completions (`AUTO_BI_LLM_PROVIDER=mistral`, `MISTRAL_API_KEY`) и локальный сервис GraceKelly — документированные опции (см. [USER_GUIDE §6](docs/USER_GUIDE.md#6-конфигурация-переменные-окружения)).
 
 ## Демо
@@ -13,13 +13,6 @@
 (`uv run python scripts/demo_golden_path.py`) — детерминированный IR/SQL/advisor
 без DWH, BI и LLM. Полный локальный запуск со своим API key —
 [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md).
-
-Публичный Hugging Face Space
-(<https://juliome20-auto-bi-demo.hf.space>) **не** является verified/supported
-launch path для v0.5.0: last recorded live evidence is historical/stale
-(served `0.4.0`, `demo_auto_only=false`, no `health.capabilities`) and is
-incompatible with the current release. Do not treat it as a confirmed working
-auto-only demo. Ниже — скриншоты и видео полного цикла (архив UI), не live-assert.
 
 ![Auto_BI — полный цикл: текст → уточнение → спецификация + advisor → сборка → дашборд Superset](docs/screenshots/demo.gif)
 
@@ -35,7 +28,12 @@ auto-only demo. Ниже — скриншоты и видео полного ц�
 
 **Phase 0–4 + бэклог адекватности дашбордов (B1–B4) закрыты.** Работает end-to-end: текст/поля → spec → валидация → сборка дашборда. v1-стек (ClickHouse + Superset) live-проверен на v0.5.0; v2 (Greenplum/Greengage advisor/golden; DataLens) — offline evidence/contracts, а DataLens Mac-only live contract повторно прошёл **15/15** на текущем self-hosted stand 2026-07-29 (experimental / non-default / non-closure; фактический seeded workbook задавался через `AUTO_BI_DATALENS_WORKBOOK_ID`); web UI с двумя режимами ввода, итерациями, Feasibility Advisor, заявками владельцу DM и панелью наблюдаемости.
 
-**Актуальное состояние и residual roadmap** — [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md). История фаз — [docs/PLAN.md](docs/PLAN.md). Полный env inventory (generated) — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md).
+Все пять вынесенных external live validations завершены exact evidence:
+DataLens 15/15, direct Mistral sentinel 3/3, protected-tag rejection,
+intentional Trivy failure before promotion и process-restart reconciliation.
+Активной audit work не осталось.
+
+**Актуальное состояние и closure evidence** — [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md). История фаз — [docs/PLAN.md](docs/PLAN.md). Полный env inventory (generated) — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md).
 
 ## Чем отличается
 
@@ -64,7 +62,7 @@ flowchart LR
 Установка, команды CLI, web UI, конфигурация — [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 Подключение новой витрины DWH за ≤ 1 ч — [docs/ONBOARDING_DWH.md](docs/ONBOARDING_DWH.md).
 
-Local-first — три ступени:
+Local-first — два поддерживаемых пути:
 
 1. **Офлайн golden path** — без DWH, BI, LLM и API-ключа:
 
@@ -72,13 +70,7 @@ Local-first — три ступени:
 uv run python scripts/demo_golden_path.py
 ```
 
-2. **HF Space (исторический, не supported)** — публичный Space больше не
-   verified launch path: last recorded profile is stale vs v0.5.0
-   (`0.4.0` / `demo_auto_only=false` / no capabilities). Не рассчитывать на
-   auto-only demo и не использовать как текущий onboarding. См. «Демо» выше;
-   вместо этого — golden path (п.1) или LOCAL_BYOK (п.3).
-
-3. **Полный локальный путь.** Пошаговый Anthropic-пример — [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md). Скопируйте `.env.example` в `.env` (`cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`). Задайте свой `ANTHROPIC_API_KEY`; либо `AUTO_BI_LLM_PROVIDER=mistral` + `MISTRAL_API_KEY`; либо `AUTO_BI_LLM_PROVIDER=gracekelly` + `AUTO_BI_GRACEKELLY_URL`. Для DWH/BI — `AUTO_BI_CH_HOST`, `AUTO_BI_CH_PASSWORD`, `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_PASSWORD` (полный inventory — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md)). `docker compose up -d` поднимает **только ClickHouse и Superset**, не Auto_BI; агент локально: `auto_bi serve` → http://127.0.0.1:8200.
+2. **Полный локальный путь.** Пошаговый Anthropic-пример — [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md). Скопируйте `.env.example` в `.env` (`cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`). Задайте свой `ANTHROPIC_API_KEY`; либо `AUTO_BI_LLM_PROVIDER=mistral` + `MISTRAL_API_KEY`; либо `AUTO_BI_LLM_PROVIDER=gracekelly` + `AUTO_BI_GRACEKELLY_URL`. Для DWH/BI — `AUTO_BI_CH_HOST`, `AUTO_BI_CH_PASSWORD`, `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_PASSWORD` (полный inventory — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md)). `docker compose up -d` поднимает **только ClickHouse и Superset**, не Auto_BI; агент локально: `auto_bi serve` → http://127.0.0.1:8200.
 
 ```bash
 pip install autobi-agent                          # или pip install -e . из корня репозитория

@@ -18,8 +18,8 @@
 - текущий cumulative bounded mutation gate и package-wide `mypy --strict auto_bi`.
 
 После software release **v0.5.0** этот scope feature-frozen. Новые функции и
-исследовательские расширения не являются незакрытым долгом проекта. Hugging Face
-Space **не** входит в closing scope (owner-de-scoped).
+исследовательские расширения не являются незакрытым долгом проекта. Внешний
+demo/Space path полностью исключён из current project scope и backlog.
 
 ## Финальное решение по прежним residual
 
@@ -34,7 +34,6 @@ Space **не** входит в closing scope (owner-de-scoped).
 | Paid live-LLM canary | `closed` 2026-07-29: существующий secure Mistral route найден без чтения/вывода credential value; `mistral-large-latest` sentinel **3/3**, 4 calls, 11,341 input + 1,491 output tokens, estimated **$0.007907** при hard cap **$1.50** |
 | DataLens offline contracts | `closed` (offline passed) |
 | DataLens live stand | `closed` 2026-07-29: owner-authorized Mac cleanup снял process-table blocker; текущий self-hosted stand + ClickHouse demo-DM прошли exact contract **15/15**. Current image seed workbook `z4wtz6tg5194o` передан через supported env override; experimental / non-default / **non-closure** |
-| Public HF demo vs closing SHA | `owner-de-scoped`: HF is **not** a project-closure target; **no** sync / publish / decommission. Last recorded live evidence is **historical only** — Space served **0.4.0**, `demo_auto_only=false`, no capabilities object (incompatible with v0.5.0; not a verified current demo path) |
 
 Новые функции вне этой таблицы по-прежнему требуют отдельного проекта.
 
@@ -67,13 +66,14 @@ Software/local audit closure: **complete** for the v1 path above where exact
 live/manual checks have durable run evidence. Original mapping of the 24
 historical plan_sol residual rows is preserved in root
 `plan_audit_closure_29_07.md`; after this evidence re-audit the current counts
-are `closed` 21 · `owner-de-scoped` 3 · `externally-blocked` 0 ·
-`still-open` 0. No locally actionable `still-open` residual remains.
+are `closed` 21 · excluded from scope 3 (historical token
+`owner-de-scoped`) · `externally-blocked` 0 · `still-open` 0. Active audit
+work remaining: **0**. The three excluded rows are not residual, pending,
+blocked, unfinished, or next work.
 
 ### External validation re-audit (not software-closure blockers)
 
-All five previously external checks now have exact live evidence. HF rows remain
-owner-de-scoped and are not counted as closed:
+All five previously external checks now have exact live evidence:
 
 | Gate | Disposition | Gate requirement / partial evidence |
 |---|---|---|
@@ -82,10 +82,18 @@ owner-de-scoped and are not counted as closed:
 | Protected-tag retag rejection | `closed` | `v-retag-smoke-20260729` force-update rejected HTTP 422; protected ref stayed unchanged; no release workflow matched |
 | Live Trivy-fail before `:latest` promotion | `closed` | expected-failure run [30512999822](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30512999822): Trivy rejected **23** fixed HIGH/CRITICAL findings; GHCR `:latest` digest stayed unchanged; temporary branch removed |
 | Process restart mid-delivery live smoke | `closed` | real child exit **97** after remote DataLens delivery; startup reconcile discovered/deleted **3/3** owned entries, session became `failed`, and no ownership rows remained |
-| Public HF Space | `owner-de-scoped` | Owner removed from closure; no sync/publish/decommission |
-| Live same-SHA demo-image rebuild (HF path) | `owner-de-scoped` | HF demo image de-scoped with HF; partial: one Demo image pass + frozen-lock unit |
+
+### Historical excluded accounting
+
+Rows 4, 21 и 23 исходной 24-row mapping сохраняют disposition token
+`owner-de-scoped` только для auditable accounting. Они исключены из current
+project scope, не входят в таблицу external validations и не являются
+remaining work. Поэтому итог — **21 closed + 3 excluded; active work 0**, а не
+«24 closed».
 
 ## Сохранённые локальные артефакты
 
-`Auto_BI.html` и `pres.html` оставлены без изменений и не входят в tracked
-product scope.
+`Auto_BI.html` и `pres.html` — намеренно поддерживаемые local
+evidence/presentation artifacts. Их обновляют локально вместе с current
+evidence, но они всегда остаются untracked: не добавлять в Git и не
+публиковать.

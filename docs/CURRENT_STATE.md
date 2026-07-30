@@ -15,8 +15,10 @@
 **Режим:** software release **v0.5.0** complete на exact `main`/tag SHA
 `e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`. Локальный/software closure scope
 закрыт; пять вынесенных external validations получили exact live evidence
-2026-07-29. HF Space остаётся `owner-de-scoped` (не mandatory). Scope и
-disposition — [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md).
+2026-07-29. Активная audit work = **0**. HF полностью исключён из current
+project scope и backlog; historical token `owner-de-scoped` сохраняется только
+для reconciliation исходных 24 строк. Scope и disposition —
+[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md).
 
 ## Продукт
 
@@ -28,7 +30,6 @@ disposition — [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md).
 | Greenplum live DWH | experimental | operator stand |
 | DataLens compile path | offline contracts **passed** | contract suite |
 | DataLens live stand | **`closed`** 2026-07-29: Mac-only self-hosted contract **15/15 passed**; текущий image seed использует workbook `z4wtz6tg5194o`, переданный через supported env override | experimental / non-default / **non-closure** |
-| Public HF demo | **`owner-de-scoped`** | not a project-closure target; **no** sync/publish/decommission. Last recorded evidence is **historical only**: Space served `0.4.0`, `demo_auto_only=false`, no capabilities (stale vs v0.5.0; not a verified current launch path) |
 
 ## Безопасность и runtime (plan_sol 1–4)
 
@@ -127,8 +128,9 @@ container cold start **6341 ms**, PID1 RSS **89.594 MiB**, cgroup memory
 
 Evidence: [operations/REAUDIT_plan_sol_23_07_26.md](operations/REAUDIT_plan_sol_23_07_26.md).
 Offline score **8.8/10** (was 8.2). Finding R1 fixed (SafeError test fake vs `build(spec, ctx)`).
-GHA / protected `v0.5.0` tag / package-image publish evidence complete. HF Space
-is **owner-de-scoped** (historical stale profile only; no sync/publish/decommission).
+GHA / protected `v0.5.0` tag / package-image publish evidence complete. Scope,
+live evidence и final accounting закрыты; excluded external demo paths не
+являются residual или current product path.
 
 ## Closure disposition
 
@@ -136,10 +138,11 @@ is **owner-de-scoped** (historical stale profile only; no sync/publish/decommiss
 Disposition tokens: `closed` / `owner-de-scoped` / `externally-blocked` /
 `still-open`; исходная 24-row mapping сохранена в root
 `plan_audit_closure_29_07.md`, а текущая disposition зафиксирована в
-[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md): **closed 21 · owner-de-scoped 3 ·
-externally-blocked 0 · still-open 0**. Software release v0.5.0 complete;
-локально actionable `still-open` строк **нет**. Exact live/manual checks without
-durable run evidence are **not** labelled `closed`.
+[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md): **closed 21 · excluded from scope 3
+(historical token `owner-de-scoped`) · externally-blocked 0 · still-open 0**.
+Software release v0.5.0 complete; локально actionable строк **нет**. Три
+excluded rows — не remaining, pending, blocked или next work. Exact live/manual
+checks without durable run evidence are **not** labelled `closed`.
 
 External validation re-audit (**completed with real runs; not software-release
 blockers**):
@@ -156,6 +159,9 @@ blockers**):
   `mistral-large-latest` прошёл **3/3** sentinel cases, **4** provider calls,
   **11,341** input + **1,491** output tokens, estimated cost **$0.007907** при
   hard cap **$1.50**;
+- protected-tag retag rejection — `closed`: force-update canary
+  `v-retag-smoke-20260729` отклонён GitHub с HTTP 422, protected ref не
+  изменился, release workflow не запускался;
 - live Trivy-fail before `:latest` — `closed`: run
   [30512999822](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30512999822)
   ожидаемо failed после отклонения **23** исправимых HIGH/CRITICAL findings;
@@ -164,12 +170,21 @@ blockers**):
   завершён через `os._exit(97)` после DataLens delivery и до pipeline commit;
   remote dashboard/URL подтверждены, startup reconcile обнаружил и удалил
   **3/3** owned artifacts, ownership ledger не был преждевременно записан,
-  session status = `failed`;
-- public HF Space — `owner-de-scoped` (removed from closure scope);
-- live same-SHA demo-image rebuild (HF path) — `owner-de-scoped` (with HF).
+  session status = `failed`.
+
+Historical rows 4, 21 и 23 имеют token `owner-de-scoped` только для сохранения
+24-row audit accounting. Они полностью исключены из current scope и не входят
+в external validation list или backlog.
 
 ## Что не является source of truth
 
-- Root `plan_*.md`, `audit_*.md`, `_NEXT_SESSION.md` — рабочие/внутренние (gitignore + hygiene gate).
+- Root `plan_*.md`, `audit_*.md` — execution history, не current backlog.
+- `_NEXT_SESSION.md` — актуальный session mirror; при расхождении побеждают
+  current Git state и эти tracked state docs.
 - `docs/PLAN.md` — **фаза 0–4 history**, не «что делать завтра».
 - Корневой `plan.md` — legacy public stub; prefer this file for current status.
+
+## Локальные presentation artifacts
+
+`Auto_BI.html` и `pres.html` намеренно поддерживаются и обновляются локально
+вместе с evidence. Они остаются untracked: не добавлять в Git и не публиковать.
