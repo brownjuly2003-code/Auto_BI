@@ -33,7 +33,7 @@ auto-only demo. Ниже — скриншоты и видео полного ц�
 
 ## Статус
 
-**Phase 0–4 + бэклог адекватности дашбордов (B1–B4) закрыты.** Работает end-to-end: текст/поля → spec → валидация → сборка дашборда. v1-стек (ClickHouse + Superset) live-проверен на v0.5.0; v2 (Greenplum/Greengage advisor/golden; DataLens) — offline evidence/contracts, DataLens live не гонялся (Mac-only stand отсутствует; experimental / non-default / non-closure); web UI с двумя режимами ввода, итерациями, Feasibility Advisor, заявками владельцу DM и панелью наблюдаемости.
+**Phase 0–4 + бэклог адекватности дашбордов (B1–B4) закрыты.** Работает end-to-end: текст/поля → spec → валидация → сборка дашборда. v1-стек (ClickHouse + Superset) live-проверен на v0.5.0; v2 (Greenplum/Greengage advisor/golden; DataLens) — offline evidence/contracts, DataLens live не гонялся (каталоги/конфиг Mac-стенда на месте; на read-only probe 2026-07-29 сервисы остановлены/не ready; exact live contract **not run**; experimental / non-default / non-closure); web UI с двумя режимами ввода, итерациями, Feasibility Advisor, заявками владельцу DM и панелью наблюдаемости.
 
 **Актуальное состояние и residual roadmap** — [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md). История фаз — [docs/PLAN.md](docs/PLAN.md). Полный env inventory (generated) — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md).
 

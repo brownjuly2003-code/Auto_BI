@@ -30,9 +30,9 @@ Space **не** входит в closing scope (owner-de-scoped).
 | Cumulative bounded mutation gate | `closed` 2026-07-29: настроенные production targets закреплены в CI, weak outcomes запрещены; snapshot evidence — в [operations/SLO.md](operations/SLO.md) |
 | Package-wide `mypy --strict auto_bi` | `closed` 2026-07-29: package-wide gate действует в обоих поддерживаемых CI jobs |
 | Live p50/p95, process-memory и cold-start campaign | `closed` 2026-07-29: descriptive CI samples from run [30481369602](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30481369602) — p50 2353.619 ms, p95 2359.740 ms, container cold start 6341 ms, PID1 RSS 89.594 MiB, cgroup memory 74.93 MiB (**descriptive CI samples, not production SLO guarantees**) |
-| Paid live-LLM canary | `externally-blocked`; **not run** — requires explicit owner budget approval + provider credential; optional validation, **non-closure** |
+| Paid live-LLM canary | `externally-blocked`; **not run** — credential Mistral заявлена владельцем; в tracked sentinel/runtime нет **прямого** Mistral provider и mapping секрета; tracked providers — `anthropic`/`gracekelly`; внешний маршрут GraceKelly→Mistral **не** верифицирован; exact live run not done; requires explicit owner budget approval; optional validation, **non-closure** |
 | DataLens offline contracts | `closed` (offline passed) |
-| DataLens live stand | `externally-blocked`; **not run** — Mac-only stand absent; experimental / non-default / **non-closure** (not a release or project-closure gate) |
+| DataLens live stand | `externally-blocked`; **not run** — каталоги/конфиг Mac-стенда на месте; на read-only probe 2026-07-29 сервисы остановлены/не ready; exact live contract не гонялся; experimental / non-default / **non-closure** (not a release or project-closure gate) |
 | Public HF demo vs closing SHA | `owner-de-scoped`: HF is **not** a project-closure target; **no** sync / publish / decommission. Last recorded live evidence is **historical only** — Space served **0.4.0**, `demo_auto_only=false`, no capabilities object (incompatible with v0.5.0; not a verified current demo path) |
 
 Новые функции вне этой таблицы по-прежнему требуют отдельного проекта.
@@ -72,8 +72,8 @@ must not be overclaimed as closed:
 
 | Gate | Disposition | Gate requirement / partial evidence |
 |---|---|---|
-| DataLens live | `externally-blocked` | Mac-only stand (absent); experimental / non-default; offline contracts GREEN |
-| Paid live-LLM canary/sentinel | `externally-blocked` | Explicit budget approval + provider credential |
+| DataLens live | `externally-blocked` | каталоги/конфиг Mac-стенда на месте; на read-only probe 2026-07-29 сервисы остановлены/не ready; exact live contract **not run**; старт стенда и stateful integration suite — только с отдельной explicit owner authorization; experimental / non-default; offline contracts GREEN |
+| Paid live-LLM canary/sentinel | `externally-blocked` | credential Mistral заявлена владельцем; в tracked sentinel/runtime нет **прямого** Mistral provider и mapping секрета; tracked providers — `anthropic`/`gracekelly`; внешний маршрут GraceKelly→Mistral **не** верифицирован; exact live run **not run**; explicit budget approval required |
 | Protected tag retag rejection smoke | `externally-blocked` | Intentional live retag of protected `v*`; partial: ruleset `19601122` active + successful `v0.5.0` create |
 | Live Trivy-fail before `:latest` promotion | `externally-blocked` | Intentional failing Trivy release experiment; partial: happy-path Trivy-before-push + offline scan-before-push graph |
 | Process restart mid-delivery live smoke | `externally-blocked` | Live BI/runtime process kill mid-delivery; partial: RR-4 in-process unit only |

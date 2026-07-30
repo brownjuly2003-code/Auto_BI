@@ -28,7 +28,7 @@
 | Greenplum advisor + golden | **offline contract in CI** | advisor GP + golden GP replay |
 | Greenplum live DWH | experimental | operator stand |
 | DataLens compile path | offline contracts **passed** | contract suite |
-| DataLens live stand | **`externally-blocked`** / **not run** (Mac-only stand absent) | experimental / non-default / **non-closure** |
+| DataLens live stand | **`externally-blocked`** / **not run** (каталоги/конфиг Mac-стенда на месте; на read-only probe 2026-07-29 сервисы остановлены/не ready; exact live contract не гонялся) | experimental / non-default / **non-closure** |
 | Public HF demo | **`owner-de-scoped`** | not a project-closure target; **no** sync/publish/decommission. Last recorded evidence is **historical only**: Space served `0.4.0`, `demo_auto_only=false`, no capabilities (stale vs v0.5.0; not a verified current launch path) |
 
 ## Безопасность и runtime (plan_sol 1–4)
@@ -132,9 +132,14 @@ durable run evidence are **not** labelled `closed`.
 Optional external validations (**not** software-closure blockers; **not**
 claimed completed):
 
-- DataLens live — `externally-blocked` (Mac-only stand absent; **not run**);
-- paid live-LLM canary/sentinel — `externally-blocked` (explicit budget approval
-  + provider credential; **not run**);
+- DataLens live — `externally-blocked` (каталоги/конфиг Mac-стенда на месте;
+  на read-only probe 2026-07-29 сервисы остановлены/не ready; exact live
+  contract **not run**);
+- paid live-LLM canary/sentinel — `externally-blocked` (credential Mistral
+  заявлена владельцем; в tracked sentinel/runtime нет **прямого** Mistral
+  provider и mapping секрета; tracked providers — `anthropic`/`gracekelly`;
+  внешний маршрут GraceKelly→Mistral **не** верифицирован; exact live run
+  **not run**; нужен explicit budget approval);
 - protected tag retag rejection smoke — `externally-blocked` (**not run**;
   ruleset active ≠ retag block proof);
 - live Trivy-fail before `:latest` — `externally-blocked` (**not run**;
