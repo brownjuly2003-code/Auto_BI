@@ -9,7 +9,17 @@
 
 ## Демо
 
-**Живое демо: <https://juliome20-auto-bi-demo.hf.space>** — публичная песочница (Hugging Face Space, один контейнер ClickHouse + Superset + Auto_BI): выберите витрину, соберите авто-обзор и откройте готовый дашборд в Superset без логина. Работает детерминированный путь без LLM; полный текстовый цикл — на видео ниже. Данные синтетические, всё пересоздаётся при рестарте (холодный старт ~3 мин).
+**Поддерживаемый путь без стенда:** офлайн golden path
+(`uv run python scripts/demo_golden_path.py`) — детерминированный IR/SQL/advisor
+без DWH, BI и LLM. Полный локальный запуск со своим API key —
+[docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md).
+
+Публичный Hugging Face Space
+(<https://juliome20-auto-bi-demo.hf.space>) **не** является verified/supported
+launch path для v0.5.0: last recorded live evidence is historical/stale
+(served `0.4.0`, `demo_auto_only=false`, no `health.capabilities`) and is
+incompatible with the current release. Do not treat it as a confirmed working
+auto-only demo. Ниже — скриншоты и видео полного цикла (архив UI), не live-assert.
 
 ![Auto_BI — полный цикл: текст → уточнение → спецификация + advisor → сборка → дашборд Superset](docs/screenshots/demo.gif)
 
@@ -62,7 +72,11 @@ Local-first — три ступени:
 uv run python scripts/demo_golden_path.py
 ```
 
-2. **HF Space** — детерминированный auto-only, пользовательский ключ не нужен; текстовый режим там намеренно недоступен (см. «Демо» выше).
+2. **HF Space (исторический, не supported)** — публичный Space больше не
+   verified launch path: last recorded profile is stale vs v0.5.0
+   (`0.4.0` / `demo_auto_only=false` / no capabilities). Не рассчитывать на
+   auto-only demo и не использовать как текущий onboarding. См. «Демо» выше;
+   вместо этого — golden path (п.1) или LOCAL_BYOK (п.3).
 
 3. **Полный локальный путь.** Пошагово со своим Anthropic-ключом — [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md). Скопируйте `.env.example` в `.env` (`cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`). Задайте свой `ANTHROPIC_API_KEY` **или** `AUTO_BI_LLM_PROVIDER=gracekelly` и `AUTO_BI_GRACEKELLY_URL`. Для DWH/BI — `AUTO_BI_CH_HOST`, `AUTO_BI_CH_PASSWORD`, `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_PASSWORD` (полный inventory — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md)). `docker compose up -d` поднимает **только ClickHouse и Superset**, не Auto_BI; агент локально: `auto_bi serve` → http://127.0.0.1:8200.
 

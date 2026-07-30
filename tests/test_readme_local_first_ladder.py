@@ -1,4 +1,7 @@
-"""Docs ratchet: README local-first ladder (offline → HF Space → full local).
+"""Docs ratchet: README local-first ladder under owner HF de-scope.
+
+Supported paths: offline golden path + full LOCAL_BYOK. HF Space is
+historical/not supported — not a verified current auto-only launch path.
 
 Pathlib-only: no app imports, no network, no Settings.
 """
@@ -21,14 +24,27 @@ def _howto_section() -> str:
 def test_readme_local_first_ladder() -> None:
     section = _howto_section()
 
+    # Offline golden path (supported).
     assert "uv run python scripts/demo_golden_path.py" in section
     assert "без DWH, BI, LLM и API-ключа" in section
 
+    # HF entry: historical / not supported (owner de-scope), not a working route.
     assert "HF Space" in section
+    assert "исторический" in section
+    assert "не supported" in section
+    assert "stale vs v0.5.0" in section
+    assert "0.4.0" in section
+    assert "demo_auto_only=false" in section
+    assert "no capabilities" in section
+    # Not a verified current auto-only launch / onboarding path.
     assert "auto-only" in section
-    assert "пользовательский ключ не нужен" in section
-    assert "текстовый режим там намеренно недоступен" in section
+    assert "onboarding" in section
 
+    # Negative: superseded claims that HF is a supported auto-only route.
+    assert "пользовательский ключ не нужен" not in section
+    assert "текстовый режим там намеренно недоступен" not in section
+
+    # Full LOCAL_BYOK path (supported).
     assert ".env.example" in section
     assert "cp .env.example .env" in section
     assert "Copy-Item .env.example .env" in section

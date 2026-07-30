@@ -12,11 +12,12 @@
 **Версия пакета:** см. `auto_bi.__version__` / `pyproject.toml` (ratchet в
 `tests/test_docs_defaults.py`).
 
-**Режим:** closure candidate (не fully closed). Software release **v0.5.0**
-complete на exact `main`/tag SHA
-`e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`. Закрываемый scope и residual —
-[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). Полное закрытие ждёт mandatory
-external gate: public HF demo sync to closing SHA or decommission.
+**Режим:** software release **v0.5.0** complete на exact `main`/tag SHA
+`e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`. Локальный/software closure scope
+закрыт; optional external validations (DataLens live, paid live-LLM) остаются
+`externally-blocked` и **не** блокируют software closure. HF Space —
+`owner-de-scoped` (не mandatory). Scope и disposition —
+[PROJECT_CLOSURE.md](PROJECT_CLOSURE.md).
 
 ## Продукт
 
@@ -27,8 +28,8 @@ external gate: public HF demo sync to closing SHA or decommission.
 | Greenplum advisor + golden | **offline contract in CI** | advisor GP + golden GP replay |
 | Greenplum live DWH | experimental | operator stand |
 | DataLens compile path | offline contracts **passed** | contract suite |
-| DataLens live stand | **experimental** / unavailable (Mac-only stand absent) | not default release gate |
-| Public HF demo | **out of sync** | health reports `0.4.0`, `demo_auto_only=false`, no capabilities; live assertion fails; v0.5.0 publish dry-run OK; sync blocked (no local `HF_TOKEN`, no repo HF secret/workflow). Gate: sync to closing SHA or decommission |
+| DataLens live stand | **`externally-blocked`** / **not run** (Mac-only stand absent) | experimental / non-default / **non-closure** |
+| Public HF demo | **`owner-de-scoped`** | not a project-closure target; **no** sync/publish/decommission. Last recorded evidence is **historical only**: Space served `0.4.0`, `demo_auto_only=false`, no capabilities (stale vs v0.5.0; not a verified current launch path) |
 
 ## Безопасность и runtime (plan_sol 1–4)
 
@@ -115,17 +116,33 @@ container cold start **6341 ms**, PID1 RSS **89.594 MiB**, cgroup memory
 
 Evidence: [operations/REAUDIT_plan_sol_23_07_26.md](operations/REAUDIT_plan_sol_23_07_26.md).
 Offline score **8.8/10** (was 8.2). Finding R1 fixed (SafeError test fake vs `build(spec, ctx)`).
-GHA / protected `v0.5.0` tag / package-image publish evidence complete. Remaining
-external residual: public HF demo sync to closing SHA or decommission (not
-decommissioned; sync blocked by missing HF token/secret/workflow).
+GHA / protected `v0.5.0` tag / package-image publish evidence complete. HF Space
+is **owner-de-scoped** (historical stale profile only; no sync/publish/decommission).
 
 ## Closure disposition
 
-Прежний open-ended residual больше не является активным backlog. Решения
-`closed` / `budget-gated` и split completed vs remaining external gates —
-в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md). Software release v0.5.0 complete;
-до mandatory HF gate статус остаётся `closure candidate`, а не `closed`.
-Paid live-LLM canary — budget-gated, **not run** (нет отдельного approved budget).
+Прежний open-ended residual больше не является активным local backlog.
+Disposition tokens: `closed` / `owner-de-scoped` / `externally-blocked` /
+`still-open` — в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md) и root
+`plan_audit_closure_29_07.md` (24-row mapping: **closed 16 · owner-de-scoped 3 ·
+externally-blocked 5 · still-open 0**). Software release v0.5.0 complete;
+локально actionable `still-open` строк **нет**. Exact live/manual checks without
+durable run evidence are **not** labelled `closed`.
+
+Optional external validations (**not** software-closure blockers; **not**
+claimed completed):
+
+- DataLens live — `externally-blocked` (Mac-only stand absent; **not run**);
+- paid live-LLM canary/sentinel — `externally-blocked` (explicit budget approval
+  + provider credential; **not run**);
+- protected tag retag rejection smoke — `externally-blocked` (**not run**;
+  ruleset active ≠ retag block proof);
+- live Trivy-fail before `:latest` — `externally-blocked` (**not run**;
+  happy-path Trivy ≠ intentional fail);
+- process restart mid-delivery live smoke — `externally-blocked` (**not run**;
+  RR-4 in-process unit only);
+- public HF Space — `owner-de-scoped` (removed from closure scope);
+- live same-SHA demo-image rebuild (HF path) — `owner-de-scoped` (with HF).
 
 ## Что не является source of truth
 

@@ -1,7 +1,8 @@
 # Project closure
 
 Дата фиксации scope: 2026-07-27. Владелец повторно открыл остаточные пункты
-аудита для финального closure-прохода 2026-07-29.
+аудита для финального closure-прохода 2026-07-29. Docs-only reconciliation
+24 historical rows — 2026-07-29 (branch `release/verify-v0.5.0-20260729`).
 
 ## Закрываемый scope
 
@@ -15,8 +16,9 @@
 - golden/advisor replay, offline browser E2E, backup/restore и docs-as-code;
 - текущий cumulative bounded mutation gate и package-wide `mypy --strict auto_bi`.
 
-После финальной публикации этот scope считается feature-frozen. Новые функции и
-исследовательские расширения не являются незакрытым долгом проекта.
+После software release **v0.5.0** этот scope feature-frozen. Новые функции и
+исследовательские расширения не являются незакрытым долгом проекта. Hugging Face
+Space **не** входит в closing scope (owner-de-scoped).
 
 ## Финальное решение по прежним residual
 
@@ -28,13 +30,14 @@
 | Cumulative bounded mutation gate | `closed` 2026-07-29: настроенные production targets закреплены в CI, weak outcomes запрещены; snapshot evidence — в [operations/SLO.md](operations/SLO.md) |
 | Package-wide `mypy --strict auto_bi` | `closed` 2026-07-29: package-wide gate действует в обоих поддерживаемых CI jobs |
 | Live p50/p95, process-memory и cold-start campaign | `closed` 2026-07-29: descriptive CI samples from run [30481369602](https://github.com/brownjuly2003-code/Auto_BI/actions/runs/30481369602) — p50 2353.619 ms, p95 2359.740 ms, container cold start 6341 ms, PID1 RSS 89.594 MiB, cgroup memory 74.93 MiB (**descriptive CI samples, not production SLO guarantees**) |
-| Paid live-LLM canary | `budget-gated`; **not run** — нет отдельного approved budget; запускать только после явного лимита расходов |
-| DataLens offline contracts | `closed` (offline passed); live stand unavailable (Mac-only stand absent); experimental / non-default release gate |
-| Public HF demo vs closing SHA | `active closure work` / mandatory external gate: live health reports version **0.4.0**, `demo_auto_only=false`, no capabilities object; live assertion fails; v0.5.0 publish dry-run succeeds; actual sync blocked (no local `HF_TOKEN`, no repository HF secret/workflow). **Sync to closing SHA or decommission** — do not decommission in this pass |
+| Paid live-LLM canary | `externally-blocked`; **not run** — requires explicit owner budget approval + provider credential; optional validation, **non-closure** |
+| DataLens offline contracts | `closed` (offline passed) |
+| DataLens live stand | `externally-blocked`; **not run** — Mac-only stand absent; experimental / non-default / **non-closure** (not a release or project-closure gate) |
+| Public HF demo vs closing SHA | `owner-de-scoped`: HF is **not** a project-closure target; **no** sync / publish / decommission. Last recorded live evidence is **historical only** — Space served **0.4.0**, `demo_auto_only=false`, no capabilities object (incompatible with v0.5.0; not a verified current demo path) |
 
 Новые функции вне этой таблицы по-прежнему требуют отдельного проекта.
 
-## Внешние closure gates
+## Software release vs optional external validation
 
 ### Completed (software release v0.5.0)
 
@@ -55,14 +58,27 @@ Exact `main`/tag SHA: `e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`.
 - `main` and `v*` tag rulesets active without bypass;
 - live Superset/browser integration passed.
 
-### Remaining mandatory gate
+Software/local audit closure: **complete** for the v1 path above where exact
+live/manual checks have durable run evidence. Mapping of the 24 historical
+plan_sol residual rows — root `plan_audit_closure_29_07.md`
+(counts: `closed` 16 · `owner-de-scoped` 3 · `externally-blocked` 5 ·
+`still-open` 0). No locally actionable `still-open` residual remains.
+Unperformed optional live/manual validations are **not** claimed completed.
 
-Проект остаётся **closure candidate**, не fully closed, пока:
+### Optional external validation (not software-closure blockers)
 
-- public HF demo **не** синхронизирован с closing SHA (и live assertion fails на
-  stale 0.4.0 profile). Mandatory: **sync to closing SHA or decommission**.
-  Sync currently blocked by missing HF token/secret/workflow; decommission not
-  performed.
+These exact live/manual checks were **not** run (or are owner-de-scoped) and
+must not be overclaimed as closed:
+
+| Gate | Disposition | Gate requirement / partial evidence |
+|---|---|---|
+| DataLens live | `externally-blocked` | Mac-only stand (absent); experimental / non-default; offline contracts GREEN |
+| Paid live-LLM canary/sentinel | `externally-blocked` | Explicit budget approval + provider credential |
+| Protected tag retag rejection smoke | `externally-blocked` | Intentional live retag of protected `v*`; partial: ruleset `19601122` active + successful `v0.5.0` create |
+| Live Trivy-fail before `:latest` promotion | `externally-blocked` | Intentional failing Trivy release experiment; partial: happy-path Trivy-before-push + offline scan-before-push graph |
+| Process restart mid-delivery live smoke | `externally-blocked` | Live BI/runtime process kill mid-delivery; partial: RR-4 in-process unit only |
+| Public HF Space | `owner-de-scoped` | Owner removed from closure; no sync/publish/decommission |
+| Live same-SHA demo-image rebuild (HF path) | `owner-de-scoped` | HF demo image de-scoped with HF; partial: one Demo image pass + frozen-lock unit |
 
 ## Сохранённые локальные артефакты
 
