@@ -281,3 +281,23 @@ def test_example_and_budget_table_cover_mistral() -> None:
     assert "AUTO_BI_MISTRAL_MODEL=mistral-large-latest" in env_example
     prices = Settings(_env_file=None).llm_budget_prices
     assert "mistral-large-latest:0.0005/0.0015" in prices
+
+
+def test_cli_hosted_llm_readiness_message_uses_configured_provider() -> None:
+    """llm_healthcheck must label the actual hosted provider, not hardcode anthropic.
+
+    Nested closure in serve wiring — source-ratchet (same style as workflow checks above).
+    """
+    source = (REPO / "auto_bi" / "cli.py").read_text(encoding="utf-8")
+    assert 'message="anthropic: no live check (avoids token cost)"' not in source
+    assert 'message=f"{provider}: no live check (avoids token cost)"' in source
+    assert "provider = settings.llm_provider.strip().lower()" in source
+
+
+def test_auto_bi_prefixed_mistral_key_alias_populates_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    monkeypatch.setenv("AUTO_BI_MISTRAL_API_KEY", "test-auto-bi-mistral-key")
+    settings = Settings(_env_file=None)
+    assert settings.mistral_api_key == "test-auto-bi-mistral-key"

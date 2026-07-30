@@ -27,7 +27,7 @@ Fixture files: one JSON file per case, `<fixtures_dir>/<case_id>.json` (format v
       "format_version": 2,
       "template_version": "<16 hex of prompt templates>",
       "schema_version": "<16 hex of IR JSON schemas>",
-      "provider": "anthropic|gracekelly|fixture-refresh|...",
+      "provider": "anthropic|mistral|gracekelly|fixture-refresh|...",
       "model_id": "...",
       "calls": [
         {"step": "...", "schema": "...", "prompt_sha256": "...", "response": {...}}
