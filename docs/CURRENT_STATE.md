@@ -42,6 +42,12 @@
 
 - GitHub `main` + `v*` tag rulesets **active without bypass**; Dependabot open
   queue empty after sequential disposition.
+- Protected-tag mutation rejection **live-проверен 2026-07-29**: canary
+  [`v-retag-smoke-20260729`](https://github.com/brownjuly2003-code/Auto_BI/tree/v-retag-smoke-20260729)
+  создан на remote `main` `13fc855`; попытка force-update на другой remote
+  object отклонена GitHub с HTTP 422 (`Cannot update this protected ref` /
+  `Cannot force-push to this tag`), ref остался неизменным; release workflow
+  для canary не запускался.
 - **v0.5.0 external evidence (complete):**
   - post-merge CI, CodeQL, Gitleaks, Demo image — passed on closing SHA
     `e78076d2d00ddc1748bf6e22f13cf7cb93fc6515`;
@@ -124,8 +130,8 @@ is **owner-de-scoped** (historical stale profile only; no sync/publish/decommiss
 Прежний open-ended residual больше не является активным local backlog.
 Disposition tokens: `closed` / `owner-de-scoped` / `externally-blocked` /
 `still-open` — в [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md) и root
-`plan_audit_closure_29_07.md` (24-row mapping: **closed 16 · owner-de-scoped 3 ·
-externally-blocked 5 · still-open 0**). Software release v0.5.0 complete;
+`plan_audit_closure_29_07.md` (24-row re-audit: **closed 17 · owner-de-scoped 3 ·
+externally-blocked 4 · still-open 0**). Software release v0.5.0 complete;
 локально actionable `still-open` строк **нет**. Exact live/manual checks without
 durable run evidence are **not** labelled `closed`.
 
@@ -133,19 +139,25 @@ Optional external validations (**not** software-closure blockers; **not**
 claimed completed):
 
 - DataLens live — `externally-blocked` (каталоги/конфиг Mac-стенда на месте;
-  на read-only probe 2026-07-29 сервисы остановлены/не ready; exact live
-  contract **not run**);
+  container runtime остановлен; exact live contract **not run**. Launch
+  разрешён, но Mac process table исчерпан: 1210 zombie-процессов, 1198 из них
+  принадлежат unrelated `~/atv2/main.py`; `limactl`/shell получают
+  `fork: Resource temporarily unavailable`. Нужна owner-authorized очистка
+  unrelated process или reboot);
 - paid live-LLM canary/sentinel — `externally-blocked` (credential Mistral
   предоставлена владельцем; direct Mistral runtime route и sentinel secret
-  mapping реализованы и offline-проверены; значение credential не
-  инспектировалось, а live routing/API invocation **not run**; нужен числовой
-  budget cap);
-- protected tag retag rejection smoke — `externally-blocked` (**not run**;
-  ruleset active ≠ retag block proof);
+  mapping реализованы и offline-проверены. Boolean-check не нашёл binding в
+  текущем process/User/Machine/.env или GitHub Actions secrets; это проблема
+  маршрутизации уже предоставленного credential, не заявление об отсутствии
+  credential. Значение не инспектировалось; live API invocation **not run**;
+  нужен числовой budget cap);
 - live Trivy-fail before `:latest` — `externally-blocked` (**not run**;
+  tracked release workflow tag-only, без `workflow_dispatch`/fault injection;
+  при запрете push безопасно запустить exact remote failure-path нельзя;
   happy-path Trivy ≠ intentional fail);
 - process restart mid-delivery live smoke — `externally-blocked` (**not run**;
-  RR-4 in-process unit only);
+  на Windows container runtime отсутствует, а Mac live-BI runtime блокирован
+  тем же process-table exhaustion; RR-4 in-process unit only);
 - public HF Space — `owner-de-scoped` (removed from closure scope);
 - live same-SHA demo-image rebuild (HF path) — `owner-de-scoped` (with HF).
 
