@@ -208,7 +208,7 @@ Factory — единственное место выбора конкретно�
 contracts закреплены unit и live contract tests. Crash-recovery contract:
 [ADR 0002](adr/0002-durable-build-attempt-reconciliation.md).
 
-### 3.6 LLM Layer — Anthropic (default) + GraceKelly (opt-in)
+### 3.6 LLM Layer — Anthropic (default) + Mistral / GraceKelly (opt-in)
 
 Agent core зависит только от:
 
@@ -216,7 +216,8 @@ Agent core зависит только от:
 LLMClient.complete(prompt, schema) -> ValidatedModel
 ```
 
-Factory выбирает direct Anthropic Messages API или локальный GraceKelly.
+Factory выбирает direct Anthropic Messages API, direct Mistral Chat Completions
+API или локальный GraceKelly.
 Structured repair loop общий: JSON extraction, Pydantic validation, bounded
 feedback retries и durable call logging.
 
@@ -442,7 +443,7 @@ Superset guard проверяет фактически исполняемый so
 |---|---|---|
 | D1 | IR-first | Мульти-BI остаётся тестируемым и управляемым |
 | D2 | Superset primary, DataLens secondary | Два реальных адаптера на общей границе |
-| D3 | `LLMClient` с direct Anthropic default | Внешняя установка не зависит от локального orchestration service |
+| D3 | `LLMClient` с direct Anthropic default и direct Mistral option | Внешняя установка не зависит от локального orchestration service |
 | D4 | Semantic model в versioned YAML | Review, diff и ручное владение семантикой |
 | D5 | LLM думает, код исполняет | Валидация и native payloads остаются детерминированными |
 | D6 | Python, FastAPI, Pydantic, sqlglot, httpx | Простая state machine не требует тяжёлого agent framework |

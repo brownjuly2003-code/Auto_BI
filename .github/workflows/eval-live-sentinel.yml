@@ -59,13 +59,15 @@ jobs:
         id: gate
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          AUTO_BI_MISTRAL_API_KEY: ${{ secrets.AUTO_BI_MISTRAL_API_KEY }}
           AUTO_BI_GRACEKELLY_URL: ${{ secrets.AUTO_BI_GRACEKELLY_URL }}
         run: |
-          if [ -n "${ANTHROPIC_API_KEY}" ] || [ -n "${AUTO_BI_GRACEKELLY_URL}" ]; then
+          if [ -n "${MISTRAL_API_KEY}" ] || [ -n "${AUTO_BI_MISTRAL_API_KEY}" ] || [ -n "${ANTHROPIC_API_KEY}" ] || [ -n "${AUTO_BI_GRACEKELLY_URL}" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "No ANTHROPIC_API_KEY / AUTO_BI_GRACEKELLY_URL secret — sentinel skipped (offline replay still gates quality)."
+            echo "No Mistral / Anthropic / GraceKelly credential secret — sentinel skipped (offline replay still gates quality)."
           fi
 
       - name: Install uv
@@ -84,11 +86,22 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          AUTO_BI_MISTRAL_API_KEY: ${{ secrets.AUTO_BI_MISTRAL_API_KEY }}
           AUTO_BI_LLM_PROVIDER: ${{ secrets.AUTO_BI_LLM_PROVIDER }}
           AUTO_BI_GRACEKELLY_URL: ${{ secrets.AUTO_BI_GRACEKELLY_URL }}
           AUTO_BI_GRACEKELLY_MODEL: ${{ secrets.AUTO_BI_GRACEKELLY_MODEL }}
+          AUTO_BI_MISTRAL_MODEL: ${{ secrets.AUTO_BI_MISTRAL_MODEL }}
         run: |
-          export AUTO_BI_LLM_PROVIDER="${AUTO_BI_LLM_PROVIDER:-anthropic}"
+          if [ -z "${AUTO_BI_LLM_PROVIDER}" ]; then
+            if [ -n "${MISTRAL_API_KEY}" ] || [ -n "${AUTO_BI_MISTRAL_API_KEY}" ]; then
+              export AUTO_BI_LLM_PROVIDER="mistral"
+            elif [ -n "${ANTHROPIC_API_KEY}" ]; then
+              export AUTO_BI_LLM_PROVIDER="anthropic"
+            else
+              export AUTO_BI_LLM_PROVIDER="gracekelly"
+            fi
+          fi
           uv run auto_bi eval \
             --suite golden \
             --llm-mode live \

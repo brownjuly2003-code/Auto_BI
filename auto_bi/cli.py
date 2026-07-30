@@ -1010,9 +1010,11 @@ def _eval(
             store = Store(settings.store_path)
             live_llm = make_llm(settings, store=store)
             provider = settings.llm_provider.strip().lower()
-            model_id = (
-                settings.gracekelly_model if provider == "gracekelly" else settings.anthropic_model
-            )
+            model_id = {
+                "gracekelly": settings.gracekelly_model,
+                "anthropic": settings.anthropic_model,
+                "mistral": settings.mistral_model,
+            }.get(provider, provider)
             provider_detail = (
                 f"{settings.gracekelly_url}, {model_id}" if provider == "gracekelly" else model_id
             )

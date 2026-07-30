@@ -136,10 +136,10 @@ claimed completed):
   на read-only probe 2026-07-29 сервисы остановлены/не ready; exact live
   contract **not run**);
 - paid live-LLM canary/sentinel — `externally-blocked` (credential Mistral
-  заявлена владельцем; в tracked sentinel/runtime нет **прямого** Mistral
-  provider и mapping секрета; tracked providers — `anthropic`/`gracekelly`;
-  внешний маршрут GraceKelly→Mistral **не** верифицирован; exact live run
-  **not run**; нужен explicit budget approval);
+  предоставлена владельцем; direct Mistral runtime route и sentinel secret
+  mapping реализованы и offline-проверены; значение credential не
+  инспектировалось, а live routing/API invocation **not run**; нужен числовой
+  budget cap);
 - protected tag retag rejection smoke — `externally-blocked` (**not run**;
   ruleset active ≠ retag block proof);
 - live Trivy-fail before `:latest` — `externally-blocked` (**not run**;

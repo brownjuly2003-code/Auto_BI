@@ -5,7 +5,7 @@
 Агент «запрос → дашборд» поверх DM-слоя DWH. Принимает запрос **текстом, drag&drop-раскладкой полей витрин или авто-обзором витрины** (детерминированный курируемый дашборд без LLM), уточняет детали только при реальных расхождениях с данными, честно предупреждает о не предусмотренных витриной паттернах (engine-aware **Feasibility Advisor** — вплоть до «это запрос на новую витрину»), строит дашборд в выбранной BI и возвращает ссылку.
 
 **Скоуп v1 (RU-рынок, release-gated в CI):** ClickHouse (DM) + Apache Superset (BI). **v2 experimental:** Greengage/Greenplum (offline advisor/golden в CI; live DWH — operator stand) + Yandex DataLens (unit compile offline; live contract Mac-only, не default release gate). Универсальность — в швах (IR, адаптеры), не в имплементации.
-**LLM:** прямой Anthropic Messages API (по умолчанию — нужен только `ANTHROPIC_API_KEY`); локальный сервис GraceKelly — документированная опция (`AUTO_BI_LLM_PROVIDER=gracekelly`, см. [USER_GUIDE §6](docs/USER_GUIDE.md#6-конфигурация-переменные-окружения)).
+**LLM:** прямой Anthropic Messages API по умолчанию; прямой Mistral Chat Completions (`AUTO_BI_LLM_PROVIDER=mistral`, `MISTRAL_API_KEY`) и локальный сервис GraceKelly — документированные опции (см. [USER_GUIDE §6](docs/USER_GUIDE.md#6-конфигурация-переменные-окружения)).
 
 ## Демо
 
@@ -78,7 +78,7 @@ uv run python scripts/demo_golden_path.py
    auto-only demo и не использовать как текущий onboarding. См. «Демо» выше;
    вместо этого — golden path (п.1) или LOCAL_BYOK (п.3).
 
-3. **Полный локальный путь.** Пошагово со своим Anthropic-ключом — [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md). Скопируйте `.env.example` в `.env` (`cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`). Задайте свой `ANTHROPIC_API_KEY` **или** `AUTO_BI_LLM_PROVIDER=gracekelly` и `AUTO_BI_GRACEKELLY_URL`. Для DWH/BI — `AUTO_BI_CH_HOST`, `AUTO_BI_CH_PASSWORD`, `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_PASSWORD` (полный inventory — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md)). `docker compose up -d` поднимает **только ClickHouse и Superset**, не Auto_BI; агент локально: `auto_bi serve` → http://127.0.0.1:8200.
+3. **Полный локальный путь.** Пошаговый Anthropic-пример — [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md). Скопируйте `.env.example` в `.env` (`cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`). Задайте свой `ANTHROPIC_API_KEY`; либо `AUTO_BI_LLM_PROVIDER=mistral` + `MISTRAL_API_KEY`; либо `AUTO_BI_LLM_PROVIDER=gracekelly` + `AUTO_BI_GRACEKELLY_URL`. Для DWH/BI — `AUTO_BI_CH_HOST`, `AUTO_BI_CH_PASSWORD`, `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_PASSWORD` (полный inventory — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md)). `docker compose up -d` поднимает **только ClickHouse и Superset**, не Auto_BI; агент локально: `auto_bi serve` → http://127.0.0.1:8200.
 
 ```bash
 pip install autobi-agent                          # или pip install -e . из корня репозитория
