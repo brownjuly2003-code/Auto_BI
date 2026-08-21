@@ -1,5 +1,9 @@
 # Auto_BI — текущее состояние
 
+> В `Auto_BI_new` это состояние унаследованного v1 baseline. Текущее состояние
+> нового проекта находится в
+> [DECISIONOPS_CURRENT_STATE.md](DECISIONOPS_CURRENT_STATE.md).
+>
 Единая точка входа «что сейчас правда» для операторов и агентов.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — текущий дизайн и обязательные инварианты.

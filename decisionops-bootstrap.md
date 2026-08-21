@@ -1,0 +1,51 @@
+# DecisionOps Release Gate bootstrap
+
+## Goal
+
+Поставить one-shot Analytics Release & Evidence Gate поверх проверенного
+Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation контракта
+`BIAdapter`.
+
+## Tasks
+
+- [x] Зафиксировать fork, baseline, целевую архитектуру и ADR → Verify: source
+  checkout неизменён, target без remote, strategy hash совпадает.
+- [ ] Добавить strict contract kernel в `auto_bi/decision`,
+  `auto_bi/semantic/metric_contract.py` и `auto_bi/evidence` → Verify: сначала
+  failing tests, затем round-trip, unknown-field rejection и version-ref tests.
+- [ ] Реализовать `decision validate` для Git-tracked YAML → Verify: valid
+  weekly-margin fixture даёт exit 0, malformed/unknown refs дают стабильный
+  non-zero exit без DWH/BI/LLM.
+- [ ] Реализовать native `SemanticSource` snapshot и semantic diff → Verify:
+  seeded formula/grain/time/policy/removal changes дают ожидаемый impact до
+  metric, chart, product и owner.
+- [ ] Добавить Verified Asset Repository и typed result comparator → Verify:
+  row-order, decimal tolerance, null/zero/missing и truncated-result fixtures.
+- [ ] Собрать content-addressed EvidenceBundle → Verify: deterministic digest,
+  dangling `evidence_ref` rejection, path confinement и redaction tests.
+- [ ] Реализовать one-shot `decision verify` и pure Superset/DataLens compile
+  contracts → Verify: four breaking seeds block, presentation-only change
+  passes, mutation-spy подтверждает ноль remote creates.
+- [ ] Провести pilot gate на одном реальном change → Verify: owner impact точен,
+  review time измерен, evidence понятен владельцу; только затем решать вопрос о
+  certified brief и recurring runs.
+
+## Critical path
+
+```text
+contracts -> validate -> semantic diff -> VQR/result compare
+          -> evidence bundle -> release gate -> pilot evidence
+```
+
+## Done When
+
+- [ ] Все critical seeded regressions блокируются, safe change не блокируется.
+- [ ] Supported results reconciled и каждый factual claim имеет evidence.
+- [ ] Release gate не мутирует BI/DWH и запускается offline на fixtures.
+- [ ] Существующий v1 focused/full release gate остаётся зелёным.
+- [ ] Есть измеренный pilot outcome или честное решение сузить/остановить scope.
+
+## Non-goals до pilot evidence
+
+Новый dashboard editor, новые BI/DWH adapters, generic multi-agent framework,
+PostgreSQL rewrite, scheduler, MCP, write-actions и causal claims.

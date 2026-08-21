@@ -1,4 +1,20 @@
-# Auto_BI
+# Auto_BI DecisionOps
+
+Новый проект на проверенном baseline Auto_BI v0.5.0. Цель — self-hosted
+control plane для выпуска проверяемых аналитических продуктов; первый
+вертикальный продукт — **Analytics Release & Evidence Gate**.
+
+Текущий статус — архитектурный bootstrap: DecisionOps runtime и команды
+`auto_bi decision ...` ещё не реализованы, а унаследованный v1 runtime сохранён
+без функциональных изменений.
+
+- [Текущее состояние DecisionOps](docs/DECISIONOPS_CURRENT_STATE.md)
+- [Целевая архитектура](docs/DECISIONOPS_ARCHITECTURE.md)
+- [ADR: отдельный additive fork](docs/adr/0003-decisionops-additive-control-plane.md)
+- [План bootstrap](decisionops-bootstrap.md)
+- [Исходный стратегический срез](decisionops-strategy-2026-08-21.md)
+
+## Auto_BI v0.5.0 baseline
 
 [![CI](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml/badge.svg)](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/brownjuly2003-code/Auto_BI/main/.github/badges/coverage.json) ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![BI targets](https://img.shields.io/badge/BI-Superset_+_DataLens-1FA8C9) ![DWH](https://img.shields.io/badge/DWH-ClickHouse_+_Greenplum-FACC15) ![License](https://img.shields.io/badge/license-MIT-blue)
 

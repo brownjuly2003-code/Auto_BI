@@ -4,3 +4,7 @@
 Dockerfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.md text eol=lf
+
+# Frozen research input preserves the source's intentional Markdown hard breaks.
+decisionops-strategy-2026-08-21.md whitespace=-blank-at-eol
