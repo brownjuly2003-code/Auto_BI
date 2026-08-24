@@ -200,6 +200,7 @@ auto_bi/
   decision/
     spec.py              DecisionProductSpec и lifecycle enums
     validate.py          cross-contract validation
+    impact.py            product/owner impact и эскалация review→block
     use_cases.py         validate / verify application services
   semantic/
     metric_contract.py   governed metric definition

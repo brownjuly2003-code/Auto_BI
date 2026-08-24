@@ -16,7 +16,7 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
 - [x] Реализовать `decision validate` для Git-tracked YAML → Verify: valid
   weekly-margin fixture даёт exit 0, malformed/unknown refs дают стабильный
   non-zero exit без DWH/BI/LLM.
-- [ ] Реализовать native `SemanticSource` snapshot и semantic diff → Verify:
+- [x] Реализовать native `SemanticSource` snapshot и semantic diff → Verify:
   seeded formula/grain/time/policy/removal changes дают ожидаемый impact до
   metric, chart, product и owner.
 - [ ] Добавить Verified Asset Repository и typed result comparator → Verify:

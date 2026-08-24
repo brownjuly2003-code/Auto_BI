@@ -1,0 +1,550 @@
+"""Semantic diff between two snapshots (DECISIONOPS_ARCHITECTURE §8.3).
+
+Every difference gets a stable code and a default classification. The rules are the ones in
+§8.3, and the reasoning behind them is uniform: what is *gone* blocks (nothing downstream
+can be re-derived from it), what *changes a number's meaning* — formula, grain, event time,
+unit, additivity — needs review until impact says whether anything depends on it, what
+*weakens a policy or classification* blocks as a security finding, and what changes only a
+label is advisory.
+
+The escalation from `review` to `block` happens one layer up, in
+`auto_bi/decision/impact.py`, because it needs the decision products — and `semantic` does
+not import `decision` (§5). Here impact stops at the metric: which metrics a changed field
+feeds is knowable from the graph alone.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
+from enum import StrEnum
+
+from pydantic import Field
+
+from auto_bi.scalars import Sha256Digest
+from auto_bi.semantic.gateway import (
+    FieldNode,
+    MetricNode,
+    SemanticGraph,
+    SemanticSnapshot,
+    TableNode,
+)
+from auto_bi.semantic.model import DataClassification
+from auto_bi.severity import Severity
+from auto_bi.strict import StrictModel
+
+# Sensitivity ladder: moving down it is a weakening, which is a security finding (§8.3).
+_CLASSIFICATION_RANK: dict[DataClassification, int] = {
+    DataClassification.PUBLIC: 0,
+    DataClassification.INTERNAL: 1,
+    DataClassification.CONFIDENTIAL: 2,
+    DataClassification.RESTRICTED: 3,
+}
+
+# Lifecycle order; moving towards retirement is a question for a human, moving back is not.
+_LIFECYCLE_RANK = {"draft": 0, "active": 1, "deprecated": 2, "retired": 3}
+
+_PHYSICAL_ATTRS = ("engine", "table_engine", "sorting_key", "distribution_key", "partition_key")
+
+
+class ChangeKind(StrEnum):
+    ADDED = "added"
+    REMOVED = "removed"
+    MODIFIED = "modified"
+
+
+class SemanticImpact(StrictModel):
+    """What the change reaches inside the semantic graph."""
+
+    fields: list[str] = Field(default_factory=list)
+    metrics: list[str] = Field(default_factory=list)
+
+
+class SemanticChange(StrictModel):
+    code: str = Field(min_length=1)
+    kind: ChangeKind
+    severity: Severity
+    subject: str = Field(min_length=1)
+    detail: str = Field(min_length=1)
+    impact: SemanticImpact = Field(default_factory=SemanticImpact)
+
+
+class SemanticDiff(StrictModel):
+    base_digest: Sha256Digest
+    candidate_digest: Sha256Digest
+    changes: list[SemanticChange] = Field(default_factory=list)
+
+
+def diff_snapshots(base: SemanticSnapshot, candidate: SemanticSnapshot) -> SemanticDiff:
+    """Classify every difference between *base* and *candidate*."""
+    metrics = _metric_index(base.graph, candidate.graph)
+    changes: list[SemanticChange] = []
+    changes.extend(_diff_tables(base.graph, candidate.graph, metrics))
+    changes.extend(_diff_fields(base.graph, candidate.graph, metrics))
+    changes.extend(_diff_joins(base.graph, candidate.graph))
+    changes.extend(_diff_metrics(base.graph, candidate.graph))
+    changes.extend(_diff_gaps(base, candidate))
+    return SemanticDiff(
+        base_digest=base.canonical_digest,
+        candidate_digest=candidate.canonical_digest,
+        changes=changes,
+    )
+
+
+def _metric_index(base: SemanticGraph, candidate: SemanticGraph) -> list[MetricNode]:
+    """Metrics from both sides — a removal must still find the metrics it fed."""
+    merged = {node.id: node for node in base.metrics}
+    merged.update({node.id: node for node in candidate.metrics})
+    return [merged[key] for key in sorted(merged)]
+
+
+def _metrics_using_field(field_id: str, metrics: Sequence[MetricNode]) -> list[str]:
+    hits = []
+    for metric in metrics:
+        dimension_fields = {f"{metric.grain.table}.{name}" for name in metric.dimensions}
+        if field_id in metric.fields or field_id in dimension_fields:
+            hits.append(metric.id)
+    return sorted(hits)
+
+
+def _metrics_on_table(table_id: str, metrics: Sequence[MetricNode]) -> list[str]:
+    prefix = f"{table_id}."
+    return sorted(
+        metric.id
+        for metric in metrics
+        if metric.grain.table == table_id or any(f.startswith(prefix) for f in metric.fields)
+    )
+
+
+def _diff_tables(
+    base: SemanticGraph, candidate: SemanticGraph, metrics: Sequence[MetricNode]
+) -> list[SemanticChange]:
+    before = {node.id: node for node in base.tables}
+    after = {node.id: node for node in candidate.tables}
+    changes: list[SemanticChange] = []
+    for table_id in sorted(set(before) | set(after)):
+        old, new = before.get(table_id), after.get(table_id)
+        impact = SemanticImpact(metrics=_metrics_on_table(table_id, metrics))
+        if old is None and new is not None:
+            changes.append(
+                _change("table.added", ChangeKind.ADDED, Severity.ADVISORY, table_id, "new table")
+            )
+        elif new is None and old is not None:
+            changes.append(
+                _change(
+                    "table.removed",
+                    ChangeKind.REMOVED,
+                    Severity.BLOCK,
+                    table_id,
+                    "table is gone from the semantic model",
+                    impact,
+                )
+            )
+        elif old is not None and new is not None:
+            changes.extend(_diff_table_attrs(old, new, impact))
+    return changes
+
+
+def _diff_table_attrs(
+    old: TableNode, new: TableNode, impact: SemanticImpact
+) -> list[SemanticChange]:
+    changes: list[SemanticChange] = []
+    if old.grain != new.grain:
+        changes.append(
+            _change(
+                "table.grain_changed",
+                ChangeKind.MODIFIED,
+                Severity.REVIEW,
+                new.id,
+                f"grain {old.grain} -> {new.grain}",
+                impact,
+            )
+        )
+    changes.extend(
+        _classification_change("table", old.id, old.classification, new.classification, impact)
+    )
+    if old.description != new.description:
+        changes.append(
+            _change(
+                "table.description_changed",
+                ChangeKind.MODIFIED,
+                Severity.ADVISORY,
+                new.id,
+                "description changed",
+            )
+        )
+    physical = [attr for attr in _PHYSICAL_ATTRS if getattr(old, attr) != getattr(new, attr)]
+    if physical:
+        changes.append(
+            _change(
+                "physical.keys_changed",
+                ChangeKind.MODIFIED,
+                Severity.REVIEW,
+                new.id,
+                f"physical layout changed ({', '.join(physical)}): re-run the physical gate",
+                impact,
+            )
+        )
+    return changes
+
+
+def _diff_fields(
+    base: SemanticGraph, candidate: SemanticGraph, metrics: Sequence[MetricNode]
+) -> list[SemanticChange]:
+    before = {node.id: node for node in base.fields}
+    after = {node.id: node for node in candidate.fields}
+    changes: list[SemanticChange] = []
+    for field_id in sorted(set(before) | set(after)):
+        old, new = before.get(field_id), after.get(field_id)
+        impact = SemanticImpact(fields=[field_id], metrics=_metrics_using_field(field_id, metrics))
+        if old is None and new is not None:
+            changes.append(
+                _change(
+                    "field.added",
+                    ChangeKind.ADDED,
+                    Severity.ADVISORY,
+                    field_id,
+                    f"new {new.role.value} field",
+                    SemanticImpact(fields=[field_id]),
+                )
+            )
+        elif new is None and old is not None:
+            changes.append(
+                _change(
+                    "field.removed",
+                    ChangeKind.REMOVED,
+                    Severity.BLOCK,
+                    field_id,
+                    "field is gone from the semantic model",
+                    impact,
+                )
+            )
+        elif old is not None and new is not None:
+            changes.extend(_diff_field_attrs(old, new, impact))
+    return changes
+
+
+def _diff_field_attrs(
+    old: FieldNode, new: FieldNode, impact: SemanticImpact
+) -> list[SemanticChange]:
+    changes: list[SemanticChange] = []
+    for attr, code in (
+        ("type", "field.type_changed"),
+        ("role", "field.role_changed"),
+        ("agg", "field.agg_changed"),
+        ("additivity", "field.additivity_changed"),
+        ("fk", "field.fk_changed"),
+    ):
+        before, after = getattr(old, attr), getattr(new, attr)
+        if before != after:
+            changes.append(
+                _change(
+                    code,
+                    ChangeKind.MODIFIED,
+                    Severity.REVIEW,
+                    new.id,
+                    f"{attr} {_render(before)} -> {_render(after)}",
+                    impact,
+                )
+            )
+    changes.extend(
+        _classification_change("field", new.id, old.classification, new.classification, impact)
+    )
+    if old.description != new.description:
+        changes.append(
+            _change(
+                "field.description_changed",
+                ChangeKind.MODIFIED,
+                Severity.ADVISORY,
+                new.id,
+                "description changed",
+            )
+        )
+    return changes
+
+
+def _diff_joins(base: SemanticGraph, candidate: SemanticGraph) -> list[SemanticChange]:
+    before = {node.id: node for node in base.joins}
+    after = {node.id: node for node in candidate.joins}
+    changes: list[SemanticChange] = []
+    for join_id in sorted(set(before) | set(after)):
+        old, new = before.get(join_id), after.get(join_id)
+        if old is None:
+            changes.append(
+                _change("join.added", ChangeKind.ADDED, Severity.ADVISORY, join_id, "new join path")
+            )
+        elif new is None:
+            changes.append(
+                _change(
+                    "join.removed",
+                    ChangeKind.REMOVED,
+                    Severity.BLOCK,
+                    join_id,
+                    "join path is gone: anything that spanned it cannot be re-derived",
+                )
+            )
+        elif old.type != new.type:
+            changes.append(
+                _change(
+                    "join.type_changed",
+                    ChangeKind.MODIFIED,
+                    Severity.REVIEW,
+                    join_id,
+                    f"cardinality {old.type} -> {new.type}",
+                )
+            )
+    return changes
+
+
+def _diff_metrics(base: SemanticGraph, candidate: SemanticGraph) -> list[SemanticChange]:
+    before = {node.id: node for node in base.metrics}
+    after = {node.id: node for node in candidate.metrics}
+    changes: list[SemanticChange] = []
+    for metric_id in sorted(set(before) | set(after)):
+        old, new = before.get(metric_id), after.get(metric_id)
+        impact = SemanticImpact(metrics=[metric_id])
+        if old is None and new is not None:
+            changes.append(
+                _change(
+                    "metric.added", ChangeKind.ADDED, Severity.ADVISORY, metric_id, "new metric"
+                )
+            )
+        elif new is None and old is not None:
+            changes.append(
+                _change(
+                    "metric.removed",
+                    ChangeKind.REMOVED,
+                    Severity.BLOCK,
+                    metric_id,
+                    "metric contract is gone from the validated set",
+                    impact,
+                )
+            )
+        elif old is not None and new is not None:
+            changes.extend(_diff_metric_attrs(old, new, impact))
+    return changes
+
+
+def _diff_metric_attrs(
+    old: MetricNode, new: MetricNode, impact: SemanticImpact
+) -> list[SemanticChange]:
+    changes: list[SemanticChange] = []
+    for attr, code in (
+        ("formula", "metric.formula_changed"),
+        ("grain", "metric.grain_changed"),
+        ("time", "metric.time_changed"),
+        ("unit", "metric.unit_changed"),
+    ):
+        if getattr(old, attr) != getattr(new, attr):
+            changes.append(
+                _change(
+                    code,
+                    ChangeKind.MODIFIED,
+                    Severity.REVIEW,
+                    new.id,
+                    f"{attr} changed",
+                    impact,
+                )
+            )
+    if (old.additivity, old.non_additive_axes) != (new.additivity, new.non_additive_axes):
+        changes.append(
+            _change(
+                "metric.additivity_changed",
+                ChangeKind.MODIFIED,
+                Severity.REVIEW,
+                new.id,
+                f"additivity {old.additivity.value} -> {new.additivity.value}",
+                impact,
+            )
+        )
+
+    removed = sorted(set(old.dimensions) - set(new.dimensions))
+    added = sorted(set(new.dimensions) - set(old.dimensions))
+    if removed:
+        changes.append(
+            _change(
+                "metric.dimensions_removed",
+                ChangeKind.MODIFIED,
+                Severity.BLOCK,
+                new.id,
+                f"dimensions no longer allowed: {', '.join(removed)}",
+                impact,
+            )
+        )
+    if added:
+        changes.append(
+            _change(
+                "metric.dimensions_added",
+                ChangeKind.MODIFIED,
+                Severity.ADVISORY,
+                new.id,
+                f"dimensions now allowed: {', '.join(added)}",
+                impact,
+            )
+        )
+
+    dropped_policies = sorted(set(old.policy_refs) - set(new.policy_refs))
+    if dropped_policies:
+        changes.append(
+            _change(
+                "metric.policy_weakened",
+                ChangeKind.MODIFIED,
+                Severity.BLOCK,
+                new.id,
+                f"governing policy dropped: {', '.join(dropped_policies)}",
+                impact,
+            )
+        )
+    elif set(new.policy_refs) - set(old.policy_refs):
+        changes.append(
+            _change(
+                "metric.policy_added",
+                ChangeKind.MODIFIED,
+                Severity.ADVISORY,
+                new.id,
+                "additional governing policy",
+                impact,
+            )
+        )
+
+    changes.extend(
+        _classification_change("metric", new.id, old.classification, new.classification, impact)
+    )
+
+    if old.status != new.status:
+        towards_retirement = _LIFECYCLE_RANK[new.status.value] > _LIFECYCLE_RANK[old.status.value]
+        changes.append(
+            _change(
+                "metric.status_changed",
+                ChangeKind.MODIFIED,
+                Severity.REVIEW if towards_retirement else Severity.ADVISORY,
+                new.id,
+                f"lifecycle {old.status.value} -> {new.status.value}",
+                impact,
+            )
+        )
+    if old.version != new.version:
+        changes.append(
+            _change(
+                "metric.version_changed",
+                ChangeKind.MODIFIED,
+                Severity.ADVISORY,
+                new.id,
+                f"domain version {old.version} -> {new.version}: pinned refs must be re-pointed",
+                impact,
+            )
+        )
+    if old.owner != new.owner:
+        changes.append(
+            _change(
+                "metric.owner_changed",
+                ChangeKind.MODIFIED,
+                Severity.ADVISORY,
+                new.id,
+                f"owner {old.owner} -> {new.owner}",
+                impact,
+            )
+        )
+    if old.description != new.description:
+        changes.append(
+            _change(
+                "metric.description_changed",
+                ChangeKind.MODIFIED,
+                Severity.ADVISORY,
+                new.id,
+                "description changed",
+            )
+        )
+    return changes
+
+
+def _diff_gaps(base: SemanticSnapshot, candidate: SemanticSnapshot) -> list[SemanticChange]:
+    before = {(gap.code, gap.path): gap for gap in base.gaps}
+    after = {(gap.code, gap.path): gap for gap in candidate.gaps}
+    changes: list[SemanticChange] = []
+    for key in sorted(set(after) - set(before)):
+        gap = after[key]
+        changes.append(
+            _change(
+                "gap.appeared",
+                ChangeKind.ADDED,
+                gap.severity,
+                gap.path,
+                f"{gap.code}: {gap.reason}",
+            )
+        )
+    for key in sorted(set(before) - set(after)):
+        gap = before[key]
+        changes.append(
+            _change(
+                "gap.resolved",
+                ChangeKind.REMOVED,
+                Severity.ADVISORY,
+                gap.path,
+                f"{gap.code} no longer reported",
+            )
+        )
+    return changes
+
+
+def _classification_change(
+    prefix: str,
+    subject: str,
+    old: DataClassification,
+    new: DataClassification,
+    impact: SemanticImpact,
+) -> list[SemanticChange]:
+    if old == new:
+        return []
+    detail = f"classification {old.value} -> {new.value}"
+    if _CLASSIFICATION_RANK[new] < _CLASSIFICATION_RANK[old]:
+        return [
+            _change(
+                f"{prefix}.classification_weakened",
+                ChangeKind.MODIFIED,
+                Severity.BLOCK,
+                subject,
+                f"{detail}: sensitivity weakened",
+                impact,
+            )
+        ]
+    return [
+        _change(
+            f"{prefix}.classification_tightened",
+            ChangeKind.MODIFIED,
+            Severity.ADVISORY,
+            subject,
+            detail,
+            impact,
+        )
+    ]
+
+
+def _change(
+    code: str,
+    kind: ChangeKind,
+    severity: Severity,
+    subject: str,
+    detail: str,
+    impact: SemanticImpact | None = None,
+) -> SemanticChange:
+    return SemanticChange(
+        code=code,
+        kind=kind,
+        severity=severity,
+        subject=subject,
+        detail=detail,
+        impact=impact or SemanticImpact(),
+    )
+
+
+def _render(value: object) -> str:
+    if value is None:
+        return "unset"
+    if isinstance(value, StrEnum):
+        return value.value
+    return str(value)
+
+
+def severities(diff: SemanticDiff) -> Iterable[Severity]:
+    """Severities of every change — the input a verdict is computed from."""
+    return (change.severity for change in diff.changes)

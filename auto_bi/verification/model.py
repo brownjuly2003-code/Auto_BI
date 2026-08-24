@@ -23,11 +23,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from enum import StrEnum
 
+from auto_bi.severity import Severity
 
-class Severity(StrEnum):
-    ADVISORY = "advisory"
-    REVIEW = "review"
-    BLOCK = "block"
+__all__ = ["EXIT_ERROR", "Severity", "Verdict", "exit_code_for", "verdict_for"]
 
 
 class Verdict(StrEnum):

@@ -71,9 +71,29 @@
 > изолированном процессе такого вызова не делает). На незагруженной машине оба
 > зелёные (1503/1503); в CI (Ubuntu) путь не воспроизводится.
 
+### Semantic snapshot + diff + impact (2026-08-24)
+
+- `auto_bi/semantic/gateway.py` — `SemanticSource` (Protocol) и `NativeModelSource`:
+  `model.yaml` + metric contracts → immutable `SemanticSnapshot` с canonical graph
+  (tables/fields/joins/metrics), `source_digest` (адреса исходных байтов) и
+  `canonical_digest` (JCS графа). Снапшот не может соврать про свой digest —
+  валидатор пересчитывает. Физическая статистика (`rows`/`bytes`/`cardinality`)
+  намеренно вне графа, ключи и партиционирование — внутри.
+- Явные `SemanticGap` вместо тихих пропусков (инвариант 6): `gap.raw_sql_metric`,
+  `gap.opaque_metric_formula` (external/reviewed SQL), `gap.metric_field_missing`,
+  `gap.dangling_join`, `gap.missing_physical`, `gap.contract_invalid`. Гэп несёт
+  digest непредставимого значения, не само значение.
+- `auto_bi/semantic/diff.py` — классификация по §8.3: removal и weakened
+  policy/classification → block; formula/grain/time/unit/additivity/type/agg/role →
+  review; label/added → advisory; `physical.keys_changed` → review; появившийся
+  гэп наследует свою severity. Порядок изменений детерминирован.
+- `auto_bi/decision/impact.py` — конец цепочки: metric → dashboard → product →
+  owner, и правило «review → block, если от метрики зависит governed product».
+  Chart-уровень честно остановлен на dashboard-ref (нужен `DashboardSpec`).
+- Проверено: 45 новых тестов (13 snapshot + 24 diff + 8 impact).
+
 ## Что ещё не реализовано
 
-- semantic snapshots/diff и `SemanticSource`;
 - Verified Asset Repository и result comparator;
 - EvidenceBundle writer/store (есть только схема и canonical digest);
 - `auto_bi decision verify` и `auto_bi decision evidence`;
@@ -82,10 +102,13 @@
 
 ## Следующий атомарный slice
 
-Native `SemanticSource` snapshot и semantic diff (bootstrap task 4): immutable
-snapshot `model.yaml` с canonical digest и явными `SemanticGap`, затем seeded
-diff по formula/grain/time/policy/removal с impact до metric, chart, product и
-owner (§8.3). Без DWH: на фикстурах.
+Verified Asset Repository и typed result comparator (bootstrap task 5):
+verified asset (canonical question, intent, metric refs, reference plan, expected
+result или инварианты, tolerance, reviewer) и сравнение результатов по §8.4 —
+schema до values, канонизация строк по business key, точные decimal, tolerance
+только для float, различение `NULL`/zero/missing, truncated result не доказывает
+эквивалентность. Фикстуры: row-order, decimal tolerance, null/zero/missing,
+truncated.
 
 ## Источники истины
 

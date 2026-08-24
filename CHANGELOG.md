@@ -6,6 +6,14 @@
 
 ### Added
 
+- **Semantic snapshot, diff и impact** — `auto_bi/semantic/gateway.py`
+  (`NativeModelSource`: `model.yaml` + metric contracts → content-addressed
+  `SemanticSnapshot` с явными `SemanticGap`), `auto_bi/semantic/diff.py`
+  (классификация изменений по §8.3: removal и weakened policy → block,
+  formula/grain/time/unit/additivity → review, label → advisory) и
+  `auto_bi/decision/impact.py` (metric → dashboard → product → owner плюс
+  эскалация review→block, когда от метрики зависит governed product).
+
 - **`auto_bi decision validate`** — offline cross-contract проверка Git-tracked
   YAML: продукты резолвятся против metric contracts (`metric_ref.unknown`,
   `metric_ref.version_mismatch`, `metric_ref.duplicate`, `dimension.not_allowed`,
