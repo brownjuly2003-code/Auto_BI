@@ -1,7 +1,8 @@
 # Auto_BI DecisionOps — текущее состояние
 
 **Дата:** 2026-08-24
-**Стадия:** contracts + validate + semantic diff + VQR/comparator (bootstrap tasks 2–5 закрыты)
+**Стадия:** contracts + validate + semantic diff + VQR/comparator + evidence writer
+(bootstrap tasks 2–6 закрыты)
 **Ветка:** `main`
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
@@ -144,21 +145,38 @@ escaping (независимый оракул, 20k случайных double + �
   `asset.metric_removed` (block); advisory-изменение не инвалидирует.
 - Проверено: 35 новых тестов (20 comparator + 15 assets).
 
-## Что ещё не реализовано
+### Evidence writer + store (2026-08-24)
 
-- EvidenceBundle writer/store (есть только схема и canonical digest);
+- `auto_bi/evidence/store.py` — порт `ArtifactStore` и файловый адаптер. Пути строит
+  store, а не вызывающий: конфайнмент проверяется повторно уже на уровне ФС
+  (resolve внутри `evidence/<run_id>/`, отказ на symlink-компоненте — он резолвится
+  «внутрь», но пишет наружу).
+- `auto_bi/evidence/manifest.py` — `BundleWriter` (checks → `checks/`, blobs →
+  `blobs/sha256/<digest>`, отчёты → `reports/`, restricted → `restricted/`),
+  `read_bundle` и `verify_bundle`.
+- Свойства, закреплённые тестами: одинаковый вход → байт-в-байт одинаковый
+  `manifest.json` и digest; claim без своего артефакта падает **до** записи (на
+  диске не остаётся половины bundle); restricted-payload не попадает в публичный
+  манифест — там только digest, размер и класс (§10.2).
+- `verify_bundle` — вторая половина: `evidence.manifest_missing`,
+  `manifest_invalid`, `manifest_not_canonical`, `artifact_missing`,
+  `digest_mismatch`. Подделанный blob ловится своим content address.
+- Проверено: 17 новых тестов.
+
+## Что ещё не реализовано
 - `auto_bi decision verify` и `auto_bi decision evidence`;
 - Analytics Release & Evidence Gate и pure BI compile seam;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
 ## Следующий атомарный slice
 
-Content-addressed EvidenceBundle writer/store (bootstrap task 6): сборка bundle
-по layout §9.2 (`manifest.json`, `checks/`, `reports/`, `blobs/sha256/`,
-`restricted/`), детерминированный digest, отказ при dangling `evidence_ref`,
-path confinement на уровне ФС (realpath, без symlink-escape) и redaction
-restricted-payload. Схема и canonical digest уже есть — нужен writer/validator
-и `ArtifactStore`-порт.
+One-shot `decision verify` + pure BI compile contracts (bootstrap task 7): гейт по
+последовательности §8.2 (validate → freeze snapshots → reject blocking gaps → diff
+и impact → инвалидация assets → compile SQL → checks → reconcile → BI-контракты без
+remote mutation → evidence bundle), `BIContractCompiler` поверх общих pure builders
+Superset/DataLens и mutation-spy тест, доказывающий ноль remote creates. Всё, что
+нужно для входа, уже есть: контракты, snapshot/diff/impact, VQR/comparator,
+evidence writer, exit codes.
 
 ## Источники истины
 

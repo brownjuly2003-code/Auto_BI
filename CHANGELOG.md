@@ -6,6 +6,13 @@
 
 ### Added
 
+- **Evidence writer и artifact store** — `auto_bi/evidence/store.py` (порт
+  `ArtifactStore` + файловый адаптер с конфайнментом и отказом на symlink-компоненте)
+  и `auto_bi/evidence/manifest.py` (`BundleWriter` по layout §9.2, `read_bundle`,
+  `verify_bundle`). Одинаковый вход даёт байт-в-байт одинаковый манифест и digest;
+  claim без артефакта падает до записи; restricted-payload не попадает в публичный
+  манифест.
+
 - **Verified assets и typed result comparator** — `auto_bi/verification/reconcile.py`
   (сравнение по §8.4 с тремя исходами: `equivalent`/`different`/`insufficient`;
   схема до значений, матчинг по business key, точный decimal, float только с

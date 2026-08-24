@@ -21,7 +21,7 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
   metric, chart, product и owner.
 - [x] Добавить Verified Asset Repository и typed result comparator → Verify:
   row-order, decimal tolerance, null/zero/missing и truncated-result fixtures.
-- [ ] Собрать content-addressed EvidenceBundle → Verify: deterministic digest,
+- [x] Собрать content-addressed EvidenceBundle → Verify: deterministic digest,
   dangling `evidence_ref` rejection, path confinement и redaction tests.
 - [ ] Реализовать one-shot `decision verify` и pure Superset/DataLens compile
   contracts → Verify: four breaking seeds block, presentation-only change
