@@ -6,6 +6,15 @@
 
 ### Added
 
+- **Verified assets и typed result comparator** — `auto_bi/verification/reconcile.py`
+  (сравнение по §8.4 с тремя исходами: `equivalent`/`different`/`insufficient`;
+  схема до значений, матчинг по business key, точный decimal, float только с
+  объявленным tolerance, различение `NULL`/ноль/отсутствие строки/пустого
+  результата, truncated не доказывает эквивалентность) и
+  `auto_bi/verification/repository.py` (`VerifiedAsset` + репозиторий с
+  инвалидацией по semantic diff: `asset.stale_snapshot`, `asset.metric_changed`,
+  `asset.metric_removed`).
+
 - **Ужесточение границ contract kernel** (по итогам adversarial-ревью) — `\Z`
   вместо `$` в рукописных regex (хвостовой `\n` больше не проходит в id, ref,
   digest, decimal и slug); JCS-слой печатает оба нуля как `0` и округляет большие

@@ -19,7 +19,7 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
 - [x] Реализовать native `SemanticSource` snapshot и semantic diff → Verify:
   seeded formula/grain/time/policy/removal changes дают ожидаемый impact до
   metric, chart, product и owner.
-- [ ] Добавить Verified Asset Repository и typed result comparator → Verify:
+- [x] Добавить Verified Asset Repository и typed result comparator → Verify:
   row-order, decimal tolerance, null/zero/missing и truncated-result fixtures.
 - [ ] Собрать content-addressed EvidenceBundle → Verify: deterministic digest,
   dangling `evidence_ref` rejection, path confinement и redaction tests.

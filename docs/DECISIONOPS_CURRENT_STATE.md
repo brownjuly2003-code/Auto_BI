@@ -1,7 +1,7 @@
 # Auto_BI DecisionOps — текущее состояние
 
 **Дата:** 2026-08-24
-**Стадия:** contract kernel + validate + semantic diff (bootstrap tasks 2–4 закрыты)
+**Стадия:** contracts + validate + semantic diff + VQR/comparator (bootstrap tasks 2–5 закрыты)
 **Ветка:** `main`
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
@@ -122,9 +122,30 @@ escaping (независимый оракул, 20k случайных double + �
 - Blank-строки (`owner: " "`) отклоняются; дубликаты в `scope.metrics`/`dimensions`
   теперь запрещены схемой, как и в `MetricContract`.
 
+### Verified assets + result comparator (2026-08-24)
+
+- `auto_bi/verification/reconcile.py` — типизированное сравнение результатов по §8.4.
+  Три исхода, не два: `equivalent` / `different` / **`insufficient`** — вход не смог
+  ответить на вопрос. В `insufficient` уходят truncated-результат, float без
+  объявленного tolerance, неуникальный или необъявленный business key.
+- Порядок правил: схема (имена, типы, nullability, **единицы**) до значений; строки
+  матчатся по business key, не по позиции; decimal сравнивается как decimal
+  (`0.4120` == `0.412`), float — только внутри абсолютного/относительного tolerance;
+  `NULL` / ноль / отсутствующая строка / пустой результат — четыре разных кода;
+  порядок строк важен только если контракт так говорит (rank/top-N).
+- `auto_bi/verification/repository.py` — `VerifiedAsset` (canonical question +
+  paraphrases, intent, metric refs, reference plan, ожидание: result/invariants/
+  clarification/refusal, tolerance, reviewer) и `VerifiedAssetRepository`.
+  Ожидаемый result без `business_key` отклоняется на парсинге — иначе сравнение
+  заведомо `insufficient`.
+- Инвалидация (§8.2 шаг 5): asset хранит `semantic_digest`, против которого его
+  проверяли; чужой снапшот → `asset.stale_snapshot` (review); изменение метрики с
+  severity review/block → `asset.metric_changed`; удаление метрики →
+  `asset.metric_removed` (block); advisory-изменение не инвалидирует.
+- Проверено: 35 новых тестов (20 comparator + 15 assets).
+
 ## Что ещё не реализовано
 
-- Verified Asset Repository и result comparator;
 - EvidenceBundle writer/store (есть только схема и canonical digest);
 - `auto_bi decision verify` и `auto_bi decision evidence`;
 - Analytics Release & Evidence Gate и pure BI compile seam;
@@ -132,13 +153,12 @@ escaping (независимый оракул, 20k случайных double + �
 
 ## Следующий атомарный slice
 
-Verified Asset Repository и typed result comparator (bootstrap task 5):
-verified asset (canonical question, intent, metric refs, reference plan, expected
-result или инварианты, tolerance, reviewer) и сравнение результатов по §8.4 —
-schema до values, канонизация строк по business key, точные decimal, tolerance
-только для float, различение `NULL`/zero/missing, truncated result не доказывает
-эквивалентность. Фикстуры: row-order, decimal tolerance, null/zero/missing,
-truncated.
+Content-addressed EvidenceBundle writer/store (bootstrap task 6): сборка bundle
+по layout §9.2 (`manifest.json`, `checks/`, `reports/`, `blobs/sha256/`,
+`restricted/`), детерминированный digest, отказ при dangling `evidence_ref`,
+path confinement на уровне ФС (realpath, без symlink-escape) и redaction
+restricted-payload. Схема и canonical digest уже есть — нужен writer/validator
+и `ArtifactStore`-порт.
 
 ## Источники истины
 
