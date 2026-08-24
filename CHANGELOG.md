@@ -6,6 +6,17 @@
 
 ### Added
 
+- **DecisionOps contract kernel** — первый исполняемый слой нового control plane
+  (`DECISIONOPS_ARCHITECTURE.md` §7, §9.1): `auto_bi/decision/spec.py`
+  (`DecisionProductSpec`), `auto_bi/semantic/metric_contract.py` (`MetricContract`),
+  `auto_bi/evidence/model.py` (`EvidenceBundle`/`Claim`/`EvidenceArtifact`) плюс
+  shared kernel `auto_bi/refs.py` (stable id vs version-pinned ref) и
+  `auto_bi/scalars.py` (decimal-строки, ISO-8601 duration, RFC 3339 UTC, `sha256:`).
+  `auto_bi/evidence/canonical.py` — RFC 8785 JCS + SHA-256 content address, проверен
+  на официальном векторном корпусе (`tests/fixtures/jcs`), а не на
+  `json.dumps(sort_keys=True)`. Аддитивно: `DashboardSpec`, `BIAdapter` и схема Store
+  не менялись.
+
 - **Direct Mistral provider** — `AUTO_BI_LLM_PROVIDER=mistral` routes through
   Mistral Chat Completions with standard `MISTRAL_API_KEY` (or the
   `AUTO_BI_MISTRAL_API_KEY` alias), the shared structured-repair and budget

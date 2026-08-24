@@ -194,6 +194,9 @@ existing Auto_BI + filesystem/SQLite adapters
 
 ```text
 auto_bi/
+  strict.py              StrictModel(extra="forbid") — унаследованный shared kernel
+  refs.py                stable ids и version-pinned refs
+  scalars.py             decimal / duration / UTC timestamp / sha256 скаляры
   decision/
     spec.py              DecisionProductSpec и lifecycle enums
     validate.py          cross-contract validation
@@ -224,6 +227,12 @@ auto_bi/
 
 Это целевая карта, не требование создать все файлы сразу. Первый implementation
 slice создаёт только contract-модели, которые нужны `decision validate`.
+
+`refs.py` и `scalars.py` лежат рядом с существующим `strict.py` как shared kernel:
+это грамматика идентичности и скаляров из §7.1, у них нет доменного состояния и они
+не создают направления зависимости между `decision`, `semantic` и `evidence`. По той
+же причине `evidence/canonical.py` не тянет ничего, кроме stdlib: contract-модели
+импортируют его ради digest, а не ради evidence-домена.
 
 ## 7. Доменные контракты
 

@@ -1,7 +1,7 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Дата:** 2026-08-21
-**Стадия:** architecture bootstrap
+**Дата:** 2026-08-24
+**Стадия:** contract kernel (bootstrap task 2 закрыт)
 **Ветка:** `main`
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
@@ -23,22 +23,41 @@
 - Короткий исполнимый план находится в
   [`decisionops-bootstrap.md`](../decisionops-bootstrap.md).
 
+### Contract kernel (2026-08-24)
+
+- Реализован первый исполняемый слой: `auto_bi/decision/spec.py`
+  (`DecisionProductSpec`), `auto_bi/semantic/metric_contract.py` (`MetricContract`),
+  `auto_bi/evidence/model.py` (`EvidenceBundle`/`Claim`/`EvidenceArtifact`),
+  shared kernel `auto_bi/refs.py` и `auto_bi/scalars.py`.
+- `auto_bi/evidence/canonical.py` — RFC 8785 JCS + SHA-256; проходит официальный
+  векторный корпус (`tests/fixtures/jcs`, cyberphone/json-canonicalization,
+  Apache-2.0), включая UTF-16-порядок ключей и ES6-числа.
+- Границы контракта: binary float в contract payload отклоняется (decimal-строки),
+  non-finite/negative zero/unsafe integer/lone surrogate — тоже.
+- Инварианты, закрытые парсингом, а не соглашением: dangling `evidence_ref`,
+  path confinement артефактов, `integrity=signed` без проверенной подписи,
+  causal claim, semi-additive без `non_additive_axes`, unpinned external formula,
+  unpinned metric/policy/dashboard ref, `actions.mode != disabled`.
+- Проверено: 112 новых тестов, весь suite зелёный, `mypy --strict auto_bi` чист,
+  ruff/black чисты. `DashboardSpec`, `BIAdapter` и схема Store не тронуты.
+- YAML-фикстуры продукта и метрики: `tests/fixtures/decision/`; sketch §7.2
+  архитектуры проверяется docs-as-code тестом.
+
 ## Что ещё не реализовано
 
-- `DecisionProductSpec` и `MetricContract` runtime schemas;
-- semantic snapshots/diff;
+- semantic snapshots/diff и `SemanticSource`;
 - Verified Asset Repository и result comparator;
-- EvidenceBundle writer/validator;
+- EvidenceBundle writer/store (есть только схема и canonical digest);
 - команды `auto_bi decision ...`;
-- Analytics Release & Evidence Gate;
+- Analytics Release & Evidence Gate и pure BI compile seam;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
 ## Следующий атомарный slice
 
-Contract kernel: сначала failing tests, затем strict Pydantic-модели
-`DecisionProductSpec`, `MetricContract`, `EvidenceBundle` и canonical
-round-trip/hash boundary без изменения `DashboardSpec`, `BIAdapter` или Store
-schema.
+`decision validate` для Git-tracked YAML (bootstrap task 3): cross-contract
+валидация (product → metric contracts → policy refs) и CLI-команда со стабильными
+exit codes, без DWH/BI/LLM. Валидная weekly-margin фикстура → exit 0;
+malformed/unknown refs → стабильный non-zero.
 
 ## Источники истины
 
