@@ -614,9 +614,23 @@ auto_bi decision verify <product.yaml> --base <ref> --candidate <ref> --evidence
 auto_bi decision evidence <run-or-path>
 ```
 
-Exit codes должны быть стабильными и различать `pass`, `needs_review`, `block`
-и runtime error. Точные значения фиксируются отдельным contract test до CLI
-implementation.
+Exit codes стабильны и различают verdict и runtime error. Значения зафиксированы
+contract-тестом `tests/test_decision_cli.py::test_exit_code_contract_is_stable`
+и реализованы в `auto_bi/verification/model.py`:
+
+| Код | Значение |
+|---|---|
+| 0 | `pass` / `pass_with_advisory` — ничто не блокирует релиз |
+| 2 | runtime или usage error (то же, что у argparse и v1 CLI) |
+| 3 | `needs_review` — нужен человек, автоматического вердикта нет |
+| 4 | `block` — изменение не должно уехать в текущем виде |
+
+`1` намеренно не используется: это код необработанного исключения, и падение не
+должно выглядеть как вынесенный verdict (инвариант 8). Прогон, который не нашёл
+ни одного decision product, завершается `2`, а не «pass».
+
+Реализовано: `auto_bi decision validate <paths…> [--json]` — offline
+cross-contract проверка (продукты ↔ metric contracts) без DWH/BI/LLM.
 
 ### 12.2 REST
 

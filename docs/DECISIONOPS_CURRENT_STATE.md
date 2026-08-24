@@ -43,21 +43,49 @@
 - YAML-фикстуры продукта и метрики: `tests/fixtures/decision/`; sketch §7.2
   архитектуры проверяется docs-as-code тестом.
 
+### `decision validate` (2026-08-24)
+
+- `auto_bi decision validate <paths…> [--json]` — offline cross-contract проверка
+  Git-tracked YAML: продукты резолвятся против metric contracts, никаких
+  DWH/BI/LLM (тест проверяет, что не открывается ни один сокет).
+- `auto_bi/verification/model.py` — `Severity`/`Verdict` и **зафиксированные
+  exit codes**: 0 pass/advisory, 2 runtime-usage error, 3 needs_review, 4 block;
+  contract-тест написан до CLI (§12.1). Прогон без единого продукта → 2, не 0.
+- `auto_bi/decision/validate.py` — стабильные коды находок: `metric_ref.unknown`,
+  `metric_ref.version_mismatch`, `metric_ref.duplicate`, `dimension.not_allowed`,
+  `metric.retired` (block) / `metric.draft` (review) / `metric.deprecated`
+  (advisory), `policy.mismatch` (review), `contract.unreadable`,
+  `contract.unknown_kind`, `contract.invalid`, `contract.duplicate_id`.
+- Verdict считается кодом из severity находок, а `ValidationReport` отклоняет
+  вердикт, противоречащий находкам. Порядок находок детерминирован (CI diff).
+- Проверено: 29 новых тестов; mypy --strict, ruff, black чисты. Suite — 1503 теста.
+
+> **Известный локальный flake (не DecisionOps, Windows-only).** Под нагрузкой
+> падают ровно два теста, всегда вместе:
+> `test_perf_baseline.py::test_sqlite_session_write_and_backup_budgets`
+> (таймингвый бюджет) и
+> `test_runtime_evidence.py::test_collect_container_snapshot_success` — он
+> подменяет глобальный `subprocess.run`, и в это окно кто-то в том же процессе
+> вызывает Windows-пробу версии `subprocess.run("ver", shell=True)`, которую
+> фейк отвергает. Точный вызывающий не локализован (`platform.system()` в
+> изолированном процессе такого вызова не делает). На незагруженной машине оба
+> зелёные (1503/1503); в CI (Ubuntu) путь не воспроизводится.
+
 ## Что ещё не реализовано
 
 - semantic snapshots/diff и `SemanticSource`;
 - Verified Asset Repository и result comparator;
 - EvidenceBundle writer/store (есть только схема и canonical digest);
-- команды `auto_bi decision ...`;
+- `auto_bi decision verify` и `auto_bi decision evidence`;
 - Analytics Release & Evidence Gate и pure BI compile seam;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
 ## Следующий атомарный slice
 
-`decision validate` для Git-tracked YAML (bootstrap task 3): cross-contract
-валидация (product → metric contracts → policy refs) и CLI-команда со стабильными
-exit codes, без DWH/BI/LLM. Валидная weekly-margin фикстура → exit 0;
-malformed/unknown refs → стабильный non-zero.
+Native `SemanticSource` snapshot и semantic diff (bootstrap task 4): immutable
+snapshot `model.yaml` с canonical digest и явными `SemanticGap`, затем seeded
+diff по formula/grain/time/policy/removal с impact до metric, chart, product и
+owner (§8.3). Без DWH: на фикстурах.
 
 ## Источники истины
 

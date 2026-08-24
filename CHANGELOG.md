@@ -6,6 +6,14 @@
 
 ### Added
 
+- **`auto_bi decision validate`** — offline cross-contract проверка Git-tracked
+  YAML: продукты резолвятся против metric contracts (`metric_ref.unknown`,
+  `metric_ref.version_mismatch`, `metric_ref.duplicate`, `dimension.not_allowed`,
+  lifecycle и `policy.mismatch`), без DWH/BI/LLM. Exit codes зафиксированы
+  contract-тестом (`0` pass/advisory, `2` runtime-usage error, `3` needs_review,
+  `4` block); `--json` печатает отчёт и ничего больше. Verdict считается из
+  severity находок в `auto_bi/verification/model.py`.
+
 - **DecisionOps contract kernel** — первый исполняемый слой нового control plane
   (`DECISIONOPS_ARCHITECTURE.md` §7, §9.1): `auto_bi/decision/spec.py`
   (`DecisionProductSpec`), `auto_bi/semantic/metric_contract.py` (`MetricContract`),

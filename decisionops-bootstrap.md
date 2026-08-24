@@ -13,7 +13,7 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
 - [x] Добавить strict contract kernel в `auto_bi/decision`,
   `auto_bi/semantic/metric_contract.py` и `auto_bi/evidence` → Verify: сначала
   failing tests, затем round-trip, unknown-field rejection и version-ref tests.
-- [ ] Реализовать `decision validate` для Git-tracked YAML → Verify: valid
+- [x] Реализовать `decision validate` для Git-tracked YAML → Verify: valid
   weekly-margin fixture даёт exit 0, malformed/unknown refs дают стабильный
   non-zero exit без DWH/BI/LLM.
 - [ ] Реализовать native `SemanticSource` snapshot и semantic diff → Verify:

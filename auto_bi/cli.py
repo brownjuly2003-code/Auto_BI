@@ -154,6 +154,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     prune.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
 
+    decision = sub.add_parser("decision", help="DecisionOps contracts (offline, no DWH/BI/LLM)")
+    decision_sub = decision.add_subparsers(dest="decision_command", required=True)
+    validate = decision_sub.add_parser(
+        "validate", help="Validate Git-tracked decision products against their metric contracts"
+    )
+    validate.add_argument("paths", nargs="+", help="Contract files or directories (YAML)")
+    validate.add_argument(
+        "--json", action="store_true", help="Emit the report as JSON and nothing else"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "build":
@@ -180,7 +190,44 @@ def main(argv: list[str] | None = None) -> int:
         return _dbt_import(args.manifest, args.catalog, args.model_path, args.dry_run)
     if args.command == "prune":
         return _prune(args.session, args.dry_run, args.model_path)
+    if args.command == "decision":
+        return _decision_validate(args.paths, args.json)
     return 0
+
+
+def _decision_validate(paths: list[str], as_json: bool) -> int:
+    """`auto_bi decision validate` — offline cross-contract check (ARCHITECTURE §12.1).
+
+    Exit code carries the verdict (0 pass/advisory, 3 needs_review, 4 block); a run that
+    validated no product at all exits 2 rather than pretending to pass.
+    """
+    import json
+
+    from auto_bi.decision.validate import validate_paths
+    from auto_bi.verification.model import EXIT_ERROR, exit_code_for
+
+    report = validate_paths(paths)
+    if as_json:
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        for issue in report.issues:
+            print(f"{issue.severity.value:<8} {issue.code:<26} {issue.subject}")
+            print(f"{'':<8} {issue.message} [{issue.source}]")
+        for ref in report.products:
+            print(f"product  {ref}")
+        for ref in report.metrics:
+            print(f"metric   {ref}")
+        print(
+            f"verdict: {report.verdict.value} "
+            f"({len(report.products)} product(s), {len(report.metrics)} metric contract(s), "
+            f"{len(report.issues)} issue(s))"
+        )
+
+    if not report.products:
+        message = "error: no decision product contract found in the given paths"
+        print(message, file=sys.stderr if as_json else sys.stdout)
+        return EXIT_ERROR
+    return exit_code_for(report.verdict)
 
 
 def _build(description: str, model_path: str, target: str = "superset") -> int:
