@@ -92,11 +92,14 @@ def test_version_mismatch_blocks(tmp_path: Path) -> None:
 
 
 def test_duplicate_metric_ref_blocks(tmp_path: Path) -> None:
+    """The repeated pin is refused by the schema; validation reports it as a contract error."""
+
     def duplicate(data: dict[str, Any]) -> None:
         data["scope"]["metrics"] = ["metric://sales/gross_margin_pct@3"] * 2
 
     report = validate_paths([write_contracts(tmp_path, product=duplicate)])
-    assert codes(report) == ["metric_ref.duplicate"]
+    assert codes(report) == ["contract.invalid"]
+    assert "duplicate entries in scope.metrics" in report.issues[0].message
     assert report.verdict is Verdict.BLOCK
 
 
@@ -190,7 +193,6 @@ def test_issue_order_is_deterministic(tmp_path: Path) -> None:
 
     def widen(data: dict[str, Any]) -> None:
         data["scope"]["dimensions"] = ["zeta", "alpha"]
-        data["scope"]["metrics"] = ["metric://sales/gross_margin_pct@3"] * 2
 
     def relabel(data: dict[str, Any]) -> None:
         data["metadata"]["status"] = "deprecated"
@@ -200,12 +202,11 @@ def test_issue_order_is_deterministic(tmp_path: Path) -> None:
     second = validate_paths([root])
     assert codes(first) == codes(second)
     assert codes(first) == [
-        "metric_ref.duplicate",
         "dimension.not_allowed",
         "dimension.not_allowed",
         "metric.deprecated",
     ]
-    assert [issue.subject for issue in first.issues][1:3] == ["alpha", "zeta"]
+    assert [issue.subject for issue in first.issues][:2] == ["alpha", "zeta"]
 
 
 def test_report_round_trips_as_a_strict_model(tmp_path: Path) -> None:

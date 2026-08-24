@@ -16,19 +16,16 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
 
 import yaml
-from pydantic import Field, StringConstraints, model_validator
+from pydantic import Field, model_validator
 
 from auto_bi.evidence.canonical import sha256_digest
 from auto_bi.refs import ContractRef, DashboardRef, DecisionId, MetricRef, PolicyRef
-from auto_bi.scalars import DecimalString, Duration
+from auto_bi.scalars import MAX_SAFE_INT, DecimalString, Duration, NonBlankText
 from auto_bi.strict import StrictModel
 
 API_VERSION = "auto-bi.io/v2alpha1"
-
-NonBlankText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class RiskTier(StrEnum):
@@ -58,7 +55,7 @@ class ActionsMode(StrEnum):
 
 class DecisionMetadata(StrictModel):
     id: DecisionId
-    version: int = Field(ge=1)
+    version: int = Field(ge=1, le=MAX_SAFE_INT)
     owner: NonBlankText
     risk_tier: RiskTier
 
@@ -73,6 +70,16 @@ class DecisionScope(StrictModel):
     metrics: list[MetricRef] = Field(min_length=1)
     dimensions: list[str] = Field(default_factory=list)
     time_window: Duration
+
+    @model_validator(mode="after")
+    def _check_unique(self) -> DecisionScope:
+        """Both lists are sets by meaning, and a repeated entry changes the digest without
+        changing the scope — the same rule `MetricContract` applies to its own lists."""
+        for name, values in (("metrics", self.metrics), ("dimensions", self.dimensions)):
+            duplicates = sorted({value for value in values if values.count(value) > 1})
+            if duplicates:
+                raise ValueError(f"duplicate entries in scope.{name}: {', '.join(duplicates)}")
+        return self
 
 
 class VerificationSpec(StrictModel):

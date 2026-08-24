@@ -227,22 +227,9 @@ def _validate_product(
     issues: list[ValidationIssue] = []
     resolved: list[MetricContract] = []
 
-    # Duplicates are reported once and still resolved once: a repeated pin is a spec defect,
-    # not a reason to lose the metric's own findings.
-    unique_refs = list(dict.fromkeys(product.scope.metrics))
-    for ref in unique_refs:
-        if product.scope.metrics.count(ref) > 1:
-            issues.append(
-                ValidationIssue(
-                    code="metric_ref.duplicate",
-                    severity=Severity.BLOCK,
-                    subject=ref,
-                    source=source,
-                    message="the same metric is pinned more than once in scope.metrics",
-                )
-            )
-
-    for ref in unique_refs:
+    # `DecisionScope` already rejects a repeated pin at parse time, so every ref here is
+    # distinct and the only open question is whether it resolves.
+    for ref in product.scope.metrics:
         parsed = ContractRef.parse(ref)
         identifier = str(parsed.without_version())
         contract = metrics.get(identifier)

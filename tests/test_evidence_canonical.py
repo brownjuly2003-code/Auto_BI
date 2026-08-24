@@ -23,6 +23,7 @@ from auto_bi.evidence.canonical import (
     digest_bytes,
     sha256_digest,
 )
+from auto_bi.scalars import MAX_SAFE_INT
 
 VECTORS = Path(__file__).parent / "fixtures" / "jcs"
 VECTOR_NAMES = ["arrays", "french", "structures", "unicode", "values", "weird"]
@@ -75,15 +76,30 @@ def test_non_finite_is_rejected_even_when_floats_are_allowed(value: float) -> No
         canonical_bytes({"x": value}, allow_float=True)
 
 
-def test_negative_zero_is_rejected_even_when_floats_are_allowed() -> None:
-    with pytest.raises(CanonicalizationError, match="negative zero"):
-        canonical_bytes({"x": -0.0}, allow_float=True)
+def test_both_zeros_canonicalize_to_the_same_token() -> None:
+    """RFC 8785 Appendix B pins 0x8000000000000000 to `0`; rejecting -0 is a contract rule
+    (`scalars.DecimalString`), not something a JCS implementation may do."""
+    assert canonical_json({"x": -0.0}, allow_float=True) == '{"x":0}'
+    assert canonical_json({"x": 0.0}, allow_float=True) == '{"x":0}'
 
 
-def test_integer_outside_the_ieee754_safe_range_is_rejected() -> None:
-    assert canonical_bytes({"n": 9007199254740991}) == b'{"n":9007199254740991}'
+def test_integer_outside_the_safe_range_is_rejected_at_the_contract_boundary() -> None:
+    assert canonical_bytes({"n": MAX_SAFE_INT}) == b'{"n":9007199254740991}'
     with pytest.raises(CanonicalizationError, match="safe integer"):
-        canonical_bytes({"n": 9007199254740992})
+        canonical_bytes({"n": MAX_SAFE_INT + 1})
+
+
+def test_jcs_rounds_a_large_integer_through_the_double_it_becomes() -> None:
+    """A JSON number is a double: 2**53+1 has no JSON form of its own (RFC 8785 §3.2.2.3)."""
+    assert canonical_json({"n": 9007199254740993}, allow_float=True) == '{"n":9007199254740992}'
+    assert canonical_json({"n": 10**300}, allow_float=True) == '{"n":1e+300}'
+    with pytest.raises(CanonicalizationError, match="range of an IEEE-754 double"):
+        canonical_bytes({"n": 10**400}, allow_float=True)
+
+
+def test_contract_and_scalar_layers_agree_on_the_safe_range() -> None:
+    assert MAX_SAFE_INT == 2**53 - 1
+    assert canonical_bytes({"n": MAX_SAFE_INT}) == f'{{"n":{MAX_SAFE_INT}}}'.encode()
 
 
 def test_non_string_key_is_rejected() -> None:

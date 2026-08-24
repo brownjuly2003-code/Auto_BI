@@ -9,14 +9,17 @@ implementation is checked against the official RFC 8785 vector corpus
 
 Two layers, deliberately separate:
 
-* ``allow_float=True`` — full JCS, including ES6 number serialization. Used for foreign
-  JSON payloads that already contain IEEE-754 numbers, and by the conformance tests.
-* the default — the contract boundary. Floats are rejected outright: contract decimals are
-  decimal strings (§7.1), so a float in a contract payload means a modelling mistake, and
-  silently serializing it would bake a serializer-dependent value into a digest.
+* ``allow_float=True`` — plain JCS, including ES6 number serialization. Used for foreign
+  JSON payloads that already contain IEEE-754 numbers, and by the conformance tests. It
+  serializes what the standard says, including both zeros as ``0`` and integers past the
+  safe range as the double they round-trip to.
+* the default — the contract boundary. Floats and unsafe integers are rejected outright:
+  contract decimals are decimal strings (§7.1), so a float in a contract payload means a
+  modelling mistake, and silently serializing it would bake a serializer-dependent value
+  into a digest. Negative zero is rejected one level up, by ``scalars.DecimalString``.
 
 Both layers reject what RFC 8785 leaves undefined or unrepresentable: non-finite numbers,
-negative zero, integers outside the IEEE-754 safe range, and lone surrogates.
+integers beyond the range of a double, and lone surrogates.
 """
 
 from __future__ import annotations
@@ -70,10 +73,14 @@ def _write(value: object, allow_float: bool, path: str) -> list[str]:
         return ["true" if value else "false"]
     if isinstance(value, int):
         if abs(value) > _MAX_SAFE_INT:
-            raise CanonicalizationError(
-                f"{path}: {value} is outside the IEEE-754 safe integer range; "
-                "store large numbers as decimal strings"
-            )
+            if not allow_float:
+                raise CanonicalizationError(
+                    f"{path}: {value} is outside the IEEE-754 safe integer range; "
+                    "store large numbers as decimal strings"
+                )
+            # RFC 8785 §3.2.2.3: JSON numbers are doubles, so an integer past the safe
+            # range canonicalizes as the double it round-trips to — not as an error.
+            return [_es6_number(_as_double(value, path), path)]
         return [str(value)]
     if isinstance(value, float):
         if not allow_float:
@@ -143,8 +150,9 @@ def _es6_number(value: float, path: str) -> str:
     if math.isnan(value) or math.isinf(value):
         raise CanonicalizationError(f"{path}: non-finite numbers have no canonical form")
     if value == 0.0:
-        if math.copysign(1.0, value) < 0:
-            raise CanonicalizationError(f"{path}: negative zero is not a canonical value")
+        # ES6 prints both zeros as "0" (RFC 8785 Appendix B pins 0x8000000000000000 -> 0).
+        # Rejecting negative zero is a *contract* rule and lives in `scalars.DecimalString`,
+        # not here — this layer must stay a faithful JCS implementation.
         return "0"
     if value < 0:
         return "-" + _es6_number(-value, path)
@@ -160,6 +168,15 @@ def _es6_number(value: float, path: str) -> str:
     exponent = point - 1
     mantissa = digits if count == 1 else f"{digits[0]}.{digits[1:]}"
     return f"{mantissa}e{'+' if exponent >= 0 else '-'}{abs(exponent)}"
+
+
+def _as_double(value: int, path: str) -> float:
+    try:
+        return float(value)
+    except OverflowError:
+        raise CanonicalizationError(
+            f"{path}: integer exceeds the range of an IEEE-754 double and has no JSON form"
+        ) from None
 
 
 def _shortest_digits(value: float) -> tuple[str, int]:

@@ -6,6 +6,17 @@
 
 ### Added
 
+- **Ужесточение границ contract kernel** (по итогам adversarial-ревью) — `\Z`
+  вместо `$` в рукописных regex (хвостовой `\n` больше не проходит в id, ref,
+  digest, decimal и slug); JCS-слой печатает оба нуля как `0` и округляет большие
+  целые к double по RFC 8785 §3.2.2.3, а negative zero отклоняет contract-граница;
+  `EvidenceBundle.digest()` перевалидирует собранный bundle; целочисленные поля
+  ограничены `2**53-1`; path confinement перешёл на whitelist сегментов (NUL,
+  NTFS-ADS `name:stream`, хвостовые точки/пробелы, device-имена, bidi-override);
+  `source_revision` отвергает `HEAD`/`main`/`latest`; decimal-строки нормализуются,
+  `budgets: {}` ≡ отсутствие бюджетов; дубликаты в `scope.metrics`/`dimensions`
+  запрещены схемой.
+
 - **Semantic snapshot, diff и impact** — `auto_bi/semantic/gateway.py`
   (`NativeModelSource`: `model.yaml` + metric contracts → content-addressed
   `SemanticSnapshot` с явными `SemanticGap`), `auto_bi/semantic/diff.py`

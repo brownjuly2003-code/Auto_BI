@@ -23,7 +23,7 @@ from pydantic import Field, model_validator
 
 from auto_bi.evidence.canonical import sha256_digest
 from auto_bi.refs import AssetRef, ContractRef, MetricId, PolicyRef
-from auto_bi.scalars import Duration, Timestamp
+from auto_bi.scalars import MAX_SAFE_INT, Duration, ImmutablePin, NonBlankText, Timestamp
 from auto_bi.semantic.model import Additivity, Aggregation, DataClassification, Join
 from auto_bi.strict import StrictModel
 
@@ -59,24 +59,27 @@ class ZeroSemantics(StrEnum):
 
 
 class MetricTerm(StrictModel):
+    # pydantic patterns run on the Rust engine, where `$` already means end-of-text (unlike
+    # Python's `re`, which is why the hand-written patterns in `scalars`/`refs` use `\Z`).
     table: str = Field(min_length=1, pattern=r"^[a-z0-9_]+\.[a-z0-9_]+$")
-    column: str = Field(min_length=1)
+    column: NonBlankText
     agg: Aggregation
 
 
 class ExternalFormula(StrictModel):
     """Governed definition owned elsewhere (dbt/MetricFlow, Apache Ossie, …)."""
 
-    source: str = Field(min_length=1)
-    ref: str = Field(min_length=1)
-    # Invariant 11: an external standard is only usable pinned — tag, commit or version.
-    source_revision: str = Field(min_length=1)
+    source: NonBlankText
+    ref: NonBlankText
+    # Invariant 11: an external standard is only usable pinned — and "main"/"HEAD"/"latest"
+    # pin nothing, so `ImmutablePin` refuses them.
+    source_revision: ImmutablePin
 
 
 class FormulaReview(StrictModel):
-    reviewer: str = Field(min_length=1)
+    reviewer: NonBlankText
     reviewed_at: Timestamp
-    rationale: str = Field(min_length=1)
+    rationale: NonBlankText
 
 
 class MetricFormula(StrictModel):
@@ -136,7 +139,7 @@ class MetricFormula(StrictModel):
 
 
 class MetricGrain(StrictModel):
-    table: str = Field(min_length=1)
+    table: NonBlankText
     keys: list[str] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -147,15 +150,15 @@ class MetricGrain(StrictModel):
 
 
 class MetricTime(StrictModel):
-    event_time_column: str = Field(min_length=1)
+    event_time_column: NonBlankText
     # Business timezone and calendar stay explicit: a silent UTC assumption moves day
     # boundaries and quietly changes every daily number (§8.3 treats a change here as block).
-    timezone: str = Field(min_length=1)
-    calendar: str = "gregorian"
+    timezone: NonBlankText
+    calendar: NonBlankText = "gregorian"
 
 
 class MetricUnit(StrictModel):
-    unit: str = Field(min_length=1)
+    unit: NonBlankText
     precision: int = Field(ge=0, le=18)
     null_semantics: NullSemantics
     zero_semantics: ZeroSemantics
@@ -167,15 +170,22 @@ class MetricFreshness(StrictModel):
 
 
 class MetricBudget(StrictModel):
-    max_scanned_rows: int | None = Field(default=None, ge=0)
-    max_scanned_bytes: int | None = Field(default=None, ge=0)
-    timeout_ms: int | None = Field(default=None, ge=0)
+    max_scanned_rows: int | None = Field(default=None, ge=0, le=MAX_SAFE_INT)
+    max_scanned_bytes: int | None = Field(default=None, ge=0, le=MAX_SAFE_INT)
+    timeout_ms: int | None = Field(default=None, ge=0, le=MAX_SAFE_INT)
+
+    def is_empty(self) -> bool:
+        """A budget with no bound is not a budget — see `MetricContract._check_semantics`."""
+        return not any(
+            value is not None
+            for value in (self.max_scanned_rows, self.max_scanned_bytes, self.timeout_ms)
+        )
 
 
 class MetricMetadata(StrictModel):
     id: MetricId
-    version: int = Field(ge=1)
-    owner: str = Field(min_length=1)
+    version: int = Field(ge=1, le=MAX_SAFE_INT)
+    owner: NonBlankText
     status: MetricLifecycle
     description: str = ""
 
@@ -210,6 +220,10 @@ class MetricContract(StrictModel):
             raise ValueError("non_additive_axes only apply to a semi_additive metric")
         if len(set(self.dimensions)) != len(self.dimensions):
             raise ValueError("dimensions must be unique")
+        if self.budgets is not None and self.budgets.is_empty():
+            # `budgets: {}` and no `budgets` at all say the same thing; they must not be two
+            # different digests of one contract (invariant 9).
+            self.budgets = None
         return self
 
     def self_ref(self) -> str:

@@ -15,13 +15,21 @@ hash is an integrity check, not a signature, and must never be reported as one.
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 
 from pydantic import Field, model_validator
 
 from auto_bi.evidence.canonical import canonical_bytes, digest_bytes
 from auto_bi.refs import DecisionRef
-from auto_bi.scalars import DecimalString, Sha256Digest, Slug, Timestamp
+from auto_bi.scalars import (
+    MAX_SAFE_INT,
+    DecimalString,
+    NonBlankText,
+    Sha256Digest,
+    Slug,
+    Timestamp,
+)
 from auto_bi.strict import StrictModel
 
 API_VERSION = "auto-bi.io/v2alpha1"
@@ -32,6 +40,17 @@ _REPORTS = "reports/"
 _BLOBS = "blobs/sha256/"
 _RESTRICTED = "restricted/"
 _ALLOWED_PREFIXES = (_CHECKS, _REPORTS, _BLOBS, _RESTRICTED)
+
+# A path segment is whitelisted, not blacklisted: a prefix check alone still admits NUL,
+# `name:stream` (an NTFS alternate data stream — invisible in a listing but written),
+# trailing dots/spaces (Windows strips them, so two artifacts collide on one file) and
+# bidi overrides in a display name.
+_SEGMENT_RE = re.compile(r"^(?![.\s])[A-Za-z0-9._-]+(?<![.\s])\Z")
+_RESERVED_NAMES = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"com{index}" for index in range(1, 10)}
+    | {f"lpt{index}" for index in range(1, 10)}
+)
 
 
 class EvidenceClassification(StrEnum):
@@ -88,18 +107,18 @@ class EvidenceIntegrity(StrEnum):
 class EvidenceSignature(StrictModel):
     """Recorded only after a signature verified — see :class:`EvidenceIntegrity`."""
 
-    algorithm: str = Field(min_length=1)
-    key_id: str = Field(min_length=1)
-    value: str = Field(min_length=1)
+    algorithm: NonBlankText
+    key_id: NonBlankText
+    value: NonBlankText
     verified_at: Timestamp
 
 
 class EvidenceArtifact(StrictModel):
     artifact_id: Slug
     kind: ArtifactKind
-    media_type: str = Field(min_length=1)
+    media_type: NonBlankText
     digest: Sha256Digest
-    size_bytes: int = Field(ge=0)
+    size_bytes: int = Field(ge=0, le=MAX_SAFE_INT)
     classification: EvidenceClassification
     path: str = Field(min_length=1)
     redacted: bool = False
@@ -110,8 +129,14 @@ class EvidenceArtifact(StrictModel):
         if "\\" in path or path.startswith("/") or (len(path) > 1 and path[1] == ":"):
             raise ValueError(f"artifact path must be bundle-relative, got {path!r}")
         segments = path.split("/")
-        if any(segment in ("", ".", "..") for segment in segments):
-            raise ValueError(f"artifact path must not contain empty or relative segments: {path!r}")
+        for segment in segments:
+            if not _SEGMENT_RE.match(segment):
+                raise ValueError(
+                    f"artifact path segment {segment!r} is not a plain name "
+                    "([A-Za-z0-9._-], no leading/trailing dot or space)"
+                )
+            if segment.split(".")[0].lower() in _RESERVED_NAMES:
+                raise ValueError(f"artifact path segment {segment!r} is a reserved device name")
         if not path.startswith(_ALLOWED_PREFIXES):
             allowed = ", ".join(_ALLOWED_PREFIXES)
             raise ValueError(f"artifact path {path!r} is outside the bundle layout ({allowed})")
@@ -155,7 +180,7 @@ class EvidenceBundle(StrictModel):
     run_id: Slug
     product_ref: DecisionRef
     created_at: Timestamp
-    verifier_version: str = Field(min_length=1)
+    verifier_version: NonBlankText
     integrity: EvidenceIntegrity = EvidenceIntegrity.CONTENT_HASHED
     signature: EvidenceSignature | None = None
     artifacts: list[EvidenceArtifact] = Field(default_factory=list)
@@ -189,8 +214,16 @@ class EvidenceBundle(StrictModel):
         return self
 
     def canonical_bytes(self) -> bytes:
-        """Canonical manifest bytes — the thing that gets hashed and, later, signed."""
-        return canonical_bytes(self.model_dump(mode="json"))
+        """Canonical manifest bytes — the thing that gets hashed and, later, signed.
+
+        The bundle is re-validated first. A bundle is *assembled*, not merely parsed:
+        `bundle.claims.append(...)` or a field assignment goes around every validator
+        above, and hashing an unchecked manifest is exactly how a dangling evidence ref or
+        an escaped path would reach a signature.
+        """
+        payload = self.model_dump(mode="json")
+        type(self).model_validate(payload)
+        return canonical_bytes(payload)
 
     def digest(self) -> str:
         return digest_bytes(self.canonical_bytes())

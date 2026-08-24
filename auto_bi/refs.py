@@ -34,9 +34,11 @@ class RefError(ValueError):
     """Malformed id/ref — never repaired by guessing (invariant 6)."""
 
 
-_REF_RE = re.compile(r"^(?P<kind>[a-z]+)://(?P<path>[^@]*)(?:@(?P<version>.*))?$")
-_SEGMENT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-_VERSION_RE = re.compile(r"^[1-9][0-9]*$")
+# `\Z`, not `$`: Python's `$` also matches before a trailing newline, which would let an id
+# ending in a newline validate — identical to the real one in any report, apart in every hash.
+_REF_RE = re.compile(r"^(?P<kind>[a-z]+)://(?P<path>[^@]*)(?:@(?P<version>.*))?\Z", re.S)
+_SEGMENT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*\Z")
+_VERSION_RE = re.compile(r"^[1-9][0-9]*\Z")
 
 
 @dataclass(frozen=True, slots=True)

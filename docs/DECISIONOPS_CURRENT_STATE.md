@@ -1,7 +1,7 @@
 # Auto_BI DecisionOps — текущее состояние
 
 **Дата:** 2026-08-24
-**Стадия:** contract kernel (bootstrap task 2 закрыт)
+**Стадия:** contract kernel + validate + semantic diff (bootstrap tasks 2–4 закрыты)
 **Ветка:** `main`
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
@@ -32,13 +32,17 @@
 - `auto_bi/evidence/canonical.py` — RFC 8785 JCS + SHA-256; проходит официальный
   векторный корпус (`tests/fixtures/jcs`, cyberphone/json-canonicalization,
   Apache-2.0), включая UTF-16-порядок ключей и ES6-числа.
-- Границы контракта: binary float в contract payload отклоняется (decimal-строки),
-  non-finite/negative zero/unsafe integer/lone surrogate — тоже.
+- Границы контракта: binary float, unsafe integer, lone surrogate и non-finite в
+  contract payload отклоняются (деньги/ratio/tolerance — decimal-строки).
+  Negative zero отклоняется уровнем выше, в `scalars.DecimalString`: сам JCS-слой
+  обязан печатать оба нуля как `0`, иначе он не JCS.
 - Инварианты, закрытые парсингом, а не соглашением: dangling `evidence_ref`,
-  path confinement артефактов, `integrity=signed` без проверенной подписи,
-  causal claim, semi-additive без `non_additive_axes`, unpinned external formula,
-  unpinned metric/policy/dashboard ref, `actions.mode != disabled`.
-- Проверено: 112 новых тестов, весь suite зелёный, `mypy --strict auto_bi` чист,
+  `integrity=signed` без проверенной подписи, causal claim, semi-additive без
+  `non_additive_axes`, external formula без immutable-пина, unpinned
+  metric/policy/dashboard ref, `actions.mode != disabled`, дубликаты в
+  scope-списках. Пути артефактов ограничены whitelist-сегментами внутри
+  bundle-layout; realpath/symlink-конфайнмент — задача будущего store, не парсера.
+- Проверено: 114 тестов ядра + 35 boundary-регрессий; `mypy --strict auto_bi` чист,
   ruff/black чисты. `DashboardSpec`, `BIAdapter` и схема Store не тронуты.
 - YAML-фикстуры продукта и метрики: `tests/fixtures/decision/`; sketch §7.2
   архитектуры проверяется docs-as-code тестом.
@@ -52,7 +56,7 @@
   exit codes**: 0 pass/advisory, 2 runtime-usage error, 3 needs_review, 4 block;
   contract-тест написан до CLI (§12.1). Прогон без единого продукта → 2, не 0.
 - `auto_bi/decision/validate.py` — стабильные коды находок: `metric_ref.unknown`,
-  `metric_ref.version_mismatch`, `metric_ref.duplicate`, `dimension.not_allowed`,
+  `metric_ref.version_mismatch`, `dimension.not_allowed`,
   `metric.retired` (block) / `metric.draft` (review) / `metric.deprecated`
   (advisory), `policy.mismatch` (review), `contract.unreadable`,
   `contract.unknown_kind`, `contract.invalid`, `contract.duplicate_id`.
@@ -60,16 +64,18 @@
   вердикт, противоречащий находкам. Порядок находок детерминирован (CI diff).
 - Проверено: 29 новых тестов; mypy --strict, ruff, black чисты. Suite — 1503 теста.
 
-> **Известный локальный flake (не DecisionOps, Windows-only).** Под нагрузкой
-> падают ровно два теста, всегда вместе:
-> `test_perf_baseline.py::test_sqlite_session_write_and_backup_budgets`
-> (таймингвый бюджет) и
-> `test_runtime_evidence.py::test_collect_container_snapshot_success` — он
-> подменяет глобальный `subprocess.run`, и в это окно кто-то в том же процессе
-> вызывает Windows-пробу версии `subprocess.run("ver", shell=True)`, которую
-> фейк отвергает. Точный вызывающий не локализован (`platform.system()` в
-> изолированном процессе такого вызова не делает). На незагруженной машине оба
-> зелёные (1503/1503); в CI (Ubuntu) путь не воспроизводится.
+> **Известный локальный flake (не DecisionOps, Windows-only).** На полном прогоне
+> под нагрузкой периодически падает
+> `test_runtime_evidence.py::test_collect_container_snapshot_success` (иногда
+> вместе с таймингвым `test_perf_baseline.py::…_backup_budgets`). Механика:
+> тест подменяет **глобальный** `subprocess.run`, а `_safe_metadata()` зовёт
+> `platform.system()`; на Windows первый в процессе `platform.uname()` уходит
+> через `win32_ver()` в `_syscmd_ver()`, который запускает `subprocess.run("ver",
+> shell=True)` (CPython 3.13 `platform.py:285,1005`). Результат кешируется в
+> `platform._uname_cache`, поэтому падение зависит от того, какой тест прогрел кеш
+> раньше — отсюда «то есть, то нет». Разовое лечение — прогреть `platform.system()`
+> в фикстуре до подмены `subprocess`. На незагруженной машине прогон зелёный; в CI
+> (Ubuntu) этот путь не существует.
 
 ### Semantic snapshot + diff + impact (2026-08-24)
 
@@ -91,6 +97,30 @@
   owner, и правило «review → block, если от метрики зависит governed product».
   Chart-уровень честно остановлен на dashboard-ref (нужен `DashboardSpec`).
 - Проверено: 45 новых тестов (13 snapshot + 24 diff + 8 impact).
+
+### Adversarial-ревью ядра (2026-08-24)
+
+Независимый ревьюер подтвердил конформность ES6-чисел, UTF-16-порядка ключей и
+escaping (независимый оракул, 20k случайных double + свип порядков) и нашёл 9 дыр.
+Все закрыты, регрессии — в `tests/test_contract_boundary.py`:
+
+- `$` в рукописных regex совпадает и перед завершающим переводом строки, поэтому
+  id, ref, digest, decimal и slug с хвостовым `\n` проходили как валидные — на
+  экране неотличимы от настоящих, в хеше другие. Теперь `\Z` (в pydantic-паттернах
+  остаётся `$` — там Rust-движок, где `$` уже означает конец строки).
+- JCS-слой отвергал `-0.0` и целые вне safe-range вместо сериализации; теперь
+  печатает `0` и округляет к double, как требует RFC 8785 §3.2.2.3.
+- `digest()`/`canonical_bytes()` перевалидируют bundle: сборка через
+  `bundle.claims.append(...)` обходила все валидаторы.
+- Контракт, который парсится, обязан хешироваться: целочисленные поля ограничены
+  `2**53-1` (иначе отказ всплывал как `CanonicalizationError` на гейте).
+- Path confinement — whitelist сегментов: закрыты NUL, `name:stream` (NTFS ADS),
+  хвостовые точки/пробелы, device-имена, bidi-override.
+- `source_revision` больше не принимает `HEAD`/`main`/`latest` — это не пин.
+- Decimal-строки нормализуются (`0.0000010` → `0.000001`), `budgets: {}` ≡ отсутствие
+  бюджетов — иначе один контракт давал два digest.
+- Blank-строки (`owner: " "`) отклоняются; дубликаты в `scope.metrics`/`dimensions`
+  теперь запрещены схемой, как и в `MetricContract`.
 
 ## Что ещё не реализовано
 
