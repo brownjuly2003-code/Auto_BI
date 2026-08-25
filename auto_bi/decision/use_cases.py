@@ -1,0 +1,201 @@
+"""Application services for the DecisionOps CLI (DECISIONOPS_ARCHITECTURE §6, §12.1).
+
+This is the only layer that reads the working tree. It resolves the paths a `decision
+verify` invocation names into the loaded inputs §8.1 lists, then hands them to
+`verification/release_gate.py`, which decides nothing about where they came from. A REST
+`/api/v2` handler later calls the same function with the same request object.
+
+Everything a run depends on is a file in Git: the contracts, both semantic refs, the
+delivered dashboard specs, the verified assets and — for now — the candidate results. That
+is what makes the gate reproducible offline; nothing here opens a socket.
+
+A **semantic ref** is a directory holding `model.yaml`, with metric contracts in an
+optional `metrics/` beside it. A **dashboard spec** is named after the ref that pins it —
+`weekly_margin@7.yaml` for `dashboard://weekly_margin@7` — so a product pinned to version 7
+cannot silently load version 8's layout. A missing one is a finding, not a guess.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from auto_bi.decision.spec import DecisionProductSpec
+from auto_bi.decision.validate import load_contracts
+from auto_bi.evidence.store import FilesystemArtifactStore
+from auto_bi.ir.spec import DashboardSpec
+from auto_bi.refs import ContractRef
+from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot
+from auto_bi.semantic.model import SemanticModel
+from auto_bi.verification.reconcile import ResultSet
+from auto_bi.verification.release_gate import (
+    GateInputs,
+    GateReport,
+    NoResults,
+    RecordedResults,
+    ResultSource,
+    run_gate,
+)
+from auto_bi.verification.repository import VerifiedAssetRepository
+
+MODEL_FILE = "model.yaml"
+METRICS_DIR = "metrics"
+
+_SPEC_SUFFIXES = (".yaml", ".yml", ".json")
+
+
+class VerifyError(Exception):
+    """A usage or input error — the run never started, so there is no verdict (exit 2)."""
+
+
+@dataclass(frozen=True)
+class VerifyRequest:
+    contract_paths: Sequence[str | Path]
+    base: str | Path
+    candidate: str | Path
+    evidence_dir: str | Path
+    created_at: str
+    dashboards_dir: str | Path | None = None
+    assets_dir: str | Path | None = None
+    results_file: str | Path | None = None
+    environment_ref: str = ""
+    #: Names the product to verify when the paths hold more than one.
+    product_id: str = ""
+
+
+def verify(request: VerifyRequest) -> GateReport:
+    """Load everything §8.1 names and run the gate over it."""
+    loaded = load_contracts(request.contract_paths)
+    product = _select_product(loaded.products, request.product_id)
+
+    base = _snapshot(Path(request.base))
+    candidate_root = Path(request.candidate)
+    candidate = _snapshot(candidate_root)
+    candidate_model = _load_model(candidate_root / MODEL_FILE)
+
+    inputs = GateInputs(
+        product=product,
+        validation=loaded.report,
+        base=base,
+        candidate=candidate,
+        candidate_model=candidate_model,
+        dashboards=_load_dashboards(request.dashboards_dir, product),
+        assets=_load_assets(request.assets_dir),
+        results=_load_results(request.results_file),
+        environment_ref=request.environment_ref,
+    )
+    store = FilesystemArtifactStore(request.evidence_dir)
+    return run_gate(inputs, store=store, created_at=request.created_at)
+
+
+def _select_product(
+    products: dict[str, DecisionProductSpec], product_id: str
+) -> DecisionProductSpec:
+    """One run verifies one product: the idempotency key and the bundle both name one."""
+    if product_id:
+        product = products.get(product_id)
+        if product is None:
+            known = ", ".join(sorted(products)) or "none"
+            raise VerifyError(f"no decision product {product_id!r} in the given paths ({known})")
+        return product
+    if not products:
+        raise VerifyError("no decision product contract found in the given paths")
+    if len(products) > 1:
+        known = ", ".join(sorted(products))
+        raise VerifyError(
+            f"the given paths hold {len(products)} decision products ({known}); "
+            "name the one to verify with --product"
+        )
+    return next(iter(products.values()))
+
+
+def _snapshot(root: Path) -> SemanticSnapshot:
+    model_path = root / MODEL_FILE
+    if not model_path.is_file():
+        raise VerifyError(f"semantic ref {root} has no {MODEL_FILE}")
+    metrics = root / METRICS_DIR
+    source = NativeModelSource(model_path, metrics if metrics.is_dir() else None)
+    return source.snapshot()
+
+
+def _load_model(path: Path) -> SemanticModel:
+    try:
+        return SemanticModel.model_validate(_read_mapping(path))
+    except ValueError as exc:
+        raise VerifyError(f"{path} is not a valid semantic model: {exc}") from None
+
+
+def _load_dashboards(
+    directory: str | Path | None, product: DecisionProductSpec
+) -> dict[str, DashboardSpec]:
+    """Resolve each pinned delivery ref to its spec file; absent is the gate's finding."""
+    if directory is None:
+        return {}
+    root = Path(directory)
+    if not root.is_dir():
+        raise VerifyError(f"dashboard specs directory not found: {root}")
+    specs: dict[str, DashboardSpec] = {}
+    for delivery in product.delivery.dashboards:
+        path = _dashboard_file(root, delivery.ref)
+        if path is None:
+            continue
+        try:
+            specs[delivery.ref] = DashboardSpec.model_validate(_read_mapping(path))
+        except ValueError as exc:
+            raise VerifyError(f"{path} is not a valid DashboardSpec: {exc}") from None
+    return specs
+
+
+def _dashboard_file(root: Path, ref: str) -> Path | None:
+    """`dashboard://weekly_margin@7` -> `weekly_margin@7.yaml`, and nothing else.
+
+    Dropping the version from the file name would let a product pinned to 7 load 8's layout
+    — the exact drift a pinned ref exists to prevent (§7.1).
+    """
+    parsed = ContractRef.parse(ref)
+    stem = f"{parsed.path[-1]}@{parsed.version}"
+    for suffix in _SPEC_SUFFIXES:
+        candidate = root / f"{stem}{suffix}"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _load_assets(directory: str | Path | None) -> VerifiedAssetRepository:
+    if directory is None:
+        return VerifiedAssetRepository([])
+    root = Path(directory)
+    if not root.exists():
+        raise VerifyError(f"verified assets path not found: {root}")
+    try:
+        return VerifiedAssetRepository.load(root)
+    except ValueError as exc:
+        raise VerifyError(f"{root} holds an invalid verified asset: {exc}") from None
+
+
+def _load_results(path: str | Path | None) -> ResultSource:
+    """Candidate answers recorded outside the gate, as `{asset id: ResultSet}`."""
+    if path is None:
+        return NoResults()
+    file = Path(path)
+    if not file.is_file():
+        raise VerifyError(f"recorded results file not found: {file}")
+    raw = _read_mapping(file)
+    try:
+        return RecordedResults({key: ResultSet.model_validate(value) for key, value in raw.items()})
+    except ValueError as exc:
+        raise VerifyError(f"{file} holds an invalid recorded result: {exc}") from None
+
+
+def _read_mapping(path: Path) -> dict[str, Any]:
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise VerifyError(f"cannot read {path}: {type(exc).__name__}") from None
+    if not isinstance(raw, dict):
+        raise VerifyError(f"{path} must contain a mapping")
+    return raw

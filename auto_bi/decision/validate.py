@@ -18,6 +18,7 @@ is the message, and the two are not interchangeable (§7.7).
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +81,21 @@ class ValidationReport(StrictModel):
         return self
 
 
-def validate_paths(paths: Iterable[str | Path]) -> ValidationReport:
+@dataclass(frozen=True)
+class LoadedContracts:
+    """The parsed contracts behind a :class:`ValidationReport`.
+
+    The release gate needs both halves — the report to grade step 1 of §8.2, and the specs
+    themselves to run the rest — and loading the working tree twice would let the two
+    disagree about what was on disk.
+    """
+
+    products: dict[str, DecisionProductSpec]
+    metrics: dict[str, MetricContract]
+    report: ValidationReport
+
+
+def load_contracts(paths: Iterable[str | Path]) -> LoadedContracts:
     """Load every contract under *paths* and validate the products against the metrics."""
     issues: list[ValidationIssue] = []
     products: dict[str, DecisionProductSpec] = {}
@@ -92,12 +107,21 @@ def validate_paths(paths: Iterable[str | Path]) -> ValidationReport:
     for _, product in sorted(products.items()):
         issues.extend(_validate_product(product, metrics))
 
-    return ValidationReport(
-        verdict=verdict_for(issue.severity for issue in issues),
-        products=sorted(product.self_ref() for product in products.values()),
-        metrics=sorted(metric.self_ref() for metric in metrics.values()),
-        issues=issues,
+    return LoadedContracts(
+        products=products,
+        metrics=metrics,
+        report=ValidationReport(
+            verdict=verdict_for(issue.severity for issue in issues),
+            products=sorted(product.self_ref() for product in products.values()),
+            metrics=sorted(metric.self_ref() for metric in metrics.values()),
+            issues=issues,
+        ),
     )
+
+
+def validate_paths(paths: Iterable[str | Path]) -> ValidationReport:
+    """Cross-contract report for *paths* (the `decision validate` surface)."""
+    return load_contracts(paths).report
 
 
 def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIssue]) -> list[Path]:

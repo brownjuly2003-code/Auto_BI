@@ -437,6 +437,28 @@ Gate выполняет шаги в фиксированном порядке:
 9. compile Superset/DataLens contracts без remote mutation;
 10. собрать и повторно провалидировать evidence bundle.
 
+Реализовано в `verification/release_gate.py`. Что важно в реализации:
+
+- Шаги 6–7 offline-реализации не имеют и выходят как `check.not_implemented`
+  (advisory), а не отсутствуют молча: чистый bundle не должен читаться как полная
+  верификация.
+- «Reject blocking semantic gaps» останавливает последовательность ТОЛЬКО на
+  `gap.contract_invalid`: непрочитанный контракт отсутствует в графе, и diff назвал
+  бы это удалённой метрикой. Остальные blocking-гэпы (dangling join, отсутствующее
+  поле метрики) описывают правдивый граф с названной дырой — diff и impact по нему
+  по-прежнему стоит читать, а сам гэп уже блокирует релиз. Пропущенные шаги выходят
+  как `check.not_run` (review), не как pass.
+- Шаг 8 берёт кандидатные результаты из порта `ResultSource`. Отсутствие ответа —
+  `insufficient` (review), никогда pass: сравнение, которого не было, не
+  доказывает, что число не поехало. Продукт, у которого вообще нет verified asset
+  с ожидаемым результатом, получает `result.no_expectations` (advisory).
+- Проверка `evidence.bundle` есть в отчёте, но не в bundle: она оценивает
+  повторную верификацию самого bundle, а проверка не может адресовать артефакт,
+  который валидирует.
+- `CheckResult` намеренно без `started_at`/`duration_ms`: стенные часы внутри
+  content-addressed артефакта ломают воспроизводимость (§9.1), а наблюдаемость
+  живёт в trace (§13), не в evidence.
+
 ### 8.3 Semantic diff
 
 | Изменение | Default classification |
@@ -653,8 +675,31 @@ contract-тестом `tests/test_decision_cli.py::test_exit_code_contract_is_st
 должно выглядеть как вынесенный verdict (инвариант 8). Прогон, который не нашёл
 ни одного decision product, завершается `2`, а не «pass».
 
-Реализовано: `auto_bi decision validate <paths…> [--json]` — offline
-cross-contract проверка (продукты ↔ metric contracts) без DWH/BI/LLM.
+Реализовано:
+
+```text
+auto_bi decision validate <paths…> [--json]
+auto_bi decision verify <paths…> --base <ref> --candidate <ref> --evidence <dir>
+        [--dashboards <dir>] [--assets <path>] [--results <file>]
+        [--product <id>] [--environment <ref>] [--created-at <ts>] [--json]
+```
+
+`validate` — offline cross-contract проверка (продукты ↔ metric contracts).
+`verify` — полный гейт §8.2 для ОДНОГО продукта: один run = один продукт, потому
+что и idempotency key, и evidence bundle называют один `product_ref`.
+
+Формат входов (`decision/use_cases.py` — единственный слой, который читает ФС):
+
+| Вход | Форма |
+|---|---|
+| semantic ref (`--base`/`--candidate`) | каталог с `model.yaml` и необязательным `metrics/` |
+| dashboard spec | `<segment>@<version>.yaml` — имя файла несёт пин, иначе продукт с `@7` молча подхватил бы вёрстку `@8` |
+| verified assets | файл или каталог YAML (`VerifiedAsset`) |
+| recorded results | `{asset id: ResultSet}` — кандидатные ответы, снятые вне гейта |
+
+`--created-at` задаётся явно, когда прогон должен быть байт-в-байт
+воспроизводимым: часы внутри content-addressed артефакта делают одинаковый вход
+разным bundle каждый раз.
 
 ### 12.2 REST
 

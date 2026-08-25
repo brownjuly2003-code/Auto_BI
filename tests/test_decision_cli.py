@@ -1,4 +1,4 @@
-"""`auto_bi decision validate` — CLI surface and the exit-code contract (§12.1).
+"""`auto_bi decision validate` / `verify` — CLI surface and the exit-code contract (§12.1).
 
 Exit codes are a contract with CI, so they are pinned here rather than left to whatever the
 implementation happens to return: a gate whose "block" is indistinguishable from a crash
@@ -17,6 +17,7 @@ import yaml
 from auto_bi.cli import main
 from auto_bi.verification.model import EXIT_ERROR, Verdict, exit_code_for
 from tests.test_decision_validate import write_contracts
+from tests.test_decision_verify import CREATED_AT, PRODUCT_ID, Case, _formula_change
 
 
 def test_exit_code_contract_is_stable() -> None:
@@ -116,3 +117,90 @@ def test_decision_command_requires_a_subcommand() -> None:
     with pytest.raises(SystemExit) as exc:
         main(["decision"])
     assert exc.value.code == 2
+
+
+# --- decision verify ----------------------------------------------------------
+
+
+def _verify_argv(case: Case, *extra: str) -> list[str]:
+    argv = [
+        "decision",
+        "verify",
+        str(case.contracts),
+        "--base",
+        str(case.base),
+        "--candidate",
+        str(case.candidate),
+        "--evidence",
+        str(case.root / "evidence"),
+        "--dashboards",
+        str(case.dashboards),
+        "--created-at",
+        CREATED_AT,
+    ]
+    if case.assets is not None:
+        argv += ["--assets", str(case.assets)]
+    if case.results is not None:
+        argv += ["--results", str(case.results)]
+    return [*argv, *extra]
+
+
+def test_verify_exits_zero_on_a_reconciled_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = Case(tmp_path).with_candidate()
+    case.with_asset().with_results([["Москва", "0.412"], ["Казань", "0.377"]])
+    assert main(_verify_argv(case)) == 0
+    out = capsys.readouterr().out
+    assert "verdict: pass_with_advisory" in out
+    assert "status   completed" in out
+
+
+def test_verify_exits_block_on_a_breaking_seed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = Case(tmp_path).with_candidate(contract=_formula_change())
+    assert main(_verify_argv(case)) == 4
+    out = capsys.readouterr().out
+    assert "block    impact.products" in out
+    assert "verdict: block" in out
+
+
+def test_verify_exits_review_when_a_comparison_did_not_happen(tmp_path: Path) -> None:
+    """No candidate result means no evidence — a human decides, exit 3 (§12.1)."""
+    case = Case(tmp_path).with_candidate().with_asset()
+    assert main(_verify_argv(case)) == 3
+
+
+def test_verify_usage_error_exits_two_and_writes_to_stderr(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = Case(tmp_path).with_candidate()
+    (case.contracts / "weekly_margin.yaml").unlink()
+    assert main(_verify_argv(case)) == EXIT_ERROR
+    captured = capsys.readouterr()
+    assert "no decision product" in captured.err
+    assert captured.out == ""
+
+
+def test_verify_json_output_is_the_only_thing_on_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = Case(tmp_path).with_candidate()
+    code = main(_verify_argv(case, "--json"))
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["kind"] == "DecisionGateReport"
+    assert payload["product_ref"] == f"{PRODUCT_ID}@1"
+    assert payload["operational_status"] == "completed"
+    assert payload["verdict"] == "pass_with_advisory"
+    assert payload["run_id"].startswith("run-")
+
+
+def test_verify_writes_the_bundle_under_the_evidence_dir(tmp_path: Path) -> None:
+    case = Case(tmp_path).with_candidate()
+    main(_verify_argv(case, "--json"))
+    runs = sorted((tmp_path / "evidence").iterdir())
+    assert len(runs) == 1
+    assert (runs[0] / "manifest.json").is_file()
+    assert (runs[0] / "checks" / "check-bi.contract.json").is_file()

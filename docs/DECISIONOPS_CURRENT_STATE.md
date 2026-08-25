@@ -196,21 +196,54 @@ escaping (независимый оракул, 20k случайных double + �
 - Проверено: 23 новых теста; 215 адаптерных v1-тестов зелёные; `mypy --strict`,
   ruff, black чисты. Suite — 1660 тестов.
 
+### One-shot `decision verify` (2026-08-25)
+
+- `auto_bi/verification/release_gate.py` — последовательность §8.2 для ОДНОГО
+  продукта: validate → freeze snapshots → gaps → diff → impact → инвалидация
+  assets → reconcile → BI compile → evidence bundle → повторная верификация
+  bundle. Оркестрация и только: файлы не читает, сокеты не открывает.
+- `auto_bi/decision/use_cases.py` — единственный слой, который читает ФС.
+  Semantic ref = каталог с `model.yaml` (+ `metrics/`); dashboard spec = файл
+  `<segment>@<version>.yaml`, потому что имя без версии позволило бы продукту,
+  запинненному на `@7`, подхватить вёрстку `@8`.
+- CLI: `auto_bi decision verify <paths…> --base --candidate --evidence
+  [--dashboards --assets --results --product --environment --created-at --json]`.
+  Exit code несёт вердикт (0/3/4), usage-ошибка — 2 и текст в stderr.
+- `operational_status` и `verdict` — разные поля, и `GateReport` не валидируется,
+  если их смешать: check со статусом `error` требует `failed` (инвариант 8), а
+  вердикт, противоречащий своим check'ам, отклоняется.
+- Честность вместо тихого pass: шаги 6–7 (compile SQL, DWH-проверки) выходят как
+  `check.not_implemented` (advisory); недоступный кандидатный результат — review, не
+  pass; продукт без verified asset получает `result.no_expectations` (advisory).
+- «Reject blocking gaps» останавливает диф ТОЛЬКО на `gap.contract_invalid`
+  (`UNTRUSTWORTHY_GAPS`): непрочитанный контракт отсутствует в графе, и diff назвал
+  бы это удалённой метрикой. Удалённое поле метрики — правдивый граф с названной
+  дырой, поэтому diff и impact продолжают работать и владелец узнаёт, что сломалось.
+- Идемпотентность §7.6: `run_id` детерминирован (digest продукта, обоих снапшотов,
+  policy, environment, verifier version), `--created-at` задаётся явно → одинаковый
+  вход даёт байт-в-байт одинаковый bundle. Тест проверяет это на двух каталогах.
+- `CheckResult` без `started_at`/`duration_ms`: часы внутри content-addressed
+  артефакта ломают воспроизводимость; тайминг — забота trace (§13), не evidence.
+- Проверено: 35 новых тестов (29 сценарных + 6 CLI), включая §15.3 — четыре
+  breaking seeds (formula / grain / event time / removed field) блокируются с точным
+  impact до владельца и дашборда, presentation-only change не блокирует, прогон не
+  открывает сокет и не зовёт ни один метод BI-клиентов. Suite — 1695 тестов;
+  `mypy --strict`, ruff, black чисты.
+
 ## Что ещё не реализовано
-- `auto_bi decision verify` и `auto_bi decision evidence`;
-- Analytics Release & Evidence Gate (оркестрация §8.2);
+- `auto_bi decision evidence` (чтение bundle из CLI);
+- §8.2 шаги 6–7: compile base/candidate SQL и security/access/freshness/physical
+  checks против DWH — гейт объявляет их `check.not_implemented`;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
 ## Следующий атомарный slice
 
-One-shot `decision verify` (вторая половина bootstrap task 7): `verification/
-release_gate.py` по последовательности §8.2 (validate → freeze snapshots → reject
-blocking gaps → diff и impact → инвалидация assets → compile SQL → checks →
-reconcile → BI-контракты без remote mutation → evidence bundle), `decision/
-use_cases.py`, CLI `auto_bi decision verify … --evidence <dir>` со стабильными exit
-codes и сценарные тесты §15.3: четыре breaking seeds блокируются,
-presentation-only change проходит. Все входы готовы: контракты, snapshot/diff/
-impact, VQR/comparator, evidence writer, BI compile contracts.
+Bootstrap task 8 — pilot gate на одном реальном change (**решение владельца**:
+какой именно change, на каком стенде, чей owner impact измеряем). До пилота
+техническая опора уже есть; если пилот решено отложить, следующий технический слайс
+— шаги 6–7 (`sql.compile` + execution checks поверх `agent/sql_guard.py`,
+`agent/query_plan.py` и `advisor/*`), которые сейчас честно объявлены
+нереализованными, плюс `decision evidence` для чтения bundle.
 
 ## Источники истины
 

@@ -6,6 +6,21 @@
 
 ### Added
 
+- **`auto_bi decision verify` — one-shot Analytics Release & Evidence Gate** —
+  `auto_bi/verification/release_gate.py` (последовательность §8.2 для одного
+  продукта: validate → snapshots → gaps → diff → impact → инвалидация assets →
+  reconcile → BI compile → evidence bundle → повторная верификация bundle) и
+  `auto_bi/decision/use_cases.py` (единственный слой, читающий ФС). Exit code
+  несёт вердикт (0/3/4), usage-ошибка — 2. `operational_status` и `verdict` —
+  разные поля, и отчёт не валидируется, если их смешать (инвариант 8). Шаги
+  6–7 (compile SQL, DWH-проверки) объявлены `check.not_implemented`, а не
+  пропущены молча; недоступный кандидатный результат — review, не pass. `run_id`
+  детерминирован из idempotency key §7.6, поэтому одинаковый вход даёт
+  байт-в-байт одинаковый bundle. Сценарии §15.3: четыре breaking seeds (formula,
+  grain, event time, removed field) блокируются с точным impact до владельца и
+  дашборда, presentation-only change не блокирует, прогон не открывает сокет и не
+  зовёт ни один метод BI-клиентов.
+
 - **Pure BI compile contracts** — `auto_bi/verification/bi_contract.py`:
   compile-only порт `BIContractCompiler` (§8.5) и реализации для Superset и
   DataLens, которые компилируют `DashboardSpec` в нативные payload'ы, не трогая BI.

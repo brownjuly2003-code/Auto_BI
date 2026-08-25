@@ -164,6 +164,36 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true", help="Emit the report as JSON and nothing else"
     )
 
+    verify = decision_sub.add_parser(
+        "verify",
+        help="Run the Analytics Release & Evidence Gate for one decision product",
+    )
+    verify.add_argument("paths", nargs="+", help="Contract files or directories (YAML)")
+    verify.add_argument(
+        "--base", required=True, help="Base semantic ref: a directory holding model.yaml"
+    )
+    verify.add_argument(
+        "--candidate", required=True, help="Candidate semantic ref: a directory holding model.yaml"
+    )
+    verify.add_argument(
+        "--evidence", required=True, help="Directory the evidence bundle is written to"
+    )
+    verify.add_argument("--dashboards", default=None, help="Directory of delivered DashboardSpecs")
+    verify.add_argument("--assets", default=None, help="Verified asset repository (file or dir)")
+    verify.add_argument(
+        "--results", default=None, help="Recorded candidate results: {asset id: ResultSet}"
+    )
+    verify.add_argument("--product", default="", help="Product id, when the paths hold several")
+    verify.add_argument("--environment", default="", help="DWH/BI environment ref for the run key")
+    verify.add_argument(
+        "--created-at",
+        default="",
+        help="RFC 3339 UTC bundle timestamp; supply it to make the run byte-reproducible",
+    )
+    verify.add_argument(
+        "--json", action="store_true", help="Emit the report as JSON and nothing else"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "build":
@@ -191,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "prune":
         return _prune(args.session, args.dry_run, args.model_path)
     if args.command == "decision":
+        if args.decision_command == "verify":
+            return _decision_verify(args)
         return _decision_validate(args.paths, args.json)
     return 0
 
@@ -227,6 +259,50 @@ def _decision_validate(paths: list[str], as_json: bool) -> int:
         message = "error: no decision product contract found in the given paths"
         print(message, file=sys.stderr if as_json else sys.stdout)
         return EXIT_ERROR
+    return exit_code_for(report.verdict)
+
+
+def _decision_verify(args: argparse.Namespace) -> int:
+    """`auto_bi decision verify` — the one-shot release gate (ARCHITECTURE §8.2, §12.1).
+
+    The exit code carries the verdict, never the operational status: a completed run that
+    blocks exits 4, while a run that could not start exits 2 (invariant 8).
+    """
+    import json
+    from datetime import UTC, datetime
+
+    from auto_bi.decision.use_cases import VerifyError, VerifyRequest, verify
+    from auto_bi.verification.model import EXIT_ERROR, exit_code_for
+
+    created_at = args.created_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        report = verify(
+            VerifyRequest(
+                contract_paths=args.paths,
+                base=args.base,
+                candidate=args.candidate,
+                evidence_dir=args.evidence,
+                created_at=created_at,
+                dashboards_dir=args.dashboards,
+                assets_dir=args.assets,
+                results_file=args.results,
+                environment_ref=args.environment,
+                product_id=args.product,
+            )
+        )
+    except VerifyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if args.json:
+        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        for check in report.checks:
+            print(f"{check.status.value:<8} {check.check_id:<22} {check.summary_code}")
+            print(f"{'':<8} {check.detail}")
+        print(f"run      {report.run_id}  evidence {report.evidence_digest}")
+        print(f"status   {report.operational_status.value}")
+        print(f"verdict: {report.verdict.value} ({len(report.blocking())} blocking check(s))")
     return exit_code_for(report.verdict)
 
 

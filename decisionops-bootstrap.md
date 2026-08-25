@@ -23,9 +23,10 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
   row-order, decimal tolerance, null/zero/missing и truncated-result fixtures.
 - [x] Собрать content-addressed EvidenceBundle → Verify: deterministic digest,
   dangling `evidence_ref` rejection, path confinement и redaction tests.
-- [ ] Реализовать one-shot `decision verify` и pure Superset/DataLens compile
+- [x] Реализовать one-shot `decision verify` и pure Superset/DataLens compile
   contracts → Verify: four breaking seeds block, presentation-only change
-  passes, mutation-spy подтверждает ноль remote creates.
+  passes, mutation-spy подтверждает ноль remote creates. Шаги §8.2 6–7 (compile
+  SQL + DWH-проверки) объявлены `check.not_implemented`, не пропущены молча.
 - [ ] Провести pilot gate на одном реальном change → Verify: owner impact точен,
   review time измерен, evidence понятен владельцу; только затем решать вопрос о
   certified brief и recurring runs.
