@@ -38,8 +38,9 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
   чей impact меряем.** Техническая опора готова: гейт выносит вердикт, а
   `auto_bi decision evidence … --artifact report-summary-md` показывает владельцу,
   на чём этот вердикт стоит. Офлайновой технической работы, которая приближала бы
-  pilot evidence, не осталось — оставшиеся шаги (§8.2 шаг 7 и governed ratio в
-  шаге 6) требуют стенда DWH.
+  pilot evidence, не осталось: governed ratio в шаге 6 закрыт для ClickHouse (форма
+  проверена на `clickhouse local` того же пина 24.8), а §8.2 шаг 7 и ratio на
+  Postgres/Greengage требуют движка с данными.
 
 ## Critical path
 

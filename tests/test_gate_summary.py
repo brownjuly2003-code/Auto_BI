@@ -99,8 +99,9 @@ def test_the_summary_says_what_the_run_did_not_do(tmp_path: Path) -> None:
     undone = text.split("## What was not done")[1].split("## Every check")[0]
     assert "execution.checks" in undone
     assert "check.not_implemented" in undone
-    # the fixture's only metric is a ratio, so step 6 compiled nothing at all
-    assert "sql.not_compiled" in undone
+    # step 6 compiles the fixture's ratio on a ClickHouse mart, so it is graded, not skipped
+    assert "sql.not_compiled" not in undone
+    assert "sql.compile" not in undone
 
 
 def test_the_summary_lists_every_check_that_went_into_the_bundle(tmp_path: Path) -> None:

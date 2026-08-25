@@ -6,6 +6,23 @@
 
 ### Added
 
+- **§8.2 шаг 6 — governed ratio компилируется на ClickHouse** — форма деления,
+  которую «негде было подтвердить», проверена на живом движке того же пина
+  (`clickhouse local` из релиза `v24.8.14.39-lts`, в который резолвится
+  `clickhouse/clickhouse-server:24.8` из `docker-compose.yml`). Гейт печатает
+  `CASE WHEN COALESCE(SUM(den), 0) = 0 THEN NULL ELSE divideDecimal(SUM(num),
+  COALESCE(nullIf(SUM(den), 0), 1), <precision>) END`: точное деление с усечением к нулю
+  на объявленной `unit.precision` (у неё впервые появился потребитель), нулевой или
+  отсутствующий знаменатель → NULL в строке. Охрана вокруг вызова не декоративная —
+  `divideDecimal` читает значения знаменателя под NULL-маской, поэтому привычный
+  `NULLIF(den, 0)` сам по себе даёт `ILLEGAL_DIVISION`; аргументы обязаны быть Decimal,
+  поэтому счётные и целочисленные термы приводятся (nullable — nullable-приведением, иначе
+  группа из одних NULL падает на CAST). Вне ClickHouse форма не подтверждена →
+  `sql.ratio_unverified` с названным диалектом; неточный терм (AVG, Float-колонка) →
+  `sql.ratio_inexact_term`; необъявленная в модели колонка → `sql.term_undeclared`.
+  Фикстурный продукт больше не даёт `sql.not_compiled`, и шаг 6 ушёл из раздела «что не
+  сделано» в отчёте владельцу.
+
 - **§8.2 шаг 6 — reference SQL метрики** — `auto_bi/verification/sql_contract.py`:
   гейт компилирует определение каждой метрики продукта на её же grain (без окна,
   фильтра и top-N — это принадлежит продукту и прогону, не метрике) для base и
