@@ -6,6 +6,24 @@
 
 ### Added
 
+- **`auto_bi decision evidence` — чтение написанного evidence bundle** —
+  `auto_bi/evidence/inspect.py` (`inspect_bundle` пересчитывает digest манифеста из
+  байтов на диске, перепроверяет каждый content address и отдаёт `BundleInspection`
+  с вердиктом; `read_artifact` выдаёт один payload) и `locate_evidence` в
+  `auto_bi/decision/use_cases.py` (адресом может быть и каталог evidence, и один
+  run-каталог внутри; несколько run'ов — команда называет их и просит `--run`, а не
+  выбирает сама). Вердикт про целостность, а не про релиз: целый bundle выходит с
+  `0`, даже если внутри записан `block`. Два отказа сознательные — `restricted`
+  payload не печатается никогда (§10.2), а артефакт, который больше не хешируется в
+  свой адрес, не выдаётся вовсе. `--expect-digest` проверяет, что это именно тот
+  bundle, под которым публиковался вердикт: без него «bundle проходит проверку»
+  означает лишь внутреннюю согласованность каталога.
+
+- **`evidence.run_id_mismatch`** (`verify_bundle`) — скопированный bundle остаётся
+  внутренне согласованным (манифест каноничен, артефакты хешируются), врёт только его
+  расположение. Review, а не block: читать такой bundle можно, но принадлежность к
+  run'у, под которым он лежит, ничем не подтверждена.
+
 - **`auto_bi decision verify` — one-shot Analytics Release & Evidence Gate** —
   `auto_bi/verification/release_gate.py` (последовательность §8.2 для одного
   продукта: validate → snapshots → gaps → diff → impact → инвалидация assets →
@@ -104,6 +122,16 @@
 - **Local BYOK runbook** — `docs/LOCAL_BYOK.md`: первый локальный запуск после
   clone со своим `ANTHROPIC_API_KEY` (ClickHouse + Superset через Compose,
   `uv run auto_bi serve`, health/ready, остановка и troubleshooting).
+
+### Security
+
+- **`FilesystemArtifactStore` проверяет и сам run id** — конфайнмент путей внутри
+  bundle был укоренён *в* каталоге run'а, поэтому проверял всё, кроме имени самого
+  каталога: `run_id` вида `../..` сдвигал корень, и любой путь внутри резолвился
+  «правильно» уже совсем не туда. Теперь run id обязан быть одним обычным именем
+  (той же формы, что `scalars.Slug`, которой манифест его и объявляет). До появления
+  `decision evidence --run` все вызывающие были внутренними, так что известного
+  вектора не было — закрыто до того, как значение стало приходить снаружи.
 
 ## [0.5.0] - 2026-07-29
 

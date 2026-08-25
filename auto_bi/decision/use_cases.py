@@ -9,6 +9,10 @@ Everything a run depends on is a file in Git: the contracts, both semantic refs,
 delivered dashboard specs, the verified assets and — for now — the candidate results. That
 is what makes the gate reproducible offline; nothing here opens a socket.
 
+`decision evidence` reads from the same layer for the same reason: resolving `<run-or-path>`
+to one run directory is a filesystem question, and `evidence/inspect.py` — which decides
+whether a bundle is still trustworthy — must not have to answer it.
+
 A **semantic ref** is a directory holding `model.yaml`, with metric contracts in an
 optional `metrics/` beside it. A **dashboard spec** is named after the ref that pins it —
 `weekly_margin@7.yaml` for `dashboard://weekly_margin@7` — so a product pinned to version 7
@@ -26,7 +30,8 @@ import yaml
 
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import load_contracts
-from auto_bi.evidence.store import FilesystemArtifactStore
+from auto_bi.evidence.manifest import MANIFEST_PATH
+from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.refs import ContractRef
 from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot
@@ -49,7 +54,11 @@ _SPEC_SUFFIXES = (".yaml", ".yml", ".json")
 
 
 class VerifyError(Exception):
-    """A usage or input error — the run never started, so there is no verdict (exit 2)."""
+    """A usage or input error — the run never started, so there is no verdict (exit 2).
+
+    Shared by every `decision` use case: pointing at a directory that holds no bundle is
+    the same class of answer as pointing at one that holds no product.
+    """
 
 
 @dataclass(frozen=True)
@@ -189,6 +198,52 @@ def _load_results(path: str | Path | None) -> ResultSource:
         return RecordedResults({key: ResultSet.model_validate(value) for key, value in raw.items()})
     except ValueError as exc:
         raise VerifyError(f"{file} holds an invalid recorded result: {exc}") from None
+
+
+@dataclass(frozen=True)
+class EvidenceLocation:
+    """Where one bundle lives: the store that owns its paths, and the run inside it."""
+
+    store: FilesystemArtifactStore
+    run_id: str
+
+
+def locate_evidence(path: str | Path, run_id: str = "") -> EvidenceLocation:
+    """Resolve `<run-or-path>` (§12.1) to exactly one run.
+
+    Both addresses are accepted because both are what people have: the evidence root a
+    pipeline was pointed at, and the single run directory someone copied out of it. What is
+    not accepted is a guess — a root holding several runs names them and asks, because
+    reading the wrong bundle is worse than reading none.
+    """
+    root = Path(path)
+    if (root / MANIFEST_PATH).is_file():  # the run directory itself
+        if run_id and run_id != root.name:
+            raise VerifyError(f"{root} is run {root.name!r}, not {run_id!r}")
+        return EvidenceLocation(FilesystemArtifactStore(root.parent), root.name)
+    if not root.is_dir():
+        raise VerifyError(f"evidence path not found: {root}")
+
+    store = FilesystemArtifactStore(root)
+    if run_id:
+        try:
+            store.run_root(run_id)  # the store owns the rule; here it is a usage error
+        except ArtifactStoreError as exc:
+            raise VerifyError(str(exc)) from None
+        if not (root / run_id / MANIFEST_PATH).is_file():
+            raise VerifyError(f"run {run_id!r} under {root} has no {MANIFEST_PATH}")
+        return EvidenceLocation(store, run_id)
+
+    runs = sorted(child.name for child in root.iterdir() if (child / MANIFEST_PATH).is_file())
+    if not runs:
+        raise VerifyError(
+            f"no evidence bundle under {root}: no run directory holds {MANIFEST_PATH}"
+        )
+    if len(runs) > 1:
+        raise VerifyError(
+            f"{root} holds {len(runs)} runs ({', '.join(runs)}); " "name the one to read with --run"
+        )
+    return EvidenceLocation(store, runs[0])
 
 
 def _read_mapping(path: Path) -> dict[str, Any]:

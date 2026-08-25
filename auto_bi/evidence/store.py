@@ -13,10 +13,16 @@ requirements, behind this same protocol (§11).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Protocol
 
 _MAX_SEGMENTS = 8
+#: A run id is one plain directory name, the same shape the manifest declares it in
+#: (`scalars.Slug`). Enforced here because the confinement check below is rooted *at* the
+#: run directory: a run id of `../..` would move the root itself, and every path inside it
+#: would then resolve cleanly into somewhere else entirely.
+_RUN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*\Z")
 
 
 class ArtifactStoreError(Exception):
@@ -40,6 +46,10 @@ class FilesystemArtifactStore:
         self._root = Path(root)
 
     def run_root(self, run_id: str) -> Path:
+        if not _RUN_ID_RE.match(run_id):
+            raise ArtifactStoreError(
+                f"run id must be one plain lowercase name ([a-z0-9._-]), got {run_id!r}"
+            )
         return self._root / run_id
 
     def put(self, run_id: str, path: str, payload: bytes) -> None:

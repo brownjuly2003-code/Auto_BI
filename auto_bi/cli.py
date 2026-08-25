@@ -194,6 +194,24 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true", help="Emit the report as JSON and nothing else"
     )
 
+    evidence = decision_sub.add_parser(
+        "evidence",
+        help="Read a written evidence bundle back and re-verify every content address",
+    )
+    evidence.add_argument("path", help="Evidence directory, or one run directory inside it")
+    evidence.add_argument("--run", default="", help="Run id, when the directory holds several")
+    evidence.add_argument(
+        "--artifact", default="", help="Print this artifact's payload and nothing else"
+    )
+    evidence.add_argument(
+        "--expect-digest",
+        default="",
+        help="Manifest digest the bundle must have; a mismatch blocks",
+    )
+    evidence.add_argument(
+        "--json", action="store_true", help="Emit the inspection as JSON and nothing else"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "build":
@@ -223,6 +241,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "decision":
         if args.decision_command == "verify":
             return _decision_verify(args)
+        if args.decision_command == "evidence":
+            return _decision_evidence(args)
         return _decision_validate(args.paths, args.json)
     return 0
 
@@ -304,6 +324,65 @@ def _decision_verify(args: argparse.Namespace) -> int:
         print(f"status   {report.operational_status.value}")
         print(f"verdict: {report.verdict.value} ({len(report.blocking())} blocking check(s))")
     return exit_code_for(report.verdict)
+
+
+def _decision_evidence(args: argparse.Namespace) -> int:
+    """`auto_bi decision evidence` — read a bundle back and re-verify it (§9.3, §12.1).
+
+    The verdict grades the evidence, not the release it recorded: an intact bundle exits 0
+    whatever the run inside it decided, and a tampered one exits 4 whatever it says.
+    """
+    import json
+
+    from auto_bi.decision.use_cases import VerifyError, locate_evidence
+    from auto_bi.evidence.inspect import EvidenceReadError, inspect_bundle, read_artifact
+    from auto_bi.verification.model import EXIT_ERROR, exit_code_for
+
+    try:
+        location = locate_evidence(args.path, args.run)
+        if args.artifact:
+            artifact, payload = read_artifact(location.store, location.run_id, args.artifact)
+            try:
+                print(payload.decode("utf-8"))
+            except UnicodeDecodeError:
+                print(
+                    f"error: {artifact.artifact_id} is not text ({artifact.media_type}, "
+                    f"{artifact.size_bytes} bytes); it is stored at {artifact.path}",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
+            return 0
+        inspection = inspect_bundle(
+            location.store, location.run_id, expected_digest=args.expect_digest or None
+        )
+    except (VerifyError, EvidenceReadError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if args.json:
+        print(json.dumps(inspection.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        print(f"run       {inspection.run_id}")
+        print(f"digest    {inspection.manifest_digest}")
+        bundle = inspection.bundle
+        if bundle is not None:
+            print(f"product   {bundle.product_ref}")
+            print(f"created   {bundle.created_at}   verifier {bundle.verifier_version}")
+            print(f"integrity {bundle.integrity.value}")
+            for claim in bundle.claims:
+                print(f"claim     {claim.claim_type.value:<13} {claim.summary_code:<24} ")
+                print(f"{'':<10} {claim.claim_id} <- {', '.join(claim.evidence_refs)}")
+                for caveat in claim.caveats:
+                    print(f"{'':<10} caveat: {caveat}")
+            for artifact in bundle.artifacts:
+                print(
+                    f"artifact  {artifact.classification.value:<13} {artifact.kind.value:<18} "
+                    f"{artifact.size_bytes:>8} B  {artifact.artifact_id}"
+                )
+        for problem in inspection.problems:
+            print(f"{problem.severity.value:<9} {problem.code:<28} {problem.detail}")
+        print(f"verdict: {inspection.verdict.value} ({len(inspection.problems)} problem(s))")
+    return exit_code_for(inspection.verdict)
 
 
 def _build(description: str, model_path: str, target: str = "superset") -> int:

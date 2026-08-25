@@ -1,8 +1,9 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Дата:** 2026-08-24
-**Стадия:** contracts + validate + semantic diff + VQR/comparator + evidence writer
-(bootstrap tasks 2–6 закрыты)
+**Дата:** 2026-08-25
+**Стадия:** contracts + validate + semantic diff + VQR/comparator + evidence
+writer/reader + BI compile contracts + `decision verify` (bootstrap tasks 2–7
+закрыты; открыт только task 8 — pilot)
 **Ветка:** `main`
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
@@ -230,8 +231,36 @@ escaping (независимый оракул, 20k случайных double + �
   открывает сокет и не зовёт ни один метод BI-клиентов. Suite — 1695 тестов;
   `mypy --strict`, ruff, black чисты.
 
+### Чтение evidence — `decision evidence` (2026-08-25)
+
+- `auto_bi/evidence/inspect.py` — вторая сторона `manifest.py`: открывает bundle,
+  который здесь никто не писал (скопирован из CI, прислан коллегой, лежит с прошлого
+  месяца), и отвечает на два вопроса — тот ли это bundle, за который себя выдаёт, и
+  что он утверждает. `BundleInspection` несёт `manifest_digest`, пересчитанный из
+  байтов на диске, а не переписанный из манифеста.
+- Вердикт про **целостность**, а не про релиз: целый bundle с записанным внутри
+  `block` выходит с кодом `0`. Считается тем же `verdict_for`, что и везде, поэтому
+  сломанный bundle роняет пайплайн тем же словарём exit code'ов.
+- Два отказа сознательные: `restricted`-payload не печатается никогда (§10.2 — в
+  манифесте у него только digest, размер и класс), а артефакт, который больше не
+  хешируется в свой адрес, не выдаётся вовсе: байты на диске — уже не то, на чём
+  принималось решение.
+- `--expect-digest` — то, ради чего вообще нужен content address: без него «bundle
+  проходит проверку» значит лишь, что каталог внутренне согласован, а не что это тот
+  самый bundle, под которым публиковался вердикт.
+- Новый код проблемы `evidence.run_id_mismatch` (review, не block): скопированный
+  bundle остаётся внутренне согласованным, врёт только его расположение.
+- `locate_evidence` в `use_cases.py` (слой ФС) принимает и каталог evidence, и один
+  run-каталог внутри него; несколько run'ов — команда называет их и просит `--run`,
+  а не выбирает сама.
+- Побочно закрыта дыра в `FilesystemArtifactStore`: конфайнмент был укоренён *в*
+  каталоге run'а и потому не проверял имя самого каталога — `run_id` вида `../..`
+  сдвигал корень. До `--run` все вызывающие были внутренними, известного вектора не
+  было; закрыто до того, как значение стало приходить снаружи.
+- Проверено: 23 новых теста (14 модульных + 9 CLI). Suite — 1719 passed / 20 skipped
+  за 12 мин под нагрузкой; `mypy --strict`, ruff, black чисты.
+
 ## Что ещё не реализовано
-- `auto_bi decision evidence` (чтение bundle из CLI);
 - §8.2 шаги 6–7: compile base/candidate SQL и security/access/freshness/physical
   checks против DWH — гейт объявляет их `check.not_implemented`;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
@@ -239,11 +268,15 @@ escaping (независимый оракул, 20k случайных double + �
 ## Следующий атомарный slice
 
 Bootstrap task 8 — pilot gate на одном реальном change (**решение владельца**:
-какой именно change, на каком стенде, чей owner impact измеряем). До пилота
-техническая опора уже есть; если пилот решено отложить, следующий технический слайс
-— шаги 6–7 (`sql.compile` + execution checks поверх `agent/sql_guard.py`,
-`agent/query_plan.py` и `advisor/*`), которые сейчас честно объявлены
-нереализованными, плюс `decision evidence` для чтения bundle.
+какой именно change, на каком стенде, чей owner impact измеряем). Вся техническая
+опора для пилота уже есть: гейт выносит вердикт, а `decision evidence` показывает
+владельцу, на чём этот вердикт стоит.
+
+Если пилот решено отложить, следующий технический слайс — шаги 6–7
+(`sql.compile` + execution checks поверх `agent/sql_guard.py`, `agent/query_plan.py`
+и `advisor/*`), которые сейчас честно объявлены нереализованными. Начинать стоит с
+`sql.compile`: он офлайновый (компиляция плана метрики в SQL без DWH), а execution
+checks требуют стенда и, значит, того же решения владельца, что и пилот.
 
 ## Источники истины
 

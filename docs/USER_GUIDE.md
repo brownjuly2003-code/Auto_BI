@@ -78,6 +78,7 @@ auto_bi serve            # http://127.0.0.1:8200
 | `prune` | Удаление BI-артефактов прошлых ревизий через ownership-леджер (последняя сборка каждой сессии всегда переживает). `--session ID` (только одна сессия), `--dry-run` (показать кандидатов, не удаляя). |
 | `decision validate` | **DecisionOps.** Offline-проверка decision products против metric contracts (пины версий, lifecycle, dimensions, policy). Аргументы — файлы/каталоги YAML, `--json`. Ни DWH, ни BI, ни LLM. |
 | `decision verify` | **DecisionOps.** Полный Analytics Release & Evidence Gate для ОДНОГО продукта: `--base`/`--candidate` (каталоги с `model.yaml`), `--evidence DIR`, `--dashboards DIR`, `--assets PATH`, `--results FILE`, `--product ID`, `--environment REF`, `--created-at TS`, `--json`. Тоже полностью offline. |
+| `decision evidence` | **DecisionOps.** Чтение написанного evidence bundle с пересчётом всех content address. Аргумент — каталог evidence или один run-каталог внутри; `--run ID` (если run'ов несколько), `--artifact ID` (напечатать один payload), `--expect-digest sha256:…`, `--json`. |
 
 ### build
 ```bash
@@ -163,6 +164,8 @@ auto_bi decision verify contracts/ \
         --base semantic/base --candidate semantic/head \
         --evidence .evidence --dashboards dashboards/ \
         --assets assets/ --results results.yaml
+auto_bi decision evidence .evidence                      # прочитать и перепроверить bundle
+auto_bi decision evidence .evidence --artifact check-semantic.diff
 ```
 Контур DecisionOps: не «запрос → дашборд», а проверка, что изменение семантики не ломает
 governed-числа. `validate` отвечает на один вопрос — согласованы ли контракты между собой.
@@ -185,6 +188,15 @@ checks» пока не реализованы offline и выходят как `
 недоступный кандидатный результат — `needs_review`, никогда не pass. `--created-at` задаётся
 явно, когда прогон должен быть байт-в-байт воспроизводимым. См.
 [DECISIONOPS_ARCHITECTURE §8.2 и §12.1](DECISIONOPS_ARCHITECTURE.md).
+
+`evidence` — вторая половина: bundle, который написал `verify`, читается заново и каждый
+content address пересчитывается. Аргумент — каталог evidence или один run-каталог внутри
+него; если run'ов несколько, команда называет их и просит `--run`, а не выбирает сама.
+Вердикт здесь про целостность, а не про релиз: целый bundle выходит с `0`, даже если внутри
+записан `block`; подменённый payload или неожиданный `--expect-digest` дают `4`.
+`--artifact ID` печатает один payload — но только если он всё ещё хешируется в свой адрес,
+а `restricted`-артефакт не печатается никогда: в манифесте у него есть digest, размер и
+класс, и это вся публичная поверхность (§10.2).
 
 ---
 

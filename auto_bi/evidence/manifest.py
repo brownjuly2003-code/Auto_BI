@@ -235,6 +235,18 @@ def verify_bundle(store: ArtifactStore, run_id: str) -> list[BundleProblem]:
             )
         ]
 
+    if bundle.run_id != run_id:
+        # Copied evidence stays internally consistent — the manifest is canonical and every
+        # artifact still hashes — so only its location lies. Review, not block: the bundle is
+        # readable, but nothing here proves it belongs to the run it was filed under.
+        problems.append(
+            BundleProblem(
+                code="evidence.run_id_mismatch",
+                severity=Severity.REVIEW,
+                detail=f"the manifest names run {bundle.run_id!r}, but it is stored as {run_id!r}",
+            )
+        )
+
     if bundle.canonical_bytes() != raw:
         problems.append(
             BundleProblem(

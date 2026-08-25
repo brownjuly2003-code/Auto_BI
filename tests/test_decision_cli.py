@@ -204,3 +204,137 @@ def test_verify_writes_the_bundle_under_the_evidence_dir(tmp_path: Path) -> None
     assert len(runs) == 1
     assert (runs[0] / "manifest.json").is_file()
     assert (runs[0] / "checks" / "check-bi.contract.json").is_file()
+
+
+# --- decision evidence --------------------------------------------------------
+
+
+def _written_bundle(tmp_path: Path, *extra: str) -> Path:
+    """Run the gate once and return the evidence root it wrote into."""
+    case = Case(tmp_path).with_candidate()
+    main(_verify_argv(case, "--json", *extra))
+    return tmp_path / "evidence"
+
+
+def _run_dir(evidence: Path) -> Path:
+    return next(child for child in sorted(evidence.iterdir()) if child.is_dir())
+
+
+def test_evidence_reads_back_the_bundle_the_gate_just_wrote(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    evidence = _written_bundle(tmp_path)
+    capsys.readouterr()
+
+    assert main(["decision", "evidence", str(evidence)]) == 0
+    out = capsys.readouterr().out
+    assert _run_dir(evidence).name in out
+    assert f"{PRODUCT_ID}@1" in out
+    assert "check-semantic.diff" in out  # the artifacts are listed, not just counted
+    assert "verdict: pass" in out
+
+
+def test_evidence_accepts_the_run_directory_itself(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`<run-or-path>` per §12.1 — a run directory is as good an address as its root."""
+    evidence = _written_bundle(tmp_path)
+    capsys.readouterr()
+
+    assert main(["decision", "evidence", str(_run_dir(evidence))]) == 0
+    assert _run_dir(evidence).name in capsys.readouterr().out
+
+
+def test_evidence_will_not_guess_which_run_is_meant(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    evidence = _written_bundle(tmp_path)
+    case = Case(tmp_path).with_candidate()
+    main(_verify_argv(case, "--json", "--environment", "dwh://stage"))
+    capsys.readouterr()
+    runs = sorted(child.name for child in evidence.iterdir() if child.is_dir())
+    assert len(runs) == 2
+
+    assert main(["decision", "evidence", str(evidence)]) == EXIT_ERROR
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert all(run in captured.err for run in runs)
+    assert main(["decision", "evidence", str(evidence), "--run", runs[0]]) == 0
+
+
+def test_evidence_on_a_directory_that_holds_no_bundle_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["decision", "evidence", str(tmp_path)]) == EXIT_ERROR
+    assert "no evidence bundle" in capsys.readouterr().err
+
+
+def test_evidence_exits_block_on_a_tampered_bundle(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    evidence = _written_bundle(tmp_path)
+    (_run_dir(evidence) / "checks" / "check-semantic.diff.json").write_bytes(b"{}")
+    capsys.readouterr()
+
+    assert main(["decision", "evidence", str(evidence)]) == 4
+    out = capsys.readouterr().out
+    assert "evidence.digest_mismatch" in out
+    assert "verdict: block" in out
+
+
+def test_evidence_json_output_is_the_only_thing_on_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    evidence = _written_bundle(tmp_path)
+    capsys.readouterr()
+
+    code = main(["decision", "evidence", str(evidence), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["kind"] == "EvidenceInspection"
+    assert payload["verdict"] == "pass"
+    assert payload["problems"] == []
+    assert payload["bundle"]["product_ref"] == f"{PRODUCT_ID}@1"
+    assert payload["manifest_digest"].startswith("sha256:")
+
+
+def test_evidence_prints_one_artifact_and_nothing_else(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    evidence = _written_bundle(tmp_path)
+    capsys.readouterr()
+
+    code = main(["decision", "evidence", str(evidence), "--artifact", "check-semantic.diff"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["changes"] == []
+
+
+def test_evidence_says_which_artifacts_exist_when_the_id_is_wrong(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    evidence = _written_bundle(tmp_path)
+    capsys.readouterr()
+
+    assert main(["decision", "evidence", str(evidence), "--artifact", "check-nope"]) == EXIT_ERROR
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "check-semantic.diff" in captured.err
+
+
+def test_evidence_checks_the_digest_it_was_told_to_expect(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    evidence = _written_bundle(tmp_path)
+    capsys.readouterr()
+    main(["decision", "evidence", str(evidence), "--json"])
+    digest = json.loads(capsys.readouterr().out)["manifest_digest"]
+
+    assert main(["decision", "evidence", str(evidence), "--expect-digest", digest]) == 0
+    capsys.readouterr()
+
+    stale = "sha256:" + "0" * 64
+    assert main(["decision", "evidence", str(evidence), "--expect-digest", stale]) == 4
+    assert "evidence.digest_unexpected" in capsys.readouterr().out

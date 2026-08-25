@@ -5,9 +5,10 @@ control plane для выпуска проверяемых аналитичес�
 вертикальный продукт — **Analytics Release & Evidence Gate**.
 
 Текущий статус — первый вертикальный путь работает offline: `auto_bi decision
-validate` (cross-contract проверка) и `auto_bi decision verify` (полный гейт §8.2
-с content-addressed evidence bundle) реализованы и запускаются на файлах в Git, без
-DWH, BI и LLM. Не реализованы шаги §8.2 6–7 (compile SQL и security/access/
+validate` (cross-contract проверка), `auto_bi decision verify` (полный гейт §8.2
+с content-addressed evidence bundle) и `auto_bi decision evidence` (чтение bundle
+с пересчётом каждого content address) реализованы и запускаются на файлах в Git,
+без DWH, BI и LLM. Не реализованы шаги §8.2 6–7 (compile SQL и security/access/
 freshness/physical checks против DWH) — гейт объявляет их `check.not_implemented`,
 а не пропускает молча. Пилот на реальном change ещё не проводился. Унаследованный
 v1 runtime сохранён без функциональных изменений.
@@ -16,6 +17,7 @@ v1 runtime сохранён без функциональных изменени
 auto_bi decision validate contracts/
 auto_bi decision verify contracts/ --base semantic/base --candidate semantic/head \
         --evidence .evidence --dashboards dashboards/
+auto_bi decision evidence .evidence
 ```
 
 Exit code несёт вердикт: `0` pass/advisory, `3` needs_review, `4` block, `2`

@@ -682,11 +682,19 @@ auto_bi decision validate <paths…> [--json]
 auto_bi decision verify <paths…> --base <ref> --candidate <ref> --evidence <dir>
         [--dashboards <dir>] [--assets <path>] [--results <file>]
         [--product <id>] [--environment <ref>] [--created-at <ts>] [--json]
+auto_bi decision evidence <run-or-path> [--run <id>] [--artifact <id>]
+        [--expect-digest <sha256:…>] [--json]
 ```
 
 `validate` — offline cross-contract проверка (продукты ↔ metric contracts).
 `verify` — полный гейт §8.2 для ОДНОГО продукта: один run = один продукт, потому
 что и idempotency key, и evidence bundle называют один `product_ref`.
+`evidence` — чтение уже написанного bundle: пересчёт каждого content address,
+список claim'ов и артефактов, при `--artifact` — сам payload. Его вердикт про
+целостность, а не про релиз: целый bundle с вердиктом `block` внутри — это
+рабочий bundle, и команда выходит с `0`. `restricted`-payload не печатается
+никогда (§10.2), а артефакт, который больше не хешируется в свой адрес, не
+выдаётся вовсе — это уже не то, на чём принималось решение.
 
 Формат входов (`decision/use_cases.py` — единственный слой, который читает ФС):
 
