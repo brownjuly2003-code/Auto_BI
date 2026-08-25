@@ -29,8 +29,10 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
   dangling `evidence_ref` rejection, path confinement и redaction tests.
 - [x] Реализовать one-shot `decision verify` и pure Superset/DataLens compile
   contracts → Verify: four breaking seeds block, presentation-only change
-  passes, mutation-spy подтверждает ноль remote creates. Шаги §8.2 6–7 (compile
-  SQL + DWH-проверки) объявлены `check.not_implemented`, не пропущены молча.
+  passes, mutation-spy подтверждает ноль remote creates. Шаг §8.2 6 (compile SQL)
+  компилируется там, где семантика точна офлайн, и называет гэп там, где нет; шаг 7
+  (DWH-проверки) закрыт целиком — все пять проверок работают под `--dwh` и говорят
+  `check.not_configured` без него, а не молчат.
 - [ ] Провести pilot gate на одном реальном change → Verify: owner impact точен,
   review time измерен, evidence понятен владельцу; только затем решать вопрос о
   certified brief и recurring runs.
