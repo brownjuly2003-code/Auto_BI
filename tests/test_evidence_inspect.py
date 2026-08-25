@@ -125,6 +125,15 @@ def test_a_manifest_that_does_not_parse_leaves_no_bundle_to_show(tmp_path: Path)
     assert inspection.manifest_digest == digest_bytes(b"{not json")
 
 
+def test_nothing_can_be_read_out_of_a_manifest_that_does_not_parse(tmp_path: Path) -> None:
+    full_bundle(tmp_path).write()
+    (tmp_path / RUN / "manifest.json").write_bytes(b"{not json")
+
+    assert inspect_bundle(store_of(tmp_path), RUN).restricted() == []
+    with pytest.raises(EvidenceReadError, match="no readable"):
+        read_artifact(store_of(tmp_path), RUN, "check-freshness")
+
+
 def test_a_bundle_stored_under_another_run_id_is_reported(tmp_path: Path) -> None:
     """Copied evidence stays internally consistent; only its location lies (§9.2)."""
     full_bundle(tmp_path).write()
@@ -199,6 +208,14 @@ def test_a_restricted_payload_is_named_but_never_printed(tmp_path: Path) -> None
 
     with pytest.raises(EvidenceReadError, match="restricted"):
         read_artifact(store_of(tmp_path), RUN, artifact_id)
+
+
+def test_an_artifact_the_store_no_longer_holds_is_reported(tmp_path: Path) -> None:
+    full_bundle(tmp_path).write()
+    (tmp_path / RUN / "checks" / "check-freshness.json").unlink()
+
+    with pytest.raises(EvidenceReadError, match="not in the store"):
+        read_artifact(store_of(tmp_path), RUN, "check-freshness")
 
 
 def test_reading_an_artifact_the_bundle_does_not_list_is_an_error(tmp_path: Path) -> None:

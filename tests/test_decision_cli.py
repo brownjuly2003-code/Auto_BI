@@ -312,6 +312,31 @@ def test_evidence_prints_one_artifact_and_nothing_else(
     assert payload["changes"] == []
 
 
+def test_evidence_refuses_to_print_a_payload_that_is_not_text(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """stdout is for the payload; bytes that are not text get an address, not a mangling."""
+    from tests.test_evidence_store import RUN, full_bundle
+
+    builder = full_bundle(tmp_path)
+    builder.add_blob(
+        "screenshot",
+        kind="raw_payload",
+        payload=b"\x89PNG\r\n\x1a\n\xff\xfe",
+        media_type="image/png",
+    )
+    builder.write()
+    capsys.readouterr()
+
+    code = main(["decision", "evidence", str(tmp_path / RUN), "--artifact", "screenshot"])
+    captured = capsys.readouterr()
+
+    assert code == EXIT_ERROR
+    assert captured.out == ""
+    assert "image/png" in captured.err
+    assert "blobs/sha256/" in captured.err
+
+
 def test_evidence_says_which_artifacts_exist_when_the_id_is_wrong(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

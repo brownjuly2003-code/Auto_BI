@@ -65,6 +65,7 @@ from auto_bi.verification.repository import (
     VerifiedAsset,
     VerifiedAssetRepository,
 )
+from auto_bi.verification.summary import SummaryFacts, render_summary
 
 API_VERSION = "auto-bi.io/v2alpha1"
 
@@ -293,6 +294,7 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
     checks.append(gaps_check)
 
     # 4-5. semantic diff, product impact, verified-asset invalidation
+    impact: ImpactReport | None = None
     if untrustworthy:
         reason = (
             "a metric contract did not load, so the snapshot does not represent its source; "
@@ -336,7 +338,25 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
     # 9. BI compile contracts — payloads only, never a remote create
     checks.append(_check_bi_contracts(writer, inputs, product_ref))
 
-    # 10. assemble the bundle, then re-verify what was written
+    # 10. assemble the bundle, then re-verify what was written. The owner-facing summary is
+    # written last and from the graded checks only: it is derived evidence (§9.2), so it can
+    # restate findings but must never be the first place one appears.
+    writer.add_report(
+        "summary.md",
+        render_summary(
+            SummaryFacts(
+                product_ref=product_ref,
+                run_id=run_id,
+                base_digest=inputs.base.canonical_digest,
+                candidate_digest=inputs.candidate.canonical_digest,
+                created_at=created_at,
+                verifier_version=VERIFIER_VERSION,
+                environment_ref=inputs.environment_ref,
+            ),
+            checks,
+            impact.impacts if impact is not None else (),
+        ),
+    )
     written = writer.write()
     problems = verify_bundle(store, run_id)
     checks.append(
