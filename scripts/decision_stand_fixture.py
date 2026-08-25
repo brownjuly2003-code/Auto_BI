@@ -45,7 +45,13 @@ USAGE = "usage: decision_stand_fixture.py <dir> <engine> [max_scanned_rows=N] [t
 
 def _write(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8", newline="\n"
+    )
+
+
+def _lf(path: Path) -> None:
+    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n"))
 
 
 def main(argv: list[str]) -> int:
@@ -73,6 +79,7 @@ def main(argv: list[str]) -> int:
             if table.physical is not None:
                 table.physical.engine = engine
         model.dump(root / ref / "model.yaml")
+        _lf(root / ref / "model.yaml")  # v1 dump() writes CRLF on Windows
         _write(root / ref / "metrics" / "gross_margin_pct.yaml", contract)
     _write(root / "dashboards" / "weekly_margin@7.yaml", dashboard_spec())
 

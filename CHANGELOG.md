@@ -6,6 +6,15 @@
 
 ### Added
 
+- **Репетиция пилота release gate на локальном стенде** —
+  `docs/DECISIONOPS_PILOT_2026-08-25.md` и `docs/pilot/2026-08-25-ch-{control,tz-change}/`
+  (входы фикстурного продукта + evidence bundle обоих прогонов, перепроверяемые
+  `auto_bi decision evidence`). Против живого ClickHouse 24.8.14.39 ролью `gate_ro`: контроль
+  без изменений → `needs_review` только из-за `freshness.stale`; `time.timezone`
+  `Europe/Moscow → UTC` у governed-метрики → `block`, impact до продукта, дашборда и
+  владельца; гейт целиком ~1.9 с. Записано и то, чего репетиция не доказывает (граф из одного
+  продукта, нет verified asset, change выбран агентом) — task 8 закрывает владелец.
+
 - **§8.2 шаг 7 — стоимость плана против `budgets` метрики** — `dwh.cost`, последняя из пяти
   проверок шага. Оценивается план reference-запроса шага 6 против потолка, объявленного самой
   метрикой. Спрашивается **планом, никогда прогоном**: `EXPLAIN ESTIMATE` на ClickHouse и
