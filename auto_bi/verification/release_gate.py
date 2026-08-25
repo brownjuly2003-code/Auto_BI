@@ -11,10 +11,12 @@ Two properties this module exists to keep:
 * **`operational_status` and `verdict` are different answers** (invariant 8). A run that
   completes and blocks is a working gate; a run that fails is a broken one. They are
   separate fields and a report that mixes them does not validate.
-* **A step that did not run says so.** Compiling and executing SQL against the DWH
-  (§8.2 steps 6–7) has no offline implementation yet, so the gate emits those checks as
-  `check.not_implemented` advisories rather than leaving a clean bundle that reads as a
-  full verification. The same applies downstream of a metric contract that failed to load:
+* **A step that did not run says so.** Executing SQL against a DWH (§8.2 step 7) has no
+  offline implementation, so the gate emits that check as a `check.not_implemented` advisory
+  rather than leaving a clean bundle that reads as a full verification. Step 6 compiles the
+  reference query of each in-scope metric where the semantics are exact offline and names
+  what it will not guess (`sql_contract.py`). The same applies downstream of a metric
+  contract that failed to load:
   the diff would call the unparsed contract a *removed metric*, so those checks are emitted
   as `check.not_run` instead of a guess (see `UNTRUSTWORTHY_GAPS` for why that is the only
   gap that stops the sequence).
@@ -65,6 +67,7 @@ from auto_bi.verification.repository import (
     VerifiedAsset,
     VerifiedAssetRepository,
 )
+from auto_bi.verification.sql_contract import compile_metric_queries
 from auto_bi.verification.summary import SummaryFacts, render_summary
 
 API_VERSION = "auto-bi.io/v2alpha1"
@@ -307,6 +310,9 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
                 ("impact.products", CheckCategory.IMPACT),
                 ("assets.invalidated", CheckCategory.VERIFICATION),
                 ("results.reconcile", CheckCategory.RESULT),
+                # 6. the same reason: a metric whose contract did not parse is absent from
+                # the graph, and compiling would report it as a metric with no definition.
+                ("sql.compile", CheckCategory.EXECUTION),
             )
         )
     else:
@@ -316,16 +322,10 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
         checks.append(_check_impact(writer, impact, product_ref))
         checks.append(_check_assets(writer, inputs, diff, product_ref))
         checks.append(_check_results(writer, inputs, product_ref))
+        # 6. reference SQL for both snapshots — compiled, never executed (no DWH here)
+        checks.append(_check_sql(writer, inputs, product_ref))
 
-    # 6-7. compile and execute SQL — no offline implementation yet, so say so
-    checks.append(
-        _not_implemented(
-            "sql.compile",
-            CheckCategory.EXECUTION,
-            product_ref,
-            "base/candidate SQL is not compiled by this gate yet (§8.2 step 6)",
-        )
-    )
+    # 7. execute the queries against a DWH — no offline implementation, so say so
     checks.append(
         _not_implemented(
             "execution.checks",
@@ -583,6 +583,58 @@ def _check_results(writer: BundleWriter, inputs: GateInputs, product_ref: str) -
         summary_code="result.equivalent" if not severities else "result.not_equivalent",
         detail=f"{len(equivalent)} of {len(comparisons)} expected result(s) reconciled",
         evidence_refs=[ref],
+    )
+
+
+def _check_sql(writer: BundleWriter, inputs: GateInputs, product_ref: str) -> CheckResult:
+    """§8.2 step 6: the reference query of every in-scope metric, on both snapshots.
+
+    The check reports; it does not grade. *Why* a query moved was already decided by the
+    diff and the impact graph, and grading it twice would let one change count twice toward
+    a verdict. A moved query is still worth saying out loud on its own: the dialect comes
+    from the mart's declared engine, so an engine swap moves the SQL without touching a
+    single metric contract — a change nothing else in the sequence would mention.
+    """
+    refs = list(inputs.product.scope.metrics)
+    base = compile_metric_queries(inputs.base, refs)
+    candidate = compile_metric_queries(inputs.candidate, refs)
+    on_both = base.by_metric().keys() & candidate.by_metric().keys()
+    moved = sorted(
+        ref for ref in on_both if base.by_metric()[ref].digest != candidate.by_metric()[ref].digest
+    )
+    findings = [*base.findings, *candidate.findings]
+
+    ref_id = writer.add_check(
+        "sql.compile",
+        {
+            "base": base.model_dump(mode="json"),
+            "candidate": candidate.model_dump(mode="json"),
+            "moved": moved,
+        },
+    )
+    if not candidate.queries:
+        summary_code = "sql.not_compiled"
+    elif moved:
+        summary_code = "sql.changed"
+    elif findings:
+        summary_code = "sql.partially_compiled"
+    else:
+        summary_code = "sql.compiled"
+    severities = [finding.severity for finding in findings]
+    if moved:
+        severities.append(Severity.ADVISORY)
+    return CheckResult(
+        check_id="sql.compile",
+        check_version=CHECK_VERSION,
+        category=CheckCategory.EXECUTION,
+        subject_refs=[product_ref, *refs],
+        status=status_for(severities),
+        summary_code=summary_code,
+        detail=(
+            f"{len(candidate.queries)} of {len(refs)} metric(s) compiled to a reference query; "
+            f"{len(moved)} moved between the snapshots, {len(findings)} not compiled offline"
+        ),
+        evidence_refs=[ref_id],
     )
 
 

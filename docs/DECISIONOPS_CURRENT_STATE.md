@@ -285,9 +285,44 @@ escaping (независимый оракул, 20k случайных double + �
   `test_perf_baseline.py::test_autospec_and_validate_budgets` (в одиночку зелёный) —
   тот же класс, что и описанный выше Windows-flake, не код DecisionOps.
 
+### §8.2 шаг 6 — reference SQL метрики (2026-08-25)
+
+- `auto_bi/verification/sql_contract.py` — гейт компилирует определение каждой метрики
+  продукта на её же grain для base и candidate, кладёт обе стороны в bundle и
+  показывает, какие запросы поехали. Это не chart-запрос: ни окна, ни фильтра, ни
+  top-N — они принадлежат продукту и прогону, не метрике; dimensions — то, чем метрику
+  МОЖНО резать, поэтому их нет и в GROUP BY.
+- **Граница узкая намеренно.** Компилируется только то, за что можно ручаться офлайн:
+  typed aggregate (`SUM(col)` по сгруппированной витрине значит одно и то же в обоих
+  движках). Governed ratio — нет: десятичное деление зависит от движка (ClickHouse
+  сохраняет масштаб делимого на `Decimal / Decimal`, и chart-путь отвечает на это
+  приведением к Float64 — live-проверенное display-решение, которое governed-метрика с
+  объявленной precision наследовать не должна). Стенда для подтверждения точной формы
+  нет → `sql.ratio_unverified`, а не SQL, за который гейт не может ручаться.
+  External/reviewed-SQL — чужое определение, не пере-выводится (`sql.opaque_formula`).
+- Остальные честные отказы: `sql.join_required` (термин на другой таблице — джойн не
+  выдумывается), `sql.metric_absent`, `sql.table_missing`, `sql.engine_undeclared`
+  (диалект назван как предположение, а не как факт из модели).
+- **Все находки advisory.** Почему метрика поехала, уже оценили diff и impact; вторая
+  оценка дала бы одному изменению два веса в вердикте. Шаг несёт evidence, не суждение.
+  Отдельно advisory даётся на «запрос поехал»: диалект берётся из объявленного движка
+  витрины, поэтому смена движка двигает SQL, не тронув ни одного контракта — этого
+  больше не скажет ни один шаг последовательности.
+- `agent/sqlgen.aggregate_expr` вынесен из `_measure_expr` и вызывается обоими путями;
+  тест сравнивает объекты функции (`sql_contract.aggregate_expr is sqlgen.aggregate_expr`),
+  как и для BI-контрактов. Поведение chart-пути не изменилось.
+- При `gap.contract_invalid` шаг пропускается вместе с diff/impact/assets/results: метрика
+  с непрочитанным контрактом отсутствует в графе, и компиляция назвала бы её метрикой без
+  определения (теперь `check.not_run` получают 5 проверок, не 4).
+- `check.not_implemented` остался только у шага 7.
+- Проверено: 14 новых тестов (13 модульных + 1 на гейте). Suite — 1748 passed /
+  20 skipped; `mypy --strict`, ruff, black чисты.
+
 ## Что ещё не реализовано
-- §8.2 шаги 6–7: compile base/candidate SQL и security/access/freshness/physical
-  checks против DWH — гейт объявляет их `check.not_implemented`;
+- §8.2 шаг 6 частично: governed ratio, external и reviewed-SQL формулы офлайн не
+  компилируются — гейт называет гэп вместо запроса;
+- §8.2 шаг 7: security/access/freshness/physical checks против DWH — гейт объявляет
+  его `check.not_implemented`;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
 ## Следующий атомарный slice
@@ -297,11 +332,12 @@ Bootstrap task 8 — pilot gate на одном реальном change (**ре�
 опора для пилота уже есть: гейт выносит вердикт, а `decision evidence` показывает
 владельцу, на чём этот вердикт стоит.
 
-Если пилот решено отложить, следующий технический слайс — шаги 6–7
-(`sql.compile` + execution checks поверх `agent/sql_guard.py`, `agent/query_plan.py`
-и `advisor/*`), которые сейчас честно объявлены нереализованными. Начинать стоит с
-`sql.compile`: он офлайновый (компиляция плана метрики в SQL без DWH), а execution
-checks требуют стенда и, значит, того же решения владельца, что и пилот.
+Если пилот решено отложить, оставшееся техническое — шаг 7 (security/access/
+freshness/physical checks поверх `agent/sql_guard.py`, `agent/query_plan.py` и
+`advisor/*`) и достройка шага 6 до ratio. И то и другое требует **стенда**: точную
+форму десятичного деления и результаты EXPLAIN/freshness проверять негде, а
+компилировать «на глаз» — ровно то, что гейт отказывается делать. То есть оба упираются
+в то же решение владельца, что и пилот.
 
 ## Источники истины
 

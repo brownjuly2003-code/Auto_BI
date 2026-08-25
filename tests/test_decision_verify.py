@@ -297,7 +297,7 @@ def test_unchanged_semantics_with_a_reconciled_asset_does_not_block(tmp_path: Pa
     report = case.run()
 
     assert report.operational_status is RunStatus.COMPLETED
-    assert report.verdict is Verdict.PASS_WITH_ADVISORY  # the two not-implemented steps
+    assert report.verdict is Verdict.PASS_WITH_ADVISORY  # execution + the uncompiled ratio
     assert status_of(report, "semantic.diff") is CheckStatus.PASS
     assert status_of(report, "assets.invalidated") is CheckStatus.PASS
     # `0.4120` and `0.412` are one decimal, not two numbers
@@ -312,7 +312,7 @@ def test_the_gate_says_which_steps_it_did_not_run(tmp_path: Path) -> None:
     not_implemented = [
         check.check_id for check in report.checks if check.summary_code == "check.not_implemented"
     ]
-    assert not_implemented == ["sql.compile", "execution.checks"]
+    assert not_implemented == ["execution.checks"]
     assert all(status_of(report, check) is CheckStatus.ADVISORY for check in not_implemented)
 
 

@@ -43,6 +43,21 @@ _AGG_FUNC = {
 }
 
 
+def aggregate_expr(agg: Aggregation, col: exp.Expression) -> exp.Expression:
+    """The aggregate call for *agg* over *col*.
+
+    One mapping with two callers: chart SQL below, and the metric reference queries the
+    release gate compiles (`verification/sql_contract.py`, ARCHITECTURE §8.2 step 6). A
+    second copy would let a newly added aggregation compile one way for a dashboard and
+    another way for the evidence that is supposed to verify that dashboard.
+    """
+    if agg is Aggregation.COUNT_DISTINCT:
+        return exp.Count(this=exp.Distinct(expressions=[col]))
+    # sqlglot types func() as Func, an Expression subclass at runtime
+    built: exp.Expression = exp.func(_AGG_FUNC[agg], col)  # type: ignore[assignment]
+    return built
+
+
 def _measure_expr(
     measure: Measure, col_ref: str | None = None, *, alias: str | None = None
 ) -> exp.Expression:
@@ -51,11 +66,7 @@ def _measure_expr(
     # `alias` overrides the SELECT alias — the windowed path names the inner base
     # aggregate with a private alias the outer window then reads.
     col = _dim_column(col_ref or measure.column)
-    if measure.agg == Aggregation.COUNT_DISTINCT:
-        agg: exp.Expression = exp.Count(this=exp.Distinct(expressions=[col]))
-    else:
-        # sqlglot types func()/alias_ as Func/Expr, both Expression subclasses at runtime
-        agg = exp.func(_AGG_FUNC[measure.agg], col)  # type: ignore[assignment]
+    agg = aggregate_expr(measure.agg, col)
     return exp.alias_(agg, alias or measure_alias(measure), quoted=True)  # type: ignore[return-value]
 
 

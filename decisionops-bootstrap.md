@@ -44,7 +44,7 @@ contracts -> validate -> semantic diff -> VQR/result compare
 - [x] Supported results reconciled и каждый factual claim имеет evidence
   (claim без валидного `evidence_ref` не проходит сборку bundle).
 - [x] Release gate не мутирует BI/DWH и запускается offline на fixtures.
-- [x] Существующий v1 focused/full release gate остаётся зелёным (1734 теста).
+- [x] Существующий v1 focused/full release gate остаётся зелёным (1748 тестов).
 - [ ] Есть измеренный pilot outcome или честное решение сузить/остановить scope.
 
 ## Non-goals до pilot evidence

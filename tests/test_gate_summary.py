@@ -96,9 +96,11 @@ def test_the_summary_says_what_the_run_did_not_do(tmp_path: Path) -> None:
     """A clean report that hides its own holes is worse than no report (§8.2)."""
     _, text = run_with_summary(Case(tmp_path).with_candidate())
 
-    assert "sql.compile" in text
-    assert "execution.checks" in text
-    assert "check.not_implemented" in text
+    undone = text.split("## What was not done")[1].split("## Every check")[0]
+    assert "execution.checks" in undone
+    assert "check.not_implemented" in undone
+    # the fixture's only metric is a ratio, so step 6 compiled nothing at all
+    assert "sql.not_compiled" in undone
 
 
 def test_the_summary_lists_every_check_that_went_into_the_bundle(tmp_path: Path) -> None:
@@ -166,7 +168,7 @@ def test_a_step_that_did_not_run_is_not_also_listed_as_a_human_decision() -> Non
 
 
 def test_a_stopped_sequence_reports_the_checks_that_did_not_run(tmp_path: Path) -> None:
-    """A contract that did not parse leaves four checks ungraded; the report says which."""
+    """A contract that did not parse leaves five checks ungraded; the report says which."""
     case = Case(tmp_path).with_candidate()
     (case.candidate / "metrics" / "gross_margin_pct.yaml").write_text(
         "kind: MetricContract\nnot: a contract\n", encoding="utf-8"
@@ -174,7 +176,7 @@ def test_a_stopped_sequence_reports_the_checks_that_did_not_run(tmp_path: Path) 
     report, text = run_with_summary(case)
 
     not_run = [check for check in report.checks if check.summary_code == "check.not_run"]
-    assert len(not_run) == 4
+    assert len(not_run) == 5
     assert all(check.status is CheckStatus.REVIEW for check in not_run)
     for check in not_run:
         assert check.check_id in text

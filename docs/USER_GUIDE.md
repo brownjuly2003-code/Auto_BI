@@ -183,9 +183,11 @@ ResultSet}` с кандидатными ответами, снятыми вне 
 needs_review, `4` block, `2` usage-ошибка. `1` не используется намеренно — это код
 необработанного исключения, и падение не должно выглядеть как вынесенный вердикт.
 
-Гейт не скрывает, чего он не сделал: шаги «compile SQL» и «security/access/freshness/physical
-checks» пока не реализованы offline и выходят как `check.not_implemented` (advisory);
-недоступный кандидатный результат — `needs_review`, никогда не pass. `--created-at` задаётся
+Гейт не скрывает, чего он не сделал: шаг «security/access/freshness/physical checks» требует
+DWH и выходит как `check.not_implemented` (advisory), а шаг «compile SQL» компилирует
+reference-запрос метрики только там, где семантика точна офлайн — governed ratio, external и
+reviewed-SQL формулы получают названный гэп вместо запроса, за который гейт не может
+ручаться. Недоступный кандидатный результат — `needs_review`, никогда не pass. `--created-at` задаётся
 явно, когда прогон должен быть байт-в-байт воспроизводимым. См.
 [DECISIONOPS_ARCHITECTURE §8.2 и §12.1](DECISIONOPS_ARCHITECTURE.md).
 

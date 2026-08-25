@@ -35,11 +35,21 @@ from auto_bi.verification.model import verdict_for
 if TYPE_CHECKING:  # a runtime import would close the loop: release_gate imports this module
     from auto_bi.verification.release_gate import CheckResult
 
-#: Outcomes that mean a step proved nothing: not implemented offline, skipped because an
-#: earlier finding made it unanswerable, or run with nothing to compare. The last one is the
-#: line an owner most needs to see under a green verdict — a gate that compared no numbers
-#: has not verified any.
-_UNDONE = frozenset({"check.not_implemented", "check.not_run", "result.no_expectations"})
+#: Outcomes that mean a step produced nothing: not implemented offline, skipped because an
+#: earlier finding made it unanswerable, run with nothing to compare, or unable to compile a
+#: single query. `result.no_expectations` is the line an owner most needs under a green
+#: verdict — a gate that compared no numbers has verified none of them.
+#:
+#: A *partial* outcome deliberately stays out: `sql.partially_compiled` says in its own detail
+#: how many of how many compiled, and filing it under "not done" would deny the part that was.
+_UNDONE = frozenset(
+    {
+        "check.not_implemented",
+        "check.not_run",
+        "result.no_expectations",
+        "sql.not_compiled",
+    }
+)
 
 
 @dataclass(frozen=True)
