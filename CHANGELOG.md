@@ -6,6 +6,26 @@
 
 ### Added
 
+- **Pure BI compile contracts** — `auto_bi/verification/bi_contract.py`:
+  compile-only порт `BIContractCompiler` (§8.5) и реализации для Superset и
+  DataLens, которые компилируют `DashboardSpec` в нативные payload'ы, не трогая BI.
+  Второй реализации payload-логики нет — компиляторы зовут те же module-level
+  функции, что и `BIAdapter.build()` (`build_form_data`, `build_position_json`,
+  `build_native_filter_configuration`, `build_dataset_payload`,
+  `build_chart_shared`, `build_selectors`, `build_dashboard_data`), и тест
+  сравнивает объекты, а не результаты. Контракт content-addressed: payload'ы
+  исключены из dump, digest артефакта считается JCS с `allow_float=True` (чужие
+  JSON-документы), digest контракта адресует своё собственное тело. Build-time
+  warning'и адаптеров стали типизированными findings: `bi.filter_unwired`,
+  `bi.filter_partial_scope`, `bi.viz_degraded`, `bi.viz_unsupported`. Ноль remote
+  mutation доказан socket-запретом и mutation-spy на каждом глаголе обоих клиентов.
+
+- **`adapters/superset/derive.py`** — четыре model-производные входа
+  `build_form_data` (`metric_labels`, `temporal_alias`, `heatmap_y_pad`,
+  `human_label`/`measure_currency`) вынесены из `SupersetAdapter` в чистый модуль,
+  чтобы адаптер и compile-контракт считали их одной функцией. Методы адаптера
+  остались тонкими делегатами — поведение и v1-тесты не изменились.
+
 - **Evidence writer и artifact store** — `auto_bi/evidence/store.py` (порт
   `ArtifactStore` + файловый адаптер с конфайнментом и отказом на symlink-компоненте)
   и `auto_bi/evidence/manifest.py` (`BundleWriter` по layout §9.2, `read_bundle`,

@@ -163,20 +163,54 @@ escaping (независимый оракул, 20k случайных double + �
   `digest_mismatch`. Подделанный blob ловится своим content address.
 - Проверено: 17 новых тестов.
 
+### Pure BI compile contracts (2026-08-25)
+
+- `auto_bi/verification/bi_contract.py` — compile-only порт §8.5 и две реализации:
+  `SupersetContractCompiler` (virtual datasets → chart `params` → position/native
+  filters) и `DataLensContractCompiler` (dataset → wizard `shared` → dash `data`).
+  Оба повторяют шаги своего `BIAdapter.build()`, включая D-1 dataset plan и перенос
+  top-N LIMIT в form_data для чартов в scope фильтра.
+- Второй реализации payload-логики нет: компиляторы зовут те же module-level
+  функции, что и адаптеры. Тест сравнивает **объекты** (`bi_contract.build_form_data
+  is superset_adapter.build_form_data`), а не результаты — так дублирование нельзя
+  внести незаметно. Ради этого из `SupersetAdapter` вынесены в
+  `adapters/superset/derive.py` четыре model-производные (`metric_labels`,
+  `temporal_alias`, `heatmap_y_pad`, `human_label`/`measure_currency`); методы
+  адаптера остались тонкими делегатами, v1-тесты не тронуты.
+- Ноль remote mutation доказывается двумя способами: socket-запрет на обоих
+  компиляторах и mutation-spy, вооружающий **каждый** глагол `SupersetClient`
+  (`request/get/post/put/delete/login`) и `DataLensClient` (`post/gateway/login`).
+  Плюс тест, что публичная поверхность компилятора — ровно
+  `{capabilities, compile_contract, target}`.
+- Что контракт намеренно не несёт (и говорит об этом вслух): remote ids
+  (детерминированные `native_id`-плейсхолдеры), DWH connection payload (в нём
+  пароль, §10.2) и live-measured RU-масштаб (`_ru_scale` меряет на стенде →
+  `live_measured_display_scale=False`, инвариант 6).
+- Findings вместо build-time warning'ов: `bi.filter_unwired` (контрол не доезжает ни
+  до одного чарта), `bi.filter_partial_scope` (доезжает не до всех — в detail имена
+  чартов), `bi.viz_degraded` (DataLens heatmap → pivot), `bi.viz_unsupported`.
+- Digest: payload'ы исключены из dump (адреса в контракте, байты — блобами в
+  evidence). Digest артефакта = JCS с `allow_float=True` — form_data и конфиги
+  DataLens это чужие JSON-документы с IEEE-754 числами, а строгий слой десятичных
+  строк управляет нашими контрактами, не их.
+- Проверено: 23 новых теста; 215 адаптерных v1-тестов зелёные; `mypy --strict`,
+  ruff, black чисты. Suite — 1660 тестов.
+
 ## Что ещё не реализовано
 - `auto_bi decision verify` и `auto_bi decision evidence`;
-- Analytics Release & Evidence Gate и pure BI compile seam;
+- Analytics Release & Evidence Gate (оркестрация §8.2);
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
 ## Следующий атомарный slice
 
-One-shot `decision verify` + pure BI compile contracts (bootstrap task 7): гейт по
-последовательности §8.2 (validate → freeze snapshots → reject blocking gaps → diff
-и impact → инвалидация assets → compile SQL → checks → reconcile → BI-контракты без
-remote mutation → evidence bundle), `BIContractCompiler` поверх общих pure builders
-Superset/DataLens и mutation-spy тест, доказывающий ноль remote creates. Всё, что
-нужно для входа, уже есть: контракты, snapshot/diff/impact, VQR/comparator,
-evidence writer, exit codes.
+One-shot `decision verify` (вторая половина bootstrap task 7): `verification/
+release_gate.py` по последовательности §8.2 (validate → freeze snapshots → reject
+blocking gaps → diff и impact → инвалидация assets → compile SQL → checks →
+reconcile → BI-контракты без remote mutation → evidence bundle), `decision/
+use_cases.py`, CLI `auto_bi decision verify … --evidence <dir>` со стабильными exit
+codes и сценарные тесты §15.3: четыре breaking seeds блокируются,
+presentation-only change проходит. Все входы готовы: контракты, snapshot/diff/
+impact, VQR/comparator, evidence writer, BI compile contracts.
 
 ## Источники истины
 

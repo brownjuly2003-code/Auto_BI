@@ -28,6 +28,13 @@ from auto_bi.adapters.base import (
     DWHConfig,
 )
 from auto_bi.adapters.superset.client import SupersetAPIError, SupersetClient, rison_eq_filter
+from auto_bi.adapters.superset.derive import (
+    heatmap_y_pad,
+    human_label,
+    measure_currency,
+    metric_labels,
+    temporal_alias,
+)
 from auto_bi.adapters.superset.form_data import (
     VIZ_TYPE,
     _adhoc_metric,
@@ -54,11 +61,10 @@ from auto_bi.ir.spec import (
     DashboardSpec,
     Measure,
     Viz,
-    column_alias,
     is_compact_number,
     measure_alias,
 )
-from auto_bi.semantic.model import ColumnRole, SemanticModel
+from auto_bi.semantic.model import SemanticModel
 
 logger = logging.getLogger(__name__)
 
@@ -76,14 +82,6 @@ KPI_CENTER_CSS = """
 }
 .superset-legacy-chart-big-number .header-line { justify-content: center; }
 """
-
-# a measure is money (KPI unit gets a "₽") when its model description says so — kept as
-# markers, not a hard-coded currency, so a count/qty KPI never gets a spurious ruble sign.
-_MONEY_MARKERS = ("руб", "₽", "rub")
-
-# a measure's human legend name is the short form of its column description: text up to the
-# first of these separators ("Выручка, руб" -> "Выручка"), mirroring autospec._short.
-_LABEL_SEPS = (",", "(", ":", " —", " -")
 
 # cartesian charts whose value axis gets RU magnitude units (scaled metric + unit on the axis
 # title) instead of the d3 SI "15G" — big_number scales its headline separately (_kpi_scale).
@@ -551,45 +549,18 @@ class SupersetAdapter:
                 continue
         return max(values) if values else None
 
+    # The four model-derived form_data inputs live in `derive.py`, so the release gate's
+    # contract compiler builds the same payload from the same functions (§8.5). These stay
+    # as methods because `self._model` is the only argument a caller would have to thread.
+
     def _human_label(self, measure: Measure, table: str) -> str | None:
-        """Human display name for a measure's legend/tooltip: its explicit label, else the short
-        form of the model column's description ("Выручка, руб" -> "Выручка"), else None (the
-        adapter then falls back to the raw alias). Autospec deliberately leaves measure.label
-        empty (technical SQL alias) — this recovers the human name for display only."""
-        if measure.label:
-            return measure.label
-        if self._model is None:
-            return None
-        tbl = self._model.table(table)
-        col = tbl.column(measure.column.rpartition(".")[2]) if tbl else None
-        desc = col.description.strip() if col and col.description else ""
-        if not desc:
-            return None
-        for sep in _LABEL_SEPS:
-            idx = desc.find(sep)
-            if idx > 0:
-                desc = desc[:idx]
-        return desc.strip() or None
+        return human_label(measure, table, self._model)
 
     def _metric_labels(self, chart: ChartSpec) -> dict[str, str]:
-        """alias -> human legend name for each measure that resolves one (see `_human_label`)."""
-        out: dict[str, str] = {}
-        for m in chart.query.measures:
-            human = self._human_label(m, chart.query.table)
-            if human:
-                out[measure_alias(m)] = human
-        return out
+        return metric_labels(chart, self._model)
 
     def _measure_currency(self, measure: Measure, table: str) -> str:
-        """'₽' when the measure reads as money in the model (its column description mentions
-        rubles), else '' — so a count/qty KPI ('236 млн') gets no spurious currency. No model
-        (bare protocol) => no currency."""
-        if self._model is None:
-            return ""
-        tbl = self._model.table(table)
-        col = tbl.column(measure.column.rpartition(".")[2]) if tbl else None
-        text = f"{col.description if col else ''} {measure.label or ''}".lower()
-        return "₽" if any(m in text for m in _MONEY_MARKERS) else ""
+        return measure_currency(measure, table, self._model)
 
     def _ru_scale(
         self,
@@ -654,57 +625,10 @@ class SupersetAdapter:
         )
 
     def _temporal_alias(self, query: ChartQuery, *, from_source: bool = False) -> str | None:
-        """Alias of the temporal column for granularity_sqla, else None.
-
-        Prefer a TIME column in the chart's grain (line/bar x-axis). On a SOURCE dataset the
-        mart still carries its TIME column even when the chart does not GROUP BY it (KPI),
-        so a dashboard native time filter can re-scope the multi-row aggregate — passed to
-        build_form_data as granularity_sqla. Without it the ECharts/big_number query names no
-        time column and the preset period (B5) silently fails to re-scope the chart.
-        """
-        if self._model is None:
-            return None
-        for col in query.group_columns():
-            table_name, _, name = col.rpartition(".")
-            table = self._model.table(table_name or query.table)
-            column = table.column(name) if table else None
-            if column is not None and column.role == ColumnRole.TIME:
-                return column_alias(col)
-        if from_source:
-            table = self._model.table(query.table)
-            if table is not None:
-                for column in table.columns:
-                    if column.role == ColumnRole.TIME:
-                        return column.name
-        return None
-
-    _HEATMAP_PAD_MAX_CARD = 100  # ordinal periods (cohort months/weeks), not id-like axes
+        return temporal_alias(query, self._model, from_source=from_source)
 
     def _heatmap_y_pad(self, chart: ChartSpec) -> int | None:
-        """Zero-pad width for a heatmap's numeric ordinal y-axis, else None.
-
-        heatmap_v2 renders a numeric 0 as `<NULL>` on the axis (upstream #33105) and
-        alpha-sorts numeric keys (#31318); padding the value to a fixed width fixes both.
-        Applied only to a small-cardinality numeric DIMENSION (cohort periods 0..N, where
-        a zero row is the norm and short labels stay short) — an id-like axis (store_id,
-        cardinality in the thousands) keeps its natural labels: it has no zero row to hit
-        the bug, and "0001" would be strictly worse to read. Width = digits of the largest
-        expected value (cardinality - 1, ordinals are dense from 0), min 2.
-        """
-        if chart.viz != Viz.HEATMAP or self._model is None or len(chart.query.dimensions) != 2:
-            return None
-        y = chart.query.dimensions[1]
-        table_name, _, name = y.rpartition(".")
-        table = self._model.table(table_name or chart.query.table)
-        column = table.column(name) if table else None
-        if column is None or column.role != ColumnRole.DIMENSION:
-            return None
-        if not re.search(r"int|float|decimal|numeric|double", column.type, re.IGNORECASE):
-            return None
-        card = (table.physical.cardinality.get(name, 0) if table and table.physical else 0) or 0
-        if not 0 < card <= self._HEATMAP_PAD_MAX_CARD:
-            return None
-        return max(2, len(str(card - 1)))
+        return heatmap_y_pad(chart, self._model)
 
     def create_chart(
         self, chart: ChartSpec, ds: DatasetRef, *, from_source: bool = False

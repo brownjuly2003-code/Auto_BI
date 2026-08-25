@@ -476,11 +476,14 @@ source field -> metric -> verified asset -> chart -> decision product -> owner
 
 ```python
 class BIContractCompiler(Protocol):
+    target: TargetBI
+
+    def capabilities(self) -> TargetCapabilities: ...
+
     def compile_contract(
         self,
         spec: DashboardSpec,
         model: SemanticModel,
-        capabilities: TargetCapabilities,
     ) -> CompiledBIContract: ...
 ```
 
@@ -488,6 +491,26 @@ class BIContractCompiler(Protocol):
 и DataLens chart/dataset config. Production `BIAdapter.build()` и новый compiler
 должны вызывать одни и те же pure functions; дублирование payload logic запрещено.
 Release gate не создаёт datasets/charts/dashboards и не запускает cleanup.
+
+`TargetCapabilities` **возвращает** compiler, а не принимает (первоначальный
+sketch принимал их аргументом): карта viz читается из тех же пиннутых таблиц
+адаптера (`VIZ_TYPE`, `VIZ_ID`, `DEGRADED`), а вызывающий, способный передать
+capabilities, мог бы объявить поддержку, которой у компилятора нет. Единственный
+параметр окружения — `target_version` (версия стенда), он же входит в digest.
+
+Компилируемый контракт намеренно НЕ содержит три вещи, и каждая названа явно, а не
+обнаруживается постфактум:
+
+| Не входит | Почему |
+|---|---|
+| Remote ids datasets/charts | их выдаёт BI на create; контракт использует детерминированные `native_id`-плейсхолдеры, иначе один и тот же вход давал бы разные digest |
+| DWH connection payload | несёт пароль: environment binding, не compile artifact (§10.2) |
+| Live-measured display scale | `_ru_scale` меряет величину на живом стенде; offline-значения нет — объявляется как `live_measured_display_scale=False` (инвариант 6) |
+
+Payload'ы исключены из dump контракта: контракт несёт content addresses, а байты
+уезжают в evidence store блобами (§9.1). Digest артефакта проверяется против
+payload, когда payload присутствует, поэтому контракт в памяти не может соврать о
+том, что скомпилировал, а прочитанный из evidence — по-прежнему проверяет своё тело.
 
 ## 9. Evidence architecture
 
