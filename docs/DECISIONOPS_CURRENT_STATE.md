@@ -8,8 +8,8 @@ evidence bundle → отчёт владельцу → чтение bundle. Ша�
 `--dwh` гейт спрашивает движок read-only ролью (`dwh.access`, `dwh.freshness`), без
 него честно говорит `check.not_configured`.
 Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot) — решение владельца**.
-**Ветка:** `main` · **HEAD:** `a13785e` · 17 коммитов поверх baseline, remote нет
-**Suite:** 1766 passed / 20 skipped; `mypy --strict`, ruff, black чисты
+**Ветка:** `main` · **HEAD:** `6dc827e` · 19 коммитов поверх baseline, remote нет
+**Suite:** 1817 passed / 20 skipped; `mypy --strict`, ruff, black чисты
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
 
