@@ -354,11 +354,26 @@ pass | pass_with_advisory | needs_review | block
 ```
 
 `completed + block` — нормальный результат проверки, не системная ошибка.
+
 `failed` означает, что gate не смог вынести полный verdict из-за runtime fault.
 
-Идемпотency key для one-shot verify строится из digest product spec, base и
-candidate snapshots, policy version, execution environment и verifier version.
-Повтор может переиспользовать только полный terminal bundle с тем же ключом.
+Идемпотency key для one-shot verify (`release_gate.idempotency_key`) строится из
+digest product spec, base и candidate snapshots, policy version, execution
+environment и verifier version. Повтор может переиспользовать только полный
+terminal bundle с тем же ключом.
+
+Того, что снималось **в момент** прогона — показаний движка (§8.2 шаг 7) и записанных
+результатов кандидата (§8.4), — в ключе нет: это наблюдения момента, и ключ по ним сделал
+бы новым каждый прогон. Следствие принято сознательно: два прогона, различающиеся только
+записанным результатом, делят `run_id` при разных вердиктах. Поэтому `BundleWriter.write`
+отказывается писать **другой** bundle под уже запечатанным `run_id`
+(`EvidenceConflictError`; наружу — usage-ошибка, exit 2) — и отказывается до записи первого
+байта; идентичная перезапись остаётся no-op. Каждому прогону — свой каталог evidence.
+
+`VERIFIER_VERSION` поднимается, когда сегодняшний гейт способен вынести из тех же входов
+другой вердикт (тогда его bundle нельзя переиспользовать под прежним ключом);
+`CHECK_VERSION` — когда меняется смысл отдельной проверки, чтобы прежний `CheckResult` не
+читался как гранёный сегодняшним правилом. Обе сейчас `2`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -559,6 +574,19 @@ Impact graph строится по stable refs:
 ```text
 source field -> metric -> verified asset -> chart -> decision product -> owner
 ```
+
+**Записывается весь дифф, грейдится только дошедшее.** `resolve_impact` оставляет в
+payload каждое изменение, включая те, чей список продуктов пуст: отчёт обязан говорить,
+что видел. Но прогон проверяет ОДИН продукт, поэтому вердикт и секция «Whose numbers this
+reaches» строятся только по изменениям с непустым `products` (`release_gate._reaching`) —
+иначе change чужой метрики поднимал бы вердикт продукта, которого он не касается. Сам
+change при этом не исчезает: его по-прежнему называет `semantic.diff` — это находка
+снапшота, а не продукта.
+
+По той же причине verified assets сужаются до тех, что называют метрики проверяемого
+продукта (`use_cases._load_assets`): чужой asset иначе инвалидировался бы на этот вердикт,
+а его сверка запечатывала бы в bundle claim о числе, которого продукт не отдаёт. Версии
+игнорируются с обеих сторон — резолвится ли пин, спрашивает `decision validate`.
 
 ### 8.4 Result reconciliation
 
