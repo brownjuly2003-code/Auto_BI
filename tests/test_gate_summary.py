@@ -97,8 +97,10 @@ def test_the_summary_says_what_the_run_did_not_do(tmp_path: Path) -> None:
     _, text = run_with_summary(Case(tmp_path).with_candidate())
 
     undone = text.split("## What was not done")[1].split("## Every check")[0]
-    assert "execution.checks" in undone
-    assert "check.not_implemented" in undone
+    # this run had no engine to ask, and all five of step 7's checks say so by name
+    assert "dwh.cost" in undone
+    assert "dwh.security" in undone
+    assert "check.not_configured" in undone
     # step 6 compiles the fixture's ratio on a ClickHouse mart, so it is graded, not skipped
     assert "sql.not_compiled" not in undone
     assert "sql.compile" not in undone

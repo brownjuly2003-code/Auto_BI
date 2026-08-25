@@ -21,7 +21,12 @@ from typing import Any
 
 import pytest
 
-from auto_bi.verification.environment import EnvironmentQuestions, TableQuestion
+from auto_bi.semantic.metric_contract import MetricBudget
+from auto_bi.verification.environment import (
+    EnvironmentQuestions,
+    PlanQuestion,
+    TableQuestion,
+)
 from auto_bi.verification.environment_probe import collect
 
 #: A statement that would change something starts with one of these. Matching anywhere in
@@ -659,3 +664,186 @@ def test_a_plain_postgres_role_is_subject_to_it() -> None:
     role = collect(engine, questions(), engine="greengage", target="stand").role
 
     assert role.bypasses_row_security is False
+
+
+# --- plan estimates -----------------------------------------------------------
+
+PLAN_SQL = "SELECT date, store_id, sum(revenue) AS m FROM dm.sales_daily GROUP BY date, store_id"
+
+
+def priced(
+    *, dialect: str = "clickhouse", sql: str = PLAN_SQL, **budgets: int
+) -> EnvironmentQuestions:
+    asked = questions()
+    asked.plans = [
+        PlanQuestion(
+            metric_ref="metric://sales/gross_margin_pct@3",
+            table="dm.sales_daily",
+            dialect=dialect,
+            sql=sql,
+            budgets=MetricBudget(**(budgets or {"max_scanned_rows": 1000})),
+        )
+    ]
+    return asked
+
+
+def test_clickhouse_prices_a_plan_from_explain_estimate() -> None:
+    """The stand answers parts, rows and marks — and nothing about bytes."""
+    engine = clickhouse_engine(
+        **{
+            "EXPLAIN ESTIMATE": [
+                {"database": "dm", "table": "sales_daily", "parts": 2, "rows": 600, "marks": 2}
+            ]
+        }
+    )
+
+    facts = collect(engine, priced(), engine="clickhouse", target="stand")
+
+    assert facts.plans[0].scanned_rows == 600
+    assert "600 row(s) in 2 part(s), 2 mark(s)" in facts.plans[0].evidence
+
+
+def test_an_empty_clickhouse_estimate_is_not_a_reading_of_zero() -> None:
+    """The stand answered this for a `count()` served from metadata *and* for a mart on
+    `Memory` whose rows the query really did read; calling it zero would pass any budget."""
+    engine = clickhouse_engine(**{"EXPLAIN ESTIMATE": []})
+
+    facts = collect(engine, priced(), engine="clickhouse", target="stand")
+
+    assert facts.plans[0].scanned_rows is None
+    assert "named no part to read" in facts.plans[0].evidence
+
+
+def test_a_refused_estimate_is_a_fact_not_a_crash() -> None:
+    class Refusing(FakeEngine):
+        def __call__(self, sql: str) -> list[dict[str, Any]]:
+            if "EXPLAIN" in sql:
+                raise RuntimeError("Code: 497. DB::Exception: ACCESS_DENIED")
+            return super().__call__(sql)
+
+    engine = Refusing(clickhouse_engine().answers)
+
+    facts = collect(engine, priced(), engine="clickhouse", target="stand")
+
+    assert facts.plans[0].scanned_rows is None
+    assert "refused" in facts.plans[0].evidence
+
+
+def postgres_plan(*nodes: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """The one-column document `EXPLAIN (FORMAT JSON)` answers with."""
+    return {"EXPLAIN (FORMAT JSON)": [{"QUERY PLAN": list(nodes)}]}
+
+
+def test_postgres_prices_the_scan_node_and_not_the_root() -> None:
+    """The stand's aggregate said 60 above a Seq Scan that said 600: the top of a plan is
+    what comes out, and a budget is about what goes in."""
+    engine = postgres_engine(
+        **postgres_plan(
+            {
+                "Plan": {
+                    "Node Type": "Aggregate",
+                    "Plan Rows": 60,
+                    "Plans": [
+                        {
+                            "Node Type": "Seq Scan",
+                            "Relation Name": "sales_daily",
+                            "Plan Rows": 600,
+                        }
+                    ],
+                }
+            }
+        )
+    )
+
+    facts = collect(engine, priced(dialect="postgres"), engine="greengage", target="stand")
+
+    assert facts.plans[0].scanned_rows == 600
+    assert "scanning sales_daily" in facts.plans[0].evidence
+
+
+def test_a_filtered_postgres_scan_reports_no_estimate_at_all() -> None:
+    """WHERE store_id = 1 turned 600 into 30 on the stand: those rows are what survives the
+    filter, not what is read."""
+    engine = postgres_engine(
+        **postgres_plan(
+            {
+                "Plan": {
+                    "Node Type": "Seq Scan",
+                    "Relation Name": "sales_daily",
+                    "Plan Rows": 30,
+                    "Filter": "(store_id = 1)",
+                }
+            }
+        )
+    )
+
+    facts = collect(engine, priced(dialect="postgres"), engine="greengage", target="stand")
+
+    assert facts.plans[0].scanned_rows is None
+    assert "counts what survives the filter" in facts.plans[0].evidence
+
+
+def test_a_plan_that_scans_nothing_is_not_a_free_query() -> None:
+    """This is what the stand planned for a mart row security had emptied: a one-time false
+    filter, no scan node, zero rows."""
+    engine = postgres_engine(
+        **postgres_plan(
+            {
+                "Plan": {
+                    "Node Type": "Aggregate",
+                    "Plan Rows": 1,
+                    "Plans": [{"Node Type": "Result", "One-Time Filter": "false", "Plan Rows": 0}],
+                }
+            }
+        )
+    )
+
+    facts = collect(engine, priced(dialect="postgres"), engine="greengage", target="stand")
+
+    assert facts.plans[0].scanned_rows is None
+    assert "scans no relation at all" in facts.plans[0].evidence
+
+
+def test_a_postgres_driver_that_hands_back_raw_text_is_read_anyway() -> None:
+    document = (
+        '[{"Plan": {"Node Type": "Seq Scan", "Relation Name": "sales_daily", "Plan Rows": 600}}]'
+    )
+    engine = postgres_engine(**{"EXPLAIN (FORMAT JSON)": [{"QUERY PLAN": document}]})
+
+    facts = collect(engine, priced(dialect="postgres"), engine="greengage", target="stand")
+
+    assert facts.plans[0].scanned_rows == 600
+
+
+def test_a_plan_compiled_for_another_engine_is_not_asked_of_this_one() -> None:
+    engine = clickhouse_engine()
+
+    facts = collect(engine, priced(dialect="postgres"), engine="clickhouse", target="stand")
+
+    assert facts.plans[0].scanned_rows is None
+    assert "compiled for postgres" in facts.plans[0].evidence
+    assert not any("EXPLAIN" in sql for sql in engine.asked)
+
+
+def test_a_metric_with_no_reference_query_is_never_asked_about() -> None:
+    """Step 6 compiled nothing for it, so there is no plan — and no query to run."""
+    engine = clickhouse_engine()
+
+    facts = collect(engine, priced(sql=""), engine="clickhouse", target="stand")
+
+    assert facts.plans == []
+    assert not any("EXPLAIN" in sql for sql in engine.asked)
+
+
+def test_pricing_a_plan_never_writes_and_never_executes() -> None:
+    """EXPLAIN ESTIMATE and EXPLAIN without ANALYZE are plans, not runs."""
+    for engine, name, dialect in (
+        (clickhouse_engine(), "clickhouse", "clickhouse"),
+        (postgres_engine(), "greengage", "postgres"),
+    ):
+        collect(engine, priced(dialect=dialect), engine=name, target="stand")
+
+        explains = [sql for sql in engine.asked if "EXPLAIN" in sql]
+        assert explains, "the plan was never asked for"
+        assert not any(WRITE_STATEMENT.match(sql) for sql in engine.asked)
+        assert not any("ANALYZE" in sql.upper() for sql in explains)

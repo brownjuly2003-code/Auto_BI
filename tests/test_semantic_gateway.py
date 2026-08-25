@@ -262,3 +262,31 @@ def test_capabilities_are_declared_not_assumed(tmp_path: Path) -> None:
 def test_missing_model_file_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         NativeModelSource(tmp_path / "absent.yaml", None).snapshot()
+
+
+def test_the_graph_carries_the_budget_the_contract_declares(tmp_path: Path) -> None:
+    """Step 7 grades a plan compiled from this node against this node's bound; a budget
+    read from a file beside the snapshot could belong to another version of the metric."""
+    snapshot = source(
+        tmp_path, contracts={"m.yaml": contract(budgets={"max_scanned_rows": 1000})}
+    ).snapshot()
+
+    node = snapshot.graph.metrics[0]
+    assert node.budgets is not None
+    assert node.budgets.max_scanned_rows == 1000
+    assert (node.budgets.max_scanned_bytes, node.budgets.timeout_ms) == (None, None)
+
+
+def test_a_metric_that_declares_no_budget_carries_none(tmp_path: Path) -> None:
+    assert source(tmp_path).snapshot().graph.metrics[0].budgets is None
+
+
+def test_a_moved_budget_moves_the_canonical_digest(tmp_path: Path) -> None:
+    """It is part of what the metric means, so two snapshots that disagree about it are
+    not the same snapshot."""
+    plain = source(tmp_path / "plain").snapshot()
+    bounded = source(
+        tmp_path / "bounded", contracts={"m.yaml": contract(budgets={"max_scanned_rows": 1000})}
+    ).snapshot()
+
+    assert plain.canonical_digest != bounded.canonical_digest

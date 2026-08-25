@@ -14,7 +14,10 @@ digest of the unrepresentable value, never the value itself (§10.2).
 
 Physical statistics (`rows`, `bytes`, `cardinality`, `captured_at`) are deliberately not in
 the graph: they change with every load and would make an unchanged model produce a new
-digest every day. Keys and partitioning — the parts the physical gate reasons about — are.
+digest every day. Keys and partitioning — the parts the physical gate reasons about — are,
+and so are the metric's declared budgets: a bound the contract states is part of what the
+metric *means* and moves only when someone edits it, unlike the measurement it is compared
+against.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from auto_bi.evidence.canonical import digest_bytes, sha256_digest
 from auto_bi.scalars import Sha256Digest
 from auto_bi.semantic.metric_contract import (
     FormulaKind,
+    MetricBudget,
     MetricContract,
     MetricFormula,
     MetricGrain,
@@ -119,6 +123,13 @@ class MetricNode(StrictModel):
     policy_refs: list[str] = Field(default_factory=list)
     #: Fields the metric's value depends on: formula terms, grain keys, event time.
     fields: list[str] = Field(default_factory=list)
+    #: What the metric says a run of it may cost (§7.3 "physical budgets"). It is in the
+    #: graph rather than read from the contract at grading time because the plan step 7
+    #: estimates is compiled from *this* node: taking the query from the snapshot and the
+    #: bound from a file beside it would let a release be graded against a budget that
+    #: belongs to a different version of the metric. `None` is "declares no bound", which
+    #: `MetricContract` already normalises `budgets: {}` into.
+    budgets: MetricBudget | None = None
 
 
 class SemanticGraph(StrictModel):
@@ -385,4 +396,5 @@ def _metric_node(contract: MetricContract, known: set[str], gaps: list[SemanticG
         classification=contract.classification,
         policy_refs=list(contract.policy_refs),
         fields=sorted(dependencies),
+        budgets=contract.budgets,
     )

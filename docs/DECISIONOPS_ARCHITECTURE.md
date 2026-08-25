@@ -432,7 +432,7 @@ Gate выполняет шаги в фиксированном порядке:
 4. построить semantic diff и impact graph;
 5. инвалидировать затронутые verified assets;
 6. compile base/candidate SQL;
-7. выполнить security, access, freshness и physical checks;
+7. выполнить security, access, freshness, physical и cost checks;
 8. reconcile полные typed results;
 9. compile Superset/DataLens contracts без remote mutation;
 10. собрать и повторно провалидировать evidence bundle.
@@ -473,7 +473,7 @@ Gate выполняет шаги в фиксированном порядке:
   Все находки шага advisory: почему метрика поехала, уже оценили diff и impact, и
   вторая оценка дала бы одному изменению два веса в вердикте. Агрегат берётся из
   `agent/sqlgen.aggregate_expr` — той же функции, что и chart-путь.
-- Шаг 7 реализован наполовину и разделён надвое: чистый слой
+- Шаг 7 реализован целиком и разделён надвое: чистый слой
   `verification/environment.py` (какие вопросы задать движку, как выглядит ответ и что он
   значит) и IO `verification/environment_probe.py` поверх того же read-only `RunQuery`, что
   и интроспекция с advisor. Гейт оценивает факты, а не держит соединение, и те же факты
@@ -505,11 +505,25 @@ Gate выполняет шаги в фиксированном порядке:
   `relrowsecurity` требует хотя бы одну permissive-политику. Отдельно:
   `has_table_privilege(…, 'SELECT')` у роли с колоночными грантами равен **false**, хотя роль
   витрину читает, — поэтому читаемость спрашивается через `has_any_column_privilege`, иначе
-  гейт блокировал бы релиз по витрине, которую сам только что прочитал. Прогон без `--dwh`
-  выносит все четыре проверки как `check.not_configured` — ответ, а не пропуск; не сделано у
-  шага только сравнение стоимости плана с `budgets` метрики, и оно остаётся
-  `check.not_implemented` (advisory), а не отсутствует молча: чистый bundle не должен
-  читаться как полная верификация.
+  гейт блокировал бы релиз по витрине, которую сам только что прочитал. `dwh.cost`: план
+  reference-запроса (шаг 6) против `budgets` метрики — план дороже объявленного потолка
+  **review** (число верное, выпускать ли — решение владельца), объявленный потолок без
+  оценки — тоже **review** (проверка не прошла, а не прошла успешно). Спрашивается **планом,
+  никогда прогоном**: `EXPLAIN ESTIMATE` и `EXPLAIN` без `ANALYZE`. Оба движка умеют
+  ответить молчанием, которое читается как ноль, и оба случая воспроизведены на стендах:
+  ClickHouse отдаёт **пустую** оценку, когда план не читает ни одного парта — тривиальный
+  `count()` из метаданных или витрина на `Memory`, чьи строки запрос всё-таки читает;
+  PostgreSQL считает строки скан-узла **после** фильтра (`WHERE store_id = 1` — 600 → 30) и
+  вообще не строит скан-узел для витрины, опустошённой row security (`One-Time Filter:
+  "false"`). Читается скан-узел, а не корень плана: на стенде корневой Aggregate сказал
+  `Plan Rows: 60` над `Seq Scan`, сказавшим 600. `max_scanned_bytes` и `timeout_ms` не
+  отвечает ни один планировщик (в `EXPLAIN ESTIMATE` байтов нет вовсе, а PG-стоимость —
+  условные единицы, не миллисекунды), поэтому они называются **advisory**-гэпом: это граница
+  гейта, а не двусмысленность владельца, и её не закрыть переформулировкой контракта.
+  Метрика с потолком, но без скомпилированного reference-запроса — тоже advisory, потому что
+  шаг 6 уже назвал этот гэп, и вторая оценка дала бы одной границе два веса. Прогон без
+  `--dwh` выносит все пять проверок как `check.not_configured` — ответ, а не пропуск: чистый
+  bundle не должен читаться как полная верификация.
 - «Reject blocking semantic gaps» останавливает последовательность ТОЛЬКО на
   `gap.contract_invalid`: непрочитанный контракт отсутствует в графе, и diff назвал
   бы это удалённой метрикой. Остальные blocking-гэпы (dangling join, отсутствующее
@@ -865,7 +879,7 @@ domain state machine.
 | Superset/DataLens compile contracts используют общий canonical query | ✅ `tests/test_bi_contract.py` — сравнение **объектов** builder'ов, не результатов |
 | отсутствие evidence ref ломает bundle validation | ✅ `tests/test_evidence_bundle.py` |
 | gate не вызывает remote mutation methods | ✅ socket-запрет + mutation-spy на каждом глаголе обоих BI-клиентов |
-| expensive candidate plan блокируется policy | ⛔ `dwh.physical` сравнивает заявленную раскладку и типы с движком, а `dwh.security` — досягаемость роли, но стоимость плана и `budgets` метрики пока не сравниваются (`advisor/explain.py` уже умеет EXPLAIN ESTIMATE; `MetricNode` ещё не несёт `budgets`) |
+| expensive candidate plan блокируется policy | ✅ `dwh.cost` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`); прогнано вживую на обоих стендах — план на 600 строк против объявленного потолка 500 → `cost.over_budget` (review), против 1000 → `cost.within_budget`. Не «блокируется»: число остаётся верным, а выпускать ли метрику дороже объявленного — решение владельца. `max_scanned_bytes` и `timeout_ms` планировщики не отвечают, поэтому названы advisory-гэпом, а не выведены арифметикой |
 | row/column restriction проверяется negative-тестом, а не декларацией | ✅ `dwh.security` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`); прогнано вживую на ClickHouse 24.8.14.39 и PostgreSQL 14.24 — withheld column → block, применённая политика → review, RLS без permissive → block |
 | stale source возвращает honest insufficient/block | ✅ stale **verified asset** → `asset.stale_snapshot` (review), недоступный результат → `insufficient`, freshness самого источника → `dwh.freshness` (review) при `--dwh` (`tests/test_environment_checks.py`) |
 

@@ -26,16 +26,19 @@ from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
     LayoutFacts,
+    PlanFacts,
     RoleFacts,
     RowPolicyFacts,
     TableFacts,
     check_access,
+    check_cost,
     check_freshness,
     check_physical,
     check_security,
     denies_all_rows,
     questions_for,
 )
+from auto_bi.verification.sql_contract import compile_metric_queries
 from tests.test_decision_verify import metric_contract, product_contract, semantic_model
 
 CREATED_AT = "2026-08-25T09:00:00Z"
@@ -63,13 +66,17 @@ def product(**verification: Any) -> DecisionProductSpec:
 
 
 def facts(
-    *tables: TableFacts, read_only: bool = True, evidence: str = "readonly=1"
+    *tables: TableFacts,
+    read_only: bool = True,
+    evidence: str = "readonly=1",
+    plans: list[PlanFacts] | None = None,
 ) -> EnvironmentFacts:
     return EnvironmentFacts(
         engine="clickhouse",
         target="127.0.0.1:8124/dm",
         role=RoleFacts(name="gate_ro", read_only=read_only, evidence=evidence),
         tables=list(tables),
+        plans=plans or [],
     )
 
 
@@ -733,3 +740,137 @@ def test_internal_is_the_default_and_not_a_declaration(tmp_path: Path) -> None:
     questions = questions_for(product(), snapshot_of(tmp_path))
 
     assert questions.tables[0].declares_sensitive() is False
+
+
+# --- cost: the plan against the ceiling the metric declares --------------------
+
+METRIC_REF = "metric://sales/gross_margin_pct@3"
+REFERENCE_SQL = "SELECT date, store_id FROM dm.sales_daily GROUP BY date, store_id"
+
+
+def budgeted(tmp_path: Path, **budgets: int) -> EnvironmentQuestions:
+    """Questions for a product whose only metric declares *budgets*."""
+    contract = metric_contract()
+    contract["budgets"] = budgets
+    return questions_for(product(), snapshot_of(tmp_path, contract))
+
+
+def plan(scanned_rows: int | None, evidence: str = "EXPLAIN ESTIMATE: 600 row(s)") -> PlanFacts:
+    return PlanFacts(metric_ref=METRIC_REF, scanned_rows=scanned_rows, evidence=evidence)
+
+
+def test_only_a_metric_that_declares_a_ceiling_gets_its_plan_priced(tmp_path: Path) -> None:
+    """An estimate with nothing to compare it to is a query run on somebody's warehouse
+    for a number no rule reads."""
+    assert questions_for(product(), snapshot_of(tmp_path)).plans == []
+
+    questions = budgeted(tmp_path, max_scanned_rows=1000)
+    assert [item.metric_ref for item in questions.plans] == [METRIC_REF]
+    assert questions.plans[0].table == "dm.sales_daily"
+    assert questions.plans[0].budgets.max_scanned_rows == 1000
+
+
+def test_the_query_priced_is_step_6s_own_reference_query(tmp_path: Path) -> None:
+    """One definition of what the metric's query is, so a plan is never priced against a
+    form the bundle does not hold."""
+    compiled = compile_metric_queries(snapshot_of(tmp_path), [METRIC_REF]).by_metric()
+    questions = budgeted(tmp_path, max_scanned_rows=1000)
+
+    assert questions.plans[0].sql == compiled[METRIC_REF].sql
+    assert questions.plans[0].dialect == compiled[METRIC_REF].dialect
+
+
+def test_a_plan_inside_its_ceiling_says_nothing(tmp_path: Path) -> None:
+    findings = check_cost(
+        budgeted(tmp_path, max_scanned_rows=1000), facts(fact(), plans=[plan(600)])
+    )
+
+    assert findings == []
+
+
+def test_a_plan_over_its_ceiling_needs_review(tmp_path: Path) -> None:
+    """The number is still right; whether to ship a metric that costs more than its owner
+    declared is that owner's call, exactly as with a stale source."""
+    findings = check_cost(
+        budgeted(tmp_path, max_scanned_rows=500), facts(fact(), plans=[plan(600)])
+    )
+
+    assert [item.code for item in findings] == ["cost.over_budget"]
+    assert findings[0].severity is Severity.REVIEW
+    assert findings[0].subject == METRIC_REF
+    assert "reads 600 rows, over the 500" in findings[0].detail
+    assert "EXPLAIN ESTIMATE: 600 row(s)" in findings[0].detail
+
+
+def test_an_estimate_the_engine_did_not_give_is_not_a_pass(tmp_path: Path) -> None:
+    """ClickHouse answers an empty estimate for a mart with no parts to report, and that
+    is the one reading that must never become a clean number."""
+    silent = plan(None, evidence="EXPLAIN ESTIMATE named no part to read")
+    findings = check_cost(budgeted(tmp_path, max_scanned_rows=500), facts(fact(), plans=[silent]))
+
+    assert [item.code for item in findings] == ["cost.not_estimated"]
+    assert findings[0].severity is Severity.REVIEW
+    assert "named no part to read" in findings[0].detail
+    assert "the check did not run rather than passing" in findings[0].detail
+
+
+def test_a_ceiling_the_probe_never_answered_for_is_not_a_pass_either(tmp_path: Path) -> None:
+    findings = check_cost(budgeted(tmp_path, max_scanned_rows=500), facts(fact()))
+
+    assert [item.code for item in findings] == ["cost.not_estimated"]
+    assert "the probe did not answer for it" in findings[0].detail
+
+
+def test_bounds_no_planner_answers_are_named_as_the_gates_own_gap(tmp_path: Path) -> None:
+    """Bytes and a timeout are not derived from granules or planner units: that boundary is
+    this gate's, not the owner's, so it is advisory the way step 6's boundary is."""
+    questions = budgeted(tmp_path, max_scanned_bytes=1_000_000, timeout_ms=30_000)
+    findings = check_cost(questions, facts(fact()))
+
+    assert [item.code for item in findings] == ["cost.bound_not_estimable"] * 2
+    assert all(item.severity is Severity.ADVISORY for item in findings)
+    assert "no plan estimate on either engine reports bytes" in findings[0].detail
+    assert "a PostgreSQL cost is in planner units" in findings[1].detail
+
+
+def test_a_ceiling_with_no_reference_query_says_so_without_grading_it_twice(
+    tmp_path: Path,
+) -> None:
+    """Step 6 already named the metric it would not compile; repeating that as review would
+    give one boundary two weights in the verdict."""
+    contract = metric_contract()
+    contract["budgets"] = {"max_scanned_rows": 500}
+    contract["formula"] = {
+        "kind": "external_ref",
+        "external": {
+            "source": "dbt",
+            "ref": "metric.sales.gross_margin_pct",
+            "source_revision": "9f1c0c2e4b7a5d3f8e6c1a0b2d4f6e8c0a2b4d6f",
+        },
+    }
+    questions = questions_for(product(), snapshot_of(tmp_path, contract))
+
+    assert questions.plans[0].sql == ""
+    findings = check_cost(questions, facts(fact()))
+    assert [item.code for item in findings] == ["cost.plan_unavailable"]
+    assert findings[0].severity is Severity.ADVISORY
+
+
+def test_a_mart_the_gate_could_not_read_is_not_priced(tmp_path: Path) -> None:
+    """`check_access` already blocked on it, and pricing a plan over it would weigh one
+    fact twice."""
+    questions = budgeted(tmp_path, max_scanned_rows=500)
+
+    absent = TableFacts(table="dm.sales_daily", exists=False, readable=False)
+    unreadable = TableFacts(table="dm.sales_daily", exists=True, readable=False)
+    assert check_cost(questions, facts(absent)) == []
+    assert check_cost(questions, facts(unreadable)) == []
+
+
+def test_a_mart_row_security_empties_is_not_priced_either(tmp_path: Path) -> None:
+    """Its plan scans nothing, which as a budget reading would be a clean pass over a mart
+    that answers nothing — the same sentence freshness refuses to print."""
+    emptied = fact(row_security_enabled=True, row_policies=[])
+    questions = budgeted(tmp_path, max_scanned_rows=500)
+
+    assert check_cost(questions, facts(emptied, plans=[plan(0)])) == []

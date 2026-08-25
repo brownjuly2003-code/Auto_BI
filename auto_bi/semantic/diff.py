@@ -4,8 +4,8 @@ Every difference gets a stable code and a default classification. The rules are 
 §8.3, and the reasoning behind them is uniform: what is *gone* blocks (nothing downstream
 can be re-derived from it), what *changes a number's meaning* — formula, grain, event time,
 unit, additivity — needs review until impact says whether anything depends on it, what
-*weakens a policy or classification* blocks as a security finding, and what changes only a
-label is advisory.
+*weakens a policy, a classification or a cost ceiling* needs a person to have meant it, and
+what changes only a label is advisory.
 
 The escalation from `review` to `block` happens one layer up, in
 `auto_bi/decision/impact.py`, because it needs the decision products — and `semantic` does
@@ -454,7 +454,74 @@ def _diff_metric_attrs(
                 "description changed",
             )
         )
+    changes.extend(_budget_change(old, new, impact))
     return changes
+
+
+#: The bounds a metric may declare on what one run of it costs, in the order a reader
+#: expects them, with the words a finding uses for each.
+_BUDGET_BOUNDS = (
+    ("max_scanned_rows", "scanned rows"),
+    ("max_scanned_bytes", "scanned bytes"),
+    ("timeout_ms", "timeout (ms)"),
+)
+
+
+def _budget_change(
+    old: MetricNode, new: MetricNode, impact: SemanticImpact
+) -> list[SemanticChange]:
+    """A moved cost ceiling, split by which way it moved.
+
+    Both directions are named, because the digest moves either way and §8.3 says every
+    difference between two snapshots has a name. They are not graded the same: a ceiling
+    that went *up* — or away — is what makes a plan the gate refused yesterday pass today,
+    and only a person can say that was intended. A tightened bound cannot hide anything;
+    if it now refuses the release, `dwh.cost` says so itself, and grading it here as well
+    would give one edit two weights in the verdict.
+    """
+    if old.budgets == new.budgets:
+        return []
+    relaxed: list[str] = []
+    tightened: list[str] = []
+    for attr, label in _BUDGET_BOUNDS:
+        before = getattr(old.budgets, attr, None) if old.budgets else None
+        after = getattr(new.budgets, attr, None) if new.budgets else None
+        if before == after:
+            continue
+        # An absent bound is no ceiling at all, so dropping one is the largest relaxation
+        # there is — never a comparison against a missing number.
+        if after is None or (before is not None and after > before):
+            relaxed.append(f"{label} {_bound(before)} -> {_bound(after)}")
+        else:
+            tightened.append(f"{label} {_bound(before)} -> {_bound(after)}")
+    changes: list[SemanticChange] = []
+    if relaxed:
+        changes.append(
+            _change(
+                "metric.budget_relaxed",
+                ChangeKind.MODIFIED,
+                Severity.REVIEW,
+                new.id,
+                f"cost ceiling raised: {'; '.join(relaxed)}",
+                impact,
+            )
+        )
+    if tightened:
+        changes.append(
+            _change(
+                "metric.budget_tightened",
+                ChangeKind.MODIFIED,
+                Severity.ADVISORY,
+                new.id,
+                f"cost ceiling lowered: {'; '.join(tightened)}",
+                impact,
+            )
+        )
+    return changes
+
+
+def _bound(value: int | None) -> str:
+    return "unbounded" if value is None else str(value)
 
 
 def _diff_gaps(base: SemanticSnapshot, candidate: SemanticSnapshot) -> list[SemanticChange]:

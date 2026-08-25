@@ -35,6 +35,7 @@ from auto_bi.semantic.model import (
 from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
+    PlanFacts,
     RoleFacts,
     RowPolicyFacts,
     TableFacts,
@@ -315,13 +316,27 @@ def test_unchanged_semantics_with_a_reconciled_asset_does_not_block(tmp_path: Pa
 
 
 def test_the_gate_says_which_steps_it_did_not_run(tmp_path: Path) -> None:
-    """A clean bundle must not read as a full verification (invariant 6)."""
+    """A clean bundle must not read as a full verification (invariant 6).
+
+    Step 7 is implemented end to end now, so nothing is `check.not_implemented`; what an
+    offline run cannot do is *ask*, and every one of its five checks says exactly that.
+    """
     report = Case(tmp_path).run()
-    not_implemented = [
+
+    assert [
         check.check_id for check in report.checks if check.summary_code == "check.not_implemented"
+    ] == []
+    not_configured = [
+        check.check_id for check in report.checks if check.summary_code == "check.not_configured"
     ]
-    assert not_implemented == ["execution.checks"]
-    assert all(status_of(report, check) is CheckStatus.ADVISORY for check in not_implemented)
+    assert not_configured == [
+        "dwh.access",
+        "dwh.freshness",
+        "dwh.physical",
+        "dwh.security",
+        "dwh.cost",
+    ]
+    assert all(status_of(report, check) is CheckStatus.ADVISORY for check in not_configured)
 
 
 # --- §8.2 step 7: what a live engine says -------------------------------------
@@ -340,6 +355,7 @@ def environment(
     column_reads: dict[str, bool] | None = None,
     row_policies: list[RowPolicyFacts] | None = None,
     row_security_enabled: bool | None = None,
+    plans: list[PlanFacts] | None = None,
 ) -> EnvironmentFacts:
     """One probe's answer, as `environment_probe` would have built it from the stand."""
     return EnvironmentFacts(
@@ -362,6 +378,7 @@ def environment(
                 row_security_enabled=row_security_enabled,
             )
         ],
+        plans=plans or [],
     )
 
 
@@ -814,3 +831,87 @@ def test_a_semantic_ref_without_a_model_is_a_usage_error(tmp_path: Path) -> None
     case.candidate.mkdir(parents=True, exist_ok=True)
     with pytest.raises(VerifyError, match=r"has no model\.yaml"):
         case.run()
+
+
+# --- §8.2 step 7: what one run of a governed query may cost --------------------
+
+BUDGET_REF = "metric://sales/gross_margin_pct@3"
+
+
+def budgeted_contract(**budgets: int) -> dict[str, Any]:
+    return {**metric_contract(), "budgets": budgets}
+
+
+def estimate(scanned_rows: int | None, evidence: str = "EXPLAIN ESTIMATE: 600 row(s)") -> PlanFacts:
+    return PlanFacts(metric_ref=BUDGET_REF, scanned_rows=scanned_rows, evidence=evidence)
+
+
+def test_a_product_that_declares_no_ceiling_says_so_instead_of_passing(tmp_path: Path) -> None:
+    """Nothing was compared, and a green verdict must not read as if something had been."""
+    report = Case(tmp_path).run(probe=probing(environment()))
+
+    assert status_of(report, "dwh.cost") is CheckStatus.PASS
+    assert summary_of(report, "dwh.cost") == "cost.no_budget_declared"
+
+
+def test_a_plan_inside_the_ceiling_its_metric_declares_passes(tmp_path: Path) -> None:
+    case = Case(tmp_path).with_candidate(contract=budgeted_contract(max_scanned_rows=1000))
+
+    report = case.run(probe=probing(environment(plans=[estimate(600)])))
+
+    assert status_of(report, "dwh.cost") is CheckStatus.PASS
+    assert summary_of(report, "dwh.cost") == "cost.within_budget"
+
+
+def test_a_plan_over_its_ceiling_asks_for_a_human(tmp_path: Path) -> None:
+    """The number stays right; shipping a metric that costs more than its owner declared is
+    that owner's call."""
+    case = Case(tmp_path).with_candidate(contract=budgeted_contract(max_scanned_rows=500))
+
+    report = case.run(probe=probing(environment(plans=[estimate(600)])))
+
+    assert status_of(report, "dwh.cost") is CheckStatus.REVIEW
+    assert summary_of(report, "dwh.cost") == "cost.over_budget"
+    assert report.verdict is Verdict.NEEDS_REVIEW
+
+
+def test_a_ceiling_the_engine_gave_no_estimate_for_is_not_a_pass(tmp_path: Path) -> None:
+    case = Case(tmp_path).with_candidate(contract=budgeted_contract(max_scanned_rows=500))
+    silent = estimate(None, evidence="EXPLAIN ESTIMATE named no part to read")
+
+    report = case.run(probe=probing(environment(plans=[silent])))
+
+    assert status_of(report, "dwh.cost") is CheckStatus.REVIEW
+    assert summary_of(report, "dwh.cost") == "cost.not_estimated"
+
+
+def test_the_bundle_carries_the_estimate_the_verdict_stood_on(tmp_path: Path) -> None:
+    """A cost finding is only checkable if the reading behind it travels with it."""
+    case = Case(tmp_path).with_candidate(contract=budgeted_contract(max_scanned_rows=500))
+
+    report = case.run(probe=probing(environment(plans=[estimate(600)])))
+    payload = _check_payload(tmp_path, report, "dwh.cost")
+
+    assert payload["facts"]["plans"] == [
+        {
+            "metric_ref": BUDGET_REF,
+            "scanned_rows": 600,
+            "evidence": "EXPLAIN ESTIMATE: 600 row(s)",
+        }
+    ]
+    plan = payload["questions"]["plans"][0]
+    assert plan["budgets"]["max_scanned_rows"] == 500
+    assert plan["sql"].startswith("SELECT")
+    assert [item["code"] for item in payload["findings"]] == ["cost.over_budget"]
+
+
+def test_a_ceiling_no_planner_can_answer_is_named_without_blocking(tmp_path: Path) -> None:
+    """Bytes and a timeout are this gate's boundary, not the owner's, so they read the way
+    step 6's boundary does — advisory, and said out loud."""
+    case = Case(tmp_path).with_candidate(contract=budgeted_contract(timeout_ms=30_000))
+
+    report = case.run(probe=probing(environment()))
+
+    assert status_of(report, "dwh.cost") is CheckStatus.ADVISORY
+    assert summary_of(report, "dwh.cost") == "cost.bound_not_estimable"
+    assert report.verdict is Verdict.PASS_WITH_ADVISORY

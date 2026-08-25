@@ -38,7 +38,8 @@ if TYPE_CHECKING:  # a runtime import would close the loop: release_gate imports
 #: Outcomes that mean a step produced nothing: not implemented offline, skipped because an
 #: earlier finding made it unanswerable, run with nothing to compare, or unable to compile a
 #: single query. `result.no_expectations` is the line an owner most needs under a green
-#: verdict — a gate that compared no numbers has verified none of them.
+#: verdict — a gate that compared no numbers has verified none of them, and
+#: `cost.no_budget_declared` is the same sentence about what a run may cost.
 #:
 #: A *partial* outcome deliberately stays out: `sql.partially_compiled` says in its own detail
 #: how many of how many compiled, and filing it under "not done" would deny the part that was.
@@ -47,6 +48,8 @@ _UNDONE = frozenset(
         "check.not_configured",
         "check.not_implemented",
         "check.not_run",
+        "cost.no_budget_declared",
+        "cost.not_run",
         "freshness.not_run",
         "physical.not_run",
         "result.no_expectations",

@@ -66,6 +66,16 @@ documentation:
   and that case is deliberately not modelled: owning a mart carries `INSERT` on it, so
   `access.role_writable` has already blocked the run before row security matters.
 
+**Cost is asked as a plan, never as a run.** `EXPLAIN ESTIMATE` on ClickHouse and `EXPLAIN`
+without `ANALYZE` on the Postgres family both answer without executing anything, which is the
+only way a read-only gate may ask what a query would cost. Each engine has a way of answering
+that *looks* like zero and is not, and both were reproduced on the stands: ClickHouse returns
+an empty estimate whenever the plan reads no MergeTree part — a `count()` served from
+metadata, or a mart on `Memory` whose rows the query did read — and PostgreSQL reports rows
+on a filtered scan *after* the filter (600 became 30 for `WHERE store_id = 1`) and no scan
+node at all for a mart row security has emptied. None of those becomes a number; each becomes
+a sentence saying why there is none.
+
 **A refusal is an answer.** Asking about access is exactly where a read-only role runs out of
 privilege, and an exception there would turn a fact about the environment into a crashed run.
 `_ask` returns `None` when the engine refuses a question or the object is not there, and
@@ -75,7 +85,9 @@ one.
 
 from __future__ import annotations
 
+import json
 import re
+from collections.abc import Iterator
 from datetime import date, datetime
 from typing import Any, NamedTuple
 
@@ -85,6 +97,8 @@ from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
     LayoutFacts,
+    PlanFacts,
+    PlanQuestion,
     RoleFacts,
     RowPolicyFacts,
     TableFacts,
@@ -135,14 +149,149 @@ def collect(
 ) -> EnvironmentFacts:
     """Ask one engine everything step 7 needs to know about one environment."""
     dialect = sqlglot_dialect(engine)
-    if dialect == sqlglot_dialect(GREENPLUM):
+    postgres = dialect == sqlglot_dialect(GREENPLUM)
+    if postgres:
         role = _postgres_role(run_query, questions)
         tables = [_postgres_table(run_query, item) for item in questions.tables]
     else:
         session = _clickhouse_session(run_query)
         role = _clickhouse_role(session)
         tables = [_clickhouse_table(run_query, item, session) for item in questions.tables]
-    return EnvironmentFacts(engine=engine, target=target, role=role, tables=tables)
+    plans = [
+        _estimate(run_query, item, dialect, postgres=postgres)
+        for item in questions.plans
+        if item.sql
+    ]
+    return EnvironmentFacts(engine=engine, target=target, role=role, tables=tables, plans=plans)
+
+
+# --- plan estimates -----------------------------------------------------------
+
+
+def _estimate(
+    run_query: RunQuery, question: PlanQuestion, dialect: str, *, postgres: bool
+) -> PlanFacts:
+    """What this engine says the metric's reference query will read.
+
+    Nothing is executed: `EXPLAIN ESTIMATE` and `EXPLAIN` without `ANALYZE` are both plans,
+    which is the only form of "how expensive is this" a read-only gate is allowed to ask.
+    """
+    if question.dialect and question.dialect != dialect:
+        return PlanFacts(
+            metric_ref=question.metric_ref,
+            evidence=(
+                f"the reference query was compiled for {question.dialect} and this probe is "
+                f"connected to {dialect}, so its plan was not asked for"
+            ),
+        )
+    reading = (
+        _postgres_estimate(run_query, question.sql)
+        if postgres
+        else _clickhouse_estimate(run_query, question.sql)
+    )
+    return PlanFacts(metric_ref=question.metric_ref, **reading)
+
+
+def _clickhouse_estimate(run_query: RunQuery, sql: str) -> dict[str, Any]:
+    """`EXPLAIN ESTIMATE` — parts, rows and marks, per table the plan reads.
+
+    An empty answer is the trap: the stand returned one for a `count()` served out of
+    metadata *and* for a mart on `Memory` whose rows the query really did read. Both mean
+    "no MergeTree part in this plan", which is not a measurement of zero, so neither becomes
+    a number here.
+
+    `advisor/explain.estimate_scan` asks the same engine the same thing and is deliberately
+    not called: it swallows every exception, because an advisor with no measurement still
+    advises. A gate may not, and the difference is load-bearing — a refused question is a
+    fact about the environment, while a dropped connection is a broken run, and one function
+    cannot both report the first and raise the second.
+    """
+    rows = _ask(run_query, f"EXPLAIN ESTIMATE {sql}")
+    if rows is None:
+        return {"evidence": "the engine refused EXPLAIN ESTIMATE on the reference query"}
+    if not rows:
+        return {
+            "evidence": (
+                "EXPLAIN ESTIMATE named no part to read: a plan answered from metadata, or a "
+                "mart on an engine that has no parts to report — not a reading of zero rows"
+            )
+        }
+    scanned = sum(int(row.get("rows") or 0) for row in rows)
+    parts = sum(int(row.get("parts") or 0) for row in rows)
+    marks = sum(int(row.get("marks") or 0) for row in rows)
+    return {
+        "scanned_rows": scanned,
+        "evidence": f"EXPLAIN ESTIMATE: {scanned} row(s) in {parts} part(s), {marks} mark(s)",
+    }
+
+
+def _postgres_estimate(run_query: RunQuery, sql: str) -> dict[str, Any]:
+    """`EXPLAIN (FORMAT JSON)` — the scan nodes, never the root.
+
+    The root of the stand's plan said `Plan Rows: 60` over a `Seq Scan` that said 600: the
+    top of a plan is what comes *out*, and a budget is about what goes in. Two shapes are
+    refused rather than reported: a scan carrying a `Filter` (its rows are counted after the
+    filter — 600 became 30 on the stand), and a plan with no relation scan at all, which is
+    what row security emptying a mart looks like (`One-Time Filter: "false"`).
+    """
+    rows = _ask(run_query, f"EXPLAIN (FORMAT JSON) {sql}")
+    if rows is None:
+        return {"evidence": "the engine refused EXPLAIN on the reference query"}
+    plan = _plan_tree(rows)
+    if plan is None:
+        return {"evidence": "EXPLAIN returned no plan to read"}
+    scans = list(_scan_nodes(plan))
+    filtered = [node for node in scans if "Filter" in node]
+    if filtered:
+        return {
+            "evidence": (
+                "the plan filters inside its scan of "
+                f"{', '.join(str(node.get('Relation Name')) for node in filtered)}, so its "
+                "row estimate counts what survives the filter, not what is read"
+            )
+        }
+    if not scans:
+        return {
+            "evidence": (
+                "the plan scans no relation at all — which is also what a mart emptied by "
+                "row security plans as — so there is no reading of what it would read"
+            )
+        }
+    scanned = sum(int(node.get("Plan Rows") or 0) for node in scans)
+    named = ", ".join(str(node.get("Relation Name")) for node in scans)
+    return {
+        "scanned_rows": scanned,
+        "evidence": f"EXPLAIN (FORMAT JSON): {scanned} row(s) estimated scanning {named}",
+    }
+
+
+def _plan_tree(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The root plan node out of `EXPLAIN (FORMAT JSON)`'s single-column answer.
+
+    The driver hands the document back already parsed; a driver that returns the raw text
+    is read here rather than left to fail on `.get`.
+    """
+    document = next(iter(rows[0].values()), None) if rows else None
+    if isinstance(document, str):
+        try:
+            document = json.loads(document)
+        except ValueError:
+            return None
+    if isinstance(document, list):
+        document = document[0] if document else None
+    if not isinstance(document, dict):
+        return None
+    plan = document.get("Plan")
+    return plan if isinstance(plan, dict) else None
+
+
+def _scan_nodes(node: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """Every node in the plan that reads a relation, at any depth."""
+    if "Relation Name" in node:
+        yield node
+    for child in node.get("Plans") or ():
+        if isinstance(child, dict):
+            yield from _scan_nodes(child)
 
 
 # --- ClickHouse ---------------------------------------------------------------

@@ -12,12 +12,12 @@ Two properties this module exists to keep:
 * **`operational_status` and `verdict` are different answers** (invariant 8). A run that
   completes and blocks is a working gate; a run that fails is a broken one. They are
   separate fields and a report that mixes them does not validate.
-* **A step that did not run says so.** §8.2 step 7 needs a running engine, and the three
-  halves of it that are implemented — access, freshness and the physical layer — grade *facts*
-  a read-only probe collected outside this module (`environment.py`), so a run without a
-  configured engine emits them as `check.not_configured` instead of passing. Its security half
-  has no implementation at all and stays `check.not_implemented`; neither may leave a clean
-  bundle that reads as a full verification. Step 6 compiles the reference query of each
+* **A step that did not run says so.** §8.2 step 7 needs a running engine, and all five of
+  its checks — access, freshness, the physical layer, security and cost — grade *facts* a
+  read-only probe collected outside this module (`environment.py`), so a run without a
+  configured engine emits them as `check.not_configured` instead of passing, and a check the
+  engine answered nothing for says `not_run` rather than clean. Neither may leave a bundle
+  that reads as a full verification. Step 6 compiles the reference query of each
   in-scope metric where the semantics are exact offline and names what it will not guess
   (`sql_contract.py`). The same applies downstream of a metric contract that failed to load:
   the diff would call the unparsed contract a *removed metric*, so those checks are emitted
@@ -63,6 +63,7 @@ from auto_bi.verification.environment import (
     EnvironmentFinding,
     EnvironmentQuestions,
     check_access,
+    check_cost,
     check_freshness,
     check_physical,
     check_security,
@@ -718,22 +719,12 @@ _FINDING_RANK = {Severity.ADVISORY: 0, Severity.REVIEW: 1, Severity.BLOCK: 2}
 def _check_environment(
     writer: BundleWriter, inputs: GateInputs, product_ref: str, created_at: str
 ) -> list[CheckResult]:
-    """§8.2 step 7: what a read-only look at the engine says about access and freshness.
+    """§8.2 step 7: what a read-only look at the engine says about this release.
 
     The gate grades facts rather than holding the connection (`environment.py` explains why
     each engine is asked its own question). Without a probe there is nothing to grade, and
-    the four checks say `check.not_configured` — an answer, not a pass. What the step still
-    does not do is compare the cost of a plan to the metric's declared budgets, and it keeps
-    saying so rather than letting a clean bundle read as a complete verification.
+    all five checks say `check.not_configured` — an answer, not a pass.
     """
-    remaining = _not_implemented(
-        "execution.checks",
-        CheckCategory.EXECUTION,
-        product_ref,
-        "the cost of the candidate plan is not compared to the budgets the metric declares "
-        "(§8.2 step 7); `advisor/explain.py` can already ask an engine for an estimate, but "
-        "no check grades one",
-    )
     facts = inputs.environment
     if facts is None:
         reason = (
@@ -745,7 +736,7 @@ def _check_environment(
             _not_configured("dwh.freshness", product_ref, reason),
             _not_configured("dwh.physical", product_ref, reason),
             _not_configured("dwh.security", product_ref, reason),
-            remaining,
+            _not_configured("dwh.cost", product_ref, reason),
         ]
 
     questions = questions_for(inputs.product, inputs.candidate)
@@ -819,8 +810,47 @@ def _check_environment(
                 "security.unfiltered" if _readable(questions, facts) else "security.not_run"
             ),
         ),
-        remaining,
+        _environment_check(
+            writer,
+            "dwh.cost",
+            questions,
+            facts,
+            check_cost(questions, facts),
+            product_ref,
+            clean=_cost_clean(questions, facts),
+            summary_clean=_cost_summary(questions, facts),
+        ),
     ]
+
+
+def _cost_summary(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
+    """Three different clean answers, because they mean three different things: nothing was
+    declared to check, nothing could be measured, or the ceilings held."""
+    if not questions.plans:
+        return "cost.no_budget_declared"
+    return "cost.within_budget" if _priced(questions, facts) else "cost.not_run"
+
+
+def _priced(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
+    """Whether any plan was actually estimated against a declared ceiling.
+
+    A product whose metrics declare no budget, and one whose every estimate came back
+    silent, must not read the same as one the engine priced — the first has nothing to
+    check, and the second is the sentence this report must never contain.
+    """
+    return any(
+        (plan := facts.plan(question.metric_ref)) is not None and plan.scanned_rows is not None
+        for question in questions.plans
+        if question.budgets.max_scanned_rows is not None
+    )
+
+
+def _cost_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
+    if not questions.plans:
+        return "no in-scope metric declares a cost ceiling, so no plan was priced"
+    if not _priced(questions, facts):
+        return f"no plan could be priced on {facts.target}, so no ceiling was compared"
+    return f"every governed query stays inside the ceiling its metric declares on {facts.target}"
 
 
 def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
@@ -904,20 +934,6 @@ def _not_configured(check_id: str, product_ref: str, detail: str) -> CheckResult
         subject_refs=[product_ref],
         status=CheckStatus.ADVISORY,
         summary_code="check.not_configured",
-        detail=detail,
-    )
-
-
-def _not_implemented(
-    check_id: str, category: CheckCategory, product_ref: str, detail: str
-) -> CheckResult:
-    return CheckResult(
-        check_id=check_id,
-        check_version=CHECK_VERSION,
-        category=category,
-        subject_refs=[product_ref],
-        status=CheckStatus.ADVISORY,
-        summary_code="check.not_implemented",
         detail=detail,
     )
 

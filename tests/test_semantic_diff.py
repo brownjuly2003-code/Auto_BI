@@ -291,3 +291,59 @@ def test_diff_round_trips(tmp_path: Path) -> None:
     changed.tables[0].columns[4].description = "x"
     diff = diff_snapshots(base, snap(tmp_path, "candidate", semantic=changed))
     assert SemanticDiff.model_validate(diff.model_dump(mode="json")) == diff
+
+
+def test_a_raised_cost_ceiling_needs_review_and_a_lowered_one_is_advisory(tmp_path: Path) -> None:
+    """A budget moves the digest either way, so §8.3 says both directions get a name — but
+    only the loosened one lets a plan the gate refused yesterday through today."""
+    base = snap(tmp_path, "base", contracts={"m.yaml": contract(budgets={"max_scanned_rows": 500})})
+
+    relaxed = snap(
+        tmp_path, "up", contracts={"m.yaml": contract(budgets={"max_scanned_rows": 5000})}
+    )
+    change = only(diff_snapshots(base, relaxed), "metric.budget_relaxed")
+    assert change.severity is Severity.REVIEW
+    assert "scanned rows 500 -> 5000" in change.detail
+
+    tightened = snap(
+        tmp_path, "down", contracts={"m.yaml": contract(budgets={"max_scanned_rows": 50})}
+    )
+    change = only(diff_snapshots(base, tightened), "metric.budget_tightened")
+    assert change.severity is Severity.ADVISORY
+    assert "scanned rows 500 -> 50" in change.detail
+
+
+def test_dropping_a_bound_is_the_largest_relaxation_there_is(tmp_path: Path) -> None:
+    """No ceiling is not a bigger number to compare against — it is no comparison at all."""
+    base = snap(tmp_path, "base", contracts={"m.yaml": contract(budgets={"timeout_ms": 30000})})
+    candidate = snap(tmp_path, "candidate", contracts={"m.yaml": contract()})
+
+    change = only(diff_snapshots(base, candidate), "metric.budget_relaxed")
+    assert change.severity is Severity.REVIEW
+    assert "timeout (ms) 30000 -> unbounded" in change.detail
+
+
+def test_one_edit_that_moves_two_bounds_both_ways_is_named_both_ways(tmp_path: Path) -> None:
+    base = snap(
+        tmp_path,
+        "base",
+        contracts={"m.yaml": contract(budgets={"max_scanned_rows": 500, "timeout_ms": 1000})},
+    )
+    candidate = snap(
+        tmp_path,
+        "candidate",
+        contracts={"m.yaml": contract(budgets={"max_scanned_rows": 5000, "timeout_ms": 100})},
+    )
+
+    diff = diff_snapshots(base, candidate)
+    assert only(diff, "metric.budget_relaxed").detail.endswith("scanned rows 500 -> 5000")
+    assert only(diff, "metric.budget_tightened").detail.endswith("timeout (ms) 1000 -> 100")
+
+
+def test_an_empty_budget_block_is_not_a_change(tmp_path: Path) -> None:
+    """`budgets: {}` and no budgets are one contract, so they must not diff against each
+    other — the same normalisation the contract itself applies (invariant 9)."""
+    base = snap(tmp_path, "base", contracts={"m.yaml": contract()})
+    candidate = snap(tmp_path, "candidate", contracts={"m.yaml": contract(budgets={})})
+
+    assert diff_snapshots(base, candidate).changes == []
