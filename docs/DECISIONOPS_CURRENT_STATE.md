@@ -6,7 +6,7 @@ gaps → diff → impact → инвалидация assets → reconcile → ref
 aggregate + governed ratio на ClickHouse) → BI compile → evidence bundle → отчёт
 владельцу → чтение bundle.
 Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot) — решение владельца**.
-**Ветка:** `main` · **HEAD:** `10ca8a1` · 15 коммитов поверх baseline, remote нет
+**Ветка:** `main` · **HEAD:** `f8243e9` · 15 коммитов поверх baseline, remote нет
 **Suite:** 1758 passed / 20 skipped; `mypy --strict`, ruff, black чисты
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
