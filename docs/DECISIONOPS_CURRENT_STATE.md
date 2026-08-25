@@ -8,8 +8,8 @@ evidence bundle → отчёт владельцу → чтение bundle. Ша�
 `--dwh` гейт спрашивает движок read-only ролью (`dwh.access`, `dwh.freshness`,
 `dwh.physical`), без него честно говорит `check.not_configured`.
 Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot) — решение владельца**.
-**Ветка:** `main` · **HEAD:** `6dc827e` · 19 коммитов поверх baseline, remote нет
-**Suite:** 1817 passed / 20 skipped; `mypy --strict`, ruff, black чисты
+**Ветка:** `main` · **HEAD:** `6432680` · 21 коммит поверх baseline, remote нет
+**Suite:** 1832 passed / 20 skipped; `mypy --strict`, ruff, black чисты
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
 
@@ -531,6 +531,38 @@ escaping (независимый оракул, 20k случайных double + �
   функции + `test_environment_probe` 21) и 7 на уровне гейта; suite 1832 passed /
   20 skipped (было 1766); `mypy --strict`, ruff, black чисты.
 
+## Стенды, на которых это проверялось
+
+Шаг 7 и форма деления шага 6 проверены не «на глаз»: под ними два движка, поднятых
+локально, без Docker и без sudo. Следующей сессии их не нужно поднимать заново —
+достаточно запустить.
+
+| Что | Где | Как поднять | Роли |
+|---|---|---|---|
+| ClickHouse **24.8.14.39** (пин из `docker-compose.yml`) | WSL Ubuntu-22.04, `~/chstand24`, порты **8124/9001** | `~/chstand24/usr/bin/clickhouse server --config-file=~/chstand24/config.xml &` | `default` (admin), `gate_ro` (профиль `readonly=1`), `gate_rw` (пишущая, для проверки block'а); пароли — `~/chstand24/creds.env`, режим 600 |
+| PostgreSQL **14.24** (реализация `numeric`, которую наследуют GP/Greengage) | WSL, `~/pgtest/data`, порт **55433** | `/usr/lib/postgresql/14/bin/pg_ctl -D ~/pgtest/data -o "-p 55433 -k ~/pgtest/sock -c listen_addresses=0.0.0.0" -w start` | `gate_ro` (только SELECT), `gate_rw` (с INSERT/UPDATE/DELETE) |
+
+Обе витрины засеяны фикстурной `dm.sales_daily` (600 строк, последние 30 дней). На
+ClickHouse рядом лежит база `dm_drift` — та же витрина, у которой `revenue` действительно
+`Float64`, а ORDER BY действительно `(store_id, date)`: на ней проверяется, что
+`dwh.physical` ловит реальный дрейф, а не только придуманный тестом.
+
+**Чужие порты не трогать.** В той же WSL живёт ClickHouse **26.7** другого проекта
+(`~/chstand`, порт 8123) и системный PostgreSQL на 5432 плюс ещё один инстанс на 55432 —
+поэтому наши 8124 и 55433. Первый `wsl -d Ubuntu-22.04` после простоя может отвалиться по
+`HCS_E_CONNECTION_TIMEOUT`; второй заход поднимает машину.
+
+Живой прогон гейта против стенда (пароль читается из `creds.env`, в команду не
+подставляется руками):
+
+```bash
+AUTO_BI_CH_HOST=127.0.0.1 AUTO_BI_CH_PORT=8124 AUTO_BI_CH_DATABASE=dm \
+AUTO_BI_CH_USER=gate_ro AUTO_BI_CH_PASSWORD=… \
+auto_bi decision verify <contracts> --base <base> --candidate <cand> \
+        --evidence .evidence --dashboards <dash> --dwh clickhouse \
+        --created-at 2026-08-25T12:00:00Z
+```
+
 ## Что ещё не реализовано
 - §8.2 шаг 6 частично: external и reviewed-SQL формулы офлайн не компилируются — гейт
   называет гэп вместо запроса; governed ratio на движке вне двух проверенных семейств —
@@ -590,9 +622,12 @@ governed ratio и про шаг 7). Всё, что осталось, требу�
 По `CLAUDE.md` это стоппер **S6** (граница фазы): следующую фазу не начинать самому,
 перед ней уместен `/cxkm`-ревью по диффу `b4bfa1d..HEAD`.
 
-Что можно делать без этих ответов — только мелкое и не меняющее контракт: удобства CLI
-(например, листинг run'ов в `decision evidence`), доки, тесты. Ни один такой пункт не
-приближает pilot evidence, поэтому по умолчанию — не начинать и спросить.
+**Следующий слайс, если продолжать без владельца** — security-половина шага 7:
+row/column policy и классификация (`FieldNode.classification` уже есть в снапшоте, у
+продукта есть `policy_refs`), плюс стоимость плана против `budgets` метрики, для которой в
+`advisor/explain.py` уже лежит `EXPLAIN ESTIMATE`. Стенды для обоих есть. Всё остальное —
+CLI-удобства, доки, тесты — pilot evidence не приближает, поэтому по умолчанию не
+начинать и спросить.
 
 ## Источники истины
 
