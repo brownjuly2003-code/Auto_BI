@@ -5,8 +5,8 @@
 gaps → diff → impact → инвалидация assets → reconcile → reference SQL (шаг 6:
 aggregate + governed ratio на ClickHouse и на PostgreSQL-семействе) → BI compile →
 evidence bundle → отчёт владельцу → чтение bundle. Шаг 7 наполовину живой: под
-`--dwh` гейт спрашивает движок read-only ролью (`dwh.access`, `dwh.freshness`), без
-него честно говорит `check.not_configured`.
+`--dwh` гейт спрашивает движок read-only ролью (`dwh.access`, `dwh.freshness`,
+`dwh.physical`), без него честно говорит `check.not_configured`.
 Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot) — решение владельца**.
 **Ветка:** `main` · **HEAD:** `6dc827e` · 19 коммитов поверх baseline, remote нет
 **Suite:** 1817 passed / 20 skipped; `mypy --strict`, ruff, black чисты
@@ -29,7 +29,7 @@ Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot)
 | Semantic diff и impact до владельца | `semantic/diff.py`, `decision/impact.py` | `test_semantic_diff`, `test_decision_impact` |
 | Verified assets, сравнение результатов | `verification/repository.py`, `verification/reconcile.py` | `test_verified_assets`, `test_result_reconcile` |
 | Reference SQL метрики (§8.2 шаг 6) | `verification/sql_contract.py` | `test_sql_contract` |
-| Access и freshness движка (§8.2 шаг 7) | `verification/environment.py` (правила), `verification/environment_probe.py` (IO) | `test_environment_checks`, `test_environment_probe` |
+| Access, freshness и физический слой движка (§8.2 шаг 7) | `verification/environment.py` (правила), `verification/environment_probe.py` (IO) | `test_environment_checks`, `test_environment_probe` |
 | Компиляция дашбордов без remote-вызовов | `verification/bi_contract.py` | `test_bi_contract` |
 | Оркестрация гейта | `verification/release_gate.py` | `test_decision_verify` |
 | Отчёт для владельца внутри bundle | `verification/summary.py` | `test_gate_summary` |
@@ -502,22 +502,42 @@ escaping (независимый оракул, 20k случайных double + �
   - то же самое с окном `P7D` → обе проверки pass (`freshness.fresh`);
   - Greengage-продукт против PostgreSQL-стенда → `access.read_only` + `freshness.stale`,
     то есть PG-путь проходит целиком через psycopg.
-- **Граница осталась.** Physical (EXPLAIN/бюджет) и security (классификация, drift схемы)
-  половины шага 7 не реализованы — `execution.checks` по-прежнему
-  `check.not_implemented`. Прогон без `--dwh` даёт `check.not_configured` у обеих новых
-  проверок: это ответ, а не пропуск, и в отчёте владельцу он попадает в раздел «что не
-  сделано».
-- Проверено: 44 новых теста (`test_environment_checks` 27 + `test_environment_probe` 17)
-  и 7 на уровне гейта; suite 1817 passed / 20 skipped (было 1766); `mypy --strict`, ruff,
-  black чисты.
+- **Physical: держит ли движок то, что заявляет модель** (`dwh.physical`). Сравнивается
+  ровно то, что модель утверждает, и только там, где движок ответил:
+  - колонка, из которой сделано число (`MetricNode.fields` — термы формулы, ключи grain,
+    event time), которой на движке нет → **block**: метрику там не посчитать;
+  - тип, разъехавшийся с объявленным → **review**, и это хуже отсутствия: точная форма
+    governed ratio шага 6 выведена именно из объявленного типа, так что `Float64` вместо
+    `Decimal(18, 2)` значит, что гейт рассуждал не про то число, которое вернёт запрос;
+  - раскладка (`table_engine`, sorting key, partition key, distribution key) → **review**:
+    число не меняется, но план и advisor спорили про таблицу, которой нет.
+  Типы читаются в написании самой модели: `system.columns.type` на ClickHouse и
+  `format_type(atttypid, atttypmod)` на PG-семействе — той же функцией, которой их писал
+  greenplum-интроспектор. Косметика дрейфом не считается: `Decimal(18, 2)` и
+  `decimal(18,2)` — один тип. Раскладка репортится только там, где проверена: ClickHouse
+  отдаёт её из `system.tables`, а distribution/partition Greenplum живут в каталогах, до
+  которых не добраться без GP-стенда, поэтому PG-путь оставляет их **не отвеченными**, и
+  проверка сравнивает ничего вместо выдуманного несовпадения.
+- **Проверено вживую и на дрейфе.** Засеянная витрина = модель → `physical.as_declared` на
+  обоих стендах. Отдельная база `dm_drift`, где `revenue` действительно `Float64`, а
+  ORDER BY действительно `(store_id, date)`, → `physical.type_drift` вместе с
+  `physical.layout_drift` в одном вердикте. Хорошая витрина при этом не трогалась.
+- **Граница осталась.** Не реализована security-половина шага 7 (row/column policy,
+  классификация) — `execution.checks` по-прежнему `check.not_implemented`. Стоимость плана
+  и `budgets` метрики тоже пока не сравниваются, хотя `advisor/explain.py` уже умеет
+  `EXPLAIN ESTIMATE`. Прогон без `--dwh` даёт `check.not_configured` у всех трёх проверок:
+  это ответ, а не пропуск, и в отчёте владельцу он попадает в раздел «что не сделано».
+- Проверено: 59 тестов в двух новых файлах (`test_environment_checks` 38 прогонов из 31
+  функции + `test_environment_probe` 21) и 7 на уровне гейта; suite 1832 passed /
+  20 skipped (было 1766); `mypy --strict`, ruff, black чисты.
 
 ## Что ещё не реализовано
 - §8.2 шаг 6 частично: external и reviewed-SQL формулы офлайн не компилируются — гейт
   называет гэп вместо запроса; governed ratio на движке вне двух проверенных семейств —
   тоже гэп;
-- §8.2 шаг 7 наполовину: physical (EXPLAIN/бюджет) и security (классификация, drift
-  схемы) не реализованы — `execution.checks` объявляет их `check.not_implemented`;
-  access и freshness работают под `--dwh`;
+- §8.2 шаг 7 на три четверти: security (row/column policy, классификация) не
+  реализована — `execution.checks` объявляет её `check.not_implemented`; access, freshness
+  и physical работают под `--dwh`, но стоимость плана и `budgets` метрики не сравниваются;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
 ## Проверить руками за две минуты

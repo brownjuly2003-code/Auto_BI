@@ -8,10 +8,10 @@ control plane для выпуска проверяемых аналитичес�
 validate` (cross-contract проверка), `auto_bi decision verify` (полный гейт §8.2
 с content-addressed evidence bundle) и `auto_bi decision evidence` (чтение bundle
 с пересчётом каждого content address) реализованы и запускаются на файлах в Git,
-без DWH, BI и LLM. Шаг §8.2 7 реализован наполовину: с `--dwh` гейт спрашивает движок
-read-only ролью про access и freshness (`dwh.access`, `dwh.freshness`), без него говорит
-`check.not_configured`, а physical и security половины объявляет `check.not_implemented` —
-не пропускает молча; шаг 6 компилирует reference-запрос метрики только там, где семантика
+без DWH, BI и LLM. Шаг §8.2 7 реализован на три четверти: с `--dwh` гейт спрашивает движок
+read-only ролью про access, freshness и физический слой (`dwh.access`, `dwh.freshness`,
+`dwh.physical`), без него говорит `check.not_configured`, а security-половину объявляет
+`check.not_implemented` — не пропускает молча; шаг 6 компилирует reference-запрос метрики только там, где семантика
 точна офлайн, и называет гэп там, где нет. Пилот на реальном change ещё не проводился. Унаследованный
 v1 runtime сохранён без функциональных изменений.
 

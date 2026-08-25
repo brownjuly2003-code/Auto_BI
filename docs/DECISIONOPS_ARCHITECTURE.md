@@ -480,13 +480,17 @@ Gate выполняет шаги в фиксированном порядке:
   ложатся в bundle. `dwh.access`: роль умеет только читать (иначе **block** — инвариант 3) и
   каждая витрина скоупа есть и читается (иначе block). `dwh.freshness`: возраст самой свежей
   строки против `freshness_max_age` продукта, измеренный от `created_at` прогона, — протухший
-  источник **review**. **Проверка записи никогда не делается записью**: на ClickHouse решает
+  источник **review**. `dwh.physical`: держит ли движок то, что заявляет кандидатная модель —
+  отсутствующая колонка метрики **block**, разъехавшийся тип **review** (точная форма ratio
+  из шага 6 выведена из объявленного типа), разъехавшаяся раскладка **review**; сравнивается
+  только то, что модель утверждает, и только там, где движок ответил (PG-семейство не отдаёт
+  distribution/partition без Greenplum-каталогов, и молчание не читается как несовпадение). **Проверка записи никогда не делается записью**: на ClickHouse решает
   профиль (`readonly=1` отказывает даже при `GRANT INSERT ON *.*` из `users.xml`), на
   PostgreSQL — `has_table_privilege` плюс проверка на суперпользователя. Пустая витрина —
   `freshness.unknown`, потому что `max(Date)` по нулю строк в ClickHouse равен `1970-01-01`,
-  а не NULL. Прогон без `--dwh` выносит обе проверки как `check.not_configured` — ответ, а не
-  пропуск; physical и security половины шага остаются `check.not_implemented` (advisory), а
-  не отсутствуют молча: чистый bundle не должен читаться как полная верификация.
+  а не NULL. Прогон без `--dwh` выносит все три проверки как `check.not_configured` — ответ, а не
+  пропуск; security-половина шага остаётся `check.not_implemented` (advisory), а не
+  отсутствует молча: чистый bundle не должен читаться как полная верификация.
 - «Reject blocking semantic gaps» останавливает последовательность ТОЛЬКО на
   `gap.contract_invalid`: непрочитанный контракт отсутствует в графе, и diff назвал
   бы это удалённой метрикой. Остальные blocking-гэпы (dangling join, отсутствующее
@@ -842,7 +846,7 @@ domain state machine.
 | Superset/DataLens compile contracts используют общий canonical query | ✅ `tests/test_bi_contract.py` — сравнение **объектов** builder'ов, не результатов |
 | отсутствие evidence ref ломает bundle validation | ✅ `tests/test_evidence_bundle.py` |
 | gate не вызывает remote mutation methods | ✅ socket-запрет + mutation-spy на каждом глаголе обоих BI-клиентов |
-| expensive candidate plan блокируется policy | ⛔ ждёт §8.2 шаг 7 (physical/cost checks поверх `advisor/*`) |
+| expensive candidate plan блокируется policy | ⛔ `dwh.physical` сравнивает заявленную раскладку и типы с движком, но стоимость плана и `budgets` метрики пока не сравниваются (`advisor/explain.py` уже умеет EXPLAIN ESTIMATE) |
 | stale source возвращает honest insufficient/block | ✅ stale **verified asset** → `asset.stale_snapshot` (review), недоступный результат → `insufficient`, freshness самого источника → `dwh.freshness` (review) при `--dwh` (`tests/test_environment_checks.py`) |
 
 ### 15.4 Compatibility gate

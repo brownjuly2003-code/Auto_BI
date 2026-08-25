@@ -64,7 +64,17 @@ def clickhouse_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
         "currentUser() AS value": [{"value": "gate_ro"}],
         "system.settings": [{"value": "1"}],
         "system.grants": [{"access_type": "SELECT"}, {"access_type": "INSERT"}],
-        "system.tables": [{"name": "sales_daily"}],
+        "system.tables": [
+            {
+                "engine": "MergeTree",
+                "sorting_key": "date, store_id",
+                "partition_key": "toYYYYMM(date)",
+            }
+        ],
+        "system.columns": [
+            {"name": "date", "type": "Date"},
+            {"name": "revenue", "type": "Decimal(18, 2)"},
+        ],
         "count()": [{"rows_seen": 600, "max_event_time": date(2026, 8, 24)}],
     }
     answers.update(overrides)
@@ -78,6 +88,10 @@ def postgres_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
             {"insert": False, "update": False, "delete": False, "truncate": False}
         ],
         "pg_tables": [{"tablename": "sales_daily"}],
+        "format_type": [
+            {"name": "date", "type": "date"},
+            {"name": "revenue", "type": "numeric(18,2)"},
+        ],
         "'SELECT') AS ok": [{"ok": True}],
         "count(*)": [{"rows_seen": 600, "max_event_time": date(2026, 8, 24)}],
     }
@@ -277,3 +291,42 @@ def test_asking_about_nothing_still_answers_about_the_role() -> None:
 
     assert facts.tables == []
     assert facts.role.name == "gate_ro"
+
+
+# --- the physical layer -------------------------------------------------------
+
+
+def test_clickhouse_reports_its_columns_and_its_layout() -> None:
+    """`system.tables` prints a sorting key as one string; the columns it names are the fact."""
+    facts = collect(clickhouse_engine(), questions(), engine="clickhouse", target="stand")
+
+    table = facts.tables[0]
+    assert table.columns == {"date": "Date", "revenue": "Decimal(18, 2)"}
+    assert table.layout is not None
+    assert table.layout.table_engine == "MergeTree"
+    assert table.layout.sorting_key == ["date", "store_id"]
+    assert table.layout.partition_key == "toYYYYMM(date)"
+
+
+def test_clickhouse_reports_no_distribution_policy_rather_than_an_empty_one() -> None:
+    """It has none to report, and `None` is what keeps `check_physical` from comparing."""
+    facts = collect(clickhouse_engine(), questions(), engine="clickhouse", target="stand")
+
+    assert facts.tables[0].layout is not None
+    assert facts.tables[0].layout.distribution_key is None
+
+
+def test_postgres_reports_columns_in_the_spelling_the_model_was_written_in() -> None:
+    """`format_type` is the same function the Greenplum introspector wrote the model with,
+    so the comparison is between two spellings of one thing."""
+    facts = collect(postgres_engine(), questions(), engine="greengage", target="stand")
+
+    assert facts.tables[0].columns == {"date": "date", "revenue": "numeric(18,2)"}
+
+
+def test_postgres_leaves_the_layout_unreported() -> None:
+    """The distribution policy and partition levels live in Greenplum-only catalogs that no
+    stand has been available to pin; unreported is the honest answer, not empty."""
+    facts = collect(postgres_engine(), questions(), engine="greengage", target="stand")
+
+    assert facts.tables[0].layout is None

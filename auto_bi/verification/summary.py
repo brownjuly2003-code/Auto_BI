@@ -48,6 +48,7 @@ _UNDONE = frozenset(
         "check.not_implemented",
         "check.not_run",
         "freshness.not_run",
+        "physical.not_run",
         "result.no_expectations",
         "sql.not_compiled",
     }

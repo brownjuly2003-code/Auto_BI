@@ -31,6 +31,13 @@ rendered. A date-only event time is read as that day's start in UTC: the conserv
 of the day it stands for, and the detail says so, because the metric's declared timezone can
 move a day boundary by up to fourteen hours.
 
+The *physical* half asks a different question: does the engine hold what the candidate
+model says it holds? A column the metric reads and the mart does not have is a release that
+cannot compute its own number; a type that drifted is worse than missing, because everything
+upstream — step 6's exact ratio above all — was reasoned out from the declared one. A layout
+that drifted (sorting key, partition key, distribution key) does not break the number, but it
+does mean the advisor and the plan were argued from a table that is not there.
+
 Grading, and why:
 
 * a role that can write → **block**. Invariant 3 says the gate reaches the DWH through a
@@ -44,7 +51,11 @@ Grading, and why:
   the same grading a stale verified asset already gets;
 * a window in years or calendar months → **review**, not a guess. Neither has a fixed
   length, so the age cannot be compared to it exactly, and this gate does not pick a
-  convention for someone else's SLO.
+  convention for someone else's SLO;
+* a column the metric reads that the engine does not have → **block**; a column whose type
+  drifted from the model → **review**; a drifted layout → **review**. Only what the model
+  actually claims is compared, and only where the engine reports it: a mart whose engine
+  does not expose a distribution policy is not evidence that the declared one is wrong.
 """
 
 from __future__ import annotations
@@ -57,7 +68,7 @@ from pydantic import Field
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import Duration, NonBlankText, Timestamp
-from auto_bi.semantic.gateway import SemanticSnapshot
+from auto_bi.semantic.gateway import MetricNode, SemanticSnapshot, TableNode
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
 
@@ -73,11 +84,34 @@ _FIXED_UNITS: dict[str, timedelta] = {
 }
 
 
+class LayoutClaim(StrictModel):
+    """What the candidate model says the mart's physical layer is."""
+
+    table_engine: str = ""
+    sorting_key: list[str] = Field(default_factory=list)
+    partition_key: str = ""
+    distribution_key: list[str] = Field(default_factory=list)
+
+
+class LayoutFacts(StrictModel):
+    """What the engine reports about it. `None` is "not reported", which is not "empty":
+    a plain PostgreSQL stand has no distribution policy to answer with, and silence there
+    must not read as a contradiction of the model."""
+
+    table_engine: str | None = None
+    sorting_key: list[str] | None = None
+    partition_key: str | None = None
+    distribution_key: list[str] | None = None
+
+
 class TableQuestion(StrictModel):
     """One mart the product's metrics read, and the column that dates its rows."""
 
     table: NonBlankText
     event_time_column: NonBlankText
+    #: Column -> declared type, for exactly the fields the in-scope metrics read.
+    columns: dict[str, str] = Field(default_factory=dict)
+    layout: LayoutClaim = Field(default_factory=LayoutClaim)
     #: The business timezone the metrics declare for that column — reported, not applied:
     #: it is what makes a date-only reading an assumption rather than a fact.
     timezones: list[str] = Field(default_factory=list)
@@ -117,6 +151,9 @@ class TableFacts(StrictModel):
     #: ISO 8601 as the engine gave it: `2026-08-24` or `2026-08-24T09:00:00Z`. `None` when
     #: the engine has nothing to date (no rows, or a NULL max).
     max_event_time: str | None = None
+    #: Column -> type as the engine spells it. `None` means the probe did not ask.
+    columns: dict[str, str] | None = None
+    layout: LayoutFacts | None = None
 
 
 class EnvironmentFacts(StrictModel):
@@ -133,7 +170,7 @@ class EnvironmentFacts(StrictModel):
 
 
 class EnvironmentFinding(StrictModel):
-    code: str = Field(min_length=1, pattern=r"^(access|freshness)\.[a-z0-9_]+$")
+    code: str = Field(min_length=1, pattern=r"^(access|freshness|physical)\.[a-z0-9_]+$")
     severity: Severity
     subject: NonBlankText
     detail: NonBlankText
@@ -162,15 +199,19 @@ def questions_for(product: DecisionProductSpec, snapshot: SemanticSnapshot) -> E
         if table is not None and table.engine:
             engines.add(table.engine)
         key = f"{node.grain.table}:{node.time.event_time_column}"
+        columns = _declared_columns(node, snapshot)
         question = tables.get(key)
         if question is None:
             tables[key] = TableQuestion(
                 table=node.grain.table,
                 event_time_column=node.time.event_time_column,
+                columns=columns,
+                layout=_declared_layout(table),
                 timezones=[node.time.timezone],
                 metric_refs=[ref],
             )
             continue
+        question.columns.update(columns)
         if node.time.timezone not in question.timezones:
             question.timezones.append(node.time.timezone)
         if ref not in question.metric_refs:
@@ -179,6 +220,35 @@ def questions_for(product: DecisionProductSpec, snapshot: SemanticSnapshot) -> E
     return EnvironmentQuestions(
         engines=sorted(engines),
         tables=[tables[key] for key in sorted(tables)],
+    )
+
+
+def _declared_columns(node: MetricNode, snapshot: SemanticSnapshot) -> dict[str, str]:
+    """The fields this metric's value depends on, with the types the model declares.
+
+    `MetricNode.fields` is already exactly that list — formula terms, grain keys and the
+    event time — so the check asks about the columns the number is made of, not about every
+    column the mart happens to carry.
+    """
+    declared: dict[str, str] = {}
+    for field_id in node.fields:
+        table, _, column = field_id.rpartition(".")
+        if table != node.grain.table:
+            continue  # a term on another table is `sql.join_required`'s finding, not this one
+        field = next((item for item in snapshot.graph.fields if item.id == field_id), None)
+        if field is not None:
+            declared[column] = field.type
+    return declared
+
+
+def _declared_layout(table: TableNode | None) -> LayoutClaim:
+    if table is None:
+        return LayoutClaim()
+    return LayoutClaim(
+        table_engine=table.table_engine,
+        sorting_key=list(table.sorting_key),
+        partition_key=table.partition_key,
+        distribution_key=list(table.distribution_key),
     )
 
 
@@ -352,6 +422,110 @@ def check_freshness(
     return findings
 
 
+def check_physical(
+    questions: EnvironmentQuestions, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """Does the engine hold what the candidate model says it holds?"""
+    findings: list[EnvironmentFinding] = []
+
+    for question in questions.tables:
+        table = facts.table(question.table)
+        if table is None or not table.exists or not table.readable:
+            continue  # `check_access` already said so; saying it twice weighs it twice
+        findings.extend(_column_findings(question, table, facts))
+        findings.extend(_layout_findings(question, table, facts))
+
+    return findings
+
+
+def _column_findings(
+    question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """Every column the metric's value is made of, as the engine has it."""
+    if table.columns is None:
+        return []
+    findings: list[EnvironmentFinding] = []
+    for column, declared in sorted(question.columns.items()):
+        actual = table.columns.get(column)
+        if actual is None:
+            findings.append(
+                EnvironmentFinding(
+                    code="physical.column_absent",
+                    severity=Severity.BLOCK,
+                    subject=f"{question.table}.{column}",
+                    detail=(
+                        f"{question.table} on {facts.target} has no column {column}, which "
+                        f"{', '.join(question.metric_refs)} reads; the metric cannot be "
+                        "computed there"
+                    ),
+                )
+            )
+        elif _normalized(actual) != _normalized(declared):
+            findings.append(
+                EnvironmentFinding(
+                    code="physical.type_drift",
+                    severity=Severity.REVIEW,
+                    subject=f"{question.table}.{column}",
+                    detail=(
+                        f"{question.table}.{column} is {actual} on {facts.target} while the "
+                        f"model declares {declared}; everything upstream — the exact form of "
+                        "a governed ratio above all — was reasoned out from the declared type"
+                    ),
+                )
+            )
+    return findings
+
+
+def _layout_findings(
+    question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """Only what the model claims, and only where the engine answered."""
+    if table.layout is None:
+        return []
+    claim, actual = question.layout, table.layout
+    drifted = [
+        (name, declared, reported)
+        for name, declared, reported in (
+            ("table engine", claim.table_engine, actual.table_engine),
+            ("sorting key", ", ".join(claim.sorting_key), _joined(actual.sorting_key)),
+            ("partition key", claim.partition_key, actual.partition_key),
+            (
+                "distribution key",
+                ", ".join(claim.distribution_key),
+                _joined(actual.distribution_key),
+            ),
+        )
+        if declared and reported is not None and _normalized(declared) != _normalized(reported)
+    ]
+    if not drifted:
+        return []
+    moved = "; ".join(
+        f"{name} is {reported or 'unset'} there, {declared} in the model"
+        for name, declared, reported in drifted
+    )
+    return [
+        EnvironmentFinding(
+            code="physical.layout_drift",
+            severity=Severity.REVIEW,
+            subject=question.table,
+            detail=(
+                f"{question.table} on {facts.target} is laid out differently from the model: "
+                f"{moved}. The number is unaffected, but the plan and the advisor were argued "
+                "from a table that is not there"
+            ),
+        )
+    ]
+
+
+def _joined(value: list[str] | None) -> str | None:
+    return None if value is None else ", ".join(value)
+
+
+def _normalized(type_or_key: str) -> str:
+    """`Decimal(18, 2)` and `decimal(18,2)` are one type; spacing and case are not content."""
+    return "".join(type_or_key.split()).lower()
+
+
 def _assumption(age: _Age, question: TableQuestion) -> str:
     """Name the reading when a date-only value had to stand for a moment in time."""
     if not age.assumed_start_of_day:
@@ -407,10 +581,13 @@ __all__ = [
     "EnvironmentFacts",
     "EnvironmentFinding",
     "EnvironmentQuestions",
+    "LayoutClaim",
+    "LayoutFacts",
     "RoleFacts",
     "TableFacts",
     "TableQuestion",
     "check_access",
     "check_freshness",
+    "check_physical",
     "questions_for",
 ]

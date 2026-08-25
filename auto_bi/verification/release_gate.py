@@ -12,11 +12,11 @@ Two properties this module exists to keep:
 * **`operational_status` and `verdict` are different answers** (invariant 8). A run that
   completes and blocks is a working gate; a run that fails is a broken one. They are
   separate fields and a report that mixes them does not validate.
-* **A step that did not run says so.** §8.2 step 7 needs a running engine, and the two
-  halves of it that are implemented — access and freshness — grade *facts* a read-only probe
-  collected outside this module (`environment.py`), so a run without a configured engine
-  emits them as `check.not_configured` instead of passing. Its physical and security halves
-  have no implementation at all and stay `check.not_implemented`; neither may leave a clean
+* **A step that did not run says so.** §8.2 step 7 needs a running engine, and the three
+  halves of it that are implemented — access, freshness and the physical layer — grade *facts*
+  a read-only probe collected outside this module (`environment.py`), so a run without a
+  configured engine emits them as `check.not_configured` instead of passing. Its security half
+  has no implementation at all and stays `check.not_implemented`; neither may leave a clean
   bundle that reads as a full verification. Step 6 compiles the reference query of each
   in-scope metric where the semantics are exact offline and names what it will not guess
   (`sql_contract.py`). The same applies downstream of a metric contract that failed to load:
@@ -64,6 +64,7 @@ from auto_bi.verification.environment import (
     EnvironmentQuestions,
     check_access,
     check_freshness,
+    check_physical,
     questions_for,
 )
 from auto_bi.verification.model import Verdict, verdict_for
@@ -726,7 +727,8 @@ def _check_environment(
         "execution.checks",
         CheckCategory.EXECUTION,
         product_ref,
-        "physical and security checks against a DWH are not implemented (§8.2 step 7)",
+        "security checks against a DWH — row/column policy and classification — are not "
+        "implemented (§8.2 step 7)",
     )
     facts = inputs.environment
     if facts is None:
@@ -737,6 +739,7 @@ def _check_environment(
         return [
             _not_configured("dwh.access", product_ref, reason),
             _not_configured("dwh.freshness", product_ref, reason),
+            _not_configured("dwh.physical", product_ref, reason),
             remaining,
         ]
 
@@ -778,8 +781,35 @@ def _check_environment(
                 "freshness.fresh" if _readable(questions, facts) else "freshness.not_run"
             ),
         ),
+        _environment_check(
+            writer,
+            "dwh.physical",
+            questions,
+            facts,
+            check_physical(questions, facts),
+            product_ref,
+            clean=(
+                _physical_clean(questions, facts)
+                if _readable(questions, facts)
+                else f"no in-scope mart could be read on {facts.target}, so nothing was compared"
+            ),
+            summary_clean=(
+                "physical.as_declared" if _readable(questions, facts) else "physical.not_run"
+            ),
+        ),
         remaining,
     ]
+
+
+def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
+    """Say what was actually compared: an engine that reports no layout was not agreed with."""
+    compared = [
+        table for item in questions.tables if (table := facts.table(item.table)) is not None
+    ]
+    columns = f"every column the in-scope metrics read is on {facts.target} with the declared type"
+    if any(table.layout is not None for table in compared):
+        return f"{columns}, and the layout matches what the model claims"
+    return f"{columns}; this engine reports no layout to compare"
 
 
 def _readable(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:

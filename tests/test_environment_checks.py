@@ -20,15 +20,17 @@ import yaml
 
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot
-from auto_bi.semantic.model import SemanticModel
+from auto_bi.semantic.model import SemanticModel, Table
 from auto_bi.severity import Severity
 from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
+    LayoutFacts,
     RoleFacts,
     TableFacts,
     check_access,
     check_freshness,
+    check_physical,
     questions_for,
 )
 from tests.test_decision_verify import metric_contract, product_contract, semantic_model
@@ -348,3 +350,159 @@ def test_questions_with_no_tables_ask_nothing_of_either_check() -> None:
 
     assert check_access(empty, facts()) == []
     assert check_freshness(empty, facts(), max_age="PT6H", created_at=CREATED_AT) == []
+
+
+# --- the physical layer -------------------------------------------------------
+
+#: What the ClickHouse stand reports for the fixture mart, column for column.
+STAND_COLUMNS = {
+    "date": "Date",
+    "store_id": "UInt32",
+    "region": "String",
+    "category": "String",
+    "revenue": "Decimal(18, 2)",
+    "gross_margin": "Decimal(18, 2)",
+}
+STAND_LAYOUT = LayoutFacts(
+    table_engine="MergeTree",
+    sorting_key=["date", "store_id"],
+    partition_key="toYYYYMM(date)",
+    distribution_key=None,
+)
+
+
+def physical_fact(
+    columns: dict[str, str] | None = None, layout: LayoutFacts | None = None
+) -> TableFacts:
+    return TableFacts(
+        table="dm.sales_daily",
+        exists=True,
+        readable=True,
+        rows_seen=600,
+        max_event_time="2026-08-25",
+        columns=STAND_COLUMNS if columns is None else columns,
+        layout=STAND_LAYOUT if layout is None else layout,
+    )
+
+
+def test_only_the_columns_the_number_is_made_of_are_asked_about(tmp_path: Path) -> None:
+    """`MetricNode.fields` is formula terms, grain keys and the event time — not every column
+    the mart happens to carry."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+
+    assert questions.tables[0].columns == {
+        "date": "Date",
+        "store_id": "UInt32",
+        "gross_margin": "Decimal(18, 2)",
+        "revenue": "Decimal(18, 2)",
+    }
+
+
+def test_the_declared_layout_travels_with_the_question(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+
+    layout = questions.tables[0].layout
+    assert layout.table_engine == "MergeTree"
+    assert layout.sorting_key == ["date", "store_id"]
+    assert layout.partition_key == "toYYYYMM(date)"
+
+
+def test_a_mart_that_matches_the_model_is_no_finding(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+
+    assert check_physical(questions, facts(physical_fact())) == []
+
+
+def test_a_column_the_metric_reads_and_the_mart_lacks_blocks(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    without = {name: type_ for name, type_ in STAND_COLUMNS.items() if name != "gross_margin"}
+
+    findings = check_physical(questions, facts(physical_fact(columns=without)))
+
+    assert [item.code for item in findings] == ["physical.column_absent"]
+    assert findings[0].severity is Severity.BLOCK
+    assert findings[0].subject == "dm.sales_daily.gross_margin"
+
+
+def test_a_type_that_drifted_asks_for_a_human(tmp_path: Path) -> None:
+    """Step 6 compiles an exact ratio *because* the model says Decimal; if the mart holds a
+    float, the number the gate reasoned about is not the number the query would return."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    drifted = {**STAND_COLUMNS, "revenue": "Float64"}
+
+    findings = check_physical(questions, facts(physical_fact(columns=drifted)))
+
+    assert [item.code for item in findings] == ["physical.type_drift"]
+    assert findings[0].severity is Severity.REVIEW
+    assert "Float64" in findings[0].detail
+
+
+def test_spelling_is_not_drift(tmp_path: Path) -> None:
+    """`Decimal(18, 2)` and `decimal(18,2)` are one type; case and spacing are not content."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    respelled = {**STAND_COLUMNS, "revenue": "decimal(18,2)"}
+
+    assert check_physical(questions, facts(physical_fact(columns=respelled))) == []
+
+
+def test_a_layout_that_drifted_asks_for_a_human(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    moved = LayoutFacts(
+        table_engine="MergeTree",
+        sorting_key=["store_id", "date"],
+        partition_key="toYYYYMM(date)",
+    )
+
+    findings = check_physical(questions, facts(physical_fact(layout=moved)))
+
+    assert [item.code for item in findings] == ["physical.layout_drift"]
+    assert findings[0].severity is Severity.REVIEW
+    assert "sorting key" in findings[0].detail
+
+
+def test_a_layout_the_engine_does_not_report_is_not_drift(tmp_path: Path) -> None:
+    """A PostgreSQL stand has no distribution policy to answer with, and silence must not
+    read as a contradiction of the model."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    silent = LayoutFacts(table_engine="MergeTree", sorting_key=["date", "store_id"])
+
+    assert check_physical(questions, facts(physical_fact(layout=silent))) == []
+    assert check_physical(questions, facts(physical_fact(layout=None))) == []
+
+
+def test_what_the_model_does_not_claim_is_not_compared(tmp_path: Path) -> None:
+    model = semantic_model()
+    fact = model.tables[0].model_dump()
+    fact["physical"] = {"engine": "clickhouse"}
+    model.tables = [Table.model_validate(fact), *model.tables[1:]]
+    questions = questions_for(product(), snapshot_of(tmp_path, model=model))
+
+    assert check_physical(questions, facts(physical_fact())) == []
+
+
+def test_columns_the_probe_did_not_ask_about_are_not_findings(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+
+    assert check_physical(questions, facts(physical_fact(columns={}, layout=None))) != []
+    assert (
+        check_physical(
+            questions,
+            facts(
+                TableFacts(
+                    table="dm.sales_daily",
+                    exists=True,
+                    readable=True,
+                    rows_seen=1,
+                    max_event_time="2026-08-25",
+                )
+            ),
+        )
+        == []
+    )
+
+
+def test_a_mart_that_is_absent_says_nothing_about_its_columns(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    absent = facts(TableFacts(table="dm.sales_daily", exists=False, readable=False))
+
+    assert check_physical(questions, absent) == []

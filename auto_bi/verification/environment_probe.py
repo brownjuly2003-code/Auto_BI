@@ -23,6 +23,18 @@ stands of the pinned versions:
   `has_table_privilege` per in-scope mart is the answer, and a superuser is writable
   whatever the grants say, because privileges do not apply to it. `max()` over no rows is
   NULL here, which the fact model already allows for.
+
+Column types come from each engine's own catalog in the spelling the model was written in —
+`system.columns.type` on ClickHouse, `format_type(atttypid, atttypmod)` on the Postgres
+family, which is the same function the Greenplum introspector wrote those types with, so the
+comparison is between two spellings of one thing rather than between two conventions.
+
+**Layout is reported only where it was verified.** ClickHouse answers engine, sorting key and
+partition key from `system.tables`, and the stand confirmed the shapes (`MergeTree`,
+`date, store_id`, `toYYYYMM(date)`). Greenplum keeps its distribution policy and partition
+levels in catalogs no PostgreSQL stand has (`gp_distribution_policy`, `pg_partition`), and no
+Greengage stand has been available to pin their columns — so the Postgres path leaves those
+facts unreported, and `check_physical` compares nothing rather than guessing at a mismatch.
 """
 
 from __future__ import annotations
@@ -35,6 +47,7 @@ from auto_bi.introspect.base import RunQuery
 from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
+    LayoutFacts,
     RoleFacts,
     TableFacts,
 )
@@ -105,7 +118,7 @@ def _clickhouse_table(run_query: RunQuery, table: str, event_time_column: str) -
     database, _, name = table.partition(".")
     present = _rows(
         run_query,
-        "SELECT name FROM system.tables WHERE database = "
+        "SELECT engine, sorting_key, partition_key FROM system.tables WHERE database = "
         f"{_literal(database)} AND name = {_literal(name)}",
     )
     if not present:
@@ -117,7 +130,23 @@ def _clickhouse_table(run_query: RunQuery, table: str, event_time_column: str) -
     )
     if not reading:  # the table is there but the role cannot read it
         return TableFacts(table=table, exists=True, readable=False)
-    return _reading(table, reading[0])
+    columns = {
+        str(row.get("name")): str(row.get("type"))
+        for row in _rows(
+            run_query,
+            "SELECT name, type FROM system.columns WHERE database = "
+            f"{_literal(database)} AND table = {_literal(name)}",
+        )
+    }
+    layout = LayoutFacts(
+        table_engine=str(present[0].get("engine") or ""),
+        sorting_key=_key_list(present[0].get("sorting_key")),
+        partition_key=str(present[0].get("partition_key") or ""),
+        # ClickHouse has no distribution policy to report; None is "not reported", and
+        # `check_physical` compares only what an engine answered.
+        distribution_key=None,
+    )
+    return _reading(table, reading[0], columns=columns, layout=layout)
 
 
 # --- PostgreSQL family --------------------------------------------------------
@@ -182,17 +211,32 @@ def _postgres_table(run_query: RunQuery, table: str, event_time_column: str) -> 
         f"SELECT count(*) AS rows_seen, max({_ident(event_time_column)}) AS max_event_time "
         f"FROM {_qualified(table)}",
     )
-    return (
-        _reading(table, reading[0])
-        if reading
-        else TableFacts(table=table, exists=True, readable=False)
-    )
+    if not reading:
+        return TableFacts(table=table, exists=True, readable=False)
+    columns = {
+        str(row.get("name")): str(row.get("type"))
+        for row in _rows(
+            run_query,
+            "SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type "
+            "FROM pg_attribute a WHERE a.attrelid = "
+            f"to_regclass({_literal(table)}) AND a.attnum > 0 AND NOT a.attisdropped",
+        )
+    }
+    # Layout stays unreported here: the distribution policy and partition levels live in
+    # Greenplum-only catalogs, and no Greengage stand has been available to pin them.
+    return _reading(table, reading[0], columns=columns, layout=None)
 
 
 # --- shared -------------------------------------------------------------------
 
 
-def _reading(table: str, row: dict[str, Any]) -> TableFacts:
+def _reading(
+    table: str,
+    row: dict[str, Any],
+    *,
+    columns: dict[str, str] | None = None,
+    layout: LayoutFacts | None = None,
+) -> TableFacts:
     rows_seen = int(row.get("rows_seen") or 0)
     return TableFacts(
         table=table,
@@ -201,7 +245,16 @@ def _reading(table: str, row: dict[str, Any]) -> TableFacts:
         rows_seen=rows_seen,
         # An empty mart has nothing to date; ClickHouse would still hand back the epoch.
         max_event_time=_moment(row.get("max_event_time")) if rows_seen else None,
+        columns=columns,
+        layout=layout,
     )
+
+
+def _key_list(value: object) -> list[str]:
+    """`date, store_id` as ClickHouse prints a sorting key -> the columns it names."""
+    if value is None:
+        return []
+    return [part.strip() for part in str(value).split(",") if part.strip()]
 
 
 def _moment(value: object) -> str | None:
