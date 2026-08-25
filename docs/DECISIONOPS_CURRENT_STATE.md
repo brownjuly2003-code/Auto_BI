@@ -4,12 +4,12 @@
 **Стадия:** офлайновый путь §8.2 работает целиком — validate → freeze snapshots →
 gaps → diff → impact → инвалидация assets → reconcile → reference SQL (шаг 6:
 aggregate + governed ratio на ClickHouse и на PostgreSQL-семействе) → BI compile →
-evidence bundle → отчёт владельцу → чтение bundle. Шаг 7 живой на три четверти: под
-`--dwh` гейт спрашивает движок read-only ролью (`dwh.access`, `dwh.freshness`,
-`dwh.physical`), без него честно говорит `check.not_configured`.
+evidence bundle → отчёт владельцу → чтение bundle. Шаг 7 живой целиком, кроме стоимости
+плана: под `--dwh` гейт спрашивает движок read-only ролью (`dwh.access`, `dwh.freshness`,
+`dwh.physical`, `dwh.security`), без него честно говорит `check.not_configured`.
 Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot) — решение владельца**.
-**Ветка:** `main` · **HEAD:** `6432680` · 21 коммит поверх baseline, remote нет
-**Suite:** 1832 passed / 20 skipped; `mypy --strict`, ruff, black чисты
+**Ветка:** `main` · **HEAD:** `b699d36` · 24 коммита поверх baseline, remote нет
+**Suite:** 1866 passed / 20 skipped; `mypy --strict`, ruff, black чисты
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
 
@@ -29,7 +29,7 @@ Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot)
 | Semantic diff и impact до владельца | `semantic/diff.py`, `decision/impact.py` | `test_semantic_diff`, `test_decision_impact` |
 | Verified assets, сравнение результатов | `verification/repository.py`, `verification/reconcile.py` | `test_verified_assets`, `test_result_reconcile` |
 | Reference SQL метрики (§8.2 шаг 6) | `verification/sql_contract.py` | `test_sql_contract` |
-| Access, freshness и физический слой движка (§8.2 шаг 7) | `verification/environment.py` (правила), `verification/environment_probe.py` (IO) | `test_environment_checks`, `test_environment_probe` |
+| Access, freshness, физический слой и досягаемость роли (§8.2 шаг 7) | `verification/environment.py` (правила), `verification/environment_probe.py` (IO) | `test_environment_checks`, `test_environment_probe` |
 | Компиляция дашбордов без remote-вызовов | `verification/bi_contract.py` | `test_bi_contract` |
 | Оркестрация гейта | `verification/release_gate.py` | `test_decision_verify` |
 | Отчёт для владельца внутри bundle | `verification/summary.py` | `test_gate_summary` |
@@ -531,6 +531,81 @@ escaping (независимый оракул, 20k случайных double + �
   функции + `test_environment_probe` 21) и 7 на уровне гейта; suite 1832 passed /
   20 skipped (было 1766); `mypy --strict`, ruff, black чисты.
 
+### §8.2 шаг 7 — security: что роль реально достаёт (2026-08-25)
+
+- **Одна проверка, а не две.** `dwh.security` спрашивает про досягаемость роли, через
+  которую собрано evidence: сузила ли row-политика прочитанные числа и есть ли у роли доступ
+  к колонкам, из которых сделано само число. Это две половины одного факта — обе меняют,
+  **о чём** этот bundle, — поэтому и проверка одна.
+- **Градация.**
+  - колонка, из которой сделана метрика, недоступная роли → **block**: метрику там не
+    посчитать. И это отдельная находка от «колонки нет» — разговор «выдайте грант» и
+    разговор «витрина потеряла колонку» ведут разные люди;
+  - включённый row security, при котором роль не проходит ни одну permissive-политику, →
+    **block**: витрина отдаёт **пустой ответ и не отдаёт ошибки**, так что назвать это вслух
+    больше некому;
+  - политика, применяющаяся к сессии, → **review**: числа настоящие, но это числа
+    подмножества, а выпускать ли продукт на подмножестве — решение владельца;
+  - роль, обходящая row security (superuser / `BYPASSRLS`), при живых политиках → **review**:
+    гейт прочитал строки, которых потребители продукта не видят;
+  - объявленный `confidential`/`restricted`, который движок для этой роли ничем не
+    ограничивает, → **review**: §10.1 требует, чтобы row/column-ограничение исполняла роль
+    или детерминированный rewrite, а не документ. `internal` при этом не считается
+    объявлением: это значение по умолчанию у непроставленного поля;
+  - access-каталог, недоступный роли, → **review**: «не вижу политику» не значит «её нет».
+- **Движки отвечают на разные вопросы, и это выяснено на стендах, а не вычитано.**
+  - *колонки*: ClickHouse исполняет `GRANT SELECT(col)` и **прячет** неразрешённое —
+    роль с пятью грантами из шести видит в `system.columns` пять колонок. Поэтому
+    досягаемость читается из `system.grants` (включая partial revoke — так записывается
+    `REVOKE SELECT(gross_margin)` после табличного гранта), а не из каталога. PostgreSQL
+    наоборот: `pg_attribute` показывает все колонки, отвечает `has_column_privilege`;
+  - *читаемость*: `has_table_privilege(…, 'SELECT')` у роли с колоночными грантами —
+    **false**, хотя роль витрину читает; честный вопрос — `has_any_column_privilege`;
+  - *политики*: ClickHouse применяет политику только к тем, кого она называет (сессия, не
+    названная никем, читает всё; restrictive-только политика при этом фильтрует — 600 → 30
+    строк на стенде). PostgreSQL наоборот: при `relrowsecurity` строка обязана пройти хотя бы
+    одну **permissive**-политику, поэтому витрина с одними restrictive — или с политиками для
+    чужих ролей — отдаёт пустоту без ошибки;
+  - *кого называет политика*: оба движка вешают политики и на роли (`apply_to_list`,
+    `polroles` с `public`), поэтому членство решают enabled roles сессии, а не имя
+    пользователя;
+  - *кто уходит из-под неё*: PG-суперпользователь и `BYPASSRLS` не фильтруются вообще.
+    Владелец таблицы тоже уходит (если политика не `FORCE`), и это намеренно не моделируется:
+    владение витриной несёт `INSERT`, а на этом прогон уже остановил `access.role_writable`.
+- **Три ложных ответа, которых больше нет.** Все три нашлись, когда правила пошли против
+  живых движков, а не против фикстур:
+  - PG-роль с колоночными грантами получала `access.table_unreadable` (**block**) по витрине,
+    которую прекрасно читает;
+  - CH-колонка без гранта получала `physical.column_absent` (**block**, «в витрине нет
+    колонки») — теперь physical молчит там, где security говорит «нет гранта»;
+  - отказ движка на любом из этих вопросов **ронял прогон исключением**. Теперь отказ — это
+    факт (`_ask` возвращает «не ответил»), а исключение остаётся за тем, что не про доступ:
+    оборванное соединение не должно читаться как «политик нет».
+- **И freshness больше не хвалит пустоту.** Витрину, которую опустошил row security, роль
+  читает — но датировать её нечем; freshness молчит (block уже сказан), а сводка пишет
+  `freshness.not_run` вместо «все витрины внутри окна». Это ровно та фраза, которой в отчёте
+  быть не должно.
+- **Проверено вживую на обоих стендах** (`--created-at 2026-08-25T12:00:00Z`):
+  - `gate_ro` на `dm` → `security.unfiltered` (pass): «no row policy applies to it and it may
+    read every column the in-scope metrics are made of»;
+  - политика `gate_pol … USING store_id = 1 TO gate_ro` на `dm.sales_daily` →
+    `security.row_filtered` (review), в детали — имя политики и её фильтр; после прогона
+    политика снята;
+  - `gate_sec` на `dm_sec` (гранты на пять колонок из шести, плюс своя политика) →
+    `security.column_unreadable` (**block**), и в том же прогоне `dwh.physical` =
+    `physical.as_declared`: спрятанную колонку никто не назвал отсутствующей;
+  - PostgreSQL, `dm_sec.sales_daily` (колоночные гранты + политика для `gate_ro`) →
+    `dwh.access` pass (витрина читается — это и есть проверка `has_any_column_privilege`) и
+    `security.column_unreadable` + `security.row_filtered`;
+  - PostgreSQL, `dm_sec.denied` (RLS включён, политик нет) → `security.row_policy_denies_all`
+    (**block**) при `freshness.not_run`.
+- **Граница осталась одна.** Стоимость плана против `budgets` метрики не сравнивается:
+  `advisor/explain.py` умеет `EXPLAIN ESTIMATE`, но `MetricNode` пока не несёт `budgets`, а
+  новое поле в графе двигает `canonical_digest` — это отдельный слайс со своим диффом
+  снапшотов, а не довесок к этому. `execution.checks` теперь говорит именно про неё.
+- Проверено: 53 прогона в `test_environment_checks` (было 38), 36 в `test_environment_probe`
+  (было 21), 41 в `test_decision_verify` (было 37).
+
 ## Стенды, на которых это проверялось
 
 Шаг 7 и форма деления шага 6 проверены не «на глаз»: под ними два движка, поднятых
@@ -546,6 +621,22 @@ escaping (независимый оракул, 20k случайных double + �
 ClickHouse рядом лежит база `dm_drift` — та же витрина, у которой `revenue` действительно
 `Float64`, а ORDER BY действительно `(store_id, date)`: на ней проверяется, что
 `dwh.physical` ловит реальный дрейф, а не только придуманный тестом.
+
+Для security-половины шага 7 рядом стоят **настоящие ограничения**, а не их имитация:
+
+| Стенд | Объект | Что на нём проверяется |
+|---|---|---|
+| ClickHouse | база `dm_sec` + SQL-пользователь `gate_sec` (`readonly=1`, пароль `secpass`, гранты `SELECT` на пять колонок из шести, `SELECT ON system.*`) и политика `sec_pol … USING store_id = 1` | спрятанная колонка (`security.column_unreadable`) и то, что `dwh.physical` при этом молчит |
+| ClickHouse | политика заводится и снимается по ходу прогона на `dm.sales_daily` | `security.row_filtered` под ролью `gate_ro` |
+| PostgreSQL | схема `dm_sec`: `sales_daily` (RLS + политика `p_sales` для `gate_ro` + гранты на пять колонок), `denied` (RLS включён, политик нет), `restr_only`, `public_pol`, `group_pol` | deny-all, `TO PUBLIC`, политика на групповую роль, restrictive-only |
+
+Роли `gate_ro`/`gate_rw` на PostgreSQL ходят через `trust` (пароль не нужен); пароли
+ClickHouse — по-прежнему в `~/chstand24/creds.env`.
+
+**Стенды живут, пока жив WSL.** Дистрибутив гаснет вскоре после выхода последнего
+`wsl.exe`, унося оба движка вместе с собой, — поэтому на время работы держите фоновый
+процесс: `wsl.exe -d Ubuntu-22.04 -e sh -c '… ; exec sleep infinity'`. `Test-NetConnection`
+сразу после старта скажет «открыт», а через минуту порт будет закрыт — это не файрвол.
 
 **Чужие порты не трогать.** В той же WSL живёт ClickHouse **26.7** другого проекта
 (`~/chstand`, порт 8123) и системный PostgreSQL на 5432 плюс ещё один инстанс на 55432 —
@@ -567,9 +658,9 @@ auto_bi decision verify <contracts> --base <base> --candidate <cand> \
 - §8.2 шаг 6 частично: external и reviewed-SQL формулы офлайн не компилируются — гейт
   называет гэп вместо запроса; governed ratio на движке вне двух проверенных семейств —
   тоже гэп;
-- §8.2 шаг 7 на три четверти: security (row/column policy, классификация) не
-  реализована — `execution.checks` объявляет её `check.not_implemented`; access, freshness
-  и physical работают под `--dwh`, но стоимость плана и `budgets` метрики не сравниваются;
+- §8.2 шаг 7 — всё, кроме стоимости: `dwh.access`, `dwh.freshness`, `dwh.physical` и
+  `dwh.security` работают под `--dwh`, но стоимость плана против `budgets` метрики не
+  сравнивается (`execution.checks` объявляет именно её `check.not_implemented`);
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
 ## Проверить руками за две минуты
@@ -591,8 +682,9 @@ auto_bi decision evidence .evidence                                  # что л
 auto_bi decision evidence .evidence --artifact report-summary-md     # отчёт для владельца
 ```
 
-Если есть read-only доступ к движку, шаг 7 спрашивает его сам (настройки — те же
-`AUTO_BI_CH_*` / `AUTO_BI_GP_*`, что у остального CLI):
+Если есть read-only доступ к движку, шаг 7 спрашивает его сам — все четыре проверки,
+включая `dwh.security` (настройки — те же `AUTO_BI_CH_*` / `AUTO_BI_GP_*`, что у остального
+CLI):
 
 ```bash
 auto_bi decision verify contracts/ --base semantic/base --candidate semantic/head \
@@ -613,21 +705,25 @@ governed ratio и про шаг 7). Всё, что осталось, требу�
 | # | Вопрос | Что он разблокирует |
 |---|---|---|
 | 1 | Какой реальный change берём в пилот, на каком стенде, чей owner impact меряем | bootstrap task 8; за ним hard gate §16 — без измеренного pilot outcome scheduler/MCP/actions не начинаются |
-| 2 | Есть ли доступ к **вашему** DWH и под какой ролью | прогон гейта против реального окружения. Сами проверки уже написаны и прогнаны на локальных стендах обоих семейств (`--dwh`), поэтому вопрос теперь про доступ и роль, а не про то, как их писать. Physical и security половины шага 7 ждут стенда с настоящим планом и классификацией |
+| 2 | Есть ли доступ к **вашему** DWH и под какой ролью | прогон гейта против реального окружения. Сами проверки уже написаны и прогнаны на локальных стендах обоих семейств (`--dwh`), поэтому вопрос теперь про доступ и роль, а не про то, как их писать. Все четыре проверки шага 7 прогнаны на локальных стендах, включая настоящие гранты и row-политики; вашего стенда ждёт только стоимость плана |
 | 3 | Где будет remote этого репозитория (§18.4) | пуш, CI на стороне GitHub, ревью извне; сейчас 15 коммитов поверх baseline лежат только локально |
 | 4 | Нужна ли подпись evidence и какой trust root допустим (§18.5) | `integrity=signed`; сегодня честно `content_hashed`, и подписью это не называется |
 
-Шаг 7 без такого движка начинать **нельзя**: писать security/access/freshness-проверки
-«на глаз» — ровно то, от чего гейт отказывается, и агент не должен делать этого за него.
-По `CLAUDE.md` это стоппер **S6** (граница фазы): следующую фазу не начинать самому,
-перед ней уместен `/cxkm`-ревью по диффу `b4bfa1d..HEAD`.
+Шаг 7 без движка начинать было **нельзя** — писать access/freshness/security-проверки «на
+глаз» ровно то, от чего гейт отказывается, — и он не начинался, пока не встали стенды. Тем
+же правилом закрыта и оставшаяся четверть: стоимость плана не пишется без движка, который
+на неё отвечает. По `CLAUDE.md` это стоппер **S6** (граница фазы): следующую фазу не
+начинать самому, перед ней уместен `/cxkm`-ревью по диффу `b4bfa1d..HEAD`.
 
-**Следующий слайс, если продолжать без владельца** — security-половина шага 7:
-row/column policy и классификация (`FieldNode.classification` уже есть в снапшоте, у
-продукта есть `policy_refs`), плюс стоимость плана против `budgets` метрики, для которой в
-`advisor/explain.py` уже лежит `EXPLAIN ESTIMATE`. Стенды для обоих есть. Всё остальное —
-CLI-удобства, доки, тесты — pilot evidence не приближает, поэтому по умолчанию не
-начинать и спросить.
+**Следующий слайс, если продолжать без владельца** — стоимость плана против `budgets`
+метрики: единственное, что осталось у шага 7. Он не такой дешёвый, как выглядит:
+`advisor/explain.py` уже умеет `EXPLAIN ESTIMATE`, но `MetricBudget` живёт только в
+контракте, а `MetricNode` в снапшоте его не несёт — новое поле в графе двигает
+`canonical_digest`, то есть тянет за собой semantic diff и все зафиксированные digest'ы.
+Стенд для этого есть (ClickHouse отвечает на `EXPLAIN ESTIMATE`; PG-семейство —
+`EXPLAIN (FORMAT JSON)`, и это другая форма, которую придётся проверять живьём так же, как
+проверялись деление и политики). Всё остальное — CLI-удобства, доки, тесты — pilot evidence
+не приближает, поэтому по умолчанию не начинать и спросить.
 
 ## Источники истины
 
