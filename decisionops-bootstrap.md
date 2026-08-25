@@ -1,5 +1,9 @@
 # DecisionOps Release Gate bootstrap
 
+> **Где стоим (2026-08-25):** закрыты задачи 1–7, открыта только задача 8 — pilot.
+> Подробное состояние, карта модулей и список открытых решений владельца —
+> [`docs/DECISIONOPS_CURRENT_STATE.md`](docs/DECISIONOPS_CURRENT_STATE.md).
+
 ## Goal
 
 Поставить one-shot Analytics Release & Evidence Gate поверх проверенного
@@ -30,6 +34,12 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
 - [ ] Провести pilot gate на одном реальном change → Verify: owner impact точен,
   review time измерен, evidence понятен владельцу; только затем решать вопрос о
   certified brief и recurring runs.
+  **Блокер — не код: нужен ответ владельца, какой change берём, на каком стенде и
+  чей impact меряем.** Техническая опора готова: гейт выносит вердикт, а
+  `auto_bi decision evidence … --artifact report-summary-md` показывает владельцу,
+  на чём этот вердикт стоит. Офлайновой технической работы, которая приближала бы
+  pilot evidence, не осталось — оставшиеся шаги (§8.2 шаг 7 и governed ratio в
+  шаге 6) требуют стенда DWH.
 
 ## Critical path
 

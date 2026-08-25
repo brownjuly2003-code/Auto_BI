@@ -1,18 +1,50 @@
 # Auto_BI DecisionOps — текущее состояние
 
 **Дата:** 2026-08-25
-**Стадия:** contracts + validate + semantic diff + VQR/comparator + evidence
-writer/reader + BI compile contracts + `decision verify` (bootstrap tasks 2–7
-закрыты; открыт только task 8 — pilot)
-**Ветка:** `main`
+**Стадия:** офлайновый путь §8.2 работает целиком — validate → freeze snapshots →
+gaps → diff → impact → инвалидация assets → reconcile → reference SQL (шаг 6,
+частично) → BI compile → evidence bundle → отчёт владельцу → чтение bundle.
+Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot) — решение владельца**.
+**Ветка:** `main` · **HEAD:** `983f469` · 13 коммитов поверх baseline, remote нет
+**Suite:** 1748 passed / 20 skipped; `mypy --strict`, ruff, black чисты
 **Исходный baseline:** `D:\Auto_BI` @
 `b4bfa1d47db013b4529c8355da57c5e637a102d9`
+
+> **Читать сверху вниз не обязательно.** Что открыто и чьё это решение — раздел
+> «Открытые решения» в конце; как запустить руками — «Проверить руками за две
+> минуты» там же; карта модулей — сразу ниже. Секции по датам — это как оно
+> устроено и почему, их читают, когда трогают соответствующий слой.
+
+## Где что лежит
+
+| Что | Модуль | Тесты |
+|---|---|---|
+| Контракты (product, metric, evidence) | `decision/spec.py`, `semantic/metric_contract.py`, `evidence/model.py` | `test_decision_spec`, `test_metric_contract`, `test_evidence_bundle`, `test_contract_boundary` |
+| Канонизация и digest (RFC 8785) | `evidence/canonical.py` | `test_evidence_canonical` |
+| Cross-contract проверка | `decision/validate.py` | `test_decision_validate` |
+| Снапшот семантики, gaps | `semantic/gateway.py` | `test_semantic_gateway` |
+| Semantic diff и impact до владельца | `semantic/diff.py`, `decision/impact.py` | `test_semantic_diff`, `test_decision_impact` |
+| Verified assets, сравнение результатов | `verification/repository.py`, `verification/reconcile.py` | `test_verified_assets`, `test_result_reconcile` |
+| Reference SQL метрики (§8.2 шаг 6) | `verification/sql_contract.py` | `test_sql_contract` |
+| Компиляция дашбордов без remote-вызовов | `verification/bi_contract.py` | `test_bi_contract` |
+| Оркестрация гейта | `verification/release_gate.py` | `test_decision_verify` |
+| Отчёт для владельца внутри bundle | `verification/summary.py` | `test_gate_summary` |
+| Запись и перепроверка bundle | `evidence/manifest.py`, `evidence/store.py` | `test_evidence_store` |
+| Чтение bundle | `evidence/inspect.py` | `test_evidence_inspect` |
+| Чтение ФС и разрешение путей | `decision/use_cases.py` | `test_decision_verify`, `test_decision_cli` |
+| CLI и exit codes | `cli.py`, `verification/model.py` | `test_decision_cli` |
 
 ## Что сейчас правда
 
 - Создан отдельный локальный Git-репозиторий `D:\Auto_BI_new` с сохранённой
   историей и без configured remotes.
-- Runtime-код пока совпадает с tracked baseline Auto_BI v0.5.0.
+- v1-runtime **функционально** не менялся относительно baseline Auto_BI v0.5.0:
+  DecisionOps добавлен рядом (`decision/`, `verification/`, `evidence/`,
+  `semantic/metric_contract.py`, `semantic/gateway.py`, `semantic/diff.py`). Ровно
+  два файла v1 тронуты, оба — вынос без изменения поведения, чтобы у чарт-пути и у
+  гейта была одна функция, а не две копии: `adapters/superset/derive.py` (четыре
+  model-производные из `SupersetAdapter`) и `agent/sqlgen.aggregate_expr` (вынесен из
+  `_measure_expr`). v1-тесты не правились и зелёные.
 - Локальные секреты, окружения, кеши, логи и untracked presentation artifacts
   исходного checkout не переносились.
 - Стратегический файл сохранён в корне как
@@ -68,8 +100,11 @@ writer/reader + BI compile contracts + `decision verify` (bootstrap tasks 2–7
 
 > **Известный локальный flake (не DecisionOps, Windows-only).** На полном прогоне
 > под нагрузкой периодически падает
-> `test_runtime_evidence.py::test_collect_container_snapshot_success` (иногда
-> вместе с таймингвым `test_perf_baseline.py::…_backup_budgets`). Механика:
+> `test_runtime_evidence.py::test_collect_container_snapshot_success`, а также
+> таймингвые тесты `test_perf_baseline.py` (наблюдались
+> `test_autospec_and_validate_budgets` и `…_backup_budgets`). **Оба класса зелёные
+> при одиночном прогоне файла — это первое, что нужно проверить, прежде чем искать
+> регрессию.** Механика container-snapshot:
 > тест подменяет **глобальный** `subprocess.run`, а `_safe_metadata()` зовёт
 > `platform.system()`; на Windows первый в процессе `platform.uname()` уходит
 > через `win32_ver()` в `_syscmd_ver()`, который запускает `subprocess.run("ver",
@@ -325,19 +360,47 @@ escaping (независимый оракул, 20k случайных double + �
   его `check.not_implemented`;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
-## Следующий атомарный slice
+## Проверить руками за две минуты
 
-Bootstrap task 8 — pilot gate на одном реальном change (**решение владельца**:
-какой именно change, на каком стенде, чей owner impact измеряем). Вся техническая
-опора для пилота уже есть: гейт выносит вердикт, а `decision evidence` показывает
-владельцу, на чём этот вердикт стоит.
+Гейт целиком офлайновый, поэтому его не нужно никуда подключать:
 
-Если пилот решено отложить, оставшееся техническое — шаг 7 (security/access/
-freshness/physical checks поверх `agent/sql_guard.py`, `agent/query_plan.py` и
-`advisor/*`) и достройка шага 6 до ratio. И то и другое требует **стенда**: точную
-форму десятичного деления и результаты EXPLAIN/freshness проверять негде, а
-компилировать «на глаз» — ровно то, что гейт отказывается делать. То есть оба упираются
-в то же решение владельца, что и пилот.
+```bash
+uv run pytest tests/test_decision_verify.py tests/test_decision_cli.py -q   # сценарии §15.3
+uv run auto_bi decision --help                                              # три команды
+```
+
+На своих файлах (contracts + два каталога с `model.yaml`):
+
+```bash
+auto_bi decision validate contracts/
+auto_bi decision verify contracts/ --base semantic/base --candidate semantic/head \
+        --evidence .evidence --dashboards dashboards/ --created-at 2026-08-25T00:00:00Z
+auto_bi decision evidence .evidence                                  # что лежит в bundle
+auto_bi decision evidence .evidence --artifact report-summary-md     # отчёт для владельца
+```
+
+Exit code — вердикт: `0` pass/advisory, `3` needs_review, `4` block, `2` usage-ошибка.
+
+## Открытые решения — они за владельцем, не за агентом
+
+Техническая работа, которую можно вести офлайн, на 2026-08-25 **закончилась**.
+Дальше каждый шаг упирается в один из этих вопросов, и угадывать ответы нельзя:
+
+| # | Вопрос | Что он разблокирует |
+|---|---|---|
+| 1 | Какой реальный change берём в пилот, на каком стенде, чей owner impact меряем | bootstrap task 8; за ним hard gate §16 — без измеренного pilot outcome scheduler/MCP/actions не начинаются |
+| 2 | Есть ли доступ к стенду DWH (ClickHouse и/или Greengage) | §8.2 шаг 7 (security/access/freshness/physical) и достройка шага 6 до governed ratio: точную форму десятичного деления негде подтвердить |
+| 3 | Где будет remote этого репозитория (§18.4) | пуш, CI на стороне GitHub, ревью извне; сейчас 13 коммитов поверх baseline лежат только локально |
+| 4 | Нужна ли подпись evidence и какой trust root допустим (§18.5) | `integrity=signed`; сегодня честно `content_hashed`, и подписью это не называется |
+
+Пока ответов нет, начинать шаги 6-ratio и 7 **нельзя**: компилировать SQL «на глаз» —
+ровно то, от чего гейт отказывается, и агент не должен делать этого за него. По
+`CLAUDE.md` это стоппер **S6** (граница фазы): следующую фазу не начинать самому,
+перед ней уместен `/cxkm`-ревью по диффу `b4bfa1d..HEAD`.
+
+Что можно делать без этих ответов — только мелкое и не меняющее контракт: удобства CLI
+(например, листинг run'ов в `decision evidence`), доки, тесты. Ни один такой пункт не
+приближает pilot evidence, поэтому по умолчанию — не начинать и спросить.
 
 ## Источники истины
 
