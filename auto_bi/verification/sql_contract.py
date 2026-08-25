@@ -11,28 +11,44 @@ exact offline:
 
 * a *typed aggregate* at its grain compiles — `SUM(col)` over a grouped mart means the same
   thing in ClickHouse and in Postgres;
-* a *governed ratio* compiles on ClickHouse, through `divideDecimal` at the precision the
-  contract declares. Decimal division is engine-specific: ClickHouse keeps the *dividend's*
-  scale on `Decimal / Decimal`, so a margin over a Decimal(18,2) numerator would truncate to
-  two digits, and the chart path answers that by casting to Float64 (`sqlgen._safe_div`).
-  That cast is a display decision, verified live for dashboards, and a governed decimal
-  metric with a declared precision must not inherit it. `divideDecimal(num, den, p)` instead
-  divides exactly and truncates toward zero at `p`, whatever scales the terms carry. On any
-  other dialect the form stays unverified and the gate names the gap rather than emitting
-  SQL it cannot stand behind (invariant 6);
+* a *governed ratio* compiles on the two engine families whose decimal division has been
+  checked against a running engine — ClickHouse, and the PostgreSQL family that
+  Greenplum/Greengage belong to — each in the form that engine computes exactly at the
+  precision the contract declares. Neither form could be derived from the other, so an engine
+  the seam does not recognise keeps the gap named instead of receiving SQL the gate cannot
+  stand behind (invariant 6);
 * an *external* or *reviewed-SQL* formula is somebody else's definition. Re-deriving it here
   would be inventing a second source of truth for a number the contract says is governed
   elsewhere.
 
-**What the stand settled, and could not have been guessed** (ClickHouse 24.8.14.39, the
-version the local stand pins): `divideDecimal` reads the denominator's values *under* the
-NULL mask, so `NULLIF(den, 0)` alone still raises `ILLEGAL_DIVISION` — the zero has to be
-replaced inside the call and the row nulled by the guard around it. Its arguments must both
-be Decimal, so counting and integer terms are cast. And a group of nothing but NULLs sums to
-NULL, which ClickHouse refuses to cast to a non-nullable Decimal — hence the nullable cast
-for a nullable integer term. `unit.precision` is the scale of the result; `null_semantics`
-is not encoded here, because SUM's own NULL-skipping already matches both readings except
-for an all-NULL group, and deciding that in SQL would change the aggregate path too.
+**What the ClickHouse stand settled, and could not have been guessed** (24.8.14.39, the
+version the local stand pins): plain `Decimal / Decimal` keeps the *dividend's* scale, so a
+margin over a Decimal(18,2) numerator would truncate to two digits — the chart path answers
+that by casting to Float64 (`sqlgen._safe_div`), a display decision verified live for
+dashboards that a governed decimal metric must not inherit. `divideDecimal(num, den, p)`
+divides exactly and truncates toward zero at `p` instead, whatever scales the terms carry. It
+reads the denominator's values *under* the NULL mask, so `NULLIF(den, 0)` alone still raises
+`ILLEGAL_DIVISION` — the zero has to be replaced inside the call and the row nulled by the
+guard around it. Its arguments must both be Decimal, so counting and integer terms are cast.
+And a group of nothing but NULLs sums to NULL, which ClickHouse refuses to cast to a
+non-nullable Decimal — hence the nullable cast for a nullable integer term.
+
+**What the PostgreSQL stand settled** (14.24, the `numeric` implementation Greenplum and
+Greengage inherit): `numeric / numeric` is exact, but its *scale* is picked from the operands
+to reach about sixteen significant digits, so a large quotient stops short of a deep declared
+precision and `TRUNC(a / b, 18)` pads zeros it never computed — `1000000000000.00 / 3.00`
+truncated at 18 ends in nine of them. Multiplying the dividend by an exact one that carries
+the declared decimals raises its scale without moving its value, and the digits become real;
+a cast to `numeric(_, p)` would not do, because it rounds. At precision 0 that multiplier
+still carries a decimal: `/` on two integer terms is integer division, and it truncates
+before `TRUNC` ever sees the number. Nothing else needs a guard there — this `/` respects the
+NULL mask, so `NULLIF(den, 0)` covers a zero denominator and a NULL term nulls its own row —
+and `TRUNC` truncates toward zero exactly as `divideDecimal` does, so one governed number
+reads the same on both engines.
+
+`unit.precision` is the scale of the result; `null_semantics` is not encoded here, because
+SUM's own NULL-skipping already matches both readings except for an all-NULL group, and
+deciding that in SQL would change the aggregate path too.
 
 **Every finding is advisory.** Why a metric moved is graded upstream by the semantic diff
 and the impact graph; grading it again here would let one change count twice toward a
@@ -45,14 +61,15 @@ another way for the evidence that verifies it (§8.5).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from enum import Enum, auto
 from typing import NamedTuple
 
 from pydantic import Field
 from sqlglot import exp
 
 from auto_bi.agent.sqlgen import aggregate_expr
-from auto_bi.engine import CLICKHOUSE, sqlglot_dialect
+from auto_bi.engine import CLICKHOUSE, GREENPLUM, is_known_engine, sqlglot_dialect
 from auto_bi.evidence.canonical import digest_bytes
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import NonBlankText, Sha256Digest
@@ -65,8 +82,10 @@ from auto_bi.strict import StrictModel
 #: Formula kinds whose definition lives outside this contract kernel.
 _OPAQUE = frozenset({FormulaKind.EXTERNAL_REF, FormulaKind.REVIEWED_SQL})
 
-#: The only dialect whose decimal division has been checked against a running engine.
-_VERIFIED_RATIO_DIALECT = sqlglot_dialect(CLICKHOUSE)
+#: The dialects whose decimal division has been checked against a running engine, each
+#: with its own exact form below.
+_CLICKHOUSE_DIALECT = sqlglot_dialect(CLICKHOUSE)
+_POSTGRES_DIALECT = sqlglot_dialect(GREENPLUM)
 
 #: `divideDecimal` takes Decimal arguments only. Widening a counting or integer term is
 #: lossless: a SUM of 64-bit integers cannot leave Decimal(38, 0).
@@ -83,6 +102,20 @@ _TYPE_PRESERVING = frozenset({Aggregation.SUM, Aggregation.MIN, Aggregation.MAX}
 #: gate free of the introspection package (and its DWH driver) at import time.
 _TYPE_WRAPPERS = ("Nullable", "LowCardinality")
 _INTEGER_PREFIXES = ("Int", "UInt")
+
+#: Postgres spells its exact types out in full, and matching them by prefix would read
+#: `interval` as an integer.
+_PG_DECIMAL = frozenset({"numeric", "decimal"})
+_PG_INTEGRAL = frozenset({"smallint", "integer", "bigint", "int", "int2", "int4", "int8"})
+
+
+class _Exactness(Enum):
+    """What a declared column type says about the term aggregated from it."""
+
+    #: Aggregates to an exact decimal.
+    DECIMAL = auto()
+    #: Aggregates to an exact whole number — which one of the two forms has to know about.
+    INTEGRAL = auto()
 
 
 class _RatioTerm(NamedTuple):
@@ -205,7 +238,7 @@ def _compile_one(
 
     dialect = _dialect_of(table, ref, findings)
     if kind is FormulaKind.TYPED_RATIO:
-        measure = _ratio_measure(node, snapshot, dialect, ref, findings)
+        measure = _ratio_measure(node, snapshot, table, dialect, ref, findings)
         if measure is None:
             return
     else:
@@ -237,33 +270,47 @@ def _terms_of(node: MetricNode) -> list[tuple[str, MetricTerm]]:
 def _ratio_measure(
     node: MetricNode,
     snapshot: SemanticSnapshot,
+    table: TableNode,
     dialect: str,
     ref: str,
     findings: list[SQLFinding],
 ) -> exp.Expression | None:
-    """`divideDecimal(numerator, denominator, precision)`, with the zero the engine forbids
-    kept out of the call — or nothing, and a named reason."""
-    if dialect != _VERIFIED_RATIO_DIALECT:
+    """The ratio in the form its engine computes exactly — or nothing, and a named reason.
+
+    The engine is read here, not the dialect: `sqlglot_dialect` falls back to the v1 engine
+    for a name it does not know, which is a fair assumption for `SUM(col)` and no assumption
+    at all for a form that *is* engine-specific syntax.
+    """
+    form = _RATIO_FORM.get(dialect) if is_known_engine(table.engine) else None
+    if form is None:
+        named = table.engine or "an engine the model does not declare"
         findings.append(
             SQLFinding(
                 code="sql.ratio_unverified",
                 severity=Severity.ADVISORY,
                 subject=ref,
                 detail=(
-                    f"decimal division is engine-specific and only ClickHouse has been "
-                    f"verified against a running engine; the {dialect} form of this ratio "
-                    "is not emitted"
+                    "decimal division is engine-specific, and only ClickHouse and the "
+                    "PostgreSQL family have been verified against a running engine; the "
+                    f"ratio is not emitted for {named}"
                 ),
             )
         )
         return None
 
     terms = dict(_terms_of(node))
-    numerator = _ratio_term("numerator", terms["numerator"], snapshot, ref, findings)
-    denominator = _ratio_term("denominator", terms["denominator"], snapshot, ref, findings)
+    numerator = _ratio_term("numerator", terms["numerator"], snapshot, dialect, ref, findings)
+    denominator = _ratio_term("denominator", terms["denominator"], snapshot, dialect, ref, findings)
     if numerator is None or denominator is None:
         return None
+    return form(numerator, denominator, node.unit.precision)
 
+
+def _clickhouse_ratio(
+    numerator: _RatioTerm, denominator: _RatioTerm, precision: int
+) -> exp.Expression:
+    """`divideDecimal(numerator, denominator, precision)`, with the zero the engine forbids
+    kept out of the call."""
     zero = exp.Literal.number(0)
     # A denominator of zero — or of nothing at all — leaves the ratio undefined, so the row
     # is NULL. The substitution inside the call is not belt and braces: `divideDecimal` reads
@@ -283,16 +330,53 @@ def _ratio_measure(
         else numerator.expr
     )
     quotient = exp.Anonymous(
-        this="divideDecimal",
-        expressions=[dividend, divisor, exp.Literal.number(node.unit.precision)],
+        this="divideDecimal", expressions=[dividend, divisor, exp.Literal.number(precision)]
     )
     return exp.If(this=undefined, true=exp.null(), false=quotient)
+
+
+def _postgres_ratio(
+    numerator: _RatioTerm, denominator: _RatioTerm, precision: int
+) -> exp.Expression:
+    """`TRUNC(numerator * <an exact one> / NULLIF(denominator, 0), precision)`.
+
+    Neither term takes the cast its ClickHouse counterpart needs: the multiplier already makes
+    the division `numeric`, and `/` reads the NULL mask, so a NULL term nulls its own row.
+    """
+    quotient = exp.Div(
+        this=exp.Mul(this=numerator.expr, expression=_exact_one(precision)),
+        expression=exp.Nullif(this=denominator.expr, expression=exp.Literal.number(0)),
+        # unsaid, sqlglot casts the dividend to DOUBLE PRECISION for a Postgres target —
+        # the float this whole step exists to keep a governed number out of
+        typed=True,
+    )
+    return exp.Anonymous(this="TRUNC", expressions=[quotient, exp.Literal.number(precision)])
+
+
+def _exact_one(precision: int) -> exp.Expression:
+    """`1.000000` at precision 6 — a multiplier that moves a term's scale, not its value.
+
+    Postgres picks the scale of a division from its operands, targeting about sixteen
+    significant digits, so over a large quotient `TRUNC(a / b, p)` would pad digits the
+    division never computed. Raising the dividend's scale to `p` is what makes them real, and
+    a cast to `numeric(_, p)` cannot stand in for it: casting rounds. At precision 0 the
+    multiplier keeps one decimal regardless — `/` on two integer terms is integer division.
+    """
+    return exp.Literal.number(f"1.{'0' * max(precision, 1)}")
+
+
+#: The exact form of each engine family, keyed by the dialect the seam renders for it.
+_RATIO_FORM: dict[str, Callable[[_RatioTerm, _RatioTerm, int], exp.Expression]] = {
+    _CLICKHOUSE_DIALECT: _clickhouse_ratio,
+    _POSTGRES_DIALECT: _postgres_ratio,
+}
 
 
 def _ratio_term(
     role: str,
     term: MetricTerm,
     snapshot: SemanticSnapshot,
+    dialect: str,
     ref: str,
     findings: list[SQLFinding],
 ) -> _RatioTerm | None:
@@ -317,17 +401,18 @@ def _ratio_term(
     if term.agg in _COUNTING:  # a row count is exact and integral whatever it reads
         return _RatioTerm(expr=aggregate, integral=True, nullable=False)
 
-    base = _unwrap(field.type)
-    nullable = "Nullable(" in field.type
-    if term.agg in _TYPE_PRESERVING and base.startswith("Decimal"):
-        return _RatioTerm(expr=aggregate, integral=False, nullable=nullable)
-    if term.agg in _TYPE_PRESERVING and base.startswith(_INTEGER_PREFIXES):
-        return _RatioTerm(expr=aggregate, integral=True, nullable=nullable)
+    exact = _exactness(dialect, field.type) if term.agg in _TYPE_PRESERVING else None
+    if exact is not None:
+        return _RatioTerm(
+            expr=aggregate,
+            integral=exact is _Exactness.INTEGRAL,
+            nullable="Nullable(" in field.type,
+        )
 
     reason = (
-        "AVG returns Float64 whatever it reads"
+        "AVG returns a float whatever it reads"
         if term.agg is Aggregation.AVG
-        else f"a {base} column does not aggregate to an exact decimal"
+        else f"a {_base_type(dialect, field.type)} column does not aggregate to an exact decimal"
     )
     findings.append(
         SQLFinding(
@@ -346,11 +431,30 @@ def _ratio_term(
 def _as_decimal(inner: exp.Expression, *, nullable: bool) -> exp.Expression:
     """An integral aggregate as a Decimal, since `divideDecimal` takes nothing else."""
     kind = f"Nullable({_INTEGRAL_DECIMAL})" if nullable else _INTEGRAL_DECIMAL
-    return exp.cast(inner, kind, dialect=_VERIFIED_RATIO_DIALECT)
+    return exp.cast(inner, kind, dialect=_CLICKHOUSE_DIALECT)
 
 
-def _unwrap(column_type: str) -> str:
-    """`Nullable(LowCardinality(String))` -> `String` — the type under the modifiers."""
+def _exactness(dialect: str, column_type: str) -> _Exactness | None:
+    """Whether the model's declared type aggregates to an exact number, and to which kind.
+
+    The two engine families name their types differently enough that one table of prefixes
+    would answer wrongly for the other, so each is read in its own vocabulary.
+    """
+    base = _base_type(dialect, column_type)
+    if dialect == _POSTGRES_DIALECT:
+        if base in _PG_DECIMAL:
+            return _Exactness.DECIMAL
+        return _Exactness.INTEGRAL if base in _PG_INTEGRAL else None
+    if base.startswith("Decimal"):
+        return _Exactness.DECIMAL
+    return _Exactness.INTEGRAL if base.startswith(_INTEGER_PREFIXES) else None
+
+
+def _base_type(dialect: str, column_type: str) -> str:
+    """The declared type without what says nothing about exactness: `Nullable(LowCardinality(
+    String))` -> `String`, `NUMERIC(18,2)` -> `numeric`."""
+    if dialect == _POSTGRES_DIALECT:
+        return column_type.split("(", 1)[0].strip().lower()
     inner = column_type
     for wrapper in _TYPE_WRAPPERS:
         prefix, suffix = f"{wrapper}(", ")"

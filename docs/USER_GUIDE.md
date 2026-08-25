@@ -187,8 +187,10 @@ needs_review, `4` block, `2` usage-ошибка. `1` не используетс
 DWH и выходит как `check.not_implemented` (advisory), а шаг «compile SQL» компилирует
 reference-запрос метрики только там, где семантика точна: typed aggregate и governed ratio
 на ClickHouse (деление — `divideDecimal` на объявленной `unit.precision`, форма проверена на
-живом движке 24.8). Ratio на других диалектах, external и reviewed-SQL формулы получают
-названный гэп вместо запроса, за который гейт не может ручаться. Недоступный кандидатный результат — `needs_review`, никогда не pass. `--created-at` задаётся
+живом движке 24.8) и на PostgreSQL-семействе (`TRUNC(num * 1.000000 / NULLIF(den, 0), p)`,
+форма проверена на PostgreSQL 14.24). Ratio на движке, которого шов не знает, external и
+reviewed-SQL формулы получают названный гэп вместо запроса, за который гейт не может
+ручаться. Недоступный кандидатный результат — `needs_review`, никогда не pass. `--created-at` задаётся
 явно, когда прогон должен быть байт-в-байт воспроизводимым. См.
 [DECISIONOPS_ARCHITECTURE §8.2 и §12.1](DECISIONOPS_ARCHITECTURE.md).
 

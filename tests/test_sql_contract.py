@@ -82,10 +82,32 @@ def model_with(*columns: dict[str, Any]) -> SemanticModel:
     return model
 
 
-def clickhouse_off(model: SemanticModel) -> SemanticModel:
-    """The same fact table on a Greenplum/Greengage mart — the v2 engine."""
+#: The fixture's ClickHouse column types as a Greengage mart would declare them.
+PG_TYPES = {
+    "Decimal(18, 2)": "numeric(18,2)",
+    "UInt32": "integer",
+    "Date": "date",
+    "String": "text",
+}
+
+
+def postgres_model(*columns: dict[str, Any], engine: str = "greenplum") -> SemanticModel:
+    """The fixture fact table as a Greengage mart: PG engine, PG type names."""
+    model = semantic_model()
     fact = model.tables[0].model_dump()
-    fact["physical"]["engine"] = "greenplum"
+    fact["physical"]["engine"] = engine
+    fact["columns"] = [
+        {**column, "type": PG_TYPES.get(column["type"], column["type"])}
+        for column in fact["columns"]
+    ] + list(columns)
+    model.tables = [Table.model_validate(fact), *model.tables[1:]]
+    return model
+
+
+def engine_of(model: SemanticModel, engine: str | None) -> SemanticModel:
+    """The fact table on *engine* — or with no declared engine at all."""
+    fact = model.tables[0].model_dump()
+    fact["physical"] = None if engine is None else {**fact["physical"], "engine": engine}
     model.tables = [Table.model_validate(fact), *model.tables[1:]]
     return model
 
@@ -285,17 +307,109 @@ def test_a_float_column_is_named_not_compiled(tmp_path: Path) -> None:
     assert "denominator" in compiled.findings[0].detail
 
 
-def test_a_ratio_on_a_greenplum_mart_stays_a_named_gap(tmp_path: Path) -> None:
-    """Only ClickHouse's decimal division has been verified on a stand; the Postgres family
-    rounds and scales its `numeric` division by its own rules, so the gate says so."""
+def test_a_governed_ratio_compiles_on_a_postgres_family_mart(tmp_path: Path) -> None:
+    """PostgreSQL divides `numeric` exactly, so the same metric compiles there — verified on
+    PostgreSQL 14.24, which is the `numeric` implementation Greenplum/Greengage inherits."""
     compiled = compile_metric_queries(
-        snapshot_of(tmp_path, metric_contract(), model=clickhouse_off(semantic_model())),
+        snapshot_of(tmp_path, metric_contract(), model=postgres_model()), [RATIO_REF]
+    )
+
+    assert compiled.findings == []
+    query = compiled.queries[0]
+    assert query.dialect == "postgres"
+    assert 'TRUNC(SUM("gross_margin") * 1.000000 / NULLIF(SUM("revenue"), 0), 6)' in query.sql
+
+
+def test_the_postgres_form_asks_for_the_digits_it_truncates_to(tmp_path: Path) -> None:
+    """PostgreSQL picks the division scale from the operands, targeting ~16 significant
+    digits — so `TRUNC(a / b, 18)` on a large quotient pads zeros it never computed
+    (`1000000000000.00 / 3.00` truncated at 18 gives …33333333**000000000**). Multiplying by
+    an exact 1 that carries the declared decimals raises the operand's scale without touching
+    its value, and the digits become real."""
+    compiled = compile_metric_queries(
+        snapshot_of(tmp_path, metric_contract(), model=postgres_model()), [RATIO_REF]
+    )
+
+    assert "* 1.000000 /" in compiled.queries[0].sql
+
+
+def test_the_postgres_form_never_divides_in_floating_point(tmp_path: Path) -> None:
+    """`/` on two Postgres integers is integer division, and sqlglot's default rendering
+    reaches for a double-precision cast to avoid it — either would stop the number being
+    exact. The multiplier keeps both terms `numeric` instead."""
+    compiled = compile_metric_queries(
+        snapshot_of(tmp_path, metric_contract(), model=postgres_model()), [RATIO_REF]
+    )
+
+    assert "DOUBLE PRECISION" not in compiled.queries[0].sql.upper()
+
+
+def test_a_postgres_ratio_of_integer_terms_stays_numeric(tmp_path: Path) -> None:
+    contract = ratio_contract(
+        numerator={"table": "dm.sales_daily", "column": "store_id", "agg": "count_distinct"},
+        denominator={"table": "dm.sales_daily", "column": "store_id", "agg": "count"},
+        precision=0,
+    )
+    compiled = compile_metric_queries(
+        snapshot_of(tmp_path, contract, model=postgres_model()), [RATIO_REF]
+    )
+
+    # at precision 0 the multiplier still carries a decimal: `SUM(a) * 1` would be integer
+    # division, which truncates before TRUNC ever sees the number
+    assert 'COUNT(DISTINCT "store_id") * 1.0 /' in compiled.queries[0].sql
+
+
+def test_a_postgres_float_term_is_named_not_compiled(tmp_path: Path) -> None:
+    contract = ratio_contract(
+        denominator={"table": "dm.sales_daily", "column": "weight", "agg": "sum"}
+    )
+    model = postgres_model(
+        {"name": "weight", "type": "double precision", "role": "measure", "agg": "sum"}
+    )
+    compiled = compile_metric_queries(snapshot_of(tmp_path, contract, model=model), [RATIO_REF])
+
+    assert compiled.queries == []
+    assert [item.code for item in compiled.findings] == ["sql.ratio_inexact_term"]
+
+
+def test_an_engine_the_seam_does_not_know_is_not_guessed(tmp_path: Path) -> None:
+    """The dialect seam falls back to ClickHouse for an unknown engine — good enough for a
+    plain aggregate, not for a ratio whose whole form is engine-specific syntax."""
+    compiled = compile_metric_queries(
+        snapshot_of(tmp_path, metric_contract(), model=engine_of(semantic_model(), "duckdb")),
         [RATIO_REF],
     )
 
     assert compiled.queries == []
     assert [item.code for item in compiled.findings] == ["sql.ratio_unverified"]
-    assert "postgres" in compiled.findings[0].detail
+    assert "duckdb" in compiled.findings[0].detail
+
+
+def test_a_ratio_without_a_declared_engine_is_not_compiled(tmp_path: Path) -> None:
+    compiled = compile_metric_queries(
+        snapshot_of(tmp_path, metric_contract(), model=engine_of(semantic_model(), None)),
+        [RATIO_REF],
+    )
+
+    assert compiled.queries == []
+    assert [item.code for item in compiled.findings] == [
+        "sql.engine_undeclared",
+        "sql.ratio_unverified",
+    ]
+
+
+def test_a_typed_aggregate_still_compiles_for_an_engine_the_seam_guesses(
+    tmp_path: Path,
+) -> None:
+    """The asymmetry is deliberate: `SUM(col)` renders the same in every dialect the seam
+    can reach, so a named assumption is enough for it."""
+    compiled = compile_metric_queries(
+        snapshot_of(tmp_path, aggregate_contract(), model=engine_of(semantic_model(), "duckdb")),
+        [REVENUE_REF],
+    )
+
+    assert compiled.findings == []
+    assert 'SUM("revenue")' in compiled.queries[0].sql
 
 
 def test_a_term_column_the_model_does_not_declare_is_named(tmp_path: Path) -> None:
