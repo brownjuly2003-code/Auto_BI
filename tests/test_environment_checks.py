@@ -27,10 +27,13 @@ from auto_bi.verification.environment import (
     EnvironmentQuestions,
     LayoutFacts,
     RoleFacts,
+    RowPolicyFacts,
     TableFacts,
     check_access,
     check_freshness,
     check_physical,
+    check_security,
+    denies_all_rows,
     questions_for,
 )
 from tests.test_decision_verify import metric_contract, product_contract, semantic_model
@@ -506,3 +509,227 @@ def test_a_mart_that_is_absent_says_nothing_about_its_columns(tmp_path: Path) ->
     absent = facts(TableFacts(table="dm.sales_daily", exists=False, readable=False))
 
     assert check_physical(questions, absent) == []
+
+
+# --- the security half --------------------------------------------------------
+
+#: Every column the in-scope metrics are made of, in reach of this role.
+STAND_READS = {"date": True, "store_id": True, "revenue": True, "gross_margin": True}
+
+
+def secured_fact(**overrides: Any) -> TableFacts:
+    """The stand's mart as the probe reports it now: the readings and what narrowed them."""
+    reported: dict[str, Any] = {
+        "table": "dm.sales_daily",
+        "exists": True,
+        "readable": True,
+        "rows_seen": 600,
+        "max_event_time": "2026-08-25",
+        "columns": STAND_COLUMNS,
+        "layout": STAND_LAYOUT,
+        "column_reads": dict(STAND_READS),
+        "row_policies": [],
+    }
+    return TableFacts.model_validate({**reported, **overrides})
+
+
+def policy(
+    name: str = "sec_pol",
+    *,
+    applies: bool = True,
+    restrictive: bool = False,
+    expression: str = "store_id = 1",
+) -> RowPolicyFacts:
+    return RowPolicyFacts(
+        name=name, applies_to_session=applies, restrictive=restrictive, expression=expression
+    )
+
+
+def sensitive_snapshot(root: Path, *, column: bool = True, metric: bool = False):
+    """A model that declares what §10.1 says the engine — not the document — has to enforce."""
+    model = semantic_model()
+    if column:
+        table = model.tables[0].model_dump()
+        for item in table["columns"]:
+            if item["name"] == "gross_margin":
+                item["classification"] = "confidential"
+        model.tables = [Table.model_validate(table), *model.tables[1:]]
+    contract = metric_contract()
+    if metric:
+        contract["classification"] = "restricted"
+    return snapshot_of(root, contract, model=model)
+
+
+def test_a_mart_nothing_narrows_is_no_finding(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+
+    assert check_security(questions, facts(secured_fact())) == []
+
+
+def test_a_column_out_of_reach_blocks_and_is_never_called_missing(tmp_path: Path) -> None:
+    """ClickHouse hides what it does not grant, so the catalog cannot tell the two apart —
+    and "the mart lost a column" is a very different conversation from "grant the role one"."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    withheld = secured_fact(
+        columns={name: type_ for name, type_ in STAND_COLUMNS.items() if name != "gross_margin"},
+        column_reads={**STAND_READS, "gross_margin": False},
+    )
+
+    findings = check_security(questions, facts(withheld))
+
+    assert [item.code for item in findings] == ["security.column_unreadable"]
+    assert findings[0].severity is Severity.BLOCK
+    assert findings[0].subject == "dm.sales_daily.gross_margin"
+    assert check_physical(questions, facts(withheld)) == []
+
+
+def test_a_policy_that_names_this_session_makes_every_reading_partial(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+
+    findings = check_security(questions, facts(secured_fact(row_policies=[policy()])))
+
+    assert [item.code for item in findings] == ["security.row_filtered"]
+    assert findings[0].severity is Severity.REVIEW
+    assert "store_id = 1" in findings[0].detail
+
+
+def test_a_policy_that_names_someone_else_does_not_narrow_these_numbers(tmp_path: Path) -> None:
+    """A governed mart is not a finding; a *filtered reading* is."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    other = secured_fact(row_policies=[policy("ro_pol", applies=False)])
+
+    assert check_security(questions, facts(other)) == []
+
+
+def test_row_security_with_no_permissive_policy_blocks(tmp_path: Path) -> None:
+    """On PostgreSQL this mart answers an empty set and no error at all — the one shape where
+    a metric is uncomputable and every reading still looks like a successful one."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    denied = secured_fact(
+        rows_seen=0,
+        max_event_time=None,
+        row_security_enabled=True,
+        row_policies=[policy("r", restrictive=True)],
+    )
+
+    findings = check_security(questions, facts(denied))
+
+    assert [item.code for item in findings] == ["security.row_policy_denies_all"]
+    assert findings[0].severity is Severity.BLOCK
+    assert denies_all_rows(denied, facts(denied).role) is True
+
+
+def test_a_mart_row_security_empties_is_not_a_mart_with_nothing_to_date(tmp_path: Path) -> None:
+    """One fact, one finding: the zero rows freshness would report are the same zero rows
+    the security check blocks on, and grading them twice weighs them twice."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    denied = secured_fact(
+        rows_seen=0,
+        max_event_time=None,
+        row_security_enabled=True,
+        row_policies=[policy("r", restrictive=True)],
+    )
+
+    assert check_freshness(questions, facts(denied), max_age="PT6H", created_at=CREATED_AT) == []
+
+
+def test_a_restrictive_policy_on_an_engine_without_the_switch_filters(tmp_path: Path) -> None:
+    """ClickHouse has no `relrowsecurity`: a restrictive-only policy narrowed the stand's
+    mart to 30 of 600 rows rather than emptying it, so the switch is what decides."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    filtered = secured_fact(row_policies=[policy("sec_restr", restrictive=True)])
+
+    findings = check_security(questions, facts(filtered))
+
+    assert [item.code for item in findings] == ["security.row_filtered"]
+    assert denies_all_rows(filtered, facts(filtered).role) is False
+
+
+def test_a_session_that_bypasses_row_security_read_more_than_the_consumers(
+    tmp_path: Path,
+) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    unfiltered = EnvironmentFacts(
+        engine="greengage",
+        target="127.0.0.1:55433/dm",
+        role=RoleFacts(
+            name="postgres",
+            read_only=False,
+            evidence="a superuser",
+            bypasses_row_security=True,
+        ),
+        tables=[secured_fact(row_security_enabled=True, row_policies=[policy(applies=False)])],
+    )
+
+    findings = check_security(questions, unfiltered)
+
+    assert [item.code for item in findings] == ["security.row_security_bypassed"]
+    assert findings[0].severity is Severity.REVIEW
+
+
+def test_an_access_catalog_the_role_cannot_read_is_not_a_pass(tmp_path: Path) -> None:
+    """Not being able to see a policy is not evidence that none applies."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    unanswered = secured_fact(column_reads=None, row_policies=None)
+
+    findings = check_security(questions, facts(unanswered))
+
+    assert [item.code for item in findings] == ["security.not_observed"]
+    assert findings[0].severity is Severity.REVIEW
+    assert "may read" in findings[0].detail and "row policy" in findings[0].detail
+
+
+def test_a_declared_restriction_the_engine_does_not_enforce_asks_for_a_human(
+    tmp_path: Path,
+) -> None:
+    questions = questions_for(product(), sensitive_snapshot(tmp_path, metric=True))
+
+    findings = check_security(questions, facts(secured_fact()))
+
+    assert [item.code for item in findings] == ["security.unenforced_classification"]
+    assert findings[0].severity is Severity.REVIEW
+    assert "dm.sales_daily.gross_margin" in findings[0].detail
+    assert "metric://sales/gross_margin_pct@3" in findings[0].detail
+
+
+def test_a_restriction_the_engine_does_enforce_is_no_finding_of_its_own(tmp_path: Path) -> None:
+    questions = questions_for(product(), sensitive_snapshot(tmp_path))
+    enforced = secured_fact(row_policies=[policy()])
+
+    assert [item.code for item in check_security(questions, facts(enforced))] == [
+        "security.row_filtered"
+    ]
+
+
+def test_a_restriction_enforced_by_withholding_the_column_is_no_finding(tmp_path: Path) -> None:
+    questions = questions_for(product(), sensitive_snapshot(tmp_path))
+    withheld = secured_fact(column_reads={**STAND_READS, "gross_margin": False})
+
+    assert [item.code for item in check_security(questions, facts(withheld))] == [
+        "security.column_unreadable"
+    ]
+
+
+def test_an_unreadable_mart_says_nothing_about_what_narrows_it(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    unreadable = facts(TableFacts(table="dm.sales_daily", exists=True, readable=False))
+
+    assert check_security(questions, unreadable) == []
+
+
+def test_the_declared_sensitivity_travels_with_the_question(tmp_path: Path) -> None:
+    """The rule needs the model's own claim: a mart handed over whole is only a finding
+    because something declared it restricted in the first place."""
+    questions = questions_for(product(), sensitive_snapshot(tmp_path, metric=True))
+
+    assert questions.tables[0].sensitive_columns == ["gross_margin"]
+    assert questions.tables[0].sensitive_metric_refs == ["metric://sales/gross_margin_pct@3"]
+    assert questions.tables[0].declares_sensitive() is True
+
+
+def test_internal_is_the_default_and_not_a_declaration(tmp_path: Path) -> None:
+    """`internal` is what an unset field means, so treating it as sensitive would make every
+    mart in every model a finding."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+
+    assert questions.tables[0].declares_sensitive() is False

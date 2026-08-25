@@ -65,6 +65,8 @@ from auto_bi.verification.environment import (
     check_access,
     check_freshness,
     check_physical,
+    check_security,
+    denies_all_rows,
     questions_for,
 )
 from auto_bi.verification.model import Verdict, verdict_for
@@ -720,15 +722,17 @@ def _check_environment(
 
     The gate grades facts rather than holding the connection (`environment.py` explains why
     each engine is asked its own question). Without a probe there is nothing to grade, and
-    the two checks say `check.not_configured` — an answer, not a pass. The physical and
-    security halves of the step have no implementation yet and keep saying so.
+    the four checks say `check.not_configured` — an answer, not a pass. What the step still
+    does not do is compare the cost of a plan to the metric's declared budgets, and it keeps
+    saying so rather than letting a clean bundle read as a complete verification.
     """
     remaining = _not_implemented(
         "execution.checks",
         CheckCategory.EXECUTION,
         product_ref,
-        "security checks against a DWH — row/column policy and classification — are not "
-        "implemented (§8.2 step 7)",
+        "the cost of the candidate plan is not compared to the budgets the metric declares "
+        "(§8.2 step 7); `advisor/explain.py` can already ask an engine for an estimate, but "
+        "no check grades one",
     )
     facts = inputs.environment
     if facts is None:
@@ -740,6 +744,7 @@ def _check_environment(
             _not_configured("dwh.access", product_ref, reason),
             _not_configured("dwh.freshness", product_ref, reason),
             _not_configured("dwh.physical", product_ref, reason),
+            _not_configured("dwh.security", product_ref, reason),
             remaining,
         ]
 
@@ -774,12 +779,10 @@ def _check_environment(
             clean=(
                 f"every in-scope mart on {facts.target} is inside the "
                 f"{inputs.product.verification.freshness_max_age} this product declares"
-                if _readable(questions, facts)
-                else f"no in-scope mart could be read on {facts.target}, so nothing was dated"
+                if _dated(questions, facts)
+                else f"no in-scope mart could be dated on {facts.target}, so nothing was aged"
             ),
-            summary_clean=(
-                "freshness.fresh" if _readable(questions, facts) else "freshness.not_run"
-            ),
+            summary_clean=("freshness.fresh" if _dated(questions, facts) else "freshness.not_run"),
         ),
         _environment_check(
             writer,
@@ -795,6 +798,25 @@ def _check_environment(
             ),
             summary_clean=(
                 "physical.as_declared" if _readable(questions, facts) else "physical.not_run"
+            ),
+        ),
+        _environment_check(
+            writer,
+            "dwh.security",
+            questions,
+            facts,
+            check_security(questions, facts),
+            product_ref,
+            clean=(
+                f"nothing narrows what {facts.role.name} reads on {facts.target}: no row "
+                "policy applies to it and it may read every column the in-scope metrics are "
+                "made of"
+                if _readable(questions, facts)
+                else f"no in-scope mart could be read on {facts.target}, so nothing was asked "
+                "about what narrows it"
+            ),
+            summary_clean=(
+                "security.unfiltered" if _readable(questions, facts) else "security.not_run"
             ),
         ),
         remaining,
@@ -816,6 +838,22 @@ def _readable(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
     """Whether the probe could actually read any mart the product asks about."""
     return any(
         (table := facts.table(item.table)) is not None and table.readable
+        for item in questions.tables
+    )
+
+
+def _dated(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
+    """Whether any mart could be aged at all.
+
+    A mart row security empties is readable and still says nothing about how fresh its source
+    is — `check_security` blocks on that, and `check_freshness` stays quiet so one fact is not
+    graded twice. Reusing `_readable` here would print "every mart is inside the window" about
+    marts nothing was read from, which is the one sentence this report must never contain.
+    """
+    return any(
+        (table := facts.table(item.table)) is not None
+        and table.readable
+        and not denies_all_rows(table, facts.role)
         for item in questions.tables
     )
 

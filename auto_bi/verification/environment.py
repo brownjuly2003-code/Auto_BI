@@ -69,8 +69,14 @@ from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import Duration, NonBlankText, Timestamp
 from auto_bi.semantic.gateway import MetricNode, SemanticSnapshot, TableNode
+from auto_bi.semantic.model import DataClassification
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
+
+#: Classifications that §10.1 says a DWH role or a deterministic rewrite has to enforce —
+#: not the prompt boundary, and not a document. `internal` is the default of an unset field,
+#: so treating it as sensitive would make every mart a finding.
+_SENSITIVE = frozenset({DataClassification.CONFIDENTIAL, DataClassification.RESTRICTED})
 
 #: Duration components with a fixed length in seconds. Years and calendar months are absent
 #: on purpose: `P1M` is 28 to 31 days, and an exact age cannot be compared to an inexact
@@ -117,6 +123,15 @@ class TableQuestion(StrictModel):
     timezones: list[str] = Field(default_factory=list)
     #: The metrics that read this table at this grain, so a finding names them.
     metric_refs: list[str] = Field(default_factory=list)
+    #: Columns among those above that the model declares confidential or restricted, and
+    #: the in-scope metrics that declare it of themselves. Both travel because a metric can
+    #: be sensitive over columns that are not (a headcount over plain integers), and a
+    #: column can be sensitive under a metric that is not.
+    sensitive_columns: list[str] = Field(default_factory=list)
+    sensitive_metric_refs: list[str] = Field(default_factory=list)
+
+    def declares_sensitive(self) -> bool:
+        return bool(self.sensitive_columns or self.sensitive_metric_refs)
 
 
 class EnvironmentQuestions(StrictModel):
@@ -138,6 +153,25 @@ class RoleFacts(StrictModel):
     read_only: bool
     #: What the engine said, in its own terms (`readonly=1`, `no write privilege on …`).
     evidence: NonBlankText
+    #: Whether row-level security does not apply to this session at all (a PostgreSQL
+    #: superuser or `BYPASSRLS`). `None` where the engine has no such notion: ClickHouse
+    #: policies simply do not name a user rather than being bypassed by one.
+    bypasses_row_security: bool | None = None
+
+
+class RowPolicyFacts(StrictModel):
+    """One row-level policy the engine reports on a mart.
+
+    `expression` is the filter as the engine prints it — schema, like a partition key, not
+    rows: it is what makes "this reading was filtered" checkable instead of a claim.
+    """
+
+    name: NonBlankText
+    #: Whether it filters what *this* session reads. A policy naming another role is worth
+    #: reporting (the mart is governed) but does not narrow these numbers.
+    applies_to_session: bool
+    restrictive: bool = False
+    expression: str = ""
 
 
 class TableFacts(StrictModel):
@@ -154,6 +188,21 @@ class TableFacts(StrictModel):
     #: Column -> type as the engine spells it. `None` means the probe did not ask.
     columns: dict[str, str] | None = None
     layout: LayoutFacts | None = None
+    #: Asked column -> may this session read it. `None` means the engine was not asked.
+    #: It is a separate reading from `columns` because the two disagree by design on
+    #: ClickHouse, which hides columns the role holds no `SELECT(col)` grant on: without
+    #: this, a column that is merely out of reach reads as a column that is not there.
+    column_reads: dict[str, bool] | None = None
+    #: Whether the engine has row-level security switched on for this mart (PostgreSQL
+    #: `relrowsecurity`). `None` on engines with no such switch — ClickHouse has policies
+    #: and nothing else, so `row_policies` is the whole answer there.
+    row_security_enabled: bool | None = None
+    #: Policies the engine reports on this mart. `None` is "not reported" — a role that
+    #: cannot read the access catalog has not established that there are none.
+    row_policies: list[RowPolicyFacts] | None = None
+
+    def applying_policies(self) -> list[RowPolicyFacts]:
+        return [policy for policy in self.row_policies or () if policy.applies_to_session]
 
 
 class EnvironmentFacts(StrictModel):
@@ -170,7 +219,7 @@ class EnvironmentFacts(StrictModel):
 
 
 class EnvironmentFinding(StrictModel):
-    code: str = Field(min_length=1, pattern=r"^(access|freshness|physical)\.[a-z0-9_]+$")
+    code: str = Field(min_length=1, pattern=r"^(access|freshness|physical|security)\.[a-z0-9_]+$")
     severity: Severity
     subject: NonBlankText
     detail: NonBlankText
@@ -200,6 +249,8 @@ def questions_for(product: DecisionProductSpec, snapshot: SemanticSnapshot) -> E
             engines.add(table.engine)
         key = f"{node.grain.table}:{node.time.event_time_column}"
         columns = _declared_columns(node, snapshot)
+        sensitive = _sensitive_columns(columns, node.grain.table, snapshot)
+        metric_sensitive = [ref] if node.classification in _SENSITIVE else []
         question = tables.get(key)
         if question is None:
             tables[key] = TableQuestion(
@@ -209,6 +260,8 @@ def questions_for(product: DecisionProductSpec, snapshot: SemanticSnapshot) -> E
                 layout=_declared_layout(table),
                 timezones=[node.time.timezone],
                 metric_refs=[ref],
+                sensitive_columns=sensitive,
+                sensitive_metric_refs=metric_sensitive,
             )
             continue
         question.columns.update(columns)
@@ -216,6 +269,12 @@ def questions_for(product: DecisionProductSpec, snapshot: SemanticSnapshot) -> E
             question.timezones.append(node.time.timezone)
         if ref not in question.metric_refs:
             question.metric_refs.append(ref)
+        question.sensitive_columns.extend(
+            column for column in sensitive if column not in question.sensitive_columns
+        )
+        question.sensitive_metric_refs.extend(
+            item for item in metric_sensitive if item not in question.sensitive_metric_refs
+        )
 
     return EnvironmentQuestions(
         engines=sorted(engines),
@@ -239,6 +298,27 @@ def _declared_columns(node: MetricNode, snapshot: SemanticSnapshot) -> dict[str,
         if field is not None:
             declared[column] = field.type
     return declared
+
+
+def _sensitive_columns(
+    columns: dict[str, str], table: str, snapshot: SemanticSnapshot
+) -> list[str]:
+    """Which of the columns this metric reads the model calls confidential or restricted.
+
+    The classification is the model's own claim (§10.1), and it is what makes an unenforced
+    restriction checkable: a mart the role reads wide open is not evidence of a control.
+    """
+    return sorted(
+        column
+        for column in columns
+        if (
+            field := next(
+                (item for item in snapshot.graph.fields if item.id == f"{table}.{column}"), None
+            )
+        )
+        is not None
+        and field.classification in _SENSITIVE
+    )
 
 
 def _declared_layout(table: TableNode | None) -> LayoutClaim:
@@ -361,6 +441,8 @@ def check_freshness(
         table = facts.table(question.table)
         if table is None or not table.exists or not table.readable:
             continue  # already a finding of its own in `check_access`
+        if denies_all_rows(table, facts.role):
+            continue  # `check_security` blocks on it; "no rows" here is that same fact
         if table.rows_seen == 0 or table.max_event_time is None:
             findings.append(
                 EnvironmentFinding(
@@ -445,8 +527,14 @@ def _column_findings(
     if table.columns is None:
         return []
     findings: list[EnvironmentFinding] = []
+    reads = table.column_reads or {}
     for column, declared in sorted(question.columns.items()):
         actual = table.columns.get(column)
+        if actual is None and reads.get(column) is False:
+            # ClickHouse hides columns the role holds no `SELECT(col)` grant on, so absent
+            # from the catalog and out of reach look identical here. `check_security` blocks
+            # on the reach and knows which one it is; calling it missing would be a guess.
+            continue
         if actual is None:
             findings.append(
                 EnvironmentFinding(
@@ -517,6 +605,209 @@ def _layout_findings(
     ]
 
 
+def check_security(
+    questions: EnvironmentQuestions, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """Does this environment enforce what the model calls restricted — and did a restriction
+    narrow the numbers this run read?
+
+    Two questions, one check, because they are two halves of one fact: the reach of the role
+    the evidence was collected through. A row policy that applies to the session makes every
+    reading in the bundle a reading of a subset; a column the metric is made of that the role
+    may not select makes the metric uncomputable here; a mart the model calls restricted and
+    the engine hands over whole says the restriction is a document rather than a control
+    (§10.1 — row/column restrictions belong to the DWH role or to a deterministic rewrite,
+    and are proven by negative tests, not by the declaration).
+    """
+    findings: list[EnvironmentFinding] = []
+
+    for question in questions.tables:
+        table = facts.table(question.table)
+        if table is None or not table.exists or not table.readable:
+            continue  # `check_access` already said so; saying it twice weighs it twice
+        findings.extend(_unobserved_findings(question, table, facts))
+        findings.extend(_reach_findings(question, table, facts))
+        findings.extend(_row_policy_findings(question, table, facts))
+        findings.extend(_classification_findings(question, table, facts))
+
+    return findings
+
+
+def denies_all_rows(table: TableFacts, role: RoleFacts) -> bool:
+    """Whether row security leaves this session no rows at all on this mart.
+
+    PostgreSQL: with RLS switched on a row has to pass at least one *permissive* policy, so a
+    mart whose policies are all restrictive — or whose policies name other roles — answers an
+    empty set to a `SELECT` that is otherwise allowed (verified on 14.24: `count(*)` = 0 and
+    no error, which is exactly why this cannot be left to the reading). ClickHouse has no such
+    switch and a user no policy names reads everything (verified on 24.8.14.39, including a
+    restrictive-only policy, which filters there instead of denying), so the switch — not the
+    policy list — is the condition.
+    """
+    if table.row_security_enabled is not True or role.bypasses_row_security is True:
+        return False
+    if table.row_policies is None:
+        return False
+    return not any(
+        policy.applies_to_session and not policy.restrictive for policy in table.row_policies
+    )
+
+
+def _unobserved_findings(
+    question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """A role that cannot read the access catalog has not established that it reads it all."""
+    missing = [
+        text
+        for reported, text in (
+            (table.column_reads is not None, "which of its columns this role may read"),
+            (table.row_policies is not None, "whether a row policy filters what it reads"),
+        )
+        if not reported
+    ]
+    if not missing:
+        return []
+    return [
+        EnvironmentFinding(
+            code="security.not_observed",
+            severity=Severity.REVIEW,
+            subject=question.table,
+            detail=(
+                f"{facts.target} did not answer {' or '.join(missing)} for {question.table}: "
+                f"{facts.role.name} cannot read that from this engine's catalog, so these "
+                "readings are not established to be of the whole mart — the check did not run "
+                "rather than passing"
+            ),
+        )
+    ]
+
+
+def _reach_findings(
+    question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """Columns the metric's value is made of that this role may not select."""
+    reads = table.column_reads
+    if reads is None:
+        return []
+    out_of_reach = sorted(column for column in question.columns if reads.get(column) is False)
+    if not out_of_reach:
+        return []
+    subject = f"{question.table}.{out_of_reach[0]}" if len(out_of_reach) == 1 else question.table
+    return [
+        EnvironmentFinding(
+            code="security.column_unreadable",
+            severity=Severity.BLOCK,
+            subject=subject,
+            detail=(
+                f"{facts.role.name} may not read {', '.join(out_of_reach)} on "
+                f"{question.table}, which {', '.join(question.metric_refs)} is made of, so the "
+                f"metric cannot be computed on {facts.target} through this role. The mart has "
+                "the column — this is reach, not a missing column, and the two are one "
+                "answer on an engine that hides what it does not grant"
+            ),
+        )
+    ]
+
+
+def _row_policy_findings(
+    question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """What row-level security did to the numbers this run collected."""
+    policies = table.row_policies
+    if policies is None:
+        return []
+    applying = table.applying_policies()
+
+    if policies and facts.role.bypasses_row_security is True:
+        return [
+            EnvironmentFinding(
+                code="security.row_security_bypassed",
+                severity=Severity.REVIEW,
+                subject=question.table,
+                detail=(
+                    f"{question.table} on {facts.target} is governed by "
+                    f"{_policy_names(policies)}, and none of it reaches {facts.role.name}, "
+                    "which bypasses row security; the gate read rows the product's consumers "
+                    "do not get, so this is a verification of a wider table than the one that "
+                    "gets delivered"
+                ),
+            )
+        ]
+    if denies_all_rows(table, facts.role):
+        named = f" ({_policy_names(policies)})" if policies else ""
+        return [
+            EnvironmentFinding(
+                code="security.row_policy_denies_all",
+                severity=Severity.BLOCK,
+                subject=question.table,
+                detail=(
+                    f"row security is on for {question.table} on {facts.target} and no "
+                    f"permissive policy admits {facts.role.name}{named}; the mart answers an "
+                    f"empty set to this role, so {', '.join(question.metric_refs)} cannot be "
+                    "verified here — and an empty answer is not an error the reading would "
+                    "have shown"
+                ),
+            )
+        ]
+    if applying:
+        return [
+            EnvironmentFinding(
+                code="security.row_filtered",
+                severity=Severity.REVIEW,
+                subject=question.table,
+                detail=(
+                    f"{_policy_names(applying)} filters what {facts.role.name} reads from "
+                    f"{question.table} on {facts.target}, so every reading taken here — the "
+                    "row count, the newest event time, any number reconciled from this mart — "
+                    "is about a subset of it and not about the mart"
+                ),
+            )
+        ]
+    return []
+
+
+def _classification_findings(
+    question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """The model calls this restricted; does the engine restrict it for this role?"""
+    if not question.declares_sensitive() or table.row_policies is None:
+        return []
+    reads = table.column_reads or {}
+    if table.applying_policies() or any(
+        reads.get(column) is False for column in question.sensitive_columns
+    ):
+        return []  # something narrowed this role's reach, so the declaration is a control here
+    declared = ", ".join(
+        [
+            *(f"{question.table}.{column}" for column in question.sensitive_columns),
+            *question.sensitive_metric_refs,
+        ]
+    )
+    return [
+        EnvironmentFinding(
+            code="security.unenforced_classification",
+            severity=Severity.REVIEW,
+            subject=question.table,
+            detail=(
+                f"the model declares {declared} confidential or restricted, but on "
+                f"{facts.target} no row policy applies to {facts.role.name} and it may read "
+                "every column of that; the classification is a document here and not a "
+                "control the engine enforces (§10.1)"
+            ),
+        )
+    ]
+
+
+def _policy_names(policies: list[RowPolicyFacts]) -> str:
+    """Name the policies and the filters they carry — schema, the way a partition key is."""
+    return "; ".join(
+        policy.name
+        + (" (restrictive)" if policy.restrictive else "")
+        + (f" — {policy.expression}" if policy.expression else "")
+        for policy in policies
+    )
+
+
 def _joined(value: list[str] | None) -> str | None:
     return None if value is None else ", ".join(value)
 
@@ -584,10 +875,13 @@ __all__ = [
     "LayoutClaim",
     "LayoutFacts",
     "RoleFacts",
+    "RowPolicyFacts",
     "TableFacts",
     "TableQuestion",
     "check_access",
     "check_freshness",
     "check_physical",
+    "check_security",
+    "denies_all_rows",
     "questions_for",
 ]

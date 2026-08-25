@@ -39,9 +39,10 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
   `auto_bi decision evidence … --artifact report-summary-md` показывает владельцу,
   на чём этот вердикт стоит. Техническая база с тех пор выросла на локальных стендах:
   governed ratio шага 6 закрыт для обоих семейств движков (ClickHouse 24.8.14.39 и
-  PostgreSQL 14.24), а шаг 7 наполовину — `dwh.access` и `dwh.freshness` работают под
-  `--dwh` и проверены на тех же стендах. Что остаётся за владельцем — какой change, на
-  каком стенде и чей impact меряем: это не код.
+  PostgreSQL 14.24), а шаг 7 — на все четыре проверки: `dwh.access`, `dwh.freshness`,
+  `dwh.physical` и `dwh.security` работают под `--dwh` и прогнаны на тех же стендах
+  (не сравнивается только стоимость плана с `budgets`). Что остаётся за владельцем — какой
+  change, на каком стенде и чей impact меряем: это не код.
 
 ## Critical path
 

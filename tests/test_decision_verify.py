@@ -36,6 +36,7 @@ from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
     RoleFacts,
+    RowPolicyFacts,
     TableFacts,
 )
 from auto_bi.verification.model import Verdict
@@ -326,12 +327,19 @@ def test_the_gate_says_which_steps_it_did_not_run(tmp_path: Path) -> None:
 # --- §8.2 step 7: what a live engine says -------------------------------------
 
 
+#: The columns the in-scope metric is made of, all of them in reach of the read-only role.
+IN_REACH = {"date": True, "store_id": True, "revenue": True, "gross_margin": True}
+
+
 def environment(
     *,
     read_only: bool = True,
     max_event_time: str | None = "2026-08-25T06:00:00Z",
     rows_seen: int = 600,
     exists: bool = True,
+    column_reads: dict[str, bool] | None = None,
+    row_policies: list[RowPolicyFacts] | None = None,
+    row_security_enabled: bool | None = None,
 ) -> EnvironmentFacts:
     """One probe's answer, as `environment_probe` would have built it from the stand."""
     return EnvironmentFacts(
@@ -349,6 +357,9 @@ def environment(
                 readable=exists,
                 rows_seen=rows_seen,
                 max_event_time=max_event_time,
+                column_reads=dict(IN_REACH) if column_reads is None else column_reads,
+                row_policies=[] if row_policies is None else row_policies,
+                row_security_enabled=row_security_enabled,
             )
         ],
     )
@@ -365,7 +376,72 @@ def test_without_an_engine_step_seven_says_it_was_not_configured(tmp_path: Path)
 
     assert summary_of(report, "dwh.access") == "check.not_configured"
     assert summary_of(report, "dwh.freshness") == "check.not_configured"
+    assert summary_of(report, "dwh.security") == "check.not_configured"
     assert status_of(report, "dwh.access") is CheckStatus.ADVISORY
+
+
+def test_a_role_nothing_narrows_passes_the_security_half(tmp_path: Path) -> None:
+    """Step 7's security half is a check, not a promise: it passes only by saying what it
+    established — no policy filters this session and every column is in reach."""
+    report = Case(tmp_path).run(probe=probing(environment()))
+
+    assert status_of(report, "dwh.security") is CheckStatus.PASS
+    assert summary_of(report, "dwh.security") == "security.unfiltered"
+
+
+def test_a_row_policy_makes_the_readings_partial_and_asks_for_a_human(tmp_path: Path) -> None:
+    """The numbers are real, they are just not the mart's: whether a decision product may
+    stand on a filtered reading is the owner's call, so it is review and not a block."""
+    case = Case(tmp_path).with_asset().with_results([["Москва", "0.4120"], ["Казань", "0.377"]])
+
+    report = case.run(
+        probe=probing(
+            environment(
+                row_policies=[
+                    RowPolicyFacts(
+                        name="tenant_pol",
+                        applies_to_session=True,
+                        expression="store_id = 1",
+                    )
+                ]
+            )
+        )
+    )
+
+    assert summary_of(report, "dwh.security") == "security.row_filtered"
+    assert report.verdict is Verdict.NEEDS_REVIEW
+
+
+def test_a_column_the_role_may_not_read_blocks_the_release(tmp_path: Path) -> None:
+    report = Case(tmp_path).run(
+        probe=probing(environment(column_reads={**IN_REACH, "gross_margin": False}))
+    )
+
+    assert summary_of(report, "dwh.security") == "security.column_unreadable"
+    assert report.verdict is Verdict.BLOCK
+
+
+def test_a_mart_row_security_empties_is_never_reported_as_fresh(tmp_path: Path) -> None:
+    """The one sentence this report must not contain is "every mart is inside the window"
+    about a mart nothing was read from — and row security empties one without an error."""
+    report = Case(tmp_path).run(
+        probe=probing(
+            environment(
+                rows_seen=0,
+                max_event_time=None,
+                row_security_enabled=True,
+                row_policies=[
+                    RowPolicyFacts(
+                        name="r", applies_to_session=True, restrictive=True, expression="false"
+                    )
+                ],
+            )
+        )
+    )
+
+    assert summary_of(report, "dwh.security") == "security.row_policy_denies_all"
+    assert summary_of(report, "dwh.freshness") == "freshness.not_run"
+    assert report.verdict is Verdict.BLOCK
 
 
 def test_a_read_only_role_on_a_fresh_mart_passes_both_halves(tmp_path: Path) -> None:

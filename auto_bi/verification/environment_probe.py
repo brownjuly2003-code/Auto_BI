@@ -35,12 +35,49 @@ partition key from `system.tables`, and the stand confirmed the shapes (`MergeTr
 levels in catalogs no PostgreSQL stand has (`gp_distribution_policy`, `pg_partition`), and no
 Greengage stand has been available to pin their columns — so the Postgres path leaves those
 facts unreported, and `check_physical` compares nothing rather than guessing at a mismatch.
+
+The security half asks what this role may reach, and here the two engines disagree about
+almost every mechanism. All of it was established on the same stands, none of it by reading
+documentation:
+
+* **columns.** ClickHouse enforces `GRANT SELECT(col)` and *hides* what it does not grant:
+  `system.columns` returned five of six columns to a role granted five, so an out-of-reach
+  column and a missing column are the same silence. Reach therefore comes from `system.grants`
+  — including partial revokes, which is how `REVOKE SELECT(gross_margin)` after a table-wide
+  grant is recorded (`is_partial_revoke = 1`) — and never from what the catalog shows.
+  PostgreSQL is the opposite: `pg_attribute` lists every column whatever the grants say, and
+  `has_column_privilege` answers per column.
+* **readability.** `has_table_privilege(…, 'SELECT')` is **false** for a role holding only
+  column grants, while that role reads the mart perfectly well; `has_any_column_privilege` is
+  the honest question, and grading the narrower one would have blocked a release over a mart
+  the gate had just read.
+* **row policies.** ClickHouse applies a policy only to the users and roles it names — a
+  session no policy names reads the whole mart, and a restrictive-only policy still filters
+  (600 → 30 rows on the stand). PostgreSQL is the reverse: with `relrowsecurity` on, a row
+  must pass at least one *permissive* policy, so a mart whose policies are all restrictive —
+  or name other roles — answers an empty set with no error at all. That silent empty answer
+  is why the switch is read as a fact instead of inferred from a row count.
+* **who a policy names.** Both engines attach policies to roles as well as users
+  (`apply_to_list` on ClickHouse, `polroles` including `public` on PostgreSQL), so the
+  session's enabled roles decide membership, not its user name. A policy attached to a role
+  the session holds was verified to filter it.
+* **who escapes.** A PostgreSQL superuser or `BYPASSRLS` role is not filtered at all, and the
+  fact carries that. A table's *owner* also escapes its policies unless they are `FORCE`d,
+  and that case is deliberately not modelled: owning a mart carries `INSERT` on it, so
+  `access.role_writable` has already blocked the run before row security matters.
+
+**A refusal is an answer.** Asking about access is exactly where a read-only role runs out of
+privilege, and an exception there would turn a fact about the environment into a crashed run.
+`_ask` returns `None` when the engine refuses a question or the object is not there, and
+raises everything else — a dead connection is not an access fact and must not be graded as
+one.
 """
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from auto_bi.engine import CLICKHOUSE, GREENPLUM, sqlglot_dialect
 from auto_bi.introspect.base import RunQuery
@@ -49,7 +86,9 @@ from auto_bi.verification.environment import (
     EnvironmentQuestions,
     LayoutFacts,
     RoleFacts,
+    RowPolicyFacts,
     TableFacts,
+    TableQuestion,
 )
 
 #: Privileges that make a session capable of changing a mart. `TRUNCATE` is Postgres-only;
@@ -61,6 +100,35 @@ _CH_WRITE_GRANTS = frozenset(
     {"INSERT", "ALTER", "CREATE", "DROP", "TRUNCATE", "OPTIMIZE", "UNDROP TABLE"}
 )
 
+#: SQLSTATEs of a Postgres refusal: no privilege, no such table, no such schema. Everything
+#: else — a dropped connection above all — is not an access fact and is re-raised.
+_PG_REFUSALS = frozenset({"42501", "42P01", "3F000"})
+
+#: How the two engines word a refusal when the driver carries no state code. ClickHouse's
+#: codes are stable identifiers (`497 ACCESS_DENIED`, `60 UNKNOWN_TABLE`), which is what this
+#: matches on; the Postgres wording is the fallback for drivers that lose `sqlstate`.
+_REFUSED_TEXT = re.compile(
+    r"ACCESS_DENIED|Not enough privileges|UNKNOWN_TABLE|UNKNOWN_DATABASE"
+    r"|permission denied|must be owner|relation .* does not exist",
+    re.IGNORECASE,
+)
+
+
+class _ChSession(NamedTuple):
+    """Who ClickHouse thinks is asking, and what that identity may read.
+
+    Grants are collected once per run rather than per mart: they answer both halves of the
+    role question (writable, and which columns are in reach), and asking twice would let the
+    two halves disagree. `None` means the role may not read `system.grants` at all.
+    """
+
+    user: str
+    #: The user and its enabled roles — a policy or a grant naming any of them names it.
+    principals: frozenset[str]
+    #: The `readonly` setting of the session, as the engine reports it (`None` if unset).
+    readonly: str | None
+    grants: list[dict[str, Any]] | None
+
 
 def collect(
     run_query: RunQuery, questions: EnvironmentQuestions, *, engine: str, target: str
@@ -69,42 +137,65 @@ def collect(
     dialect = sqlglot_dialect(engine)
     if dialect == sqlglot_dialect(GREENPLUM):
         role = _postgres_role(run_query, questions)
-        tables = [
-            _postgres_table(run_query, item.table, item.event_time_column)
-            for item in questions.tables
-        ]
+        tables = [_postgres_table(run_query, item) for item in questions.tables]
     else:
-        role = _clickhouse_role(run_query)
-        tables = [
-            _clickhouse_table(run_query, item.table, item.event_time_column)
-            for item in questions.tables
-        ]
+        session = _clickhouse_session(run_query)
+        role = _clickhouse_role(session)
+        tables = [_clickhouse_table(run_query, item, session) for item in questions.tables]
     return EnvironmentFacts(engine=engine, target=target, role=role, tables=tables)
 
 
 # --- ClickHouse ---------------------------------------------------------------
 
 
-def _clickhouse_role(run_query: RunQuery) -> RoleFacts:
+def _clickhouse_session(run_query: RunQuery) -> _ChSession:
+    """Identity, enabled roles and grants — everything the access questions are answered from."""
+    user = _scalar(run_query, "SELECT currentUser() AS value") or "unknown"
+    readonly = _scalar(run_query, "SELECT value FROM system.settings WHERE name = 'readonly'")
+    answered = _ask(run_query, "SELECT role_name FROM system.enabled_roles") or []
+    roles = sorted({str(row.get("role_name")) for row in answered if row.get("role_name")})
+    # The roles are named in the grants query rather than sub-selected: a privilege can reach
+    # this session through a role as easily as through its user name, and one flat condition
+    # is the same question on an engine whose access catalog does not join.
+    listed = ", ".join(_literal(role) for role in roles)
+    named = f" OR role_name IN ({listed})" if roles else ""
+    grants = _ask(
+        run_query,
+        "SELECT access_type, database, table, column, is_partial_revoke FROM system.grants "
+        f"WHERE user_name = currentUser(){named}",
+    )
+    principals = {user, *roles}
+    return _ChSession(user=user, principals=frozenset(principals), readonly=readonly, grants=grants)
+
+
+def _clickhouse_role(session: _ChSession) -> RoleFacts:
     """`readonly` decides; grants are the second chance to be read-only, not the first."""
-    name = _scalar(run_query, "SELECT currentUser() AS value") or "unknown"
-    setting = _scalar(run_query, "SELECT value FROM system.settings WHERE name = 'readonly'")
+    setting = session.readonly
     if setting in {"1", "2"}:
         return RoleFacts(
-            name=name,
+            name=session.user,
             read_only=True,
             evidence=f"readonly={setting}, so the session refuses writes whatever it is granted",
         )
+    if session.grants is None:
+        # `readonly` does not stop this session and the engine will not say what it granted:
+        # the safe reading of an unanswered question is not "read-only" (invariant 3).
+        return RoleFacts(
+            name=session.user,
+            read_only=False,
+            evidence=(
+                f"readonly={setting or 'unset'} and system.grants is out of reach, so nothing "
+                "establishes that this session cannot write"
+            ),
+        )
     granted = {
         str(row.get("access_type", ""))
-        for row in _rows(
-            run_query,
-            "SELECT access_type FROM system.grants WHERE user_name = currentUser()",
-        )
+        for row in session.grants
+        if not _truthy(row.get("is_partial_revoke"))
     }
     writable = sorted(granted & _CH_WRITE_GRANTS)
     return RoleFacts(
-        name=name,
+        name=session.user,
         read_only=not writable,
         evidence=(
             f"readonly={setting or 'unset'}, granted {', '.join(writable)}"
@@ -114,29 +205,44 @@ def _clickhouse_role(run_query: RunQuery) -> RoleFacts:
     )
 
 
-def _clickhouse_table(run_query: RunQuery, table: str, event_time_column: str) -> TableFacts:
+def _clickhouse_table(
+    run_query: RunQuery, question: TableQuestion, session: _ChSession
+) -> TableFacts:
+    table = question.table
     database, _, name = table.partition(".")
-    present = _rows(
+    present = _ask(
         run_query,
         "SELECT engine, sorting_key, partition_key FROM system.tables WHERE database = "
         f"{_literal(database)} AND name = {_literal(name)}",
     )
     if not present:
+        # A mart this role holds no grant on is hidden from `system.tables` too, so "absent"
+        # and "out of reach" are one silence here. Both are block; the grants in the bundle
+        # are what tells them apart afterwards.
         return TableFacts(table=table, exists=False, readable=False)
-    reading = _rows(
+    reading = _ask(
         run_query,
-        f"SELECT count() AS rows_seen, max({_ident(event_time_column)}) AS max_event_time "
-        f"FROM {_qualified(table)}",
+        f"SELECT count() AS rows_seen, max({_ident(question.event_time_column)}) AS "
+        f"max_event_time FROM {_qualified(table)}",
     )
+    reads = _ch_column_reads(session, database, name, question.columns)
+    policies = _ch_policies(run_query, session, database, name)
     if not reading:  # the table is there but the role cannot read it
-        return TableFacts(table=table, exists=True, readable=False)
+        return TableFacts(
+            table=table,
+            exists=True,
+            readable=False,
+            column_reads=reads,
+            row_policies=policies,
+        )
     columns = {
         str(row.get("name")): str(row.get("type"))
-        for row in _rows(
+        for row in _ask(
             run_query,
             "SELECT name, type FROM system.columns WHERE database = "
             f"{_literal(database)} AND table = {_literal(name)}",
         )
+        or []
     }
     layout = LayoutFacts(
         table_engine=str(present[0].get("engine") or ""),
@@ -146,7 +252,79 @@ def _clickhouse_table(run_query: RunQuery, table: str, event_time_column: str) -
         # `check_physical` compares only what an engine answered.
         distribution_key=None,
     )
-    return _reading(table, reading[0], columns=columns, layout=layout)
+    return _reading(
+        table,
+        reading[0],
+        columns=columns,
+        layout=layout,
+        column_reads=reads,
+        row_policies=policies,
+    )
+
+
+def _ch_column_reads(
+    session: _ChSession, database: str, name: str, columns: dict[str, str]
+) -> dict[str, bool] | None:
+    """Which of the columns the metrics read this identity holds a `SELECT` on.
+
+    Read from grants rather than from `system.columns`, which shows only what it grants: a
+    column withheld and a column absent look the same in the catalog, and they are not the
+    same finding.
+    """
+    if session.grants is None:
+        return None
+    selects = [row for row in session.grants if str(row.get("access_type")) == "SELECT"]
+    reads: dict[str, bool] = {}
+    for column in columns:
+        covering = [row for row in selects if _ch_covers(row, database, name, column)]
+        granted = any(not _truthy(row.get("is_partial_revoke")) for row in covering)
+        revoked = any(_truthy(row.get("is_partial_revoke")) for row in covering)
+        reads[column] = granted and not revoked
+    return reads
+
+
+def _ch_covers(row: dict[str, Any], database: str, name: str, column: str) -> bool:
+    """Whether one grant row reaches this column. A NULL is "everything at this level"."""
+    for value, wanted in (
+        (row.get("database"), database),
+        (row.get("table"), name),
+        (row.get("column"), column),
+    ):
+        if value is None:
+            return True
+        if str(value) != wanted:
+            return False
+    return True
+
+
+def _ch_policies(
+    run_query: RunQuery, session: _ChSession, database: str, name: str
+) -> list[RowPolicyFacts] | None:
+    """Row policies on this mart, and which of them name this session."""
+    rows = _ask(
+        run_query,
+        "SELECT short_name, select_filter, is_restrictive, apply_to_all, apply_to_list, "
+        f"apply_to_except FROM system.row_policies WHERE database = {_literal(database)} "
+        f"AND table = {_literal(name)}",
+    )
+    if rows is None:
+        return None
+    policies: list[RowPolicyFacts] = []
+    for row in rows:
+        listed = session.principals & set(_string_list(row.get("apply_to_list")))
+        excepted = session.principals & set(_string_list(row.get("apply_to_except")))
+        applies = (
+            not excepted if _truthy(row.get("apply_to_all")) else bool(listed) and not excepted
+        )
+        policies.append(
+            RowPolicyFacts(
+                name=str(row.get("short_name") or "policy"),
+                applies_to_session=applies,
+                restrictive=_truthy(row.get("is_restrictive")),
+                expression=str(row.get("select_filter") or ""),
+            )
+        )
+    return policies
 
 
 # --- PostgreSQL family --------------------------------------------------------
@@ -154,17 +332,23 @@ def _clickhouse_table(run_query: RunQuery, table: str, event_time_column: str) -
 
 def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> RoleFacts:
     """A superuser bypasses privileges, so it is writable however the grants read."""
-    rows = _rows(
+    rows = _ask(
         run_query,
         "SELECT current_user AS name, "
-        "(SELECT usesuper FROM pg_user WHERE usename = current_user) AS superuser",
+        "(SELECT usesuper FROM pg_user WHERE usename = current_user) AS superuser, "
+        "(SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypassrls",
     )
-    name = str(rows[0].get("name")) if rows else "unknown"
-    if rows and bool(rows[0].get("superuser")):
+    first = rows[0] if rows else {}
+    name = str(first.get("name") or "unknown")
+    superuser = _truthy(first.get("superuser"))
+    # A superuser is not subject to row security either, so the two facts share one answer.
+    bypasses = superuser or _truthy(first.get("bypassrls"))
+    if superuser:
         return RoleFacts(
             name=name,
             read_only=False,
             evidence="a superuser, whose writes no privilege check can stop",
+            bypasses_row_security=True,
         )
 
     writable: list[str] = []
@@ -174,11 +358,11 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
             f"{privilege.lower()}"
             for privilege in _PG_WRITE_PRIVILEGES
         )
-        granted = _rows(run_query, f"SELECT {privileges}")
+        granted = _ask(run_query, f"SELECT {privileges}")
         if not granted:
             continue
         for privilege in _PG_WRITE_PRIVILEGES:
-            if bool(granted[0].get(privilege.lower())):
+            if _truthy(granted[0].get(privilege.lower())):
                 writable.append(f"{privilege} on {question.table}")
     return RoleFacts(
         name=name,
@@ -188,12 +372,14 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
             if writable
             else "no INSERT, UPDATE, DELETE or TRUNCATE privilege on any in-scope mart"
         ),
+        bypasses_row_security=bypasses,
     )
 
 
-def _postgres_table(run_query: RunQuery, table: str, event_time_column: str) -> TableFacts:
+def _postgres_table(run_query: RunQuery, question: TableQuestion) -> TableFacts:
+    table = question.table
     schema, _, name = table.partition(".")
-    present = _rows(
+    present = _ask(
         run_query,
         "SELECT tablename FROM pg_tables WHERE schemaname = "
         f"{_literal(schema)} AND tablename = {_literal(name)} "
@@ -202,29 +388,121 @@ def _postgres_table(run_query: RunQuery, table: str, event_time_column: str) -> 
     )
     if not present:
         return TableFacts(table=table, exists=False, readable=False)
-    if not _rows(run_query, f"SELECT has_table_privilege({_literal(table)}, 'SELECT') AS ok")[
-        0
-    ].get("ok"):
-        return TableFacts(table=table, exists=True, readable=False)
-    reading = _rows(
+    reads = _pg_column_reads(run_query, table, question.columns)
+    policies = _pg_policies(run_query, table)
+    security = _pg_row_security(run_query, table)
+    # Column grants alone make `has_table_privilege(…, 'SELECT')` false while the role reads
+    # the mart perfectly well; the narrower question would block a release over a mart the
+    # gate is about to read. Which columns are out of reach is `check_security`'s finding.
+    readable = _ask(
+        run_query, f"SELECT has_any_column_privilege({_literal(table)}, 'SELECT') AS ok"
+    )
+    if not readable or not _truthy(readable[0].get("ok")):
+        return TableFacts(
+            table=table,
+            exists=True,
+            readable=False,
+            column_reads=reads,
+            row_security_enabled=security,
+            row_policies=policies,
+        )
+    reading = _ask(
         run_query,
-        f"SELECT count(*) AS rows_seen, max({_ident(event_time_column)}) AS max_event_time "
-        f"FROM {_qualified(table)}",
+        f"SELECT count(*) AS rows_seen, max({_ident(question.event_time_column)}) AS "
+        f"max_event_time FROM {_qualified(table)}",
     )
     if not reading:
-        return TableFacts(table=table, exists=True, readable=False)
+        return TableFacts(
+            table=table,
+            exists=True,
+            readable=False,
+            column_reads=reads,
+            row_security_enabled=security,
+            row_policies=policies,
+        )
     columns = {
         str(row.get("name")): str(row.get("type"))
-        for row in _rows(
+        for row in _ask(
             run_query,
             "SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type "
             "FROM pg_attribute a WHERE a.attrelid = "
             f"to_regclass({_literal(table)}) AND a.attnum > 0 AND NOT a.attisdropped",
         )
+        or []
     }
     # Layout stays unreported here: the distribution policy and partition levels live in
     # Greenplum-only catalogs, and no Greengage stand has been available to pin them.
-    return _reading(table, reading[0], columns=columns, layout=None)
+    return _reading(
+        table,
+        reading[0],
+        columns=columns,
+        layout=None,
+        column_reads=reads,
+        row_security_enabled=security,
+        row_policies=policies,
+    )
+
+
+def _pg_column_reads(
+    run_query: RunQuery, table: str, columns: dict[str, str]
+) -> dict[str, bool] | None:
+    """`has_column_privilege` per column the metrics read, asked by attribute number.
+
+    Only columns the mart actually has come back: asking by name for one it does not have
+    raises, and a column that is not there is `check_physical`'s finding, not this one.
+    """
+    if not columns:
+        return {}
+    wanted = ", ".join(_literal(column) for column in sorted(columns))
+    rows = _ask(
+        run_query,
+        "SELECT a.attname AS name, has_column_privilege(a.attrelid, a.attnum, 'SELECT') AS ok "
+        f"FROM pg_attribute a WHERE a.attrelid = to_regclass({_literal(table)}) "
+        f"AND a.attnum > 0 AND NOT a.attisdropped AND a.attname IN ({wanted})",
+    )
+    if rows is None:
+        return None
+    return {str(row.get("name")): _truthy(row.get("ok")) for row in rows}
+
+
+def _pg_policies(run_query: RunQuery, table: str) -> list[RowPolicyFacts] | None:
+    """Read-affecting policies on this mart, and whether they name this session.
+
+    `polroles` holds `0` for `PUBLIC`, and membership is a role question rather than a name
+    one — `pg_has_role` is what answers it for a policy attached to a group role.
+    """
+    rows = _ask(
+        run_query,
+        "SELECT p.polname AS name, p.polpermissive AS permissive, "
+        "pg_get_expr(p.polqual, p.polrelid) AS expression, "
+        "(0 = ANY(p.polroles) OR EXISTS (SELECT 1 FROM pg_roles r WHERE r.oid = "
+        "ANY(p.polroles) AND pg_has_role(current_user, r.oid, 'USAGE'))) AS applies "
+        f"FROM pg_policy p WHERE p.polrelid = to_regclass({_literal(table)}) "
+        "AND p.polcmd::text IN ('r', '*')",
+    )
+    if rows is None:
+        return None
+    return [
+        RowPolicyFacts(
+            name=str(row.get("name") or "policy"),
+            applies_to_session=_truthy(row.get("applies")),
+            restrictive=not _truthy(row.get("permissive")),
+            expression=str(row.get("expression") or ""),
+        )
+        for row in rows
+    ]
+
+
+def _pg_row_security(run_query: RunQuery, table: str) -> bool | None:
+    """Whether row security is switched on for the mart (`relrowsecurity`)."""
+    rows = _ask(
+        run_query,
+        "SELECT c.relrowsecurity AS enabled FROM pg_class c WHERE c.oid = "
+        f"to_regclass({_literal(table)})",
+    )
+    if not rows:
+        return None
+    return _truthy(rows[0].get("enabled"))
 
 
 # --- shared -------------------------------------------------------------------
@@ -236,6 +514,9 @@ def _reading(
     *,
     columns: dict[str, str] | None = None,
     layout: LayoutFacts | None = None,
+    column_reads: dict[str, bool] | None = None,
+    row_security_enabled: bool | None = None,
+    row_policies: list[RowPolicyFacts] | None = None,
 ) -> TableFacts:
     rows_seen = int(row.get("rows_seen") or 0)
     return TableFacts(
@@ -247,6 +528,9 @@ def _reading(
         max_event_time=_moment(row.get("max_event_time")) if rows_seen else None,
         columns=columns,
         layout=layout,
+        column_reads=column_reads,
+        row_security_enabled=row_security_enabled,
+        row_policies=row_policies,
     )
 
 
@@ -255,6 +539,24 @@ def _key_list(value: object) -> list[str]:
     if value is None:
         return []
     return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
+def _string_list(value: object) -> list[str]:
+    """An `Array(String)` column as the client hands it over — or as text, from a raw driver."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(item) for item in value]
+    return [part.strip().strip("'") for part in str(value).strip("[]").split(",") if part.strip()]
+
+
+def _truthy(value: object) -> bool:
+    """Engine booleans arrive as `True`, `1` or `'1'` depending on the driver and the column."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value or "").strip().lower() in {"1", "t", "true"}
 
 
 def _moment(value: object) -> str | None:
@@ -270,15 +572,34 @@ def _moment(value: object) -> str | None:
 
 
 def _scalar(run_query: RunQuery, sql: str) -> str | None:
-    rows = _rows(run_query, sql)
+    rows = _ask(run_query, sql)
     if not rows:
         return None
     value = next(iter(rows[0].values()), None)
     return None if value is None else str(value)
 
 
-def _rows(run_query: RunQuery, sql: str) -> list[dict[str, Any]]:
-    return list(run_query(sql))
+def _ask(run_query: RunQuery, sql: str) -> list[dict[str, Any]] | None:
+    """One question, or `None` if the engine refused it.
+
+    A refusal is a fact about the environment — that is the half of step 7 this module
+    collects — so it must not end the run. Anything else (a dropped connection, a syntax
+    error of ours) is not an access fact and is raised for the caller to fail on.
+    """
+    try:
+        return list(run_query(sql))
+    except Exception as error:  # re-raised below unless the engine simply refused
+        if _refused(error):
+            return None
+        raise
+
+
+def _refused(error: Exception) -> bool:
+    """Whether the engine said "not for you" or "no such object" rather than falling over."""
+    state = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
+    if state is not None:
+        return str(state) in _PG_REFUSALS
+    return bool(_REFUSED_TEXT.search(str(error)))
 
 
 def _literal(value: str) -> str:

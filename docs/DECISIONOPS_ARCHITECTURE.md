@@ -488,9 +488,28 @@ Gate выполняет шаги в фиксированном порядке:
   профиль (`readonly=1` отказывает даже при `GRANT INSERT ON *.*` из `users.xml`), на
   PostgreSQL — `has_table_privilege` плюс проверка на суперпользователя. Пустая витрина —
   `freshness.unknown`, потому что `max(Date)` по нулю строк в ClickHouse равен `1970-01-01`,
-  а не NULL. Прогон без `--dwh` выносит все три проверки как `check.not_configured` — ответ, а не
-  пропуск; security-половина шага остаётся `check.not_implemented` (advisory), а не
-  отсутствует молча: чистый bundle не должен читаться как полная верификация.
+  а не NULL. `dwh.security`: досягаемость роли, через которую собрано evidence, — колонка
+  метрики, которую роль не может выбрать, **block** (метрику там не посчитать); row-политика,
+  применяющаяся к сессии, **review** (числа реальные, но это числа подмножества); включённый
+  row security без permissive-политики для этой роли — **block**, потому что витрина отдаёт
+  пустой ответ и не отдаёт ошибки; роль, которая обходит row security при живых политиках, —
+  **review** (гейт видел больше, чем потребители продукта); объявленная классификация
+  confidential/restricted, которую движок для этой роли ничем не ограничивает, — **review**
+  (§10.1: ограничение обязано жить в роли или в детерминированном rewrite, а не в документе);
+  недоступный роли access-каталог — **review**, потому что «не вижу политику» не значит «её
+  нет». Механизмы у движков **разные**, и это проверено на стендах, а не вычитано: ClickHouse
+  прячет неразрешённые колонки из `system.columns` (поэтому досягаемость читается из
+  `system.grants`, включая partial revoke, а `check_physical` не имеет права называть такую
+  колонку отсутствующей) и применяет политику только к тем, кого она называет; PostgreSQL,
+  наоборот, показывает все колонки в `pg_attribute`, отвечает `has_column_privilege` и при
+  `relrowsecurity` требует хотя бы одну permissive-политику. Отдельно:
+  `has_table_privilege(…, 'SELECT')` у роли с колоночными грантами равен **false**, хотя роль
+  витрину читает, — поэтому читаемость спрашивается через `has_any_column_privilege`, иначе
+  гейт блокировал бы релиз по витрине, которую сам только что прочитал. Прогон без `--dwh`
+  выносит все четыре проверки как `check.not_configured` — ответ, а не пропуск; не сделано у
+  шага только сравнение стоимости плана с `budgets` метрики, и оно остаётся
+  `check.not_implemented` (advisory), а не отсутствует молча: чистый bundle не должен
+  читаться как полная верификация.
 - «Reject blocking semantic gaps» останавливает последовательность ТОЛЬКО на
   `gap.contract_invalid`: непрочитанный контракт отсутствует в графе, и diff назвал
   бы это удалённой метрикой. Остальные blocking-гэпы (dangling join, отсутствующее
@@ -846,7 +865,8 @@ domain state machine.
 | Superset/DataLens compile contracts используют общий canonical query | ✅ `tests/test_bi_contract.py` — сравнение **объектов** builder'ов, не результатов |
 | отсутствие evidence ref ломает bundle validation | ✅ `tests/test_evidence_bundle.py` |
 | gate не вызывает remote mutation methods | ✅ socket-запрет + mutation-spy на каждом глаголе обоих BI-клиентов |
-| expensive candidate plan блокируется policy | ⛔ `dwh.physical` сравнивает заявленную раскладку и типы с движком, но стоимость плана и `budgets` метрики пока не сравниваются (`advisor/explain.py` уже умеет EXPLAIN ESTIMATE) |
+| expensive candidate plan блокируется policy | ⛔ `dwh.physical` сравнивает заявленную раскладку и типы с движком, а `dwh.security` — досягаемость роли, но стоимость плана и `budgets` метрики пока не сравниваются (`advisor/explain.py` уже умеет EXPLAIN ESTIMATE; `MetricNode` ещё не несёт `budgets`) |
+| row/column restriction проверяется negative-тестом, а не декларацией | ✅ `dwh.security` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`); прогнано вживую на ClickHouse 24.8.14.39 и PostgreSQL 14.24 — withheld column → block, применённая политика → review, RLS без permissive → block |
 | stale source возвращает honest insufficient/block | ✅ stale **verified asset** → `asset.stale_snapshot` (review), недоступный результат → `insufficient`, freshness самого источника → `dwh.freshness` (review) при `--dwh` (`tests/test_environment_checks.py`) |
 
 ### 15.4 Compatibility gate

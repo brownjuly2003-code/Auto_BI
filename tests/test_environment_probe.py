@@ -19,6 +19,8 @@ import re
 from datetime import date, datetime
 from typing import Any
 
+import pytest
+
 from auto_bi.verification.environment import EnvironmentQuestions, TableQuestion
 from auto_bi.verification.environment_probe import collect
 
@@ -45,13 +47,14 @@ class FakeEngine:
         return self.answers[max(matches, key=len)] if matches else []
 
 
-def questions() -> EnvironmentQuestions:
+def questions(columns: dict[str, str] | None = None) -> EnvironmentQuestions:
     return EnvironmentQuestions(
         engines=["clickhouse"],
         tables=[
             TableQuestion(
                 table="dm.sales_daily",
                 event_time_column="date",
+                columns={"date": "Date"} if columns is None else columns,
                 timezones=["Europe/Moscow"],
                 metric_refs=["metric://sales/gross_margin_pct@3"],
             )
@@ -63,7 +66,12 @@ def clickhouse_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
     answers: dict[str, list[dict[str, Any]]] = {
         "currentUser() AS value": [{"value": "gate_ro"}],
         "system.settings": [{"value": "1"}],
-        "system.grants": [{"access_type": "SELECT"}, {"access_type": "INSERT"}],
+        "system.grants": [
+            {"access_type": "SELECT", "database": None, "table": None, "column": None},
+            {"access_type": "INSERT", "database": None, "table": None, "column": None},
+        ],
+        "system.enabled_roles": [],
+        "system.row_policies": [],
         "system.tables": [
             {
                 "engine": "MergeTree",
@@ -83,7 +91,7 @@ def clickhouse_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
 
 def postgres_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
     answers: dict[str, list[dict[str, Any]]] = {
-        "current_user AS name": [{"name": "gate_ro", "superuser": False}],
+        "current_user AS name": [{"name": "gate_ro", "superuser": False, "bypassrls": False}],
         "has_table_privilege('dm.sales_daily', 'INSERT')": [
             {"insert": False, "update": False, "delete": False, "truncate": False}
         ],
@@ -93,6 +101,10 @@ def postgres_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
             {"name": "revenue", "type": "numeric(18,2)"},
         ],
         "'SELECT') AS ok": [{"ok": True}],
+        "has_any_column_privilege": [{"ok": True}],
+        "has_column_privilege(a.attrelid": [{"name": "date", "ok": True}],
+        "pg_policy": [],
+        "relrowsecurity": [{"enabled": False}],
         "count(*)": [{"rows_seen": 600, "max_event_time": date(2026, 8, 24)}],
     }
     answers.update(overrides)
@@ -245,7 +257,9 @@ def test_a_postgres_view_counts_as_a_mart() -> None:
 
 
 def test_a_postgres_mart_the_role_cannot_select_is_unreadable() -> None:
-    engine = postgres_engine(**{"'SELECT') AS ok": [{"ok": False}]})
+    """No privilege on any column of it — the question that separates a mart out of reach
+    from one this role holds only column grants on."""
+    engine = postgres_engine(**{"has_any_column_privilege": [{"ok": False}]})
 
     facts = collect(engine, questions(), engine="greengage", target="stand")
 
@@ -330,3 +344,318 @@ def test_postgres_leaves_the_layout_unreported() -> None:
     facts = collect(postgres_engine(), questions(), engine="greengage", target="stand")
 
     assert facts.tables[0].layout is None
+
+
+# --- the security half: what each engine is asked about reach ------------------
+
+
+class RefusingEngine:
+    """Answers like `FakeEngine`, but raises for the queries named as out of reach.
+
+    Both refusals are the stands' own words: ClickHouse `Code: 497 … ACCESS_DENIED`, and a
+    psycopg error carrying `sqlstate` 42501. Asking about access is exactly where a read-only
+    role runs out of privilege, so this is the normal case, not the exotic one.
+    """
+
+    def __init__(self, inner: FakeEngine, *refused: str, sqlstate: str | None = None) -> None:
+        self.inner = inner
+        self.refused = refused
+        self.sqlstate = sqlstate
+
+    def __call__(self, sql: str) -> list[dict[str, Any]]:
+        if any(marker in sql for marker in self.refused):
+            error = Exception(
+                f"Code: 497. DB::Exception: gate_ro: Not enough privileges. "
+                f"(ACCESS_DENIED) while running {sql[:40]}"
+                if self.sqlstate is None
+                else "permission denied for table sales_daily"
+            )
+            if self.sqlstate is not None:
+                error.sqlstate = self.sqlstate  # type: ignore[attr-defined]
+            raise error
+        return self.inner(sql)
+
+    @property
+    def asked(self) -> list[str]:
+        return self.inner.asked
+
+
+def test_clickhouse_reach_is_read_from_the_grants_not_from_the_catalog() -> None:
+    """The stand hides what it does not grant: a role granted five of six columns saw five in
+    `system.columns`. Reading reach from the catalog would call the sixth one missing."""
+    engine = clickhouse_engine(
+        **{
+            "system.grants": [
+                {
+                    "access_type": "SELECT",
+                    "database": "dm",
+                    "table": "sales_daily",
+                    "column": column,
+                    "is_partial_revoke": 0,
+                }
+                for column in ("date", "store_id", "revenue")
+            ],
+            "system.columns": [
+                {"name": "date", "type": "Date"},
+                {"name": "revenue", "type": "Decimal(18, 2)"},
+            ],
+        }
+    )
+
+    facts = collect(
+        engine,
+        questions(columns={"date": "Date", "gross_margin": "Decimal(18, 2)"}),
+        engine="clickhouse",
+        target="stand",
+    )
+
+    assert facts.tables[0].column_reads == {"date": True, "gross_margin": False}
+
+
+def test_a_partial_revoke_takes_a_column_back() -> None:
+    """`REVOKE SELECT(gross_margin)` after a table-wide grant is recorded as a row of its own
+    with `is_partial_revoke = 1`, and the stand does refuse that column afterwards."""
+    engine = clickhouse_engine(
+        **{
+            "system.grants": [
+                {
+                    "access_type": "SELECT",
+                    "database": "dm",
+                    "table": "sales_daily",
+                    "column": None,
+                    "is_partial_revoke": 0,
+                },
+                {
+                    "access_type": "SELECT",
+                    "database": "dm",
+                    "table": "sales_daily",
+                    "column": "gross_margin",
+                    "is_partial_revoke": 1,
+                },
+            ]
+        }
+    )
+
+    facts = collect(
+        engine,
+        questions(columns={"date": "Date", "gross_margin": "Decimal(18, 2)"}),
+        engine="clickhouse",
+        target="stand",
+    )
+
+    assert facts.tables[0].column_reads == {"date": True, "gross_margin": False}
+
+
+def test_a_grant_through_an_enabled_role_reaches_this_session() -> None:
+    """A privilege can arrive through a role as easily as through a user name, so the roles
+    are named in the question rather than left to a join the access catalog does not do."""
+    engine = clickhouse_engine(
+        **{
+            "system.enabled_roles": [{"role_name": "analyst_role"}],
+            "system.grants": [
+                {
+                    "access_type": "SELECT",
+                    "database": None,
+                    "table": None,
+                    "column": None,
+                    "is_partial_revoke": 0,
+                }
+            ],
+        }
+    )
+
+    facts = collect(engine, questions(), engine="clickhouse", target="stand")
+
+    assert "'analyst_role'" in next(sql for sql in engine.asked if "system.grants" in sql)
+    assert facts.tables[0].column_reads == {"date": True}
+
+
+def test_clickhouse_row_policies_name_users_and_roles() -> None:
+    """The stand applies a policy only to what it names — a session no policy names read all
+    600 rows — and a policy attached to a role the session holds did filter it."""
+    engine = clickhouse_engine(
+        **{
+            "system.enabled_roles": [{"role_name": "analyst_role"}],
+            "system.row_policies": [
+                {
+                    "short_name": "sec_pol",
+                    "select_filter": "store_id = 1",
+                    "is_restrictive": 0,
+                    "apply_to_all": 0,
+                    "apply_to_list": ["gate_rw"],
+                    "apply_to_except": [],
+                },
+                {
+                    "short_name": "role_pol",
+                    "select_filter": "store_id = 2",
+                    "is_restrictive": 1,
+                    "apply_to_all": 0,
+                    "apply_to_list": ["analyst_role"],
+                    "apply_to_except": [],
+                },
+            ],
+        }
+    )
+
+    policies = (
+        collect(engine, questions(), engine="clickhouse", target="stand").tables[0].row_policies
+        or []
+    )
+
+    assert [(item.name, item.applies_to_session, item.restrictive) for item in policies] == [
+        ("sec_pol", False, False),
+        ("role_pol", True, True),
+    ]
+    assert policies[1].expression == "store_id = 2"
+
+
+def test_a_policy_that_applies_to_all_but_this_session_does_not() -> None:
+    engine = clickhouse_engine(
+        **{
+            "system.row_policies": [
+                {
+                    "short_name": "everyone",
+                    "select_filter": "store_id = 1",
+                    "is_restrictive": 0,
+                    "apply_to_all": 1,
+                    "apply_to_list": [],
+                    "apply_to_except": ["gate_ro"],
+                }
+            ]
+        }
+    )
+
+    policies = (
+        collect(engine, questions(), engine="clickhouse", target="stand").tables[0].row_policies
+        or []
+    )
+
+    assert [item.applies_to_session for item in policies] == [False]
+
+
+def test_clickhouse_has_no_row_security_switch_to_report() -> None:
+    """`None` is "the engine does not answer this", which is what keeps the deny-all rule —
+    a Postgres shape — from ever firing here."""
+    facts = collect(clickhouse_engine(), questions(), engine="clickhouse", target="stand")
+
+    assert facts.tables[0].row_security_enabled is None
+    assert facts.tables[0].row_policies == []
+
+
+def test_an_access_catalog_out_of_reach_is_reported_as_unanswered() -> None:
+    """A refusal is a fact about the environment; a crashed run is not a verdict."""
+    engine = RefusingEngine(clickhouse_engine(), "system.grants", "system.row_policies")
+
+    facts = collect(engine, questions(), engine="clickhouse", target="stand")
+
+    assert facts.tables[0].column_reads is None
+    assert facts.tables[0].row_policies is None
+    assert facts.tables[0].readable is True
+
+
+def test_a_session_that_cannot_show_its_grants_is_not_called_read_only() -> None:
+    """`readonly` did not stop this session and the engine will not say what it granted:
+    the safe reading of an unanswered question is not "read-only" (invariant 3)."""
+    engine = RefusingEngine(
+        clickhouse_engine(**{"system.settings": [{"value": "0"}]}), "system.grants"
+    )
+
+    role = collect(engine, questions(), engine="clickhouse", target="stand").role
+
+    assert role.read_only is False
+    assert "out of reach" in role.evidence
+
+
+def test_a_reading_the_role_is_refused_is_unreadable_not_a_crash() -> None:
+    engine = RefusingEngine(clickhouse_engine(), "count()")
+
+    facts = collect(engine, questions(), engine="clickhouse", target="stand")
+
+    assert (facts.tables[0].exists, facts.tables[0].readable) == (True, False)
+
+
+def test_an_engine_that_fell_over_is_not_an_access_fact() -> None:
+    """Only a refusal is an answer. A dropped connection graded as "no policy applies" would
+    be the gate inventing evidence."""
+
+    def dead(sql: str) -> list[dict[str, Any]]:
+        raise ConnectionError("connection to server was lost")
+
+    with pytest.raises(ConnectionError):
+        collect(dead, questions(), engine="clickhouse", target="stand")
+
+
+def test_postgres_reads_a_mart_it_only_holds_column_grants_on() -> None:
+    """`has_table_privilege(…, 'SELECT')` is false for a column-granted role on the stand,
+    while that role reads the mart perfectly well; the narrower question would have blocked a
+    release over a mart the gate had just read."""
+    engine = postgres_engine(
+        **{
+            "has_table_privilege('dm.sales_daily', 'SELECT')": [{"ok": False}],
+            "has_any_column_privilege": [{"ok": True}],
+            "has_column_privilege(a.attrelid": [
+                {"name": "date", "ok": True},
+                {"name": "gross_margin", "ok": False},
+            ],
+        }
+    )
+
+    facts = collect(
+        engine,
+        questions(columns={"date": "date", "gross_margin": "numeric(18,2)"}),
+        engine="greengage",
+        target="stand",
+    )
+
+    assert facts.tables[0].readable is True
+    assert facts.tables[0].column_reads == {"date": True, "gross_margin": False}
+
+
+def test_postgres_reports_the_row_security_switch_and_its_policies() -> None:
+    engine = postgres_engine(
+        **{
+            "relrowsecurity": [{"enabled": True}],
+            "pg_policy": [
+                {
+                    "name": "p_sales",
+                    "permissive": True,
+                    "expression": "(store_id = 1)",
+                    "applies": True,
+                }
+            ],
+        }
+    )
+
+    table = collect(engine, questions(), engine="greengage", target="stand").tables[0]
+
+    assert table.row_security_enabled is True
+    assert (table.row_policies or [])[0].applies_to_session is True
+    assert (table.row_policies or [])[0].restrictive is False
+
+
+def test_postgres_asks_only_about_policies_that_govern_reads() -> None:
+    """An INSERT policy does not filter a SELECT, and counting one as applying would turn a
+    write rule into a review of somebody's numbers."""
+    engine = postgres_engine()
+
+    collect(engine, questions(), engine="greengage", target="stand")
+
+    assert any("polcmd::text IN ('r', '*')" in sql for sql in engine.asked)
+
+
+def test_a_postgres_superuser_is_not_subject_to_row_security() -> None:
+    engine = postgres_engine(**{"current_user AS name": [{"name": "postgres", "superuser": True}]})
+
+    role = collect(engine, questions(), engine="greengage", target="stand").role
+
+    assert role.bypasses_row_security is True
+
+
+def test_a_plain_postgres_role_is_subject_to_it() -> None:
+    engine = postgres_engine(
+        **{"current_user AS name": [{"name": "gate_ro", "superuser": False, "bypassrls": False}]}
+    )
+
+    role = collect(engine, questions(), engine="greengage", target="stand").role
+
+    assert role.bypasses_row_security is False
