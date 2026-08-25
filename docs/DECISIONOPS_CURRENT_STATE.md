@@ -4,7 +4,7 @@
 **Стадия:** офлайновый путь §8.2 работает целиком — validate → freeze snapshots →
 gaps → diff → impact → инвалидация assets → reconcile → reference SQL (шаг 6:
 aggregate + governed ratio на ClickHouse и на PostgreSQL-семействе) → BI compile →
-evidence bundle → отчёт владельцу → чтение bundle. Шаг 7 наполовину живой: под
+evidence bundle → отчёт владельцу → чтение bundle. Шаг 7 живой на три четверти: под
 `--dwh` гейт спрашивает движок read-only ролью (`dwh.access`, `dwh.freshness`,
 `dwh.physical`), без него честно говорит `check.not_configured`.
 Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot) — решение владельца**.
