@@ -40,10 +40,11 @@ contracts -> validate -> semantic diff -> VQR/result compare
 
 ## Done When
 
-- [ ] Все critical seeded regressions блокируются, safe change не блокируется.
-- [ ] Supported results reconciled и каждый factual claim имеет evidence.
-- [ ] Release gate не мутирует BI/DWH и запускается offline на fixtures.
-- [ ] Существующий v1 focused/full release gate остаётся зелёным.
+- [x] Все critical seeded regressions блокируются, safe change не блокируется.
+- [x] Supported results reconciled и каждый factual claim имеет evidence
+  (claim без валидного `evidence_ref` не проходит сборку bundle).
+- [x] Release gate не мутирует BI/DWH и запускается offline на fixtures.
+- [x] Существующий v1 focused/full release gate остаётся зелёным (1696 тестов).
 - [ ] Есть измеренный pilot outcome или честное решение сузить/остановить scope.
 
 ## Non-goals до pilot evidence

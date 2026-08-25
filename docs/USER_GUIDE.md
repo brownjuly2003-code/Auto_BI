@@ -76,6 +76,8 @@ auto_bi serve            # http://127.0.0.1:8200
 | `eval` | Прогон eval-сьютов. `--suite advisor\|golden\|all`, `--cases id1,id2` (подмножество). advisor — офлайн; golden — `--llm-mode live` (деф., живой LLM) \| `replay` (офлайн по записанным фикстурам) \| `record` (живой LLM + запись фикстур), `--fixtures-dir DIR` (деф. `tests/fixtures/golden_llm`). |
 | `dbt-import` | Обогащение `model.yaml` из dbt-артефактов (описания, связи). `--manifest` (обяз.), `--catalog`, `--dry-run`. Заполняет ТОЛЬКО пустые значения — ручные правки всегда выигрывают. |
 | `prune` | Удаление BI-артефактов прошлых ревизий через ownership-леджер (последняя сборка каждой сессии всегда переживает). `--session ID` (только одна сессия), `--dry-run` (показать кандидатов, не удаляя). |
+| `decision validate` | **DecisionOps.** Offline-проверка decision products против metric contracts (пины версий, lifecycle, dimensions, policy). Аргументы — файлы/каталоги YAML, `--json`. Ни DWH, ни BI, ни LLM. |
+| `decision verify` | **DecisionOps.** Полный Analytics Release & Evidence Gate для ОДНОГО продукта: `--base`/`--candidate` (каталоги с `model.yaml`), `--evidence DIR`, `--dashboards DIR`, `--assets PATH`, `--results FILE`, `--product ID`, `--environment REF`, `--created-at TS`, `--json`. Тоже полностью offline. |
 
 ### build
 ```bash
@@ -153,6 +155,36 @@ auto_bi prune --session <id>      # только одна сессия
 удаляет. Недоступный BI-таргет → его строки пропускаются, строка с неудавшимся удалением
 остаётся `live` и повторяется следующим прунингом; код возврата 0 при чистом прогоне, 1 если
 что-то не удалось или было пропущено. См. ARCHITECTURE §3.17.
+
+### decision
+```bash
+auto_bi decision validate contracts/                     # продукты ↔ metric contracts
+auto_bi decision verify contracts/ \
+        --base semantic/base --candidate semantic/head \
+        --evidence .evidence --dashboards dashboards/ \
+        --assets assets/ --results results.yaml
+```
+Контур DecisionOps: не «запрос → дашборд», а проверка, что изменение семантики не ломает
+governed-числа. `validate` отвечает на один вопрос — согласованы ли контракты между собой.
+`verify` прогоняет полную последовательность гейта: валидация контрактов → заморозка двух
+semantic snapshot'ов → семантические gap'ы → diff → impact до продукта, дашборда и владельца →
+инвалидация verified assets → сверка результатов → компиляция дашбордов под их BI **без единого
+remote-вызова** → сборка content-addressed evidence bundle и его повторная верификация.
+
+Форматы входов: semantic ref — каталог с `model.yaml` и необязательным `metrics/`;
+dashboard spec — файл `<segment>@<version>.yaml` (версия в имени, чтобы продукт, запинненный
+на `@7`, не подхватил вёрстку `@8`); assets — YAML `VerifiedAsset`; results — `{asset id:
+ResultSet}` с кандидатными ответами, снятыми вне гейта.
+
+Код возврата — вердикт, а не операционный статус: `0` pass / pass_with_advisory, `3`
+needs_review, `4` block, `2` usage-ошибка. `1` не используется намеренно — это код
+необработанного исключения, и падение не должно выглядеть как вынесенный вердикт.
+
+Гейт не скрывает, чего он не сделал: шаги «compile SQL» и «security/access/freshness/physical
+checks» пока не реализованы offline и выходят как `check.not_implemented` (advisory);
+недоступный кандидатный результат — `needs_review`, никогда не pass. `--created-at` задаётся
+явно, когда прогон должен быть байт-в-байт воспроизводимым. См.
+[DECISIONOPS_ARCHITECTURE §8.2 и §12.1](DECISIONOPS_ARCHITECTURE.md).
 
 ---
 

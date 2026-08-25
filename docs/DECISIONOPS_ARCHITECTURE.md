@@ -769,13 +769,15 @@ domain state machine.
 
 ### 15.3 Release scenarios
 
-- breaking metric change блокируется с exact impact;
-- presentation-only change не блокируется;
-- expensive candidate plan блокируется policy;
-- stale source возвращает honest insufficient/block;
-- Superset/DataLens compile contracts используют общий canonical query;
-- отсутствие evidence ref ломает bundle validation;
-- gate не вызывает remote mutation methods.
+| Сценарий | Покрыт |
+|---|---|
+| breaking metric change блокируется с exact impact | ✅ `tests/test_decision_verify.py` — 4 seed'а (formula, grain, event time, removed field) до владельца и дашборда |
+| presentation-only change не блокируется | ✅ там же |
+| Superset/DataLens compile contracts используют общий canonical query | ✅ `tests/test_bi_contract.py` — сравнение **объектов** builder'ов, не результатов |
+| отсутствие evidence ref ломает bundle validation | ✅ `tests/test_evidence_bundle.py` |
+| gate не вызывает remote mutation methods | ✅ socket-запрет + mutation-spy на каждом глаголе обоих BI-клиентов |
+| expensive candidate plan блокируется policy | ⛔ ждёт §8.2 шаг 7 (physical/cost checks поверх `advisor/*`) |
+| stale source возвращает honest insufficient/block | ⚠️ частично: stale **verified asset** → `asset.stale_snapshot` (review), недоступный результат → `insufficient`; freshness самого источника ждёт шаг 7 |
 
 ### 15.4 Compatibility gate
 
