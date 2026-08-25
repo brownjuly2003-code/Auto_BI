@@ -915,3 +915,113 @@ def test_a_ceiling_no_planner_can_answer_is_named_without_blocking(tmp_path: Pat
     assert status_of(report, "dwh.cost") is CheckStatus.ADVISORY
     assert summary_of(report, "dwh.cost") == "cost.bound_not_estimable"
     assert report.verdict is Verdict.PASS_WITH_ADVISORY
+
+
+# --- a change that reaches another product, not this one ----------------------
+
+
+REVENUE_PRODUCT_ID = "decision://sales/weekly_revenue"
+
+
+def revenue_metric() -> dict[str, Any]:
+    contract = metric_contract()
+    contract["metadata"]["id"] = "metric://sales/revenue"
+    contract["formula"] = {
+        "kind": "typed_aggregate",
+        "aggregate": {"table": "dm.sales_daily", "column": "revenue", "agg": "sum"},
+    }
+    contract["additivity"] = "additive"
+    return contract
+
+
+def revenue_product() -> dict[str, Any]:
+    product = product_contract()
+    product["metadata"]["id"] = REVENUE_PRODUCT_ID
+    product["decision"]["question"] = "Как изменилась выручка?"
+    product["scope"]["metrics"] = ["metric://sales/revenue@3"]
+    product["delivery"]["dashboards"] = [{"ref": "dashboard://weekly_revenue@1"}]
+    return product
+
+
+def _two_product_graph(case: Case) -> Case:
+    """The margin product beside a revenue product that shares the mart, not the metric."""
+    revenue = revenue_metric()
+    _write_yaml(case.contracts / "revenue.yaml", revenue)
+    _write_yaml(case.contracts / "weekly_revenue.yaml", revenue_product())
+    for root in (case.base, case.candidate):
+        _write_yaml(root / "metrics" / "revenue.yaml", revenue)
+    _write_yaml(case.dashboards / "weekly_revenue@1.yaml", dashboard_spec())
+    return case
+
+
+def test_a_change_to_another_products_metric_does_not_reach_this_one(tmp_path: Path) -> None:
+    """§8.3: a change is a question for the products that depend on the metric — for the
+    product that does not, the impact check has nothing to report, and must not say
+    "reaches this product" about a change whose reach is empty."""
+    case = _two_product_graph(Case(tmp_path).with_candidate(contract=_timezone_change()))
+
+    report = case.run(product_id=REVENUE_PRODUCT_ID)
+
+    assert status_of(report, "semantic.diff") is CheckStatus.REVIEW  # the change is real
+    assert status_of(report, "impact.products") is CheckStatus.PASS
+    assert summary_of(report, "impact.products") == "impact.none"
+    assert report.blocking() == []
+    payload = _check_payload(tmp_path, report, "impact.products")
+    assert [item["products"] for item in payload["impacts"]] == [[]]  # still says what it saw
+    summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Whose numbers this reaches" not in summary
+
+
+def test_the_same_change_still_blocks_the_product_that_depends_on_it(tmp_path: Path) -> None:
+    case = _two_product_graph(Case(tmp_path).with_candidate(contract=_timezone_change()))
+
+    report = case.run(product_id=PRODUCT_ID)
+
+    assert report.verdict is Verdict.BLOCK
+    impact = _check_payload(tmp_path, report, "impact.products")
+    assert [item["products"] for item in impact["impacts"]] == [[f"{PRODUCT_ID}@1"]]
+    assert "impact.products" in {check.check_id for check in report.blocking()}
+
+
+def test_an_asset_of_another_products_metric_is_not_this_products_evidence(
+    tmp_path: Path,
+) -> None:
+    """The run verifies one product; another product's asset is neither its evidence nor its
+    finding, and a claim about a number it does not deliver must not be sealed into its bundle."""
+    case = _two_product_graph(Case(tmp_path).with_candidate(contract=_timezone_change()))
+    case.with_asset().with_results([["Москва", "0.412"]])
+
+    report = case.run(product_id=REVENUE_PRODUCT_ID)
+
+    assert summary_of(report, "assets.invalidated") == "assets.valid"
+    assert status_of(report, "assets.invalidated") is CheckStatus.PASS
+    assert summary_of(report, "results.reconcile") == "result.no_expectations"
+    assert _check_payload(tmp_path, report, "assets.invalidated")["assets"] == []
+    bundle = read_bundle(FilesystemArtifactStore(tmp_path / "evidence"), report.run_id)
+    assert bundle.claims == []
+
+
+def test_the_products_own_asset_is_still_reconciled_on_that_graph(tmp_path: Path) -> None:
+    case = _two_product_graph(Case(tmp_path).with_candidate())
+    case.with_asset().with_results([["Москва", "0.412"], ["Казань", "0.377"]])
+
+    report = case.run(product_id=PRODUCT_ID)
+
+    assert summary_of(report, "results.reconcile") == "result.equivalent"
+
+
+def test_a_second_verdict_never_overwrites_the_first_bundle(tmp_path: Path) -> None:
+    """Same idempotency key, other recorded results: the run does not get to reseal the id."""
+    case = Case(tmp_path).with_asset()
+    case.with_results([["Москва", "0.412"], ["Казань", "0.377"]])
+    first = case.run()
+
+    case.with_results([["Москва", "0.500"], ["Казань", "0.377"]])
+    with pytest.raises(VerifyError, match="refusing to overwrite"):
+        case.run()
+
+    store = FilesystemArtifactStore(tmp_path / "evidence")
+    assert verify_bundle(store, first.run_id) == []
+    assert read_bundle(store, first.run_id).run_id == first.run_id

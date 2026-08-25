@@ -3,86 +3,108 @@
 **Что это.** Bootstrap task 8 требует pilot на *реальном* change владельца. Реального change
 владелец пока не назвал, поэтому здесь — **репетиция на локальном стенде**: тот же гейт, тот
 же живой ClickHouse, тот же отчёт владельцу, но продукт фикстурный. Репетиция отвечает на
-три вопроса task 8 настолько, насколько на них вообще можно ответить без владельца, и прямо
-называет, что она НЕ доказывает.
+вопросы task 8 настолько, насколько на них можно ответить без владельца, и прямо называет,
+что она НЕ доказывает.
 
-**Вывод в одну строку.** Гейт против живого движка отрабатывает за **~1.9 с**, изменение
-таймзоны event time у governed-метрики останавливает релиз с точным адресатом (продукт,
-дашборд, владелец), evidence bundle перепроверяется из репозитория. Что осталось за
-владельцем — прочитать отчёт по секундомеру и назвать реальный change.
+**Вывод в одну строку.** Гейт против живого движка отрабатывает за **~1.6 с**, отличает
+изменение, которое достигло продукта, от изменения, которое его не касается, ловит расхождение
+числа против verified asset и не даёт перезаписать запечатанный bundle. **Репетиция нашла и
+починила два дефекта гейта** (ниже) — ровно то, ради чего репетицию и гоняют.
 
-## Что гонялось
+## Матрица прогонов
 
-| | Run A — контроль | Run B — пилотный change |
-|---|---|---|
-| Продукт | `decision://sales/weekly_margin@1` (фикстура `scripts/decision_stand_fixture.py`) | тот же |
-| Change | нет: base = candidate | `time.timezone` метрики `gross_margin_pct`: `Europe/Moscow → UTC` |
-| Стенд | ClickHouse 24.8.14.39, WSL `~/chstand24`, `127.0.0.1:8124/dm`, роль `gate_ro` (`readonly=1`) | тот же |
-| Потолок | `budgets.max_scanned_rows = 1000` | тот же |
-| Вердикт | `needs_review` (exit 3) — только `dwh.freshness` | **`block`** (exit 4) — `impact.products` |
-| Bundle | `run-f7a3fcfc69c98ad1`, `sha256:0b5ba3b0…` | `run-859c5811cf2fc7c7`, `sha256:dc57115a…` |
-| В репозитории | `docs/pilot/2026-08-25-ch-control/` | `docs/pilot/2026-08-25-ch-tz-change/` |
+Один граф: два governed-продукта на одной витрине `dm.sales_daily` — `weekly_margin`
+(метрика `gross_margin_pct`, ratio) и `weekly_revenue` (метрика `revenue`, aggregate). У
+margin есть verified asset `weekly_margin_by_region` с ожидаемым числом, **снятым с самого
+стенда** (`0.452054`); гейт этот запрос не выполняет — число записано снаружи и подано ему.
 
-Каждый каталог содержит входы (`contracts/`, `base/`, `candidate/`, `dashboards/`) и
-`evidence/` — bundle как он записан гейтом. Пароля в bundle нет (проверено grep'ом по
-значению из `creds.env`).
+| Прогон | Change | Продукт | Вердикт | Что доказывает |
+|---|---|---|---|---|
+| `control` | нет | weekly_margin | `needs_review` (3) | на нетронутом стенде тревожит только `freshness.stale`; `results.reconcile` = `result.equivalent` — число сверено |
+| `tz-margin` | `time.timezone` `Europe/Moscow → UTC` | weekly_margin | **`block`** (4) | `impact.products` → продукт, дашборд, владелец; asset инвалидирован |
+| `tz-revenue` | **тот же** change | weekly_revenue | `needs_review` (3) | `impact.none` («0 of 1 change(s) reach this product»), `assets.valid`, `result.no_expectations` — чужой change не вменяется этому продукту |
+| `result-drift` | нет; записанный результат `0.452100` вместо `0.452054` | weekly_margin | **`block`** (4) | `result.not_equivalent`, разница названа: `msk.gross_margin_pct: '0.452054' -> '0.452100'` |
 
-Почему именно таймзона: это то изменение, которое аналитик делает «по мелочи» и которое
-сдвигает границы дня у недельной маржи — реалистичнее, чем подмена числителя из сьюта.
+Каждый каталог `docs/pilot/2026-08-25-ch-*/` самодостаточен: входы (`contracts/`, `base/`,
+`candidate/`, `dashboards/`, `assets/`, `results.yaml`) и `evidence/` — bundle как его записал
+гейт. Все четыре перепроверяются из репозитория (`auto_bi decision evidence …` → `pass`).
+Пароля в bundle нет (проверено grep'ом по значению из `creds.env`).
+
+Почему таймзона: это изменение, которое аналитик делает «по мелочи», а оно сдвигает границы
+дня у недельной маржи — реалистичнее подмены числителя из сьюта.
+
+## Что репетиция нашла — два дефекта, оба починены
+
+**1. `impact.products` грейдил чужие изменения как свои.** `resolve_impact` держит в отчёте
+каждое изменение диффа, включая те, от которых проверяемый продукт не зависит (payload обязан
+говорить, что видел). Гейт же грейдил **весь список**: прогон `tz-revenue` до починки давал
+`impact.products = review` и печатал секцию «Whose numbers this reaches» — про продукт, до
+которого этот change не доходит. Теперь грейдится и рендерится только то, что действительно
+достигло продукта (`_reaching`), payload по-прежнему полный, а `semantic.diff` по-прежнему
+показывает change: это находка снапшота, а не продукта. Формулировка стала «N of M change(s)
+reach this product».
+
+**2. `assets`/`results` брались все подряд, независимо от продукта.** Прогон `tz-revenue`
+инвалидировал asset чужой метрики и «сверял» его число, запечатывая в bundle продукта claim о
+числе, которого этот продукт не отдаёт. Теперь репозиторий сужается до assets, называющих
+метрики продукта (версии игнорируются с обеих сторон — резолвится ли пин, спрашивает
+`decision validate`).
+
+**Следствие для evidence:** смысл проверки изменился, поэтому по конвенции самого репозитория
+подняты `CHECK_VERSION` и `VERIFIER_VERSION` (1 → 2). Bundle, выданный верификатором 1, теперь
+не читается как гранёный сегодняшним правилом и не сталкивается по `run_id` с новым.
+
+**3. Побочно найдено и закрыто: одинаковый `run_id` тихо перезаписывал запечатанный bundle.**
+Записанные результаты намеренно **не входят** в idempotency key §7.6 (как и показания движка:
+это наблюдения момента, иначе каждый прогон был бы новым). Поэтому `control` и `result-drift`
+— один `run_id` `run-5a210ec990a382f9` при разных вердиктах (`needs_review` и `block`). В один
+и тот же каталог evidence второй прогон молча затирал первый. Теперь `BundleWriter.write`
+отказывается (`EvidenceConflictError` → usage-ошибка, exit 2) до того, как записан хоть один
+байт; идентичная перезапись по-прежнему no-op. Проверено вживую:
+
+```text
+error: run 'run-5a210ec990a382f9' already holds bundle sha256:09bfc5c4…;
+refusing to overwrite it with sha256:d8d3d6aa… (same idempotency key, different evidence)
+```
 
 ## Что измерено
 
-**Время гейта.** Два повторных прогона Run B против живого движка: **1945 мс и 1905 мс**
-(все 13 проверок, включая пять `dwh.*` с запросами к движку, компиляция BI-контрактов, запись
-и перепроверка bundle). Это время машины; время владельца — ниже, оно не измерено.
+**Время гейта: 1580 / 1541 / 1770 мс** (три повтора `tz-margin` против живого движка) — все
+13 проверок, включая пять `dwh.*` с запросами к движку, компиляция BI-контрактов, запись и
+перепроверка bundle. Это время машины; время владельца — не измерено, его меряет только
+владелец.
 
-**Точность impact.** Run B: ровно одно изменение — `metric.time_changed` на
-`metric://sales/gross_margin_pct`, классифицировано как `review`, поднято до `block`, потому
-что от метрики зависит governed-продукт; адресаты — `decision://sales/weekly_margin@1`,
-`dashboard://weekly_margin@7`, владелец `commercial-analytics`. Run A: ноль изменений, ноль
-impact. Ложных срабатываний нет, пропусков нет — **но граф здесь тривиальный** (один продукт,
-одна метрика, один дашборд), см. «Чего репетиция не доказывает».
+**Детерминизм.** Три повтора дают один и тот же `run_id` и побайтово один манифест.
+`--created-at` фиксирован, поэтому воспроизводится и свежесть.
 
-**Evidence.** Оба bundle — 19 артефактов, `integrity = content_hashed`; Run B перепроверен
-уже из `docs/pilot/…`: `auto_bi decision evidence docs/pilot/2026-08-25-ch-tz-change/evidence`
-→ `verdict: pass (0 problem(s))`. Отчёт владельцу — тот же bundle с
-`--artifact report-summary-md`.
+**Стенд.** `access.read_only`, `physical.as_declared`, `security.unfiltered`,
+`cost.within_budget` (600 строк против потолка 1000) — ровно то, что обещает
+`DECISIONOPS_CURRENT_STATE.md` для нетронутого стенда; `freshness.stale`, потому что витрина
+датирована 2026-08-24 (45 ч против `PT6H`).
 
-**Стенд.** Контроль ответил ровно тем, что обещает `DECISIONOPS_CURRENT_STATE.md` для
-нетронутого стенда: `access.read_only`, `physical.as_declared`, `security.unfiltered`,
-`cost.within_budget` (600 строк против потолка 1000), `freshness.stale` (витрина датирована
-2026-08-24, 45 ч против `PT6H`).
+## Наблюдение владельцу — вопрос читаемости, не логики
 
-## Наблюдения — вопросы владельцу, не баги
-
-1. **Отчёт отвечает «что стоит и кого касается» в первых восьми строках** («What stops the
-   release» + «Whose numbers this reaches»). Понятен ли он без чтения таблицы — судить
-   владельцу; это и есть замер review time из task 8.
-2. **Формулировка freshness про таймзону.** Для `Date`-колонки гейт читает свежесть как начало
-   дня в UTC и *сообщает* объявленную таймзону, не применяя её (так задумано, см. docstring
-   `verification/environment.py`). Строка «read as 2026-08-24T00:00:00Z while the metric
-   declares timezone Europe/Moscow» честна, но владелец может прочитать её как противоречие.
-   Переформулировать или оставить — решение по читаемости, не по логике.
-3. **`result.no_expectations` в «What was not done».** У фикстурного продукта нет verified
-   asset с ожидаемым результатом, поэтому гейт остановил релиз **по семантике, а не по числу**:
-   само значение маржи до/после никто не сверял. Для настоящего пилота нужен хотя бы один
-   verified asset с записанным ожидаемым результатом — иначе `results.reconcile` молчит и на
-   реальном change.
+Для `Date`-колонки гейт читает свежесть как начало дня в UTC и *сообщает* объявленную
+таймзону, не применяя её (так задумано, docstring `verification/environment.py`). Строка «read
+as 2026-08-24T00:00:00Z while the metric declares timezone Europe/Moscow» честна, но может
+прочитаться как противоречие. Переформулировать или оставить — решение по читаемости.
 
 ## Чего репетиция не доказывает
 
-- **Что impact точен на нетривиальном графе.** «Изменение достигло продукта A и не достигло
-  продукта B» здесь проверить не на чем — продукт один. Реальный пилот должен взять семантику
-  минимум с двумя продуктами на общей метрике.
-- **Что владелец понял отчёт и за сколько.** Это измеряет только владелец.
-- **Что change реальный.** Таймзона выбрана агентом как правдоподобная; task 8 остаётся
+- **Что владелец понял отчёт и за сколько.** Это измеряет только владелец — и это тот самый
+  «review time», которого требует task 8.
+- **Что change реальный.** Оба change выбраны агентом как правдоподобные; task 8 остаётся
   открытым до change, названного владельцем.
+- **Что граф достаточно велик.** Два продукта — минимум, на котором «достигло A, не достигло
+  B» вообще является утверждением. Настоящая семантика владельца больше.
+- **Что число верное.** Гейт сравнивает записанный результат с ожидаемым; он не выполняет
+  запрос asset'а и не ручается, что записанное — то, что вернул движок.
 
 ## Что нужно от владельца, чтобы закрыть task 8
 
-1. Открыть `docs/pilot/2026-08-25-ch-tz-change/evidence/run-859c5811cf2fc7c7/reports/` (или
-   `auto_bi decision evidence … --artifact report-summary-md`), засечь время до ответа «что
-   сломалось и у кого» и сказать, понятен ли отчёт.
+1. Открыть отчёт (`auto_bi decision evidence docs/pilot/2026-08-25-ch-tz-margin/evidence
+   --artifact report-summary-md`), засечь время до ответа «что сломалось и у кого», сказать,
+   понятен ли отчёт.
 2. Назвать реальный change (и стенд, если не локальный).
 3. Только после этого — решение о certified brief и recurring runs (hard gate §16).
 
@@ -91,17 +113,21 @@ impact. Ложных срабатываний нет, пропусков нет 
 ```bash
 wsl.exe -d Ubuntu-22.04 -e bash -lc '~/start_stands.sh; exec sleep infinity'   # в фоне
 
-uv run python scripts/decision_stand_fixture.py /tmp/pilot clickhouse max_scanned_rows=1000
-cp -r /tmp/pilot /tmp/pilot_tz
-sed -i 's/timezone: Europe\/Moscow/timezone: UTC/' /tmp/pilot_tz/candidate/metrics/gross_margin_pct.yaml
+uv run python scripts/decision_stand_fixture.py /tmp/graph clickhouse --two-products \
+        asset=msk:0.452054 results=msk:0.452054 max_scanned_rows=1000
+cp -r /tmp/graph /tmp/graph_tz
+sed -i 's/timezone: Europe\/Moscow/timezone: UTC/' /tmp/graph_tz/candidate/metrics/gross_margin_pct.yaml
 
 AUTO_BI_CH_HOST=127.0.0.1 AUTO_BI_CH_PORT=8124 AUTO_BI_CH_DATABASE=dm \
 AUTO_BI_CH_USER=gate_ro AUTO_BI_CH_PASSWORD=…   # CH_GATE_PASSWORD из ~/chstand24/creds.env
-uv run auto_bi decision verify /tmp/pilot_tz/contracts --base /tmp/pilot_tz/base \
-        --candidate /tmp/pilot_tz/candidate --evidence /tmp/pilot_tz/.evidence \
-        --dashboards /tmp/pilot_tz/dashboards --dwh clickhouse --environment pilot-ch \
-        --created-at 2026-08-25T21:00:00Z
+uv run auto_bi decision verify /tmp/graph_tz/contracts --product decision://sales/weekly_margin \
+        --base /tmp/graph_tz/base --candidate /tmp/graph_tz/candidate \
+        --evidence /tmp/graph_tz/.evidence --dashboards /tmp/graph_tz/dashboards \
+        --assets /tmp/graph_tz/assets --results /tmp/graph_tz/results.yaml \
+        --dwh clickhouse --environment pilot-ch --created-at 2026-08-25T21:00:00Z
 ```
 
-`--created-at` фиксирован, поэтому `run_id` и digest bundle воспроизводятся; свежесть при
-этом считается от той же отметки, а не от текущего времени.
+`--product decision://sales/weekly_revenue` на тех же путях даёт прогон `tz-revenue`;
+`results=msk:0.452100` в фикстуре — `result-drift`. Каждый прогон пишет в **свой** каталог
+evidence: `control` и `result-drift` делят `run_id`, и во второй раз в тот же каталог гейт
+теперь откажется писать.

@@ -56,6 +56,10 @@ class BundleProblem(StrictModel):
     detail: NonBlankText
 
 
+class EvidenceConflictError(Exception):
+    """The run id already holds a bundle with a different digest (see `BundleWriter.write`)."""
+
+
 class BundleWriter:
     """Collect artifacts and claims, then write one bundle atomically enough to trust."""
 
@@ -168,9 +172,24 @@ class BundleWriter:
         )
 
     def write(self) -> WrittenBundle:
-        """Validate, then write payloads and the canonical manifest."""
+        """Validate, then write payloads and the canonical manifest.
+
+        A run id is the idempotency key (§7.6), so the same verification lands on the same
+        path and rewriting it is a no-op. A *different* bundle under that id — the same
+        inputs with other recorded results, or the same environment read at another moment
+        — is refused before a byte is written: a sealed bundle is evidence, and the store
+        does not replace evidence silently. Whoever needs both keeps them in separate stores.
+        """
         bundle = self.build()
         manifest = bundle.canonical_bytes()  # re-validates; raises before anything is written
+        if self._store.exists(self._run_id, MANIFEST_PATH):
+            existing = digest_bytes(self._store.get(self._run_id, MANIFEST_PATH))
+            if existing != digest_bytes(manifest):
+                raise EvidenceConflictError(
+                    f"run {self._run_id!r} already holds bundle {existing}; refusing to "
+                    f"overwrite it with {digest_bytes(manifest)} "
+                    "(same idempotency key, different evidence)"
+                )
         for artifact in bundle.artifacts:
             self._store.put(self._run_id, artifact.path, self._payloads[artifact.artifact_id])
         self._store.put(self._run_id, MANIFEST_PATH, manifest)

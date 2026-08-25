@@ -1,1 +1,0 @@
-{"api_version":"auto-bi.io/v2alpha1","issues":[],"kind":"DecisionValidationReport","metrics":["metric://sales/gross_margin_pct@3"],"products":["decision://sales/weekly_margin@1"],"verdict":"pass"}

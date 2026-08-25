@@ -18,9 +18,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from auto_bi.evidence.canonical import sha256_digest
+from auto_bi.evidence.canonical import digest_bytes, sha256_digest
 from auto_bi.evidence.manifest import (
     BundleWriter,
+    EvidenceConflictError,
     read_bundle,
     verify_bundle,
 )
@@ -204,3 +205,25 @@ def test_store_round_trips_bytes(tmp_path: Path) -> None:
     assert store.get(RUN, "checks/one.json") == b'{"status":"pass"}'
     assert store.exists(RUN, "checks/one.json")
     assert not store.exists(RUN, "checks/two.json")
+
+
+def test_rewriting_the_same_bundle_under_its_run_id_is_a_no_op(tmp_path: Path) -> None:
+    """A run id is the idempotency key: the same verification lands on the same bytes."""
+    first = full_bundle(tmp_path).write()
+    again = full_bundle(tmp_path).write()
+
+    assert again.digest == first.digest
+
+
+def test_a_different_bundle_never_overwrites_a_sealed_one(tmp_path: Path) -> None:
+    """Evidence is not replaced silently: same key, other content, refused before any write."""
+    first = full_bundle(tmp_path).write()
+
+    other = full_bundle(tmp_path)
+    other.add_check("cost", {"status": "pass", "summary_code": "cost.within_budget"})
+    with pytest.raises(EvidenceConflictError, match="refusing to overwrite"):
+        other.write()
+
+    manifest = (tmp_path / RUN / "manifest.json").read_bytes()
+    assert digest_bytes(manifest) == first.digest
+    assert verify_bundle(FilesystemArtifactStore(tmp_path), RUN) == []

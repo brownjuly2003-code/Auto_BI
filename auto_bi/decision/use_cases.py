@@ -33,7 +33,7 @@ import yaml
 
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import load_contracts
-from auto_bi.evidence.manifest import MANIFEST_PATH
+from auto_bi.evidence.manifest import MANIFEST_PATH, EvidenceConflictError
 from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.refs import ContractRef
@@ -110,13 +110,17 @@ def verify(request: VerifyRequest) -> GateReport:
         candidate=candidate,
         candidate_model=candidate_model,
         dashboards=_load_dashboards(request.dashboards_dir, product),
-        assets=_load_assets(request.assets_dir),
+        assets=_load_assets(request.assets_dir, product),
         results=_load_results(request.results_file),
         environment_ref=request.environment_ref,
         environment=_probe(request.probe, product, candidate),
     )
     store = FilesystemArtifactStore(request.evidence_dir)
-    return run_gate(inputs, store=store, created_at=request.created_at)
+    try:
+        return run_gate(inputs, store=store, created_at=request.created_at)
+    except EvidenceConflictError as exc:
+        # A usage error, not a verdict: the verification did not get to record itself.
+        raise VerifyError(str(exc)) from None
 
 
 def _probe(
@@ -206,16 +210,30 @@ def _dashboard_file(root: Path, ref: str) -> Path | None:
     return None
 
 
-def _load_assets(directory: str | Path | None) -> VerifiedAssetRepository:
+def _load_assets(
+    directory: str | Path | None, product: DecisionProductSpec
+) -> VerifiedAssetRepository:
+    """The repository, narrowed to the assets that name one of the product's metrics.
+
+    The run verifies one product. An asset of another product's metric is neither its
+    evidence nor its finding: graded here, its invalidation would put that product's review
+    on this one's verdict, and its comparison would seal a claim about a number this product
+    never delivers. Versions are ignored on both sides, as `resolve_impact` ignores them —
+    whether a pin still resolves is `decision validate`'s question.
+    """
     if directory is None:
         return VerifiedAssetRepository([])
     root = Path(directory)
     if not root.exists():
         raise VerifyError(f"verified assets path not found: {root}")
     try:
-        return VerifiedAssetRepository.load(root)
+        repository = VerifiedAssetRepository.load(root)
     except ValueError as exc:
         raise VerifyError(f"{root} holds an invalid verified asset: {exc}") from None
+    in_scope = {str(ContractRef.parse(ref).without_version()) for ref in product.scope.metrics}
+    return VerifiedAssetRepository(
+        [asset for asset in repository.assets if in_scope.intersection(asset.metric_ids())]
+    )
 
 
 def _load_results(path: str | Path | None) -> ResultSource:

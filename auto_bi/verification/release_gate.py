@@ -38,7 +38,7 @@ from typing import Any, Protocol
 
 from pydantic import Field, model_validator
 
-from auto_bi.decision.impact import ImpactReport, resolve_impact
+from auto_bi.decision.impact import ImpactReport, ProductImpact, resolve_impact
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import ValidationReport
 from auto_bi.evidence.canonical import canonical_bytes, sha256_digest
@@ -89,11 +89,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 
 #: Part of the idempotency key: a different verifier can reach a different verdict from the
 #: same inputs, so its bundles must not be reused (§7.6).
-VERIFIER_VERSION = "1"
+#: 2 — `impact.products` grades only the changes that reach the verified product, so a run
+#: that graded review under 1 can pass under 2 on the same inputs.
+VERIFIER_VERSION = "2"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule.
-CHECK_VERSION = "1"
+#: 2 — see `_reaching`: `impact.products` counts reach, not every change in the diff.
+CHECK_VERSION = "2"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -367,7 +370,7 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
                 environment_ref=inputs.environment_ref,
             ),
             checks,
-            impact.impacts if impact is not None else (),
+            _reaching(impact) if impact is not None else (),
         ),
     )
     written = writer.write()
@@ -476,11 +479,24 @@ def _check_diff(writer: BundleWriter, diff: SemanticDiff, product_ref: str) -> C
     )
 
 
+def _reaching(impact: ImpactReport) -> list[ProductImpact]:
+    """The changes that reach the product under verification.
+
+    `resolve_impact` keeps every change of the diff, including those no in-scope product
+    depends on, so the payload says what it saw. The run verifies one product, so a change
+    whose `products` is empty did not reach it — grading it here, or listing it under "whose
+    numbers this reaches", would report a change to somebody else's metric as this product's.
+    The diff check still carries it: that is the snapshot's finding, not the product's.
+    """
+    return [item for item in impact.impacts if item.products]
+
+
 def _check_impact(writer: BundleWriter, impact: ImpactReport, product_ref: str) -> CheckResult:
     ref = writer.add_check("impact.products", impact.model_dump(mode="json"))
+    reaching = _reaching(impact)
     escalated = [
         item
-        for item in impact.impacts
+        for item in reaching
         if item.severity is Severity.BLOCK and item.classified_severity is Severity.REVIEW
     ]
     return CheckResult(
@@ -488,10 +504,10 @@ def _check_impact(writer: BundleWriter, impact: ImpactReport, product_ref: str) 
         check_version=CHECK_VERSION,
         category=CheckCategory.IMPACT,
         subject_refs=[product_ref],
-        status=status_for([item.severity for item in impact.impacts]),
-        summary_code="impact.none" if not impact.impacts else "impact.reaches_product",
+        status=status_for([item.severity for item in reaching]),
+        summary_code="impact.none" if not reaching else "impact.reaches_product",
         detail=(
-            f"{len(impact.impacts)} change(s) reach this product; "
+            f"{len(reaching)} of {len(impact.impacts)} change(s) reach this product; "
             f"{len(escalated)} escalated from review to block because it is governed"
         ),
         evidence_refs=[ref],
