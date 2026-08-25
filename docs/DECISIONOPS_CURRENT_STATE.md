@@ -4,7 +4,9 @@
 **Стадия:** офлайновый путь §8.2 работает целиком — validate → freeze snapshots →
 gaps → diff → impact → инвалидация assets → reconcile → reference SQL (шаг 6:
 aggregate + governed ratio на ClickHouse и на PostgreSQL-семействе) → BI compile →
-evidence bundle → отчёт владельцу → чтение bundle.
+evidence bundle → отчёт владельцу → чтение bundle. Шаг 7 наполовину живой: под
+`--dwh` гейт спрашивает движок read-only ролью (`dwh.access`, `dwh.freshness`), без
+него честно говорит `check.not_configured`.
 Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot) — решение владельца**.
 **Ветка:** `main` · **HEAD:** `a13785e` · 17 коммитов поверх baseline, remote нет
 **Suite:** 1766 passed / 20 skipped; `mypy --strict`, ruff, black чисты
@@ -27,6 +29,7 @@ Bootstrap tasks 2–7 закрыты, открыт только **task 8 (pilot)
 | Semantic diff и impact до владельца | `semantic/diff.py`, `decision/impact.py` | `test_semantic_diff`, `test_decision_impact` |
 | Verified assets, сравнение результатов | `verification/repository.py`, `verification/reconcile.py` | `test_verified_assets`, `test_result_reconcile` |
 | Reference SQL метрики (§8.2 шаг 6) | `verification/sql_contract.py` | `test_sql_contract` |
+| Access и freshness движка (§8.2 шаг 7) | `verification/environment.py` (правила), `verification/environment_probe.py` (IO) | `test_environment_checks`, `test_environment_probe` |
 | Компиляция дашбордов без remote-вызовов | `verification/bi_contract.py` | `test_bi_contract` |
 | Оркестрация гейта | `verification/release_gate.py` | `test_decision_verify` |
 | Отчёт для владельца внутри bundle | `verification/summary.py` | `test_gate_summary` |
@@ -450,12 +453,71 @@ escaping (независимый оракул, 20k случайных double + �
   Greenplum-гэп) и 1 в `test_engine`; suite 1766 passed / 20 skipped (было 1758);
   `mypy --strict`, ruff, black чисты.
 
+### §8.2 шаг 7 — access и freshness против живого движка (2026-08-25)
+
+- **Что разблокировало.** Шаг «нельзя начинать без движка с данными» — и он появился:
+  ClickHouse **24.8.14.39** (тот же пин, что в `docker-compose.yml`; бинарь из GitHub
+  Releases распакован в `~/chstand24` в WSL, порты 8124/9001, свои `users.xml` и
+  `config.xml`, ничего общего с чужим 26.7-стендом в `~/chstand`) и PostgreSQL **14.24**
+  (`~/pgtest`, порт 55433). Оба засеяны фикстурной `dm.sales_daily` и подняты под
+  пользователем, без sudo и без Docker.
+- **Модуль разрезан надвое, и это главное решение.** `verification/environment.py` —
+  чистый: какие вопросы задать (`questions_for` по метрикам в скоупе продукта), как
+  выглядит ответ (`EnvironmentFacts`) и что он значит (`check_access`, `check_freshness`).
+  `verification/environment_probe.py` — IO поверх того же read-only `RunQuery`, что и
+  интроспекция, SQL-guard и advisor. Гейт остаётся без сокета: он оценивает факты, и те же
+  факты ложатся в bundle как данные, а не как строчка лога. `--dwh` даёт CLI, а
+  `use_cases` получает уже готовую функцию-пробу — офлайновый прогон остаётся дефолтом.
+- **Гейт никогда не проверяет запись записью.** INSERT «чтобы посмотреть» — это запись в
+  чужой DWH. Read-only читается из ответа самого движка, и стенды сказали разное:
+  - **ClickHouse:** пользователь из `users.xml` имеет `GRANT INSERT, ALTER, DROP … ON *.*`
+    даже при `readonly=1`, а отказывает именно профиль (`Code: 164 READONLY`). По грантам
+    корректная read-only роль читалась бы как пишущая — поэтому решает setting, а гранты
+    смотрятся только во втором случае (`readonly=0` без write-грантов — тоже read-only);
+  - **PostgreSQL:** наоборот, `transaction_read_only` у SELECT-only роли равен `off`, и
+    отвечает `has_table_privilege` по витринам скоупа. Отдельно проверяется
+    суперпользователь: к нему привилегии не применяются, поэтому он всегда «пишущий».
+- **Пустая витрина — не протухшая.** `max(Date)` по нулю строк в ClickHouse возвращает
+  `1970-01-01`, а не NULL (в Postgres — NULL). Поэтому рядом с чтением едет `rows_seen`, и
+  «строк нет» даёт `freshness.unknown` (review — проверка не прошла), а не «протухло на
+  пятьдесят лет».
+- **Возраст меряется от `created_at` прогона, а не от стенных часов.** Иначе вердикт
+  зависел бы от времени рендера отчёта, а `--created-at` существует ровно для
+  воспроизводимости. Дата без времени читается как начало этого дня в UTC, и в тексте
+  находки это сказано вместе с объявленным таймзоной метрики — граница суток двигается на
+  величину до 14 часов.
+- **Градация.** Пишущая роль → **block** (инвариант 3: числа, снятые ролью, способной
+  изменить витрину, — не то evidence, за которое отвечает bundle). Отсутствующая или
+  нечитаемая витрина → **block** (метрику там просто не посчитать). Протухший источник →
+  **review** (сам change не сломан; выпускать ли продукт на старых данных — решение
+  владельца, и это та же градация, что у stale verified asset). Окно в годах или
+  календарных месяцах → **review**: у `P1M` нет фиксированной длины, и гейт не выбирает
+  чужую конвенцию за владельца.
+- **Проверено на живых движках, не только тестами** (`--created-at 2026-08-25T12:00:00Z`):
+  - read-only роль на ClickHouse-стенде → `dwh.access` pass («gate_ro reads every in-scope
+    mart on 127.0.0.1:8124/dm, and only reads»), `dwh.freshness` review: витрина датирована
+    2026-08-24, «36.0h before …, read as 2026-08-24T00:00:00Z while the metric declares
+    timezone Europe/Moscow», старше объявленных `PT6H`;
+  - роль `gate_rw` (`readonly=0`, гранты на запись) → `access.role_writable`, **block**;
+  - то же самое с окном `P7D` → обе проверки pass (`freshness.fresh`);
+  - Greengage-продукт против PostgreSQL-стенда → `access.read_only` + `freshness.stale`,
+    то есть PG-путь проходит целиком через psycopg.
+- **Граница осталась.** Physical (EXPLAIN/бюджет) и security (классификация, drift схемы)
+  половины шага 7 не реализованы — `execution.checks` по-прежнему
+  `check.not_implemented`. Прогон без `--dwh` даёт `check.not_configured` у обеих новых
+  проверок: это ответ, а не пропуск, и в отчёте владельцу он попадает в раздел «что не
+  сделано».
+- Проверено: 44 новых теста (`test_environment_checks` 27 + `test_environment_probe` 17)
+  и 7 на уровне гейта; suite 1817 passed / 20 skipped (было 1766); `mypy --strict`, ruff,
+  black чисты.
+
 ## Что ещё не реализовано
 - §8.2 шаг 6 частично: external и reviewed-SQL формулы офлайн не компилируются — гейт
   называет гэп вместо запроса; governed ratio на движке вне двух проверенных семейств —
   тоже гэп;
-- §8.2 шаг 7: security/access/freshness/physical checks против DWH — гейт объявляет
-  его `check.not_implemented`;
+- §8.2 шаг 7 наполовину: physical (EXPLAIN/бюджет) и security (классификация, drift
+  схемы) не реализованы — `execution.checks` объявляет их `check.not_implemented`;
+  access и freshness работают под `--dwh`;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
 
 ## Проверить руками за две минуты
@@ -477,20 +539,29 @@ auto_bi decision evidence .evidence                                  # что л
 auto_bi decision evidence .evidence --artifact report-summary-md     # отчёт для владельца
 ```
 
+Если есть read-only доступ к движку, шаг 7 спрашивает его сам (настройки — те же
+`AUTO_BI_CH_*` / `AUTO_BI_GP_*`, что у остального CLI):
+
+```bash
+auto_bi decision verify contracts/ --base semantic/base --candidate semantic/head \
+        --evidence .evidence --dwh clickhouse --environment prod-ch
+```
+
 Exit code — вердикт: `0` pass/advisory, `3` needs_review, `4` block, `2` usage-ошибка.
 
 ## Открытые решения — они за владельцем, не за агентом
 
 Офлайновая работа, которая не требует движка, закончилась. Часть этого списка агент
-снял сам: чтобы узнать семантику десятичного деления, полный стенд не нужен — хватило
-`clickhouse local` того же пина 24.8 и локального `postgresql-14` (14.24) в WSL (см. две
-секции про governed ratio). Всё, что осталось, требует движка **с данными** или ответа
+снял сам, подняв движки локально: семантику десятичного деления — на `clickhouse local`
+пина 24.8 и на `postgresql-14` (14.24) в WSL, а access и freshness шага 7 — на полноценных
+стендах ClickHouse 24.8.14.39 и PostgreSQL 14.24 с read-only ролями (см. секции про
+governed ratio и про шаг 7). Всё, что осталось, требует **вашего** окружения или ответа
 владельца, и угадывать эти ответы нельзя:
 
 | # | Вопрос | Что он разблокирует |
 |---|---|---|
 | 1 | Какой реальный change берём в пилот, на каком стенде, чей owner impact меряем | bootstrap task 8; за ним hard gate §16 — без измеренного pilot outcome scheduler/MCP/actions не начинаются |
-| 2 | Есть ли доступ к DWH **с данными** (ClickHouse и/или Greengage) | §8.2 шаг 7 (security/access/freshness/physical) — его нельзя проверить на пустом движке. Семантику деления это больше не блокирует ни на одном из двух семейств: она снята на `clickhouse local` и на PostgreSQL 14.24 |
+| 2 | Есть ли доступ к **вашему** DWH и под какой ролью | прогон гейта против реального окружения. Сами проверки уже написаны и прогнаны на локальных стендах обоих семейств (`--dwh`), поэтому вопрос теперь про доступ и роль, а не про то, как их писать. Physical и security половины шага 7 ждут стенда с настоящим планом и классификацией |
 | 3 | Где будет remote этого репозитория (§18.4) | пуш, CI на стороне GitHub, ревью извне; сейчас 15 коммитов поверх baseline лежат только локально |
 | 4 | Нужна ли подпись evidence и какой trust root допустим (§18.5) | `integrity=signed`; сегодня честно `content_hashed`, и подписью это не называется |
 

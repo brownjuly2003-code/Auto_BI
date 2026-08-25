@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
     from auto_bi.agent.machine import AgentTurn
     from auto_bi.config import Settings
+    from auto_bi.decision.use_cases import EnvironmentProbe
     from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,12 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument("--product", default="", help="Product id, when the paths hold several")
     verify.add_argument("--environment", default="", help="DWH/BI environment ref for the run key")
     verify.add_argument(
+        "--dwh",
+        default="",
+        choices=["", "clickhouse", "greenplum", "greengage", "postgres"],
+        help="Ask this engine step 7's questions, read-only, using the configured settings",
+    )
+    verify.add_argument(
         "--created-at",
         default="",
         help="RFC 3339 UTC bundle timestamp; supply it to make the run byte-reproducible",
@@ -282,6 +289,40 @@ def _decision_validate(paths: list[str], as_json: bool) -> int:
     return exit_code_for(report.verdict)
 
 
+def _environment_probe(engine: str) -> "EnvironmentProbe | None":
+    """A read-only look at the configured engine for §8.2 step 7, or nothing.
+
+    The client is built here rather than inside the use case so that a run without `--dwh`
+    stays what it has always been: files in, verdict out, no socket. Credentials come from
+    the same settings the rest of the CLI uses and never travel into the bundle — the facts
+    carry host, port and database, which is where the numbers came from, not how we got in.
+    """
+    if not engine:
+        return None
+
+    from auto_bi.config import get_settings
+    from auto_bi.engine import GREENPLUM, sqlglot_dialect
+    from auto_bi.verification.environment import EnvironmentFacts, EnvironmentQuestions
+    from auto_bi.verification.environment_probe import collect
+
+    settings = get_settings()
+    if sqlglot_dialect(engine) == sqlglot_dialect(GREENPLUM):
+        from auto_bi.introspect.greenplum import make_run_query_pg
+
+        run_query = make_run_query_pg(settings)
+        target = f"{settings.gp_host}:{settings.gp_port}/{settings.gp_database}"
+    else:
+        from auto_bi.introspect.clickhouse import make_run_query
+
+        run_query = make_run_query(settings)
+        target = f"{settings.ch_host}:{settings.ch_port}/{settings.ch_database}"
+
+    def probe(questions: EnvironmentQuestions) -> EnvironmentFacts:
+        return collect(run_query, questions, engine=engine, target=target)
+
+    return probe
+
+
 def _decision_verify(args: argparse.Namespace) -> int:
     """`auto_bi decision verify` — the one-shot release gate (ARCHITECTURE §8.2, §12.1).
 
@@ -308,6 +349,7 @@ def _decision_verify(args: argparse.Namespace) -> int:
                 results_file=args.results,
                 environment_ref=args.environment,
                 product_id=args.product,
+                probe=_environment_probe(args.dwh),
             )
         )
     except VerifyError as exc:

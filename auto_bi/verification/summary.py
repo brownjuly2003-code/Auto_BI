@@ -44,8 +44,10 @@ if TYPE_CHECKING:  # a runtime import would close the loop: release_gate imports
 #: how many of how many compiled, and filing it under "not done" would deny the part that was.
 _UNDONE = frozenset(
     {
+        "check.not_configured",
         "check.not_implemented",
         "check.not_run",
+        "freshness.not_run",
         "result.no_expectations",
         "sql.not_compiled",
     }

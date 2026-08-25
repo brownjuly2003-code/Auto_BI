@@ -473,8 +473,20 @@ Gate выполняет шаги в фиксированном порядке:
   Все находки шага advisory: почему метрика поехала, уже оценили diff и impact, и
   вторая оценка дала бы одному изменению два веса в вердикте. Агрегат берётся из
   `agent/sqlgen.aggregate_expr` — той же функции, что и chart-путь.
-- Шаг 7 offline-реализации не имеет и выходит как `check.not_implemented` (advisory),
-  а не отсутствует молча: чистый bundle не должен читаться как полная верификация.
+- Шаг 7 реализован наполовину и разделён надвое: чистый слой
+  `verification/environment.py` (какие вопросы задать движку, как выглядит ответ и что он
+  значит) и IO `verification/environment_probe.py` поверх того же read-only `RunQuery`, что
+  и интроспекция с advisor. Гейт оценивает факты, а не держит соединение, и те же факты
+  ложатся в bundle. `dwh.access`: роль умеет только читать (иначе **block** — инвариант 3) и
+  каждая витрина скоупа есть и читается (иначе block). `dwh.freshness`: возраст самой свежей
+  строки против `freshness_max_age` продукта, измеренный от `created_at` прогона, — протухший
+  источник **review**. **Проверка записи никогда не делается записью**: на ClickHouse решает
+  профиль (`readonly=1` отказывает даже при `GRANT INSERT ON *.*` из `users.xml`), на
+  PostgreSQL — `has_table_privilege` плюс проверка на суперпользователя. Пустая витрина —
+  `freshness.unknown`, потому что `max(Date)` по нулю строк в ClickHouse равен `1970-01-01`,
+  а не NULL. Прогон без `--dwh` выносит обе проверки как `check.not_configured` — ответ, а не
+  пропуск; physical и security половины шага остаются `check.not_implemented` (advisory), а
+  не отсутствуют молча: чистый bundle не должен читаться как полная верификация.
 - «Reject blocking semantic gaps» останавливает последовательность ТОЛЬКО на
   `gap.contract_invalid`: непрочитанный контракт отсутствует в графе, и diff назвал
   бы это удалённой метрикой. Остальные blocking-гэпы (dangling join, отсутствующее
@@ -831,7 +843,7 @@ domain state machine.
 | отсутствие evidence ref ломает bundle validation | ✅ `tests/test_evidence_bundle.py` |
 | gate не вызывает remote mutation methods | ✅ socket-запрет + mutation-spy на каждом глаголе обоих BI-клиентов |
 | expensive candidate plan блокируется policy | ⛔ ждёт §8.2 шаг 7 (physical/cost checks поверх `advisor/*`) |
-| stale source возвращает honest insufficient/block | ⚠️ частично: stale **verified asset** → `asset.stale_snapshot` (review), недоступный результат → `insufficient`; freshness самого источника ждёт шаг 7 |
+| stale source возвращает honest insufficient/block | ✅ stale **verified asset** → `asset.stale_snapshot` (review), недоступный результат → `insufficient`, freshness самого источника → `dwh.freshness` (review) при `--dwh` (`tests/test_environment_checks.py`) |
 
 ### 15.4 Compatibility gate
 

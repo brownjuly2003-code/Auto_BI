@@ -183,8 +183,12 @@ ResultSet}` с кандидатными ответами, снятыми вне 
 needs_review, `4` block, `2` usage-ошибка. `1` не используется намеренно — это код
 необработанного исключения, и падение не должно выглядеть как вынесенный вердикт.
 
-Гейт не скрывает, чего он не сделал: шаг «security/access/freshness/physical checks» требует
-DWH и выходит как `check.not_implemented` (advisory), а шаг «compile SQL» компилирует
+Гейт не скрывает, чего он не сделал. Шаг «security/access/freshness/physical checks»
+требует движка: с `--dwh clickhouse|greengage` гейт спрашивает его read-only ролью и выносит
+`dwh.access` (роль только читает и видит каждую витрину скоупа — иначе block) и
+`dwh.freshness` (возраст самой свежей строки против `freshness_max_age` продукта — протухший
+источник review); без `--dwh` обе выходят как `check.not_configured`, а physical и security
+половины шага — как `check.not_implemented` (advisory). Шаг «compile SQL» компилирует
 reference-запрос метрики только там, где семантика точна: typed aggregate и governed ratio
 на ClickHouse (деление — `divideDecimal` на объявленной `unit.precision`, форма проверена на
 живом движке 24.8) и на PostgreSQL-семействе (`TRUNC(num * 1.000000 / NULLIF(den, 0), p)`,

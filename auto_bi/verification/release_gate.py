@@ -4,19 +4,22 @@ One decision product, two semantic snapshots, a fixed sequence of typed checks, 
 content-addressed evidence bundle, one verdict. Every step is a call into a module that
 already exists and is tested on its own; this file decides the order, grades the findings
 and writes the evidence. It reads no files and opens no sockets — loading inputs is
-`decision/use_cases.py`, and executing SQL is not implemented (see below).
+`decision/use_cases.py`, and what a live engine had to say arrives as facts a read-only probe
+already collected (`environment.py`), never as a connection this module holds.
 
 Two properties this module exists to keep:
 
 * **`operational_status` and `verdict` are different answers** (invariant 8). A run that
   completes and blocks is a working gate; a run that fails is a broken one. They are
   separate fields and a report that mixes them does not validate.
-* **A step that did not run says so.** Executing SQL against a DWH (§8.2 step 7) has no
-  offline implementation, so the gate emits that check as a `check.not_implemented` advisory
-  rather than leaving a clean bundle that reads as a full verification. Step 6 compiles the
-  reference query of each in-scope metric where the semantics are exact offline and names
-  what it will not guess (`sql_contract.py`). The same applies downstream of a metric
-  contract that failed to load:
+* **A step that did not run says so.** §8.2 step 7 needs a running engine, and the two
+  halves of it that are implemented — access and freshness — grade *facts* a read-only probe
+  collected outside this module (`environment.py`), so a run without a configured engine
+  emits them as `check.not_configured` instead of passing. Its physical and security halves
+  have no implementation at all and stay `check.not_implemented`; neither may leave a clean
+  bundle that reads as a full verification. Step 6 compiles the reference query of each
+  in-scope metric where the semantics are exact offline and names what it will not guess
+  (`sql_contract.py`). The same applies downstream of a metric contract that failed to load:
   the diff would call the unparsed contract a *removed metric*, so those checks are emitted
   as `check.not_run` instead of a guess (see `UNTRUSTWORTHY_GAPS` for why that is the only
   gap that stops the sequence).
@@ -54,6 +57,14 @@ from auto_bi.verification.bi_contract import (
     CompiledBIContract,
     DataLensContractCompiler,
     SupersetContractCompiler,
+)
+from auto_bi.verification.environment import (
+    EnvironmentFacts,
+    EnvironmentFinding,
+    EnvironmentQuestions,
+    check_access,
+    check_freshness,
+    questions_for,
 )
 from auto_bi.verification.model import Verdict, verdict_for
 from auto_bi.verification.reconcile import (
@@ -250,6 +261,11 @@ class GateInputs:
     results: ResultSource = field(default_factory=NoResults)
     #: The DWH/BI environment this verdict is about; part of the idempotency key.
     environment_ref: str = ""
+    #: What a read-only probe of that environment answered (§8.2 step 7). Absent means the
+    #: run had no engine to ask — the checks say so rather than passing. The readings
+    #: themselves stay out of the idempotency key: they are observations of a moment, and
+    #: keying on them would make every run a new run.
+    environment: EnvironmentFacts | None = None
 
 
 def idempotency_key(inputs: GateInputs) -> str:
@@ -325,15 +341,8 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
         # 6. reference SQL for both snapshots — compiled, never executed (no DWH here)
         checks.append(_check_sql(writer, inputs, product_ref))
 
-    # 7. execute the queries against a DWH — no offline implementation, so say so
-    checks.append(
-        _not_implemented(
-            "execution.checks",
-            CheckCategory.EXECUTION,
-            product_ref,
-            "security, access, freshness and physical checks need a DWH (§8.2 step 7)",
-        )
-    )
+    # 7. ask the engine itself: who we are on it, and how old what it holds is
+    checks.extend(_check_environment(writer, inputs, product_ref, created_at))
 
     # 9. BI compile contracts — payloads only, never a remote create
     checks.append(_check_bi_contracts(writer, inputs, product_ref))
@@ -697,6 +706,138 @@ def _write_bi_payloads(
             media_type="application/json",
             classification=EvidenceClassification.INTERNAL,
         )
+
+
+#: Ranking of finding severities, for picking the one a check's summary code names.
+_FINDING_RANK = {Severity.ADVISORY: 0, Severity.REVIEW: 1, Severity.BLOCK: 2}
+
+
+def _check_environment(
+    writer: BundleWriter, inputs: GateInputs, product_ref: str, created_at: str
+) -> list[CheckResult]:
+    """§8.2 step 7: what a read-only look at the engine says about access and freshness.
+
+    The gate grades facts rather than holding the connection (`environment.py` explains why
+    each engine is asked its own question). Without a probe there is nothing to grade, and
+    the two checks say `check.not_configured` — an answer, not a pass. The physical and
+    security halves of the step have no implementation yet and keep saying so.
+    """
+    remaining = _not_implemented(
+        "execution.checks",
+        CheckCategory.EXECUTION,
+        product_ref,
+        "physical and security checks against a DWH are not implemented (§8.2 step 7)",
+    )
+    facts = inputs.environment
+    if facts is None:
+        reason = (
+            "no engine was configured for this run, so the release was not verified against "
+            "a live environment (§8.2 step 7)"
+        )
+        return [
+            _not_configured("dwh.access", product_ref, reason),
+            _not_configured("dwh.freshness", product_ref, reason),
+            remaining,
+        ]
+
+    questions = questions_for(inputs.product, inputs.candidate)
+    access = check_access(questions, facts)
+    freshness = check_freshness(
+        questions,
+        facts,
+        max_age=inputs.product.verification.freshness_max_age,
+        created_at=created_at,
+    )
+    return [
+        _environment_check(
+            writer,
+            "dwh.access",
+            questions,
+            facts,
+            access,
+            product_ref,
+            clean=f"{facts.role.name} reads every in-scope mart on {facts.target}, and only reads",
+            summary_clean="access.read_only",
+        ),
+        _environment_check(
+            writer,
+            "dwh.freshness",
+            questions,
+            facts,
+            freshness,
+            product_ref,
+            # Nothing readable to date is not a fresh source: `check_access` already blocked
+            # on the mart itself, and calling this half clean would read as a second pass.
+            clean=(
+                f"every in-scope mart on {facts.target} is inside the "
+                f"{inputs.product.verification.freshness_max_age} this product declares"
+                if _readable(questions, facts)
+                else f"no in-scope mart could be read on {facts.target}, so nothing was dated"
+            ),
+            summary_clean=(
+                "freshness.fresh" if _readable(questions, facts) else "freshness.not_run"
+            ),
+        ),
+        remaining,
+    ]
+
+
+def _readable(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
+    """Whether the probe could actually read any mart the product asks about."""
+    return any(
+        (table := facts.table(item.table)) is not None and table.readable
+        for item in questions.tables
+    )
+
+
+def _environment_check(
+    writer: BundleWriter,
+    check_id: str,
+    questions: EnvironmentQuestions,
+    facts: EnvironmentFacts,
+    findings: list[EnvironmentFinding],
+    product_ref: str,
+    *,
+    clean: str,
+    summary_clean: str,
+) -> CheckResult:
+    """One graded look at the environment, with the readings it stood on in the bundle."""
+    ref = writer.add_check(
+        check_id,
+        {
+            "questions": questions.model_dump(mode="json"),
+            "facts": facts.model_dump(mode="json"),
+            "findings": [item.model_dump(mode="json") for item in findings],
+        },
+    )
+    severities = [item.severity for item in findings]
+    # The summary code is the machine identity of the outcome, so it names the finding that
+    # decided the status — not whichever one happened to be found first.
+    worst = max(findings, key=lambda item: _FINDING_RANK[item.severity], default=None)
+    summary_code = summary_clean if worst is None else worst.code
+    return CheckResult(
+        check_id=check_id,
+        check_version=CHECK_VERSION,
+        category=CheckCategory.EXECUTION,
+        subject_refs=[product_ref, *sorted({item.subject for item in findings})],
+        status=status_for(severities),
+        summary_code=summary_code,
+        detail=clean if not findings else "; ".join(item.detail for item in findings),
+        evidence_refs=[ref],
+    )
+
+
+def _not_configured(check_id: str, product_ref: str, detail: str) -> CheckResult:
+    """A check with an implementation that this run had no engine to point it at."""
+    return CheckResult(
+        check_id=check_id,
+        check_version=CHECK_VERSION,
+        category=CheckCategory.EXECUTION,
+        subject_refs=[product_ref],
+        status=CheckStatus.ADVISORY,
+        summary_code="check.not_configured",
+        detail=detail,
+    )
 
 
 def _not_implemented(

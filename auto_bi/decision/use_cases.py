@@ -7,7 +7,10 @@ verify` invocation names into the loaded inputs §8.1 lists, then hands them to
 
 Everything a run depends on is a file in Git: the contracts, both semantic refs, the
 delivered dashboard specs, the verified assets and — for now — the candidate results. That
-is what makes the gate reproducible offline; nothing here opens a socket.
+is what makes the gate reproducible offline; nothing here opens a socket of its own. The one
+live input is §8.2 step 7's environment probe, and it arrives as an injected callable
+(`EnvironmentProbe`) rather than as connection settings, so an offline run is still the
+default and the caller that does hold a read-only client decides when to hand one in.
 
 `decision evidence` reads from the same layer for the same reason: resolving `<run-or-path>`
 to one run directory is a filesystem question, and `evidence/inspect.py` — which decides
@@ -21,7 +24,7 @@ cannot silently load version 8's layout. A missing one is a finding, not a guess
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -36,6 +39,11 @@ from auto_bi.ir.spec import DashboardSpec
 from auto_bi.refs import ContractRef
 from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot
 from auto_bi.semantic.model import SemanticModel
+from auto_bi.verification.environment import (
+    EnvironmentFacts,
+    EnvironmentQuestions,
+    questions_for,
+)
 from auto_bi.verification.reconcile import ResultSet
 from auto_bi.verification.release_gate import (
     GateInputs,
@@ -61,6 +69,11 @@ class VerifyError(Exception):
     """
 
 
+#: Asks a live engine the questions §8.2 step 7 derives from the product and its
+#: candidate snapshot. One call, typed facts back, no state in between.
+EnvironmentProbe = Callable[[EnvironmentQuestions], EnvironmentFacts]
+
+
 @dataclass(frozen=True)
 class VerifyRequest:
     contract_paths: Sequence[str | Path]
@@ -74,6 +87,10 @@ class VerifyRequest:
     environment_ref: str = ""
     #: Names the product to verify when the paths hold more than one.
     product_id: str = ""
+    #: Asks a running engine §8.2 step 7's questions. Absent means the run has no engine to
+    #: ask and the gate says so; the callable is injected rather than built here so a caller
+    #: that already holds a read-only client — or a test — needs no connection settings.
+    probe: EnvironmentProbe | None = None
 
 
 def verify(request: VerifyRequest) -> GateReport:
@@ -96,9 +113,24 @@ def verify(request: VerifyRequest) -> GateReport:
         assets=_load_assets(request.assets_dir),
         results=_load_results(request.results_file),
         environment_ref=request.environment_ref,
+        environment=_probe(request.probe, product, candidate),
     )
     store = FilesystemArtifactStore(request.evidence_dir)
     return run_gate(inputs, store=store, created_at=request.created_at)
+
+
+def _probe(
+    probe: EnvironmentProbe | None, product: DecisionProductSpec, candidate: SemanticSnapshot
+) -> EnvironmentFacts | None:
+    """Ask the engine about the marts this product reads — or nothing, if none was given.
+
+    The questions are derived twice, here and inside the gate. They are a pure function of
+    the same product and snapshot, so the second derivation cannot disagree with the first,
+    and it keeps the bundle's payload self-contained.
+    """
+    if probe is None:
+        return None
+    return probe(questions_for(product, candidate))
 
 
 def _select_product(

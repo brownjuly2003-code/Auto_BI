@@ -11,6 +11,7 @@ presentation-only change does not block, and the run touches no BI and no DWH.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,12 @@ from auto_bi.semantic.model import (
     Physical,
     SemanticModel,
     Table,
+)
+from auto_bi.verification.environment import (
+    EnvironmentFacts,
+    EnvironmentQuestions,
+    RoleFacts,
+    TableFacts,
 )
 from auto_bi.verification.model import Verdict
 from auto_bi.verification.release_gate import CheckStatus, GateReport, RunStatus
@@ -314,6 +321,110 @@ def test_the_gate_says_which_steps_it_did_not_run(tmp_path: Path) -> None:
     ]
     assert not_implemented == ["execution.checks"]
     assert all(status_of(report, check) is CheckStatus.ADVISORY for check in not_implemented)
+
+
+# --- §8.2 step 7: what a live engine says -------------------------------------
+
+
+def environment(
+    *,
+    read_only: bool = True,
+    max_event_time: str | None = "2026-08-25T06:00:00Z",
+    rows_seen: int = 600,
+    exists: bool = True,
+) -> EnvironmentFacts:
+    """One probe's answer, as `environment_probe` would have built it from the stand."""
+    return EnvironmentFacts(
+        engine="clickhouse",
+        target="127.0.0.1:8124/dm",
+        role=RoleFacts(
+            name="gate_ro",
+            read_only=read_only,
+            evidence="readonly=1" if read_only else "readonly=0, granted INSERT",
+        ),
+        tables=[
+            TableFacts(
+                table="dm.sales_daily",
+                exists=exists,
+                readable=exists,
+                rows_seen=rows_seen,
+                max_event_time=max_event_time,
+            )
+        ],
+    )
+
+
+def probing(facts: EnvironmentFacts) -> Callable[[EnvironmentQuestions], EnvironmentFacts]:
+    return lambda questions: facts
+
+
+def test_without_an_engine_step_seven_says_it_was_not_configured(tmp_path: Path) -> None:
+    """An implemented check with nothing to point it at is not a pass, and not the same
+    answer as a check that does not exist."""
+    report = Case(tmp_path).run()
+
+    assert summary_of(report, "dwh.access") == "check.not_configured"
+    assert summary_of(report, "dwh.freshness") == "check.not_configured"
+    assert status_of(report, "dwh.access") is CheckStatus.ADVISORY
+
+
+def test_a_read_only_role_on_a_fresh_mart_passes_both_halves(tmp_path: Path) -> None:
+    report = Case(tmp_path).run(probe=probing(environment()))
+
+    assert status_of(report, "dwh.access") is CheckStatus.PASS
+    assert summary_of(report, "dwh.access") == "access.read_only"
+    assert status_of(report, "dwh.freshness") is CheckStatus.PASS
+    assert summary_of(report, "dwh.freshness") == "freshness.fresh"
+
+
+def test_a_role_that_can_write_blocks_the_release(tmp_path: Path) -> None:
+    """Invariant 3: evidence gathered through a role that could have changed the mart is
+    not the evidence the bundle claims to hold."""
+    case = Case(tmp_path).with_asset().with_results([["Москва", "0.4120"], ["Казань", "0.377"]])
+
+    graded = case.run(probe=probing(environment(read_only=False)))
+
+    assert summary_of(graded, "dwh.access") == "access.role_writable"
+    assert graded.verdict is Verdict.BLOCK
+
+
+def test_a_stale_mart_asks_for_a_human_and_does_not_block(tmp_path: Path) -> None:
+    case = Case(tmp_path).with_asset().with_results([["Москва", "0.4120"], ["Казань", "0.377"]])
+
+    report = case.run(probe=probing(environment(max_event_time="2026-08-01T06:00:00Z")))
+
+    assert summary_of(report, "dwh.freshness") == "freshness.stale"
+    assert report.verdict is Verdict.NEEDS_REVIEW
+
+
+def test_an_absent_mart_blocks_and_leaves_freshness_unsaid(tmp_path: Path) -> None:
+    """One problem, one finding: freshness has nothing to add about a table that is not
+    there, and saying it twice would weigh one fact twice in the verdict."""
+    report = Case(tmp_path).run(probe=probing(environment(exists=False)))
+
+    assert summary_of(report, "dwh.access") == "access.table_absent"
+    assert summary_of(report, "dwh.freshness") == "freshness.not_run"
+
+
+def test_the_bundle_carries_the_readings_the_verdict_stood_on(tmp_path: Path) -> None:
+    case = Case(tmp_path)
+    report = case.run(probe=probing(environment()))
+
+    payload = _check_payload(tmp_path, report, "dwh.freshness")
+    assert payload["facts"]["target"] == "127.0.0.1:8124/dm"
+    assert payload["facts"]["tables"][0]["max_event_time"] == "2026-08-25T06:00:00Z"
+    assert payload["questions"]["tables"][0]["event_time_column"] == "date"
+
+
+def test_the_same_environment_does_not_move_the_run_id(tmp_path: Path) -> None:
+    """The readings are observations of a moment; keying the run on them would make every
+    verification a new one and idempotency (§7.6) meaningless."""
+    first = Case(tmp_path / "a").run(probe=probing(environment()))
+    second = Case(tmp_path / "b").run(
+        probe=probing(environment(max_event_time="2026-08-25T06:30:00Z"))
+    )
+
+    assert first.run_id == second.run_id
 
 
 def test_a_product_with_no_verified_asset_is_not_a_clean_pass(tmp_path: Path) -> None:
