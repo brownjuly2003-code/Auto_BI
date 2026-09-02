@@ -15,17 +15,24 @@ Bootstrap tasks 2–7 закрыты. **Task 8 (pilot): проведена ре�
 три дефекта** (грейдился весь дифф, а не дошедшее до продукта; assets брались чужие; один
 `run_id` тихо перезаписывал запечатанный bundle), из-за чего подняты
 `CHECK_VERSION`/`VERIFIER_VERSION` 1 → 2.
-**Продолжение pilot зафиксировано 2026-09-02:** change и стенд заново не выбирать и у
-владельца не спрашивать. Рабочий контур — доступный агенту Mac с ClickHouse и read-only
-ролью; change — `metric://sales/revenue@3`, timezone `Europe/Moscow → UTC`; целевой продукт
-`decision://sales/weekly_revenue@1`, контроль — `decision://sales/weekly_orders@1`.
-Технический прогон лежит в локальном untracked-каталоге
-`.pilot-work/2026-09-02-mac-revenue-tz/`: `evidence-clean` блокирует целевой продукт с точным
-owner/dashboard impact, `evidence-control` даёт `impact.none`. Эти bundle созданы verifier 4;
-текущий verifier 5 после exact-arithmetic hardening, поэтому следующий runtime-шаг —
-перепровести **тот же** контур на Mac под v5, а не придумывать новый pilot. После этого в
-task 8 останется только человеческий замер времени и понятности чтения отчёта. На этой
-Windows-машине WSL, Docker и аналогичный runtime не разворачивать.
+**Mac pilot под verifier 5 завершён 2026-09-02.** На ClickHouse 24.8.14.39 под scoped
+read-only ролью перепроверен тот же change `metric://sales/revenue@3`, timezone
+`Europe/Moscow → UTC`, для целевого `decision://sales/weekly_revenue` и контрольного
+`decision://sales/weekly_orders`:
+
+- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v5-revenue-catalog` —
+  `run-0dd414c8db7e64ac`,
+  `sha256:75a88339794e445a3349c4d3df22cb95917de5c667fa9a9a860e2c7dfd07a5f9`, exit 4 / `block`,
+  `impact.reaches_product` с точным owner/dashboard impact, `security.unfiltered`;
+- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v5-control-catalog` —
+  `run-65844981515bdfc7`,
+  `sha256:1b0c3e1127f76cf653ac88f7240216a19f7a36f8900f418026a2921306d79edb`, exit 3 /
+  `needs_review`, `impact.none`, `security.unfiltered`.
+
+Оба bundle независимо прочитаны CLI: по 19 artifacts, 0 problems; хэши входных YAML до и
+после совпали. Рабочий транспорт к Mac — временный SSH-туннель до ClickHouse; после прогона
+он закрыт. В task 8 остался только человеческий замер времени и понятности чтения отчёта.
+На этой Windows-машине WSL, Docker и аналогичный runtime не разворачивать.
 **Ветка:** `main` · **последний implementation-коммит:** `cac2f8d`. Живые значения всегда
 брать через `git rev-parse HEAD` / `git rev-list --count b4bfa1d..HEAD`; remote нет
 **Suite:** 1938 passed / 5 skipped / 38 deselected (`--with duckdb`); `mypy --strict`,
@@ -44,20 +51,21 @@ ruff, black чисты. Известная
 
 ## Если вы начинаете сессию
 
-**Первое действие: не выбирать новый слайс и не спрашивать повторно про Mac/change.**
-Bootstrap tasks 2–7 закрыты, шаги 6 и 7 тоже. Для task 8 восстановить контур из
-`.pilot-work/2026-09-02-mac-revenue-tz/` и, если нужен свежий runtime-evidence, перепровести
-его на доступном агенту Mac под verifier 5. На Windows не запускать WSL/Docker. После
-технического перепрогона ждать только owner review time/clarity. Следующую платформенную
-фазу не начинать: по `CLAUDE.md` это стоппер **S6**. Перед ней уместен `/cxkm`-ревью по
-`b4bfa1d..HEAD` — запускает его владелец вручную, не агент.
+**Первое действие: не выбирать новый слайс и не повторять Mac v5 pilot без нового входа.**
+Bootstrap tasks 2–7, шаги 6 и 7 и технический v5-прогон task 8 закрыты. Финальные bundle —
+`evidence-v5-revenue-catalog` и `evidence-v5-control-catalog` в
+`.pilot-work/2026-09-02-mac-revenue-tz/`; теперь ждать только owner review time/clarity. На
+Windows не запускать WSL/Docker; если новый runtime-evidence действительно понадобится,
+использовать Mac через SSH-туннель. Следующую платформенную фазу не начинать: по `CLAUDE.md`
+это стоппер **S6**. Перед ней уместен `/cxkm`-ревью по `b4bfa1d..HEAD` — запускает его
+владелец вручную, не агент.
 
 **Если владелец ответил и работа началась — пять фактов, без которых будет больно:**
 
-1. **Что осталось владельцу, а не коду.** Change и Mac-стенд уже определены. Для task 8
-   владелец только читает свежий v5-отчёт, сообщает время чтения и понятность. Remote
-   репозитория и подпись evidence — отдельные решения поставки, они не повод заново
-   обсуждать pilot-контур.
+1. **Что осталось владельцу, а не коду.** Change и Mac-стенд определены, v5-прогон
+   завершён. Для task 8 владелец только читает свежие revenue/control отчёты, сообщает время
+   чтения и понятность. Remote репозитория и подпись evidence — отдельные решения поставки,
+   они не повод заново обсуждать или повторять pilot-контур.
 2. **Граф из одного продукта не проверяет ничего.** Пока продукт один, «изменение достигло
    этого продукта» — тавтология, и на ней три дефекта репетиции были невидимы. Любой новый
    сценарий гейта раскладывать минимум на двух продуктах:
@@ -905,10 +913,10 @@ uv run auto_bi decision verify /tmp/stand-run/contracts \
 - release gate принимает заранее записанный `--results` и не исполняет `reference_plan` или
   verified-asset SQL. Content digest доказывает неизменность переданных чисел, но не то, что
   именно DWH произвёл их; provenance этого результата пока остаётся внешним evidence;
-- **измеренного pilot outcome нет** — задача 8 открыта. Репетиция
-  ([`DECISIONOPS_PILOT_2026-08-25.md`](DECISIONOPS_PILOT_2026-08-25.md)) показала, что гейт
-  работает и на что он способен, но не показала того, что меряет только владелец: сколько он
-  читает отчёт и понятен ли тот. Change в ней выбран агентом, не владельцем;
+- **измеренного owner outcome нет** — задача 8 открыта. Репетиция
+  ([`DECISIONOPS_PILOT_2026-08-25.md`](DECISIONOPS_PILOT_2026-08-25.md)) и Mac v5 pilot
+  подтвердили технический контур, но не могут измерить то, что меряет только владелец:
+  сколько он читает отчёт и понятен ли тот;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP, actions, Ossie,
   MetricFlow и column-level lineage относятся к последующей платформенной фазе.
 
@@ -955,11 +963,10 @@ Exit code — вердикт: `0` pass/advisory, `3` needs_review, `4` block, `2
 
 ## Открытые решения — они за владельцем, не за агентом
 
-Офлайновая работа, которая не требует движка, закончилась. Параметры продолжения pilot уже
-определены: change `revenue` timezone, Mac-стенд и два продукта из локального каталога
-`.pilot-work/2026-09-02-mac-revenue-tz/`. Mac доступен агенту; новый change, стенд или доступ
-у владельца не запрашивать. Текущие bundle имеют verifier 4, поэтому агенту остаётся
-технически перепровести тот же контур на Mac под verifier 5. Открытые решения после этого:
+Офлайновая работа и технический Mac pilot под verifier 5 закончены. Финальные revenue и
+control bundle лежат в `.pilot-work/2026-09-02-mac-revenue-tz/` и независимо проходят
+`decision evidence`; новый change, стенд или доступ у владельца не запрашивать. Открытые
+решения теперь:
 
 | # | Вопрос | Что он разблокирует |
 |---|---|---|
@@ -983,10 +990,10 @@ evidence не приближает. Репетиция это частично �
 следует: **прежде чем объявлять слой готовым, прогнать его на входе, который на порядок
 сложнее фикстуры сьюта.**
 
-Что до нового кода — он по-прежнему закрыт S6 до owner outcome. Безопасное продолжение уже
-названо и не является новой фазой: перепровести существующий Mac pilot под verifier 5,
-передать его summary владельцу и измерить чтение. External/reviewed-SQL, третье семейство
-движков, scheduler/MCP/actions и другие платформенные слайсы до этого не начинать.
+Что до нового кода — он по-прежнему закрыт S6 до owner outcome. Существующий Mac pilot под
+verifier 5 повторять без нового входа не нужно: передать его summary владельцу и измерить
+чтение. External/reviewed-SQL, третье семейство движков, scheduler/MCP/actions и другие
+платформенные слайсы до этого не начинать.
 
 ## Источники истины
 
