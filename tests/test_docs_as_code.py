@@ -1,4 +1,4 @@
-"""plan_sol step 11: docs-as-code ratchets (env ref, links, eval counts)."""
+"""plan_sol step 11: docs-as-code ratchets (env ref, links, eval counts, DecisionOps claims)."""
 
 from __future__ import annotations
 
@@ -571,3 +571,22 @@ def test_env_reference_documents_security_defaults(attr: str, expected: object) 
         assert want in cell, f"{env} default cell {cell!r} should contain {want}"
     else:
         assert str(expected) in cell
+
+
+def test_decisionops_public_docs_describe_implemented_dwh_checks() -> None:
+    """README and USER_GUIDE must name live §8.2 step-7 checks, not the retired stub."""
+    implemented = (
+        "dwh.access",
+        "dwh.freshness",
+        "dwh.physical",
+        "dwh.security",
+        "dwh.cost",
+    )
+    for path in (README, USER_GUIDE):
+        text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(REPO).as_posix()
+        assert (
+            "check.not_implemented" not in text
+        ), f"{rel} still claims check.not_implemented as current behaviour"
+        missing = [check for check in implemented if check not in text]
+        assert not missing, f"{rel} missing implemented dwh checks: {', '.join(missing)}"

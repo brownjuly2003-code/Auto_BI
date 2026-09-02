@@ -16,8 +16,10 @@ Bootstrap tasks 2–7 закрыты. **Task 8 (pilot): проведена ре�
 `run_id` тихо перезаписывал запечатанный bundle), из-за чего подняты
 `CHECK_VERSION`/`VERIFIER_VERSION` 1 → 2. Закрыть task 8 может только владелец: реальный
 change + замер чтения отчёта.
-**Ветка:** `main` · **HEAD:** `e028376` · 31 коммит поверх
-baseline, remote нет
+**Ветка:** `main` · **DecisionOps code freeze:** `e028376`. Снимок сверки
+2026-08-27 против pre-slice HEAD `643df458d5fd4b5f063b16ab0295e020fe2f4191`
+(32 коммита поверх baseline). Живые значения: `git rev-parse HEAD` /
+`git rev-list --count b4bfa1d..HEAD`; remote нет
 **Suite:** 1906 passed / 20 skipped; `mypy --strict`, ruff, black чисты. Известная
 предсуществующая флака (не DecisionOps):
 `test_runtime_evidence::test_collect_container_snapshot_success` падает при прогоне своего
