@@ -21,6 +21,9 @@ The rules, in the order they run:
    distinct codes.
 5. order is a difference only when the contract says the order is part of the answer
    (rank/top-N).
+6. aggregate invariants run only when explicitly declared: partition conservation, share
+   sum, ratio reconstruction and additive decomposition. A broken reference result is
+   insufficient evidence; a broken candidate is different.
 
 Values travel as strings — decimals as decimal strings — for the same reason contracts do:
 a binary float in the payload would make the comparison depend on the serializer.
@@ -30,6 +33,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
@@ -88,6 +92,88 @@ class ResultSet(StrictModel):
         )
 
 
+class _AggregateCheckBase(StrictModel):
+    absolute_tolerance: DecimalString = "0"
+
+    @model_validator(mode="after")
+    def _check_common_contract(self) -> _AggregateCheckBase:
+        if Decimal(self.absolute_tolerance) < 0:
+            raise ValueError("aggregate check absolute_tolerance cannot be negative")
+        return self
+
+
+class PartitionConservationCheck(_AggregateCheckBase):
+    """Within each group, partition values sum to its repeated declared total."""
+
+    kind: Literal["partition_conservation"] = "partition_conservation"
+    value_column: NonBlankText
+    total_column: NonBlankText
+    group_by: list[NonBlankText] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_grouping(self) -> PartitionConservationCheck:
+        if len(set(self.group_by)) != len(self.group_by):
+            raise ValueError("aggregate check group_by columns must be unique")
+        return self
+
+
+class ShareSumCheck(_AggregateCheckBase):
+    """Within each group, shares sum to the declared whole (normally one)."""
+
+    kind: Literal["share_sum"] = "share_sum"
+    share_column: NonBlankText
+    expected_sum: DecimalString = "1"
+    group_by: list[NonBlankText] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_grouping(self) -> ShareSumCheck:
+        if len(set(self.group_by)) != len(self.group_by):
+            raise ValueError("aggregate check group_by columns must be unique")
+        return self
+
+
+class RatioReconstructionCheck(_AggregateCheckBase):
+    """Each ratio reconstructs as numerator / denominator times a declared factor."""
+
+    kind: Literal["ratio_reconstruction"] = "ratio_reconstruction"
+    ratio_column: NonBlankText
+    numerator_column: NonBlankText
+    denominator_column: NonBlankText
+    factor: DecimalString = "1"
+
+    @model_validator(mode="after")
+    def _check_roles(self) -> RatioReconstructionCheck:
+        roles = (self.ratio_column, self.numerator_column, self.denominator_column)
+        if len(set(roles)) != len(roles):
+            raise ValueError("ratio, numerator and denominator columns must be distinct")
+        return self
+
+
+class AdditiveDecompositionCheck(_AggregateCheckBase):
+    """Each total equals the sum of its declared component columns."""
+
+    kind: Literal["additive_decomposition"] = "additive_decomposition"
+    total_column: NonBlankText
+    component_columns: list[NonBlankText] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def _check_components(self) -> AdditiveDecompositionCheck:
+        if len(set(self.component_columns)) != len(self.component_columns):
+            raise ValueError("additive component columns must be unique")
+        if self.total_column in self.component_columns:
+            raise ValueError("additive total cannot also be a component")
+        return self
+
+
+type AggregateCheck = Annotated[
+    PartitionConservationCheck
+    | ShareSumCheck
+    | RatioReconstructionCheck
+    | AdditiveDecompositionCheck,
+    Field(discriminator="kind"),
+]
+
+
 class ResultTolerance(StrictModel):
     """What the comparison is allowed to forgive, declared up front."""
 
@@ -97,6 +183,8 @@ class ResultTolerance(StrictModel):
     float_relative: DecimalString | None = None
     #: True only when the order is part of the answer (rank, top-N).
     ordered: bool = False
+    #: Explicit aggregate invariants; never inferred from column names.
+    aggregate_checks: list[AggregateCheck] = Field(default_factory=list)
 
     def has_float_tolerance(self) -> bool:
         return self.float_absolute is not None or self.float_relative is not None
@@ -160,6 +248,16 @@ def compare_results(
             f"business key does not identify a row: {exc.key} appears more than once",
         )
 
+    base_aggregate_issues, _ = _evaluate_aggregate_checks(
+        base, tolerance.aggregate_checks, "base", key_indexes
+    )
+    if base_aggregate_issues:
+        return ComparisonReport(
+            outcome=ComparisonOutcome.INSUFFICIENT,
+            compared_rows=0,
+            differences=base_aggregate_issues,
+        )
+
     differences: list[ResultDifference] = []
     differences.extend(_compare_membership(base_rows, candidate_rows))
     compared = 0
@@ -181,7 +279,17 @@ def compare_results(
                 )
             )
 
-    outcome = ComparisonOutcome.DIFFERENT if differences else ComparisonOutcome.EQUIVALENT
+    candidate_aggregate_issues, candidate_aggregate_failed = _evaluate_aggregate_checks(
+        candidate, tolerance.aggregate_checks, "candidate", key_indexes
+    )
+    proven_different = bool(differences) or candidate_aggregate_failed
+    differences.extend(candidate_aggregate_issues)
+    if proven_different:
+        outcome = ComparisonOutcome.DIFFERENT
+    elif differences:
+        outcome = ComparisonOutcome.INSUFFICIENT
+    else:
+        outcome = ComparisonOutcome.EQUIVALENT
     return ComparisonReport(outcome=outcome, compared_rows=compared, differences=differences)
 
 
@@ -340,6 +448,192 @@ def _floats_equal(before: str, after: str, tolerance: ResultTolerance) -> bool:
             return difference == 0.0
         return difference / scale <= float(tolerance.float_relative)
     return difference == 0.0
+
+
+class _AggregateInputError(Exception):
+    pass
+
+
+def _evaluate_aggregate_checks(
+    result: ResultSet,
+    checks: list[AggregateCheck],
+    side: Literal["base", "candidate"],
+    key_indexes: list[int],
+) -> tuple[list[ResultDifference], bool]:
+    issues: list[ResultDifference] = []
+    failed = False
+    for check in checks:
+        try:
+            detail = _evaluate_aggregate_check(result, check, key_indexes)
+        except _AggregateInputError as exc:
+            issues.append(
+                ResultDifference(
+                    code=f"aggregate.{check.kind}.{side}_insufficient",
+                    detail=f"{side} {check.kind}: {exc}",
+                )
+            )
+            continue
+        if detail is not None:
+            failed = True
+            issues.append(
+                ResultDifference(
+                    code=f"aggregate.{check.kind}.{side}_failed",
+                    detail=f"{side} {check.kind}: {detail}",
+                )
+            )
+    return issues, failed
+
+
+def _evaluate_aggregate_check(
+    result: ResultSet, check: AggregateCheck, key_indexes: list[int]
+) -> str | None:
+    _validate_aggregate_columns(result, check)
+    if isinstance(check, PartitionConservationCheck):
+        return _partition_conservation(result, check)
+    if isinstance(check, ShareSumCheck):
+        return _share_sum(result, check)
+    if isinstance(check, RatioReconstructionCheck):
+        return _ratio_reconstruction(result, check, key_indexes)
+    return _additive_decomposition(result, check, key_indexes)
+
+
+def _validate_aggregate_columns(result: ResultSet, check: AggregateCheck) -> None:
+    numeric_names: list[str]
+    if isinstance(check, PartitionConservationCheck):
+        numeric_names = [check.value_column, check.total_column]
+    elif isinstance(check, ShareSumCheck):
+        numeric_names = [check.share_column]
+    elif isinstance(check, RatioReconstructionCheck):
+        numeric_names = [
+            check.ratio_column,
+            check.numerator_column,
+            check.denominator_column,
+        ]
+    else:
+        numeric_names = [check.total_column, *check.component_columns]
+
+    group_by = (
+        check.group_by if isinstance(check, (PartitionConservationCheck, ShareSumCheck)) else []
+    )
+    for name in [*group_by, *numeric_names]:
+        if result.column_index(name) is None:
+            raise _AggregateInputError(f"declared column {name!r} is not in the result schema")
+    numeric_types = {ColumnType.INTEGER, ColumnType.DECIMAL, ColumnType.FLOAT}
+    columns = {column.name: column for column in result.columns}
+    for name in numeric_names:
+        if columns[name].type not in numeric_types:
+            raise _AggregateInputError(f"declared numeric column {name!r} is {columns[name].type}")
+
+
+def _partition_conservation(result: ResultSet, check: PartitionConservationCheck) -> str | None:
+    groups = _group_rows(result, check.group_by)
+    if not groups:
+        raise _AggregateInputError("an empty result has no declared total to conserve")
+    value_index = _required_index(result, check.value_column)
+    total_index = _required_index(result, check.total_column)
+    tolerance = Decimal(check.absolute_tolerance)
+    for group, rows in groups.items():
+        values = [_decimal_value(row[value_index], check.value_column) for row in rows]
+        totals = {_decimal_value(row[total_index], check.total_column) for row in rows}
+        if len(totals) != 1:
+            return f"group {_render_key(group)} declares conflicting totals {sorted(totals)}"
+        actual, expected = sum(values, Decimal(0)), next(iter(totals))
+        if abs(actual - expected) > tolerance:
+            return f"group {_render_key(group)} sums to {actual}, expected {expected}"
+    return None
+
+
+def _share_sum(result: ResultSet, check: ShareSumCheck) -> str | None:
+    groups = _group_rows(result, check.group_by)
+    if not groups:
+        raise _AggregateInputError("an empty result has no shares to sum")
+    share_index = _required_index(result, check.share_column)
+    expected = Decimal(check.expected_sum)
+    tolerance = Decimal(check.absolute_tolerance)
+    for group, rows in groups.items():
+        actual = sum(
+            (_decimal_value(row[share_index], check.share_column) for row in rows), Decimal(0)
+        )
+        if abs(actual - expected) > tolerance:
+            return f"group {_render_key(group)} sums to {actual}, expected {expected}"
+    return None
+
+
+def _ratio_reconstruction(
+    result: ResultSet, check: RatioReconstructionCheck, key_indexes: list[int]
+) -> str | None:
+    ratio_index = _required_index(result, check.ratio_column)
+    numerator_index = _required_index(result, check.numerator_column)
+    denominator_index = _required_index(result, check.denominator_column)
+    factor = Decimal(check.factor)
+    tolerance = Decimal(check.absolute_tolerance)
+    for row in result.rows:
+        ratio = _decimal_value(row[ratio_index], check.ratio_column)
+        numerator = _decimal_value(row[numerator_index], check.numerator_column)
+        denominator = _decimal_value(row[denominator_index], check.denominator_column)
+        if denominator == 0:
+            raise _AggregateInputError(
+                f"row {_render_key(tuple(row[index] for index in key_indexes))} "
+                "has a zero denominator"
+            )
+        expected = numerator / denominator * factor
+        if abs(ratio - expected) > tolerance:
+            return (
+                f"row {_render_key(tuple(row[index] for index in key_indexes))} has ratio "
+                f"{ratio}, reconstructed {expected}"
+            )
+    return None
+
+
+def _additive_decomposition(
+    result: ResultSet, check: AdditiveDecompositionCheck, key_indexes: list[int]
+) -> str | None:
+    total_index = _required_index(result, check.total_column)
+    component_indexes = [(_required_index(result, name), name) for name in check.component_columns]
+    tolerance = Decimal(check.absolute_tolerance)
+    for row in result.rows:
+        total = _decimal_value(row[total_index], check.total_column)
+        reconstructed = sum(
+            (_decimal_value(row[index], name) for index, name in component_indexes), Decimal(0)
+        )
+        if abs(total - reconstructed) > tolerance:
+            return (
+                f"row {_render_key(tuple(row[index] for index in key_indexes))} has total "
+                f"{total}, components sum to {reconstructed}"
+            )
+    return None
+
+
+def _group_rows(
+    result: ResultSet, group_by: list[str]
+) -> dict[tuple[str | None, ...], list[list[str | None]]]:
+    indexes = [_required_index(result, name) for name in group_by]
+    groups: dict[tuple[str | None, ...], list[list[str | None]]] = {}
+    for row in result.rows:
+        key = tuple(row[index] for index in indexes) or ("all",)
+        groups.setdefault(key, []).append(row)
+    return groups
+
+
+def _required_index(result: ResultSet, name: str) -> int:
+    index = result.column_index(name)
+    if index is None:  # validated before evaluation; keeps this helper total for type checking
+        raise _AggregateInputError(f"declared column {name!r} is not in the result schema")
+    return index
+
+
+def _decimal_value(value: str | None, column: str) -> Decimal:
+    if value is None:
+        raise _AggregateInputError(f"numeric column {column!r} contains NULL")
+    try:
+        parsed = Decimal(value)
+    except InvalidOperation:
+        raise _AggregateInputError(
+            f"numeric column {column!r} contains non-decimal value {value!r}"
+        ) from None
+    if not parsed.is_finite():
+        raise _AggregateInputError(f"numeric column {column!r} contains non-finite value {value!r}")
+    return parsed
 
 
 def _render_key(key: tuple[str | None, ...]) -> str:

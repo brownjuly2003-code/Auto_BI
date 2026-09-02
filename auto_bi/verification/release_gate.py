@@ -89,14 +89,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 
 #: Part of the idempotency key: a different verifier can reach a different verdict from the
 #: same inputs, so its bundles must not be reused (§7.6).
-#: 2 — `impact.products` grades only the changes that reach the verified product, so a run
-#: that graded review under 1 can pass under 2 on the same inputs.
-VERIFIER_VERSION = "2"
+#: 3 — a declared aggregate invariant can reject results that verifier 2 called equivalent.
+VERIFIER_VERSION = "3"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule.
-#: 2 — see `_reaching`: `impact.products` counts reach, not every change in the diff.
-CHECK_VERSION = "2"
+#: 3 — `results.reconcile` now evaluates explicitly declared aggregate invariants.
+CHECK_VERSION = "3"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

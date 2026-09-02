@@ -1,7 +1,7 @@
 # Auto_BI DecisionOps — целевая архитектура
 
 **Статус:** runtime клина release-gate реализован; платформенные модули после пилота не начаты
-**Последнее обновление:** 2026-08-27
+**Последнее обновление:** 2026-09-02
 **Аудитория:** разработчики, analytics engineers, владельцы data platform
 **Первый поставляемый продукт:** Analytics Release & Evidence Gate
 
@@ -373,7 +373,7 @@ terminal bundle с тем же ключом.
 `VERIFIER_VERSION` поднимается, когда сегодняшний гейт способен вынести из тех же входов
 другой вердикт (тогда его bundle нельзя переиспользовать под прежним ключом);
 `CHECK_VERSION` — когда меняется смысл отдельной проверки, чтобы прежний `CheckResult` не
-читался как гранёный сегодняшним правилом. Обе сейчас `2`.
+читался как гранёный сегодняшним правилом. Обе сейчас `3`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -600,6 +600,23 @@ change при этом не исчезает: его по-прежнему на�
 - Bounded/truncated result не может доказывать полную числовую эквивалентность.
 - Aggregates получают metamorphic checks: partition conservation, share sum,
   ratio reconstruction и additive decomposition.
+
+Metamorphic checks объявляются явно в `tolerance.aggregate_checks`; comparator не выводит
+роль колонки из её имени. Доступны четыре tagged-контракта:
+
+- `partition_conservation`: внутри каждого `group_by` сумма `value_column` равна единственному
+  повторённому `total_column`;
+- `share_sum`: внутри каждого `group_by` сумма `share_column` равна `expected_sum` (по
+  умолчанию `1`);
+- `ratio_reconstruction`: в каждой строке `ratio_column = numerator_column /
+  denominator_column * factor`;
+- `additive_decomposition`: в каждой строке `total_column` равна сумме двух или более
+  `component_columns`.
+
+У каждого контракта своя decimal-string `absolute_tolerance` (по умолчанию `0`). Неизвестная
+или нечисловая колонка, `NULL`, non-finite value и нулевой denominator дают `insufficient`.
+Если инвариант нарушен в reference result, reference нельзя считать доказательством и исход
+тоже `insufficient`; нарушение только в candidate означает `different`.
 
 ### 8.5 Чистый BI compile seam
 

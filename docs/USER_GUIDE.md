@@ -179,6 +179,14 @@ dashboard spec — файл `<segment>@<version>.yaml` (версия в имен
 на `@7`, не подхватил вёрстку `@8`); assets — YAML `VerifiedAsset`; results — `{asset id:
 ResultSet}` с кандидатными ответами, снятыми вне гейта.
 
+Для агрегатного результата asset может объявить проверки в `tolerance.aggregate_checks`.
+Они типизированы по `kind`: `partition_conservation` (сумма частей равна total), `share_sum`
+(доли дают целое), `ratio_reconstruction` (ratio восстанавливается из numerator/denominator)
+и `additive_decomposition` (компоненты дают total). Имена колонок указываются явно; эвристик
+по названиям нет. `absolute_tolerance`, `expected_sum` и `factor` задаются decimal-строками.
+Некорректный reference result даёт `insufficient`, а нарушивший инвариант candidate —
+`different`; оба исхода исключают clean pass.
+
 Код возврата — вердикт, а не операционный статус: `0` pass / pass_with_advisory, `3`
 needs_review, `4` block, `2` usage-ошибка. `1` не используется намеренно — это код
 необработанного исключения, и падение не должно выглядеть как вынесенный вердикт.

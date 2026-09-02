@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Дата:** 2026-08-25
+**Дата:** 2026-09-02
 **Стадия:** офлайновый путь §8.2 работает целиком — validate → freeze snapshots →
 gaps → diff → impact → инвалидация assets → reconcile → reference SQL (шаг 6:
 aggregate + governed ratio на ClickHouse и на PostgreSQL-семействе) → BI compile →
@@ -20,7 +20,7 @@ change + замер чтения отчёта.
 2026-08-27 против pre-slice HEAD `643df458d5fd4b5f063b16ab0295e020fe2f4191`
 (32 коммита поверх baseline). Живые значения: `git rev-parse HEAD` /
 `git rev-list --count b4bfa1d..HEAD`; remote нет
-**Suite:** 1906 passed / 20 skipped; `mypy --strict`, ruff, black чисты. Известная
+**Suite:** 1915 passed / 21 skipped; `mypy --strict`, ruff, black чисты. Известная
 предсуществующая флака (не DecisionOps):
 `test_runtime_evidence::test_collect_container_snapshot_success` падает при прогоне своего
 файла целиком и проходит и в одиночку, и в полном прогоне — порядковая зависимость внутри
@@ -66,7 +66,7 @@ change + замер чтения отчёта.
    слайс требует нового утверждения о движке — сначала стенд, потом код.
 
 **Меняете смысл проверки — поднимайте версию.** `CHECK_VERSION` и `VERIFIER_VERSION` в
-`verification/release_gate.py` сейчас `2`. Первая говорит «старый bundle не читать как
+`verification/release_gate.py` сейчас `3`. Первая говорит «старый bundle не читать как
 гранёный сегодняшним правилом», вторая входит в idempotency key. Это конвенция, записанная
 там же в комментариях, и репетиция — пример, когда её пришлось применить.
 
@@ -228,6 +228,11 @@ escaping (независимый оракул, 20k случайных double + �
   (`0.4120` == `0.412`), float — только внутри абсолютного/относительного tolerance;
   `NULL` / ноль / отсутствующая строка / пустой результат — четыре разных кода;
   порядок строк важен только если контракт так говорит (rank/top-N).
+- `tolerance.aggregate_checks` — явный tagged-контракт для `partition_conservation`,
+  `share_sum`, `ratio_reconstruction` и `additive_decomposition`. Роли колонок не выводятся
+  из имён; каждое равенство использует decimal-string `absolute_tolerance`. Нарушенный
+  reference даёт `insufficient`, нарушенный candidate — `different`; неизвестные/нечисловые
+  колонки, `NULL`, non-finite value и нулевой denominator fail closed.
 - `auto_bi/verification/repository.py` — `VerifiedAsset` (canonical question +
   paraphrases, intent, metric refs, reference plan, ожидание: result/invariants/
   clarification/refusal, tolerance, reviewer) и `VerifiedAssetRepository`.
@@ -237,7 +242,8 @@ escaping (независимый оракул, 20k случайных double + �
   проверяли; чужой снапшот → `asset.stale_snapshot` (review); изменение метрики с
   severity review/block → `asset.metric_changed`; удаление метрики →
   `asset.metric_removed` (block); advisory-изменение не инвалидирует.
-- Проверено: 35 новых тестов (20 comparator + 15 assets).
+- Проверено: 44 теста (29 comparator + 15 assets), включая drift, который укладывается в
+  row-wise float tolerance, но ломает aggregate check.
 
 ### Evidence writer + store (2026-08-24)
 

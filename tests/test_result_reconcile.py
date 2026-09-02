@@ -5,6 +5,7 @@ compared before values; rows are matched by a declared business key rather than 
 position; exact types compare exactly and floats only within a declared tolerance; `NULL`,
 zero, a missing row and an empty result are four different things; and a truncated result
 cannot prove that two full results agree — it returns `insufficient`, never `equivalent`.
+Explicit aggregate checks also prevent row-wise tolerance from hiding a broken whole.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from auto_bi.verification.reconcile import (
     ColumnSchema,
@@ -213,6 +215,196 @@ def test_missing_business_key_is_refused_rather_than_sorted() -> None:
     report = compare_results(result(rows), result(rows), ResultTolerance())
     assert report.outcome is ComparisonOutcome.INSUFFICIENT
     assert codes(report) == ["key.undeclared"]
+
+
+@pytest.mark.parametrize(
+    ("rows", "columns", "check", "expected_code"),
+    [
+        (
+            [["north", "40", "100"], ["south", "50", "100"]],
+            {"region": "string", "amount": "decimal", "total": "decimal"},
+            {
+                "kind": "partition_conservation",
+                "value_column": "amount",
+                "total_column": "total",
+            },
+            "aggregate.partition_conservation.base_failed",
+        ),
+        (
+            [["north", "0.4"], ["south", "0.5"]],
+            {"region": "string", "share": "decimal"},
+            {"kind": "share_sum", "share_column": "share"},
+            "aggregate.share_sum.base_failed",
+        ),
+        (
+            [["north", "40", "100", "0.5"]],
+            {
+                "region": "string",
+                "numerator": "decimal",
+                "denominator": "decimal",
+                "ratio": "decimal",
+            },
+            {
+                "kind": "ratio_reconstruction",
+                "ratio_column": "ratio",
+                "numerator_column": "numerator",
+                "denominator_column": "denominator",
+            },
+            "aggregate.ratio_reconstruction.base_failed",
+        ),
+        (
+            [["north", "100", "60", "30"]],
+            {
+                "region": "string",
+                "total": "decimal",
+                "online": "decimal",
+                "retail": "decimal",
+            },
+            {
+                "kind": "additive_decomposition",
+                "total_column": "total",
+                "component_columns": ["online", "retail"],
+            },
+            "aggregate.additive_decomposition.base_failed",
+        ),
+    ],
+    ids=[
+        "partition-conservation",
+        "share-sum",
+        "ratio-reconstruction",
+        "additive-decomposition",
+    ],
+)
+def test_invalid_aggregate_cannot_pass_when_both_results_are_identical(
+    rows: list[list[Any]],
+    columns: dict[str, str],
+    check: dict[str, Any],
+    expected_code: str,
+) -> None:
+    aggregate = result(rows, **columns)
+    tolerance = ResultTolerance.model_validate(
+        {"business_key": ["region"], "aggregate_checks": [check]}
+    )
+
+    report = compare_results(aggregate, aggregate, tolerance)
+
+    assert report.outcome is ComparisonOutcome.INSUFFICIENT
+    assert codes(report) == [expected_code]
+
+
+def test_valid_aggregate_checks_allow_equivalence() -> None:
+    aggregate = result(
+        [
+            ["north", "40", "100", "0.4", "20", "0.5", "7", "4", "3"],
+            ["south", "60", "100", "0.6", "30", "0.5", "9", "5", "4"],
+        ],
+        region="string",
+        amount="decimal",
+        partition_total="decimal",
+        share="decimal",
+        numerator="decimal",
+        ratio="decimal",
+        delta="decimal",
+        price_effect="decimal",
+        volume_effect="decimal",
+    )
+    tolerance = ResultTolerance.model_validate(
+        {
+            "business_key": ["region"],
+            "aggregate_checks": [
+                {
+                    "kind": "partition_conservation",
+                    "value_column": "amount",
+                    "total_column": "partition_total",
+                },
+                {"kind": "share_sum", "share_column": "share"},
+                {
+                    "kind": "ratio_reconstruction",
+                    "ratio_column": "ratio",
+                    "numerator_column": "numerator",
+                    "denominator_column": "amount",
+                },
+                {
+                    "kind": "additive_decomposition",
+                    "total_column": "delta",
+                    "component_columns": ["price_effect", "volume_effect"],
+                },
+            ],
+        }
+    )
+
+    assert compare_results(aggregate, aggregate, tolerance).outcome is ComparisonOutcome.EQUIVALENT
+
+
+def test_aggregate_check_catches_drift_hidden_by_row_tolerance() -> None:
+    base = result([["north", "0.50"], ["south", "0.50"]], region="string", share="float")
+    candidate = result([["north", "0.51"], ["south", "0.51"]], region="string", share="float")
+    tolerance = ResultTolerance.model_validate(
+        {
+            "business_key": ["region"],
+            "float_absolute": "0.02",
+            "aggregate_checks": [
+                {
+                    "kind": "share_sum",
+                    "share_column": "share",
+                    "absolute_tolerance": "0",
+                }
+            ],
+        }
+    )
+
+    report = compare_results(base, candidate, tolerance)
+
+    assert report.outcome is ComparisonOutcome.DIFFERENT
+    assert codes(report) == ["aggregate.share_sum.candidate_failed"]
+
+
+def test_aggregate_check_with_unknown_column_is_insufficient() -> None:
+    aggregate = result([["north", "1"]], region="string", share="decimal")
+    tolerance = ResultTolerance.model_validate(
+        {
+            "business_key": ["region"],
+            "aggregate_checks": [{"kind": "share_sum", "share_column": "missing"}],
+        }
+    )
+
+    report = compare_results(aggregate, aggregate, tolerance)
+
+    assert report.outcome is ComparisonOutcome.INSUFFICIENT
+    assert codes(report) == ["aggregate.share_sum.base_insufficient"]
+
+
+def test_aggregate_check_refuses_non_finite_numbers() -> None:
+    aggregate = result([["north", "NaN"]], region="string", share="decimal")
+    tolerance = ResultTolerance.model_validate(
+        {
+            "business_key": ["region"],
+            "aggregate_checks": [{"kind": "share_sum", "share_column": "share"}],
+        }
+    )
+
+    report = compare_results(aggregate, aggregate, tolerance)
+
+    assert report.outcome is ComparisonOutcome.INSUFFICIENT
+    assert codes(report) == ["aggregate.share_sum.base_insufficient"]
+
+
+def test_ratio_check_rejects_irrelevant_grouping_contract() -> None:
+    with pytest.raises(ValidationError, match="group_by"):
+        ResultTolerance.model_validate(
+            {
+                "business_key": ["region"],
+                "aggregate_checks": [
+                    {
+                        "kind": "ratio_reconstruction",
+                        "ratio_column": "ratio",
+                        "numerator_column": "numerator",
+                        "denominator_column": "denominator",
+                        "group_by": ["region"],
+                    }
+                ],
+            }
+        )
 
 
 def test_row_width_must_match_the_schema() -> None:
