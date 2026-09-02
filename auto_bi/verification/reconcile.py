@@ -562,6 +562,8 @@ def _share_sum(result: ResultSet, check: ShareSumCheck) -> str | None:
 def _ratio_reconstruction(
     result: ResultSet, check: RatioReconstructionCheck, key_indexes: list[int]
 ) -> str | None:
+    if not result.rows:
+        raise _AggregateInputError("an empty result has no ratios to reconstruct")
     ratio_index = _required_index(result, check.ratio_column)
     numerator_index = _required_index(result, check.numerator_column)
     denominator_index = _required_index(result, check.denominator_column)
@@ -588,6 +590,8 @@ def _ratio_reconstruction(
 def _additive_decomposition(
     result: ResultSet, check: AdditiveDecompositionCheck, key_indexes: list[int]
 ) -> str | None:
+    if not result.rows:
+        raise _AggregateInputError("an empty result has no totals to decompose")
     total_index = _required_index(result, check.total_column)
     component_indexes = [(_required_index(result, name), name) for name in check.component_columns]
     tolerance = Decimal(check.absolute_tolerance)

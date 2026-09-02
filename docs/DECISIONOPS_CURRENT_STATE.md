@@ -66,7 +66,7 @@ change + замер чтения отчёта.
    слайс требует нового утверждения о движке — сначала стенд, потом код.
 
 **Меняете смысл проверки — поднимайте версию.** `CHECK_VERSION` и `VERIFIER_VERSION` в
-`verification/release_gate.py` сейчас `3`. Первая говорит «старый bundle не читать как
+`verification/release_gate.py` сейчас `4`. Первая говорит «старый bundle не читать как
 гранёный сегодняшним правилом», вторая входит в idempotency key. Это конвенция, записанная
 там же в комментариях, и репетиция — пример, когда её пришлось применить.
 
@@ -232,7 +232,9 @@ escaping (независимый оракул, 20k случайных double + �
   `share_sum`, `ratio_reconstruction` и `additive_decomposition`. Роли колонок не выводятся
   из имён; каждое равенство использует decimal-string `absolute_tolerance`. Нарушенный
   reference даёт `insufficient`, нарушенный candidate — `different`; неизвестные/нечисловые
-  колонки, `NULL`, non-finite value и нулевой denominator fail closed.
+  колонки, `NULL`, non-finite value и нулевой denominator fail closed. Пустой вход
+  row-wise invariant (`ratio_reconstruction`, `additive_decomposition`) fail closed как
+  `insufficient`.
 - `auto_bi/verification/repository.py` — `VerifiedAsset` (canonical question +
   paraphrases, intent, metric refs, reference plan, ожидание: result/invariants/
   clarification/refusal, tolerance, reviewer) и `VerifiedAssetRepository`.

@@ -389,6 +389,55 @@ def test_aggregate_check_refuses_non_finite_numbers() -> None:
     assert codes(report) == ["aggregate.share_sum.base_insufficient"]
 
 
+@pytest.mark.parametrize(
+    ("columns", "check", "expected_code"),
+    [
+        (
+            {
+                "region": "string",
+                "numerator": "decimal",
+                "denominator": "decimal",
+                "ratio": "decimal",
+            },
+            {
+                "kind": "ratio_reconstruction",
+                "ratio_column": "ratio",
+                "numerator_column": "numerator",
+                "denominator_column": "denominator",
+            },
+            "aggregate.ratio_reconstruction.base_insufficient",
+        ),
+        (
+            {
+                "region": "string",
+                "total": "decimal",
+                "online": "decimal",
+                "retail": "decimal",
+            },
+            {
+                "kind": "additive_decomposition",
+                "total_column": "total",
+                "component_columns": ["online", "retail"],
+            },
+            "aggregate.additive_decomposition.base_insufficient",
+        ),
+    ],
+    ids=["ratio-reconstruction", "additive-decomposition"],
+)
+def test_empty_result_cannot_prove_rowwise_aggregate_invariants(
+    columns: dict[str, str], check: dict[str, Any], expected_code: str
+) -> None:
+    empty = result([], **columns)
+    tolerance = ResultTolerance.model_validate(
+        {"business_key": ["region"], "aggregate_checks": [check]}
+    )
+
+    report = compare_results(empty, empty, tolerance)
+
+    assert report.outcome is ComparisonOutcome.INSUFFICIENT
+    assert codes(report) == [expected_code]
+
+
 def test_ratio_check_rejects_irrelevant_grouping_contract() -> None:
     with pytest.raises(ValidationError, match="group_by"):
         ResultTolerance.model_validate(
