@@ -4,6 +4,11 @@
 control plane для выпуска проверяемых аналитических продуктов; первый
 вертикальный продукт — **Analytics Release & Evidence Gate**.
 
+> **Идентичность пакета пока не выбрана.** `pip install autobi-agent` устанавливает
+> опубликованный baseline v0.5.0, а не DecisionOps из этого checkout. Fork временно сохраняет
+> baseline-метаданные для bootstrap; его нельзя публиковать как `autobi-agent==0.5.0`. До
+> решения владельца об имени, версии и remote используйте локальную установку `pip install -e .`.
+
 Текущий статус — первый вертикальный путь работает offline: `auto_bi decision
 validate` (cross-contract проверка), `auto_bi decision verify` (полный гейт §8.2
 с content-addressed evidence bundle) и `auto_bi decision evidence` (чтение bundle
