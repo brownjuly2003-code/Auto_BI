@@ -20,7 +20,7 @@ change + замер чтения отчёта.
 2026-08-27 против pre-slice HEAD `643df458d5fd4b5f063b16ab0295e020fe2f4191`
 (32 коммита поверх baseline). Живые значения: `git rev-parse HEAD` /
 `git rev-list --count b4bfa1d..HEAD`; remote нет
-**Suite:** 1915 passed / 21 skipped; `mypy --strict`, ruff, black чисты. Известная
+**Suite:** 1916 passed / 21 skipped; `mypy --strict`, ruff, black чисты. Известная
 предсуществующая флака (не DecisionOps):
 `test_runtime_evidence::test_collect_container_snapshot_success` падает при прогоне своего
 файла целиком и проходит и в одиночку, и в полном прогоне — порядковая зависимость внутри
@@ -885,11 +885,17 @@ uv run auto_bi decision verify /tmp/stand-run/contracts \
   названная граница — `max_scanned_bytes` и `timeout_ms` не отвечает ни один планировщик, и
   они выносятся advisory-гэпом, а не выводятся арифметикой; закрыть её может только движок,
   который на них отвечает, а не ещё один слайс кода;
+- impact graph доходит до dashboard ref, но не строит chart-level impact: owner report
+  честно называет дашборд целиком, а не притворяется, что знает конкретный chart;
+- release gate принимает заранее записанный `--results` и не исполняет `reference_plan` или
+  verified-asset SQL. Content digest доказывает неизменность переданных чисел, но не то, что
+  именно DWH произвёл их; provenance этого результата пока остаётся внешним evidence;
 - **измеренного pilot outcome нет** — задача 8 открыта. Репетиция
   ([`DECISIONOPS_PILOT_2026-08-25.md`](DECISIONOPS_PILOT_2026-08-25.md)) показала, что гейт
   работает и на что он способен, но не показала того, что меряет только владелец: сколько он
   читает отчёт и понятен ли тот. Change в ней выбран агентом, не владельцем;
-- typed investigations, certified brief, scheduler, PostgreSQL, MCP и actions.
+- typed investigations, certified brief, scheduler, PostgreSQL, MCP, actions, Ossie,
+  MetricFlow и column-level lineage относятся к последующей платформенной фазе.
 
 ## Проверить руками за две минуты
 

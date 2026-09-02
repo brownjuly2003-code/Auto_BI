@@ -24,6 +24,7 @@ REPO = Path(__file__).resolve().parents[1]
 DOCS = REPO / "docs"
 ENV_REF = DOCS / "ENV_REFERENCE.md"
 CURRENT_STATE = DOCS / "CURRENT_STATE.md"
+DECISIONOPS_CURRENT_STATE = DOCS / "DECISIONOPS_CURRENT_STATE.md"
 PROJECT_CLOSURE = DOCS / "PROJECT_CLOSURE.md"
 ARCHITECTURE = DOCS / "ARCHITECTURE.md"
 ARCHITECTURE_HISTORY = DOCS / "ARCHITECTURE_HISTORY.md"
@@ -590,3 +591,20 @@ def test_decisionops_public_docs_describe_implemented_dwh_checks() -> None:
         ), f"{rel} still claims check.not_implemented as current behaviour"
         missing = [check for check in implemented if check not in text]
         assert not missing, f"{rel} missing implemented dwh checks: {', '.join(missing)}"
+
+
+def test_decisionops_state_names_known_residual_boundaries() -> None:
+    """The not-implemented inventory must not imply broader coverage than the wedge has."""
+    text = DECISIONOPS_CURRENT_STATE.read_text(encoding="utf-8")
+    section = re.search(r"## Что ещё не реализовано\s*(.*?)(?=\n## )", text, re.DOTALL)
+    assert section is not None
+    residual = section.group(1)
+    required = (
+        "chart-level impact",
+        "verified-asset SQL",
+        "Ossie",
+        "MetricFlow",
+        "column-level lineage",
+    )
+    missing = [item for item in required if item not in residual]
+    assert not missing, "DecisionOps residual inventory missing: " + ", ".join(missing)
