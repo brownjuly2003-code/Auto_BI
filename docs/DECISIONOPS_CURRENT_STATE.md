@@ -20,7 +20,8 @@ change + замер чтения отчёта.
 2026-08-27 против pre-slice HEAD `643df458d5fd4b5f063b16ab0295e020fe2f4191`
 (32 коммита поверх baseline). Живые значения: `git rev-parse HEAD` /
 `git rev-list --count b4bfa1d..HEAD`; remote нет
-**Suite:** 1916 passed / 21 skipped; `mypy --strict`, ruff, black чисты. Известная
+**Suite:** 1938 passed / 5 skipped / 38 deselected (`--with duckdb`); `mypy --strict`,
+ruff, black чисты. Известная
 предсуществующая флака (не DecisionOps):
 `test_runtime_evidence::test_collect_container_snapshot_success` падает при прогоне своего
 файла целиком и проходит и в одиночку, и в полном прогоне — порядковая зависимость внутри
@@ -66,7 +67,7 @@ change + замер чтения отчёта.
    слайс требует нового утверждения о движке — сначала стенд, потом код.
 
 **Меняете смысл проверки — поднимайте версию.** `CHECK_VERSION` и `VERIFIER_VERSION` в
-`verification/release_gate.py` сейчас `4`. Первая говорит «старый bundle не читать как
+`verification/release_gate.py` сейчас `5`. Первая говорит «старый bundle не читать как
 гранёный сегодняшним правилом», вторая входит в idempotency key. Это конвенция, записанная
 там же в комментариях, и репетиция — пример, когда её пришлось применить.
 
@@ -234,7 +235,8 @@ escaping (независимый оракул, 20k случайных double + �
   reference даёт `insufficient`, нарушенный candidate — `different`; неизвестные/нечисловые
   колонки, `NULL`, non-finite value и нулевой denominator fail closed. Пустой вход
   row-wise invariant (`ratio_reconstruction`, `additive_decomposition`) fail closed как
-  `insufficient`.
+  `insufficient`. Промежуточная арифметика точная и не теряет младшие разряды после
+  стандартных 28 значащих цифр `Decimal`.
 - `auto_bi/verification/repository.py` — `VerifiedAsset` (canonical question +
   paraphrases, intent, metric refs, reference plan, ожидание: result/invariants/
   clarification/refusal, tolerance, reviewer) и `VerifiedAssetRepository`.

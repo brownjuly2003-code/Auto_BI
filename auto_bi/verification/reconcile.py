@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from fractions import Fraction
 from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
@@ -537,9 +538,13 @@ def _partition_conservation(result: ResultSet, check: PartitionConservationCheck
         totals = {_decimal_value(row[total_index], check.total_column) for row in rows}
         if len(totals) != 1:
             return f"group {_render_key(group)} declares conflicting totals {sorted(totals)}"
-        actual, expected = sum(values, Decimal(0)), next(iter(totals))
-        if abs(actual - expected) > tolerance:
-            return f"group {_render_key(group)} sums to {actual}, expected {expected}"
+        actual = sum((Fraction(value) for value in values), Fraction())
+        expected = Fraction(next(iter(totals)))
+        if abs(actual - expected) > Fraction(tolerance):
+            return (
+                f"group {_render_key(group)} sums to {_render_fraction(actual)}, "
+                f"expected {_render_fraction(expected)}"
+            )
     return None
 
 
@@ -552,10 +557,14 @@ def _share_sum(result: ResultSet, check: ShareSumCheck) -> str | None:
     tolerance = Decimal(check.absolute_tolerance)
     for group, rows in groups.items():
         actual = sum(
-            (_decimal_value(row[share_index], check.share_column) for row in rows), Decimal(0)
+            (Fraction(_decimal_value(row[share_index], check.share_column)) for row in rows),
+            Fraction(),
         )
-        if abs(actual - expected) > tolerance:
-            return f"group {_render_key(group)} sums to {actual}, expected {expected}"
+        if abs(actual - Fraction(expected)) > Fraction(tolerance):
+            return (
+                f"group {_render_key(group)} sums to {_render_fraction(actual)}, "
+                f"expected {expected}"
+            )
     return None
 
 
@@ -578,11 +587,11 @@ def _ratio_reconstruction(
                 f"row {_render_key(tuple(row[index] for index in key_indexes))} "
                 "has a zero denominator"
             )
-        expected = numerator / denominator * factor
-        if abs(ratio - expected) > tolerance:
+        expected = Fraction(numerator) / Fraction(denominator) * Fraction(factor)
+        if abs(Fraction(ratio) - expected) > Fraction(tolerance):
             return (
                 f"row {_render_key(tuple(row[index] for index in key_indexes))} has ratio "
-                f"{ratio}, reconstructed {expected}"
+                f"{ratio}, reconstructed {_render_fraction(expected)}"
             )
     return None
 
@@ -598,12 +607,13 @@ def _additive_decomposition(
     for row in result.rows:
         total = _decimal_value(row[total_index], check.total_column)
         reconstructed = sum(
-            (_decimal_value(row[index], name) for index, name in component_indexes), Decimal(0)
+            (Fraction(_decimal_value(row[index], name)) for index, name in component_indexes),
+            Fraction(),
         )
-        if abs(total - reconstructed) > tolerance:
+        if abs(Fraction(total) - reconstructed) > Fraction(tolerance):
             return (
                 f"row {_render_key(tuple(row[index] for index in key_indexes))} has total "
-                f"{total}, components sum to {reconstructed}"
+                f"{total}, components sum to {_render_fraction(reconstructed)}"
             )
     return None
 
@@ -638,6 +648,30 @@ def _decimal_value(value: str | None, column: str) -> Decimal:
     if not parsed.is_finite():
         raise _AggregateInputError(f"numeric column {column!r} contains non-finite value {value!r}")
     return parsed
+
+
+def _render_fraction(value: Fraction) -> str:
+    """Render a finite decimal exactly; retain an exact fraction for recurring values."""
+    if value.denominator == 1:
+        return str(value.numerator)
+
+    denominator = value.denominator
+    twos = 0
+    while denominator % 2 == 0:
+        denominator //= 2
+        twos += 1
+    fives = 0
+    while denominator % 5 == 0:
+        denominator //= 5
+        fives += 1
+    if denominator != 1:
+        return str(value)
+
+    scale = max(twos, fives)
+    scaled = abs(value.numerator) * 2 ** (scale - twos) * 5 ** (scale - fives)
+    digits = str(scaled).rjust(scale + 1, "0")
+    rendered = f"{digits[:-scale]}.{digits[-scale:]}"
+    return f"-{rendered}" if value.numerator < 0 else rendered
 
 
 def _render_key(key: tuple[str | None, ...]) -> str:

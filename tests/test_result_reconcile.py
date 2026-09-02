@@ -359,6 +359,101 @@ def test_aggregate_check_catches_drift_hidden_by_row_tolerance() -> None:
     assert codes(report) == ["aggregate.share_sum.candidate_failed"]
 
 
+@pytest.mark.parametrize(
+    ("rows", "columns", "check"),
+    [
+        (
+            [
+                ["north", "10000000000000000000000000000", "10000000000000000000000000000"],
+                ["south", "1", "10000000000000000000000000000"],
+            ],
+            {"region": "string", "amount": "decimal", "total": "decimal"},
+            {
+                "kind": "partition_conservation",
+                "value_column": "amount",
+                "total_column": "total",
+            },
+        ),
+        (
+            [
+                ["north", "10000000000000000000000000000"],
+                ["south", "1"],
+            ],
+            {"region": "string", "share": "decimal"},
+            {
+                "kind": "share_sum",
+                "share_column": "share",
+                "expected_sum": "10000000000000000000000000000",
+            },
+        ),
+        (
+            [
+                [
+                    "north",
+                    "10000000000000000000000000000",
+                    "10000000000000000000000000001",
+                    "1",
+                ]
+            ],
+            {
+                "region": "string",
+                "ratio": "decimal",
+                "numerator": "decimal",
+                "denominator": "decimal",
+            },
+            {
+                "kind": "ratio_reconstruction",
+                "ratio_column": "ratio",
+                "numerator_column": "numerator",
+                "denominator_column": "denominator",
+            },
+        ),
+        (
+            [
+                [
+                    "north",
+                    "10000000000000000000000000000",
+                    "10000000000000000000000000000",
+                    "1",
+                ]
+            ],
+            {
+                "region": "string",
+                "total": "decimal",
+                "online": "decimal",
+                "retail": "decimal",
+            },
+            {
+                "kind": "additive_decomposition",
+                "total_column": "total",
+                "component_columns": ["online", "retail"],
+            },
+        ),
+    ],
+    ids=[
+        "partition-conservation",
+        "share-sum",
+        "ratio-reconstruction",
+        "additive-decomposition",
+    ],
+)
+def test_large_decimal_aggregate_does_not_lose_low_order_digits(
+    rows: list[list[Any]], columns: dict[str, str], check: dict[str, Any]
+) -> None:
+    aggregate = result(rows, **columns)
+    tolerance = ResultTolerance.model_validate(
+        {
+            "business_key": ["region"],
+            "aggregate_checks": [check],
+        }
+    )
+
+    report = compare_results(aggregate, aggregate, tolerance)
+
+    assert report.outcome is ComparisonOutcome.INSUFFICIENT
+    assert codes(report) == [f"aggregate.{check['kind']}.base_failed"]
+
+
 def test_aggregate_check_with_unknown_column_is_insufficient() -> None:
     aggregate = result([["north", "1"]], region="string", share="decimal")
     tolerance = ResultTolerance.model_validate(

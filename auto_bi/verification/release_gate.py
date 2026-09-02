@@ -89,13 +89,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 
 #: Part of the idempotency key: a different verifier can reach a different verdict from the
 #: same inputs, so its bundles must not be reused (§7.6).
-#: 4 — an empty result cannot prove a declared row-wise aggregate invariant.
-VERIFIER_VERSION = "4"
+#: 5 — aggregate arithmetic is exact beyond the Decimal context's 28-digit precision.
+VERIFIER_VERSION = "5"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule.
-#: 4 — empty row-wise aggregate invariant inputs fail closed as insufficient.
-CHECK_VERSION = "4"
+#: 5 — aggregate invariants no longer round intermediate sums, products or ratios.
+CHECK_VERSION = "5"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
