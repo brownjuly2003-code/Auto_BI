@@ -87,10 +87,10 @@ from auto_bi.verification.summary import SummaryFacts, render_summary
 
 API_VERSION = "auto-bi.io/v2alpha1"
 
-#: Part of the idempotency key: a different verifier can reach a different verdict from the
-#: same inputs, so its bundles must not be reused (§7.6).
-#: 6 — an unaffected product's summary surfaces `impact.none` before review findings.
-VERIFIER_VERSION = "6"
+#: Part of the idempotency key: a different verifier can derive a different verdict or
+#: evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
+#: 7 — owner summaries name exact time-field transitions and the next owner action.
+VERIFIER_VERSION = "7"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule.

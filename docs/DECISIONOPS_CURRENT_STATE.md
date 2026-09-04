@@ -4,7 +4,7 @@
 
 **Стадия:** технический bootstrap release gate завершён; измерение результата у владельца открыто
 
-**Версии evidence:** `VERIFIER_VERSION=6`, `CHECK_VERSION=5`
+**Версии evidence:** `VERIFIER_VERSION=7`, `CHECK_VERSION=5`
 
 ## Коротко
 
@@ -36,7 +36,7 @@ contracts -> validate -> snapshots/diff -> product impact -> result reconciliati
 |---|---|
 | Tasks 1–7 | завершены |
 | Task 8: технический pilot | завершён на ClickHouse 24.8.14.39 |
-| Task 8: proxy-owner review | завершён; scope понятен, actionability частичная |
+| Task 8: proxy-owner review | v7: scope и actionability проходят |
 | Task 8: owner outcome | открыт: время чтения и понятность отчёта |
 | Следующая платформенная фаза | не начата; требуется решение владельца |
 
@@ -46,23 +46,24 @@ Tracked pilot rehearsal от 2026-08-25 содержит четыре воспр
 Репетиция выявила три дефекта: неверный scope impact, примесь чужих assets и тихую
 перезапись bundle с тем же `run_id`; исправления защищены тестами.
 
-Технический Mac pilot verifier 6 проверил timezone change
-`metric://sales/revenue@3` для зависимого `weekly_revenue` и независимого
-`weekly_orders`. Финальные локальные bundles сохранены в игнорируемом каталоге:
+Mac pilot verifier 7 проверил timezone change `metric://sales/revenue@3` для
+зависимого `weekly_revenue` и независимого `weekly_orders`. Локальные bundles:
 
-- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v6-revenue-catalog`:
-  exit `4`, `block`,
-  digest `03bbfa06…5240ac`;
-- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v6-control-catalog`:
-  exit `3`, `needs_review`,
-  `impact.none`, digest `b433671c…ed3293`.
+- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v7-revenue-catalog`:
+  `run-7d96f81f2ac4009f`, exit `4`, `block`, digest `d7dc80b9…adc68`;
+- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v7-control-catalog`:
+  `run-fae00f0db7e5a6ff`, exit `3`, `needs_review`, `impact.none`,
+  digest `d158f681…dfb6e6`.
 
-Оба bundle содержат по 19 artifacts и прошли независимое чтение без ошибок.
-Повторять pilot без нового change или новой гипотезы не требуется.
+Оба: 19 artifacts, integrity `pass`. На native ClickHouse 24.8.14.39
+access/freshness/physical прошли; `dwh.security` вернул `security.not_observed`,
+поскольку временной роли недоступны access-каталоги. Verdict сохранились. Повторять
+pilot до решения о необходимости security parity с v6 не требуется.
 
 [Симуляция owner-gate](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md) оценила
-decision surface в 44/40 секунд и подтвердила понятность scope. Это proxy-оценка,
-а не человеческий замер; Task 8 остаётся открытой.
+decision surface affected/control в 52/33 секунды и подтвердила понятность scope
+и следующего действия. Это proxy-оценка, а не человеческий замер; Task 8 остаётся
+открытой.
 
 ## Карта реализации
 
@@ -120,7 +121,7 @@ Windows-машине для документационной проверки н
 
 ## Решения владельца
 
-1. Измерить время чтения двух v6-отчётов и подтвердить, понятен ли scope результата.
+1. Измерить время чтения двух v7-отчётов и подтвердить, понятны ли scope и действие.
 2. Выбрать remote для fork, если нужны push, hosted CI и внешнее review.
 3. Решить, нужна ли подпись evidence и какой trust root допустим.
 4. Выбрать package identity до любой публикации.

@@ -19,8 +19,8 @@ validate` (cross-contract проверка), `auto_bi decision verify` (полн
 read-only ролью (`dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`,
 `dwh.cost`); без `--dwh` проверки движка отвечают `check.not_configured`. Шаг 6
 компилирует reference-запрос метрики только там, где семантика точна офлайн, и
-называет гэп там, где нет. Технический pilot verifier 6 на реальном timezone change
-завершён; открыто только измерение времени и понятности отчёта владельцем.
+называет гэп там, где нет. Технический pilot verifier 7 на реальном timezone change
+завершён; human owner review остаётся открытым, детали — в текущем состоянии.
 Унаследованный v1 runtime сохранён без функциональных изменений.
 
 ```bash

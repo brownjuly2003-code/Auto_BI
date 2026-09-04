@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 
 from auto_bi.decision.impact import ProductImpact
 from auto_bi.severity import Severity
-from auto_bi.verification.model import verdict_for
+from auto_bi.verification.model import Verdict, verdict_for
 
 if TYPE_CHECKING:  # a runtime import would close the loop: release_gate imports this module
     from auto_bi.verification.release_gate import CheckResult
@@ -103,12 +103,6 @@ def render_summary(
     # Every check lands in exactly one section: a finding repeated under two headings reads
     # as two findings, and an owner counting problems would count it twice.
     graded = [check for check in checks if check.summary_code not in _UNDONE]
-    lines += _severity_section(
-        "What stops the release",
-        [check for check in graded if check.severity() is Severity.BLOCK],
-    )
-    lines += _impact_section(impacts)
-    review_checks = [check for check in graded if check.severity() is Severity.REVIEW]
     unaffected = next(
         (
             check
@@ -117,6 +111,13 @@ def render_summary(
         ),
         None,
     )
+    lines += _owner_action_section(verdict, product_unaffected=unaffected is not None)
+    lines += _severity_section(
+        "What stops the release",
+        [check for check in graded if check.severity() is Severity.BLOCK],
+    )
+    lines += _impact_section(impacts)
+    review_checks = [check for check in graded if check.severity() is Severity.REVIEW]
     review_intro = ""
     if unaffected is not None:
         review_intro = (
@@ -131,6 +132,30 @@ def render_summary(
     lines += _undone_section([check for check in checks if check.summary_code in _UNDONE])
     lines += _table_section(checks)
     return "\n".join(lines) + "\n"
+
+
+def _owner_action_section(verdict: Verdict, *, product_unaffected: bool) -> list[str]:
+    """Turn only the graded verdict and product-scope finding into the next gate action."""
+    if verdict is Verdict.BLOCK:
+        action = (
+            "Do not release this candidate. Resolve the blocking findings in this report, "
+            "then run the release gate again."
+        )
+    elif verdict is Verdict.NEEDS_REVIEW and product_unaffected:
+        action = (
+            "The `impact.none` finding says the semantic changes do not reach this product. "
+            "Review the remaining human findings before deciding whether to release it."
+        )
+    elif verdict is Verdict.NEEDS_REVIEW:
+        action = (
+            "Review the human findings in this report and record the owner's decision before "
+            "release."
+        )
+    elif verdict is Verdict.PASS_WITH_ADVISORY:
+        action = "Release is not blocked by this gate. Read the advisory findings before release."
+    else:
+        action = "No owner action is required by the graded findings."
+    return ["", "## Owner action", "", action]
 
 
 def _severity_section(

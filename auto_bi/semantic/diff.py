@@ -334,14 +334,24 @@ def _diff_metric_attrs(
         ("time", "metric.time_changed"),
         ("unit", "metric.unit_changed"),
     ):
-        if getattr(old, attr) != getattr(new, attr):
+        old_value = getattr(old, attr)
+        new_value = getattr(new, attr)
+        if old_value != new_value:
+            detail = f"{attr} changed"
+            if attr == "time":
+                changed_fields = [
+                    f"{field} {getattr(old_value, field)} -> {getattr(new_value, field)}"
+                    for field in ("event_time_column", "timezone", "calendar")
+                    if getattr(old_value, field) != getattr(new_value, field)
+                ]
+                detail = f"time changed: {', '.join(changed_fields)}"
             changes.append(
                 _change(
                     code,
                     ChangeKind.MODIFIED,
                     Severity.REVIEW,
                     new.id,
-                    f"{attr} changed",
+                    detail,
                     impact,
                 )
             )

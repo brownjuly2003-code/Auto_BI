@@ -208,6 +208,18 @@ def test_metric_meaning_changes_need_review(
     assert change.severity is Severity.REVIEW
 
 
+def test_metric_time_change_names_only_the_changed_field(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    changed = contract(time={"event_time_column": "date", "timezone": "UTC"})
+
+    change = only(
+        diff_snapshots(base, snap(tmp_path, "candidate", contracts={"m.yaml": changed})),
+        "metric.time_changed",
+    )
+
+    assert change.detail == "time changed: timezone Europe/Moscow -> UTC"
+
+
 def test_removed_metric_blocks(tmp_path: Path) -> None:
     base = snap(tmp_path, "base")
     candidate = snap(tmp_path, "candidate", contracts={"readme.txt": "not a contract"})

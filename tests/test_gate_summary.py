@@ -92,6 +92,17 @@ def test_a_blocking_run_names_what_stops_it_and_whom_it_reaches(tmp_path: Path) 
         assert check.check_id in text
 
 
+def test_a_blocking_run_tells_the_owner_not_to_release_and_to_repeat_the_gate(
+    tmp_path: Path,
+) -> None:
+    report, text = run_with_summary(Case(tmp_path).with_candidate(contract=_formula_change()))
+
+    assert report.verdict.value == "block"
+    action = text.split("## Owner action")[1].split("## What stops the release")[0]
+    assert "Do not release this candidate" in action
+    assert "run the release gate again" in action
+
+
 def test_the_summary_says_what_the_run_did_not_do(tmp_path: Path) -> None:
     """A clean report that hides its own holes is worse than no report (§8.2)."""
     _, text = run_with_summary(Case(tmp_path).with_candidate())
@@ -190,6 +201,27 @@ def test_a_review_of_an_unreached_change_explains_product_scope() -> None:
     assert "**Product scope:** `impact.none` — 0 of 1 change(s) reach this product" in human
     assert "does not mean this product's numbers changed" in human
     assert human.index("Product scope") < human.index("semantic.diff")
+
+
+def test_a_review_of_an_unreached_change_gives_a_scope_safe_owner_action() -> None:
+    changed = one_check(
+        check_id="semantic.diff",
+        status=CheckStatus.REVIEW,
+        summary_code="semantic.changed",
+        detail="1 semantic change(s) between the snapshots",
+    )
+    unaffected = one_check(
+        check_id="impact.products",
+        summary_code="impact.none",
+        detail="0 of 1 change(s) reach this product",
+    )
+
+    text = render_summary(FACTS, [changed, unaffected])
+    action = text.split("## Owner action")[1].split("## What needs a human")[0]
+
+    assert "`impact.none`" in action
+    assert "Review the remaining human findings" in action
+    assert "numbers changed" not in action
 
 
 def test_a_stopped_sequence_reports_the_checks_that_did_not_run(tmp_path: Path) -> None:
