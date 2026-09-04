@@ -14,11 +14,11 @@
 - [x] Скомпилировать outputs в evidence-backed claims и deterministic Markdown blocks → Verify: у каждого factual claim есть evidence ref, causal wording отсутствует, одинаковый input даёт одинаковые bytes.
 - [x] Добавить минимальный offline application/CLI path без DWH/BI mutation → Verify: fixture run создаёт plan/results/brief artifacts; mutation spy остаётся пустым.
 - [x] Обновить нормативную архитектуру и current state фактическими границами среза → Verify: docs-as-code focused tests и `git diff --check` зелёные.
-- [ ] Финальная проверка → Verify: focused investigation/decision/evidence suite, Ruff и Black check проходят.
+- [x] Финальная проверка → Verify: focused investigation/decision/evidence suite, Ruff и Black check проходят.
 
 ## Done When
 
-- [ ] Typed plan исполняет только объявленные v1 skills в пределах budget/scope.
-- [ ] Все observations и brief facts детерминированы и адресуют evidence.
-- [ ] Unsupported/ambiguous inputs дают честный gap, а не guessed result.
-- [ ] Continuous runtime и human outcome не объявлены доказанными.
+- [x] Typed plan исполняет только объявленные v1 skills в пределах budget/scope.
+- [x] Все observations и brief facts детерминированы и адресуют evidence.
+- [x] Unsupported/ambiguous inputs дают честный gap, а не guessed result.
+- [x] Continuous runtime и human outcome не объявлены доказанными.
