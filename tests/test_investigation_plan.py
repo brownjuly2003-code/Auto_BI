@@ -105,7 +105,7 @@ def test_only_the_four_declared_v1_skills_are_accepted() -> None:
 @pytest.mark.parametrize(
     ("field", "outside_value"),
     [
-        ("metrics", "metric://sales/revenue@5"),
+        ("metrics", "metric://sales/orders@2"),
         ("dimensions", "region"),
     ],
 )

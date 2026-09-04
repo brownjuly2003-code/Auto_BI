@@ -1,0 +1,37 @@
+api_version: auto-bi.io/v2alpha1
+kind: CanonicalMetricResult
+result_id: weekly-revenue-truth
+metric_ref: metric://sales/revenue@5
+unit: RUB
+dimensions:
+  - category
+additivity: additive
+complete: true
+observed_at: "2026-09-04T12:00:00Z"
+source_max_event_time: "2026-09-04T10:00:00Z"
+freshness_max_age: PT6H
+rows:
+  - period: comparison
+    dimensions:
+      category: A
+    value: "100"
+  - period: comparison
+    dimensions:
+      category: B
+    value: "50"
+  - period: comparison
+    dimensions:
+      category: C
+    value: "50"
+  - period: current
+    dimensions:
+      category: A
+    value: "70"
+  - period: current
+    dimensions:
+      category: B
+    value: "60"
+  - period: current
+    dimensions:
+      category: C
+    value: "50"

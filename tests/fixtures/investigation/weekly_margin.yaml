@@ -1,11 +1,11 @@
 api_version: auto-bi.io/v2alpha1
 kind: InvestigationPlan
-plan_id: weekly-margin-alpha
+plan_id: weekly-revenue-alpha
 product_ref: decision://sales/weekly_margin@1
-question: What changed in weekly gross margin?
+question: What changed in weekly revenue?
 scope:
   metrics:
-    - metric://sales/gross_margin_pct@3
+    - metric://sales/revenue@5
   dimensions:
     - category
   time_window: P2W
@@ -14,7 +14,7 @@ steps:
     skill: data_health
     skill_version: 1
     metrics:
-      - metric://sales/gross_margin_pct@3
+      - metric://sales/revenue@5
     dimensions:
       - category
     preconditions: []
@@ -25,7 +25,7 @@ steps:
     skill: period_variance
     skill_version: 1
     metrics:
-      - metric://sales/gross_margin_pct@3
+      - metric://sales/revenue@5
     dimensions: []
     preconditions:
       - complete_periods
@@ -37,7 +37,7 @@ steps:
     skill: contribution_decomposition
     skill_version: 1
     metrics:
-      - metric://sales/gross_margin_pct@3
+      - metric://sales/revenue@5
     dimensions:
       - category
     preconditions:
@@ -51,7 +51,7 @@ steps:
     skill: concentration_shift
     skill_version: 1
     metrics:
-      - metric://sales/gross_margin_pct@3
+      - metric://sales/revenue@5
     dimensions:
       - category
     preconditions:
@@ -60,7 +60,7 @@ steps:
     expected_evidence: concentration_result
     allowed_claim_types:
       - observation
-    top_n: 3
+    top_n: 2
 budget:
   max_steps: 4
   max_input_rows: 1000
