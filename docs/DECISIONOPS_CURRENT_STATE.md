@@ -9,10 +9,9 @@ human/design-partner gate остаётся открытым
 
 ## Коротко
 
-`Auto_BI_new` — локальный additive fork Auto_BI v0.5.0. Новый продукт —
-**Analytics Release & Evidence Gate**: он проверяет изменение governed-семантики,
-оценивает влияние на продукты и формирует content-addressed evidence. Унаследованный
-путь «запрос → DashboardSpec → BI» сохранён как baseline.
+`Auto_BI_new` — локальный additive fork Auto_BI v0.5.0. **Analytics Release &
+Evidence Gate** проверяет governed-семантику, product impact и content-addressed
+evidence; унаследованный путь «запрос → DashboardSpec → BI» остаётся baseline.
 
 Рабочий путь DecisionOps:
 
@@ -21,15 +20,23 @@ contracts -> validate -> snapshots/diff -> product impact -> result reconciliati
           -> reference SQL -> DWH checks -> pure BI compile -> evidence bundle/report
 ```
 
+Offline investigation alpha работает отдельным контуром:
+
+```text
+InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
+       -> evidence-backed observations/gaps -> deterministic brief artifacts
+```
+
 - `auto_bi decision validate` проверяет связанные YAML-контракты.
 - `auto_bi decision verify` выполняет one-shot gate без удалённой BI-мутации.
 - `auto_bi decision evidence` перепроверяет digest каждого artifact в bundle.
+- `auto_bi decision investigate <plan.yaml> --results <result.yaml> ... --output <dir>`
+  запускает только offline investigation skills и требует новый output-каталог.
 - Без `--dwh` engine checks дают `check.not_configured`; с `--dwh` работают
   `dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security` и `dwh.cost`.
-- Exit codes: `0` pass/advisory, `3` needs_review, `4` block, `2` usage error.
+- Exit codes: `0` pass/advisory, `3` needs_review, `4` block, `2` runtime/usage error.
 
-У репозитория нет configured remote. Имя и версия публикуемого DecisionOps-пакета
-не выбраны; `autobi-agent==0.5.0` в PyPI относится к baseline, а не к этому fork.
+Remote и package identity fork не настроены; `autobi-agent==0.5.0` — baseline.
 
 ## Bootstrap и pilot
 
@@ -39,48 +46,25 @@ contracts -> validate -> snapshots/diff -> product impact -> result reconciliati
 | Task 8: технический pilot | завершён на ClickHouse 24.8.14.39 |
 | Task 8: proxy-owner review | v7: scope и actionability проходят |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
-| Offline typed investigation alpha | разрешён ADR 0004; реализация начата |
+| Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
 | Continuous platform | заблокирована до human/design-partner evidence |
 
-Tracked pilot rehearsal от 2026-08-25 содержит четыре воспроизводимых сценария на
-графе из двух продуктов. Входы, bundles и отчёт находятся в
-[DECISIONOPS_PILOT_2026-08-25.md](DECISIONOPS_PILOT_2026-08-25.md) и `docs/pilot/`.
-Репетиция выявила три дефекта: неверный scope impact, примесь чужих assets и тихую
-перезапись bundle с тем же `run_id`; исправления защищены тестами.
-
-Mac pilot verifier 7 проверил timezone change `metric://sales/revenue@3` для
-зависимого `weekly_revenue` и независимого `weekly_orders`. Локальные bundles:
-
-- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v7-revenue-catalog`:
-  `run-7d96f81f2ac4009f`, exit `4`, `block`, digest `d7dc80b9…adc68`;
-- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v7-control-catalog`:
-  `run-fae00f0db7e5a6ff`, exit `3`, `needs_review`, `impact.none`,
-  digest `d158f681…dfb6e6`.
-
-Оба: 19 artifacts, integrity `pass`. На native ClickHouse 24.8.14.39
-access/freshness/physical прошли; `dwh.security` вернул `security.not_observed`,
-поскольку временной роли недоступны access-каталоги. Verdict сохранились. Повторять
-pilot до решения о необходимости security parity с v6 не требуется.
-
-[Симуляция owner-gate](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md) оценила
-decision surface affected/control в 52/33 секунды и подтвердила понятность scope
-и следующего действия. Это proxy-оценка, а не человеческий замер; Task 8 остаётся
-открытой. [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) разрешает
-использовать этот результат только для внутреннего offline investigation alpha;
-он не разблокирует scheduler, PostgreSQL, REST/MCP, notifications или actions.
+Четыре tracked pilot-сценария, найденные дефекты и Mac verifier 7 evidence описаны в
+[pilot rehearsal](DECISIONOPS_PILOT_2026-08-25.md) и `docs/pilot/`; оба Mac bundles
+сохранили ожидаемые verdict и integrity `pass`.
+[Симуляция owner-gate](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md) проверила
+scope/actionability только как proxy. Task 8 human outcome остаётся открытым,
+а [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) не разблокирует
+scheduler, PostgreSQL, REST/MCP, notifications или actions.
 
 ## Карта реализации
 
 | Ответственность | Код |
 |---|---|
-| Контракты продуктов и метрик | `auto_bi/decision/spec.py`, `auto_bi/semantic/metric_contract.py` |
-| Validate, use cases и impact | `auto_bi/decision/validate.py`, `use_cases.py`, `impact.py` |
-| Semantic snapshot и diff | `auto_bi/semantic/gateway.py`, `diff.py` |
-| Result/reference SQL checks | `auto_bi/verification/reconcile.py`, `sql_contract.py` |
-| DWH checks и read-only probe | `auto_bi/verification/environment.py`, `environment_probe.py` |
-| Pure BI compile | `auto_bi/verification/bi_contract.py` |
-| Оркестрация и verdict | `auto_bi/verification/release_gate.py`, `model.py` |
+| Contracts и impact | `auto_bi/decision/`, `auto_bi/semantic/` |
+| Verification, DWH probe и pure BI compile | `auto_bi/verification/` |
 | Evidence и owner report | `auto_bi/evidence/`, `auto_bi/verification/summary.py` |
+| Typed offline investigation | `auto_bi/investigation/model.py`, `data.py`, `skills.py`, `claims.py`, `application.py` |
 | CLI | `auto_bi/cli.py` |
 
 Нормативный дизайн и обязательные инварианты описаны в
@@ -98,14 +82,16 @@ decision surface affected/control в 52/33 секунды и подтверди�
   provenance результата остаётся внешним evidence.
 - Нет измеренного человеком owner outcome: proxy-review не заменяет время и
   подтверждение понятности от живого владельца.
-- Typed investigations, certified brief, scheduler, PostgreSQL platform runtime,
-  MCP/actions, **Ossie**, **MetricFlow** и **column-level lineage** относятся к
-  следующей фазе, а не к текущему bootstrap.
+- Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
+  **Ossie**, **MetricFlow** и **column-level lineage** не реализованы. Offline brief
+  остаётся `exploratory` и не является human acceptance evidence.
 
 ## Быстрая проверка
 
 ```bash
 uv run pytest tests/test_decision_verify.py tests/test_decision_cli.py -q
+uv run pytest tests/test_investigation_plan.py tests/test_investigation_skills.py \
+  tests/test_investigation_brief.py tests/test_investigation_cli.py -q
 uv run auto_bi decision --help
 uv run auto_bi decision evidence docs/pilot/2026-08-25-ch-tz-margin/evidence \
   --artifact report-summary-md
@@ -118,7 +104,17 @@ uv run auto_bi decision validate contracts/
 uv run auto_bi decision verify contracts/ --base semantic/base \
   --candidate semantic/head --dashboards dashboards/ --evidence .evidence
 uv run auto_bi decision evidence .evidence
+uv run auto_bi decision investigate tests/fixtures/investigation/weekly_margin.yaml \
+  --results tests/fixtures/investigation/revenue_results.yaml \
+  --output .investigation-example
 ```
+
+`investigate` пишет ровно четыре файла: canonical `plan.json`, canonical
+`results.json` с входами и ordered skill outputs, typed `brief.json` и
+deterministic `brief.md`. План фиксирует `max_queries=0`; application layer не получает
+DWH/BI executor и не импортирует remote adapters. Missing/duplicate metric, budget или
+scope stop завершаются кодом `2` до записи output-каталога. Unsupported или ambiguous
+аналитический вход остаётся evidence-backed gap без factual claim.
 
 Флаг `--dwh clickhouse|greenplum` включает пять read-only engine checks. На этой
 Windows-машине для документационной проверки не требуется поднимать WSL/Docker.
@@ -128,17 +124,14 @@ Windows-машине для документационной проверки н
 1. Human owner review остаётся внешним gate и не подменяется синтетической оценкой.
 2. До публикации fork остаётся без remote и использует текущую локальную package identity.
 3. Offline alpha использует `integrity=content_hashed`; подпись и trust root отложены.
-4. Следующий срез ограничен typed investigation и Markdown brief на fixtures/results;
-   continuous runtime и внешние actions не начинаются.
+4. Реализованный alpha-срез ограничен supplied canonical results и локальными
+   plan/results/brief artifacts; continuous runtime и внешние actions не начинаются.
+5. Human/design-partner review остаётся hard gate перед production-certified brief,
+   scheduler, PostgreSQL, REST/MCP, notifications и actions.
 
 ## Источники истины
 
-1. Текущий Git status и код.
-2. [Целевая архитектура](DECISIONOPS_ARCHITECTURE.md),
-   [ADR 0003](adr/0003-decisionops-additive-control-plane.md) и
-   [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md).
-3. [Pilot rehearsal](DECISIONOPS_PILOT_2026-08-25.md) и tracked evidence в `docs/pilot/`.
-4. [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) и
-   [подробный архив реализации](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md).
-5. Для baseline v0.5.0 — [ARCHITECTURE.md](ARCHITECTURE.md) и
-   [CURRENT_STATE.md](CURRENT_STATE.md).
+1. Текущий Git status, код и [целевая архитектура](DECISIONOPS_ARCHITECTURE.md).
+2. [ADR 0003](adr/0003-decisionops-additive-control-plane.md),
+   [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) и tracked pilot evidence.
+3. Для baseline v0.5.0 — [ARCHITECTURE.md](ARCHITECTURE.md) и [CURRENT_STATE.md](CURRENT_STATE.md).

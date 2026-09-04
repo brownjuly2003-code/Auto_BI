@@ -148,6 +148,7 @@ flowchart TB
 | Граница | Вход считается недоверенным | Обязательный контроль |
 |---|---|---|
 | CLI/API → application | YAML/JSON, paths, actor context | strict schema, path confinement, authz |
+| CLI → offline investigation | `InvestigationPlan`, canonical result files, output path | exact metric coverage, strict budgets, `max_queries=0`, new output directory |
 | Semantic source → gateway | внешние manifests/specs | version pin, loss report, fail-closed validation |
 | Core → DWH | скомпилированный SQL | SELECT-only guard, DWH role, policy context, budgets |
 | Core → BI | target payload | pure contract compile; remote build только вне release gate |
@@ -220,14 +221,22 @@ auto_bi/
     manifest.py          bundle assembly and referential integrity
     store.py             ArtifactStore protocol + filesystem adapter
     lineage.py           internal edges + OpenLineage projection
-  investigation/         starts only after release gate is proven
+  investigation/
+    model.py             strict InvestigationPlan, scope, budgets and policy
+    data.py              CanonicalMetricResult supplied by a trusted read-only step
+    skills.py            four deterministic v1 skills; observations or typed gaps
+    claims.py            evidence-backed claims and deterministic Markdown blocks
+    application.py       offline orchestration and local plan/results/brief artifacts
   jobs/                  starts only after recurring use is proven
   actions/               proposal-only, post-MVP
   mcp/                   read-only, post-REST contract
 ```
 
-Это целевая карта, не требование создать все файлы сразу. Первый implementation
-slice создаёт только contract-модели, которые нужны `decision validate`.
+Карта сочетает реализованные seams и явно отложенные модули. Пять functional modules
+offline investigation alpha получают готовые canonical results,
+не получает `QueryExecutor`, DWH/BI adapter, LLM или сетевой transport и пишет новый
+локальный каталог. `jobs`, `actions` и `mcp` остаются gated placeholders архитектуры,
+а не обещанием текущей реализации.
 
 `refs.py` и `scalars.py` лежат рядом с существующим `strict.py` как shared kernel:
 это грамматика идентичности и скаляров из §7.1, у них нет доменного состояния и они
@@ -800,6 +809,7 @@ Redis/Kafka не добавляются без измеренного contention
 auto_bi decision validate <product.yaml>
 auto_bi decision verify <product.yaml> --base <ref> --candidate <ref> --evidence <dir>
 auto_bi decision evidence <run-or-path>
+auto_bi decision investigate <plan.yaml> --results <result.yaml> ... --output <dir>
 ```
 
 Exit codes стабильны и различают verdict и runtime error. Значения зафиксированы
@@ -826,6 +836,8 @@ auto_bi decision verify <paths…> --base <ref> --candidate <ref> --evidence <di
         [--product <id>] [--environment <ref>] [--created-at <ts>] [--json]
 auto_bi decision evidence <run-or-path> [--run <id>] [--artifact <id>]
         [--expect-digest <sha256:…>] [--json]
+auto_bi decision investigate <plan.yaml> --results <result.yaml> [<result.yaml> ...]
+        --output <new-dir>
 ```
 
 `validate` — offline cross-contract проверка (продукты ↔ metric contracts).
@@ -838,7 +850,20 @@ auto_bi decision evidence <run-or-path> [--run <id>] [--artifact <id>]
 никогда (§10.2), а артефакт, который больше не хешируется в свой адрес, не
 выдаётся вовсе — это уже не то, на чём принималось решение.
 
-Формат входов (`decision/use_cases.py` — единственный слой, который читает ФС):
+`investigate` — внутренний offline alpha. Команда принимает один strict plan и ровно
+по одному `CanonicalMetricResult` для каждой метрики declared steps. Порядок входных
+файлов не влияет на bytes. Application исполняет только четыре version-pinned pure skill,
+а causal claim запрещают и тип `Claim`, и brief validator. Output-каталог должен быть
+новым и содержать ровно canonical `plan.json`, canonical `results.json`, typed
+`brief.json` и deterministic `brief.md`; trust brief всегда `exploratory`, а human
+acceptance — `not measured`.
+
+План фиксирует `max_queries=0`. Missing/duplicate metric, scope/budget stop, runtime
+budget или claim budget завершают команду кодом `2` до создания каталога. Неоднозначный
+или unsupported аналитический вход даёт evidence-backed gap без factual claim. Ни один
+путь `investigate` не создаёт DWH/BI client и не вызывает remote mutation.
+
+Формат входов release gate, которые читает `decision/use_cases.py`:
 
 | Вход | Форма |
 |---|---|
@@ -946,15 +971,18 @@ Architecture bootstrap
   -> VQR + result comparator
   -> one-shot release/evidence gate
   -> pure Superset/DataLens compile conformance
-  -> typed investigation + certified brief
-  -> recurring runs / PostgreSQL
+  -> typed offline investigation + exploratory brief
+  -> human/design-partner outcome gate
+  -> production-certified brief / recurring runs / PostgreSQL
   -> read-only MCP / proposal actions
 ```
 
-Реальный technical pilot change и успешный synthetic task probe разрешают начать
-только внутренний offline-срез `typed investigation + certified brief`: typed IR,
+Реальный technical pilot change и успешный synthetic task probe разрешили только
+внутренний offline-срез typed investigation: strict plan, canonical supplied results,
 deterministic skills, synthetic truth sets и evidence-backed Markdown без фонового
-исполнения или удалённых мутаций. Synthetic probe не считается human outcome.
+исполнения или удалённых мутаций. Этот срез реализован командой
+`auto_bi decision investigate`; synthetic probe и `exploratory` brief не считаются
+human outcome.
 
 Hard gate остаётся перед continuous platform: без наблюдаемого теста с actual/likely
 user, измеримого сокращения review time и design partner evidence не начинаются

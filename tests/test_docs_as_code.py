@@ -611,6 +611,27 @@ def test_decisionops_state_names_known_residual_boundaries() -> None:
     assert not missing, "DecisionOps residual inventory missing: " + ", ".join(missing)
 
 
+def test_decisionops_docs_pin_the_offline_investigation_alpha_boundary() -> None:
+    """Architecture and status must describe the same implemented, non-production slice."""
+    required = (
+        "auto_bi decision investigate",
+        "`plan.json`",
+        "`results.json`",
+        "`brief.json`",
+        "`brief.md`",
+        "`max_queries=0`",
+        "`exploratory`",
+        "human/design-partner",
+    )
+    for path in (DECISIONOPS_CURRENT_STATE, DECISIONOPS_ARCHITECTURE):
+        text = path.read_text(encoding="utf-8")
+        missing = [token for token in required if token not in text]
+        assert not missing, f"{path.name} missing investigation boundary: {', '.join(missing)}"
+
+    state = DECISIONOPS_CURRENT_STATE.read_text(encoding="utf-8")
+    assert "реализация начата" not in state
+
+
 @pytest.mark.parametrize(
     "path",
     (DECISIONOPS_CURRENT_STATE, DECISIONOPS_ARCHITECTURE),

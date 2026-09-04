@@ -13,7 +13,7 @@
 - [x] Реализовать четыре deterministic skills (`data_health`, `period_variance`, `contribution_decomposition`, `concentration_shift`) на synthetic truth sets → Verify: decomposition сходится к total delta, unsupported scope даёт typed gap.
 - [x] Скомпилировать outputs в evidence-backed claims и deterministic Markdown blocks → Verify: у каждого factual claim есть evidence ref, causal wording отсутствует, одинаковый input даёт одинаковые bytes.
 - [x] Добавить минимальный offline application/CLI path без DWH/BI mutation → Verify: fixture run создаёт plan/results/brief artifacts; mutation spy остаётся пустым.
-- [ ] Обновить нормативную архитектуру и current state фактическими границами среза → Verify: docs-as-code focused tests и `git diff --check` зелёные.
+- [x] Обновить нормативную архитектуру и current state фактическими границами среза → Verify: docs-as-code focused tests и `git diff --check` зелёные.
 - [ ] Финальная проверка → Verify: focused investigation/decision/evidence suite, Ruff и Black check проходят.
 
 ## Done When
