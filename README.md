@@ -36,6 +36,7 @@ usage-ошибка (падение никогда не выглядит как �
 - [Текущее состояние DecisionOps](docs/DECISIONOPS_CURRENT_STATE.md)
 - [Целевая архитектура](docs/DECISIONOPS_ARCHITECTURE.md)
 - [ADR: отдельный additive fork](docs/adr/0003-decisionops-additive-control-plane.md)
+- [ADR: synthetic proxy и граница offline alpha](docs/adr/0004-synthetic-proxy-offline-investigation.md)
 - [План bootstrap](docs/history/DECISIONOPS_BOOTSTRAP.md)
 - [Исходный стратегический срез](docs/history/DECISIONOPS_STRATEGY_2026-08-21.md)
 
@@ -146,6 +147,7 @@ uv run python scripts/demo_golden_path.py
 | [docs/README.md](docs/README.md) | Навигатор: DecisionOps, baseline, current и history |
 | [docs/DECISIONOPS_CURRENT_STATE.md](docs/DECISIONOPS_CURRENT_STATE.md) | Короткий актуальный статус release gate и открытые решения |
 | [docs/DECISIONOPS_ARCHITECTURE.md](docs/DECISIONOPS_ARCHITECTURE.md) | Нормативная архитектура DecisionOps |
+| [docs/adr/0004-synthetic-proxy-offline-investigation.md](docs/adr/0004-synthetic-proxy-offline-investigation.md) | Почему proxy разрешает только offline investigation alpha |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Руководство пользователя: установка, команды CLI, web UI, два режима ввода, advisor, наблюдаемость, конфигурация |
 | [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md) | Первый локальный запуск со своим Anthropic API key: clone, `.env`, Compose (CH+Superset), `uv run auto_bi serve`, health/ready |
 | [docs/ONBOARDING_DWH.md](docs/ONBOARDING_DWH.md) | Подключение нового DWH за ≤ 1 ч: доступы, `.env`, интроспекция, обогащение, проверка (ClickHouse + Greenplum) |

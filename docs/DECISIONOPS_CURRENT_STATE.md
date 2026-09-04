@@ -2,7 +2,8 @@
 
 **Обновлено:** 2026-09-04
 
-**Стадия:** технический bootstrap release gate завершён; измерение результата у владельца открыто
+**Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён,
+human/design-partner gate остаётся открытым
 
 **Версии evidence:** `VERIFIER_VERSION=7`, `CHECK_VERSION=5`
 
@@ -37,8 +38,9 @@ contracts -> validate -> snapshots/diff -> product impact -> result reconciliati
 | Tasks 1–7 | завершены |
 | Task 8: технический pilot | завершён на ClickHouse 24.8.14.39 |
 | Task 8: proxy-owner review | v7: scope и actionability проходят |
-| Task 8: owner outcome | открыт: время чтения и понятность отчёта |
-| Следующая платформенная фаза | не начата; требуется решение владельца |
+| Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
+| Offline typed investigation alpha | разрешён ADR 0004; реализация начата |
+| Continuous platform | заблокирована до human/design-partner evidence |
 
 Tracked pilot rehearsal от 2026-08-25 содержит четыре воспроизводимых сценария на
 графе из двух продуктов. Входы, bundles и отчёт находятся в
@@ -63,7 +65,9 @@ pilot до решения о необходимости security parity с v6 н
 [Симуляция owner-gate](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md) оценила
 decision surface affected/control в 52/33 секунды и подтвердила понятность scope
 и следующего действия. Это proxy-оценка, а не человеческий замер; Task 8 остаётся
-открытой.
+открытой. [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) разрешает
+использовать этот результат только для внутреннего offline investigation alpha;
+он не разблокирует scheduler, PostgreSQL, REST/MCP, notifications или actions.
 
 ## Карта реализации
 
@@ -119,18 +123,20 @@ uv run auto_bi decision evidence .evidence
 Флаг `--dwh clickhouse|greenplum` включает пять read-only engine checks. На этой
 Windows-машине для документационной проверки не требуется поднимать WSL/Docker.
 
-## Решения владельца
+## Решения для текущего scope
 
-1. Измерить время чтения двух v7-отчётов и подтвердить, понятны ли scope и действие.
-2. Выбрать remote для fork, если нужны push, hosted CI и внешнее review.
-3. Решить, нужна ли подпись evidence и какой trust root допустим.
-4. Выбрать package identity до любой публикации.
+1. Human owner review остаётся внешним gate и не подменяется синтетической оценкой.
+2. До публикации fork остаётся без remote и использует текущую локальную package identity.
+3. Offline alpha использует `integrity=content_hashed`; подпись и trust root отложены.
+4. Следующий срез ограничен typed investigation и Markdown brief на fixtures/results;
+   continuous runtime и внешние actions не начинаются.
 
 ## Источники истины
 
 1. Текущий Git status и код.
-2. [Целевая архитектура](DECISIONOPS_ARCHITECTURE.md) и
-   [ADR 0003](adr/0003-decisionops-additive-control-plane.md).
+2. [Целевая архитектура](DECISIONOPS_ARCHITECTURE.md),
+   [ADR 0003](adr/0003-decisionops-additive-control-plane.md) и
+   [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md).
 3. [Pilot rehearsal](DECISIONOPS_PILOT_2026-08-25.md) и tracked evidence в `docs/pilot/`.
 4. [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) и
    [подробный архив реализации](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md).

@@ -29,6 +29,7 @@ package identity или remote.
 | [DECISIONOPS_ARCHITECTURE.md](DECISIONOPS_ARCHITECTURE.md) | Нормативная целевая архитектура и инварианты | current |
 | [DECISIONOPS_PILOT_2026-08-25.md](DECISIONOPS_PILOT_2026-08-25.md) | Воспроизводимая репетиция gate на ClickHouse | evidence record |
 | [ADR 0003](adr/0003-decisionops-additive-control-plane.md) | Почему DecisionOps добавлен как отдельный control plane | decision |
+| [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) | Граница synthetic proxy и offline investigation alpha | decision |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome открыт |
 | [Implementation history](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md) | Подробный хронологический журнал реализации | archive |
 | [Strategy snapshot](history/DECISIONOPS_STRATEGY_2026-08-21.md) | Исследование и шестимесячная концепция на 2026-08-21 | archive |

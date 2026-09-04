@@ -951,9 +951,16 @@ Architecture bootstrap
   -> read-only MCP / proposal actions
 ```
 
-Hard gate после one-shot release gate: если нет реального pilot change,
-измеримого сокращения review time и design partner evidence, scheduler/MCP/
-actions не начинаются.
+Реальный technical pilot change и успешный synthetic task probe разрешают начать
+только внутренний offline-срез `typed investigation + certified brief`: typed IR,
+deterministic skills, synthetic truth sets и evidence-backed Markdown без фонового
+исполнения или удалённых мутаций. Synthetic probe не считается human outcome.
+
+Hard gate остаётся перед continuous platform: без наблюдаемого теста с actual/likely
+user, измеримого сокращения review time и design partner evidence не начинаются
+scheduler/PostgreSQL, notifications, REST/MCP или actions и не заявляется production
+acceptance. Граница и основания зафиксированы в
+[ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md).
 
 ## 17. Риски и решения
 
