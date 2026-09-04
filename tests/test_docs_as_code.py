@@ -19,12 +19,14 @@ from auto_bi.eval.cases import (
     GP_ADVISOR_CASES,
     GP_GOLDEN_CASES,
 )
+from auto_bi.verification.release_gate import CHECK_VERSION, VERIFIER_VERSION
 
 REPO = Path(__file__).resolve().parents[1]
 DOCS = REPO / "docs"
 ENV_REF = DOCS / "ENV_REFERENCE.md"
 CURRENT_STATE = DOCS / "CURRENT_STATE.md"
 DECISIONOPS_CURRENT_STATE = DOCS / "DECISIONOPS_CURRENT_STATE.md"
+DECISIONOPS_ARCHITECTURE = DOCS / "DECISIONOPS_ARCHITECTURE.md"
 PROJECT_CLOSURE = DOCS / "PROJECT_CLOSURE.md"
 ARCHITECTURE = DOCS / "ARCHITECTURE.md"
 ARCHITECTURE_HISTORY = DOCS / "ARCHITECTURE_HISTORY.md"
@@ -607,3 +609,19 @@ def test_decisionops_state_names_known_residual_boundaries() -> None:
     )
     missing = [item for item in required if item not in residual]
     assert not missing, "DecisionOps residual inventory missing: " + ", ".join(missing)
+
+
+@pytest.mark.parametrize(
+    "path",
+    (DECISIONOPS_CURRENT_STATE, DECISIONOPS_ARCHITECTURE),
+)
+def test_decisionops_evidence_versions_match_runtime(path: Path) -> None:
+    """Maintained DecisionOps docs must identify the evidence format in current use."""
+    text = path.read_text(encoding="utf-8")
+    rel = path.relative_to(REPO).as_posix()
+    assert (
+        f"`VERIFIER_VERSION={VERIFIER_VERSION}`" in text
+    ), f"{rel} does not name runtime VERIFIER_VERSION={VERIFIER_VERSION}"
+    assert (
+        f"`CHECK_VERSION={CHECK_VERSION}`" in text
+    ), f"{rel} does not name runtime CHECK_VERSION={CHECK_VERSION}"
