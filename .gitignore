@@ -17,6 +17,10 @@ __pycache__/
 *.sqlite3
 logs/
 .tmp/
+/.pilot-work/
+
+# owner-only documentation (never published)
+/.local-docs/
 
 # coverage
 .coverage
@@ -47,6 +51,7 @@ dist/
 # Guarded by CI: scripts/check_repo_hygiene.py fails if one is force-added anyway.
 /_*
 /audit_*.md
+/plan.md
 /plan_*.md
 /*_NEXT_SESSION*
 /presentation.html

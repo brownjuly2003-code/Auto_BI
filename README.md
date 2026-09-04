@@ -1,30 +1,33 @@
 # Auto_BI DecisionOps
 
-Новый проект на проверенном baseline Auto_BI v0.5.0. Цель — self-hosted
-control plane для выпуска проверяемых аналитических продуктов; первый
-вертикальный продукт — **Analytics Release & Evidence Gate**.
+Локальный additive fork проверенного Auto_BI v0.5.0. Цель — self-hosted control
+plane для выпуска проверяемых аналитических продуктов; первый вертикальный
+продукт — **Analytics Release & Evidence Gate**. Навигатор по двум слоям проекта —
+[docs/README.md](docs/README.md).
 
 > **Идентичность пакета пока не выбрана.** `pip install autobi-agent` устанавливает
 > опубликованный baseline v0.5.0, а не DecisionOps из этого checkout. Fork временно сохраняет
 > baseline-метаданные для bootstrap; его нельзя публиковать как `autobi-agent==0.5.0`. До
-> решения владельца об имени, версии и remote используйте локальную установку `pip install -e .`.
+> решения владельца об имени, версии и remote используйте `uv sync` и запускайте CLI через
+> `uv run auto_bi`.
 
-Текущий статус — первый вертикальный путь работает offline: `auto_bi decision
+Первый вертикальный путь работает offline: `auto_bi decision
 validate` (cross-contract проверка), `auto_bi decision verify` (полный гейт §8.2
 с content-addressed evidence bundle) и `auto_bi decision evidence` (чтение bundle
 с пересчётом каждого content address) реализованы и запускаются на файлах в Git,
 без DWH, BI и LLM. Шаг §8.2 7 реализован целиком: с `--dwh` гейт спрашивает движок
 read-only ролью (`dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`,
 `dwh.cost`); без `--dwh` проверки движка отвечают `check.not_configured`. Шаг 6
-компилирует reference-запрос метрики только там, где семантика
-точна офлайн, и называет гэп там, где нет. Пилот на реальном change ещё не проводился. Унаследованный
-v1 runtime сохранён без функциональных изменений.
+компилирует reference-запрос метрики только там, где семантика точна офлайн, и
+называет гэп там, где нет. Технический pilot verifier 6 на реальном timezone change
+завершён; открыто только измерение времени и понятности отчёта владельцем.
+Унаследованный v1 runtime сохранён без функциональных изменений.
 
 ```bash
-auto_bi decision validate contracts/
-auto_bi decision verify contracts/ --base semantic/base --candidate semantic/head \
+uv run auto_bi decision validate contracts/
+uv run auto_bi decision verify contracts/ --base semantic/base --candidate semantic/head \
         --evidence .evidence --dashboards dashboards/
-auto_bi decision evidence .evidence
+uv run auto_bi decision evidence .evidence
 ```
 
 Exit code несёт вердикт: `0` pass/advisory, `3` needs_review, `4` block, `2`
@@ -33,10 +36,13 @@ usage-ошибка (падение никогда не выглядит как �
 - [Текущее состояние DecisionOps](docs/DECISIONOPS_CURRENT_STATE.md)
 - [Целевая архитектура](docs/DECISIONOPS_ARCHITECTURE.md)
 - [ADR: отдельный additive fork](docs/adr/0003-decisionops-additive-control-plane.md)
-- [План bootstrap](decisionops-bootstrap.md)
-- [Исходный стратегический срез](decisionops-strategy-2026-08-21.md)
+- [План bootstrap](docs/history/DECISIONOPS_BOOTSTRAP.md)
+- [Исходный стратегический срез](docs/history/DECISIONOPS_STRATEGY_2026-08-21.md)
 
-## Auto_BI v0.5.0 baseline
+## Auto_BI v0.5.0 baseline (унаследованный runtime)
+
+Бейджи ниже относятся к исходному публичному репозиторию baseline, а не к
+локальному DecisionOps fork без remote.
 
 [![CI](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml/badge.svg)](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/brownjuly2003-code/Auto_BI/main/.github/badges/coverage.json) ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![BI targets](https://img.shields.io/badge/BI-Superset_+_DataLens-1FA8C9) ![DWH](https://img.shields.io/badge/DWH-ClickHouse_+_Greenplum-FACC15) ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -62,7 +68,7 @@ usage-ошибка (падение никогда не выглядит как �
 
 Слева — естественно-языковой запрос, уточнения агента, превью спецификации (IR) и вердикты Feasibility Advisor (CRITICAL → заявка владельцу DM, WARN → правка спеки). Справа — собранный из той же спецификации дашборд Superset на реальных данных ClickHouse.
 
-## Статус
+## Статус baseline v0.5.0
 
 **Phase 0–4 + бэклог адекватности дашбордов (B1–B4) закрыты.** Работает end-to-end: текст/поля → spec → валидация → сборка дашборда. v1-стек (ClickHouse + Superset) live-проверен на v0.5.0; v2 (Greenplum/Greengage advisor/golden; DataLens) — offline evidence/contracts, а DataLens Mac-only live contract повторно прошёл **15/15** на текущем self-hosted stand 2026-07-29 (experimental / non-default / non-closure; фактический seeded workbook задавался через `AUTO_BI_DATALENS_WORKBOOK_ID`); web UI с двумя режимами ввода, итерациями, Feasibility Advisor, заявками владельцу DM и панелью наблюдаемости.
 
@@ -97,7 +103,8 @@ flowchart LR
 
 ## Как пользоваться
 
-Установка, команды CLI, web UI, конфигурация — [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+Установка, команды CLI, web UI и конфигурация унаследованного runtime —
+[docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 Подключение новой витрины DWH за ≤ 1 ч — [docs/ONBOARDING_DWH.md](docs/ONBOARDING_DWH.md).
 
 Local-first — два поддерживаемых пути:
@@ -111,12 +118,15 @@ uv run python scripts/demo_golden_path.py
 2. **Полный локальный путь.** Пошаговый Anthropic-пример — [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md). Скопируйте `.env.example` в `.env` (`cp .env.example .env`; PowerShell: `Copy-Item .env.example .env`). Задайте свой `ANTHROPIC_API_KEY`; либо `AUTO_BI_LLM_PROVIDER=mistral` + `MISTRAL_API_KEY`; либо `AUTO_BI_LLM_PROVIDER=gracekelly` + `AUTO_BI_GRACEKELLY_URL`. Для DWH/BI — `AUTO_BI_CH_HOST`, `AUTO_BI_CH_PASSWORD`, `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_PASSWORD` (полный inventory — [docs/ENV_REFERENCE.md](docs/ENV_REFERENCE.md)). `docker compose up -d` поднимает **только ClickHouse и Superset**, не Auto_BI; агент локально: `auto_bi serve` → http://127.0.0.1:8200.
 
 ```bash
-pip install autobi-agent                          # или pip install -e . из корня репозитория
-auto_bi introspect --output semantic/model.yaml   # DWH -> черновик модели
-auto_bi build "Выручка по магазинам за июнь 2026"  # текст -> дашборд
-auto_bi build --auto dm.sales_daily                # витрина -> обзорный дашборд (без LLM)
-auto_bi serve                                     # web UI на http://127.0.0.1:8200
+uv sync
+uv run auto_bi introspect --output semantic/model.yaml   # DWH -> черновик модели
+uv run auto_bi build "Выручка по магазинам за июнь 2026"  # текст -> дашборд
+uv run auto_bi build --auto dm.sales_daily                # обзор без LLM
+uv run auto_bi serve                                      # http://127.0.0.1:8200
 ```
+
+Команда `pip install autobi-agent` устанавливает публичный baseline v0.5.0, но не
+DecisionOps из этого checkout.
 
 Хотите увидеть весь конвейер за минуту, без стенда и без LLM — на синтетической витрине из репозитория:
 
@@ -133,10 +143,13 @@ uv run python scripts/demo_golden_path.py
 
 | Файл | Что внутри |
 |---|---|
+| [docs/README.md](docs/README.md) | Навигатор: DecisionOps, baseline, current и history |
+| [docs/DECISIONOPS_CURRENT_STATE.md](docs/DECISIONOPS_CURRENT_STATE.md) | Короткий актуальный статус release gate и открытые решения |
+| [docs/DECISIONOPS_ARCHITECTURE.md](docs/DECISIONOPS_ARCHITECTURE.md) | Нормативная архитектура DecisionOps |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Руководство пользователя: установка, команды CLI, web UI, два режима ввода, advisor, наблюдаемость, конфигурация |
 | [docs/LOCAL_BYOK.md](docs/LOCAL_BYOK.md) | Первый локальный запуск со своим Anthropic API key: clone, `.env`, Compose (CH+Superset), `uv run auto_bi serve`, health/ready |
 | [docs/ONBOARDING_DWH.md](docs/ONBOARDING_DWH.md) | Подключение нового DWH за ≤ 1 ч: доступы, `.env`, интроспекция, обогащение, проверка (ClickHouse + Greenplum) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура: скоуп, IR-first, семантическая модель с физическим слоем, агент, Feasibility Advisor, адаптеры, LLM-слой, решения D1–D10, риски |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура унаследованного baseline: IR-first, semantic model, advisor и BI-адаптеры |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Деплой в проде: workers=1, reverse-proxy/TLS, готовность, docker-compose, бэкап SQLite, ротация логов, чеклист секретов |
 | [CHANGELOG.md](CHANGELOG.md) | История версий по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/) — что вошло в каждый релиз |
 | [docs/PLAN.md](docs/PLAN.md) | План: Phase 0–4, задачи, exit criteria; полезный продукт после Phase 2 (~2.5–3 мес FTE) |

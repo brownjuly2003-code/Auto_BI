@@ -5,8 +5,9 @@
 
 > **Этот PLAN.md — фазовая история (Phase 0–4), не current roadmap.**
 > Актуальный статус продукта, residual и gates — **[CURRENT_STATE.md](CURRENT_STATE.md)**.
-> Legacy stub: [plan.md](../plan.md). Внутренний remediation-план (`plan_sol_*.md` в
-> корне) gitignored; не путать с этим файлом.
+> Подробный execution-план перемещён в
+> [history/AUTO_BI_IMPLEMENTATION_PLAN.md](history/AUTO_BI_IMPLEMENTATION_PLAN.md).
+> Внутренние remediation-заметки gitignored; не путать их с этим файлом.
 
 ## Definition of «полноценный продукт»
 

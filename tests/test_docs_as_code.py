@@ -44,7 +44,6 @@ PUBLIC_MD = [
     REPO / "CHANGELOG.md",
     REPO / "CONTRIBUTING.md",
     REPO / "SECURITY.md",
-    REPO / "plan.md",
     *sorted(DOCS.rglob("*.md")),
 ]
 

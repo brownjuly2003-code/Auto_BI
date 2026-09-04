@@ -31,13 +31,14 @@ _ROOT_NAMES = {
     "presentation.html",
     "dashboard_design_research.md",
     "p8-hf-demo.md",
+    "plan.md",
     "start-bi-tunnel.cmd",
 }
 
 # Root-level internal scratch-tracker prefixes; every entry is (prefix, must_be_md).
 _ROOT_PREFIXES = (
     ("audit_", True),
-    ("plan_", True),  # plan.md (public roadmap) does NOT match — no underscore
+    ("plan_", True),
     ("research", True),
     ("new_plen_", True),
     ("nl_sql_", True),
@@ -106,6 +107,7 @@ def self_test() -> int:
         "_tools/backup.cmd",
         "_live_prune_verify.py",
         "audit_fable_18_07_26.md",
+        "plan.md",
         "plan_fable_18_07_26.md",
         "plan_for_pres.md",
         "presentation.html",
@@ -125,7 +127,7 @@ def self_test() -> int:
     ]
     must_pass = [
         "README.md",
-        "plan.md",  # the public roadmap: no underscore, not plan_*
+        "docs/history/AUTO_BI_IMPLEMENTATION_PLAN.md",
         "CHANGELOG.md",
         "docs/plan_datalens.md",  # nested plan_* is allowed (only root is internal)
         "docs/audit_notes.md",  # nested audit_* is allowed (only root is internal)

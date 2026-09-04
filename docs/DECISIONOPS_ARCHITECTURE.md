@@ -9,8 +9,8 @@
 унаследованного dashboard compiler остаётся в [ARCHITECTURE.md](ARCHITECTURE.md),
 а решение о форме нового проекта — в
 [ADR 0003](adr/0003-decisionops-additive-control-plane.md). Стратегический
-исследовательский вход сохранён без изменений в
-[`decisionops-strategy-2026-08-21.md`](../decisionops-strategy-2026-08-21.md).
+исследовательский вход сохранён как архивный срез в
+[`DECISIONOPS_STRATEGY_2026-08-21.md`](history/DECISIONOPS_STRATEGY_2026-08-21.md).
 
 ## Содержание
 
@@ -997,7 +997,7 @@ actions не начинаются.
 
 Локальные:
 
-- [DecisionOps strategy snapshot](../decisionops-strategy-2026-08-21.md)
+- [DecisionOps strategy snapshot](history/DECISIONOPS_STRATEGY_2026-08-21.md)
 - [Auto_BI baseline architecture](ARCHITECTURE.md)
 - [Current baseline state](CURRENT_STATE.md)
 - [BIAdapter ADR](adr/0001-bi-adapter-contract.md)

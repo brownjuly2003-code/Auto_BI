@@ -1,9 +1,12 @@
 # DecisionOps Release Gate bootstrap
 
+> **Статус документа:** исторический bootstrap-план. Задачи 1–7 и техническая
+> часть задачи 8 завершены; актуальный остаток фиксируется в current state.
+>
 > **Где стоим (2026-09-04):** задачи 1–7 и технический Mac v6 pilot закрыты; в задаче 8
 > остался только owner review time/clarity.
 > Подробное состояние, карта модулей и список открытых решений владельца —
-> [`docs/DECISIONOPS_CURRENT_STATE.md`](docs/DECISIONOPS_CURRENT_STATE.md).
+> [`DECISIONOPS_CURRENT_STATE.md`](../DECISIONOPS_CURRENT_STATE.md).
 
 ## Goal
 

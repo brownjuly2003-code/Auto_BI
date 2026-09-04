@@ -3,7 +3,7 @@
 **Статус:** Accepted
 **Дата:** 2026-08-21
 **Связано:** [целевая архитектура](../DECISIONOPS_ARCHITECTURE.md),
-[стратегический вход](../../decisionops-strategy-2026-08-21.md)
+[стратегический вход](../history/DECISIONOPS_STRATEGY_2026-08-21.md)
 
 ## Context
 

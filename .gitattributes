@@ -7,7 +7,7 @@ Dockerfile text eol=lf
 *.md text eol=lf
 
 # Frozen research input preserves the source's intentional Markdown hard breaks.
-decisionops-strategy-2026-08-21.md whitespace=-blank-at-eol
+docs/history/DECISIONOPS_STRATEGY_2026-08-21.md whitespace=-blank-at-eol
 
 # RFC 8785 conformance vectors are byte-exact fixtures — never line-ending converted.
 tests/fixtures/jcs/* -text

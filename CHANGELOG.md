@@ -36,6 +36,12 @@
 
 ### Changed
 
+- **Документация и корень репозитория упорядочены.** Добавлен единый
+  `docs/README.md`; короткий DecisionOps current state отделён от подробного
+  implementation history; завершённые strategy/bootstrap/execution-документы
+  перенесены из корня в `docs/history/`. Локальные pilot и owner-only artifacts
+  получили явные ignore-каталоги и не удалялись.
+
 - `CHECK_VERSION` и `VERIFIER_VERSION` 1 → 2: смысл `impact.products` изменился, и bundle,
   выданный прежним верификатором, не должен читаться как гранёный сегодняшним правилом.
 
@@ -546,8 +552,9 @@
   `docs/ENV_REFERENCE.md` from `Settings` (`scripts/generate_env_reference.py`,
   `--check` mode); `tests/test_docs_as_code.py` (env-ref freshness, `.env.example`
   covers every Settings key, internal markdown link resolve, golden/advisor counts
-  ↔ 53 fixtures). USER_GUIDE §6 / README / PLAN / ARCHITECTURE / root `plan.md`
-  point at CURRENT_STATE + ENV_REFERENCE. Follow-up closes the remaining docs
+  ↔ 53 fixtures). USER_GUIDE §6 / README / PLAN / ARCHITECTURE and the former root
+  plan (now [archived](docs/history/AUTO_BI_IMPLEMENTATION_PLAN.md)) point at
+  CURRENT_STATE + ENV_REFERENCE. Follow-up closes the remaining docs
   polish: `ARCHITECTURE.md` is current design, the original delivery narrative
   lives in `ARCHITECTURE_HISTORY.md`, and all Settings keys carry
   `Field(description=...)` metadata used by the generated reference.

@@ -1,5 +1,10 @@
 # Auto_BI 2026+: от генератора дашбордов к DecisionOps Control Plane
 
+> **Архивный стратегический срез.** Документ отражает исследование на 2026-08-21
+> и не является текущим состоянием или планом реализации. Актуальные документы:
+> [DecisionOps current state](../DECISIONOPS_CURRENT_STATE.md) и
+> [целевая архитектура](../DECISIONOPS_ARCHITECTURE.md).
+
 **Дата исследовательского среза:** 21 августа 2026  
 **Горизонт плана:** 6 месяцев  
 **Статус:** стратегическая концепция; не утверждённая спецификация реализации  
@@ -106,13 +111,13 @@ durable audit trail. Затем поверх него строится Certified
 
 Проверены актуальные документы, кодовые границы и состояние checkout:
 
-- [README](../Auto_BI/README.md);
-- [current state](../Auto_BI/docs/CURRENT_STATE.md) и
-  [project closure](../Auto_BI/docs/PROJECT_CLOSURE.md);
-- [архитектура](../Auto_BI/docs/ARCHITECTURE.md) и
-  [исторический фазовый план](../Auto_BI/docs/PLAN.md);
-- [рыночный срез от 11 июня](../Auto_BI/docs/MARKET.md);
-- [операционная модель](../Auto_BI/docs/DEPLOYMENT.md);
+- [README](../../README.md);
+- [current state](../CURRENT_STATE.md) и
+  [project closure](../PROJECT_CLOSURE.md);
+- [архитектура](../ARCHITECTURE.md) и
+  [исторический фазовый план](../PLAN.md);
+- [рыночный срез от 11 июня](../MARKET.md);
+- [операционная модель](../DEPLOYMENT.md);
 - `DashboardSpec`, semantic model, deterministic insights, API surface,
   Store schema, адаптеры и структура тестов;
 - текущий Git status и локальный HEAD.
@@ -218,7 +223,7 @@ BIRD-INTERACT и DS-STAR. Источники перечислены в конц�
 
 ### 4.1 Локальный рыночный документ уже устарел в главном тезисе
 
-Срез [MARKET.md](../Auto_BI/docs/MARKET.md) от 11 июня корректно описывал
+Срез [MARKET.md](../MARKET.md) от 11 июня корректно описывал
 момент: встроенный DataLens Нейроаналитик создавал один чарт, а Auto_BI — целый
 дашборд. На 24 июля картина изменилась:
 
@@ -1251,7 +1256,8 @@ auto_bi/
 
 ### 12.5 Связь с NL_SQL Proof
 
-Если параллельно развивается концепция из [sql.md](sql.md), проекты не
+Если параллельно развивается концепция из `sql.md` (внешняя рабочая заметка,
+не хранящаяся в этом репозитории), проекты не
 должны дублировать друг друга:
 
 - **NL_SQL Proof** — trust kernel для одного аналитического вопроса: IntentIR,
@@ -1854,17 +1860,17 @@ Auto_BI не нужно «спасать» технической модерни
 
 ### 20.1 Локальные
 
-- [Auto_BI README](../Auto_BI/README.md)
-- [Current state](../Auto_BI/docs/CURRENT_STATE.md)
-- [Project closure](../Auto_BI/docs/PROJECT_CLOSURE.md)
-- [Architecture](../Auto_BI/docs/ARCHITECTURE.md)
-- [Phase history](../Auto_BI/docs/PLAN.md)
-- [Market snapshot 2026-06-11](../Auto_BI/docs/MARKET.md)
-- [Deployment](../Auto_BI/docs/DEPLOYMENT.md)
-- [DashboardSpec](../Auto_BI/auto_bi/ir/spec.py)
-- [Semantic model schema](../Auto_BI/auto_bi/semantic/model.py)
-- [Deterministic insights](../Auto_BI/auto_bi/agent/insights.py)
-- [Demo semantic model](../Auto_BI/semantic/model.yaml)
+- [Auto_BI README](../../README.md)
+- [Current state](../CURRENT_STATE.md)
+- [Project closure](../PROJECT_CLOSURE.md)
+- [Architecture](../ARCHITECTURE.md)
+- [Phase history](../PLAN.md)
+- [Market snapshot 2026-06-11](../MARKET.md)
+- [Deployment](../DEPLOYMENT.md)
+- [DashboardSpec](../../auto_bi/ir/spec.py)
+- [Semantic model schema](../../auto_bi/semantic/model.py)
+- [Deterministic insights](../../auto_bi/agent/insights.py)
+- [Demo semantic model](../../semantic/model.yaml)
 
 ### 20.2 Официальные продуктовые источники
 
