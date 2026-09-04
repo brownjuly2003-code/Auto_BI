@@ -108,19 +108,42 @@ def render_summary(
         [check for check in graded if check.severity() is Severity.BLOCK],
     )
     lines += _impact_section(impacts)
+    review_checks = [check for check in graded if check.severity() is Severity.REVIEW]
+    unaffected = next(
+        (
+            check
+            for check in checks
+            if check.check_id == "impact.products" and check.summary_code == "impact.none"
+        ),
+        None,
+    )
+    review_intro = ""
+    if unaffected is not None:
+        review_intro = (
+            f"**Product scope:** `{unaffected.summary_code}` — {unaffected.detail}\n\n"
+            "The human review below does not mean this product's numbers changed."
+        )
     lines += _severity_section(
         "What needs a human",
-        [check for check in graded if check.severity() is Severity.REVIEW],
+        review_checks,
+        intro=review_intro,
     )
     lines += _undone_section([check for check in checks if check.summary_code in _UNDONE])
     lines += _table_section(checks)
     return "\n".join(lines) + "\n"
 
 
-def _severity_section(title: str, checks: Sequence[CheckResult]) -> list[str]:
+def _severity_section(
+    title: str,
+    checks: Sequence[CheckResult],
+    *,
+    intro: str = "",
+) -> list[str]:
     if not checks:
         return []
     lines = ["", f"## {title}", ""]
+    if intro:
+        lines += [intro, ""]
     for check in checks:
         lines.append(f"- **{check.check_id}** — `{check.summary_code}` — {check.detail}")
     return lines

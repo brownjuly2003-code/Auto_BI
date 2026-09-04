@@ -170,6 +170,28 @@ def test_a_step_that_did_not_run_is_not_also_listed_as_a_human_decision() -> Non
     assert text.count("semantic.diff") == 2  # the undone section and the table
 
 
+def test_a_review_of_an_unreached_change_explains_product_scope() -> None:
+    """A control product must not make its owner infer that its numbers moved."""
+    changed = one_check(
+        check_id="semantic.diff",
+        status=CheckStatus.REVIEW,
+        summary_code="semantic.changed",
+        detail="1 semantic change(s) between the snapshots",
+    )
+    unaffected = one_check(
+        check_id="impact.products",
+        summary_code="impact.none",
+        detail="0 of 1 change(s) reach this product",
+    )
+
+    text = render_summary(FACTS, [changed, unaffected])
+    human = text.split("## What needs a human")[1].split("## What was not done")[0]
+
+    assert "**Product scope:** `impact.none` — 0 of 1 change(s) reach this product" in human
+    assert "does not mean this product's numbers changed" in human
+    assert human.index("Product scope") < human.index("semantic.diff")
+
+
 def test_a_stopped_sequence_reports_the_checks_that_did_not_run(tmp_path: Path) -> None:
     """A contract that did not parse leaves five checks ungraded; the report says which."""
     case = Case(tmp_path).with_candidate()

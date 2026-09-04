@@ -1,6 +1,6 @@
 # DecisionOps Release Gate bootstrap
 
-> **Где стоим (2026-09-02):** задачи 1–7 и технический Mac v5 pilot закрыты; в задаче 8
+> **Где стоим (2026-09-04):** задачи 1–7 и технический Mac v6 pilot закрыты; в задаче 8
 > остался только owner review time/clarity.
 > Подробное состояние, карта модулей и список открытых решений владельца —
 > [`docs/DECISIONOPS_CURRENT_STATE.md`](docs/DECISIONOPS_CURRENT_STATE.md).
@@ -39,12 +39,17 @@ Auto_BI v0.5.0 без изменения `DashboardSpec` и remote-mutation ко
   certified brief и recurring runs.
   Change, стенд и impact уже определены: `revenue` timezone change проверен на Mac против
   ClickHouse 24.8.14.39 для зависимого `weekly_revenue` и независимого `weekly_orders`.
-  Финальный verifier 5 прогон лежит в
-  `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v5-revenue-catalog`
-  (`run-0dd414c8db7e64ac`, exit 4 / `block`) и `evidence-v5-control-catalog`
-  (`run-65844981515bdfc7`, exit 3 / `needs_review`). Оба bundle содержат по 19 artifacts,
-  дают 0 problems при независимом чтении и фиксируют `dwh.security=security.unfiltered`.
-  Остаток task 8 — только владелец читает отчёт, сообщает время чтения и понятность.
+  Финальный технический прогон verifier 6 лежит в
+  `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v6-revenue-catalog`
+  (`run-d4fbae2250ae82d8`,
+  `sha256:03bbfa06def6ce00843a72aa968f10915ae3c66db02304ae554722a0de5240ac`, exit 4 /
+  `block`) и `evidence-v6-control-catalog` (`run-0d5046d273b62f86`,
+  `sha256:b433671ce72d1da5bbf65d580dae6db4c68774b2e6be34d6e5c77d3c75ed3293`, exit 3 /
+  `needs_review`). Оба bundle содержат по 19 artifacts, дают 0 problems при независимом
+  чтении и фиксируют `dwh.security=security.unfiltered`. После proxy-review контрольный
+  отчёт явно показывает `impact.none` перед review-находками и поясняет, что review не
+  означает изменения чисел этого продукта. Это улучшает отчёт, но не измеряет человеческое
+  понимание: остаток task 8 — владелец читает его, сообщает время чтения и понятность.
   **2026-08-25 — репетиция проведена** (`docs/DECISIONOPS_PILOT_2026-08-25.md`): четыре
   прогона против живого ClickHouse на графе из двух продуктов — контроль, тот же change для
   зависимого и для независимого продукта, и расхождение числа против verified asset, чьё

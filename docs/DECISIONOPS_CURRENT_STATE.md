@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Дата:** 2026-09-02
+**Дата:** 2026-09-04
 **Стадия:** офлайновый путь §8.2 работает целиком — validate → freeze snapshots →
 gaps → diff → impact → инвалидация assets → reconcile → reference SQL (шаг 6:
 aggregate + governed ratio на ClickHouse и на PostgreSQL-семействе) → BI compile →
@@ -15,28 +15,33 @@ Bootstrap tasks 2–7 закрыты. **Task 8 (pilot): проведена ре�
 три дефекта** (грейдился весь дифф, а не дошедшее до продукта; assets брались чужие; один
 `run_id` тихо перезаписывал запечатанный bundle), из-за чего подняты
 `CHECK_VERSION`/`VERIFIER_VERSION` 1 → 2.
-**Mac pilot под verifier 5 завершён 2026-09-02.** На ClickHouse 24.8.14.39 под scoped
-read-only ролью перепроверен тот же change `metric://sales/revenue@3`, timezone
-`Europe/Moscow → UTC`, для целевого `decision://sales/weekly_revenue` и контрольного
-`decision://sales/weekly_orders`:
+**Технический Mac pilot под verifier 6 завершён 2026-09-04.** Proxy-review отчёта verifier 5 показало,
+что в контрольном продукте `impact.none` был виден только в нижней таблице: стоящий выше
+`needs_review` можно было ошибочно принять за изменение чисел продукта. Verifier 6 выносит
+scope перед review-находками и прямо говорит, что human review не означает изменение чисел.
+На ClickHouse 24.8.14.39 под scoped read-only ролью перепроверен тот же change
+`metric://sales/revenue@3`, timezone `Europe/Moscow → UTC`, для целевого
+`decision://sales/weekly_revenue` и контрольного `decision://sales/weekly_orders`:
 
-- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v5-revenue-catalog` —
-  `run-0dd414c8db7e64ac`,
-  `sha256:75a88339794e445a3349c4d3df22cb95917de5c667fa9a9a860e2c7dfd07a5f9`, exit 4 / `block`,
+- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v6-revenue-catalog` —
+  `run-d4fbae2250ae82d8`,
+  `sha256:03bbfa06def6ce00843a72aa968f10915ae3c66db02304ae554722a0de5240ac`, exit 4 / `block`,
   `impact.reaches_product` с точным owner/dashboard impact, `security.unfiltered`;
-- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v5-control-catalog` —
-  `run-65844981515bdfc7`,
-  `sha256:1b0c3e1127f76cf653ac88f7240216a19f7a36f8900f418026a2921306d79edb`, exit 3 /
-  `needs_review`, `impact.none`, `security.unfiltered`.
+- `.pilot-work/2026-09-02-mac-revenue-tz/evidence-v6-control-catalog` —
+  `run-0d5046d273b62f86`,
+  `sha256:b433671ce72d1da5bbf65d580dae6db4c68774b2e6be34d6e5c77d3c75ed3293`, exit 3 /
+  `needs_review`, `impact.none`, явное пояснение scope и `security.unfiltered`.
 
 Оба bundle независимо прочитаны CLI: по 19 artifacts, 0 problems; хэши входных YAML до и
 после совпали. Рабочий транспорт к Mac — временный SSH-туннель до ClickHouse; после прогона
 он закрыт. В task 8 остался только человеческий замер времени и понятности чтения отчёта.
 На этой Windows-машине WSL, Docker и аналогичный runtime не разворачивать.
-**Ветка:** `main` · **последний implementation-коммит:** `cac2f8d`. Живые значения всегда
-брать через `git rev-parse HEAD` / `git rev-list --count b4bfa1d..HEAD`; remote нет
-**Suite:** 1938 passed / 5 skipped / 38 deselected (`--with duckdb`); `mypy --strict`,
-ruff, black чисты. Известная
+**Ветка:** `main`; remote нет. Живые значения всегда брать через `git rev-parse HEAD` /
+`git rev-list --count b4bfa1d..HEAD`.
+**Последний полный suite (2026-09-02):** 1938 passed / 5 skipped / 38 deselected
+(`--with duckdb`). **Focused verification (2026-09-04):** summary + verify + CLI — 91 passed,
+docs-as-code — 21 passed; package-wide `mypy --strict` (110 файлов), ruff и black чисты.
+Известная
 предсуществующая флака (не DecisionOps):
 `test_runtime_evidence::test_collect_container_snapshot_success` падает при прогоне своего
 файла целиком и проходит и в одиночку, и в полном прогоне — порядковая зависимость внутри
@@ -51,9 +56,9 @@ ruff, black чисты. Известная
 
 ## Если вы начинаете сессию
 
-**Первое действие: не выбирать новый слайс и не повторять Mac v5 pilot без нового входа.**
-Bootstrap tasks 2–7, шаги 6 и 7 и технический v5-прогон task 8 закрыты. Финальные bundle —
-`evidence-v5-revenue-catalog` и `evidence-v5-control-catalog` в
+**Первое действие: не выбирать новый слайс и не повторять Mac v6 pilot без нового входа.**
+Bootstrap tasks 2–7, шаги 6 и 7 и технический v6-прогон task 8 закрыты. Финальные bundle —
+`evidence-v6-revenue-catalog` и `evidence-v6-control-catalog` в
 `.pilot-work/2026-09-02-mac-revenue-tz/`; теперь ждать только owner review time/clarity. На
 Windows не запускать WSL/Docker; если новый runtime-evidence действительно понадобится,
 использовать Mac через SSH-туннель. Следующую платформенную фазу не начинать: по `CLAUDE.md`
@@ -62,7 +67,7 @@ Windows не запускать WSL/Docker; если новый runtime-evidence
 
 **Если владелец ответил и работа началась — пять фактов, без которых будет больно:**
 
-1. **Что осталось владельцу, а не коду.** Change и Mac-стенд определены, v5-прогон
+1. **Что осталось владельцу, а не коду.** Change и Mac-стенд определены, v6-прогон
    завершён. Для task 8 владелец только читает свежие revenue/control отчёты, сообщает время
    чтения и понятность. Remote репозитория и подпись evidence — отдельные решения поставки,
    они не повод заново обсуждать или повторять pilot-контур.
@@ -405,10 +410,12 @@ escaping (независимый оракул, 20k случайных double + �
 - Ни часов, ни зависящего от словаря порядка: одинаковый вход даёт те же байты,
   иначе ломается content address (§9.1) и тест байт-в-байт воспроизводимости.
 - Читается как `auto_bi decision evidence <path> --artifact report-summary-md`.
-- Проверено: 12 тестов. Suite — 1734 passed / 20 skipped; `mypy --strict`,
-  ruff, black чисты. Под нагрузкой периодически падает таймингвый
-  `test_perf_baseline.py::test_autospec_and_validate_budgets` (в одиночку зелёный) —
-  тот же класс, что и описанный выше Windows-flake, не код DecisionOps.
+- Proxy-review контрольного отчёта verifier 5 нашло двусмысленность: общий
+  `semantic.diff` требовал review, хотя до продукта изменение не доходило. Verifier 6
+  показывает `impact.none` перед review-находками и прямо отделяет review change от
+  изменения чисел этого продукта. `CHECK_VERSION` остаётся 5: смысл проверок не менялся.
+- Проверено: 13 тестов отчёта; focused summary + verify + CLI — 91 passed. Mac v6 control
+  bundle подтверждает новую формулировку на живом контуре.
 
 ### §8.2 шаг 6 — reference SQL метрики (2026-08-25)
 
@@ -914,7 +921,7 @@ uv run auto_bi decision verify /tmp/stand-run/contracts \
   verified-asset SQL. Content digest доказывает неизменность переданных чисел, но не то, что
   именно DWH произвёл их; provenance этого результата пока остаётся внешним evidence;
 - **измеренного owner outcome нет** — задача 8 открыта. Репетиция
-  ([`DECISIONOPS_PILOT_2026-08-25.md`](DECISIONOPS_PILOT_2026-08-25.md)) и Mac v5 pilot
+  ([`DECISIONOPS_PILOT_2026-08-25.md`](DECISIONOPS_PILOT_2026-08-25.md)) и Mac v6 pilot
   подтвердили технический контур, но не могут измерить то, что меряет только владелец:
   сколько он читает отчёт и понятен ли тот;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP, actions, Ossie,
@@ -963,14 +970,14 @@ Exit code — вердикт: `0` pass/advisory, `3` needs_review, `4` block, `2
 
 ## Открытые решения — они за владельцем, не за агентом
 
-Офлайновая работа и технический Mac pilot под verifier 5 закончены. Финальные revenue и
+Офлайновая работа и технический Mac pilot под verifier 6 закончены. Финальные revenue и
 control bundle лежат в `.pilot-work/2026-09-02-mac-revenue-tz/` и независимо проходят
 `decision evidence`; новый change, стенд или доступ у владельца не запрашивать. Открытые
 решения теперь:
 
 | # | Вопрос | Что он разблокирует |
 |---|---|---|
-| 1 | Сколько владелец читает свежий v5-отчёт и понятен ли он | завершает bootstrap task 8; без измеренного owner outcome scheduler/MCP/actions не начинаются |
+| 1 | Сколько владелец читает свежий v6-отчёт и понятен ли он | завершает bootstrap task 8; без измеренного owner outcome scheduler/MCP/actions не начинаются |
 | 2 | Где будет remote этого репозитория (§18.4) | пуш, CI на стороне GitHub, ревью извне; история пока лежит только локально |
 | 3 | Нужна ли подпись evidence и какой trust root допустим (§18.5) | `integrity=signed`; сегодня честно `content_hashed`, и подписью это не называется |
 
@@ -991,7 +998,7 @@ evidence не приближает. Репетиция это частично �
 сложнее фикстуры сьюта.**
 
 Что до нового кода — он по-прежнему закрыт S6 до owner outcome. Существующий Mac pilot под
-verifier 5 повторять без нового входа не нужно: передать его summary владельцу и измерить
+verifier 6 повторять без нового входа не нужно: передать его summary владельцу и измерить
 чтение. External/reviewed-SQL, третье семейство движков, scheduler/MCP/actions и другие
 платформенные слайсы до этого не начинать.
 

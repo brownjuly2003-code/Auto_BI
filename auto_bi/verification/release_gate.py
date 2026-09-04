@@ -89,8 +89,8 @@ API_VERSION = "auto-bi.io/v2alpha1"
 
 #: Part of the idempotency key: a different verifier can reach a different verdict from the
 #: same inputs, so its bundles must not be reused (§7.6).
-#: 5 — aggregate arithmetic is exact beyond the Decimal context's 28-digit precision.
-VERIFIER_VERSION = "5"
+#: 6 — an unaffected product's summary surfaces `impact.none` before review findings.
+VERIFIER_VERSION = "6"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule.
