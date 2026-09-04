@@ -1,0 +1,77 @@
+api_version: auto-bi.io/v2alpha1
+kind: InvestigationPlan
+plan_id: weekly-margin-alpha
+product_ref: decision://sales/weekly_margin@1
+question: What changed in weekly gross margin?
+scope:
+  metrics:
+    - metric://sales/gross_margin_pct@3
+  dimensions:
+    - category
+  time_window: P2W
+steps:
+  - step_id: health
+    skill: data_health
+    skill_version: 1
+    metrics:
+      - metric://sales/gross_margin_pct@3
+    dimensions:
+      - category
+    preconditions: []
+    expected_evidence: data_health_result
+    allowed_claim_types:
+      - observation
+  - step_id: variance
+    skill: period_variance
+    skill_version: 1
+    metrics:
+      - metric://sales/gross_margin_pct@3
+    dimensions: []
+    preconditions:
+      - complete_periods
+      - non_null_values
+    expected_evidence: period_variance_result
+    allowed_claim_types:
+      - observation
+  - step_id: contribution
+    skill: contribution_decomposition
+    skill_version: 1
+    metrics:
+      - metric://sales/gross_margin_pct@3
+    dimensions:
+      - category
+    preconditions:
+      - additive_metric
+      - complete_periods
+      - unique_grain
+    expected_evidence: contribution_result
+    allowed_claim_types:
+      - contribution
+  - step_id: concentration
+    skill: concentration_shift
+    skill_version: 1
+    metrics:
+      - metric://sales/gross_margin_pct@3
+    dimensions:
+      - category
+    preconditions:
+      - complete_periods
+      - non_negative_values
+    expected_evidence: concentration_result
+    allowed_claim_types:
+      - observation
+    top_n: 3
+budget:
+  max_steps: 4
+  max_input_rows: 1000
+  max_output_claims: 100
+  max_groups_per_step: 100
+  max_runtime_ms: 1000
+  max_queries: 0
+policy:
+  on_budget_exceeded: stop
+  on_scope_violation: stop
+  on_missing_evidence: stop
+  on_ambiguous_input: escalate
+  on_unsupported_input: escalate
+  causal_claims: forbidden
