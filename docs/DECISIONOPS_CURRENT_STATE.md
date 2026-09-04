@@ -36,6 +36,7 @@ contracts -> validate -> snapshots/diff -> product impact -> result reconciliati
 |---|---|
 | Tasks 1–7 | завершены |
 | Task 8: технический pilot | завершён на ClickHouse 24.8.14.39 |
+| Task 8: proxy-owner review | завершён; scope понятен, actionability частичная |
 | Task 8: owner outcome | открыт: время чтения и понятность отчёта |
 | Следующая платформенная фаза | не начата; требуется решение владельца |
 
@@ -58,6 +59,10 @@ Tracked pilot rehearsal от 2026-08-25 содержит четыре воспр
 
 Оба bundle содержат по 19 artifacts и прошли независимое чтение без ошибок.
 Повторять pilot без нового change или новой гипотезы не требуется.
+
+[Симуляция owner-gate](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md) оценила
+decision surface в 44/40 секунд и подтвердила понятность scope. Это proxy-оценка,
+а не человеческий замер; Task 8 остаётся открытой.
 
 ## Карта реализации
 
@@ -86,7 +91,8 @@ Tracked pilot rehearsal от 2026-08-25 содержит четыре воспр
 - Impact доходит до dashboard ref, но не строит **chart-level impact**.
 - Gate сравнивает переданные результаты, но сам не выполняет **verified-asset SQL**;
   provenance результата остаётся внешним evidence.
-- Нет измеренного owner outcome: технический pilot не измеряет время и понятность.
+- Нет измеренного человеком owner outcome: proxy-review не заменяет время и
+  подтверждение понятности от живого владельца.
 - Typed investigations, certified brief, scheduler, PostgreSQL platform runtime,
   MCP/actions, **Ossie**, **MetricFlow** и **column-level lineage** относятся к
   следующей фазе, а не к текущему bootstrap.
