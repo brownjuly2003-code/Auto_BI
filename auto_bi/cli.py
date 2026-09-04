@@ -219,6 +219,21 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true", help="Emit the inspection as JSON and nothing else"
     )
 
+    investigate = decision_sub.add_parser(
+        "investigate",
+        help="Run a typed investigation over canonical results (offline, no DWH/BI/LLM)",
+    )
+    investigate.add_argument("plan", help="InvestigationPlan YAML file")
+    investigate.add_argument(
+        "--results",
+        nargs="+",
+        required=True,
+        help="CanonicalMetricResult YAML files, exactly one per investigated metric",
+    )
+    investigate.add_argument(
+        "--output", required=True, help="New directory for canonical plan/results/brief artifacts"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "build":
@@ -250,6 +265,8 @@ def main(argv: list[str] | None = None) -> int:
             return _decision_verify(args)
         if args.decision_command == "evidence":
             return _decision_evidence(args)
+        if args.decision_command == "investigate":
+            return _decision_investigate(args)
         return _decision_validate(args.paths, args.json)
     return 0
 
@@ -287,6 +304,26 @@ def _decision_validate(paths: list[str], as_json: bool) -> int:
         print(message, file=sys.stderr if as_json else sys.stdout)
         return EXIT_ERROR
     return exit_code_for(report.verdict)
+
+
+def _decision_investigate(args: argparse.Namespace) -> int:
+    """Run the internal offline investigation alpha over supplied canonical results."""
+    from auto_bi.investigation.application import (
+        OfflineInvestigationError,
+        write_offline_investigation,
+    )
+    from auto_bi.verification.model import EXIT_ERROR
+
+    try:
+        artifacts = write_offline_investigation(args.plan, args.results, args.output)
+    except OfflineInvestigationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    print(f"wrote    {args.output}")
+    print(f"plan     {artifacts.plan.digest()}")
+    print(f"brief    {artifacts.brief.digest()}")
+    print("trust    exploratory; human acceptance not measured")
+    return 0
 
 
 def _environment_probe(engine: str) -> "EnvironmentProbe | None":
