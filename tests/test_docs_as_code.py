@@ -601,7 +601,9 @@ def test_decisionops_state_names_known_residual_boundaries() -> None:
     assert section is not None
     residual = section.group(1)
     required = (
-        "chart-level impact",
+        # Impact now resolves to the tile, so the honest residual is what that resolution
+        # still cannot read — an operator SQL chart — not the whole link.
+        "chart.opaque_sql",
         "verified-asset SQL",
         "Ossie",
         "MetricFlow",

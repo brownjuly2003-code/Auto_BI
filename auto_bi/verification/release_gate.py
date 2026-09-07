@@ -89,8 +89,8 @@ API_VERSION = "auto-bi.io/v2alpha1"
 
 #: Part of the idempotency key: a different verifier can derive a different verdict or
 #: evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
-#: 7 — owner summaries name exact time-field transitions and the next owner action.
-VERIFIER_VERSION = "7"
+#: 8 — impact resolves to the chart, and names the tiles it could not read.
+VERIFIER_VERSION = "8"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule.
@@ -340,7 +340,14 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
     else:
         diff = diff_snapshots(inputs.base, inputs.candidate)
         checks.append(_check_diff(writer, diff, product_ref))
-        impact = resolve_impact(diff, [inputs.product])
+        impact = resolve_impact(
+            diff,
+            [inputs.product],
+            dashboards=inputs.dashboards,
+            # Both sides: the tile that computed the old definition is the one an owner
+            # must look at when the definition moves (`decision/impact.py`).
+            metrics=[*inputs.base.graph.metrics, *inputs.candidate.graph.metrics],
+        )
         checks.append(_check_impact(writer, impact, product_ref))
         checks.append(_check_assets(writer, inputs, diff, product_ref))
         checks.append(_check_results(writer, inputs, product_ref))
@@ -370,6 +377,7 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
             ),
             checks,
             _reaching(impact) if impact is not None else (),
+            impact.chart_gaps if impact is not None else (),
         ),
     )
     written = writer.write()
@@ -498,6 +506,9 @@ def _check_impact(writer: BundleWriter, impact: ImpactReport, product_ref: str) 
         for item in reaching
         if item.severity is Severity.BLOCK and item.classified_severity is Severity.REVIEW
     ]
+    # Counted over the reaching changes only, for the same reason the section is: a tile
+    # named under somebody else's metric is in the payload, not in this product's count.
+    tiles = {chart.ref for item in reaching for chart in item.charts}
     return CheckResult(
         check_id="impact.products",
         check_version=CHECK_VERSION,
@@ -507,7 +518,9 @@ def _check_impact(writer: BundleWriter, impact: ImpactReport, product_ref: str) 
         summary_code="impact.none" if not reaching else "impact.reaches_product",
         detail=(
             f"{len(reaching)} of {len(impact.impacts)} change(s) reach this product; "
-            f"{len(escalated)} escalated from review to block because it is governed"
+            f"{len(escalated)} escalated from review to block because it is governed; "
+            f"{len(tiles)} delivered chart(s) named, {len(impact.chart_gaps)} the IR "
+            "could not resolve"
         ),
         evidence_refs=[ref],
     )

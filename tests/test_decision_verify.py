@@ -974,6 +974,81 @@ def test_a_change_to_another_products_metric_does_not_reach_this_one(tmp_path: P
     assert "Whose numbers this reaches" not in summary
 
 
+def _with_margin_tile(case: Case) -> Case:
+    """Add the tile that IS the governed ratio — numerator and denominator, term for term."""
+    spec = dashboard_spec()
+    spec["charts"].append(
+        {
+            "id": "margin_by_region",
+            "title": "Маржа по регионам",
+            "viz": "bar",
+            "query": {
+                "table": "dm.sales_daily",
+                "dimensions": ["region"],
+                "measures": [
+                    {
+                        "column": "gross_margin",
+                        "agg": "sum",
+                        "denominator": {"column": "revenue", "agg": "sum"},
+                    }
+                ],
+            },
+        }
+    )
+    _write_yaml(case.dashboards / "weekly_margin@7.yaml", spec)
+    return case
+
+
+def test_impact_names_the_tile_that_computes_the_changed_metric(tmp_path: Path) -> None:
+    """§8.3 one link further: the owner gets the chart, not just the dashboard it sits on."""
+    case = _with_margin_tile(Case(tmp_path)).with_candidate(contract=_formula_change())
+
+    report = case.run()
+
+    assert report.verdict is Verdict.BLOCK
+    payload = _check_payload(tmp_path, report, "impact.products")
+    charts = [chart for item in payload["impacts"] for chart in item["charts"]]
+    assert [(chart["ref"], chart["relation"]) for chart in charts] == [
+        ("dashboard://weekly_margin@7#margin_by_region", "computes_metric")
+    ]
+    assert payload["chart_gaps"] == []
+
+    summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
+        encoding="utf-8"
+    )
+    assert "chart `dashboard://weekly_margin@7#margin_by_region` — computes_metric" in summary
+
+
+def test_a_tile_the_run_cannot_read_is_named_in_the_report(tmp_path: Path) -> None:
+    """An operator `raw_sql` tile: the IR does not say what it reads, and silence would lie."""
+    case = _with_margin_tile(Case(tmp_path))
+    spec = yaml.safe_load((case.dashboards / "weekly_margin@7.yaml").read_text(encoding="utf-8"))
+    spec["charts"].append(
+        {
+            "id": "operator_table",
+            "title": "Операторский срез",
+            "viz": "table",
+            "query": {
+                "table": "dm.sales_daily",
+                "raw_sql": "SELECT region, sum(revenue) FROM dm.sales_daily GROUP BY region",
+            },
+        }
+    )
+    _write_yaml(case.dashboards / "weekly_margin@7.yaml", spec)
+
+    report = case.with_candidate(contract=_formula_change()).run()
+
+    payload = _check_payload(tmp_path, report, "impact.products")
+    assert [(gap["code"], gap["subject"]) for gap in payload["chart_gaps"]] == [
+        ("chart.opaque_sql", "dashboard://weekly_margin@7#operator_table")
+    ]
+    summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Charts this run could not resolve" in summary
+    assert "`chart.opaque_sql` dashboard://weekly_margin@7#operator_table" in summary
+
+
 def test_the_same_change_still_blocks_the_product_that_depends_on_it(tmp_path: Path) -> None:
     case = _two_product_graph(Case(tmp_path).with_candidate(contract=_timezone_change()))
 

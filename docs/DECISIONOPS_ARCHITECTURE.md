@@ -201,7 +201,7 @@ auto_bi/
   decision/
     spec.py              DecisionProductSpec и lifecycle enums
     validate.py          cross-contract validation
-    impact.py            product/owner impact и эскалация review→block
+    impact.py            product/owner/chart impact и эскалация review→block
     use_cases.py         validate / verify application services
   semantic/
     metric_contract.py   governed metric definition
@@ -384,7 +384,7 @@ terminal bundle с тем же ключом.
 переиспользовать под прежним ключом);
 `CHECK_VERSION` — когда меняется смысл отдельной проверки, чтобы прежний `CheckResult` не
 читался как гранёный сегодняшним правилом. Текущие значения:
-`VERIFIER_VERSION=7`, `CHECK_VERSION=5`.
+`VERIFIER_VERSION=8`, `CHECK_VERSION=5`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -585,6 +585,28 @@ Impact graph строится по stable refs:
 ```text
 source field -> metric -> verified asset -> chart -> decision product -> owner
 ```
+
+**Chart-разрешение — evidence, а не грейдинг.** `resolve_impact` доводит цепочку до плитки:
+чарт получает `computes_metric`, если его measure воспроизводит термы формулы (numerator на
+самой мере, denominator — на её `denominator`; `transform`/`compare` остаются тем же базовым
+агрегатом, поэтому плитка по-прежнему считает метрику), и `reads_field`, если запрос просто
+называет изменённую колонку. Разные утверждения не смешиваются: в `ChartSpec` нет ссылки на
+метрику, поэтому `computes_metric` — вывод, и делается он только по точному совпадению термов;
+`reads_field` читается прямо из IR. Термы берутся из **обоих** снапшотов: плитка, считавшая
+вчерашнее определение, — ровно та, которую владелец должен открыть, когда определение поехало.
+
+Разрешение идёт по дашбордам продуктов из `products_in_scope`, а не только по изменениям с
+непустым `products`. Плитка, читающая колонку, которую не покрывает ни один metric contract,
+— незадекларированная зависимость, и по правилу «записывается весь дифф» отчёт обязан
+сказать, что видел её. Вердикт при этом не двигается: чарт не поднимает severity и не вводит
+продукт в scope, а секция «Whose numbers this reaches» по-прежнему строится по `_reaching`.
+
+Чего IR не отвечает — выходит именованным гэпом в `chart_gaps`, а не пустым списком:
+`chart.opaque_sql` (операторский `raw_sql` не говорит, какие колонки читает),
+`chart.dashboard_spec_missing` (spec не загружен прогоном), `chart.formula_untyped`
+(`external_ref`/`reviewed_sql` не несут термов — тот же гэп, что и у reference SQL шага 6),
+`chart.metric_unknown` (определение метрики не передано резолверу). Метрика, типизированная
+на одной стороне и внешняя на другой, даёт и плитку, и гэп: обе половины правдивы.
 
 **Записывается весь дифф, грейдится только дошедшее.** `resolve_impact` оставляет в
 payload каждое изменение, включая те, чей список продуктов пуст: отчёт обязан говорить,
@@ -946,7 +968,8 @@ domain state machine.
 
 | Сценарий | Покрыт |
 |---|---|
-| breaking metric change блокируется с exact impact | ✅ `tests/test_decision_verify.py` — 4 seed'а (formula, grain, event time, removed field) до владельца и дашборда |
+| breaking metric change блокируется с exact impact | ✅ `tests/test_decision_verify.py` — 4 seed'а (formula, grain, event time, removed field) до владельца, дашборда и плитки |
+| impact доходит до чарта, а нечитаемая плитка названа | ✅ `tests/test_decision_chart_impact.py` + gate-прогон в `tests/test_decision_verify.py` |
 | presentation-only change не блокируется | ✅ там же |
 | Superset/DataLens compile contracts используют общий canonical query | ✅ `tests/test_bi_contract.py` — сравнение **объектов** builder'ов, не результатов |
 | отсутствие evidence ref ломает bundle validation | ✅ `tests/test_evidence_bundle.py` |

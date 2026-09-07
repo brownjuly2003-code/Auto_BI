@@ -28,7 +28,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from auto_bi.decision.impact import ProductImpact
+from auto_bi.decision.impact import ChartGap, ProductImpact
 from auto_bi.severity import Severity
 from auto_bi.verification.model import Verdict, verdict_for
 
@@ -76,6 +76,7 @@ def render_summary(
     facts: SummaryFacts,
     checks: Sequence[CheckResult],
     impacts: Sequence[ProductImpact] = (),
+    chart_gaps: Sequence[ChartGap] = (),
 ) -> str:
     """Render the owner-facing summary of one gate run."""
     verdict = verdict_for(
@@ -116,7 +117,7 @@ def render_summary(
         "What stops the release",
         [check for check in graded if check.severity() is Severity.BLOCK],
     )
-    lines += _impact_section(impacts)
+    lines += _impact_section(impacts, chart_gaps)
     review_checks = [check for check in graded if check.severity() is Severity.REVIEW]
     review_intro = ""
     if unaffected is not None:
@@ -174,7 +175,9 @@ def _severity_section(
     return lines
 
 
-def _impact_section(impacts: Sequence[ProductImpact]) -> list[str]:
+def _impact_section(
+    impacts: Sequence[ProductImpact], chart_gaps: Sequence[ChartGap] = ()
+) -> list[str]:
     """Whose numbers move — the question a verdict alone never answers (§8.3)."""
     if not impacts:
         return []
@@ -191,11 +194,24 @@ def _impact_section(impacts: Sequence[ProductImpact]) -> list[str]:
         ):
             if refs:
                 lines.append(f"  - {label}: {', '.join(refs)}")
+        for chart in item.charts:
+            # The tile, not just the folder it sits in: the one line an owner opens the
+            # dashboard for. The relation says whether it *is* the metric or merely reads
+            # the column, because those are different things to go and check.
+            lines.append(f"  - chart `{chart.ref}` — {chart.relation.value}: {chart.detail}")
         if item.severity is not item.classified_severity:
             lines.append(
                 f"  - raised from {item.classified_severity.value} to {item.severity.value} "
                 "because a governed product depends on it"
             )
+    if chart_gaps:
+        lines += [
+            "",
+            "Charts this run could not resolve — a tile missing from the lists above may be "
+            "one of these, not an absence:",
+            "",
+        ]
+        lines += [f"- `{gap.code}` {gap.subject} — {gap.detail}" for gap in chart_gaps]
     return lines
 
 

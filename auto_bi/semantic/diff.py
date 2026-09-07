@@ -257,6 +257,11 @@ def _diff_field_attrs(
                 Severity.ADVISORY,
                 new.id,
                 "description changed",
+                # Fields only, deliberately — the same shape `field.added` carries. Naming
+                # the field lets a reader (and chart resolution) follow the change to what
+                # reads it; naming the metrics would make a relabel invalidate verified
+                # assets, which grade on `impact.metrics`.
+                SemanticImpact(fields=[new.id]),
             )
         )
     return changes

@@ -1,11 +1,11 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-04
+**Обновлено:** 2026-09-07
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён,
 human/design-partner gate остаётся открытым
 
-**Версии evidence:** `VERIFIER_VERSION=7`, `CHECK_VERSION=5`
+**Версии evidence:** `VERIFIER_VERSION=8`, `CHECK_VERSION=5`
 
 ## Коротко
 
@@ -28,7 +28,9 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
 ```
 
 - `auto_bi decision validate` проверяет связанные YAML-контракты.
-- `auto_bi decision verify` выполняет one-shot gate без удалённой BI-мутации.
+- `auto_bi decision verify` выполняет one-shot gate без удалённой BI-мутации; impact
+  доходит до конкретного чарта доставляемого дашборда (`computes_metric` / `reads_field`),
+  а нерешаемые плитки выходят именованными `chart_gaps`.
 - `auto_bi decision evidence` перепроверяет digest каждого artifact в bundle.
 - `auto_bi decision investigate <plan.yaml> --results <result.yaml> ... --output <dir>`
   запускает только offline investigation skills и требует новый output-каталог.
@@ -61,7 +63,7 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 
 | Ответственность | Код |
 |---|---|
-| Contracts и impact | `auto_bi/decision/`, `auto_bi/semantic/` |
+| Contracts, product/chart impact | `auto_bi/decision/`, `auto_bi/semantic/` |
 | Verification, DWH probe и pure BI compile | `auto_bi/verification/` |
 | Evidence и owner report | `auto_bi/evidence/`, `auto_bi/verification/summary.py` |
 | Typed offline investigation | `auto_bi/investigation/model.py`, `data.py`, `skills.py`, `claims.py`, `application.py` |
@@ -74,10 +76,13 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 ## Что ещё не реализовано
 
 - Для external/reviewed-SQL формул и неизвестного семейства движков reference SQL
-  остаётся явным semantic gap.
+  остаётся явным semantic gap; такая формула не несёт термов, поэтому и до плитки
+  не разрешается (`chart.formula_untyped`).
+- Chart-разрешение не заменяет lineage: плитка на операторском `raw_sql` остаётся
+  `chart.opaque_sql`, а связь «чарт считает метрику» — вывод по точному совпадению
+  термов, потому что в IR у чарта нет ссылки на метрику.
 - `dwh.cost` не доказывает `max_scanned_bytes` и `timeout_ms`, если планировщик
   движка не отдаёт такие данные.
-- Impact доходит до dashboard ref, но не строит **chart-level impact**.
 - Gate сравнивает переданные результаты, но сам не выполняет **verified-asset SQL**;
   provenance результата остаётся внешним evidence.
 - Нет измеренного человеком owner outcome: proxy-review не заменяет время и
@@ -89,7 +94,8 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 ## Быстрая проверка
 
 ```bash
-uv run pytest tests/test_decision_verify.py tests/test_decision_cli.py -q
+uv run pytest tests/test_decision_verify.py tests/test_decision_cli.py \
+  tests/test_decision_impact.py tests/test_decision_chart_impact.py -q
 uv run pytest tests/test_investigation_plan.py tests/test_investigation_skills.py \
   tests/test_investigation_brief.py tests/test_investigation_cli.py -q
 uv run auto_bi decision --help

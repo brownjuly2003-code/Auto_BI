@@ -6,6 +6,18 @@
 
 ### Added
 
+- **Impact доходит до чарта, а не до дашборда** (`VERIFIER_VERSION` 7 → 8). `resolve_impact`
+  разрешает изменение до конкретной плитки доставляемого дашборда и держит два утверждения
+  раздельно: `computes_metric` — measure чарта воспроизводит термы формулы (numerator на мере,
+  denominator на её `denominator`; `transform`/`compare` остаются тем же базовым агрегатом),
+  `reads_field` — запрос просто называет изменённую колонку. Термы берутся из обоих снапшотов:
+  плитка, считавшая вчерашнее определение, — ровно та, которую владелец должен открыть.
+  Разрешение — evidence, а не грейдинг: вердикт и `_reaching` не меняются, но плитка, читающая
+  колонку без покрывающего metric contract, теперь названа как незадекларированная зависимость.
+  Нерешаемое выходит именованным гэпом (`chart.opaque_sql`, `chart.dashboard_spec_missing`,
+  `chart.formula_untyped`, `chart.metric_unknown`), а не пустым списком; owner summary
+  печатает и плитки, и гэпы.
+
 - **Репетиция пилота release gate на локальном стенде** —
   `docs/DECISIONOPS_PILOT_2026-08-25.md` и
   `docs/pilot/2026-08-25-ch-{control,tz-margin,tz-revenue,result-drift}/` (входы +
