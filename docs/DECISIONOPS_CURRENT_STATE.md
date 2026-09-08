@@ -106,7 +106,8 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   движка не отдаёт такие данные.
 - Gate сравнивает переданные результаты, но сам не выполняет **verified-asset SQL**.
   Происхождение числа теперь проверяемо — snapshot, среда и запрос сверяются с тем, что
-  гейт держит независимо, а сам reviewed-запрос — с таблицами кандидатного snapshot'а, — но
+  гейт держит независимо, а сам reviewed-запрос — с таблицами и полями кандидатного
+  snapshot'а, — но
   того, что runner действительно выполнил заявленный запрос, attestation не доказывает: это
   подпись над снятием, а trust root отложен.
 - Governance reviewed-запроса покрывает таблицы и колонки, но колонка приписывается
@@ -116,7 +117,9 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 - Нет измеренного человеком owner outcome: proxy-review не заменяет время и
   подтверждение понятности от живого владельца.
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
-  **Ossie**, **MetricFlow** и **column-level lineage** не реализованы. Offline brief
+  **Ossie**, **MetricFlow** и **column-level lineage** не реализованы; проверка колонок
+  reviewed-запроса — это governance («объявлено ли поле»), а не lineage («откуда значение
+  пришло через преобразования»). Offline brief
   остаётся `exploratory` и не является human acceptance evidence.
 
 ## Быстрая проверка
