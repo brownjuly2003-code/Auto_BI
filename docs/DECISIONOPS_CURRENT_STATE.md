@@ -2,10 +2,16 @@
 
 **Обновлено:** 2026-09-07
 
-**Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён,
-human/design-partner gate остаётся открытым
+**Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
+impact доведён до чарта; human/design-partner gate остаётся открытым
 
 **Версии evidence:** `VERIFIER_VERSION=8`, `CHECK_VERSION=5`
+
+Сохранённые pilot-bundles в `docs/pilot/` выпущены verifier 7 и такими остаются: они
+исторические артефакты, а не выход сегодняшнего гейта. `auto_bi decision evidence` по ним
+проходит (проверено 2026-09-07, exit `0`) — перепроверка адресует то, что запечатано, и не
+требует текущей версии. Новый прогон на тех же входах даст другой `run_id` и bundle
+verifier 8: chart-разрешение изменило evidence artifact.
 
 ## Коротко
 
@@ -49,6 +55,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: proxy-owner review | v7: scope и actionability проходят |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
+| Chart-level impact | реализован 2026-09-07: evidence, грейдинг не меняет |
 | Continuous platform | заблокирована до human/design-partner evidence |
 
 Четыре tracked pilot-сценария, найденные дефекты и Mac verifier 7 evidence описаны в
@@ -124,6 +131,22 @@ scope stop завершаются кодом `2` до записи output-кат
 
 Флаг `--dwh clickhouse|greenplum` включает пять read-only engine checks. На этой
 Windows-машине для документационной проверки не требуется поднимать WSL/Docker.
+
+## Что делать дальше
+
+Не заблокировано human gate (можно брать сразу):
+
+1. **Provenance verified-asset SQL** — гейт сравнивает переданные результаты, но сам не
+   выполняет запрос asset'а; сейчас provenance числа остаётся внешним evidence.
+2. **`dwh.cost` для `max_scanned_bytes` / `timeout_ms`** — сегодня advisory-гэп, потому что
+   планировщики движков этих величин не отдают; закрывается только другим источником
+   измерения, а не переформулировкой контракта.
+
+Заблокировано до human/design-partner review (не начинать): production-certified brief,
+scheduler, PostgreSQL platform runtime, REST/MCP, notifications, actions.
+
+Журналы закрытых срезов — [typed investigation](history/TYPED_INVESTIGATION_MVP.md) и
+[chart-level impact](history/CHART_LEVEL_IMPACT.md).
 
 ## Решения для текущего scope
 
