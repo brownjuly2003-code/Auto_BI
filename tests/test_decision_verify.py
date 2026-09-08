@@ -360,6 +360,10 @@ def summary_of(report: GateReport, check_id: str) -> str:
     return next(check.summary_code for check in report.checks if check.check_id == check_id)
 
 
+def detail_of(report: GateReport, check_id: str) -> str:
+    return next(check.detail for check in report.checks if check.check_id == check_id)
+
+
 # --- the happy path -----------------------------------------------------------
 
 
@@ -687,10 +691,12 @@ def test_removed_field_blocks_as_a_gap_and_keeps_reporting_impact(tmp_path: Path
 
 
 def test_breaking_seed_invalidates_the_verified_asset(tmp_path: Path) -> None:
+    """The check names *why* the asset fell: two reasons need two different fixes."""
     case = Case(tmp_path).with_candidate(contract=_formula_change()).with_asset()
     report = case.run()
     assert status_of(report, "assets.invalidated") is CheckStatus.REVIEW
-    assert summary_of(report, "assets.invalidated") == "assets.invalidated"
+    assert summary_of(report, "assets.invalidated") == "asset.metric_changed"
+    assert ASSET_ID in detail_of(report, "assets.invalidated")
 
 
 # --- presentation-only --------------------------------------------------------
@@ -904,6 +910,40 @@ def test_an_asset_with_no_reviewed_query_says_so_without_asking_for_a_human(
     assert [item["code"] for item in payload["results"][0]["findings"]] == [
         "provenance.query_unreviewed"
     ]
+
+
+def test_a_reviewed_query_over_an_ungoverned_mart_cannot_anchor_the_chain(
+    tmp_path: Path,
+) -> None:
+    """The number is attested, reconciles, and reads a mart this model does not hold."""
+    case = Case(tmp_path).with_candidate()
+    sql = 'SELECT "region", sum("revenue") AS "gross_margin_pct" FROM "dm"."sales_daily_v2"'
+    asset = verified_asset(case.base_digest)
+    asset["reference_query"] = {"engine": "clickhouse", "sql": sql}
+    case.assets = case.root / "assets"
+    _write_yaml(case.assets / "weekly_margin_by_region.yaml", asset)
+    case.with_results(
+        [["Москва", "0.412"], ["Казань", "0.377"]],
+        attested=attestation(
+            case.candidate_digest,
+            query_digest=ReferenceQuery(engine="clickhouse", sql=sql).digest(),
+        ),
+    )
+
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+
+    # Every link the provenance chain can check holds: the capture names this snapshot,
+    # this environment, and exactly the query the asset was reviewed with.
+    assert status_of(report, "results.provenance") is CheckStatus.PASS
+    assert summary_of(report, "results.reconcile") == "result.equivalent"
+    # ...and the chain still never reaches the governed model.
+    assert status_of(report, "assets.invalidated") is CheckStatus.REVIEW
+    assert summary_of(report, "assets.invalidated") == "asset.query_ungoverned"
+    # The owner report carries only the check detail, so the mart has to be named there.
+    assert "dm.sales_daily_v2" in detail_of(report, "assets.invalidated")
+    payload = _check_payload(tmp_path, report, "assets.invalidated")
+    assert [item["code"] for item in payload["invalidations"]] == ["asset.query_ungoverned"]
+    assert report.verdict is Verdict.NEEDS_REVIEW
 
 
 def test_a_missing_result_is_asked_for_once_not_twice(tmp_path: Path) -> None:

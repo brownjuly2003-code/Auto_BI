@@ -28,13 +28,14 @@ from pathlib import Path
 import yaml
 from pydantic import Field, model_validator
 
-from auto_bi.agent.sql_guard import SQLGuardError, guard_sql
+from auto_bi.agent.sql_guard import SQLGuardError, extract_table_refs, guard_sql
 from auto_bi.decision.spec import RiskTier
 from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.evidence.canonical import sha256_digest
 from auto_bi.refs import AssetId, ContractRef, MetricRef
 from auto_bi.scalars import MAX_SAFE_INT, NonBlankText, Sha256Digest, Timestamp
 from auto_bi.semantic.diff import SemanticDiff
+from auto_bi.semantic.gateway import SemanticSnapshot
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
 from auto_bi.verification.reconcile import ResultSet, ResultTolerance
@@ -218,6 +219,57 @@ class VerifiedAssetRepository:
 
     def get(self, asset_id: str) -> VerifiedAsset | None:
         return next((item for item in self.assets if item.metadata.id == asset_id), None)
+
+    def ungoverned(self, snapshot: SemanticSnapshot) -> list[AssetInvalidation]:
+        """Assets whose reviewed query reads a mart this snapshot does not govern.
+
+        The provenance chain anchors on the reviewed query (§8.4.1): a candidate number is
+        tied to the SQL a reviewer signed off. That anchor is worth exactly as much as its
+        attachment to the governed model — a reviewed query reading `dm.sales_daily_v2`
+        produces an attested, reconciled number computed from a mart nobody governs, which
+        is the failure this product exists to prevent.
+
+        **Tables only, never columns.** Attributing an unqualified column to one of several
+        tables in scope, across joins, CTEs and subqueries, is a guess, and a gate that
+        guesses about governance has stopped being evidence (invariant 6). A table name is
+        unambiguous, and it is the level at which a mart is governed.
+
+        Case is read the way the asset's engine reads it: ClickHouse distinguishes
+        `Sales_Daily` from `sales_daily`, the PostgreSQL family folds an *unquoted*
+        identifier to lower case, and grading one engine's rule on the other would either
+        miss a real mismatch or invent one. Quoting is part of that question and travels
+        with the name: `"Sales_Daily"` on PostgreSQL is a table `sales_daily` is not, so a
+        quoted reference is compared exactly on every engine.
+        """
+        findings: list[AssetInvalidation] = []
+        governed = {node.id for node in snapshot.graph.tables}
+        folded = {name.lower() for name in governed}
+        for item in self.assets:
+            query = item.reference_query
+            if query is None:
+                continue
+            dialect = sqlglot_dialect(query.engine)
+            folds = dialect != "clickhouse"
+            unknown = sorted(
+                ref.name
+                for ref in extract_table_refs(query.sql, dialect=dialect)
+                if ref.name not in governed
+                and not (folds and not ref.quoted and ref.name.lower() in folded)
+            )
+            if unknown:
+                findings.append(
+                    AssetInvalidation(
+                        asset=item.self_ref(),
+                        code="asset.query_ungoverned",
+                        severity=Severity.REVIEW,
+                        detail=(
+                            "the reviewed reference_query reads "
+                            f"{', '.join(unknown)}, which this snapshot does not govern: "
+                            "a number from it is not a number about this model"
+                        ),
+                    )
+                )
+        return findings
 
     def invalidate(self, diff: SemanticDiff) -> list[AssetInvalidation]:
         """Assets a semantic change makes unusable as evidence, worst reason first."""

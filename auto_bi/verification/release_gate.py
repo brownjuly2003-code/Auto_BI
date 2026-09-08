@@ -99,16 +99,18 @@ API_VERSION = "auto-bi.io/v2alpha1"
 
 #: Part of the idempotency key: a different verifier can derive a different verdict or
 #: evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
-#: 9 — a candidate result's origin is graded, so the bundle carries an attestation and a
-#: `results.provenance` finding an earlier verifier never wrote.
-VERIFIER_VERSION = "9"
+#: 10 — `assets.invalidated` also grades whether a reviewed query reads governed marts, so
+#: the same inputs can now yield `needs_review` where verifier 9 saw a clean asset.
+VERIFIER_VERSION = "10"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
 #: `CheckResult` is re-graded by it, and the verifier version is what stops a bundle written
 #: before it from being reused as a complete verification.
-#: 5 — aggregate invariants no longer round intermediate sums, products or ratios.
-CHECK_VERSION = "5"
+#: 6 — `assets.invalidated` answers a wider question: an asset stops being evidence not
+#: only when semantics moved the number under it, but also when its reviewed query reads a
+#: mart the model does not govern. An earlier `pass` on that check did not ask that.
+CHECK_VERSION = "6"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -570,7 +572,13 @@ def _check_impact(writer: BundleWriter, impact: ImpactReport, product_ref: str) 
 def _check_assets(
     writer: BundleWriter, inputs: GateInputs, diff: SemanticDiff, product_ref: str
 ) -> CheckResult:
-    invalidations = inputs.assets.invalidate(diff)
+    # Two ways an asset stops being evidence, one question: a semantic change that moved
+    # the number under it, and a reviewed query that reads a mart the model does not govern
+    # (§8.4.1 anchors provenance on that query, so its attachment is worth checking).
+    invalidations = [
+        *inputs.assets.invalidate(diff),
+        *inputs.assets.ungoverned(inputs.candidate),
+    ]
     ref = writer.add_check(
         "assets.invalidated",
         {
@@ -578,16 +586,22 @@ def _check_assets(
             "invalidations": [item.model_dump(mode="json") for item in invalidations],
         },
     )
+    worst = max(invalidations, key=lambda item: _FINDING_RANK[item.severity], default=None)
     return CheckResult(
         check_id="assets.invalidated",
         check_version=CHECK_VERSION,
         category=CheckCategory.VERIFICATION,
         subject_refs=[product_ref, *(item.self_ref() for item in inputs.assets.assets)],
         status=status_for([item.severity for item in invalidations]),
-        summary_code="assets.valid" if not invalidations else "assets.invalidated",
+        # Same convention as `results.provenance` and the environment checks: the summary
+        # code names the reason that decided the status, and the detail is the reason
+        # itself. A count cannot carry that here — a moved formula and a query over an
+        # ungoverned mart are the same number of invalidated assets and two different fixes.
+        summary_code="assets.valid" if worst is None else worst.code,
         detail=(
-            f"{len(invalidations)} of {len(inputs.assets.assets)} verified asset(s) "
-            "can no longer stand as evidence"
+            f"{len(inputs.assets.assets)} verified asset(s) still stand as evidence"
+            if worst is None
+            else "; ".join(f"{item.asset}: {item.detail}" for item in invalidations)
         ),
         evidence_refs=[ref],
     )

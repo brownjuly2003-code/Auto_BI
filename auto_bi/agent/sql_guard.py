@@ -4,6 +4,8 @@ Belt-and-suspenders for generated SQL today, the mandatory gate for the raw_sql
 escape hatch later. Plus live validation: EXPLAIN + LIMIT-ed trial run on the DWH.
 """
 
+from typing import NamedTuple
+
 import sqlglot
 from sqlglot import expressions as exp
 
@@ -109,6 +111,43 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
                 raise SQLGuardError(f"forbidden table function in SQL: {name}()")
 
 
+class TableRef(NamedTuple):
+    """One table a SELECT reads, as written."""
+
+    #: Fully qualified when the SQL qualifies it (`dm.sales_daily`); bare names stay bare.
+    name: str
+    #: Any part of the name was written inside double quotes. Only an unquoted identifier
+    #: is case-folded by the engines that fold, so a caller comparing this name against a
+    #: declared one needs to know which it is (`verification/repository.py`).
+    quoted: bool
+
+
+def extract_table_refs(sql: str, *, dialect: str = DIALECT) -> frozenset[TableRef]:
+    """Physical tables referenced by a SELECT, with their quoting (CTE aliases excluded)."""
+    root = _parse_one_select(sql, dialect=dialect)
+    cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
+    tables: set[TableRef] = set()
+    for table in root.find_all(exp.Table):
+        name = table.name
+        if not name:  # pragma: no mutate block - sqlglot never emits an unnamed Table
+            continue
+        # CTE self-reference: bare name matching a WITH alias, no db/catalog.
+        if name.lower() in cte_names and not table.db and not table.catalog:
+            continue
+        identifiers = [
+            part
+            for part in (table.args.get("catalog"), table.args.get("db"), table.this)
+            if isinstance(part, exp.Identifier) and part.name
+        ]
+        tables.add(
+            TableRef(
+                name=".".join(part.name for part in identifiers),
+                quoted=any(part.quoted for part in identifiers),
+            )
+        )
+    return frozenset(tables)
+
+
 def extract_table_names(sql: str, *, dialect: str = DIALECT) -> frozenset[str]:
     """Physical table names referenced by a SELECT (CTE aliases excluded).
 
@@ -118,19 +157,7 @@ def extract_table_names(sql: str, *, dialect: str = DIALECT) -> frozenset[str]:
     treats the whole token as the schema segment — still fail-closed for RBAC if
     the bare name is not an allowed schema).
     """
-    root = _parse_one_select(sql, dialect=dialect)
-    cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
-    tables: set[str] = set()
-    for table in root.find_all(exp.Table):
-        name = table.name
-        if not name:  # pragma: no mutate block - sqlglot never emits an unnamed Table
-            continue
-        # CTE self-reference: bare name matching a WITH alias, no db/catalog.
-        if name.lower() in cte_names and not table.db and not table.catalog:
-            continue
-        parts = [p for p in (table.catalog, table.db, name) if p]
-        tables.add(".".join(parts))
-    return frozenset(tables)
+    return frozenset(ref.name for ref in extract_table_refs(sql, dialect=dialect))
 
 
 def _trial_statements(sql: str, dialect: str) -> list[str]:

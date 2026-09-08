@@ -3,18 +3,19 @@
 **Обновлено:** 2026-09-07
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
-impact доведён до чарта; происхождение кандидатного числа проверяется;
-human/design-partner gate остаётся открытым
+impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
+привязкой его reviewed-запроса к governed-модели; human/design-partner gate остаётся открытым
 
-**Версии evidence:** `VERIFIER_VERSION=9`, `CHECK_VERSION=5`
+**Версии evidence:** `VERIFIER_VERSION=10`, `CHECK_VERSION=6`
 
 Сохранённые pilot-bundles в `docs/pilot/` выпущены verifier 7 и такими остаются: они
 исторические артефакты, а не выход сегодняшнего гейта. `auto_bi decision evidence` по ним
 проходит (проверено 2026-09-07, exit `0`) — перепроверка адресует то, что запечатано, и не
 требует текущей версии. Новый прогон на тех же входах даст другой `run_id` и bundle
-verifier 9: chart-разрешение и проверка provenance изменили evidence artifact. У pilot-числа
-attestation'а нет, поэтому сегодняшний прогон на тех же входах вынес бы по нему
-`provenance.unattested` (review) — это и есть содержание изменения, а не регресс стенда.
+verifier 10: chart-разрешение, проверка provenance и governance-привязка reviewed-запроса
+изменили evidence artifact. У pilot-числа attestation'а нет, поэтому сегодняшний прогон на
+тех же входах вынес бы по нему `provenance.unattested` (review) — это и есть содержание
+изменения, а не регресс стенда.
 
 ## Коротко
 
@@ -43,6 +44,9 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
 - `results.provenance` оценивает, откуда пришло кандидатное число: snapshot, среда и
   исполненный запрос сверяются с тем, что гейт держит независимо; число без attestation
   называется `provenance.unattested`. Ни одна находка не блокирует.
+- `assets.invalidated` дополнительно сверяет таблицы reviewed `reference_query` с
+  таблицами кандидатного snapshot'а: якорь provenance-цепочки, читающий неуправляемую
+  витрину, — `asset.query_ungoverned` (review).
 - `auto_bi decision evidence` перепроверяет digest каждого artifact в bundle.
 - `auto_bi decision investigate <plan.yaml> --results <result.yaml> ... --output <dir>`
   запускает только offline investigation skills и требует новый output-каталог.
@@ -63,6 +67,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
 | Chart-level impact | реализован 2026-09-07: evidence, грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
+| Governance reviewed-запроса | реализована 2026-09-07: таблицы запроса сверяются со snapshot'ом |
 | Continuous platform | заблокирована до human/design-partner evidence |
 
 Четыре tracked pilot-сценария, найденные дефекты и Mac verifier 7 evidence описаны в
@@ -100,8 +105,12 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   движка не отдаёт такие данные.
 - Gate сравнивает переданные результаты, но сам не выполняет **verified-asset SQL**.
   Происхождение числа теперь проверяемо — snapshot, среда и запрос сверяются с тем, что
-  гейт держит независимо, — но того, что runner действительно выполнил заявленный запрос,
-  attestation не доказывает: это подпись над снятием, а trust root отложен.
+  гейт держит независимо, а сам reviewed-запрос — с таблицами кандидатного snapshot'а, — но
+  того, что runner действительно выполнил заявленный запрос, attestation не доказывает: это
+  подпись над снятием, а trust root отложен.
+- Governance reviewed-запроса проверяется **на уровне таблиц**: колонка, не
+  квалифицированная таблицей, к витрине не приписывается (инвариант 6), поэтому запрос по
+  governed-витрине, читающий из неё неуправляемую колонку, находкой не станет.
 - Нет измеренного человеком owner outcome: proxy-review не заменяет время и
   подтверждение понятности от живого владельца.
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,

@@ -197,3 +197,101 @@ def test_asset_verified_against_another_snapshot_is_stale(tmp_path: Path) -> Non
     stale = other.invalidate(diff)
     assert [item.code for item in stale] == ["asset.stale_snapshot"]
     assert stale[0].severity is Severity.REVIEW
+
+
+# --- the reviewed query the provenance chain anchors on (§8.4.1) ---------------
+
+
+def query(sql: str, engine: str = "clickhouse") -> dict[str, Any]:
+    return {"engine": engine, "sql": sql}
+
+
+def test_a_query_over_governed_marts_is_not_a_finding(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    repo = repository(
+        tmp_path / "repo",
+        asset(reference_query=query('SELECT "region" FROM "dm"."sales_daily"')),
+    )
+    assert repo.ungoverned(base) == []
+
+
+def test_a_query_over_a_mart_the_model_does_not_govern_is_named(tmp_path: Path) -> None:
+    """An attested, reconciled number from an ungoverned copy is the failure to catch."""
+    base = snap(tmp_path, "base")
+    repo = repository(
+        tmp_path / "repo",
+        asset(reference_query=query('SELECT "region" FROM "dm"."sales_daily_v2"')),
+    )
+    findings = repo.ungoverned(base)
+    assert [item.code for item in findings] == ["asset.query_ungoverned"]
+    assert findings[0].severity is Severity.REVIEW
+    assert "dm.sales_daily_v2" in findings[0].detail
+
+
+def test_an_asset_with_no_reviewed_query_has_nothing_to_check(tmp_path: Path) -> None:
+    assert repository(tmp_path / "repo", asset()).ungoverned(snap(tmp_path, "base")) == []
+
+
+def test_a_cte_name_is_not_a_mart(tmp_path: Path) -> None:
+    """A WITH alias is a name inside the query, not a table the model must declare."""
+    base = snap(tmp_path, "base")
+    sql = 'WITH "recent" AS (SELECT "region" FROM "dm"."sales_daily") SELECT * FROM "recent"'
+    repo = repository(tmp_path / "repo", asset(reference_query=query(sql)))
+    assert repo.ungoverned(base) == []
+
+
+def test_every_ungoverned_mart_is_named_not_only_the_first(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        'SELECT "a"."region" FROM "staging"."sales" AS "a" '
+        'JOIN "tmp"."regions" AS "b" ON "a"."region" = "b"."region"'
+    )
+    repo = repository(tmp_path / "repo", asset(reference_query=query(sql)))
+    detail = repo.ungoverned(base)[0].detail
+    assert "staging.sales" in detail and "tmp.regions" in detail
+
+
+def test_clickhouse_reads_case_as_clickhouse_does(tmp_path: Path) -> None:
+    """`Sales_Daily` is a different table there, and the model declares `sales_daily`."""
+    base = snap(tmp_path, "base")
+    repo = repository(
+        tmp_path / "repo",
+        asset(reference_query=query('SELECT "region" FROM "dm"."Sales_Daily"')),
+    )
+    assert [item.code for item in repo.ungoverned(base)] == ["asset.query_ungoverned"]
+
+
+def test_the_postgres_family_folds_an_unquoted_identifier(tmp_path: Path) -> None:
+    """Grading ClickHouse's rule there would invent a mismatch the engine does not have."""
+    base = snap(tmp_path, "base")
+    repo = repository(
+        tmp_path / "repo",
+        asset(reference_query=query("SELECT region FROM DM.Sales_Daily", engine="greenplum")),
+    )
+    assert repo.ungoverned(base) == []
+
+
+def test_a_quoted_postgres_identifier_is_compared_exactly(tmp_path: Path) -> None:
+    """`"Sales_Daily"` is a table `sales_daily` is not — folding it would hide a real mart."""
+    base = snap(tmp_path, "base")
+    repo = repository(
+        tmp_path / "repo",
+        asset(
+            reference_query=query(
+                'SELECT region FROM "DM"."Sales_Daily"',
+                engine="greenplum",
+            )
+        ),
+    )
+    assert [item.code for item in repo.ungoverned(base)] == ["asset.query_ungoverned"]
+
+
+def test_an_unqualified_name_is_not_read_as_the_governed_mart(tmp_path: Path) -> None:
+    """Which schema a bare name resolves to is a session setting the gate does not hold."""
+    base = snap(tmp_path, "base")
+    repo = repository(
+        tmp_path / "repo", asset(reference_query=query("SELECT region FROM sales_daily"))
+    )
+    findings = repo.ungoverned(base)
+    assert [item.code for item in findings] == ["asset.query_ungoverned"]
+    assert findings[0].asset == "asset://sales/weekly_margin_by_region@2"
