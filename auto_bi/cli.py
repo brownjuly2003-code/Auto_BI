@@ -182,7 +182,9 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument("--dashboards", default=None, help="Directory of delivered DashboardSpecs")
     verify.add_argument("--assets", default=None, help="Verified asset repository (file or dir)")
     verify.add_argument(
-        "--results", default=None, help="Recorded candidate results: {asset id: ResultSet}"
+        "--results",
+        default=None,
+        help="Recorded candidate results: {asset id: ResultSet | {result, attestation}}",
     )
     verify.add_argument("--product", default="", help="Product id, when the paths hold several")
     verify.add_argument("--environment", default="", help="DWH/BI environment ref for the run key")

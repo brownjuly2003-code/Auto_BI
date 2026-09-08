@@ -132,16 +132,31 @@ uv run auto_bi decision evidence docs/pilot/2026-08-25-ch-tz-margin/evidence \
   --artifact report-summary-md
 ```
 
-На собственных контрактах:
+Полный прогон гейта на входах, лежащих в репозитории (не на сохранённом bundle, а с
+нуля) — `docs/pilot/2026-08-25-ch-tz-margin/` держит контракты, оба semantic ref'а,
+дашборды, asset и записанный результат:
 
 ```bash
-uv run auto_bi decision validate contracts/
-uv run auto_bi decision verify contracts/ --base semantic/base \
-  --candidate semantic/head --dashboards dashboards/ --evidence .evidence
-uv run auto_bi decision evidence .evidence
+P=docs/pilot/2026-08-25-ch-tz-margin
+uv run auto_bi decision verify $P/contracts --base $P/base --candidate $P/candidate \
+  --dashboards $P/dashboards --assets $P/assets --results $P/results.yaml \
+  --product decision://sales/weekly_margin --evidence .evidence
 uv run auto_bi decision investigate tests/fixtures/investigation/weekly_margin.yaml \
   --results tests/fixtures/investigation/revenue_results.yaml \
   --output .investigation-example
+```
+
+Ожидаемый исход — `block`: timezone change доходит до governed-продукта. У pilot-asset'а
+нет ни attestation'а, ни `reference_query`, поэтому там же видно `provenance.unattested`
+(review) и молчание governance-проверки запроса — так и должно быть, это входы от verifier 7.
+
+Шаблон для собственных контрактов — тот же вызов со своими путями:
+
+```bash
+uv run auto_bi decision validate <contracts/>
+uv run auto_bi decision verify <contracts/> --base <base/> --candidate <candidate/> \
+  --dashboards <dashboards/> --evidence .evidence
+uv run auto_bi decision evidence .evidence
 ```
 
 `investigate` пишет ровно четыре файла: canonical `plan.json`, canonical
