@@ -17,7 +17,14 @@ import yaml
 from auto_bi.cli import main
 from auto_bi.verification.model import EXIT_ERROR, Verdict, exit_code_for
 from tests.test_decision_validate import write_contracts
-from tests.test_decision_verify import CREATED_AT, PRODUCT_ID, Case, _formula_change
+from tests.test_decision_verify import (
+    ASSET_ID,
+    CREATED_AT,
+    ENVIRONMENT_REF,
+    PRODUCT_ID,
+    Case,
+    _formula_change,
+)
 
 
 def test_exit_code_contract_is_stable() -> None:
@@ -170,6 +177,41 @@ def test_verify_exits_review_when_a_comparison_did_not_happen(tmp_path: Path) ->
     """No candidate result means no evidence — a human decides, exit 3 (§12.1)."""
     case = Case(tmp_path).with_candidate().with_asset()
     assert main(_verify_argv(case)) == 3
+
+
+def test_verify_exits_review_when_the_number_has_no_stated_origin(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A results file in the pre-attestation shape still reads, and still asks a human."""
+    case = Case(tmp_path).with_candidate()
+    case.with_asset().with_results([["Москва", "0.412"], ["Казань", "0.377"]], attested=None)
+    assert main(_verify_argv(case, "--environment", ENVIRONMENT_REF)) == 3
+    out = capsys.readouterr().out
+    assert "review   results.provenance" in out
+    assert "verdict: needs_review" in out
+
+
+def test_verify_exits_zero_when_the_number_is_traced_to_its_environment(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = Case(tmp_path).with_candidate()
+    case.with_asset().with_results([["Москва", "0.412"], ["Казань", "0.377"]])
+    assert main(_verify_argv(case, "--environment", ENVIRONMENT_REF)) == 0
+    assert "pass     results.provenance" in capsys.readouterr().out
+
+
+def test_verify_rejects_a_results_file_whose_attestation_does_not_parse(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A malformed input is a usage error, not a verdict about the release (§12.1)."""
+    case = Case(tmp_path).with_candidate()
+    case.with_asset().with_results([["Москва", "0.412"]])
+    assert case.results is not None
+    raw = yaml.safe_load(case.results.read_text(encoding="utf-8"))
+    raw[ASSET_ID]["attestation"]["origin"] = "guesswork"
+    case.results.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+    assert main(_verify_argv(case)) == EXIT_ERROR
+    assert "invalid recorded result" in capsys.readouterr().err
 
 
 def test_verify_usage_error_exits_two_and_writes_to_stderr(

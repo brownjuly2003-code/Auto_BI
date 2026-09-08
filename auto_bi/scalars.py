@@ -15,7 +15,7 @@ digests that look identical in a report but hash differently.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
@@ -101,6 +101,44 @@ def _immutable_pin(value: object) -> str:
             f"{pin!r} is a moving pointer, not a pinned revision: use a tag, commit or version"
         )
     return pin
+
+
+#: ISO 8601 components with a length that does not depend on where in the calendar it is
+#: measured. Years and months are deliberately absent: they are 365 or 366 days and 28 to 31
+#: days, so a duration built from them has no seconds to compare an age against.
+_FIXED_UNITS: dict[str, timedelta] = {
+    "W": timedelta(weeks=1),
+    "D": timedelta(days=1),
+    "H": timedelta(hours=1),
+    "M": timedelta(minutes=1),  # only after the T separator; see `duration_seconds`
+    "S": timedelta(seconds=1),
+}
+
+
+def duration_seconds(duration: str) -> float | None:
+    """An ISO 8601 duration as seconds, or ``None`` when it has no fixed length.
+
+    Both the freshness of a mart and the age of a recorded reading are compared against a
+    window an owner declared, and they must read that declaration the same way — two
+    parsers would let one check call `P1M` a month and the other call it a minute. The `M`
+    ambiguity is why the parse is positional rather than a regex over the whole string:
+    before the `T` separator it is months, after it minutes, and only the second is fixed.
+    """
+    body = duration[1:]
+    date_part, _, time_part = body.partition("T")
+    if "Y" in date_part or "M" in date_part:
+        return None
+    total = timedelta()
+    for part, allowed in ((date_part, "WD"), (time_part, "HMS")):
+        number = ""
+        for char in part:
+            if char.isdigit():
+                number += char
+                continue
+            if char in allowed and number:
+                total += int(number) * _FIXED_UNITS[char]
+            number = ""
+    return total.total_seconds()
 
 
 DecimalString = Annotated[str, BeforeValidator(_decimal_string)]

@@ -225,7 +225,7 @@ def test_a_review_of_an_unreached_change_gives_a_scope_safe_owner_action() -> No
 
 
 def test_a_stopped_sequence_reports_the_checks_that_did_not_run(tmp_path: Path) -> None:
-    """A contract that did not parse leaves five checks ungraded; the report says which."""
+    """A contract that did not parse leaves six checks ungraded; the report says which."""
     case = Case(tmp_path).with_candidate()
     (case.candidate / "metrics" / "gross_margin_pct.yaml").write_text(
         "kind: MetricContract\nnot: a contract\n", encoding="utf-8"
@@ -233,7 +233,7 @@ def test_a_stopped_sequence_reports_the_checks_that_did_not_run(tmp_path: Path) 
     report, text = run_with_summary(case)
 
     not_run = [check for check in report.checks if check.summary_code == "check.not_run"]
-    assert len(not_run) == 5
+    assert len(not_run) == 6
     assert all(check.status is CheckStatus.REVIEW for check in not_run)
     for check in not_run:
         assert check.check_id in text

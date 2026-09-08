@@ -24,7 +24,7 @@ cannot silently load version 8's layout. A missing one is a finding, not a guess
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,6 +49,7 @@ from auto_bi.verification.release_gate import (
     GateInputs,
     GateReport,
     NoResults,
+    RecordedResult,
     RecordedResults,
     ResultSource,
     run_gate,
@@ -237,7 +238,24 @@ def _load_assets(
 
 
 def _load_results(path: str | Path | None) -> ResultSource:
-    """Candidate answers recorded outside the gate, as `{asset id: ResultSet}`."""
+    """Candidate answers recorded outside the gate, keyed by verified-asset id.
+
+    Two shapes, and which one a file uses is read from the file rather than from a flag:
+
+    ```yaml
+    asset://…:                       # bare: the result and nothing about its origin
+      columns: [...]
+      rows: [...]
+    asset://…:                       # attested: the result and where it came from
+      result: {columns: [...], rows: [...]}
+      attestation: {origin: query_run, captured_at: ..., query_digest: ...}
+    ```
+
+    The bare shape stays valid because a file written before attestations existed is still a
+    usable input; the gate grades it as `provenance.unattested` rather than refusing to read
+    it. The two shapes cannot be confused — a `ResultSet` has no `result` key — so the
+    detection is a fact about the document, not a guess about intent.
+    """
     if path is None:
         return NoResults()
     file = Path(path)
@@ -245,9 +263,15 @@ def _load_results(path: str | Path | None) -> ResultSource:
         raise VerifyError(f"recorded results file not found: {file}")
     raw = _read_mapping(file)
     try:
-        return RecordedResults({key: ResultSet.model_validate(value) for key, value in raw.items()})
+        return RecordedResults({key: _recorded_result(value) for key, value in raw.items()})
     except ValueError as exc:
         raise VerifyError(f"{file} holds an invalid recorded result: {exc}") from None
+
+
+def _recorded_result(value: Any) -> RecordedResult:
+    if isinstance(value, Mapping) and "result" in value:
+        return RecordedResult.model_validate(value)
+    return RecordedResult(result=ResultSet.model_validate(value))
 
 
 @dataclass(frozen=True)

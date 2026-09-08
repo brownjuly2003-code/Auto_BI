@@ -12,6 +12,11 @@ Two properties this module exists to keep:
 * **`operational_status` and `verdict` are different answers** (invariant 8). A run that
   completes and blocks is a working gate; a run that fails is a broken one. They are
   separate fields and a report that mixes them does not validate.
+* **A supplied number is not the same as a verified one.** Step 8 takes candidate results
+  from a port rather than executing them, so the gate grades *what is known about where
+  each number came from* as its own check (`provenance.py`). `results.reconcile` says
+  whether two numbers agree; `results.provenance` says whether the second one is about this
+  release at all. Neither answer stands in for the other.
 * **A step that did not run says so.** §8.2 step 7 needs a running engine, and all five of
   its checks — access, freshness, the physical layer, security and cost — grade *facts* a
   read-only probe collected outside this module (`environment.py`), so a run without a
@@ -71,6 +76,11 @@ from auto_bi.verification.environment import (
     questions_for,
 )
 from auto_bi.verification.model import Verdict, verdict_for
+from auto_bi.verification.provenance import (
+    ProvenanceFinding,
+    ResultAttestation,
+    attest,
+)
 from auto_bi.verification.reconcile import (
     ComparisonOutcome,
     ComparisonReport,
@@ -89,11 +99,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 
 #: Part of the idempotency key: a different verifier can derive a different verdict or
 #: evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
-#: 8 — impact resolves to the chart, and names the tiles it could not read.
-VERIFIER_VERSION = "8"
+#: 9 — a candidate result's origin is graded, so the bundle carries an attestation and a
+#: `results.provenance` finding an earlier verifier never wrote.
+VERIFIER_VERSION = "9"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
-#: had been graded by today's rule.
+#: had been graded by today's rule. Adding a *new* check is not such a change: no existing
+#: `CheckResult` is re-graded by it, and the verifier version is what stops a bundle written
+#: before it from being reused as a complete verification.
 #: 5 — aggregate invariants no longer round intermediate sums, products or ratios.
 CHECK_VERSION = "5"
 
@@ -136,6 +149,12 @@ class CheckCategory(StrEnum):
     EXECUTION = "execution"
     DELIVERY = "delivery"
     EVIDENCE = "evidence"
+
+
+#: Severity order, for picking the finding that decided a check's status. A summary code is
+#: the machine identity of an outcome, so it must name that finding rather than whichever one
+#: was found first.
+_FINDING_RANK = {Severity.ADVISORY: 0, Severity.REVIEW: 1, Severity.BLOCK: 2}
 
 
 _STATUS_FOR_SEVERITY: dict[Severity, CheckStatus] = {
@@ -222,31 +241,46 @@ class GateReport(StrictModel):
         return [check for check in self.checks if check.status is CheckStatus.BLOCK]
 
 
+class RecordedResult(StrictModel):
+    """One candidate answer, with what the capturing side says about where it came from.
+
+    The attestation is optional because a result file written before provenance existed is
+    still a usable input — it is graded as `provenance.unattested` rather than rejected. It
+    is not optional in the sense of "unimportant": an unattested number is exactly the case
+    §8.4's reconciliation cannot see through.
+    """
+
+    result: ResultSet
+    attestation: ResultAttestation | None = None
+
+
 class ResultSource(Protocol):
     """Where the gate gets the candidate answer to a verified question (§8.2 step 8).
 
     A live implementation would compile the asset's plan and execute it under the SQL guard.
     The offline gate is handed recorded results instead, which is what lets the whole gate
-    run on fixtures in CI — and what keeps `verify` from ever reaching the DWH.
+    run on fixtures in CI — and what keeps `verify` from ever reaching the DWH. Because the
+    number arrives rather than being computed here, what it comes with — its attestation —
+    is part of the port, not a decoration on it.
     """
 
-    def result_for(self, asset: VerifiedAsset) -> ResultSet | None: ...
+    def result_for(self, asset: VerifiedAsset) -> RecordedResult | None: ...
 
 
 class RecordedResults:
     """Candidate results captured outside the gate, keyed by verified-asset id."""
 
-    def __init__(self, by_asset: Mapping[str, ResultSet]) -> None:
+    def __init__(self, by_asset: Mapping[str, RecordedResult]) -> None:
         self._by_asset = dict(by_asset)
 
-    def result_for(self, asset: VerifiedAsset) -> ResultSet | None:
+    def result_for(self, asset: VerifiedAsset) -> RecordedResult | None:
         return self._by_asset.get(asset.metadata.id)
 
 
 class NoResults:
     """No candidate answers available — every comparison is honestly `insufficient`."""
 
-    def result_for(self, asset: VerifiedAsset) -> ResultSet | None:
+    def result_for(self, asset: VerifiedAsset) -> RecordedResult | None:
         return None
 
 
@@ -332,6 +366,7 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
                 ("impact.products", CheckCategory.IMPACT),
                 ("assets.invalidated", CheckCategory.VERIFICATION),
                 ("results.reconcile", CheckCategory.RESULT),
+                ("results.provenance", CheckCategory.RESULT),
                 # 6. the same reason: a metric whose contract did not parse is absent from
                 # the graph, and compiling would report it as a metric with no definition.
                 ("sql.compile", CheckCategory.EXECUTION),
@@ -350,7 +385,13 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
         )
         checks.append(_check_impact(writer, impact, product_ref))
         checks.append(_check_assets(writer, inputs, diff, product_ref))
-        checks.append(_check_results(writer, inputs, product_ref))
+        # 8. the numbers themselves, and where they came from. Provenance is graded first
+        # only so the reconciliation's claims can cite its artifact; the report keeps the
+        # order an owner reads them in — what was compared, then what is known about it.
+        findings = _grade_provenance(inputs, created_at)
+        provenance, provenance_ref = _check_provenance(writer, inputs, product_ref, findings)
+        checks.append(_check_results(writer, inputs, product_ref, findings, provenance_ref))
+        checks.append(provenance)
         # 6. reference SQL for both snapshots — compiled, never executed (no DWH here)
         checks.append(_check_sql(writer, inputs, product_ref))
 
@@ -552,11 +593,132 @@ def _check_assets(
     )
 
 
-def _check_results(writer: BundleWriter, inputs: GateInputs, product_ref: str) -> CheckResult:
+def _grade_provenance(inputs: GateInputs, created_at: str) -> dict[str, list[ProvenanceFinding]]:
+    """What is known about where each supplied candidate number came from (§8.4).
+
+    Keyed by asset id, and only for assets a result was actually supplied for. An asset with
+    no candidate answer is already `insufficient` in the reconciliation, and asking where a
+    number that does not exist came from would let one missing result weigh twice.
+    """
+    graded: dict[str, list[ProvenanceFinding]] = {}
+    for asset in inputs.assets.assets:
+        if asset.expectation.kind is not ExpectationKind.RESULT:
+            continue
+        recorded = inputs.results.result_for(asset)
+        if recorded is None:
+            continue
+        query = asset.reference_query
+        graded[asset.metadata.id] = attest(
+            subject=asset.self_ref(),
+            attestation=recorded.attestation,
+            reviewed_query_digest=query.digest() if query is not None else None,
+            candidate_digest=inputs.candidate.canonical_digest,
+            environment_ref=inputs.environment_ref,
+            max_age=inputs.product.verification.freshness_max_age,
+            created_at=created_at,
+        )
+    return graded
+
+
+def _check_provenance(
+    writer: BundleWriter,
+    inputs: GateInputs,
+    product_ref: str,
+    graded: Mapping[str, list[ProvenanceFinding]],
+) -> tuple[CheckResult, str]:
+    """§8.4: can this run show where each candidate number came from?
+
+    Separate from `results.reconcile` because it answers a different question. The
+    reconciliation asks whether two numbers agree; this asks whether the second number is
+    about this release at all — the same semantics, the same environment, the reviewed
+    query. A result captured last month on another cluster reconciles perfectly and proves
+    nothing, and only one of the two checks can see that.
+
+    The attestation itself is evidence and goes into the bundle whether or not it is clean:
+    a run that could not establish provenance must record what it was told, not only that it
+    was unconvinced.
+    """
+    subjects: list[str] = []
+    payload: list[dict[str, Any]] = []
+    found: list[ProvenanceFinding] = []
+    for asset in inputs.assets.assets:
+        findings = graded.get(asset.metadata.id)
+        if findings is None:
+            continue
+        recorded = inputs.results.result_for(asset)
+        assert recorded is not None  # `graded` holds exactly the assets with a result
+        query = asset.reference_query
+        subjects.append(asset.self_ref())
+        found.extend(findings)
+        payload.append(
+            {
+                "asset": asset.self_ref(),
+                "attestation": (
+                    recorded.attestation.model_dump(mode="json")
+                    if recorded.attestation is not None
+                    else None
+                ),
+                "reviewed_query_digest": query.digest() if query is not None else None,
+                "findings": [finding.model_dump(mode="json") for finding in findings],
+            }
+        )
+
+    ref = writer.add_check("results.provenance", {"results": payload})
+    if not payload:
+        return (
+            CheckResult(
+                check_id="results.provenance",
+                check_version=CHECK_VERSION,
+                category=CheckCategory.RESULT,
+                subject_refs=[product_ref],
+                status=CheckStatus.ADVISORY,
+                summary_code="provenance.no_results",
+                detail="no candidate result was supplied, so there is no origin to establish",
+                evidence_refs=[ref],
+            ),
+            ref,
+        )
+    established = sum(1 for item in payload if not item["findings"])
+    # Same convention as the environment checks: the summary code names the finding that
+    # decided the status, and the detail is what an owner has to act on — not a count that
+    # sends them into the artifact to learn which of a dozen things went wrong.
+    worst = max(found, key=lambda finding: _FINDING_RANK[finding.severity], default=None)
+    return (
+        CheckResult(
+            check_id="results.provenance",
+            check_version=CHECK_VERSION,
+            category=CheckCategory.RESULT,
+            subject_refs=[product_ref, *subjects],
+            status=status_for([finding.severity for finding in found]),
+            summary_code="provenance.established" if worst is None else worst.code,
+            detail=(
+                f"{established} of {len(payload)} candidate result(s) traced to the reviewed "
+                "query, snapshot and environment of this run"
+                if worst is None
+                else "; ".join(f"{finding.subject}: {finding.detail}" for finding in found)
+            ),
+            evidence_refs=[ref],
+        ),
+        ref,
+    )
+
+
+def _check_results(
+    writer: BundleWriter,
+    inputs: GateInputs,
+    product_ref: str,
+    graded: Mapping[str, list[ProvenanceFinding]],
+    provenance_ref: str,
+) -> CheckResult:
     """Reconcile every asset that declares an expected result (§8.4).
 
     An asset the source has no answer for is `insufficient`, never a pass: a comparison that
     did not happen is not evidence that nothing moved.
+
+    An equivalent comparison emits a claim, and the claim carries the provenance findings as
+    caveats. Grading stays with `results.provenance` — the same fact must not weigh twice in
+    the verdict — but a `result.equivalent` observation read on its own, out of the bundle,
+    must not be able to hide that nobody could say where its number came from (invariant 5).
     """
     severities: list[Severity] = []
     comparisons: list[dict[str, Any]] = []
@@ -567,7 +729,8 @@ def _check_results(writer: BundleWriter, inputs: GateInputs, product_ref: str) -
             continue
         expected = asset.expectation.result
         assert expected is not None  # AssetExpectation validates this pairing
-        candidate = inputs.results.result_for(asset)
+        recorded = inputs.results.result_for(asset)
+        candidate = recorded.result if recorded is not None else None
         if candidate is None:
             severities.append(Severity.REVIEW)
             comparisons.append(
@@ -594,13 +757,20 @@ def _check_results(writer: BundleWriter, inputs: GateInputs, product_ref: str) -
 
     ref = writer.add_check("results.reconcile", {"comparisons": comparisons})
     for asset in equivalent:
-        # A factual claim needs its evidence (invariant 5) — here, the comparison itself.
+        # A factual claim needs its evidence (invariant 5) — here, the comparison itself and
+        # the attestation of the number it compared.
         writer.add_claim(
             claim_id=f"claim-{_slugify(asset.metadata.id)}",
             claim_type=ClaimType.OBSERVATION,
             summary_code="result.equivalent",
-            evidence_refs=[ref],
-            caveats=[f"verified against snapshot {asset.semantic_digest}"],
+            evidence_refs=[ref, provenance_ref],
+            caveats=[
+                f"verified against snapshot {asset.semantic_digest}",
+                *(
+                    f"{finding.code}: {finding.detail}"
+                    for finding in graded.get(asset.metadata.id, ())
+                ),
+            ],
         )
     if not comparisons:
         # Nothing was compared, so nothing was proven. Reporting that as a pass is how a
@@ -738,10 +908,6 @@ def _write_bi_payloads(
             media_type="application/json",
             classification=EvidenceClassification.INTERNAL,
         )
-
-
-#: Ranking of finding severities, for picking the one a check's summary code names.
-_FINDING_RANK = {Severity.ADVISORY: 0, Severity.REVIEW: 1, Severity.BLOCK: 2}
 
 
 def _check_environment(

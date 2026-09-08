@@ -42,10 +42,19 @@ from auto_bi.verification.environment import (
 )
 from auto_bi.verification.model import Verdict
 from auto_bi.verification.release_gate import CheckStatus, GateReport, RunStatus
+from auto_bi.verification.repository import ReferenceQuery
 
 CREATED_AT = "2026-08-25T09:00:00Z"
+ENVIRONMENT_REF = "clickhouse-stage:9000/dm"
 PRODUCT_ID = "decision://sales/weekly_margin"
 ASSET_ID = "asset://sales/weekly_margin_by_region"
+
+
+class _Unset:
+    """Distinguishes "no attestation" from "the default attestation" in `with_results`."""
+
+
+_UNSET = _Unset()
 
 
 # --- fixtures on disk ---------------------------------------------------------
@@ -185,6 +194,18 @@ RESULT_COLUMNS = [
 ]
 
 
+#: The reviewed SQL the asset's answer comes from. Its digest is what a candidate result
+#: attests to, so a test that changes one character here changes what provenance proves.
+REFERENCE_SQL = (
+    'SELECT "region", sum("revenue") AS "gross_margin_pct" '
+    'FROM "dm"."sales_daily" GROUP BY "region"'
+)
+
+
+def reference_query_digest() -> str:
+    return ReferenceQuery(engine="clickhouse", sql=REFERENCE_SQL).digest()
+
+
 def verified_asset(semantic_digest: str) -> dict[str, Any]:
     return {
         "api_version": "auto-bi.io/v2alpha1",
@@ -206,6 +227,7 @@ def verified_asset(semantic_digest: str) -> dict[str, Any]:
             },
         },
         "tolerance": {"business_key": ["region"]},
+        "reference_query": {"engine": "clickhouse", "sql": REFERENCE_SQL},
         "semantic_digest": semantic_digest,
         "review": {
             "reviewer": "commercial-analytics",
@@ -215,8 +237,25 @@ def verified_asset(semantic_digest: str) -> dict[str, Any]:
     }
 
 
-def recorded_results(rows: list[list[str]]) -> dict[str, Any]:
-    return {ASSET_ID: {"columns": RESULT_COLUMNS, "rows": rows}}
+def attestation(candidate_digest: str, **overrides: Any) -> dict[str, Any]:
+    """A capture that establishes provenance; a test overrides the one field it is about."""
+    return {
+        "origin": "query_run",
+        "captured_at": CREATED_AT,
+        "environment_ref": ENVIRONMENT_REF,
+        "semantic_digest": candidate_digest,
+        "query_digest": reference_query_digest(),
+        "executed_by": "bi_reader",
+        **overrides,
+    }
+
+
+def recorded_results(rows: list[list[str]], attested: dict[str, Any] | None) -> dict[str, Any]:
+    result = {"columns": RESULT_COLUMNS, "rows": rows}
+    if attested is None:
+        # The shape a results file had before attestations existed, still readable.
+        return {ASSET_ID: result}
+    return {ASSET_ID: {"result": result, "attestation": attested}}
 
 
 def _write_yaml(path: Path, data: Any) -> None:
@@ -268,14 +307,37 @@ class Case:
         )
         return self
 
-    def with_results(self, rows: list[list[str]]) -> Case:
+    def _ensure_candidate(self) -> None:
+        """Default: the candidate is the base, unchanged. Written on first need."""
+        if not self.candidate.exists():
+            self.with_candidate()
+
+    @property
+    def candidate_digest(self) -> str:
+        self._ensure_candidate()
+        return (
+            NativeModelSource(self.candidate / "model.yaml", self.candidate / "metrics")
+            .snapshot()
+            .canonical_digest
+        )
+
+    def with_results(
+        self, rows: list[list[str]], attested: dict[str, Any] | _Unset | None = _UNSET
+    ) -> Case:
+        """Record a candidate answer. Attested against this candidate by default.
+
+        `attested=None` writes the bare pre-attestation shape; a dict replaces the whole
+        attestation, so a test that is about one wrong field says only that field through
+        `attestation(...)`.
+        """
         self.results = self.root / "results.yaml"
-        _write_yaml(self.results, recorded_results(rows))
+        if isinstance(attested, _Unset):
+            attested = attestation(self.candidate_digest)
+        _write_yaml(self.results, recorded_results(rows, attested))
         return self
 
     def run(self, **overrides: Any) -> GateReport:
-        if not self.candidate.exists():  # default: the candidate is the base, unchanged
-            self.with_candidate()
+        self._ensure_candidate()
         request = VerifyRequest(
             contract_paths=[self.contracts],
             base=self.base,
@@ -722,11 +784,13 @@ def test_the_bundle_holds_every_input_the_verdict_used(tmp_path: Path) -> None:
 
 
 def test_a_reconciled_result_becomes_a_claim_with_its_evidence(tmp_path: Path) -> None:
+    """The comparison AND the attestation of the number it compared (invariant 5)."""
     case = Case(tmp_path).with_asset().with_results([["Москва", "0.412"], ["Казань", "0.377"]])
     report = case.run()
     bundle = read_bundle(FilesystemArtifactStore(tmp_path / "evidence"), report.run_id)
     claim = next(item for item in bundle.claims if item.summary_code == "result.equivalent")
-    assert claim.evidence_refs == ["check-results.reconcile"]
+    assert claim.evidence_refs == ["check-results.reconcile", "check-results.provenance"]
+    assert claim.caveats == [f"verified against snapshot {case.base_digest}"]
 
 
 def test_a_different_result_makes_no_claim(tmp_path: Path) -> None:
@@ -735,6 +799,154 @@ def test_a_different_result_makes_no_claim(tmp_path: Path) -> None:
     assert status_of(report, "results.reconcile") is CheckStatus.BLOCK
     bundle = read_bundle(FilesystemArtifactStore(tmp_path / "evidence"), report.run_id)
     assert bundle.claims == []
+
+
+# --- where the candidate number came from (§8.4) -------------------------------
+
+
+def test_an_attested_capture_of_this_release_establishes_its_provenance(tmp_path: Path) -> None:
+    case = Case(tmp_path).with_asset().with_results([["Москва", "0.412"], ["Казань", "0.377"]])
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+    assert status_of(report, "results.provenance") is CheckStatus.PASS
+    assert summary_of(report, "results.provenance") == "provenance.established"
+    payload = _check_payload(tmp_path, report, "results.provenance")
+    assert payload["results"][0]["findings"] == []
+    assert payload["results"][0]["reviewed_query_digest"] == reference_query_digest()
+
+
+def test_a_supplied_number_with_no_attestation_is_not_a_verified_one(tmp_path: Path) -> None:
+    """The whole point: the numbers reconcile, and nobody can say where the second came from."""
+    case = (
+        Case(tmp_path)
+        .with_asset()
+        .with_results([["Москва", "0.412"], ["Казань", "0.377"]], attested=None)
+    )
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+    assert summary_of(report, "results.reconcile") == "result.equivalent"
+    assert status_of(report, "results.provenance") is CheckStatus.REVIEW
+    # The summary code names the finding that decided it, so an owner reading the report
+    # learns what is missing without opening the artifact.
+    assert summary_of(report, "results.provenance") == "provenance.unattested"
+    assert report.verdict is Verdict.NEEDS_REVIEW
+    assert report.blocking() == []  # a question for the owner, never a block
+
+
+def test_an_unproven_number_carries_its_reason_into_the_claim(tmp_path: Path) -> None:
+    """A `result.equivalent` observation read outside the bundle must not look clean."""
+    case = (
+        Case(tmp_path)
+        .with_asset()
+        .with_results([["Москва", "0.412"], ["Казань", "0.377"]], attested=None)
+    )
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+    bundle = read_bundle(FilesystemArtifactStore(tmp_path / "evidence"), report.run_id)
+    claim = next(item for item in bundle.claims if item.summary_code == "result.equivalent")
+    assert any(caveat.startswith("provenance.unattested:") for caveat in claim.caveats)
+    assert "check-results.provenance" in claim.evidence_refs
+
+
+def test_a_number_from_a_query_nobody_reviewed_is_not_this_products_evidence(
+    tmp_path: Path,
+) -> None:
+    case = Case(tmp_path).with_asset()
+    case.with_results(
+        [["Москва", "0.412"], ["Казань", "0.377"]],
+        attested=attestation(case.candidate_digest, query_digest="sha256:" + "9" * 64),
+    )
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+    payload = _check_payload(tmp_path, report, "results.provenance")
+    assert [item["code"] for item in payload["results"][0]["findings"]] == [
+        "provenance.other_query"
+    ]
+    assert status_of(report, "results.provenance") is CheckStatus.REVIEW
+
+
+def test_a_number_captured_on_another_environment_is_named(tmp_path: Path) -> None:
+    case = Case(tmp_path).with_asset()
+    case.with_results(
+        [["Москва", "0.412"], ["Казань", "0.377"]],
+        attested=attestation(case.candidate_digest, environment_ref="clickhouse-prod:9000/dm"),
+    )
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+    payload = _check_payload(tmp_path, report, "results.provenance")
+    assert [item["code"] for item in payload["results"][0]["findings"]] == [
+        "provenance.other_environment"
+    ]
+
+
+def test_a_number_captured_against_the_base_does_not_describe_the_candidate(
+    tmp_path: Path,
+) -> None:
+    """A capture that predates the change reconciles perfectly and proves nothing about it."""
+    case = Case(tmp_path).with_candidate(contract=_timezone_change()).with_asset()
+    case.with_results(
+        [["Москва", "0.412"], ["Казань", "0.377"]],
+        attested=attestation(case.base_digest),
+    )
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+    payload = _check_payload(tmp_path, report, "results.provenance")
+    assert [item["code"] for item in payload["results"][0]["findings"]] == [
+        "provenance.other_snapshot"
+    ]
+
+
+def test_an_asset_with_no_reviewed_query_says_so_without_asking_for_a_human(
+    tmp_path: Path,
+) -> None:
+    case = Case(tmp_path).with_asset()
+    asset = verified_asset(case.base_digest)
+    del asset["reference_query"]
+    _write_yaml(case.assets / "weekly_margin_by_region.yaml", asset)
+    case.with_results([["Москва", "0.412"], ["Казань", "0.377"]])
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+    assert status_of(report, "results.provenance") is CheckStatus.ADVISORY
+    payload = _check_payload(tmp_path, report, "results.provenance")
+    assert [item["code"] for item in payload["results"][0]["findings"]] == [
+        "provenance.query_unreviewed"
+    ]
+
+
+def test_a_missing_result_is_asked_for_once_not_twice(tmp_path: Path) -> None:
+    """`results.reconcile` already calls it insufficient; provenance must not weigh it again."""
+    case = Case(tmp_path).with_asset()
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+    assert status_of(report, "results.reconcile") is CheckStatus.REVIEW
+    assert status_of(report, "results.provenance") is CheckStatus.ADVISORY
+    assert summary_of(report, "results.provenance") == "provenance.no_results"
+    assert _check_payload(tmp_path, report, "results.provenance")["results"] == []
+
+
+def test_a_run_with_no_expectations_at_all_still_writes_the_provenance_artifact(
+    tmp_path: Path,
+) -> None:
+    report = Case(tmp_path).run()
+    assert summary_of(report, "results.provenance") == "provenance.no_results"
+    assert _check_payload(tmp_path, report, "results.provenance") == {"results": []}
+
+
+def test_a_wrong_number_blocks_whatever_its_provenance_says(tmp_path: Path) -> None:
+    """Provenance never rescues a difference, and never doubles it: one block, one review."""
+    case = (
+        Case(tmp_path)
+        .with_asset()
+        .with_results([["Москва", "0.500"], ["Казань", "0.377"]], attested=None)
+    )
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+    assert status_of(report, "results.reconcile") is CheckStatus.BLOCK
+    assert status_of(report, "results.provenance") is CheckStatus.REVIEW
+    assert report.verdict is Verdict.BLOCK
+
+
+def test_an_unparsed_contract_stops_provenance_with_the_rest_of_the_sequence(
+    tmp_path: Path,
+) -> None:
+    """A graph that does not represent its source cannot say which snapshot a number is of."""
+    case = Case(tmp_path).with_asset().with_results([["Москва", "0.412"]])
+    (case.candidate / "metrics" / "broken.yaml").write_text(
+        "kind: MetricContract\nmetadata: {id: metric://sales/x}\n", encoding="utf-8"
+    )
+    report = case.run()
+    assert summary_of(report, "results.provenance") == "check.not_run"
 
 
 def test_the_same_inputs_produce_the_same_run_and_the_same_bundle(tmp_path: Path) -> None:

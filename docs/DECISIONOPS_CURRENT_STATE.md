@@ -3,15 +3,18 @@
 **Обновлено:** 2026-09-07
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
-impact доведён до чарта; human/design-partner gate остаётся открытым
+impact доведён до чарта; происхождение кандидатного числа проверяется;
+human/design-partner gate остаётся открытым
 
-**Версии evidence:** `VERIFIER_VERSION=8`, `CHECK_VERSION=5`
+**Версии evidence:** `VERIFIER_VERSION=9`, `CHECK_VERSION=5`
 
 Сохранённые pilot-bundles в `docs/pilot/` выпущены verifier 7 и такими остаются: они
 исторические артефакты, а не выход сегодняшнего гейта. `auto_bi decision evidence` по ним
 проходит (проверено 2026-09-07, exit `0`) — перепроверка адресует то, что запечатано, и не
 требует текущей версии. Новый прогон на тех же входах даст другой `run_id` и bundle
-verifier 8: chart-разрешение изменило evidence artifact.
+verifier 9: chart-разрешение и проверка provenance изменили evidence artifact. У pilot-числа
+attestation'а нет, поэтому сегодняшний прогон на тех же входах вынес бы по нему
+`provenance.unattested` (review) — это и есть содержание изменения, а не регресс стенда.
 
 ## Коротко
 
@@ -37,6 +40,9 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
 - `auto_bi decision verify` выполняет one-shot gate без удалённой BI-мутации; impact
   доходит до конкретного чарта доставляемого дашборда (`computes_metric` / `reads_field`),
   а нерешаемые плитки выходят именованными `chart_gaps`.
+- `results.provenance` оценивает, откуда пришло кандидатное число: snapshot, среда и
+  исполненный запрос сверяются с тем, что гейт держит независимо; число без attestation
+  называется `provenance.unattested`. Ни одна находка не блокирует.
 - `auto_bi decision evidence` перепроверяет digest каждого artifact в bundle.
 - `auto_bi decision investigate <plan.yaml> --results <result.yaml> ... --output <dir>`
   запускает только offline investigation skills и требует новый output-каталог.
@@ -56,6 +62,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
 | Chart-level impact | реализован 2026-09-07: evidence, грейдинг не меняет |
+| Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Continuous platform | заблокирована до human/design-partner evidence |
 
 Четыре tracked pilot-сценария, найденные дефекты и Mac verifier 7 evidence описаны в
@@ -72,6 +79,7 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 |---|---|
 | Contracts, product/chart impact | `auto_bi/decision/`, `auto_bi/semantic/` |
 | Verification, DWH probe и pure BI compile | `auto_bi/verification/` |
+| Provenance кандидатного числа | `auto_bi/verification/provenance.py`, `repository.py` |
 | Evidence и owner report | `auto_bi/evidence/`, `auto_bi/verification/summary.py` |
 | Typed offline investigation | `auto_bi/investigation/model.py`, `data.py`, `skills.py`, `claims.py`, `application.py` |
 | CLI | `auto_bi/cli.py` |
@@ -90,8 +98,10 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   термов, потому что в IR у чарта нет ссылки на метрику.
 - `dwh.cost` не доказывает `max_scanned_bytes` и `timeout_ms`, если планировщик
   движка не отдаёт такие данные.
-- Gate сравнивает переданные результаты, но сам не выполняет **verified-asset SQL**;
-  provenance результата остаётся внешним evidence.
+- Gate сравнивает переданные результаты, но сам не выполняет **verified-asset SQL**.
+  Происхождение числа теперь проверяемо — snapshot, среда и запрос сверяются с тем, что
+  гейт держит независимо, — но того, что runner действительно выполнил заявленный запрос,
+  attestation не доказывает: это подпись над снятием, а trust root отложен.
 - Нет измеренного человеком owner outcome: proxy-review не заменяет время и
   подтверждение понятности от живого владельца.
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
@@ -102,7 +112,8 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 
 ```bash
 uv run pytest tests/test_decision_verify.py tests/test_decision_cli.py \
-  tests/test_decision_impact.py tests/test_decision_chart_impact.py -q
+  tests/test_decision_impact.py tests/test_decision_chart_impact.py \
+  tests/test_result_provenance.py -q
 uv run pytest tests/test_investigation_plan.py tests/test_investigation_skills.py \
   tests/test_investigation_brief.py tests/test_investigation_cli.py -q
 uv run auto_bi decision --help
@@ -136,11 +147,20 @@ Windows-машине для документационной проверки н
 
 Не заблокировано human gate (можно брать сразу):
 
-1. **Provenance verified-asset SQL** — гейт сравнивает переданные результаты, но сам не
-   выполняет запрос asset'а; сейчас provenance числа остаётся внешним evidence.
+1. **Capture-путь для verified-asset SQL** — attestation сегодня заполняет тот, кто снимал
+   число. Симметрично `environment_probe.py` напрашивается `result_probe.py`: IO-половина,
+   которая исполняет reviewed `reference_query` под SELECT-only guard и сама выдаёт
+   attestation, digest которой гейту не нужно принимать на слово. **Требует живого стенда**:
+   нормализация строк движка в canonical `ResultSet` (Decimal, NULL, date/timestamp, пустой
+   ответ) — это контракт с реальным клиентом, и запинить его по фейку значит зашить в
+   governance-гейт непроверенный IO. Брать в сессии с поднятыми ClickHouse 24.8.14.39 и
+   PostgreSQL-семейством.
 2. **`dwh.cost` для `max_scanned_bytes` / `timeout_ms`** — сегодня advisory-гэп, потому что
    планировщики движков этих величин не отдают; закрывается только другим источником
    измерения, а не переформулировкой контракта.
+3. **Подпись над снятием** — единственное, что закрывает «attestation может соврать».
+   Отложено вместе с trust root (решение 3 ниже), и до неё provenance честно остаётся
+   утверждением, три поля которого проверены.
 
 Заблокировано до human/design-partner review (не начинать): production-certified brief,
 scheduler, PostgreSQL platform runtime, REST/MCP, notifications, actions.

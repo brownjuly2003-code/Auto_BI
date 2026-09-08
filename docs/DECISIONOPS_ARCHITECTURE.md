@@ -211,8 +211,9 @@ auto_bi/
     ossie.py             pinned Apache Ossie compatibility adapter
   verification/
     model.py             CheckResult, verdict and policy
-    repository.py        VQR contracts
+    repository.py        VQR contracts и reviewed reference query
     reconcile.py         canonical result comparator
+    provenance.py        откуда пришло кандидатное число: attestation и её проверка
     release_gate.py      orchestration only
     bi_contract.py       pure target compile contracts
   evidence/
@@ -338,10 +339,22 @@ Verified asset содержит:
 - canonical question и paraphrases;
 - intent и metric refs;
 - ожидаемое уточнение/refusal для negative cases;
-- reference query plan;
+- reference query plan **и — для позитивного asset'а — сам reviewed `reference_query`**;
 - expected canonical result или invariants;
 - tolerance, действующие semantic versions и risk tier;
 - reviewer, rationale и review timestamp.
+
+`reference_query` — это `{engine, sql}`, и он существует ради одной вещи: гейт не
+исполняет запрос asset'а (§8.2 шаг 8 берёт числа из порта), поэтому digest reviewed-запроса
+— единственное, с чем можно сравнить attestation кандидатного числа (§8.4). Адрес считается
+по RFC 8785 от `{"engine": …, "sql": …}` — не только от текста: одна и та же строка на двух
+движках значит разное, а внешний capture-runner обязан уметь получить тот же digest из тех
+же двух строк. SQL проходит SELECT-only guard **на границе контракта**, при загрузке asset'а:
+verified asset с `INSERT` — сломанный reviewed-артефакт, и инвариант 7 не становится
+необязательным оттого, что этот SQL ещё никто не выполнял. Движок обязан быть известен
+(`is_known_engine`): `sqlglot_dialect` подставляет v1-движок незнакомому имени, и охрана
+PostgreSQL-текста ClickHouse-грамматикой либо отвергла бы валидный SQL, либо — хуже —
+пропустила бы как SELECT то, что не разобрала.
 
 Production interaction попадает только в redacted review queue. Benchmark или
 expected result никогда автоматически не добавляется в LLM context.
@@ -383,8 +396,10 @@ terminal bundle с тем же ключом.
 другой вердикт или сформировать другой evidence artifact (тогда его bundle нельзя
 переиспользовать под прежним ключом);
 `CHECK_VERSION` — когда меняется смысл отдельной проверки, чтобы прежний `CheckResult` не
-читался как гранёный сегодняшним правилом. Текущие значения:
-`VERIFIER_VERSION=8`, `CHECK_VERSION=5`.
+читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
+ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
+верификации защищает как раз verifier version. Текущие значения:
+`VERIFIER_VERSION=9`, `CHECK_VERSION=5`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -559,7 +574,11 @@ Gate выполняет шаги в фиксированном порядке:
 - Шаг 8 берёт кандидатные результаты из порта `ResultSource`. Отсутствие ответа —
   `insufficient` (review), никогда pass: сравнение, которого не было, не
   доказывает, что число не поехало. Продукт, у которого вообще нет verified asset
-  с ожидаемым результатом, получает `result.no_expectations` (advisory).
+  с ожидаемым результатом, получает `result.no_expectations` (advisory). Раз число
+  **приходит**, а не считается здесь, шаг несёт вторую проверку — `results.provenance`
+  (§8.4): `results.reconcile` отвечает, сходятся ли два числа, а provenance — про то ли
+  это число вообще. Разные вопросы, поэтому и разные проверки: снятое месяц назад на
+  другом кластере число сходится идеально.
 - Проверка `evidence.bundle` есть в отчёте, но не в bundle: она оценивает
   повторную верификацию самого bundle, а проверка не может адресовать артефакт,
   который валидирует.
@@ -650,6 +669,51 @@ Metamorphic checks объявляются явно в `tolerance.aggregate_check
 или нечисловая колонка, `NULL`, non-finite value и нулевой denominator дают `insufficient`.
 Если инвариант нарушен в reference result, reference нельзя считать доказательством и исход
 тоже `insufficient`; нарушение только в candidate означает `different`.
+
+### 8.4.1 Provenance кандидатного числа
+
+Сравнение говорит, сходятся ли два числа, и говорит это про то число, которое ему подали.
+Дыры, которой оно не видит, ровно одна: число, снятое месяц назад, на другом кластере,
+запросом, который никто не ревьюил, сходится не хуже правильного. Гейт запрос asset'а не
+исполняет, поэтому происхождение числа приходит **декларацией** — `ResultAttestation`
+(`origin`, `captured_at`, `environment_ref`, `semantic_digest`, `query_digest`,
+`executed_by`), и задача проверки `results.provenance` — сделать эту декларацию проверяемой,
+а не принятой на веру.
+
+Три из четырёх её утверждений сверяются с тем, что гейт держит независимо:
+
+| Что сверяется | С чем | Код при расхождении |
+|---|---|---|
+| snapshot снятия | canonical digest кандидата этого прогона | `provenance.other_snapshot` |
+| среда снятия | `environment_ref`, о котором выносится вердикт | `provenance.other_environment` |
+| исполненный запрос | digest reviewed `reference_query` asset'а (§7.5) | `provenance.other_query` |
+
+Четвёртое — **что runner действительно выполнил этот запрос** — здесь непроверяемо и не
+заявляется: attestation может соврать, и поймала бы это только подпись над снятием, а
+trust root отложен (§9.3). Что проверка убирает — молчаливый случай: число без attestation
+теперь называется `provenance.unattested`, а не проходит через сверку, читающуюся как
+доказательство.
+
+Остальные коды: `provenance.snapshot_unstated` / `environment_unstated` / `query_unstated`
+(не назван тот, с чем есть что сверить), `provenance.hand_entered` и
+`provenance.surface_export` (число введено руками или снято с BI-поверхности — это не
+доказательство того, что витрина его считает), `provenance.stale_capture` и
+`provenance.capture_after_run` (снятие старше объявленного продуктом `freshness_max_age`
+или из будущего относительно прогона), `provenance.query_unreviewed` (у asset'а нет
+reviewed-запроса — **advisory**: гэп в asset'е, и закрывать его владельцу).
+
+Две границы держатся сознательно:
+
+- **Ни одна находка provenance не блокирует.** «Не можем показать, откуда число» — вопрос
+  владельцу; блокирует расхождение чисел, и это уже делает `results.reconcile`. Оценить
+  один факт дважды значило бы дать ему двойной вес в вердикте.
+- **Оценивается только поданное число.** Asset без кандидатного ответа уже `insufficient` в
+  сверке; спрашивать, откуда взялось несуществующее число, — то же удвоение.
+
+Equivalent-сверка по-прежнему выпускает claim, и claim несёт находки provenance
+**caveat'ами** и ссылкой на её артефакт. Грейдинг остаётся у `results.provenance`, но
+`result.equivalent`, прочитанный вне bundle, не должен уметь скрыть, что происхождение
+числа установить не удалось (инвариант 5).
 
 ### 8.5 Чистый BI compile seam
 
@@ -892,7 +956,13 @@ budget или claim budget завершают команду кодом `2` до
 | semantic ref (`--base`/`--candidate`) | каталог с `model.yaml` и необязательным `metrics/` |
 | dashboard spec | `<segment>@<version>.yaml` — имя файла несёт пин, иначе продукт с `@7` молча подхватил бы вёрстку `@8` |
 | verified assets | файл или каталог YAML (`VerifiedAsset`) |
-| recorded results | `{asset id: ResultSet}` — кандидатные ответы, снятые вне гейта |
+| recorded results | `{asset id: ResultSet}` **или** `{asset id: {result, attestation}}` |
+
+Обе формы recorded results валидны, и какая перед ним — `use_cases.py` читает из самого
+документа, а не из флага: у `ResultSet` нет ключа `result`, поэтому различение — факт про
+документ, а не догадка про намерение. Голая форма остаётся читаемой, потому что файл,
+написанный до появления attestation, — по-прежнему годный вход; гейт оценивает его как
+`provenance.unattested`, а не отказывается читать (§8.4.1).
 
 `--created-at` задаётся явно, когда прогон должен быть байт-в-байт
 воспроизводимым: часы внутри content-addressed артефакта делают одинаковый вход
@@ -962,7 +1032,9 @@ domain state machine.
 - row-order-independent reconciliation;
 - exact decimal и bounded float tolerance;
 - null/zero/missing distinctions;
-- metamorphic aggregate properties.
+- metamorphic aggregate properties;
+- provenance кандидатного числа: по одному неверному полю attestation за раз, и ни одна
+  находка не блокирует.
 
 ### 15.3 Release scenarios
 
@@ -977,6 +1049,7 @@ domain state machine.
 | expensive candidate plan блокируется policy | ✅ `dwh.cost` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`); прогнано вживую на обоих стендах — план на 600 строк против объявленного потолка 500 → `cost.over_budget` (review), против 1000 → `cost.within_budget`. Не «блокируется»: число остаётся верным, а выпускать ли метрику дороже объявленного — решение владельца. `max_scanned_bytes` и `timeout_ms` планировщики не отвечают, поэтому названы advisory-гэпом, а не выведены арифметикой |
 | row/column restriction проверяется negative-тестом, а не декларацией | ✅ `dwh.security` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`); прогнано вживую на ClickHouse 24.8.14.39 и PostgreSQL 14.24 — withheld column → block, применённая политика → review, RLS без permissive → block |
 | stale source возвращает honest insufficient/block | ✅ stale **verified asset** → `asset.stale_snapshot` (review), недоступный результат → `insufficient`, freshness самого источника → `dwh.freshness` (review) при `--dwh` (`tests/test_environment_checks.py`) |
+| поданное число нельзя выдать за проверенное | ✅ `results.provenance` (`tests/test_result_provenance.py` + gate-прогоны в `tests/test_decision_verify.py`) — число без attestation, из чужого snapshot'а, с чужой среды или из не-reviewed запроса названо, но не заблокировано. Того, что runner действительно выполнил заявленный запрос, проверка не доказывает: это подпись, а trust root отложен |
 
 ### 15.4 Compatibility gate
 

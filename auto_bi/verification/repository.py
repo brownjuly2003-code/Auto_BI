@@ -5,12 +5,16 @@ paraphrases, intent, the metrics it is built on, a reference plan, the expected 
 the invariants that must hold, or the clarification/refusal a negative case must produce),
 the tolerance the comparison runs under, and who reviewed it when.
 
-Two rules keep an asset trustworthy rather than merely present:
+Three rules keep an asset trustworthy rather than merely present:
 
 * it records the semantic digest it was verified against, so an asset carried over from a
   different snapshot is *stale*, not evidence;
 * a semantic change that alters meaning invalidates it (§8.2 step 5). An expectation nobody
-  re-checked after a formula change is worse than no expectation — it looks like proof.
+  re-checked after a formula change is worse than no expectation — it looks like proof;
+* the reviewed query is part of the asset, not a note beside it (`ReferenceQuery`). The
+  gate is handed candidate numbers rather than executing them, so the reviewed query's
+  digest is the only thing an attestation can be compared against — an asset without one
+  can hold an expectation nobody can tie a number to.
 
 Assets are reviewed artifacts in Git. A production interaction only ever enters a redacted
 review queue, and an expected result is never fed back into an LLM context (§7.5).
@@ -24,7 +28,9 @@ from pathlib import Path
 import yaml
 from pydantic import Field, model_validator
 
+from auto_bi.agent.sql_guard import SQLGuardError, guard_sql
 from auto_bi.decision.spec import RiskTier
+from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.evidence.canonical import sha256_digest
 from auto_bi.refs import AssetId, ContractRef, MetricRef
 from auto_bi.scalars import MAX_SAFE_INT, NonBlankText, Sha256Digest, Timestamp
@@ -77,6 +83,49 @@ class AssetExpectation(StrictModel):
         return self
 
 
+class ReferenceQuery(StrictModel):
+    """The reviewed SQL that answers this asset's question.
+
+    Free-text `reference_plan` says *how* the answer is meant to be obtained; this says it
+    exactly enough to be a content address. That is the whole point of it: a candidate
+    result attests to the query that produced it, and without a reviewed query on the asset
+    there is nothing for that attestation to be compared against (`provenance.py`).
+
+    The SQL is guarded here, at the contract boundary, rather than wherever it is later
+    read: a verified asset carrying an `INSERT` is a broken reviewed artifact, and invariant
+    7 does not become optional because nobody has executed it yet. The engine is required
+    and must be one the seam knows — `sqlglot_dialect` substitutes the v1 engine for an
+    unfamiliar name, and guarding PostgreSQL text with the ClickHouse grammar would either
+    reject valid SQL or, worse, accept what it failed to parse as a write.
+    """
+
+    engine: NonBlankText
+    sql: NonBlankText
+
+    @model_validator(mode="after")
+    def _check_sql(self) -> ReferenceQuery:
+        if not is_known_engine(self.engine):
+            raise ValueError(
+                f"unknown engine {self.engine!r}: a reference query must name an engine the "
+                "seam knows, so its SQL is guarded with the grammar it was written in"
+            )
+        try:
+            guard_sql(self.sql, dialect=sqlglot_dialect(self.engine))
+        except SQLGuardError as exc:
+            raise ValueError(f"reference query is not a plain SELECT: {exc}") from None
+        return self
+
+    def digest(self) -> str:
+        """Content address of the reviewed query — what an attestation is compared against.
+
+        Over the engine as well as the text, because one statement means two things on two
+        engines. The canonical form is RFC 8785 over `{"engine": …, "sql": …}` so that a
+        capture runner outside this codebase can compute the same digest from the same two
+        strings (§9.1).
+        """
+        return sha256_digest({"engine": self.engine, "sql": self.sql})
+
+
 class AssetReview(StrictModel):
     reviewer: NonBlankText
     reviewed_at: Timestamp
@@ -101,6 +150,10 @@ class VerifiedAsset(StrictModel):
     expectation: AssetExpectation
     tolerance: ResultTolerance = Field(default_factory=ResultTolerance)
     reference_plan: str = ""
+    #: The reviewed SQL a candidate result must attest to. Optional, because an asset whose
+    #: expectation is a clarification or a refusal has no query at all — but an expected
+    #: *result* without one leaves the number's origin uncheckable (`provenance.py`).
+    reference_query: ReferenceQuery | None = None
     #: The canonical digest of the semantic snapshot this asset was verified against.
     semantic_digest: Sha256Digest
     review: AssetReview

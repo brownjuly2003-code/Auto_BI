@@ -19,7 +19,10 @@ validate` (cross-contract проверка), `auto_bi decision verify` (полн
 read-only ролью (`dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`,
 `dwh.cost`); без `--dwh` проверки движка отвечают `check.not_configured`. Шаг 6
 компилирует reference-запрос метрики только там, где семантика точна офлайн, и
-называет гэп там, где нет. Технический pilot verifier 7 на реальном timezone change
+называет гэп там, где нет. Шаг 8 сверяет не только числа: кандидатный результат несёт
+attestation (какой запрос, на какой семантике, где и когда сняли), и `results.provenance`
+сверяет её snapshot, среду и digest запроса с reviewed `reference_query` asset'а — число
+без attestation называется `provenance.unattested`, а не проходит молча. Технический pilot verifier 7 на реальном timezone change
 завершён; human owner review остаётся открытым, детали — в текущем состоянии.
 Унаследованный v1 runtime сохранён без функциональных изменений.
 

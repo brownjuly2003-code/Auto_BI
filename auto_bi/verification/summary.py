@@ -39,7 +39,8 @@ if TYPE_CHECKING:  # a runtime import would close the loop: release_gate imports
 #: earlier finding made it unanswerable, run with nothing to compare, or unable to compile a
 #: single query. `result.no_expectations` is the line an owner most needs under a green
 #: verdict — a gate that compared no numbers has verified none of them, and
-#: `cost.no_budget_declared` is the same sentence about what a run may cost.
+#: `cost.no_budget_declared` is the same sentence about what a run may cost, and
+#: `provenance.no_results` about numbers whose origin there was nothing to establish.
 #:
 #: A *partial* outcome deliberately stays out: `sql.partially_compiled` says in its own detail
 #: how many of how many compiled, and filing it under "not done" would deny the part that was.
@@ -52,6 +53,7 @@ _UNDONE = frozenset(
         "cost.not_run",
         "freshness.not_run",
         "physical.not_run",
+        "provenance.no_results",
         "result.no_expectations",
         "security.not_run",
         "sql.not_compiled",

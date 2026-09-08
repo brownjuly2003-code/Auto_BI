@@ -83,14 +83,14 @@ Grading, and why:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import NamedTuple
 
 from pydantic import Field
 
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.refs import ContractRef
-from auto_bi.scalars import Duration, NonBlankText, Timestamp
+from auto_bi.scalars import Duration, NonBlankText, Timestamp, duration_seconds
 from auto_bi.semantic.gateway import MetricNode, SemanticSnapshot, TableNode
 from auto_bi.semantic.metric_contract import MetricBudget
 from auto_bi.semantic.model import DataClassification
@@ -102,17 +102,6 @@ from auto_bi.verification.sql_contract import compile_metric_queries
 #: not the prompt boundary, and not a document. `internal` is the default of an unset field,
 #: so treating it as sensitive would make every mart a finding.
 _SENSITIVE = frozenset({DataClassification.CONFIDENTIAL, DataClassification.RESTRICTED})
-
-#: Duration components with a fixed length in seconds. Years and calendar months are absent
-#: on purpose: `P1M` is 28 to 31 days, and an exact age cannot be compared to an inexact
-#: window without inventing a convention.
-_FIXED_UNITS: dict[str, timedelta] = {
-    "W": timedelta(weeks=1),
-    "D": timedelta(days=1),
-    "H": timedelta(hours=1),
-    "M": timedelta(minutes=1),  # only after the T separator; see `_window_seconds`
-    "S": timedelta(seconds=1),
-}
 
 
 class LayoutClaim(StrictModel):
@@ -537,7 +526,7 @@ def check_freshness(
     created_at: Timestamp,
 ) -> list[EnvironmentFinding]:
     """Is each mart newer than the window the product declares (§7.2 `freshness_max_age`)?"""
-    window = _window_seconds(max_age)
+    window = duration_seconds(max_age)
     findings: list[EnvironmentFinding] = []
 
     for question in questions.tables:
@@ -1033,25 +1022,6 @@ def _assumption(age: _Age, question: TableQuestion) -> str:
 def _hours(seconds: float) -> str:
     hours = seconds / 3600
     return f"{hours:.1f}h" if hours < 48 else f"{hours / 24:.1f}d"
-
-
-def _window_seconds(duration: Duration) -> float | None:
-    """ISO 8601 duration as seconds, or None when it is not a fixed length."""
-    body = duration[1:]
-    date_part, _, time_part = body.partition("T")
-    if "Y" in date_part or "M" in date_part:
-        return None
-    total = timedelta()
-    for part, allowed in ((date_part, "WD"), (time_part, "HMS")):
-        number = ""
-        for char in part:
-            if char.isdigit():
-                number += char
-                continue
-            if char in allowed and number:
-                total += int(number) * _FIXED_UNITS[char]
-            number = ""
-    return total.total_seconds()
 
 
 def _age_seconds(event_time: str, created_at: Timestamp) -> _Age | None:
