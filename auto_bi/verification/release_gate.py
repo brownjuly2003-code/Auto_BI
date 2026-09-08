@@ -99,18 +99,19 @@ API_VERSION = "auto-bi.io/v2alpha1"
 
 #: Part of the idempotency key: a different verifier can derive a different verdict or
 #: evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
-#: 10 — `assets.invalidated` also grades whether a reviewed query reads governed marts, so
-#: the same inputs can now yield `needs_review` where verifier 9 saw a clean asset.
-VERIFIER_VERSION = "10"
+#: 11 — `assets.invalidated` grades a reviewed query's governance down to the field, so the
+#: same inputs can now yield `needs_review` where verifier 10 saw a clean asset.
+VERIFIER_VERSION = "11"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
 #: `CheckResult` is re-graded by it, and the verifier version is what stops a bundle written
 #: before it from being reused as a complete verification.
-#: 6 — `assets.invalidated` answers a wider question: an asset stops being evidence not
+#: 7 — `assets.invalidated` answers a wider question: an asset stops being evidence not
 #: only when semantics moved the number under it, but also when its reviewed query reads a
-#: mart the model does not govern. An earlier `pass` on that check did not ask that.
-CHECK_VERSION = "6"
+#: mart the model does not govern or a column it does not declare. An earlier `pass` on
+#: that check did not ask either question.
+CHECK_VERSION = "7"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

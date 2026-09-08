@@ -946,6 +946,60 @@ def test_a_reviewed_query_over_an_ungoverned_mart_cannot_anchor_the_chain(
     assert report.verdict is Verdict.NEEDS_REVIEW
 
 
+def _asset_reading(case: Case, sql: str) -> None:
+    """Put an asset with this reviewed query on disk, attested against it."""
+    item = verified_asset(case.base_digest)
+    item["reference_query"] = {"engine": "clickhouse", "sql": sql}
+    case.assets = case.root / "assets"
+    _write_yaml(case.assets / "weekly_margin_by_region.yaml", item)
+    case.with_results(
+        [["Москва", "0.412"], ["Казань", "0.377"]],
+        attested=attestation(
+            case.candidate_digest,
+            query_digest=ReferenceQuery(engine="clickhouse", sql=sql).digest(),
+        ),
+    )
+
+
+def test_a_reviewed_query_over_an_undeclared_column_cannot_anchor_the_chain(
+    tmp_path: Path,
+) -> None:
+    """Table-level governance stops at the mart, and a number is made of columns."""
+    case = Case(tmp_path).with_candidate()
+    _asset_reading(
+        case,
+        'SELECT "region", sum("internal_cost_raw") AS "gross_margin_pct" '
+        'FROM "dm"."sales_daily" GROUP BY "region"',
+    )
+
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+
+    assert status_of(report, "results.provenance") is CheckStatus.PASS
+    assert summary_of(report, "assets.invalidated") == "asset.query_ungoverned_field"
+    assert "dm.sales_daily.internal_cost_raw" in detail_of(report, "assets.invalidated")
+    assert report.verdict is Verdict.NEEDS_REVIEW
+
+
+def test_a_field_check_the_sql_cannot_answer_is_said_without_asking_for_a_human(
+    tmp_path: Path,
+) -> None:
+    """A partial check is reported, never graded as a failure: nothing was found wrong."""
+    case = Case(tmp_path).with_candidate()
+    _asset_reading(
+        case,
+        'SELECT "a"."region", sum("a"."revenue") AS "gross_margin_pct" '
+        'FROM "dm"."sales_daily" AS "a" JOIN "dm"."stores" AS "b" ON "a"."store_id" = "b"."id" '
+        'WHERE "category" = \'x\' GROUP BY "a"."region"',
+    )
+
+    report = case.run(environment_ref=ENVIRONMENT_REF)
+
+    assert status_of(report, "assets.invalidated") is CheckStatus.ADVISORY
+    assert summary_of(report, "assets.invalidated") == "asset.query_fields_unchecked"
+    assert "category" in detail_of(report, "assets.invalidated")
+    assert report.verdict is Verdict.PASS_WITH_ADVISORY
+
+
 def test_a_missing_result_is_asked_for_once_not_twice(tmp_path: Path) -> None:
     """`results.reconcile` already calls it insufficient; provenance must not weigh it again."""
     case = Case(tmp_path).with_asset()

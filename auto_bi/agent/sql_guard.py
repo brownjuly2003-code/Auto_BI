@@ -8,6 +8,7 @@ from typing import NamedTuple
 
 import sqlglot
 from sqlglot import expressions as exp
+from sqlglot.optimizer.scope import Scope, build_scope
 
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.introspect.base import RunQuery
@@ -134,18 +135,20 @@ def extract_table_refs(sql: str, *, dialect: str = DIALECT) -> frozenset[TableRe
         # CTE self-reference: bare name matching a WITH alias, no db/catalog.
         if name.lower() in cte_names and not table.db and not table.catalog:
             continue
-        identifiers = [
-            part
-            for part in (table.args.get("catalog"), table.args.get("db"), table.this)
-            if isinstance(part, exp.Identifier) and part.name
-        ]
-        tables.add(
-            TableRef(
-                name=".".join(part.name for part in identifiers),
-                quoted=any(part.quoted for part in identifiers),
-            )
-        )
+        tables.add(_table_ref(table))
     return frozenset(tables)
+
+
+def _table_ref(table: exp.Table) -> TableRef:
+    identifiers = [
+        part
+        for part in (table.args.get("catalog"), table.args.get("db"), table.this)
+        if isinstance(part, exp.Identifier) and part.name
+    ]
+    return TableRef(
+        name=".".join(part.name for part in identifiers),
+        quoted=any(part.quoted for part in identifiers),
+    )
 
 
 def extract_table_names(sql: str, *, dialect: str = DIALECT) -> frozenset[str]:
@@ -158,6 +161,102 @@ def extract_table_names(sql: str, *, dialect: str = DIALECT) -> frozenset[str]:
     the bare name is not an allowed schema).
     """
     return frozenset(ref.name for ref in extract_table_refs(sql, dialect=dialect))
+
+
+class ColumnRef(NamedTuple):
+    """One column a SELECT reads, attributed to the table the statement says it is from."""
+
+    table: TableRef
+    name: str
+    #: The column identifier was written inside double quotes; see `TableRef.quoted`.
+    quoted: bool
+
+
+class ColumnReads(NamedTuple):
+    """What a SELECT reads at column level, and what saying more would take a guess.
+
+    `unattributed` and `starred` are the honest remainder, reported rather than resolved:
+    a caller grading governance must be able to say the check was partial, because a
+    silent skip and a clean result look identical to whoever reads the verdict.
+    """
+
+    attributed: frozenset[ColumnRef]
+    #: Names SQL alone cannot pin to one table — unqualified with several sources in scope,
+    #: or qualified by a name no enclosing scope declares.
+    unattributed: frozenset[str]
+    #: The statement selects `*` somewhere, so the columns it reads depend on the physical
+    #: table and cannot be known from the text.
+    starred: bool
+
+
+def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
+    """Columns a SELECT reads, attributed only where SQL itself leaves no choice.
+
+    Attribution is scope-local and follows the language's own resolution rule: a qualified
+    column resolves through the enclosing scopes, an unqualified one only when its scope has
+    exactly one source. Nothing is inferred beyond that — a bare `category` in a two-table
+    join could come from either, and a caller that guesses which has stopped describing the
+    query. Columns of a CTE or subquery are not a table's columns and are simply not
+    reported; projection aliases are not reads at all and sqlglot already excludes them.
+    """
+    root = _parse_one_select(sql, dialect=dialect)
+    scopes = list(build_scope(root).traverse())
+    owners = {id(scope.expression): scope for scope in scopes}
+    attributed: set[ColumnRef] = set()
+    unattributed: set[str] = set()
+    for scope in scopes:
+        for column in scope.columns:
+            # A scope lists the columns of its nested subqueries too, and resolving one of
+            # those against *this* scope's sources would attribute it to a table it was
+            # never written against. Each column is graded once, where it was written.
+            if _owning_scope(column, owners) is not scope:
+                continue
+            source = _column_source(scope, column)
+            if source is None:
+                unattributed.add(column.name)
+                continue
+            if not isinstance(source, exp.Table):
+                continue  # a CTE or subquery column: real, but not a table's
+            identifier = column.this
+            attributed.add(
+                ColumnRef(
+                    table=_table_ref(source),
+                    name=column.name,
+                    quoted=isinstance(identifier, exp.Identifier) and identifier.quoted,
+                )
+            )
+    return ColumnReads(
+        attributed=frozenset(attributed),
+        unattributed=frozenset(unattributed),
+        starred=root.find(exp.Star) is not None,
+    )
+
+
+def _owning_scope(column: exp.Column, owners: dict[int, Scope]) -> Scope | None:
+    """The innermost scope the column was written in; `None` only if it has none."""
+    node: exp.Expression | None = column.parent
+    while node is not None:
+        scope = owners.get(id(node))
+        if scope is not None:
+            return scope
+        node = node.parent
+    return None
+
+
+def _column_source(scope: Scope, column: exp.Column) -> exp.Expression | Scope | None:
+    """The source a column resolves to, or ``None`` when SQL does not decide it."""
+    if not column.table:
+        sources = list(scope.sources.values())
+        return sources[0] if len(sources) == 1 else None
+    # A correlated column is qualified by an alias its own scope never declares; the
+    # language resolves that outward, and so must this.
+    current: Scope | None = scope
+    while current is not None:
+        source = current.sources.get(column.table)
+        if source is not None:
+            return source
+        current = current.parent
+    return None
 
 
 def _trial_statements(sql: str, dialect: str) -> list[str]:

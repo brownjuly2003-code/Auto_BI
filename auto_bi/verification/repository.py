@@ -22,20 +22,28 @@ review queue, and an expected result is never fed back into an LLM context (§7.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from enum import StrEnum
 from pathlib import Path
 
 import yaml
 from pydantic import Field, model_validator
 
-from auto_bi.agent.sql_guard import SQLGuardError, extract_table_refs, guard_sql
+from auto_bi.agent.sql_guard import (
+    ColumnReads,
+    SQLGuardError,
+    TableRef,
+    extract_column_refs,
+    extract_table_refs,
+    guard_sql,
+)
 from auto_bi.decision.spec import RiskTier
 from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.evidence.canonical import sha256_digest
 from auto_bi.refs import AssetId, ContractRef, MetricRef
 from auto_bi.scalars import MAX_SAFE_INT, NonBlankText, Sha256Digest, Timestamp
 from auto_bi.semantic.diff import SemanticDiff
-from auto_bi.semantic.gateway import SemanticSnapshot
+from auto_bi.semantic.gateway import FieldNode, SemanticSnapshot
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
 from auto_bi.verification.reconcile import ResultSet, ResultTolerance
@@ -221,18 +229,22 @@ class VerifiedAssetRepository:
         return next((item for item in self.assets if item.metadata.id == asset_id), None)
 
     def ungoverned(self, snapshot: SemanticSnapshot) -> list[AssetInvalidation]:
-        """Assets whose reviewed query reads a mart this snapshot does not govern.
+        """Assets whose reviewed query reads outside the model this snapshot governs.
 
         The provenance chain anchors on the reviewed query (§8.4.1): a candidate number is
         tied to the SQL a reviewer signed off. That anchor is worth exactly as much as its
         attachment to the governed model — a reviewed query reading `dm.sales_daily_v2`
-        produces an attested, reconciled number computed from a mart nobody governs, which
-        is the failure this product exists to prevent.
+        produces an attested, reconciled number computed from a mart nobody governs, and a
+        reviewed query reading an undeclared column of a governed mart produces one computed
+        partly from data the model says nothing about. Both are what this product exists to
+        prevent, and neither is visible to a comparison of two numbers.
 
-        **Tables only, never columns.** Attributing an unqualified column to one of several
-        tables in scope, across joins, CTEs and subqueries, is a guess, and a gate that
-        guesses about governance has stopped being evidence (invariant 6). A table name is
-        unambiguous, and it is the level at which a mart is governed.
+        **Only what SQL itself decides.** A column is attributed to a table when the
+        statement leaves no choice — qualified, or unqualified with a single source in scope
+        — and never otherwise: picking one of several tables in a join for a bare column is
+        a guess, and a gate that guesses about governance has stopped being evidence
+        (invariant 6). What could not be attributed is *said* rather than skipped
+        (`asset.query_fields_unchecked`), so a partial check never reads as a clean one.
 
         Case is read the way the asset's engine reads it: ClickHouse distinguishes
         `Sales_Daily` from `sales_daily`, the PostgreSQL family folds an *unquoted*
@@ -242,33 +254,16 @@ class VerifiedAssetRepository:
         quoted reference is compared exactly on every engine.
         """
         findings: list[AssetInvalidation] = []
-        governed = {node.id for node in snapshot.graph.tables}
-        folded = {name.lower() for name in governed}
+        tables = _Names(node.id for node in snapshot.graph.tables)
+        columns = {
+            table: _Names(node.column for node in nodes)
+            for table, nodes in _by_table(snapshot.graph.fields).items()
+        }
         for item in self.assets:
             query = item.reference_query
             if query is None:
                 continue
-            dialect = sqlglot_dialect(query.engine)
-            folds = dialect != "clickhouse"
-            unknown = sorted(
-                ref.name
-                for ref in extract_table_refs(query.sql, dialect=dialect)
-                if ref.name not in governed
-                and not (folds and not ref.quoted and ref.name.lower() in folded)
-            )
-            if unknown:
-                findings.append(
-                    AssetInvalidation(
-                        asset=item.self_ref(),
-                        code="asset.query_ungoverned",
-                        severity=Severity.REVIEW,
-                        detail=(
-                            "the reviewed reference_query reads "
-                            f"{', '.join(unknown)}, which this snapshot does not govern: "
-                            "a number from it is not a number about this model"
-                        ),
-                    )
-                )
+            findings.extend(_query_findings(item, query, tables, columns))
         return findings
 
     def invalidate(self, diff: SemanticDiff) -> list[AssetInvalidation]:
@@ -292,6 +287,124 @@ class VerifiedAssetRepository:
             if invalidation is not None:
                 invalidations.append(invalidation)
         return invalidations
+
+
+class _Names:
+    """Declared names, matched the way one engine family matches them.
+
+    Folding is looked up rather than applied: a model that declared both `Sales` and
+    `sales` gives one folded key two answers, and choosing either would invent a finding,
+    so such a key simply does not fold and the exact comparison stands.
+    """
+
+    def __init__(self, declared: Iterable[str]) -> None:
+        self.exact = set(declared)
+        folded: dict[str, set[str]] = {}
+        for name in self.exact:
+            folded.setdefault(name.lower(), set()).add(name)
+        self.folded = {key: next(iter(names)) for key, names in folded.items() if len(names) == 1}
+
+    def resolve(self, name: str, *, quoted: bool, folds: bool) -> str | None:
+        """The declared name this reference means, or ``None`` when nothing declares it."""
+        if name in self.exact:
+            return name
+        if folds and not quoted:
+            return self.folded.get(name.lower())
+        return None
+
+
+def _by_table(fields: Iterable[FieldNode]) -> dict[str, list[FieldNode]]:
+    grouped: dict[str, list[FieldNode]] = {}
+    for node in fields:
+        grouped.setdefault(node.table, []).append(node)
+    return grouped
+
+
+def _query_findings(
+    item: VerifiedAsset,
+    query: ReferenceQuery,
+    tables: _Names,
+    columns: Mapping[str, _Names],
+) -> list[AssetInvalidation]:
+    dialect = sqlglot_dialect(query.engine)
+    # ClickHouse compares identifiers as written; the PostgreSQL family folds unquoted ones.
+    folds = dialect != "clickhouse"
+
+    def governed_table(ref: TableRef) -> str | None:
+        return tables.resolve(ref.name, quoted=ref.quoted, folds=folds)
+
+    findings: list[AssetInvalidation] = []
+    unknown_tables = sorted(
+        ref.name
+        for ref in extract_table_refs(query.sql, dialect=dialect)
+        if governed_table(ref) is None
+    )
+    if unknown_tables:
+        findings.append(
+            _asset_finding(
+                item,
+                "asset.query_ungoverned",
+                Severity.REVIEW,
+                f"the reviewed reference_query reads {', '.join(unknown_tables)}, which this "
+                "snapshot does not govern: a number from it is not a number about this model",
+            )
+        )
+
+    reads = extract_column_refs(query.sql, dialect=dialect)
+    unknown_fields: set[str] = set()
+    for ref in reads.attributed:
+        table = governed_table(ref.table)
+        # A column of an ungoverned mart is already covered by the finding above; naming it
+        # again would weigh one fact twice and bury the fix that matters.
+        if table is None:
+            continue
+        declared = columns.get(table)
+        if declared is None or declared.resolve(ref.name, quoted=ref.quoted, folds=folds) is None:
+            unknown_fields.add(f"{table}.{ref.name}")
+    if unknown_fields:
+        findings.append(
+            _asset_finding(
+                item,
+                "asset.query_ungoverned_field",
+                Severity.REVIEW,
+                f"the reviewed reference_query reads {', '.join(sorted(unknown_fields))}, which "
+                "this snapshot does not declare: the number is computed partly from data the "
+                "model says nothing about",
+            )
+        )
+
+    unchecked = _unchecked_reason(reads)
+    if unchecked is not None:
+        findings.append(
+            _asset_finding(item, "asset.query_fields_unchecked", Severity.ADVISORY, unchecked)
+        )
+    return findings
+
+
+def _unchecked_reason(reads: ColumnReads) -> str | None:
+    """Why the field-level check could not cover the whole query, if it could not."""
+    reasons: list[str] = []
+    if reads.starred:
+        reasons.append(
+            "it selects *, so which columns it reads depends on the physical table rather "
+            "than on the SQL"
+        )
+    if reads.unattributed:
+        reasons.append(
+            f"{', '.join(sorted(reads.unattributed))} could not be attributed to one table "
+            "without guessing"
+        )
+    if not reasons:
+        return None
+    return "the field-level check over the reviewed reference_query is partial: " + "; ".join(
+        reasons
+    )
+
+
+def _asset_finding(
+    item: VerifiedAsset, code: str, severity: Severity, detail: str
+) -> AssetInvalidation:
+    return AssetInvalidation(asset=item.self_ref(), code=code, severity=severity, detail=detail)
 
 
 def _invalidation_for(item: VerifiedAsset, diff: SemanticDiff) -> AssetInvalidation | None:

@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from auto_bi.semantic.diff import diff_snapshots
 from auto_bi.severity import Severity
 from auto_bi.verification.repository import (
+    AssetInvalidation,
     VerifiedAsset,
     VerifiedAssetRepository,
 )
@@ -235,7 +236,10 @@ def test_an_asset_with_no_reviewed_query_has_nothing_to_check(tmp_path: Path) ->
 def test_a_cte_name_is_not_a_mart(tmp_path: Path) -> None:
     """A WITH alias is a name inside the query, not a table the model must declare."""
     base = snap(tmp_path, "base")
-    sql = 'WITH "recent" AS (SELECT "region" FROM "dm"."sales_daily") SELECT * FROM "recent"'
+    sql = (
+        'WITH "recent" AS (SELECT "region" FROM "dm"."sales_daily") '
+        'SELECT "region" FROM "recent"'
+    )
     repo = repository(tmp_path / "repo", asset(reference_query=query(sql)))
     assert repo.ungoverned(base) == []
 
@@ -295,3 +299,123 @@ def test_an_unqualified_name_is_not_read_as_the_governed_mart(tmp_path: Path) ->
     findings = repo.ungoverned(base)
     assert [item.code for item in findings] == ["asset.query_ungoverned"]
     assert findings[0].asset == "asset://sales/weekly_margin_by_region@2"
+
+
+# --- the fields inside those marts --------------------------------------------
+
+
+def codes(findings: list[AssetInvalidation]) -> list[str]:
+    return [item.code for item in findings]
+
+
+def test_a_query_over_declared_fields_is_not_a_finding(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = 'SELECT "region", sum("revenue") AS "m" FROM "dm"."sales_daily" GROUP BY "region"'
+    repo = repository(tmp_path / "repo", asset(reference_query=query(sql)))
+    assert repo.ungoverned(base) == []
+
+
+def test_a_column_the_model_does_not_declare_is_named(tmp_path: Path) -> None:
+    """Table-level governance stops at the mart; the number is made of columns."""
+    base = snap(tmp_path, "base")
+    sql = (
+        'SELECT "region", sum("internal_cost_raw") AS "m" FROM "dm"."sales_daily" GROUP BY "region"'
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert findings[0].severity is Severity.REVIEW
+    assert "dm.sales_daily.internal_cost_raw" in findings[0].detail
+
+
+def test_a_column_of_an_ungoverned_mart_is_reported_once(tmp_path: Path) -> None:
+    """The mart is the fix; naming its columns too would weigh one fact twice."""
+    base = snap(tmp_path, "base")
+    sql = 'SELECT "region", "ghost" FROM "dm"."sales_daily_v2"'
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned"]
+
+
+def test_a_column_written_inside_a_subquery_is_still_read_from_the_mart(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = 'SELECT "region" FROM (SELECT "region", "ghost" FROM "dm"."sales_daily") AS "t"'
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "dm.sales_daily.ghost" in findings[0].detail
+
+
+def test_a_projection_alias_is_not_a_column_of_the_mart(tmp_path: Path) -> None:
+    """`ORDER BY m` names the output, not a field the model would have to declare."""
+    base = snap(tmp_path, "base")
+    sql = (
+        'SELECT "region", sum("revenue") AS "m" FROM "dm"."sales_daily" '
+        'GROUP BY "region" ORDER BY "m"'
+    )
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
+def test_a_correlated_column_belongs_to_the_scope_that_declares_it(tmp_path: Path) -> None:
+    """Resolved outward, as SQL resolves it — not against the subquery's own source."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT region FROM dm.sales_daily AS a "
+        "WHERE a.revenue > (SELECT avg(id) FROM dm.stores AS b WHERE b.id = a.store_id)"
+    )
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
+def test_a_bare_column_in_a_join_is_not_guessed_at_but_said(tmp_path: Path) -> None:
+    """Either table could own it, so the gate reports a partial check instead of a guess."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, category FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "category" in findings[0].detail
+
+
+def test_a_star_says_the_field_check_could_not_run(tmp_path: Path) -> None:
+    """`SELECT *` reads whatever the physical table holds, which the SQL does not say."""
+    base = snap(tmp_path, "base")
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query('SELECT * FROM "dm"."sales_daily"'))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "selects *" in findings[0].detail
+
+
+def test_an_unchecked_field_note_never_hides_a_named_one(tmp_path: Path) -> None:
+    """A partial check still reports what it did resolve."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.ghost, category FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field", "asset.query_fields_unchecked"]
+
+
+def test_the_postgres_family_folds_an_unquoted_column(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = "SELECT REGION FROM DM.SALES_DAILY"
+    repo = repository(tmp_path / "repo", asset(reference_query=query(sql, engine="greenplum")))
+    assert repo.ungoverned(base) == []
+
+
+def test_a_quoted_column_is_compared_exactly_on_postgres(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = 'SELECT "REGION" FROM dm.sales_daily'
+    repo = repository(tmp_path / "repo", asset(reference_query=query(sql, engine="greenplum")))
+    findings = repo.ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "dm.sales_daily.REGION" in findings[0].detail
+
+
+def test_clickhouse_reads_column_case_as_clickhouse_does(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    repo = repository(
+        tmp_path / "repo", asset(reference_query=query("SELECT Region FROM dm.sales_daily"))
+    )
+    assert codes(repo.ungoverned(base)) == ["asset.query_ungoverned_field"]
