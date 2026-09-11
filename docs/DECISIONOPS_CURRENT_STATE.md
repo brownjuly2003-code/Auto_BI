@@ -6,13 +6,13 @@
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
 привязкой его reviewed-запроса к governed-модели; human/design-partner gate остаётся открытым
 
-**Версии evidence:** `VERIFIER_VERSION=11`, `CHECK_VERSION=7`
+**Версии evidence:** `VERIFIER_VERSION=12`, `CHECK_VERSION=8`
 
 Сохранённые pilot-bundles в `docs/pilot/` выпущены verifier 7 и такими остаются: они
 исторические артефакты, а не выход сегодняшнего гейта. `auto_bi decision evidence` по ним
 проходит (проверено 2026-09-07, exit `0`) — перепроверка адресует то, что запечатано, и не
 требует текущей версии. Новый прогон на тех же входах даст другой `run_id` и bundle
-verifier 11: chart-разрешение, проверка provenance и governance-привязка reviewed-запроса
+verifier 12: chart-разрешение, проверка provenance и governance-привязка reviewed-запроса
 изменили evidence artifact. У pilot-числа attestation'а нет, поэтому сегодняшний прогон на
 тех же входах вынес бы по нему `provenance.unattested` (review) — это и есть содержание
 изменения, а не регресс стенда.
@@ -46,7 +46,8 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   называется `provenance.unattested`. Ни одна находка не блокирует.
 - `assets.invalidated` дополнительно сверяет reviewed `reference_query` с кандидатным
   snapshot'ом: неуправляемая витрина — `asset.query_ungoverned`, необъявленная колонка
-  governed-витрины — `asset.query_ungoverned_field` (обе review), неразрешимая без
+  governed-витрины (в том числе голое имя, которого не объявляет ни один governed-источник
+  его scope'а) — `asset.query_ungoverned_field` (обе review), неразрешимая без
   догадки часть запроса — `asset.query_fields_unchecked` (advisory).
 - `auto_bi decision evidence` перепроверяет digest каждого artifact в bundle.
 - `auto_bi decision investigate <plan.yaml> --results <result.yaml> ... --output <dir>`
@@ -110,10 +111,12 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   snapshot'а, — но
   того, что runner действительно выполнил заявленный запрос, attestation не доказывает: это
   подпись над снятием, а trust root отложен.
-- Governance reviewed-запроса покрывает таблицы и колонки, но колонка приписывается
-  таблице только там, где выбора не оставляет сам SQL. `SELECT *` и неквалифицированное
-  имя при нескольких источниках в scope остаются непроверенными — названными
-  (`asset.query_fields_unchecked`), а не молча пропущенными.
+- Governance reviewed-запроса покрывает таблицы и колонки. Колонка приписывается
+  таблице там, где выбора не оставляет сам SQL, а для голого имени — там, где его не
+  оставляет governed-модель: ровно один источник scope'а объявляет это имя, и все
+  источники scope'а — governed-таблицы. `SELECT *`, имя, объявленное несколькими
+  источниками, и scope с неуправляемой витриной, CTE или подзапросом остаются
+  непроверенными — названными (`asset.query_fields_unchecked`), а не молча пропущенными.
 - Нет измеренного человеком owner outcome: proxy-review не заменяет время и
   подтверждение понятности от живого владельца.
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,

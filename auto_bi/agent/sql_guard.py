@@ -172,6 +172,33 @@ class ColumnRef(NamedTuple):
     quoted: bool
 
 
+class AmbiguousRef(NamedTuple):
+    """An unattributed column together with the sources its scope offered it.
+
+    SQL alone does not say which of them the name came from, but the scope is a fact of the
+    statement, not a guess about it — and a caller holding a model of those tables may find
+    that only one of them declares the name. Handing over the scope lets that caller decide
+    with what it knows; withholding it would force the same question to be answered blind.
+    """
+
+    name: str
+    #: The column identifier was written inside double quotes; see `TableRef.quoted`.
+    quoted: bool
+    #: The tables the scope offered, one entry per *source* rather than per distinct table:
+    #: a self-join offers the same table twice, and two sources are two places the name
+    #: could have been read from however few tables they denote. Empty when the reference
+    #: resolves against nothing at all — a qualification no enclosing scope declares has no
+    #: candidates, only a mistake — and empty too when the scope has no source of its own.
+    candidates: tuple[TableRef, ...]
+    #: Every source in that scope was a table. When it was not, the missing candidate is a
+    #: CTE or subquery whose columns no model of the physical marts can rule in or out.
+    all_tables: bool
+    #: The source the reference named (`z` in `z.category`), empty when it named none. With
+    #: no candidates that is what separates a qualifier nothing declares from a scope that
+    #: offered nothing — one is a mistake in the statement, the other a shape of it.
+    qualifier: str = ""
+
+
 class ColumnReads(NamedTuple):
     """What a SELECT reads at column level, and what saying more would take a guess.
 
@@ -187,6 +214,9 @@ class ColumnReads(NamedTuple):
     #: The statement selects `*` somewhere, so the columns it reads depend on the physical
     #: table and cannot be known from the text.
     starred: bool
+    #: The same remainder with its scope kept, one entry per unattributed reference. Names
+    #: alone are what `unattributed` reports; this is what a caller needs to narrow them.
+    ambiguous: frozenset[AmbiguousRef] = frozenset()
 
 
 def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
@@ -196,14 +226,19 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     column resolves through the enclosing scopes, an unqualified one only when its scope has
     exactly one source. Nothing is inferred beyond that — a bare `category` in a two-table
     join could come from either, and a caller that guesses which has stopped describing the
-    query. Columns of a CTE or subquery are not a table's columns and are simply not
+    query. What the remainder's scope offered is reported (`ColumnReads.ambiguous`) so a
+    caller holding a model of those tables can narrow it on evidence rather than on a coin
+    toss. Columns of a CTE or subquery are not a table's columns and are simply not
     reported; projection aliases are not reads at all and sqlglot already excludes them.
     """
     root = _parse_one_select(sql, dialect=dialect)
-    scopes = list(build_scope(root).traverse())
+    root_scope = build_scope(root)
+    if root_scope is None:  # pragma: no mutate block - Select/Union always defines a scope
+        raise SQLGuardError("SELECT does not define a query scope")
+    scopes = list(root_scope.traverse())
     owners = {id(scope.expression): scope for scope in scopes}
     attributed: set[ColumnRef] = set()
-    unattributed: set[str] = set()
+    ambiguous: set[AmbiguousRef] = set()
     for scope in scopes:
         for column in scope.columns:
             # A scope lists the columns of its nested subqueries too, and resolving one of
@@ -211,30 +246,47 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
             # never written against. Each column is graded once, where it was written.
             if _owning_scope(column, owners) is not scope:
                 continue
+            identifier = column.this
+            quoted = isinstance(identifier, exp.Identifier) and identifier.quoted
             source = _column_source(scope, column)
             if source is None:
-                unattributed.add(column.name)
+                ambiguous.add(_ambiguous_ref(scope, column, quoted=quoted))
                 continue
             if not isinstance(source, exp.Table):
                 continue  # a CTE or subquery column: real, but not a table's
-            identifier = column.this
-            attributed.add(
-                ColumnRef(
-                    table=_table_ref(source),
-                    name=column.name,
-                    quoted=isinstance(identifier, exp.Identifier) and identifier.quoted,
-                )
-            )
+            attributed.add(ColumnRef(table=_table_ref(source), name=column.name, quoted=quoted))
     return ColumnReads(
         attributed=frozenset(attributed),
-        unattributed=frozenset(unattributed),
+        unattributed=frozenset(ref.name for ref in ambiguous),
         starred=root.find(exp.Star) is not None,
+        ambiguous=frozenset(ambiguous),
+    )
+
+
+def _ambiguous_ref(scope: Scope, column: exp.Column, *, quoted: bool) -> AmbiguousRef:
+    """The unresolved column with whatever its scope offered — nothing where nothing did.
+
+    A qualified name gets no candidates: it names a source, and no enclosing scope declares
+    that name, so the tables standing beside it are not what it was written against. The
+    sources are counted, not deduplicated: `dm.sales_daily AS a JOIN dm.sales_daily AS b`
+    leaves a bare name as undecidable as any other two-source join does, and reporting one
+    candidate there would invite a caller to attribute what the engine itself rejects.
+    """
+    sources = [] if column.table else list(scope.sources.values())
+    return AmbiguousRef(
+        name=column.name,
+        quoted=quoted,
+        candidates=tuple(
+            sorted(_table_ref(source) for source in sources if isinstance(source, exp.Table))
+        ),
+        all_tables=all(isinstance(source, exp.Table) for source in sources),
+        qualifier=column.table,
     )
 
 
 def _owning_scope(column: exp.Column, owners: dict[int, Scope]) -> Scope | None:
     """The innermost scope the column was written in; `None` only if it has none."""
-    node: exp.Expression | None = column.parent
+    node: exp.Expr | None = column.parent
     while node is not None:
         scope = owners.get(id(node))
         if scope is not None:

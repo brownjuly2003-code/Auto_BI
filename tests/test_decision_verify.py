@@ -983,12 +983,17 @@ def test_a_reviewed_query_over_an_undeclared_column_cannot_anchor_the_chain(
 def test_a_field_check_the_sql_cannot_answer_is_said_without_asking_for_a_human(
     tmp_path: Path,
 ) -> None:
-    """A partial check is reported, never graded as a failure: nothing was found wrong."""
+    """A partial check is reported, never graded as a failure: nothing was found wrong.
+
+    Neither the statement nor the model pins `category` here: the subquery beside it holds
+    columns the snapshot cannot see into, so it can rule that source neither in nor out.
+    """
     case = Case(tmp_path).with_candidate()
     _asset_reading(
         case,
         'SELECT "a"."region", sum("a"."revenue") AS "gross_margin_pct" '
-        'FROM "dm"."sales_daily" AS "a" JOIN "dm"."stores" AS "b" ON "a"."store_id" = "b"."id" '
+        'FROM "dm"."sales_daily" AS "a" '
+        'JOIN (SELECT "id" FROM "dm"."stores") AS "b" ON "a"."store_id" = "b"."id" '
         'WHERE "category" = \'x\' GROUP BY "a"."region"',
     )
 

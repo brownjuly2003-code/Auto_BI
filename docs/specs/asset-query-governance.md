@@ -45,7 +45,16 @@ leaves no choice — qualified, or unqualified with a single source in scope —
 unqualified name the statement alone cannot pin, SHALL attribute it to the one source in its
 scope the snapshot declares it on, but only when every source in that scope is a table the
 snapshot governs. Where two such sources declare the name, or any source in scope is
-ungoverned or is not a table, the system SHALL NOT attribute the name.
+ungoverned or is not a table, the system SHALL NOT attribute the name. Sources are counted
+as the statement lists them, not as distinct tables: a table joined to itself is two sources.
+
+### Scenario: a table joined to itself offers two candidates
+
+- **GIVEN** a snapshot declaring `category` on `dm.sales_daily`, and a reviewed query
+  `SELECT category FROM dm.sales_daily AS a JOIN dm.sales_daily AS b ON a.date = b.date`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_fields_unchecked` naming `category`, and no field is
+  attributed on its behalf
 
 ### Scenario: the model leaves one candidate for a bare column
 
@@ -83,7 +92,11 @@ finding, a column of a table already reported as ungoverned.
 The system SHALL report `asset.query_fields_unchecked` (severity advisory) whenever part of the
 reviewed query could not be graded at field level — a `*`, or a name neither the statement nor
 the model attributes — and SHALL state which part and why, so a partial check never reads as a
-clean one.
+clean one. The remainder is counted per *reference*, not per name: one reference the model
+resolves SHALL NOT cover another reference of the same name that nothing resolves. The reason
+SHALL distinguish a name several governed sources declare, a scope holding a source the
+snapshot cannot see into, a qualifier no enclosing scope declares, and a scope with no source
+of its own — a wrong reason sends the reader after a fix the query does not need.
 
 ### Scenario: the query selects a star
 
@@ -91,3 +104,12 @@ clean one.
 - **WHEN** the gate grades the asset
 - **THEN** the findings carry `asset.query_fields_unchecked` and its detail says the columns read
   depend on the physical table rather than on the SQL
+
+### Scenario: a resolved name does not cover an unresolvable one beside it
+
+- **GIVEN** a snapshot declaring `category` on `dm.sales_daily` and not on `dm.stores`, and a
+  reviewed query `SELECT a.region, category, z.category FROM dm.sales_daily AS a JOIN dm.stores
+  AS b ON a.store_id = b.id`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_fields_unchecked` naming `z.category`, and its detail
+  says that no enclosing scope declares that qualifier rather than that a source was invisible

@@ -17,6 +17,7 @@ import yaml
 from pydantic import ValidationError
 
 from auto_bi.semantic.diff import diff_snapshots
+from auto_bi.semantic.model import Column, ColumnRole, Physical, Table
 from auto_bi.severity import Severity
 from auto_bi.verification.repository import (
     AssetInvalidation,
@@ -363,17 +364,227 @@ def test_a_correlated_column_belongs_to_the_scope_that_declares_it(tmp_path: Pat
     assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
 
 
-def test_a_bare_column_in_a_join_is_not_guessed_at_but_said(tmp_path: Path) -> None:
-    """Either table could own it, so the gate reports a partial check instead of a guess."""
+def test_a_bare_column_one_governed_source_declares_is_read_not_guessed(tmp_path: Path) -> None:
+    """The model leaves one candidate, so attributing it reads the query rather than guesses.
+
+    `category` is declared on `dm.sales_daily` and on nothing else in scope. The engine
+    accepted this SQL, so the name resolved to exactly one source there too.
+    """
     base = snap(tmp_path, "base")
     sql = (
         "SELECT a.region, category FROM dm.sales_daily AS a "
         "JOIN dm.stores AS b ON a.store_id = b.id"
     )
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
+def _stores_also_declaring(*columns: str) -> Any:
+    """The base model with `dm.stores` declaring more columns — a second candidate each."""
+    both = model()
+    for column in columns:
+        both.tables[1].columns.append(Column(name=column, type="String", role=ColumnRole.DIMENSION))
+    return both
+
+
+def test_a_bare_column_two_governed_sources_declare_is_not_guessed_at_but_said(
+    tmp_path: Path,
+) -> None:
+    """Either table could own it — for the engine too — so the gate says the check was partial."""
+    base = snap(tmp_path, "both", semantic=_stores_also_declaring("region"))
+    sql = "SELECT region FROM dm.sales_daily AS a JOIN dm.stores AS b ON a.store_id = b.id"
     findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
     assert codes(findings) == ["asset.query_fields_unchecked"]
     assert findings[0].severity is Severity.ADVISORY
+    assert "region" in findings[0].detail
+
+
+def test_a_bare_column_no_governed_source_declares_names_the_scope(tmp_path: Path) -> None:
+    """It is read from somewhere, and the model declares it on nothing in that scope."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, discount FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert findings[0].severity is Severity.REVIEW
+    detail = findings[0].detail
+    assert "discount" in detail and "dm.sales_daily" in detail and "dm.stores" in detail
+
+
+def test_a_bare_column_beside_an_ungoverned_mart_stays_unchecked(tmp_path: Path) -> None:
+    """The model cannot see that mart's columns, so it cannot rule it out as the source."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, category FROM dm.sales_daily AS a "
+        "JOIN staging.sales AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned", "asset.query_fields_unchecked"]
+    assert "category" in findings[1].detail
+
+
+def test_a_bare_column_beside_a_subquery_source_stays_unchecked(tmp_path: Path) -> None:
+    """A subquery's columns are not a table's, and the snapshot declares nothing about them."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, category FROM dm.sales_daily AS a "
+        "JOIN (SELECT id FROM dm.stores) AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
     assert "category" in findings[0].detail
+
+
+def test_a_bare_column_beside_a_cte_source_stays_unchecked(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "WITH s AS (SELECT id FROM dm.stores) "
+        "SELECT a.region, category FROM dm.sales_daily AS a JOIN s ON a.store_id = s.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "category" in findings[0].detail
+
+
+def test_a_column_qualified_by_an_unknown_alias_gains_no_candidates(tmp_path: Path) -> None:
+    """Nothing in the statement resolves `z`, so the scope's tables are not its candidates."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, z.category FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "category" in findings[0].detail
+
+
+def test_the_postgres_family_folds_a_bare_column_onto_its_one_candidate(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, CATEGORY FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b ON a.store_id = b.id"
+    )
+    repo = repository(tmp_path / "repo", asset(reference_query=query(sql, engine="greenplum")))
+    assert repo.ungoverned(base) == []
+
+
+def test_clickhouse_reads_a_bare_column_case_as_clickhouse_does(tmp_path: Path) -> None:
+    """`CATEGORY` is another column there, and no source in scope declares it."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, CATEGORY FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "CATEGORY" in findings[0].detail
+
+
+def test_a_settled_name_does_not_cover_another_reference_of_the_same_name(
+    tmp_path: Path,
+) -> None:
+    """One `category` the model settles says nothing about the `z.category` beside it.
+
+    Keeping the remainder per name rather than per reference let the resolved one stand in
+    for the unresolvable one, and the whole query then read as cleanly graded.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, category, z.category FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "z.category" in findings[0].detail
+
+
+def test_a_settled_branch_does_not_cover_a_contested_one(tmp_path: Path) -> None:
+    """The second branch resolves `region`; the first still leaves two sources declaring it."""
+    both = _stores_also_declaring("region")
+    both.tables.append(
+        Table(
+            name="dm.dates",
+            grain=["d"],
+            columns=[Column(name="d", type="Date", role=ColumnRole.TIME)],
+            physical=Physical(engine="clickhouse"),
+        )
+    )
+    base = snap(tmp_path, "both", semantic=both)
+    sql = (
+        "SELECT region FROM dm.sales_daily AS a JOIN dm.stores AS b ON a.store_id = b.id "
+        "UNION ALL "
+        "SELECT region FROM dm.sales_daily AS c JOIN dm.dates AS d ON c.date = d.d"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "region" in findings[0].detail
+
+
+def test_an_unknown_qualifier_is_not_called_an_unreadable_scope(tmp_path: Path) -> None:
+    """Both sources here are governed tables; what nothing declares is `z` itself."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, z.category FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    detail = findings[0].detail
+    assert "no enclosing scope declares" in detail
+    assert "cannot see into" not in detail
+
+
+def test_a_scope_with_no_source_of_its_own_says_that_and_not_more(tmp_path: Path) -> None:
+    """The inner SELECT has no FROM at all — no source was withheld, there was none."""
+    base = snap(tmp_path, "base")
+    sql = "SELECT (SELECT max(revenue)) FROM dm.sales_daily AS a"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    detail = findings[0].detail
+    assert "offers no source" in detail
+    assert "cannot see into" not in detail
+
+
+@pytest.mark.parametrize(
+    "second",
+    ["dm.sales_daily AS b", '"dm"."sales_daily" AS b'],
+    ids=["as-written", "quoted"],
+)
+def test_a_self_join_offers_two_sources_though_they_are_one_table(
+    tmp_path: Path, second: str
+) -> None:
+    """Two sources declare `category`, so no engine resolves it and neither may the gate.
+
+    Counting distinct tables instead of sources made the verdict turn on how the second
+    reference was quoted — the same statement, graded two ways.
+    """
+    base = snap(tmp_path, "base")
+    sql = f"SELECT category FROM dm.sales_daily AS a JOIN {second} ON a.date = b.date"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "category" in findings[0].detail
+
+
+def test_a_self_join_names_the_table_it_is_read_from_once(tmp_path: Path) -> None:
+    """Two sources are two candidates for attribution, but one mart to go and fix."""
+    base = snap(tmp_path, "base")
+    sql = "SELECT discount FROM dm.sales_daily AS a JOIN dm.sales_daily AS b ON a.date = b.date"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "dm.sales_daily, dm.sales_daily" not in findings[0].detail
+    assert "discount (read from one of dm.sales_daily)" in findings[0].detail
+
+
+def test_two_contested_names_are_reported_in_the_plural(tmp_path: Path) -> None:
+    base = snap(tmp_path, "both", semantic=_stores_also_declaring("region", "category"))
+    sql = (
+        "SELECT region, category FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b ON a.store_id = b.id"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "category, region are declared by several" in findings[0].detail
 
 
 def test_a_star_says_the_field_check_could_not_run(tmp_path: Path) -> None:
@@ -391,7 +602,7 @@ def test_an_unchecked_field_note_never_hides_a_named_one(tmp_path: Path) -> None
     base = snap(tmp_path, "base")
     sql = (
         "SELECT a.ghost, category FROM dm.sales_daily AS a "
-        "JOIN dm.stores AS b ON a.store_id = b.id"
+        "JOIN (SELECT id FROM dm.stores) AS b ON a.store_id = b.id"
     )
     findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
     assert codes(findings) == ["asset.query_ungoverned_field", "asset.query_fields_unchecked"]

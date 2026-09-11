@@ -101,7 +101,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 #: 11 — `assets.invalidated` grades a reviewed query's governance down to the field, so the
 #: same inputs can now yield `needs_review` where verifier 10 saw a clean asset.
-VERIFIER_VERSION = "11"
+#: 12 — a bare column the statement alone cannot pin is now attributed through the governed
+#: model when exactly one source in its scope declares it. Verifier 11 left every such name
+#: unchecked, so the same inputs can now yield `needs_review` where it saw only an advisory
+#: — and, where the name is declared, a clean asset where it flagged a partial check.
+VERIFIER_VERSION = "12"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -111,7 +115,12 @@ VERIFIER_VERSION = "11"
 #: only when semantics moved the number under it, but also when its reviewed query reads a
 #: mart the model does not govern or a column it does not declare. An earlier `pass` on
 #: that check did not ask either question.
-CHECK_VERSION = "7"
+#: 8 — `assets.invalidated` asks that field question of more of the query: a bare column the
+#: SQL alone cannot attribute is now graded whenever the governed model leaves exactly one
+#: source in its scope that declares it. A `pass` under rule 7 only means no column the SQL
+#: itself could attribute was undeclared, and an advisory under it may cover a name rule 8
+#: grades outright.
+CHECK_VERSION = "8"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

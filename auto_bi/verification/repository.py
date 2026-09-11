@@ -22,7 +22,7 @@ review queue, and an expected result is never fed back into an LLM context (§7.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from enum import StrEnum
 from pathlib import Path
 
@@ -30,6 +30,7 @@ import yaml
 from pydantic import Field, model_validator
 
 from auto_bi.agent.sql_guard import (
+    AmbiguousRef,
     ColumnReads,
     SQLGuardError,
     TableRef,
@@ -239,12 +240,19 @@ class VerifiedAssetRepository:
         partly from data the model says nothing about. Both are what this product exists to
         prevent, and neither is visible to a comparison of two numbers.
 
-        **Only what SQL itself decides.** A column is attributed to a table when the
-        statement leaves no choice — qualified, or unqualified with a single source in scope
-        — and never otherwise: picking one of several tables in a join for a bare column is
-        a guess, and a gate that guesses about governance has stopped being evidence
-        (invariant 6). What could not be attributed is *said* rather than skipped
-        (`asset.query_fields_unchecked`), so a partial check never reads as a clean one.
+        **Only what something decides.** A column is attributed to a table when the
+        statement leaves no choice — qualified, or unqualified with a single source in scope.
+        Where the statement alone does not, the governed model is asked next: the engine
+        accepted this SQL, so a bare name resolved to exactly one of the sources in its
+        scope, and when the snapshot declares that name on exactly one of them, reading it
+        there describes the query rather than guesses about it. That deduction needs the
+        whole scope visible — one ungoverned mart, CTE or subquery beside it holds columns
+        the snapshot knows nothing about, and then the name is left alone. Two governed
+        sources declaring it — two sources, even where they are one table joined to itself —
+        leave the same choice the engine would have had, and picking one is a guess a gate
+        must not make (invariant 6). What could not be attributed is *said* rather than
+        skipped (`asset.query_fields_unchecked`), per reference and with the reason that
+        applies to it, so a partial check never reads as a clean one.
 
         Case is read the way the asset's engine reads it: ClickHouse distinguishes
         `Sales_Daily` from `sales_daily`, the PostgreSQL family folds an *unquoted*
@@ -351,16 +359,59 @@ def _query_findings(
         )
 
     reads = extract_column_refs(query.sql, dialect=dialect)
+
+    def declares(table: str, name: str, *, quoted: bool) -> bool:
+        declared = columns.get(table)
+        if declared is None:
+            return False
+        return declared.resolve(name, quoted=quoted, folds=folds) is not None
+
     unknown_fields: set[str] = set()
-    for ref in reads.attributed:
-        table = governed_table(ref.table)
+    for column_ref in reads.attributed:
+        table = governed_table(column_ref.table)
         # A column of an ungoverned mart is already covered by the finding above; naming it
         # again would weigh one fact twice and bury the fix that matters.
         if table is None:
             continue
-        declared = columns.get(table)
-        if declared is None or declared.resolve(ref.name, quoted=ref.quoted, folds=folds) is None:
-            unknown_fields.add(f"{table}.{ref.name}")
+        if not declares(table, column_ref.name, quoted=column_ref.quoted):
+            unknown_fields.add(f"{table}.{column_ref.name}")
+
+    # Both sets hold *references*, not names: one `category` the model settles says nothing
+    # about another `category` two words later, and keeping only the name would let the
+    # resolved one stand in for the unresolvable one — a partially graded query then reads
+    # as a clean one, which is exactly what this check exists to prevent.
+    settled: set[AmbiguousRef] = set()
+    contested: set[AmbiguousRef] = set()
+    for ambiguous_ref in reads.ambiguous:
+        scope = (
+            _governed_scope(ambiguous_ref.candidates, governed_table)
+            if ambiguous_ref.all_tables
+            else []
+        )
+        # Nothing the model can see decides this one: an ungoverned mart, a CTE or a
+        # subquery in scope holds columns the snapshot says nothing about, so it can neither
+        # rule that source in nor rule it out. Left to `_unchecked_reason`.
+        if not scope:
+            continue
+        declaring = [
+            table
+            for table in scope
+            if declares(table, ambiguous_ref.name, quoted=ambiguous_ref.quoted)
+        ]
+        if len(declaring) == 1:
+            # One governed source in scope declares it and the engine accepted the SQL, so
+            # the name resolved there. Reading that is a reading of the query, not a guess.
+            settled.add(ambiguous_ref)
+        elif declaring:
+            contested.add(ambiguous_ref)  # the statement would be ambiguous for the engine too
+        else:
+            # Read from somewhere in a scope the model sees whole, and declared nowhere in
+            # it: naming it is as solid as naming an undeclared qualified column.
+            settled.add(ambiguous_ref)
+            unknown_fields.add(
+                f"{ambiguous_ref.name} (read from one of {', '.join(sorted(set(scope)))})"
+            )
+
     if unknown_fields:
         findings.append(
             _asset_finding(
@@ -373,7 +424,7 @@ def _query_findings(
             )
         )
 
-    unchecked = _unchecked_reason(reads)
+    unchecked = _unchecked_reason(reads, settled=settled, contested=contested)
     if unchecked is not None:
         findings.append(
             _asset_finding(item, "asset.query_fields_unchecked", Severity.ADVISORY, unchecked)
@@ -381,24 +432,88 @@ def _query_findings(
     return findings
 
 
-def _unchecked_reason(reads: ColumnReads) -> str | None:
-    """Why the field-level check could not cover the whole query, if it could not."""
+def _governed_scope(
+    candidates: Iterable[TableRef], governed: Callable[[TableRef], str | None]
+) -> list[str]:
+    """The candidates as declared names — one per source — or nothing at all if any of them
+    is ungoverned.
+
+    A single ungoverned mart in scope is enough to spoil the deduction: its columns are
+    unknown to the snapshot, so "only this governed table declares the name" says nothing
+    about where the engine read it from. Repeats are kept for the same reason the caller
+    counts declaring sources rather than tables: a self-join declares the name twice, and
+    one entry there would read as a decision the statement does not make.
+    """
+    names = [governed(candidate) for candidate in candidates]
+    if not names or any(name is None for name in names):
+        return []
+    return sorted(name for name in names if name is not None)
+
+
+def _unchecked_reason(
+    reads: ColumnReads, *, settled: set[AmbiguousRef], contested: set[AmbiguousRef]
+) -> str | None:
+    """Why the field-level check could not cover the whole query, if it could not.
+
+    The remainders read very differently to whoever has to act on them, and naming the wrong
+    one sends that reader after a fix the query does not need. Several governed sources
+    declaring the name is a statement nobody can pin down; a scope holding a mart, CTE or
+    subquery the model cannot see into is a hole in what the gate was given; a qualifier no
+    enclosing scope declares is a mistake in the statement itself, with no source withheld
+    from anyone; and a scope with no source of its own withheld nothing either. A reference
+    the model *did* settle — declared on one source, or reported as declared on none — is
+    not a remainder at all and is never repeated here.
+    """
     reasons: list[str] = []
     if reads.starred:
         reasons.append(
             "it selects *, so which columns it reads depends on the physical table rather "
             "than on the SQL"
         )
-    if reads.unattributed:
+    disputed = sorted({ref.name for ref in contested})
+    if disputed:
         reasons.append(
-            f"{', '.join(sorted(reads.unattributed))} could not be attributed to one table "
-            "without guessing"
+            f"{', '.join(disputed)} {_agrees(disputed)} declared by several of the governed "
+            "sources in scope, so nothing says which source each is read from"
+        )
+    stray: set[str] = set()
+    sourceless: set[str] = set()
+    unseen: set[str] = set()
+    for ref in reads.ambiguous - settled - contested:
+        if ref.qualifier:
+            stray.add(f"{ref.qualifier}.{ref.name}")
+        elif not ref.candidates and ref.all_tables:
+            sourceless.add(ref.name)
+        else:  # candidates the model could not read, or a source that is not a table at all
+            unseen.add(ref.name)
+    if stray:
+        names = sorted(stray)
+        reasons.append(
+            f"{', '.join(names)} {_agrees(names)} qualified by a source no enclosing scope "
+            "declares, so the statement itself resolves nothing"
+        )
+    if sourceless:
+        names = sorted(sourceless)
+        reasons.append(
+            f"{', '.join(names)} {_agrees(names)} read in a scope that offers no source of "
+            "its own"
+        )
+    opaque = sorted(unseen)
+    if opaque:
+        reasons.append(
+            f"{', '.join(opaque)} could not be attributed to one table without guessing, "
+            "and the scope offers a source this snapshot cannot see into"
         )
     if not reasons:
         return None
     return "the field-level check over the reviewed reference_query is partial: " + "; ".join(
         reasons
     )
+
+
+def _agrees(names: list[str]) -> str:
+    """The verb form agreeing with a list rendered as one subject — a detail is read, not parsed."""
+    return "is" if len(names) == 1 else "are"
 
 
 def _asset_finding(
