@@ -28,7 +28,7 @@ from auto_bi.scalars import DecimalString, NonBlankText, Slug
 from auto_bi.semantic.model import Additivity
 from auto_bi.strict import StrictModel
 
-RATIO_SCALE = 6
+RATIO_SCALE: Literal[6] = 6
 _RATIO_QUANTUM = Decimal(1).scaleb(-RATIO_SCALE)
 _FIXED_DURATION_RE = re.compile(
     r"^P(?:(?P<weeks>\d+)W)?(?:(?P<days>\d+)D)?"
@@ -488,7 +488,9 @@ def _duplicate_grains(data: CanonicalMetricResult) -> int:
 def _values_by_period(
     data: CanonicalMetricResult,
 ) -> dict[InvestigationPeriod, list[Decimal]]:
-    values = {period: [] for period in InvestigationPeriod}
+    values: dict[InvestigationPeriod, list[Decimal]] = {
+        period: [] for period in InvestigationPeriod
+    }
     for row in data.rows:
         if row.value is not None:
             values[row.period].append(Decimal(row.value))

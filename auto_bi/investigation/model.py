@@ -8,6 +8,7 @@ canonical results only: ``max_queries`` is fixed at zero and causal claims are f
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal
@@ -61,7 +62,7 @@ _ALLOWED_CLAIMS = {
 }
 
 
-def _reject_duplicates(name: str, values: list[object]) -> None:
+def _reject_duplicates(name: str, values: Sequence[object]) -> None:
     duplicates = sorted({str(value) for value in values if values.count(value) > 1})
     if duplicates:
         raise ValueError(f"duplicate entries in {name}: {', '.join(duplicates)}")
@@ -92,22 +93,22 @@ class InvestigationStep(StrictModel):
 
     @model_validator(mode="after")
     def _check_skill_contract(self) -> InvestigationStep:
-        for name, values in (
+        for name, entries in (
             ("step.metrics", self.metrics),
             ("step.dimensions", self.dimensions),
             ("step.preconditions", self.preconditions),
             ("step.allowed_claim_types", self.allowed_claim_types),
         ):
-            _reject_duplicates(name, values)
+            _reject_duplicates(name, entries)
 
         if ClaimType.CAUSAL in self.allowed_claim_types:
             raise ValueError("causal claims are forbidden in the offline investigation alpha")
 
         expected_claims = _ALLOWED_CLAIMS[self.skill]
         if tuple(self.allowed_claim_types) != expected_claims:
-            values = ", ".join(claim.value for claim in expected_claims)
+            expected_values = ", ".join(claim.value for claim in expected_claims)
             raise ValueError(
-                f"allowed_claim_types for {self.skill.value} must be exactly: {values}"
+                f"allowed_claim_types for {self.skill.value} must be exactly: {expected_values}"
             )
 
         expected_evidence = _EXPECTED_EVIDENCE[self.skill]
