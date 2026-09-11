@@ -1,10 +1,11 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-07
+**Обновлено:** 2026-09-11
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
-привязкой его reviewed-запроса к governed-модели; human/design-partner gate остаётся открытым
+привязкой его reviewed-запроса к governed-модели; read-only capture reviewed-запроса
+реализован и проверен на живых PostgreSQL и ClickHouse; human/design-partner gate остаётся открытым
 
 **Версии evidence:** `VERIFIER_VERSION=12`, `CHECK_VERSION=8`
 
@@ -28,6 +29,8 @@ evidence; унаследованный путь «запрос → DashboardSpec
 ```text
 contracts -> validate -> snapshots/diff -> product impact -> result reconciliation
           -> reference SQL -> DWH checks -> pure BI compile -> evidence bundle/report
+
+reviewed asset SQL -> read-only capture -> canonical ResultSet + attestation -> gate input
 ```
 
 Offline investigation alpha работает отдельным контуром:
@@ -38,6 +41,9 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
 ```
 
 - `auto_bi decision validate` проверяет связанные YAML-контракты.
+- `auto_bi decision capture` исполняет reviewed SQL одного positive asset под SELECT-only
+  guard, сверяет типы и nullable-контракт с asset'ом и пишет новый gate-ready YAML с
+  canonical result и attestation, привязанной к digest кандидатного semantic snapshot'а.
 - `auto_bi decision verify` выполняет one-shot gate без удалённой BI-мутации; impact
   доходит до конкретного чарта доставляемого дашборда (`computes_metric` / `reads_field`),
   а нерешаемые плитки выходят именованными `chart_gaps`.
@@ -70,6 +76,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Chart-level impact | реализован 2026-09-07: evidence, грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом |
+| Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
 | Continuous platform | заблокирована до human/design-partner evidence |
 
 Четыре tracked pilot-сценария, найденные дефекты и Mac verifier 7 evidence описаны в
@@ -85,7 +92,7 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 | Ответственность | Код |
 |---|---|
 | Contracts, product/chart impact | `auto_bi/decision/`, `auto_bi/semantic/` |
-| Verification, DWH probe и pure BI compile | `auto_bi/verification/` |
+| Verification, DWH probe, result capture и pure BI compile | `auto_bi/verification/` |
 | Provenance кандидатного числа | `auto_bi/verification/provenance.py`, `repository.py` |
 | Evidence и owner report | `auto_bi/evidence/`, `auto_bi/verification/summary.py` |
 | Typed offline investigation | `auto_bi/investigation/model.py`, `data.py`, `skills.py`, `claims.py`, `application.py` |
@@ -105,12 +112,11 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   термов, потому что в IR у чарта нет ссылки на метрику.
 - `dwh.cost` не доказывает `max_scanned_bytes` и `timeout_ms`, если планировщик
   движка не отдаёт такие данные.
-- Gate сравнивает переданные результаты, но сам не выполняет **verified-asset SQL**.
-  Происхождение числа теперь проверяемо — snapshot, среда и запрос сверяются с тем, что
-  гейт держит независимо, а сам reviewed-запрос — с таблицами и полями кандидатного
-  snapshot'а, — но
-  того, что runner действительно выполнил заявленный запрос, attestation не доказывает: это
-  подпись над снятием, а trust root отложен.
+- Gate остаётся pure и сам не выполняет **verified-asset SQL**. Отдельный
+  `auto_bi decision capture` теперь исполняет его read-only драйвером, канонизирует ответ и
+  формирует attestation; snapshot, среда и запрос затем сверяются с тем, что гейт держит
+  независимо. Но того, что runner действительно выполнил заявленный запрос, attestation
+  криптографически не доказывает: это подпись над снятием, а trust root отложен.
 - Governance reviewed-запроса покрывает таблицы и колонки. Колонка приписывается
   таблице там, где выбора не оставляет сам SQL, а для голого имени — там, где его не
   оставляет governed-модель: ровно один источник scope'а объявляет это имя, и все
@@ -130,7 +136,7 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 ```bash
 uv run pytest tests/test_decision_verify.py tests/test_decision_cli.py \
   tests/test_decision_impact.py tests/test_decision_chart_impact.py \
-  tests/test_result_provenance.py -q
+  tests/test_result_provenance.py tests/test_result_capture.py tests/test_result_probe.py -q
 uv run pytest tests/test_investigation_plan.py tests/test_investigation_skills.py \
   tests/test_investigation_brief.py tests/test_investigation_cli.py -q
 uv run auto_bi decision --help
@@ -179,18 +185,10 @@ Windows-машине для документационной проверки н
 
 Не заблокировано human gate (можно брать сразу):
 
-1. **Capture-путь для verified-asset SQL** — attestation сегодня заполняет тот, кто снимал
-   число. Симметрично `environment_probe.py` напрашивается `result_probe.py`: IO-половина,
-   которая исполняет reviewed `reference_query` под SELECT-only guard и сама выдаёт
-   attestation, digest которой гейту не нужно принимать на слово. **Требует живого стенда**:
-   нормализация строк движка в canonical `ResultSet` (Decimal, NULL, date/timestamp, пустой
-   ответ) — это контракт с реальным клиентом, и запинить его по фейку значит зашить в
-   governance-гейт непроверенный IO. Брать в сессии с поднятыми ClickHouse 24.8.14.39 и
-   PostgreSQL-семейством.
-2. **`dwh.cost` для `max_scanned_bytes` / `timeout_ms`** — сегодня advisory-гэп, потому что
+1. **`dwh.cost` для `max_scanned_bytes` / `timeout_ms`** — сегодня advisory-гэп, потому что
    планировщики движков этих величин не отдают; закрывается только другим источником
    измерения, а не переформулировкой контракта.
-3. **Подпись над снятием** — единственное, что закрывает «attestation может соврать».
+2. **Подпись над снятием** — единственное, что закрывает «attestation может соврать».
    Отложено вместе с trust root (решение 3 ниже), и до неё provenance честно остаётся
    утверждением, три поля которого проверены.
 

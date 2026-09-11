@@ -735,6 +735,14 @@ Metamorphic checks объявляются явно в `tolerance.aggregate_check
 `executed_by`), и задача проверки `results.provenance` — сделать эту декларацию проверяемой,
 а не принятой на веру.
 
+Штатная IO-команда `auto_bi decision capture` создаёт эту декларацию вместе с числом. Она
+выбирает один positive asset, повторно пропускает его reviewed SQL через SELECT-only guard,
+исполняет точный текст read-only драйвером, сверяет имена, порядок, типы и nullable-границу
+ответа с ожидаемым `ResultSet`, затем пишет новый (без overwrite) recorded-results YAML.
+Значения канонизируются до строкового контракта `ResultSet`; attestation получает digest
+кандидатного semantic snapshot'а, среды и reviewed-запроса. Сам release gate остаётся pure и
+читает этот файл как обычный вход.
+
 Три из четырёх её утверждений сверяются с тем, что гейт держит независимо:
 
 | Что сверяется | С чем | Код при расхождении |
@@ -977,6 +985,8 @@ contract-тестом `tests/test_decision_cli.py::test_exit_code_contract_is_st
 
 ```text
 auto_bi decision validate <paths…> [--json]
+auto_bi decision capture <assets> --candidate <ref> --dwh <engine> --output <new-file>
+        [--asset <id>] [--environment <ref>] [--captured-at <ts>]
 auto_bi decision verify <paths…> --base <ref> --candidate <ref> --evidence <dir>
         [--dashboards <dir>] [--assets <path>] [--results <file>]
         [--product <id>] [--environment <ref>] [--created-at <ts>] [--json]
@@ -987,6 +997,10 @@ auto_bi decision investigate <plan.yaml> --results <result.yaml> [<result.yaml> 
 ```
 
 `validate` — offline cross-contract проверка (продукты ↔ metric contracts).
+`capture` — отдельная read-only IO-команда §8.4.1: исполняет reviewed SQL ровно одного
+asset'а и создаёт новый gate-ready result с attestation; существующий output не
+перезаписывается. Ошибка контракта, подключения или запроса завершается операционным кодом
+`2`, а не становится verdict гейта.
 `verify` — полный гейт §8.2 для ОДНОГО продукта: один run = один продукт, потому
 что и idempotency key, и evidence bundle называют один `product_ref`.
 `evidence` — чтение уже написанного bundle: пересчёт каждого content address,

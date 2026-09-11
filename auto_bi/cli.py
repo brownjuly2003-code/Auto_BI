@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from auto_bi.agent.machine import AgentTurn
     from auto_bi.config import Settings
-    from auto_bi.decision.use_cases import EnvironmentProbe
+    from auto_bi.decision.use_cases import EnvironmentProbe, ResultQueryFactory
     from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
@@ -155,7 +155,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     prune.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
 
-    decision = sub.add_parser("decision", help="DecisionOps contracts (offline, no DWH/BI/LLM)")
+    decision = sub.add_parser(
+        "decision", help="DecisionOps contracts, evidence, and read-only result capture"
+    )
     decision_sub = decision.add_subparsers(dest="decision_command", required=True)
     validate = decision_sub.add_parser(
         "validate", help="Validate Git-tracked decision products against their metric contracts"
@@ -163,6 +165,35 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("paths", nargs="+", help="Contract files or directories (YAML)")
     validate.add_argument(
         "--json", action="store_true", help="Emit the report as JSON and nothing else"
+    )
+
+    capture = decision_sub.add_parser(
+        "capture",
+        help="Execute one verified asset's reviewed SQL and write an attested result",
+    )
+    capture.add_argument("assets", help="Verified asset repository (file or directory)")
+    capture.add_argument(
+        "--candidate", required=True, help="Candidate semantic ref: a directory holding model.yaml"
+    )
+    capture.add_argument(
+        "--asset", default="", help="Asset id, required when the repository holds several"
+    )
+    capture.add_argument(
+        "--dwh",
+        required=True,
+        choices=["clickhouse", "greenplum", "greengage", "postgres"],
+        help="Configured read-only DWH driver used to execute the reviewed query",
+    )
+    capture.add_argument(
+        "--environment",
+        default="",
+        help="Attested environment ref (default: configured host:port/database)",
+    )
+    capture.add_argument("--output", required=True, help="New recorded-results YAML file")
+    capture.add_argument(
+        "--captured-at",
+        default="",
+        help="RFC 3339 UTC capture timestamp; defaults to the current time",
     )
 
     verify = decision_sub.add_parser(
@@ -263,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "prune":
         return _prune(args.session, args.dry_run, args.model_path)
     if args.command == "decision":
+        if args.decision_command == "capture":
+            return _decision_capture(args)
         if args.decision_command == "verify":
             return _decision_verify(args)
         if args.decision_command == "evidence":
@@ -325,6 +358,63 @@ def _decision_investigate(args: argparse.Namespace) -> int:
     print(f"plan     {artifacts.plan.digest()}")
     print(f"brief    {artifacts.brief.digest()}")
     print("trust    exploratory; human acceptance not measured")
+    return 0
+
+
+def _result_capture_target(engine: str) -> tuple["ResultQueryFactory", str, str]:
+    """Build a lazy driver factory plus the environment and actor it will use."""
+    from auto_bi.config import get_settings
+    from auto_bi.engine import GREENPLUM, sqlglot_dialect
+    from auto_bi.verification.result_probe import (
+        make_clickhouse_result_query,
+        make_postgres_result_query,
+    )
+
+    settings = get_settings()
+    if sqlglot_dialect(engine) == sqlglot_dialect(GREENPLUM):
+        return (
+            lambda: make_postgres_result_query(settings),
+            f"{settings.gp_host}:{settings.gp_port}/{settings.gp_database}",
+            settings.gp_user,
+        )
+    return (
+        lambda: make_clickhouse_result_query(settings),
+        f"{settings.ch_host}:{settings.ch_port}/{settings.ch_database}",
+        settings.ch_user,
+    )
+
+
+def _decision_capture(args: argparse.Namespace) -> int:
+    """Capture one reviewed query without making the offline release gate open a socket."""
+    from datetime import UTC, datetime
+
+    from auto_bi.decision.use_cases import CaptureRequest, VerifyError, capture_result
+    from auto_bi.verification.model import EXIT_ERROR
+
+    captured_at = args.captured_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    query_factory, configured_environment, executed_by = _result_capture_target(args.dwh)
+    try:
+        report = capture_result(
+            CaptureRequest(
+                assets=args.assets,
+                candidate=args.candidate,
+                output=args.output,
+                engine=args.dwh,
+                environment_ref=args.environment or configured_environment,
+                executed_by=executed_by,
+                captured_at=captured_at,
+                query_factory=query_factory,
+                asset_id=args.asset,
+            )
+        )
+    except VerifyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    print(f"wrote    {report.output}")
+    print(f"asset    {report.asset_id}")
+    print(f"rows     {report.row_count}")
+    print(f"snapshot {report.candidate_digest}")
     return 0
 
 

@@ -33,6 +33,7 @@ import yaml
 
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import load_contracts
+from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.evidence.manifest import MANIFEST_PATH, EvidenceConflictError
 from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
 from auto_bi.ir.spec import DashboardSpec
@@ -54,7 +55,14 @@ from auto_bi.verification.release_gate import (
     ResultSource,
     run_gate,
 )
-from auto_bi.verification.repository import VerifiedAssetRepository
+from auto_bi.verification.repository import ExpectationKind, VerifiedAsset, VerifiedAssetRepository
+from auto_bi.verification.result_probe import (
+    ResultCaptureError,
+    ResultQuery,
+)
+from auto_bi.verification.result_probe import (
+    capture as capture_live_result,
+)
 
 MODEL_FILE = "model.yaml"
 METRICS_DIR = "metrics"
@@ -73,6 +81,7 @@ class VerifyError(Exception):
 #: Asks a live engine the questions §8.2 step 7 derives from the product and its
 #: candidate snapshot. One call, typed facts back, no state in between.
 EnvironmentProbe = Callable[[EnvironmentQuestions], EnvironmentFacts]
+ResultQueryFactory = Callable[[], ResultQuery]
 
 
 @dataclass(frozen=True)
@@ -92,6 +101,31 @@ class VerifyRequest:
     #: ask and the gate says so; the callable is injected rather than built here so a caller
     #: that already holds a read-only client — or a test — needs no connection settings.
     probe: EnvironmentProbe | None = None
+
+
+@dataclass(frozen=True)
+class CaptureRequest:
+    """Filesystem and live-query inputs for one reviewed result capture."""
+
+    assets: str | Path
+    candidate: str | Path
+    output: str | Path
+    engine: str
+    environment_ref: str
+    executed_by: str
+    captured_at: str
+    query_factory: ResultQueryFactory
+    asset_id: str = ""
+
+
+@dataclass(frozen=True)
+class CaptureReport:
+    """The local artifact written by :func:`capture_result`."""
+
+    asset_id: str
+    output: Path
+    row_count: int
+    candidate_digest: str
 
 
 def verify(request: VerifyRequest) -> GateReport:
@@ -122,6 +156,55 @@ def verify(request: VerifyRequest) -> GateReport:
     except EvidenceConflictError as exc:
         # A usage error, not a verdict: the verification did not get to record itself.
         raise VerifyError(str(exc)) from None
+
+
+def capture_result(request: CaptureRequest) -> CaptureReport:
+    """Execute one selected asset and write a new gate-ready recorded-results YAML file."""
+    output = Path(request.output)
+    if output.exists():
+        raise VerifyError(f"output file already exists: {output}; refusing to overwrite it")
+
+    repository = _capture_assets(Path(request.assets))
+    asset = _select_asset(repository, request.asset_id, Path(request.assets))
+    _check_capture_contract(asset, request.engine)
+    candidate = _capture_snapshot(Path(request.candidate))
+
+    try:
+        recorded = capture_live_result(
+            asset,
+            request.query_factory(),
+            candidate_digest=candidate.canonical_digest,
+            environment_ref=request.environment_ref,
+            executed_by=request.executed_by,
+            captured_at=request.captured_at,
+        )
+    except (ResultCaptureError, ValueError) as exc:
+        raise VerifyError(f"cannot capture {asset.metadata.id}: {exc}") from None
+
+    payload = yaml.safe_dump(
+        {asset.metadata.id: recorded.model_dump(mode="json")},
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+        line_break="\n",
+    )
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(payload)
+    except FileExistsError:
+        raise VerifyError(
+            f"output file already exists: {output}; refusing to overwrite it"
+        ) from None
+    except OSError as exc:
+        raise VerifyError(f"cannot write captured result {output}: {exc}") from None
+
+    return CaptureReport(
+        asset_id=asset.metadata.id,
+        output=output,
+        row_count=len(recorded.result.rows),
+        candidate_digest=candidate.canonical_digest,
+    )
 
 
 def _probe(
@@ -157,6 +240,57 @@ def _select_product(
             "name the one to verify with --product"
         )
     return next(iter(products.values()))
+
+
+def _capture_assets(path: Path) -> VerifiedAssetRepository:
+    if not path.exists():
+        raise VerifyError(f"verified assets path not found: {path}")
+    try:
+        return VerifiedAssetRepository.load(path)
+    except (OSError, UnicodeDecodeError, yaml.YAMLError, ValueError) as exc:
+        raise VerifyError(f"{path} holds an invalid verified asset: {exc}") from None
+
+
+def _select_asset(
+    repository: VerifiedAssetRepository, asset_id: str, source: Path
+) -> VerifiedAsset:
+    if asset_id:
+        asset = repository.get(asset_id)
+        if asset is None:
+            known = ", ".join(item.metadata.id for item in repository.assets) or "none"
+            raise VerifyError(f"no verified asset {asset_id!r} under {source} ({known})")
+        return asset
+    if not repository.assets:
+        raise VerifyError(f"no verified asset under {source}")
+    if len(repository.assets) > 1:
+        known = ", ".join(item.metadata.id for item in repository.assets)
+        raise VerifyError(
+            f"{source} holds {len(repository.assets)} verified assets ({known}); "
+            "name the one to capture with --asset"
+        )
+    return repository.assets[0]
+
+
+def _check_capture_contract(asset: VerifiedAsset, engine: str) -> None:
+    if not is_known_engine(engine):
+        raise VerifyError(f"unknown capture engine {engine!r}")
+    if asset.expectation.kind is not ExpectationKind.RESULT or asset.expectation.result is None:
+        raise VerifyError(f"{asset.metadata.id} has no expected result to capture")
+    query = asset.reference_query
+    if query is None:
+        raise VerifyError(f"{asset.metadata.id} has no reviewed reference_query")
+    if sqlglot_dialect(query.engine) != sqlglot_dialect(engine):
+        raise VerifyError(
+            f"{asset.metadata.id} uses {query.engine}, but capture requested {engine}; "
+            "the reviewed query and DWH driver must be from the same engine family"
+        )
+
+
+def _capture_snapshot(path: Path) -> SemanticSnapshot:
+    try:
+        return _snapshot(path)
+    except (OSError, UnicodeDecodeError, yaml.YAMLError, ValueError) as exc:
+        raise VerifyError(f"cannot load candidate semantic ref {path}: {exc}") from None
 
 
 def _snapshot(root: Path) -> SemanticSnapshot:

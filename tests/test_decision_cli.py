@@ -1,4 +1,4 @@
-"""`auto_bi decision validate` / `verify` — CLI surface and the exit-code contract (§12.1).
+"""DecisionOps CLI surface and its exit-code contract (§12.1).
 
 Exit codes are a contract with CI, so they are pinned here rather than left to whatever the
 implementation happens to return: a gate whose "block" is indistinguishable from a crash
@@ -25,6 +25,64 @@ from tests.test_decision_verify import (
     Case,
     _formula_change,
 )
+
+
+def test_capture_cli_writes_a_result_file_consumable_by_verify(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from decimal import Decimal
+
+    from auto_bi.verification.result_probe import QueryColumn, QueryResult
+
+    case = Case(tmp_path).with_candidate().with_asset()
+    output = tmp_path / "captured-results.yaml"
+
+    def target(engine: str) -> tuple[Any, str, str]:
+        assert engine == "clickhouse"
+
+        def factory() -> Any:
+            return lambda _sql: QueryResult(
+                columns=(
+                    QueryColumn("region", "String", nullable=False),
+                    QueryColumn("gross_margin_pct", "Decimal(18, 6)", nullable=False),
+                ),
+                rows=(("Москва", Decimal("0.412000")),),
+            )
+
+        return factory, ENVIRONMENT_REF, "auto_bi_ro"
+
+    monkeypatch.setattr("auto_bi.cli._result_capture_target", target)
+
+    assert (
+        main(
+            [
+                "decision",
+                "capture",
+                str(case.assets),
+                "--candidate",
+                str(case.candidate),
+                "--asset",
+                ASSET_ID,
+                "--dwh",
+                "clickhouse",
+                "--output",
+                str(output),
+                "--captured-at",
+                CREATED_AT,
+            ]
+        )
+        == 0
+    )
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert f"asset    {ASSET_ID}" in captured.out
+    assert f"wrote    {output}" in captured.out
+    recorded = yaml.safe_load(output.read_text(encoding="utf-8"))[ASSET_ID]
+    assert recorded["attestation"]["semantic_digest"] == case.candidate_digest
+    assert recorded["attestation"]["environment_ref"] == ENVIRONMENT_REF
 
 
 def test_exit_code_contract_is_stable() -> None:
