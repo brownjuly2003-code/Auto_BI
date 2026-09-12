@@ -145,7 +145,7 @@ def inspect_bundle(
             f"run {run_id!r} has no {MANIFEST_PATH}: this is not an evidence bundle"
         ) from exc
 
-    problems = list(verify_bundle(store, run_id, verifier=verifier))
+    problems = list(verify_bundle(store, run_id, verifier=verifier, raw=raw))
     digest = digest_bytes(raw)
     if expected_digest and expected_digest != digest:
         problems.append(
@@ -157,7 +157,7 @@ def inspect_bundle(
         )
 
     unreadable = any(problem.code in _UNREADABLE for problem in problems)
-    bundle = None if unreadable else read_bundle(store, run_id)
+    bundle = None if unreadable else read_bundle(store, run_id, raw=raw)
     signature_verified = bool(
         bundle is not None
         and bundle.integrity is EvidenceIntegrity.SIGNED

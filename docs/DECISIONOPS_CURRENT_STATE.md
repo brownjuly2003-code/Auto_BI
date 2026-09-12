@@ -235,6 +235,9 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки
 подписи, classification и выбранного payload. Версии evidence не менялись.
+Также устранено [смешение manifest версий при полной inspection](DECISIONOPS_MANIFEST_SNAPSHOT_REVIEW_2026-09-12.md):
+digest, pin, подпись и возвращённый bundle используют одни прочитанные manifest bytes.
+Это snapshot manifest в памяти, не атомарный snapshot всего каталога.
 Правила закреплены в [AGENTS.md](../AGENTS.md) и
 [ADR 0006](adr/0006-modelled-review-development-gate.md).
 Зависимость от локального proxy отменена владельцем в `AGENTS.md`; модельные агенты

@@ -31,6 +31,7 @@ from auto_bi.evidence.inspect import (
     inspect_bundle,
     read_artifact,
 )
+from auto_bi.evidence.manifest import verify_bundle
 from auto_bi.evidence.model import EvidenceClassification
 from auto_bi.evidence.store import FilesystemArtifactStore
 from auto_bi.severity import Severity
@@ -42,6 +43,21 @@ SECRET = "customer-4471 paid 918213.55"
 
 def store_of(root: Path) -> FilesystemArtifactStore:
     return FilesystemArtifactStore(root)
+
+
+class SwapOnManifestReadStore(FilesystemArtifactStore):
+    def __init__(self, root: Path, replacement: bytes) -> None:
+        super().__init__(root)
+        self.replacement = replacement
+        self.manifest_reads = 0
+
+    def get(self, run_id: str, path: str) -> bytes:
+        payload = super().get(run_id, path)
+        if path == "manifest.json":
+            self.manifest_reads += 1
+            if self.manifest_reads == 1:
+                self.put(run_id, path, self.replacement)
+        return payload
 
 
 def with_restricted(root: Path) -> str:
@@ -82,6 +98,33 @@ def test_the_reported_digest_is_the_manifest_on_disk(tmp_path: Path) -> None:
     inspection = inspect_bundle(store_of(tmp_path), RUN)
 
     assert inspection.manifest_digest == written.digest == digest_bytes(raw)
+
+
+def test_inspection_uses_one_manifest_snapshot_for_digest_and_bundle(tmp_path: Path) -> None:
+    written = full_bundle(tmp_path).write()
+    replacement = written.bundle.model_copy(
+        update={"product_ref": "decision://sales/other@1"}
+    ).canonical_bytes()
+    store = SwapOnManifestReadStore(tmp_path, replacement)
+
+    inspection = inspect_bundle(store, RUN, expected_digest=written.digest)
+
+    assert inspection.manifest_digest == written.digest
+    assert inspection.bundle is not None
+    assert inspection.bundle.product_ref == written.bundle.product_ref
+    assert inspection.problems == []
+    assert store.manifest_reads == 1
+
+
+def test_verify_bundle_uses_the_manifest_bytes_it_already_read(tmp_path: Path) -> None:
+    written = full_bundle(tmp_path).write()
+    replacement = written.bundle.model_copy(
+        update={"product_ref": "decision://sales/other@1"}
+    ).canonical_bytes()
+    store = SwapOnManifestReadStore(tmp_path, replacement)
+
+    assert verify_bundle(store, RUN) == []
+    assert store.manifest_reads == 1
 
 
 def test_an_expected_digest_that_does_not_match_blocks(tmp_path: Path) -> None:

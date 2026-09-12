@@ -254,9 +254,10 @@ class BundleWriter:
         return artifact_id
 
 
-def read_bundle(store: ArtifactStore, run_id: str) -> EvidenceBundle:
+def read_bundle(store: ArtifactStore, run_id: str, *, raw: bytes | None = None) -> EvidenceBundle:
     """Load and validate the manifest of *run_id*."""
-    raw = store.get(run_id, MANIFEST_PATH)
+    if raw is None:
+        raw = store.get(run_id, MANIFEST_PATH)
     return EvidenceBundle.model_validate(json.loads(raw.decode("utf-8")))
 
 
@@ -265,22 +266,24 @@ def verify_bundle(
     run_id: str,
     *,
     verifier: EvidenceVerifier | None = None,
+    raw: bytes | None = None,
 ) -> list[BundleProblem]:
     """Re-check a written bundle: manifest, presence, and every content address."""
     problems: list[BundleProblem] = []
-    try:
-        raw = store.get(run_id, MANIFEST_PATH)
-    except ArtifactStoreError:
-        return [
-            BundleProblem(
-                code="evidence.manifest_missing",
-                severity=Severity.BLOCK,
-                detail=f"run {run_id!r} has no {MANIFEST_PATH}",
-            )
-        ]
+    if raw is None:
+        try:
+            raw = store.get(run_id, MANIFEST_PATH)
+        except ArtifactStoreError:
+            return [
+                BundleProblem(
+                    code="evidence.manifest_missing",
+                    severity=Severity.BLOCK,
+                    detail=f"run {run_id!r} has no {MANIFEST_PATH}",
+                )
+            ]
 
     try:
-        bundle = read_bundle(store, run_id)
+        bundle = read_bundle(store, run_id, raw=raw)
     except Exception as exc:  # json or schema failure — both mean "not a bundle"
         return [
             BundleProblem(

@@ -83,6 +83,9 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-12 — полная evidence inspection использует один manifest snapshot для
+  digest, подписи и возвращённой модели; замена файла между проверками больше не
+  смешивает версии. Формат evidence и writer не изменены.
 - 2026-09-12 — исправлен обход `--expect-digest` в `decision evidence --artifact`:
   неверный manifest pin блокирует выдачу payload с exit `4`; проверки подписи и
   classification сохранены. Срез реализован Luna xhigh и одобрен Astra xhigh.

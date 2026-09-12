@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from auto_bi.cli import main
 from auto_bi.evidence.canonical import canonical_bytes, digest_bytes
+from auto_bi.evidence.inspect import inspect_bundle
 from auto_bi.evidence.manifest import BundleWriter, verify_bundle
 from auto_bi.evidence.model import EvidenceIntegrity
 from auto_bi.evidence.signing import load_ed25519_signer, load_ed25519_trust_store
@@ -61,6 +62,23 @@ def _signed_bundle(root: Path, private_path: Path) -> tuple[Path, object]:
     return root / RUN / "manifest.json", writer.write()
 
 
+class SwapAfterFirstArtifactStore(FilesystemArtifactStore):
+    def __init__(self, root: Path, replacement: bytes) -> None:
+        super().__init__(root)
+        self.replacement = replacement
+        self.manifest_reads = 0
+        self.artifact_reads = 0
+
+    def get(self, run_id: str, path: str) -> bytes:
+        payload = super().get(run_id, path)
+        if path == "manifest.json":
+            self.manifest_reads += 1
+        elif self.artifact_reads == 0:
+            self.artifact_reads += 1
+            self.put(run_id, "manifest.json", self.replacement)
+        return payload
+
+
 def test_signed_bundle_passes_only_with_its_public_trust_root(tmp_path: Path) -> None:
     private_path, public_path, public_raw = _key_files(tmp_path, "trusted")
     _, rotation_public_path, _ = _key_files(tmp_path, "rotation")
@@ -77,6 +95,26 @@ def test_signed_bundle_passes_only_with_its_public_trust_root(tmp_path: Path) ->
         "evidence.signature_untrusted"
     ]
     assert private_path.read_bytes() not in manifest_path.read_bytes()
+
+
+def test_inspection_keeps_signed_manifest_snapshot_after_signature_check(
+    tmp_path: Path,
+) -> None:
+    private_path, public_path, _ = _key_files(tmp_path, "trusted")
+    manifest_path, written = _signed_bundle(tmp_path / "evidence", private_path)
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["product_ref"] = "decision://sales/other_product@1"
+    store = SwapAfterFirstArtifactStore(tmp_path / "evidence", canonical_bytes(payload))
+    trust = load_ed25519_trust_store([public_path])
+
+    inspection = inspect_bundle(store, RUN, expected_digest=written.digest, verifier=trust)
+
+    assert inspection.manifest_digest == written.digest
+    assert inspection.bundle is not None
+    assert inspection.bundle.product_ref == written.bundle.product_ref
+    assert inspection.signature_verified is True
+    assert inspection.problems == []
+    assert store.manifest_reads == 1
 
 
 def test_signing_identity_is_part_of_the_gate_run_identity(tmp_path: Path) -> None:
