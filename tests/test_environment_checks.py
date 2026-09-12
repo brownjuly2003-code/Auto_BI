@@ -23,8 +23,10 @@ from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot
 from auto_bi.semantic.model import SemanticModel, Table
 from auto_bi.severity import Severity
 from auto_bi.verification.environment import (
+    CostBound,
     EnvironmentFacts,
     EnvironmentQuestions,
+    ExecutionFacts,
     LayoutFacts,
     PlanFacts,
     RoleFacts,
@@ -70,6 +72,7 @@ def facts(
     read_only: bool = True,
     evidence: str = "readonly=1",
     plans: list[PlanFacts] | None = None,
+    executions: list[ExecutionFacts] | None = None,
 ) -> EnvironmentFacts:
     return EnvironmentFacts(
         engine="clickhouse",
@@ -77,6 +80,7 @@ def facts(
         role=RoleFacts(name="gate_ro", read_only=read_only, evidence=evidence),
         tables=list(tables),
         plans=plans or [],
+        executions=executions or [],
     )
 
 
@@ -759,6 +763,24 @@ def plan(scanned_rows: int | None, evidence: str = "EXPLAIN ESTIMATE: 600 row(s)
     return PlanFacts(metric_ref=METRIC_REF, scanned_rows=scanned_rows, evidence=evidence)
 
 
+def execution(
+    *,
+    scanned_bytes: int | None = None,
+    elapsed_ms: int | None = None,
+    checked_bounds: list[CostBound] | None = None,
+    exceeded_bound: CostBound | None = None,
+    evidence: str = "exact reference SELECT completed under engine-enforced limits",
+) -> ExecutionFacts:
+    return ExecutionFacts(
+        metric_ref=METRIC_REF,
+        scanned_bytes=scanned_bytes,
+        elapsed_ms=elapsed_ms,
+        checked_bounds=checked_bounds or [],
+        exceeded_bound=exceeded_bound,
+        evidence=evidence,
+    )
+
+
 def test_only_a_metric_that_declares_a_ceiling_gets_its_plan_priced(tmp_path: Path) -> None:
     """An estimate with nothing to compare it to is a query run on somebody's warehouse
     for a number no rule reads."""
@@ -821,16 +843,55 @@ def test_a_ceiling_the_probe_never_answered_for_is_not_a_pass_either(tmp_path: P
     assert "the probe did not answer for it" in findings[0].detail
 
 
-def test_bounds_no_planner_answers_are_named_as_the_gates_own_gap(tmp_path: Path) -> None:
-    """Bytes and a timeout are not derived from granules or planner units: that boundary is
-    this gate's, not the owner's, so it is advisory the way step 6's boundary is."""
+def test_runtime_bounds_inside_their_ceilings_say_nothing(tmp_path: Path) -> None:
+    questions = budgeted(tmp_path, max_scanned_bytes=1_000_000, timeout_ms=30_000)
+    measured = execution(
+        scanned_bytes=600_000,
+        elapsed_ms=120,
+        checked_bounds=[CostBound.SCANNED_BYTES, CostBound.TIMEOUT],
+    )
+
+    assert check_cost(questions, facts(fact(), executions=[measured])) == []
+
+
+def test_runtime_bounds_over_their_ceilings_need_review(tmp_path: Path) -> None:
+    questions = budgeted(tmp_path, max_scanned_bytes=500_000, timeout_ms=100)
+    measured = execution(
+        scanned_bytes=600_000,
+        elapsed_ms=120,
+        checked_bounds=[CostBound.SCANNED_BYTES, CostBound.TIMEOUT],
+    )
+    findings = check_cost(questions, facts(fact(), executions=[measured]))
+
+    assert [item.code for item in findings] == ["cost.over_budget"] * 2
+    assert all(item.severity is Severity.REVIEW for item in findings)
+    assert "600000 scanned bytes, over the 500000" in findings[0].detail
+    assert "120 ms, over the 100" in findings[1].detail
+
+
+def test_an_engine_enforced_timeout_is_over_budget_without_a_fake_elapsed_time(
+    tmp_path: Path,
+) -> None:
+    questions = budgeted(tmp_path, timeout_ms=30_000)
+    timed_out = execution(
+        checked_bounds=[CostBound.TIMEOUT],
+        exceeded_bound=CostBound.TIMEOUT,
+        evidence="TIMEOUT_EXCEEDED at max_execution_time=30s",
+    )
+    findings = check_cost(questions, facts(fact(), executions=[timed_out]))
+
+    assert [item.code for item in findings] == ["cost.over_budget"]
+    assert findings[0].severity is Severity.REVIEW
+    assert "TIMEOUT_EXCEEDED" in findings[0].detail
+
+
+def test_runtime_bounds_the_probe_did_not_measure_are_not_a_pass(tmp_path: Path) -> None:
     questions = budgeted(tmp_path, max_scanned_bytes=1_000_000, timeout_ms=30_000)
     findings = check_cost(questions, facts(fact()))
 
-    assert [item.code for item in findings] == ["cost.bound_not_estimable"] * 2
-    assert all(item.severity is Severity.ADVISORY for item in findings)
-    assert "no plan estimate on either engine reports bytes" in findings[0].detail
-    assert "a PostgreSQL cost is in planner units" in findings[1].detail
+    assert [item.code for item in findings] == ["cost.not_measured"] * 2
+    assert all(item.severity is Severity.REVIEW for item in findings)
+    assert all("the probe did not answer for it" in item.detail for item in findings)
 
 
 def test_a_ceiling_with_no_reference_query_says_so_without_grading_it_twice(
@@ -839,7 +900,11 @@ def test_a_ceiling_with_no_reference_query_says_so_without_grading_it_twice(
     """Step 6 already named the metric it would not compile; repeating that as review would
     give one boundary two weights in the verdict."""
     contract = metric_contract()
-    contract["budgets"] = {"max_scanned_rows": 500}
+    contract["budgets"] = {
+        "max_scanned_rows": 500,
+        "max_scanned_bytes": 1_000_000,
+        "timeout_ms": 30_000,
+    }
     contract["formula"] = {
         "kind": "external_ref",
         "external": {

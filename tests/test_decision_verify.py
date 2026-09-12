@@ -33,8 +33,10 @@ from auto_bi.semantic.model import (
     Table,
 )
 from auto_bi.verification.environment import (
+    CostBound,
     EnvironmentFacts,
     EnvironmentQuestions,
+    ExecutionFacts,
     PlanFacts,
     RoleFacts,
     RowPolicyFacts,
@@ -422,6 +424,7 @@ def environment(
     row_policies: list[RowPolicyFacts] | None = None,
     row_security_enabled: bool | None = None,
     plans: list[PlanFacts] | None = None,
+    executions: list[ExecutionFacts] | None = None,
 ) -> EnvironmentFacts:
     """One probe's answer, as `environment_probe` would have built it from the stand."""
     return EnvironmentFacts(
@@ -445,6 +448,7 @@ def environment(
             )
         ],
         plans=plans or [],
+        executions=executions or [],
     )
 
 
@@ -1157,6 +1161,22 @@ def estimate(scanned_rows: int | None, evidence: str = "EXPLAIN ESTIMATE: 600 ro
     return PlanFacts(metric_ref=BUDGET_REF, scanned_rows=scanned_rows, evidence=evidence)
 
 
+def executed(
+    *,
+    scanned_bytes: int | None = None,
+    elapsed_ms: int | None = None,
+    checked_bounds: list[CostBound] | None = None,
+    evidence: str = "exact reference SELECT completed under engine-enforced limits",
+) -> ExecutionFacts:
+    return ExecutionFacts(
+        metric_ref=BUDGET_REF,
+        scanned_bytes=scanned_bytes,
+        elapsed_ms=elapsed_ms,
+        checked_bounds=checked_bounds or [],
+        evidence=evidence,
+    )
+
+
 def test_a_product_that_declares_no_ceiling_says_so_instead_of_passing(tmp_path: Path) -> None:
     """Nothing was compared, and a green verdict must not read as if something had been."""
     report = Case(tmp_path).run(probe=probing(environment()))
@@ -1216,16 +1236,51 @@ def test_the_bundle_carries_the_estimate_the_verdict_stood_on(tmp_path: Path) ->
     assert [item["code"] for item in payload["findings"]] == ["cost.over_budget"]
 
 
-def test_a_ceiling_no_planner_can_answer_is_named_without_blocking(tmp_path: Path) -> None:
-    """Bytes and a timeout are this gate's boundary, not the owner's, so they read the way
-    step 6's boundary does — advisory, and said out loud."""
+def test_a_runtime_timeout_inside_the_ceiling_passes(tmp_path: Path) -> None:
+    case = Case(tmp_path).with_candidate(contract=budgeted_contract(timeout_ms=30_000))
+    runtime = executed(
+        elapsed_ms=120,
+        checked_bounds=[CostBound.TIMEOUT],
+        evidence="exact ClickHouse SELECT completed, elapsed_ms=120",
+    )
+
+    report = case.run(probe=probing(environment(executions=[runtime])))
+
+    assert status_of(report, "dwh.cost") is CheckStatus.PASS
+    assert summary_of(report, "dwh.cost") == "cost.within_budget"
+
+
+def test_a_runtime_ceiling_the_probe_did_not_measure_needs_review(tmp_path: Path) -> None:
     case = Case(tmp_path).with_candidate(contract=budgeted_contract(timeout_ms=30_000))
 
     report = case.run(probe=probing(environment()))
 
-    assert status_of(report, "dwh.cost") is CheckStatus.ADVISORY
-    assert summary_of(report, "dwh.cost") == "cost.bound_not_estimable"
-    assert report.verdict is Verdict.PASS_WITH_ADVISORY
+    assert status_of(report, "dwh.cost") is CheckStatus.REVIEW
+    assert summary_of(report, "dwh.cost") == "cost.not_measured"
+    assert report.verdict is Verdict.NEEDS_REVIEW
+
+
+def test_the_bundle_carries_the_runtime_cost_fact_the_verdict_stood_on(tmp_path: Path) -> None:
+    case = Case(tmp_path).with_candidate(contract=budgeted_contract(timeout_ms=30_000))
+    runtime = executed(
+        elapsed_ms=120,
+        checked_bounds=[CostBound.TIMEOUT],
+        evidence="exact ClickHouse SELECT completed, elapsed_ms=120",
+    )
+
+    report = case.run(probe=probing(environment(executions=[runtime])))
+    payload = _check_payload(tmp_path, report, "dwh.cost")
+
+    assert payload["facts"]["executions"] == [
+        {
+            "metric_ref": BUDGET_REF,
+            "scanned_bytes": None,
+            "elapsed_ms": 120,
+            "checked_bounds": ["timeout_ms"],
+            "exceeded_bound": None,
+            "evidence": "exact ClickHouse SELECT completed, elapsed_ms=120",
+        }
+    ]
 
 
 # --- a change that reaches another product, not this one ----------------------

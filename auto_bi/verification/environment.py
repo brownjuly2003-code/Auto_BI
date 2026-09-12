@@ -31,9 +31,9 @@ rendered. A date-only event time is read as that day's start in UTC: the conserv
 of the day it stands for, and the detail says so, because the metric's declared timezone can
 move a day boundary by up to fourteen hours.
 
-The *cost* half prices the plan of each governed query against the ceiling its own metric
-declares, and the two engines answer it in different currencies — **both readings verified on
-the stands, and both of them able to lie by staying silent**:
+The *cost* half keeps plan and runtime evidence separate. Scanned rows are priced from the
+plan of each governed query, and the two engines answer that question differently — **both
+readings verified on the stands, and both of them able to lie by staying silent**:
 
 * ClickHouse `EXPLAIN ESTIMATE` reports parts, rows and marks and **no bytes at all**. It is
   a pre-scan reading, not a selectivity one: adding `WHERE store_id = 1` left the estimate at
@@ -49,6 +49,15 @@ the stands, and both of them able to lie by staying silent**:
   is not what was read; and a mart emptied by row security produces no scan node at all —
   the planner answered `One-Time Filter: "false"` with `Plan Rows: 0`, which as a budget
   reading would be a clean pass over a mart that returns nothing.
+
+Bytes and time are never derived from those plans. The IO side runs the exact step-6 SELECT
+only when its mart is readable through a read-only role and row security has not emptied it.
+ClickHouse discards output with `FORMAT Null`, enforces `max_bytes_to_read` and
+`max_execution_time`, and records `read_bytes`/`elapsed_ns` when the driver exposes its
+summary; successful completion under the enforced caps still proves nonzero declared bounds.
+PostgreSQL streams and discards rows inside a read-only transaction with
+`statement_timeout`. PostgreSQL exposes no honest exact-query scanned-byte counter, so that
+one bound remains explicitly unmeasured.
 
 The *physical* half asks a different question: does the engine hold what the candidate
 model says it holds? A column the metric reads and the mart does not have is a release that
@@ -75,15 +84,16 @@ Grading, and why:
   drifted from the model → **review**; a drifted layout → **review**. Only what the model
   actually claims is compared, and only where the engine reports it: a mart whose engine
   does not expose a distribution policy is not evidence that the declared one is wrong;
-* a plan that reads more rows than the metric's budget allows → **review**, and a budget the
-  engine gave no estimate for → **review** as well, because a check that could not run is
-  not a pass. A bound no planner answers (bytes, a timeout) → **advisory**: that boundary is
-  the gate's own, and the owner cannot spell their way out of it.
+* a plan or exact runtime query over its metric's budget → **review**. Missing plan or
+  runtime evidence → **review** as well, because a check that could not run is not a pass.
+  One metric with no compiled reference query produces one **advisory** finding: step 6 has
+  already named that boundary, so repeating it per declared ceiling would weigh it twice.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import NamedTuple
 
 from pydantic import Field
@@ -256,6 +266,29 @@ class PlanFacts(StrictModel):
     evidence: NonBlankText
 
 
+class CostBound(StrEnum):
+    """Runtime cost ceilings an engine can enforce while running the exact SELECT."""
+
+    SCANNED_BYTES = "max_scanned_bytes"
+    TIMEOUT = "timeout_ms"
+
+
+class ExecutionFacts(StrictModel):
+    """What running one exact step-6 reference query established about its cost.
+
+    A limit exception often carries no trustworthy final counter. `checked_bounds` therefore
+    records the ceilings the engine enforced, while `exceeded_bound` records the one that
+    stopped the query. Optional counters remain evidence, never invented substitutes.
+    """
+
+    metric_ref: NonBlankText
+    scanned_bytes: int | None = Field(default=None, ge=0)
+    elapsed_ms: int | None = Field(default=None, ge=0)
+    checked_bounds: list[CostBound] = Field(default_factory=list)
+    exceeded_bound: CostBound | None = None
+    evidence: NonBlankText
+
+
 class EnvironmentFacts(StrictModel):
     """One read-only look at one environment — the evidence step 7 grades."""
 
@@ -265,12 +298,16 @@ class EnvironmentFacts(StrictModel):
     role: RoleFacts
     tables: list[TableFacts] = Field(default_factory=list)
     plans: list[PlanFacts] = Field(default_factory=list)
+    executions: list[ExecutionFacts] = Field(default_factory=list)
 
     def table(self, name: str) -> TableFacts | None:
         return next((item for item in self.tables if item.table == name), None)
 
     def plan(self, metric_ref: str) -> PlanFacts | None:
         return next((item for item in self.plans if item.metric_ref == metric_ref), None)
+
+    def execution(self, metric_ref: str) -> ExecutionFacts | None:
+        return next((item for item in self.executions if item.metric_ref == metric_ref), None)
 
 
 class EnvironmentFinding(StrictModel):
@@ -890,33 +927,16 @@ def _classification_findings(
     ]
 
 
-#: Bounds a metric may declare, and what a plan estimate can say about each. Only scanned
-#: rows is a question either planner answers: `EXPLAIN ESTIMATE` reports parts, rows and
-#: marks and no bytes at all, and a PostgreSQL plan carries costs in the planner's own units,
-#: which are not milliseconds. The other two are named as unmeasured rather than derived —
-#: granules times a column width, or a cost translated into time, would be the gate's
-#: arithmetic presented as the engine's answer.
-_UNMEASURED_BOUNDS = (
-    ("max_scanned_bytes", "scanned bytes", "no plan estimate on either engine reports bytes"),
-    (
-        "timeout_ms",
-        "a timeout",
-        "a plan carries no time: ClickHouse estimates parts, rows and marks, and a "
-        "PostgreSQL cost is in planner units",
-    ),
-)
-
-
 def check_cost(
     questions: EnvironmentQuestions, facts: EnvironmentFacts
 ) -> list[EnvironmentFinding]:
-    """Does the plan of each governed query stay inside the ceiling its metric declares?
+    """Does each governed query stay inside the ceilings its metric declares?
 
     Graded as **review** throughout, and never as block: a plan over budget still computes
     the right number, and whether to ship a metric that costs more than its owner declared
-    is that owner's call — the same grading a stale source already gets. The bounds no
-    planner answers are **advisory**, because that gap is this gate's, not the owner's:
-    §8.2 step 6 grades its own boundary the same way.
+    is that owner's call — the same grading a stale source already gets. Scanned rows stay a
+    planner fact. Bytes and time are facts from executing the exact step-6 SELECT under
+    engine-enforced limits; a missing runtime measurement is review, never a clean pass.
     """
     findings: list[EnvironmentFinding] = []
 
@@ -926,22 +946,30 @@ def check_cost(
             continue  # `check_access` already blocked on the mart; the plan is downstream
         if denies_all_rows(table, facts.role):
             continue  # `check_security` blocked on it, and the plan would price an empty read
+        if not question.sql:
+            findings.append(_reference_query_unavailable(question))
+            continue
         findings.extend(_bound_findings(question, facts))
-        for attr, label, why in _UNMEASURED_BOUNDS:
-            if getattr(question.budgets, attr) is not None:
-                findings.append(
-                    EnvironmentFinding(
-                        code="cost.bound_not_estimable",
-                        severity=Severity.ADVISORY,
-                        subject=question.metric_ref,
-                        detail=(
-                            f"{question.metric_ref} declares {label} "
-                            f"({getattr(question.budgets, attr)}), and it was not checked: {why}"
-                        ),
-                    )
-                )
+        findings.extend(_runtime_bound_findings(question, facts))
 
     return findings
+
+
+def _reference_query_unavailable(question: PlanQuestion) -> EnvironmentFinding:
+    declared = ", ".join(
+        f"{name}={value}"
+        for name, value in question.budgets.model_dump().items()
+        if value is not None
+    )
+    return EnvironmentFinding(
+        code="cost.plan_unavailable",
+        severity=Severity.ADVISORY,
+        subject=question.metric_ref,
+        detail=(
+            f"{question.metric_ref} declares {declared}, but step 6 compiled no reference "
+            "query for it, so neither its plan nor its exact SELECT can be checked"
+        ),
+    )
 
 
 def _bound_findings(question: PlanQuestion, facts: EnvironmentFacts) -> list[EnvironmentFinding]:
@@ -949,18 +977,6 @@ def _bound_findings(question: PlanQuestion, facts: EnvironmentFacts) -> list[Env
     limit = question.budgets.max_scanned_rows
     if limit is None:
         return []
-    if not question.sql:
-        return [
-            EnvironmentFinding(
-                code="cost.plan_unavailable",
-                severity=Severity.ADVISORY,
-                subject=question.metric_ref,
-                detail=(
-                    f"{question.metric_ref} declares a ceiling of {limit} scanned rows and "
-                    "step 6 compiled no reference query for it, so there is no plan to price"
-                ),
-            )
-        ]
     plan = facts.plan(question.metric_ref)
     if plan is None or plan.scanned_rows is None:
         reason = "the probe did not answer for it" if plan is None else plan.evidence
@@ -990,6 +1006,76 @@ def _bound_findings(question: PlanQuestion, facts: EnvironmentFacts) -> list[Env
             )
         ]
     return []
+
+
+def _runtime_bound_findings(
+    question: PlanQuestion, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """Grade byte and time ceilings only from the exact query's runtime evidence."""
+    execution = facts.execution(question.metric_ref)
+    bounds = (
+        (
+            CostBound.SCANNED_BYTES,
+            question.budgets.max_scanned_bytes,
+            "scanned bytes",
+            None if execution is None else execution.scanned_bytes,
+        ),
+        (
+            CostBound.TIMEOUT,
+            question.budgets.timeout_ms,
+            "ms",
+            None if execution is None else execution.elapsed_ms,
+        ),
+    )
+    findings: list[EnvironmentFinding] = []
+    for bound, limit, label, measured in bounds:
+        if limit is None:
+            continue
+        if execution is not None and execution.exceeded_bound is bound:
+            findings.append(
+                EnvironmentFinding(
+                    code="cost.over_budget",
+                    severity=Severity.REVIEW,
+                    subject=question.metric_ref,
+                    detail=(
+                        f"{facts.target} stopped the exact reference query for "
+                        f"{question.metric_ref} at its {limit} {label} ceiling "
+                        f"({execution.evidence})"
+                    ),
+                )
+            )
+            continue
+        if measured is not None and measured > limit:
+            action = "read" if bound is CostBound.SCANNED_BYTES else "ran for"
+            findings.append(
+                EnvironmentFinding(
+                    code="cost.over_budget",
+                    severity=Severity.REVIEW,
+                    subject=question.metric_ref,
+                    detail=(
+                        f"the exact query for {question.metric_ref} on {facts.target} {action} "
+                        f"{measured} {label}, over the {limit} its contract declares "
+                        f"({execution.evidence if execution is not None else ''})"
+                    ),
+                )
+            )
+            continue
+        if measured is not None or (execution is not None and bound in execution.checked_bounds):
+            continue
+        reason = "the probe did not answer for it" if execution is None else execution.evidence
+        findings.append(
+            EnvironmentFinding(
+                code="cost.not_measured",
+                severity=Severity.REVIEW,
+                subject=question.metric_ref,
+                detail=(
+                    f"{question.metric_ref} declares a ceiling of {limit} {label}, and "
+                    f"{facts.target} gave no runtime measurement to compare it to ({reason}) — "
+                    "the check did not run rather than passing"
+                ),
+            )
+        )
+    return findings
 
 
 def _policy_names(policies: list[RowPolicyFacts]) -> str:

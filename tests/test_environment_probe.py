@@ -23,7 +23,9 @@ import pytest
 
 from auto_bi.semantic.metric_contract import MetricBudget
 from auto_bi.verification.environment import (
+    CostBound,
     EnvironmentQuestions,
+    ExecutionFacts,
     PlanQuestion,
     TableQuestion,
 )
@@ -703,6 +705,59 @@ def test_clickhouse_prices_a_plan_from_explain_estimate() -> None:
     assert "600 row(s) in 2 part(s), 2 mark(s)" in facts.plans[0].evidence
 
 
+def test_runtime_cost_probe_gets_the_exact_reference_query_and_returns_typed_facts() -> None:
+    engine = clickhouse_engine(**{"EXPLAIN ESTIMATE": []})
+    measured: list[str] = []
+
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        measured.append(question.sql)
+        return ExecutionFacts(
+            metric_ref=question.metric_ref,
+            scanned_bytes=48_000,
+            elapsed_ms=17,
+            checked_bounds=[CostBound.SCANNED_BYTES, CostBound.TIMEOUT],
+            evidence="exact SELECT completed",
+        )
+
+    facts = collect(
+        engine,
+        priced(max_scanned_bytes=50_000, timeout_ms=100),
+        engine="clickhouse",
+        target="stand",
+        run_cost=run_cost,
+    )
+
+    assert measured == [PLAN_SQL]
+    assert facts.executions == [
+        ExecutionFacts(
+            metric_ref="metric://sales/gross_margin_pct@3",
+            scanned_bytes=48_000,
+            elapsed_ms=17,
+            checked_bounds=[CostBound.SCANNED_BYTES, CostBound.TIMEOUT],
+            evidence="exact SELECT completed",
+        )
+    ]
+
+
+def test_runtime_cost_probe_is_not_called_for_a_plan_only_budget() -> None:
+    measured: list[str] = []
+
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        measured.append(question.sql)
+        raise AssertionError("a row estimate does not authorize executing the query")
+
+    facts = collect(
+        clickhouse_engine(),
+        priced(max_scanned_rows=1000),
+        engine="clickhouse",
+        target="stand",
+        run_cost=run_cost,
+    )
+
+    assert measured == []
+    assert facts.executions == []
+
+
 def test_an_empty_clickhouse_estimate_is_not_a_reading_of_zero() -> None:
     """The stand answered this for a `count()` served from metadata *and* for a mart on
     `Memory` whose rows the query really did read; calling it zero would pass any budget."""
@@ -817,22 +872,91 @@ def test_a_postgres_driver_that_hands_back_raw_text_is_read_anyway() -> None:
 
 def test_a_plan_compiled_for_another_engine_is_not_asked_of_this_one() -> None:
     engine = clickhouse_engine()
+    measured: list[str] = []
 
-    facts = collect(engine, priced(dialect="postgres"), engine="clickhouse", target="stand")
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        measured.append(question.sql)
+        raise AssertionError("SQL compiled for another engine must not execute")
+
+    facts = collect(
+        engine,
+        priced(dialect="postgres", max_scanned_bytes=50_000),
+        engine="clickhouse",
+        target="stand",
+        run_cost=run_cost,
+    )
 
     assert facts.plans[0].scanned_rows is None
     assert "compiled for postgres" in facts.plans[0].evidence
     assert not any("EXPLAIN" in sql for sql in engine.asked)
+    assert measured == []
 
 
 def test_a_metric_with_no_reference_query_is_never_asked_about() -> None:
     """Step 6 compiled nothing for it, so there is no plan — and no query to run."""
     engine = clickhouse_engine()
+    measured: list[str] = []
 
-    facts = collect(engine, priced(sql=""), engine="clickhouse", target="stand")
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        measured.append(question.sql)
+        raise AssertionError("missing SQL must not execute")
+
+    facts = collect(
+        engine,
+        priced(sql="", max_scanned_bytes=50_000),
+        engine="clickhouse",
+        target="stand",
+        run_cost=run_cost,
+    )
 
     assert facts.plans == []
+    assert facts.executions == []
     assert not any("EXPLAIN" in sql for sql in engine.asked)
+    assert measured == []
+
+
+def test_runtime_query_is_not_run_through_a_writable_role_or_unreadable_mart() -> None:
+    measured: list[str] = []
+
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        measured.append(question.sql)
+        raise AssertionError("unsafe environment must stop before exact execution")
+
+    engines = (
+        clickhouse_engine(**{"system.settings": [{"value": "0"}]}),
+        clickhouse_engine(**{"count()": []}),
+    )
+    for engine in engines:
+        facts = collect(
+            engine,
+            priced(max_scanned_bytes=50_000),
+            engine="clickhouse",
+            target="stand",
+            run_cost=run_cost,
+        )
+        assert facts.executions == []
+
+    assert measured == []
+
+
+def test_runtime_query_is_not_run_when_row_security_empties_the_mart() -> None:
+    measured: list[str] = []
+
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        measured.append(question.sql)
+        raise AssertionError("an empty secured reading must not be priced as the full mart")
+
+    engine = postgres_engine(**{"relrowsecurity": [{"enabled": True}], "pg_policy": []})
+    facts = collect(
+        engine,
+        priced(dialect="postgres", max_scanned_bytes=50_000),
+        engine="greengage",
+        target="stand",
+        run_cost=run_cost,
+    )
+
+    assert facts.executions == []
+    assert measured == []
 
 
 def test_pricing_a_plan_never_writes_and_never_executes() -> None:

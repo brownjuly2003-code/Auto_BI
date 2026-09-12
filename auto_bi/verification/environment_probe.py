@@ -1,9 +1,10 @@
 """Collecting §8.2 step 7's facts from a running engine — the IO half of `environment.py`.
 
-Everything here goes through `RunQuery`, the read-only callable introspection, the SQL guard
-and the advisor already share: one seam, one place a real client is built, and a fake in
-tests instead of a socket. Nothing in this module decides anything — it asks, normalises and
-hands typed facts back for the pure rules to grade.
+Catalog and plan questions go through `RunQuery`, the read-only callable introspection, the
+SQL guard and the advisor already share. Exact-query cost facts arrive through the separate
+bounded callable in `runtime_probe.py`, because an arbitrarily large result must never be
+materialised into `RunQuery`'s list. Nothing in this module decides anything — it asks,
+normalises and hands typed facts back for the pure rules to grade.
 
 **The gate never probes by writing.** Whether the session could write is read out of the
 engine's own answer, because an INSERT "just to see" is a write to somebody's warehouse, and
@@ -66,15 +67,16 @@ documentation:
   and that case is deliberately not modelled: owning a mart carries `INSERT` on it, so
   `access.role_writable` has already blocked the run before row security matters.
 
-**Cost is asked as a plan, never as a run.** `EXPLAIN ESTIMATE` on ClickHouse and `EXPLAIN`
-without `ANALYZE` on the Postgres family both answer without executing anything, which is the
-only way a read-only gate may ask what a query would cost. Each engine has a way of answering
-that *looks* like zero and is not, and both were reproduced on the stands: ClickHouse returns
-an empty estimate whenever the plan reads no MergeTree part — a `count()` served from
-metadata, or a mart on `Memory` whose rows the query did read — and PostgreSQL reports rows
-on a filtered scan *after* the filter (600 became 30 for `WHERE store_id = 1`) and no scan
-node at all for a mart row security has emptied. None of those becomes a number; each becomes
-a sentence saying why there is none.
+**Scanned rows are asked as a plan, never inferred from a run.** `EXPLAIN ESTIMATE` on
+ClickHouse and `EXPLAIN` without `ANALYZE` on the Postgres family answer without executing
+anything. Each engine has a way of answering that *looks* like zero and is not, and both were
+reproduced on the stands: ClickHouse returns an empty estimate whenever the plan reads no
+MergeTree part — a `count()` served from metadata, or a mart on `Memory` whose rows the query
+did read — and PostgreSQL reports rows on a filtered scan *after* the filter (600 became 30
+for `WHERE store_id = 1`) and no scan node at all for a mart row security has emptied. None
+of those becomes a number; each becomes a sentence saying why there is none. Byte/time
+ceilings use the optional `run_cost` port only after role, readability, row-security and
+dialect checks; its exact SELECT mechanics and safety cap live in `runtime_probe.py`.
 
 **A refusal is an answer.** Asking about access is exactly where a read-only role runs out of
 privilege, and an exception there would turn a fact about the environment into a crashed run.
@@ -87,7 +89,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import date, datetime
 from typing import Any, NamedTuple
 
@@ -96,6 +98,7 @@ from auto_bi.introspect.base import RunQuery
 from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
+    ExecutionFacts,
     LayoutFacts,
     PlanFacts,
     PlanQuestion,
@@ -103,6 +106,7 @@ from auto_bi.verification.environment import (
     RowPolicyFacts,
     TableFacts,
     TableQuestion,
+    denies_all_rows,
 )
 
 #: Privileges that make a session capable of changing a mart. `TRUNCATE` is Postgres-only;
@@ -145,7 +149,12 @@ class _ChSession(NamedTuple):
 
 
 def collect(
-    run_query: RunQuery, questions: EnvironmentQuestions, *, engine: str, target: str
+    run_query: RunQuery,
+    questions: EnvironmentQuestions,
+    *,
+    engine: str,
+    target: str,
+    run_cost: Callable[[PlanQuestion], ExecutionFacts] | None = None,
 ) -> EnvironmentFacts:
     """Ask one engine everything step 7 needs to know about one environment."""
     dialect = sqlglot_dialect(engine)
@@ -162,7 +171,39 @@ def collect(
         for item in questions.plans
         if item.sql
     ]
-    return EnvironmentFacts(engine=engine, target=target, role=role, tables=tables, plans=plans)
+    executions = (
+        [run_cost(item) for item in questions.plans if _may_execute(item, dialect, role, tables)]
+        if run_cost is not None
+        else []
+    )
+    return EnvironmentFacts(
+        engine=engine,
+        target=target,
+        role=role,
+        tables=tables,
+        plans=plans,
+        executions=executions,
+    )
+
+
+def _may_execute(
+    question: PlanQuestion, dialect: str, role: RoleFacts, tables: list[TableFacts]
+) -> bool:
+    """Whether an exact runtime probe is both useful and safe for this question."""
+    runtime_bound = (
+        question.budgets.max_scanned_bytes is not None or question.budgets.timeout_ms is not None
+    )
+    table = next((item for item in tables if item.table == question.table), None)
+    return bool(
+        runtime_bound
+        and question.sql
+        and (not question.dialect or question.dialect == dialect)
+        and role.read_only
+        and table is not None
+        and table.exists
+        and table.readable
+        and not denies_all_rows(table, role)
+    )
 
 
 # --- plan estimates -----------------------------------------------------------

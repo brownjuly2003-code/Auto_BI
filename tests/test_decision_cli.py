@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -208,6 +209,63 @@ def _verify_argv(case: Case, *extra: str) -> list[str]:
     if case.results is not None:
         argv += ["--results", str(case.results)]
     return [*argv, *extra]
+
+
+def test_environment_probe_wires_the_runtime_cost_driver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from auto_bi import cli, config
+    from auto_bi.introspect import clickhouse
+    from auto_bi.verification import environment_probe, runtime_probe
+    from auto_bi.verification.environment import (
+        EnvironmentFacts,
+        EnvironmentQuestions,
+        RoleFacts,
+    )
+
+    settings = SimpleNamespace(
+        ch_host="warehouse",
+        ch_port=8123,
+        ch_database="dm",
+        ch_user="gate_ro",
+        ch_password="secret",
+    )
+
+    def catalog_query(_sql: str) -> list[object]:
+        return []
+
+    def cost_query(_question: object) -> None:
+        return None
+
+    monkeypatch.setattr(config, "get_settings", lambda: settings)
+    monkeypatch.setattr(clickhouse, "make_run_query", lambda configured: catalog_query)
+    monkeypatch.setattr(
+        runtime_probe, "make_clickhouse_runtime_probe", lambda configured: cost_query
+    )
+
+    def collect(
+        run_query: Any,
+        questions: EnvironmentQuestions,
+        *,
+        engine: str,
+        target: str,
+        run_cost: Any,
+    ) -> EnvironmentFacts:
+        assert run_query is catalog_query
+        assert run_cost is cost_query
+        assert engine == "clickhouse"
+        assert target == "warehouse:8123/dm"
+        return EnvironmentFacts(
+            engine=engine,
+            target=target,
+            role=RoleFacts(name="gate_ro", read_only=True, evidence="readonly=1"),
+        )
+
+    monkeypatch.setattr(environment_probe, "collect", collect)
+    probe = cli._environment_probe("clickhouse")
+
+    assert probe is not None
+    assert probe(EnvironmentQuestions()) is not None
 
 
 def test_verify_exits_zero_on_a_reconciled_run(

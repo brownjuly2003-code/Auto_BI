@@ -64,6 +64,7 @@ from auto_bi.verification.bi_contract import (
     SupersetContractCompiler,
 )
 from auto_bi.verification.environment import (
+    CostBound,
     EnvironmentFacts,
     EnvironmentFinding,
     EnvironmentQuestions,
@@ -105,7 +106,9 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: model when exactly one source in its scope declares it. Verifier 11 left every such name
 #: unchecked, so the same inputs can now yield `needs_review` where it saw only an advisory
 #: — and, where the name is declared, a clean asset where it flagged a partial check.
-VERIFIER_VERSION = "12"
+#: 13 — `dwh.cost` now stores typed exact-query execution facts next to plan facts. The same
+#: inputs therefore produce a different evidence artifact even when every bound passes.
+VERIFIER_VERSION = "13"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -120,7 +123,9 @@ VERIFIER_VERSION = "12"
 #: source in its scope that declares it. A `pass` under rule 7 only means no column the SQL
 #: itself could attribute was undeclared, and an advisory under it may cover a name rule 8
 #: grades outright.
-CHECK_VERSION = "8"
+#: 9 — byte/time cost ceilings use exact-query runtime facts. Missing evidence is now review,
+#: while successful engine-enforced completion can pass a bound rule 8 called unmeasurable.
+CHECK_VERSION = "9"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1050,24 +1055,43 @@ def _cost_summary(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> s
 
 
 def _priced(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
-    """Whether any plan was actually estimated against a declared ceiling.
+    """Whether any plan or exact runtime query was checked against a declared ceiling.
 
     A product whose metrics declare no budget, and one whose every estimate came back
-    silent, must not read the same as one the engine priced — the first has nothing to
-    check, and the second is the sentence this report must never contain.
+    silent, must not read the same as one the engine priced — the first has nothing to check,
+    and the second is the sentence this report must never contain.
     """
-    return any(
-        (plan := facts.plan(question.metric_ref)) is not None and plan.scanned_rows is not None
-        for question in questions.plans
-        if question.budgets.max_scanned_rows is not None
-    )
+    for question in questions.plans:
+        plan = facts.plan(question.metric_ref)
+        if (
+            question.budgets.max_scanned_rows is not None
+            and plan is not None
+            and plan.scanned_rows is not None
+        ):
+            return True
+        execution = facts.execution(question.metric_ref)
+        if execution is None:
+            continue
+        if question.budgets.max_scanned_bytes is not None and (
+            execution.scanned_bytes is not None
+            or CostBound.SCANNED_BYTES in execution.checked_bounds
+            or execution.exceeded_bound is CostBound.SCANNED_BYTES
+        ):
+            return True
+        if question.budgets.timeout_ms is not None and (
+            execution.elapsed_ms is not None
+            or CostBound.TIMEOUT in execution.checked_bounds
+            or execution.exceeded_bound is CostBound.TIMEOUT
+        ):
+            return True
+    return False
 
 
 def _cost_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
     if not questions.plans:
-        return "no in-scope metric declares a cost ceiling, so no plan was priced"
+        return "no in-scope metric declares a cost ceiling, so no query was priced"
     if not _priced(questions, facts):
-        return f"no plan could be priced on {facts.target}, so no ceiling was compared"
+        return f"no cost bound could be checked on {facts.target}, so no ceiling was compared"
     return f"every governed query stays inside the ceiling its metric declares on {facts.target}"
 
 

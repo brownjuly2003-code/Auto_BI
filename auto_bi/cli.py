@@ -433,21 +433,27 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
     from auto_bi.engine import GREENPLUM, sqlglot_dialect
     from auto_bi.verification.environment import EnvironmentFacts, EnvironmentQuestions
     from auto_bi.verification.environment_probe import collect
+    from auto_bi.verification.runtime_probe import (
+        make_clickhouse_runtime_probe,
+        make_postgres_runtime_probe,
+    )
 
     settings = get_settings()
     if sqlglot_dialect(engine) == sqlglot_dialect(GREENPLUM):
         from auto_bi.introspect.greenplum import make_run_query_pg
 
         run_query = make_run_query_pg(settings)
+        run_cost = make_postgres_runtime_probe(settings)
         target = f"{settings.gp_host}:{settings.gp_port}/{settings.gp_database}"
     else:
         from auto_bi.introspect.clickhouse import make_run_query
 
         run_query = make_run_query(settings)
+        run_cost = make_clickhouse_runtime_probe(settings)
         target = f"{settings.ch_host}:{settings.ch_port}/{settings.ch_database}"
 
     def probe(questions: EnvironmentQuestions) -> EnvironmentFacts:
-        return collect(run_query, questions, engine=engine, target=target)
+        return collect(run_query, questions, engine=engine, target=target, run_cost=run_cost)
 
     return probe
 

@@ -444,7 +444,7 @@ terminal bundle с тем же ключом.
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=12`, `CHECK_VERSION=8`.
+`VERIFIER_VERSION=13`, `CHECK_VERSION=9`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -559,11 +559,13 @@ Gate выполняет шаги в фиксированном порядке:
   Все находки шага advisory: почему метрика поехала, уже оценили diff и impact, и
   вторая оценка дала бы одному изменению два веса в вердикте. Агрегат берётся из
   `agent/sqlgen.aggregate_expr` — той же функции, что и chart-путь.
-- Шаг 7 реализован целиком и разделён надвое: чистый слой
+- Шаг 7 реализован целиком и разделён на чистый слой
   `verification/environment.py` (какие вопросы задать движку, как выглядит ответ и что он
-  значит) и IO `verification/environment_probe.py` поверх того же read-only `RunQuery`, что
-  и интроспекция с advisor. Гейт оценивает факты, а не держит соединение, и те же факты
-  ложатся в bundle. `dwh.access`: роль умеет только читать (иначе **block** — инвариант 3) и
+  значит), catalog/plan IO `verification/environment_probe.py` поверх того же read-only
+  `RunQuery`, что и интроспекция с advisor, и bounded exact-query IO
+  `verification/runtime_probe.py` для runtime cost. Гейт оценивает факты, а не держит
+  соединение, и те же факты ложатся в bundle. `dwh.access`: роль умеет только читать (иначе
+  **block** — инвариант 3) и
   каждая витрина скоупа есть и читается (иначе block). `dwh.freshness`: возраст самой свежей
   строки против `freshness_max_age` продукта, измеренный от `created_at` прогона, — протухший
   источник **review**. `dwh.physical`: держит ли движок то, что заявляет кандидатная модель —
@@ -591,23 +593,35 @@ Gate выполняет шаги в фиксированном порядке:
   `relrowsecurity` требует хотя бы одну permissive-политику. Отдельно:
   `has_table_privilege(…, 'SELECT')` у роли с колоночными грантами равен **false**, хотя роль
   витрину читает, — поэтому читаемость спрашивается через `has_any_column_privilege`, иначе
-  гейт блокировал бы релиз по витрине, которую сам только что прочитал. `dwh.cost`: план
-  reference-запроса (шаг 6) против `budgets` метрики — план дороже объявленного потолка
-  **review** (число верное, выпускать ли — решение владельца), объявленный потолок без
-  оценки — тоже **review** (проверка не прошла, а не прошла успешно). Спрашивается **планом,
-  никогда прогоном**: `EXPLAIN ESTIMATE` и `EXPLAIN` без `ANALYZE`. Оба движка умеют
+  гейт блокировал бы релиз по витрине, которую сам только что прочитал. `dwh.cost` разделяет
+  plan и runtime evidence exact reference-запроса шага 6. `max_scanned_rows` спрашивается
+  **только планом**: `EXPLAIN ESTIMATE` и `EXPLAIN` без `ANALYZE`. План дороже объявленного
+  потолка — **review** (число верное, выпускать ли — решение владельца), объявленный потолок
+  без оценки — тоже **review** (проверка не прошла, а не прошла успешно). Оба движка умеют
   ответить молчанием, которое читается как ноль, и оба случая воспроизведены на стендах:
   ClickHouse отдаёт **пустую** оценку, когда план не читает ни одного парта — тривиальный
   `count()` из метаданных или витрина на `Memory`, чьи строки запрос всё-таки читает;
   PostgreSQL считает строки скан-узла **после** фильтра (`WHERE store_id = 1` — 600 → 30) и
   вообще не строит скан-узел для витрины, опустошённой row security (`One-Time Filter:
   "false"`). Читается скан-узел, а не корень плана: на стенде корневой Aggregate сказал
-  `Plan Rows: 60` над `Seq Scan`, сказавшим 600. `max_scanned_bytes` и `timeout_ms` не
-  отвечает ни один планировщик (в `EXPLAIN ESTIMATE` байтов нет вовсе, а PG-стоимость —
-  условные единицы, не миллисекунды), поэтому они называются **advisory**-гэпом: это граница
-  гейта, а не двусмысленность владельца, и её не закрыть переформулировкой контракта.
-  Метрика с потолком, но без скомпилированного reference-запроса — тоже advisory, потому что
-  шаг 6 уже назвал этот гэп, и вторая оценка дала бы одной границе два веса. Прогон без
+  `Plan Rows: 60` над `Seq Scan`, сказавшим 600. `max_scanned_bytes` и `timeout_ms` из планов
+  не выводятся. Для них IO-слой запускает exact SELECT только после проверки dialect,
+  read-only роли, читаемости витрины и того, что row security её не опустошил. ClickHouse
+  добавляет `FORMAT Null`, чтобы не материализовать ответ, применяет `max_bytes_to_read` и
+  `max_execution_time` с overflow=`throw`, а после успеха сохраняет доступные поля driver
+  summary (`read_bytes`, `elapsed_ns`, `query_id`). Если public command API драйвера summary
+  не вернул, завершение под точными engine limits всё равно доказывает ненулевые границы;
+  нулевая граница без соответствующего counter остаётся неизмеренной. PostgreSQL выполняет
+  SELECT в read-only транзакции, применяет transaction-local `statement_timeout` и
+  отбрасывает строки через потоковый cursor; честного exact-query `scanned_bytes` PostgreSQL
+  не отдаёт, поэтому этот потолок там
+  остаётся `cost.not_measured` (**review**), без пересчёта planner cost или buffer blocks в
+  придуманные байты. Независимый safety timeout 60 секунд не считается нарушением более
+  длинного contract timeout. Превышение и отсутствие runtime evidence — **review**; успешное
+  engine-enforced выполнение подтверждает границу. Метрика с потолком, но без
+  скомпилированного reference-запроса даёт ровно один advisory `cost.plan_unavailable`,
+  потому что шаг 6 уже назвал этот гэп, и находка на каждый потолок дала бы одной границе
+  несколько весов. Typed `executions` сохраняются в evidence рядом с `plans`. Прогон без
   `--dwh` выносит все пять проверок как `check.not_configured` — ответ, а не пропуск: чистый
   bundle не должен читаться как полная верификация.
 - «Reject blocking semantic gaps» останавливает последовательность ТОЛЬКО на
@@ -1120,7 +1134,7 @@ domain state machine.
 | Superset/DataLens compile contracts используют общий canonical query | ✅ `tests/test_bi_contract.py` — сравнение **объектов** builder'ов, не результатов |
 | отсутствие evidence ref ломает bundle validation | ✅ `tests/test_evidence_bundle.py` |
 | gate не вызывает remote mutation methods | ✅ socket-запрет + mutation-spy на каждом глаголе обоих BI-клиентов |
-| expensive candidate plan блокируется policy | ✅ `dwh.cost` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`); прогнано вживую на обоих стендах — план на 600 строк против объявленного потолка 500 → `cost.over_budget` (review), против 1000 → `cost.within_budget`. Не «блокируется»: число остаётся верным, а выпускать ли метрику дороже объявленного — решение владельца. `max_scanned_bytes` и `timeout_ms` планировщики не отвечают, поэтому названы advisory-гэпом, а не выведены арифметикой |
+| governed query дороже policy получает review | ✅ `dwh.cost` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`, `tests/test_runtime_probe.py`): `max_scanned_rows` берётся только из плана; ClickHouse exact SELECT проверяет bytes+timeout с `FORMAT Null`, PostgreSQL потоково проверяет timeout; превышение и missing runtime evidence → review, успешная engine-enforced проверка → `cost.within_budget`. PostgreSQL scanned bytes остаются явно неизмеренными. Не «block»: число остаётся верным, а выпускать ли метрику дороже объявления — решение владельца |
 | row/column restriction проверяется negative-тестом, а не декларацией | ✅ `dwh.security` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`); прогнано вживую на ClickHouse 24.8.14.39 и PostgreSQL 14.24 — withheld column → block, применённая политика → review, RLS без permissive → block |
 | stale source возвращает honest insufficient/block | ✅ stale **verified asset** → `asset.stale_snapshot` (review), недоступный результат → `insufficient`, freshness самого источника → `dwh.freshness` (review) при `--dwh` (`tests/test_environment_checks.py`) |
 | поданное число нельзя выдать за проверенное | ✅ `results.provenance` (`tests/test_result_provenance.py` + gate-прогоны в `tests/test_decision_verify.py`) — число без attestation, из чужого snapshot'а, с чужой среды или из не-reviewed запроса названо, но не заблокировано. Того, что runner действительно выполнил заявленный запрос, проверка не доказывает: это подпись, а trust root отложен |

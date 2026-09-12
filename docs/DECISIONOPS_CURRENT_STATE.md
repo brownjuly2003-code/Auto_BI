@@ -1,20 +1,20 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-11
+**Обновлено:** 2026-09-12
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
 привязкой его reviewed-запроса к governed-модели; read-only capture reviewed-запроса
 реализован и проверен на живых PostgreSQL и ClickHouse; human/design-partner gate остаётся открытым
 
-**Версии evidence:** `VERIFIER_VERSION=12`, `CHECK_VERSION=8`
+**Версии evidence:** `VERIFIER_VERSION=13`, `CHECK_VERSION=9`
 
 Сохранённые pilot-bundles в `docs/pilot/` выпущены verifier 7 и такими остаются: они
 исторические артефакты, а не выход сегодняшнего гейта. `auto_bi decision evidence` по ним
 проходит (проверено 2026-09-07, exit `0`) — перепроверка адресует то, что запечатано, и не
 требует текущей версии. Новый прогон на тех же входах даст другой `run_id` и bundle
-verifier 12: chart-разрешение, проверка provenance и governance-привязка reviewed-запроса
-изменили evidence artifact. У pilot-числа attestation'а нет, поэтому сегодняшний прогон на
+verifier 13: chart-разрешение, проверка provenance, governance-привязка reviewed-запроса и
+runtime cost facts изменили evidence artifact. У pilot-числа attestation'а нет, поэтому сегодняшний прогон на
 тех же входах вынес бы по нему `provenance.unattested` (review) — это и есть содержание
 изменения, а не регресс стенда.
 
@@ -110,8 +110,10 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 - Chart-разрешение не заменяет lineage: плитка на операторском `raw_sql` остаётся
   `chart.opaque_sql`, а связь «чарт считает метрику» — вывод по точному совпадению
   термов, потому что в IR у чарта нет ссылки на метрику.
-- `dwh.cost` не доказывает `max_scanned_bytes` и `timeout_ms`, если планировщик
-  движка не отдаёт такие данные.
+- `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
+  под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
+  `timeout_ms`. PostgreSQL не отдаёт честный exact-query `scanned_bytes`, поэтому этот один
+  потолок остаётся явным `cost.not_measured` (**review**), а не planner-аппроксимацией.
 - Gate остаётся pure и сам не выполняет **verified-asset SQL**. Отдельный
   `auto_bi decision capture` теперь исполняет его read-only драйвером, канонизирует ответ и
   формирует attestation; snapshot, среда и запрос затем сверяются с тем, что гейт держит
@@ -185,9 +187,9 @@ Windows-машине для документационной проверки н
 
 Не заблокировано human gate (можно брать сразу):
 
-1. **`dwh.cost` для `max_scanned_bytes` / `timeout_ms`** — сегодня advisory-гэп, потому что
-   планировщики движков этих величин не отдают; закрывается только другим источником
-   измерения, а не переформулировкой контракта.
+1. **PostgreSQL `dwh.cost.max_scanned_bytes`** — runtime timeout уже проверяется; для байтов
+   нужен доказуемый exact-query источник. Planner cost и приблизительная сумма buffer blocks
+   намеренно не выдаются за сканированные байты.
 2. **Подпись над снятием** — единственное, что закрывает «attestation может соврать».
    Отложено вместе с trust root (решение 3 ниже), и до неё provenance честно остаётся
    утверждением, три поля которого проверены.
