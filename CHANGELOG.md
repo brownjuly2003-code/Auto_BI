@@ -6,6 +6,18 @@
 
 ### Added
 
+- **`dwh.cost` проверяет runtime-границы exact reference-запроса**
+  (`VERIFIER_VERSION` 12 → 13, `CHECK_VERSION` 8 → 9). После безопасных plan/access/
+  security-проверок ClickHouse выполняет запрос через command API с `FORMAT Null` под
+  engine-enforced `max_bytes_to_read` и `max_execution_time`, а PostgreSQL — read-only
+  транзакцией с потоковым cursor под transaction-local `statement_timeout`. Ответ не
+  материализуется; превышение или отсутствие runtime evidence требует review, успешное
+  выполнение подтверждает границу. PostgreSQL не предоставляет честный exact-query
+  `scanned_bytes`, поэтому его `max_scanned_bytes` остаётся явным `cost.not_measured`, а
+  нулевой лимит без соответствующего counter не выдаётся за доказанный. Для ClickHouse
+  используется `command()`, чтобы драйвер не добавлял второй `FORMAT Native` к уже
+  заданному `FORMAT Null`.
+
 - **Голая колонка reviewed-запроса приписывается через governed-модель**
   (`VERIFIER_VERSION` 11 → 12, `CHECK_VERSION` 7 → 8). Голое `category` в join'е двух
   таблиц уходило в `asset.query_fields_unchecked` даже тогда, когда snapshot объявлял это

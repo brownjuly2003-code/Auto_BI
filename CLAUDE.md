@@ -73,6 +73,9 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-12 — `dwh.cost`: runtime-границы exact reference-запроса проверяются под
+  engine limits — ClickHouse для bytes и timeout, PostgreSQL для timeout; недоступные в
+  PostgreSQL scanned bytes остаются явно неизмеренными.
 - 2026-09-11 — `decision capture`: capture-путь реализован; live-контракты проверены на PostgreSQL-семействе и ClickHouse 24.8.14.39, включая UTC RFC 3339 и metadata пустого результата.
 
 ## Definition of done (фаза/задача)
