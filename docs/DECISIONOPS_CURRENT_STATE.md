@@ -10,11 +10,13 @@ opt-in Ed25519 authentication; human/design-partner gate остаётся отк
 
 **Версии evidence:** `VERIFIER_VERSION=14`, `CHECK_VERSION=9`
 
-Сохранённые pilot-bundles в `docs/pilot/` выпущены verifier 7 и такими остаются: они
+Сохранённые tracked pilot-bundles в `docs/pilot/` выпущены verifier 2 и такими остаются: они
 исторические артефакты, а не выход сегодняшнего гейта. `auto_bi decision evidence` по ним
-проходит (проверено 2026-09-07, exit `0`) — перепроверка адресует то, что запечатано, и не
-требует текущей версии. Новый прогон на тех же входах даст другой `run_id` и bundle
-verifier 14: chart-разрешение, проверка provenance, governance-привязка reviewed-запроса,
+проходит (все четыре проверены 2026-09-12, exit `0`) — перепроверка адресует то,
+что запечатано, и не требует текущей версии. Mac verifier 7 runs из proxy-review 2026-09-04
+в Git не сохранены и не входят в tracked evidence base. Новый прогон на тех же входах даст
+другой `run_id` и bundle verifier 14: chart-разрешение, проверка provenance и
+governance-привязка reviewed-запроса;
 runtime cost facts и signing identity изменили evidence artifact. У pilot-числа
 attestation'а нет, поэтому сегодняшний прогон на тех же входах вынес бы по нему
 `provenance.unattested` (review) — это и есть содержание изменения, а не регресс стенда.
@@ -74,7 +76,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 |---|---|
 | Tasks 1–7 | завершены |
 | Task 8: технический pilot | завершён на ClickHouse 24.8.14.39 |
-| Task 8: proxy-owner review | v7: scope и actionability проходят |
+| Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
 | Chart-level impact | реализован 2026-09-07: evidence, грейдинг не меняет |
@@ -84,11 +86,13 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; offline tests пройдены, operational key не создавался |
 | Continuous platform | заблокирована до human/design-partner evidence |
 
-Четыре tracked pilot-сценария, найденные дефекты и Mac verifier 7 evidence описаны в
-[pilot rehearsal](DECISIONOPS_PILOT_2026-08-25.md) и `docs/pilot/`; оба Mac bundles
-сохранили ожидаемые verdict и integrity `pass`.
-[Симуляция owner-gate](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md) проверила
-scope/actionability только как proxy. Task 8 human outcome остаётся открытым,
+Четыре tracked pilot-сценария и найденные дефекты описаны в
+[pilot rehearsal](DECISIONOPS_PILOT_2026-08-25.md) и `docs/pilot/`; сохранённые там bundles
+выпущены verifier 2 и сохраняют ожидаемые verdict и integrity `pass`. Отдельные Mac verifier 7 runs
+описаны в [симуляции owner-gate 2026-09-04](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md),
+но их bundles в Git нет. [Новая proxy-симуляция](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md)
+подтвердила scope/actionability свежих verifier 14 отчётов, но тоже остаётся
+proxy. Task 8 human outcome остаётся открытым,
 а [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) не разблокирует
 scheduler, PostgreSQL, REST/MCP, notifications или actions.
 
@@ -171,7 +175,8 @@ uv run auto_bi decision investigate tests/fixtures/investigation/weekly_margin.y
 
 Ожидаемый исход — `block`: timezone change доходит до governed-продукта. У pilot-asset'а
 нет ни attestation'а, ни `reference_query`, поэтому там же видно `provenance.unattested`
-(review) и молчание governance-проверки запроса — так и должно быть, это входы от verifier 7.
+(review) и молчание governance-проверки запроса — так и должно быть для сохранённых
+pilot-входов без этих полей; сам tracked historical bundle выпущен verifier 2.
 
 Шаблон для собственных контрактов — тот же вызов со своими путями:
 
