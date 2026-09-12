@@ -75,6 +75,9 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-12 — R3 live owner package остановлен по S7: после успешного `SELECT 1`
+  два exact 13-недельных read-only запроса и scoped `system.processes`/admin-cancel не
+  получили ответа в пределах 10–55 секунд; причина не установлена, модель не менять.
 - 2026-09-12 — решение 3 пересмотрено: canonical evidence manifest поддерживает opt-in
   Ed25519 signature; trust root — pinned public SPKI PEM, signing identity входит в
   `run_id`. Реальный private key и инфраструктура на Windows не создавались; ADR 0005.
