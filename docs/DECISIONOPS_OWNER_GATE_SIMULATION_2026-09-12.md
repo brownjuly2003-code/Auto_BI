@@ -64,6 +64,17 @@ Severity: P1 — искажает основу решения; P2 — мешае
 | R3 | P2 | Нет единого показанного owner-пакета с reviewed SQL → capture → governance → runtime cost → authenticated evidence. Наличие отдельных контрактов не доказывает, что owner правильно свяжет эти гарантии. Подготовить такой пример в разрешённом контуре и наблюдать его прочтение человеком. |
 | R4 | P3 | `computes_metric`, `provenance`, `trust root` и `cost.not_measured` требуют понимания границ. Проверить у владельца, что совпавшее число или signed bundle не принимаются за доказательство исполнения SQL/production sign-off. |
 
+## Follow-up 2026-09-12
+
+- R1 закрыт исправлением current state: четыре исторических tracked bundle обозначены как
+  verifier 2, а отсутствующие в Git Mac v7 runs больше не представлены как tracked evidence.
+- R2 закрыт как пробел демонстрации отдельным
+  [tracked chart-impact overlay](pilot/2026-09-12-owner-review-chart-impact/README.md).
+  Свежий verifier 14 report называет ровно один chart `computes_metric` и один unresolved
+  `chart.opaque_sql`; bundle содержит 18 artifacts и проходит integrity inspection.
+- R3 и R4 остаются открытыми и требуют разрешённого live-контура и наблюдения за реальным
+  владельцем. Overlay не меняет human/design-partner gate.
+
 ## Команды и машинное время
 
 Однократный замер PowerShell `Stopwatch` вокруг `uv run`, включая запуск CLI и его IO,

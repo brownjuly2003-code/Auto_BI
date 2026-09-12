@@ -10,16 +10,16 @@ opt-in Ed25519 authentication; human/design-partner gate остаётся отк
 
 **Версии evidence:** `VERIFIER_VERSION=14`, `CHECK_VERSION=9`
 
-Сохранённые tracked pilot-bundles в `docs/pilot/` выпущены verifier 2 и такими остаются: они
-исторические артефакты, а не выход сегодняшнего гейта. `auto_bi decision evidence` по ним
-проходит (все четыре проверены 2026-09-12, exit `0`) — перепроверка адресует то,
-что запечатано, и не требует текущей версии. Mac verifier 7 runs из proxy-review 2026-09-04
-в Git не сохранены и не входят в tracked evidence base. Новый прогон на тех же входах даст
-другой `run_id` и bundle verifier 14: chart-разрешение, проверка provenance и
-governance-привязка reviewed-запроса;
-runtime cost facts и signing identity изменили evidence artifact. У pilot-числа
-attestation'а нет, поэтому сегодняшний прогон на тех же входах вынес бы по нему
-`provenance.unattested` (review) — это и есть содержание изменения, а не регресс стенда.
+Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
+и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
+exit `0`), потому что перепроверка адресует запечатанный bundle и не требует текущей версии.
+Mac verifier 7 runs из proxy-review 2026-09-04 в Git не сохранены. Отдельный
+[chart-impact overlay](pilot/2026-09-12-owner-review-chart-impact/README.md) выпущен verifier
+14 и tracked вместе с evidence. Текущий гейт добавляет chart resolution, provenance,
+governance reviewed-запроса, runtime cost facts и signing identity. У исторического
+pilot-числа нет attestation, поэтому свежий прогон показывает `provenance.unattested`
+(review). Dashboard-only overlay с теми же semantic snapshots и продуктом сохраняет
+`run_id`; конкретный bundle различается evidence digest и каталогом.
 
 ## Коротко
 
@@ -76,10 +76,10 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 |---|---|
 | Tasks 1–7 | завершены |
 | Task 8: технический pilot | завершён на ClickHouse 24.8.14.39 |
-| Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability |
+| Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 follow-up закрыт tracked chart overlay |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07: evidence, грейдинг не меняет |
+| Chart-level impact | реализован 2026-09-07; tracked verifier 14 overlay показывает `computes_metric` и `chart.opaque_sql`, грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
@@ -91,8 +91,10 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 выпущены verifier 2 и сохраняют ожидаемые verdict и integrity `pass`. Отдельные Mac verifier 7 runs
 описаны в [симуляции owner-gate 2026-09-04](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md),
 но их bundles в Git нет. [Новая proxy-симуляция](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md)
-подтвердила scope/actionability свежих verifier 14 отчётов, но тоже остаётся
-proxy. Task 8 human outcome остаётся открытым,
+подтвердила scope/actionability свежих verifier 14 отчётов. Её пробел R2 закрыт отдельным
+[tracked chart-impact overlay](pilot/2026-09-12-owner-review-chart-impact/README.md): affected
+report содержит один `computes_metric` chart и один именованный `chart.opaque_sql` gap.
+Это всё ещё proxy. Task 8 human outcome остаётся открытым,
 а [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) не разблокирует
 scheduler, PostgreSQL, REST/MCP, notifications или actions.
 
@@ -177,6 +179,11 @@ uv run auto_bi decision investigate tests/fixtures/investigation/weekly_margin.y
 нет ни attestation'а, ни `reference_query`, поэтому там же видно `provenance.unattested`
 (review) и молчание governance-проверки запроса — так и должно быть для сохранённых
 pilot-входов без этих полей; сам tracked historical bundle выпущен verifier 2.
+
+Для owner-review chart resolution используется
+[`docs/pilot/2026-09-12-owner-review-chart-impact/`](pilot/2026-09-12-owner-review-chart-impact/README.md).
+Его verifier 14 bundle имеет release verdict `block` (exit `4`) и отдельно проходит
+integrity inspection (exit `0`); исторические `2026-08-25` dashboard inputs не менялись.
 
 Шаблон для собственных контрактов — тот же вызов со своими путями:
 

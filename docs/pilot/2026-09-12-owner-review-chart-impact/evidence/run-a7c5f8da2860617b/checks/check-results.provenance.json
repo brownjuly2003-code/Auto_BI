@@ -1,0 +1,1 @@
+{"results":[{"asset":"asset://sales/weekly_margin_by_region@2","attestation":null,"findings":[{"code":"provenance.unattested","detail":"the candidate result was supplied without an attestation, so nothing records which query produced it, against which semantics, or where","severity":"review","subject":"asset://sales/weekly_margin_by_region@2"}],"reviewed_query_digest":null}]}

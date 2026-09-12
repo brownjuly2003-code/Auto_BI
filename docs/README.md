@@ -28,6 +28,7 @@ package identity или remote.
 | [DECISIONOPS_CURRENT_STATE.md](DECISIONOPS_CURRENT_STATE.md) | Короткая актуальная сводка, остаток pilot и решения владельца | current |
 | [DECISIONOPS_ARCHITECTURE.md](DECISIONOPS_ARCHITECTURE.md) | Нормативная целевая архитектура и инварианты | current |
 | [DECISIONOPS_PILOT_2026-08-25.md](DECISIONOPS_PILOT_2026-08-25.md) | Воспроизводимая репетиция gate на ClickHouse | evidence record |
+| [Owner-gate simulation 2026-09-12](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md) | Synthetic owner review и статус findings R1–R4 | proxy evidence; human gate открыт |
 | [ADR 0003](adr/0003-decisionops-additive-control-plane.md) | Почему DecisionOps добавлен как отдельный control plane | decision |
 | [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) | Граница synthetic proxy и offline investigation alpha | decision |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome открыт |
@@ -36,7 +37,9 @@ package identity или remote.
 | [Typed investigation MVP](history/TYPED_INVESTIGATION_MVP.md) | Журнал закрытого среза offline investigation alpha | archive; закрыт |
 | [Chart-level impact](history/CHART_LEVEL_IMPACT.md) | Журнал закрытого среза «impact до плитки» | archive; закрыт |
 
-Директории `docs/pilot/` содержат tracked входы и evidence репетиции. Каталог
+Директории `docs/pilot/` содержат tracked входы и evidence репетиции, включая
+[chart-impact overlay 2026-09-12](pilot/2026-09-12-owner-review-chart-impact/README.md).
+Каталог
 `.pilot-work/` в корне хранит локальные технические прогоны и не является частью
 публичного doc graph.
 
