@@ -9,8 +9,9 @@ time, because a bundle that fails them is worse than no bundle at all:
 * an artifact path is a location inside the fixed bundle layout (§9.2), built by the store,
   never a caller-chosen filesystem path — path confinement is a security boundary.
 
-``integrity=signed`` stays unreachable without a verified signature (§9.3): a local content
-hash is an integrity check, not a signature, and must never be reported as one.
+``integrity=signed`` stays unreachable without a signature envelope (§9.3): a local content
+hash is an integrity check, not a signature.  Independent authentication happens against
+an out-of-band trust root when the bundle is read.
 """
 
 from __future__ import annotations
@@ -33,6 +34,10 @@ from auto_bi.scalars import (
 from auto_bi.strict import StrictModel
 
 API_VERSION = "auto-bi.io/v2alpha1"
+
+# Domain separation prevents a valid signature over the same canonical bytes in another
+# protocol from being replayed as an Auto_BI evidence-manifest signature.
+_SIGNING_DOMAIN = b"auto-bi.io/evidence-manifest/v1\x00"
 
 # Bundle-relative layout (§9.2). `manifest.json` is the root document, never an artifact.
 _CHECKS = "checks/"
@@ -105,12 +110,12 @@ class EvidenceIntegrity(StrEnum):
 
 
 class EvidenceSignature(StrictModel):
-    """Recorded only after a signature verified — see :class:`EvidenceIntegrity`."""
+    """Detached signature envelope; ``value`` is excluded from its own signed payload."""
 
     algorithm: NonBlankText
-    key_id: NonBlankText
+    key_id: Sha256Digest
     value: NonBlankText
-    verified_at: Timestamp
+    signed_at: Timestamp
 
 
 class EvidenceArtifact(StrictModel):
@@ -214,7 +219,7 @@ class EvidenceBundle(StrictModel):
         return self
 
     def canonical_bytes(self) -> bytes:
-        """Canonical manifest bytes — the thing that gets hashed and, later, signed.
+        """Canonical stored manifest bytes, including its signature envelope.
 
         The bundle is re-validated first. A bundle is *assembled*, not merely parsed:
         `bundle.claims.append(...)` or a field assignment goes around every validator
@@ -224,6 +229,40 @@ class EvidenceBundle(StrictModel):
         payload = self.model_dump(mode="json")
         type(self).model_validate(payload)
         return canonical_bytes(payload)
+
+    def signing_bytes(
+        self,
+        *,
+        algorithm: str | None = None,
+        key_id: str | None = None,
+        signed_at: str | None = None,
+    ) -> bytes:
+        """Domain-separated canonical bytes authenticated by a detached signature.
+
+        The signature value itself cannot sign itself.  Its algorithm, key id and timestamp
+        remain covered by replacing only ``value`` with the empty-string marker.  A writer
+        supplies that metadata while the bundle is still ``content_hashed``; a reader takes
+        it from the stored envelope.
+        """
+        payload = self.model_dump(mode="json")
+        type(self).model_validate(payload)
+        existing = self.signature
+        if existing is not None:
+            metadata = (existing.algorithm, existing.key_id, existing.signed_at)
+            supplied = (algorithm, key_id, signed_at)
+            if any(value is not None for value in supplied) and supplied != metadata:
+                raise ValueError("supplied signature metadata contradicts the bundle envelope")
+            algorithm, key_id, signed_at = metadata
+        if algorithm is None or key_id is None or signed_at is None:
+            raise ValueError("signature metadata is required to build signing bytes")
+        payload["integrity"] = EvidenceIntegrity.SIGNED.value
+        payload["signature"] = {
+            "algorithm": algorithm,
+            "key_id": key_id,
+            "value": "",
+            "signed_at": signed_at,
+        }
+        return _SIGNING_DOMAIN + canonical_bytes(payload)
 
     def digest(self) -> str:
         return digest_bytes(self.canonical_bytes())

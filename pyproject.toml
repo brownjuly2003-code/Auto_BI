@@ -28,6 +28,7 @@ dependencies = [
     "uvicorn>=0.50.2",
     "psycopg[binary]>=3.3.4",
     "anthropic>=0.116.0",
+    "cryptography>=45.0",
 ]
 
 [project.optional-dependencies]

@@ -49,6 +49,7 @@ from auto_bi.decision.validate import ValidationReport
 from auto_bi.evidence.canonical import canonical_bytes, sha256_digest
 from auto_bi.evidence.manifest import BundleWriter, verify_bundle
 from auto_bi.evidence.model import ArtifactKind, ClaimType, EvidenceClassification
+from auto_bi.evidence.signing import EvidenceSigner
 from auto_bi.evidence.store import ArtifactStore
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.scalars import NonBlankText, Sha256Digest, Slug, Timestamp
@@ -108,7 +109,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: — and, where the name is declared, a clean asset where it flagged a partial check.
 #: 13 — `dwh.cost` now stores typed exact-query execution facts next to plan facts. The same
 #: inputs therefore produce a different evidence artifact even when every bound passes.
-VERIFIER_VERSION = "13"
+#: 14 — a run can seal its canonical manifest with an authenticated Ed25519 envelope. The
+#: new run identity avoids verifier-13 bundles, and its signing identity also separates
+#: unsigned, signed and rotated-key runs under verifier 14.
+VERIFIER_VERSION = "14"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -325,8 +329,11 @@ class GateInputs:
     environment: EnvironmentFacts | None = None
 
 
-def idempotency_key(inputs: GateInputs) -> str:
-    """§7.6: product spec, both snapshots, policy, environment and verifier version."""
+def idempotency_key(inputs: GateInputs, *, signer: EvidenceSigner | None = None) -> str:
+    """§7.6: verification inputs, evidence-signing identity and verifier version."""
+    signing_identity = (
+        None if signer is None else {"algorithm": signer.algorithm, "key_id": signer.key_id}
+    )
     return sha256_digest(
         {
             "product_digest": inputs.product.digest(),
@@ -334,6 +341,7 @@ def idempotency_key(inputs: GateInputs) -> str:
             "candidate_digest": inputs.candidate.canonical_digest,
             "policy": inputs.product.verification.policy,
             "environment_ref": inputs.environment_ref,
+            "evidence_signing": signing_identity,
             "verifier_version": VERIFIER_VERSION,
         }
     )
@@ -344,13 +352,19 @@ def run_id_for(key: str) -> str:
     return f"run-{key.removeprefix('sha256:')[:16]}"
 
 
-def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> GateReport:
+def run_gate(
+    inputs: GateInputs,
+    *,
+    store: ArtifactStore,
+    created_at: str,
+    signer: EvidenceSigner | None = None,
+) -> GateReport:
     """Run §8.2 end to end and return the verdict with its evidence.
 
     `created_at` is supplied rather than read from a clock: with a fixed timestamp the same
     inputs produce a byte-identical bundle, which is what makes a verification reproducible.
     """
-    key = idempotency_key(inputs)
+    key = idempotency_key(inputs, signer=signer)
     run_id = run_id_for(key)
     product_ref = inputs.product.self_ref()
     writer = BundleWriter(
@@ -359,6 +373,7 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
         product_ref=product_ref,
         verifier_version=VERIFIER_VERSION,
         created_at=created_at,
+        signer=signer,
     )
     checks: list[CheckResult] = []
 
@@ -439,7 +454,7 @@ def run_gate(inputs: GateInputs, *, store: ArtifactStore, created_at: str) -> Ga
         ),
     )
     written = writer.write()
-    problems = verify_bundle(store, run_id)
+    problems = verify_bundle(store, run_id, verifier=signer)
     checks.append(
         CheckResult(
             check_id="evidence.bundle",

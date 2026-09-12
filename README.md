@@ -13,8 +13,9 @@ plane для выпуска проверяемых аналитических п
 
 Первый вертикальный путь работает offline: `auto_bi decision
 validate` (cross-contract проверка), `auto_bi decision verify` (полный гейт §8.2
-с content-addressed evidence bundle) и `auto_bi decision evidence` (чтение bundle
-с пересчётом каждого content address) реализованы и запускаются на файлах в Git,
+с content-addressed, opt-in Ed25519-signed evidence bundle) и `auto_bi decision evidence`
+(чтение bundle с пересчётом каждого content address и проверкой pinned public trust root)
+реализованы и запускаются на файлах в Git,
 без DWH, BI и LLM. Шаг §8.2 7 реализован целиком: с `--dwh` гейт спрашивает движок
 read-only ролью (`dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`,
 `dwh.cost`); без `--dwh` проверки движка отвечают `check.not_configured`. Шаг 6
@@ -34,6 +35,7 @@ uv run auto_bi decision validate contracts/
 uv run auto_bi decision verify contracts/ --base semantic/base --candidate semantic/head \
         --evidence .evidence --dashboards dashboards/
 uv run auto_bi decision evidence .evidence
+# opt-in: --signing-key /secure/private.pem; при чтении: --trust-key public.pem
 ```
 
 Exit code несёт вердикт: `0` pass/advisory, `3` needs_review, `4` block, `2`
@@ -43,6 +45,7 @@ usage-ошибка (падение никогда не выглядит как �
 - [Целевая архитектура](docs/DECISIONOPS_ARCHITECTURE.md)
 - [ADR: отдельный additive fork](docs/adr/0003-decisionops-additive-control-plane.md)
 - [ADR: synthetic proxy и граница offline alpha](docs/adr/0004-synthetic-proxy-offline-investigation.md)
+- [ADR: Ed25519 trust root для evidence](docs/adr/0005-ed25519-evidence-trust-root.md)
 - [План bootstrap](docs/history/DECISIONOPS_BOOTSTRAP.md)
 - [Исходный стратегический срез](docs/history/DECISIONOPS_STRATEGY_2026-08-21.md)
 

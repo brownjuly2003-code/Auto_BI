@@ -35,6 +35,7 @@ from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import load_contracts
 from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.evidence.manifest import MANIFEST_PATH, EvidenceConflictError
+from auto_bi.evidence.signing import EvidenceSignatureError, EvidenceSigner
 from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.refs import ContractRef
@@ -101,6 +102,8 @@ class VerifyRequest:
     #: ask and the gate says so; the callable is injected rather than built here so a caller
     #: that already holds a read-only client — or a test — needs no connection settings.
     probe: EnvironmentProbe | None = None
+    #: Optional private-key port. Key bytes stay outside the request and evidence bundle.
+    signer: EvidenceSigner | None = None
 
 
 @dataclass(frozen=True)
@@ -152,8 +155,13 @@ def verify(request: VerifyRequest) -> GateReport:
     )
     store = FilesystemArtifactStore(request.evidence_dir)
     try:
-        return run_gate(inputs, store=store, created_at=request.created_at)
-    except EvidenceConflictError as exc:
+        return run_gate(
+            inputs,
+            store=store,
+            created_at=request.created_at,
+            signer=request.signer,
+        )
+    except (EvidenceConflictError, EvidenceSignatureError) as exc:
         # A usage error, not a verdict: the verification did not get to record itself.
         raise VerifyError(str(exc)) from None
 

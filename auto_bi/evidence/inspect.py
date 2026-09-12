@@ -30,13 +30,16 @@ from auto_bi.evidence.manifest import (
     BundleProblem,
     read_bundle,
     verify_bundle,
+    verify_bundle_signature,
 )
 from auto_bi.evidence.model import (
     API_VERSION,
     EvidenceArtifact,
     EvidenceBundle,
     EvidenceClassification,
+    EvidenceIntegrity,
 )
+from auto_bi.evidence.signing import EvidenceVerifier
 from auto_bi.evidence.store import ArtifactStore, ArtifactStoreError
 from auto_bi.scalars import Sha256Digest, Slug
 from auto_bi.severity import Severity
@@ -65,6 +68,8 @@ class BundleInspection(StrictModel):
     #: Recomputed from the stored bytes, never copied out of the manifest.
     manifest_digest: Sha256Digest
     verdict: Verdict
+    #: True only after the stored signature passed an out-of-band public trust root.
+    signature_verified: bool = False
     #: Absent only when the manifest does not parse — then the problems say why.
     bundle: EvidenceBundle | None = None
     problems: list[BundleProblem] = Field(default_factory=list)
@@ -83,6 +88,18 @@ class BundleInspection(StrictModel):
             raise ValueError(
                 "an inspection with no bundle must carry the blocking problem that stopped it"
             )
+        signature_problem = any(
+            problem.code.startswith("evidence.signature_") for problem in self.problems
+        )
+        expected_signature = bool(
+            self.bundle is not None
+            and self.bundle.integrity is EvidenceIntegrity.SIGNED
+            and not signature_problem
+        )
+        if self.signature_verified is not expected_signature:
+            raise ValueError(
+                "signature_verified contradicts the bundle and signature verification problems"
+            )
         return self
 
     def restricted(self) -> list[EvidenceArtifact]:
@@ -97,7 +114,11 @@ class BundleInspection(StrictModel):
 
 
 def inspect_bundle(
-    store: ArtifactStore, run_id: str, *, expected_digest: str | None = None
+    store: ArtifactStore,
+    run_id: str,
+    *,
+    expected_digest: str | None = None,
+    verifier: EvidenceVerifier | None = None,
 ) -> BundleInspection:
     """Re-verify the bundle of *run_id* and report it.
 
@@ -112,7 +133,7 @@ def inspect_bundle(
             f"run {run_id!r} has no {MANIFEST_PATH}: this is not an evidence bundle"
         ) from exc
 
-    problems = list(verify_bundle(store, run_id))
+    problems = list(verify_bundle(store, run_id, verifier=verifier))
     digest = digest_bytes(raw)
     if expected_digest and expected_digest != digest:
         problems.append(
@@ -124,17 +145,28 @@ def inspect_bundle(
         )
 
     unreadable = any(problem.code in _UNREADABLE for problem in problems)
+    bundle = None if unreadable else read_bundle(store, run_id)
+    signature_verified = bool(
+        bundle is not None
+        and bundle.integrity is EvidenceIntegrity.SIGNED
+        and not any(problem.code.startswith("evidence.signature_") for problem in problems)
+    )
     return BundleInspection(
         run_id=run_id,
         manifest_digest=digest,
         verdict=verdict_for(problem.severity for problem in problems),
-        bundle=None if unreadable else read_bundle(store, run_id),
+        signature_verified=signature_verified,
+        bundle=bundle,
         problems=problems,
     )
 
 
 def read_artifact(
-    store: ArtifactStore, run_id: str, artifact_id: str
+    store: ArtifactStore,
+    run_id: str,
+    artifact_id: str,
+    *,
+    verifier: EvidenceVerifier | None = None,
 ) -> tuple[EvidenceArtifact, bytes]:
     """One payload out of a bundle — only if it is still what the manifest addresses."""
     try:
@@ -143,6 +175,10 @@ def read_artifact(
         raise EvidenceReadError(
             f"run {run_id!r} has no readable {MANIFEST_PATH}, so nothing can be read out of it"
         ) from exc
+
+    signature_problem = verify_bundle_signature(bundle, verifier)
+    if signature_problem is not None:
+        raise EvidenceReadError(signature_problem.detail)
 
     artifact = next(
         (item for item in bundle.artifacts if item.artifact_id == artifact_id),

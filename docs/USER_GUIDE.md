@@ -77,8 +77,8 @@ auto_bi serve            # http://127.0.0.1:8200
 | `dbt-import` | Обогащение `model.yaml` из dbt-артефактов (описания, связи). `--manifest` (обяз.), `--catalog`, `--dry-run`. Заполняет ТОЛЬКО пустые значения — ручные правки всегда выигрывают. |
 | `prune` | Удаление BI-артефактов прошлых ревизий через ownership-леджер (последняя сборка каждой сессии всегда переживает). `--session ID` (только одна сессия), `--dry-run` (показать кандидатов, не удаляя). |
 | `decision validate` | **DecisionOps.** Offline-проверка decision products против metric contracts (пины версий, lifecycle, dimensions, policy). Аргументы — файлы/каталоги YAML, `--json`. Ни DWH, ни BI, ни LLM. |
-| `decision verify` | **DecisionOps.** Полный Analytics Release & Evidence Gate для ОДНОГО продукта: `--base`/`--candidate` (каталоги с `model.yaml`), `--evidence DIR`, `--dashboards DIR`, `--assets PATH`, `--results FILE`, `--product ID`, `--environment REF`, `--created-at TS`, `--json`. Тоже полностью offline. |
-| `decision evidence` | **DecisionOps.** Чтение написанного evidence bundle с пересчётом всех content address. Аргумент — каталог evidence или один run-каталог внутри; `--run ID` (если run'ов несколько), `--artifact ID` (напечатать один payload), `--expect-digest sha256:…`, `--json`. |
+| `decision verify` | **DecisionOps.** Полный Analytics Release & Evidence Gate для ОДНОГО продукта: `--base`/`--candidate` (каталоги с `model.yaml`), `--evidence DIR`, `--dashboards DIR`, `--assets PATH`, `--results FILE`, `--product ID`, `--environment REF`, `--created-at TS`, opt-in `--signing-key PRIVATE_PEM`, `--json`. Тоже полностью offline без `--dwh`. |
+| `decision evidence` | **DecisionOps.** Чтение написанного evidence bundle с пересчётом всех content address. Аргумент — каталог evidence или один run-каталог внутри; `--run ID` (если run'ов несколько), `--artifact ID` (напечатать один payload), `--expect-digest sha256:…`, повторяемый `--trust-key PUBLIC_PEM`, `--json`. Signed bundle без совпавшего trust key блокируется. |
 
 ### build
 ```bash
@@ -163,9 +163,12 @@ auto_bi decision validate contracts/                     # продукты ↔ 
 auto_bi decision verify contracts/ \
         --base semantic/base --candidate semantic/head \
         --evidence .evidence --dashboards dashboards/ \
-        --assets assets/ --results results.yaml
-auto_bi decision evidence .evidence                      # прочитать и перепроверить bundle
-auto_bi decision evidence .evidence --artifact check-semantic.diff
+        --assets assets/ --results results.yaml \
+        --signing-key /secure/path/evidence-private.pem
+auto_bi decision evidence .evidence \
+        --trust-key /secure/path/evidence-public.pem     # digest + signature
+auto_bi decision evidence .evidence --artifact check-semantic.diff \
+        --trust-key /secure/path/evidence-public.pem
 ```
 Контур DecisionOps: не «запрос → дашборд», а проверка, что изменение семантики не ломает
 governed-числа. `validate` отвечает на один вопрос — согласованы ли контракты между собой.
@@ -173,6 +176,13 @@ governed-числа. `validate` отвечает на один вопрос — 
 semantic snapshot'ов → семантические gap'ы → diff → impact до продукта, дашборда и владельца →
 инвалидация verified assets → сверка результатов → компиляция дашбордов под их BI **без единого
 remote-вызова** → сборка content-addressed evidence bundle и его повторная верификация.
+
+`--signing-key` принимает Ed25519 unencrypted PKCS#8 PEM только по явному пути. Private key
+хранится вне checkout, evidence и логов; на Mac задайте ему mode `0600`. Соответствующий
+public key экспортируется как SPKI PEM и задаётся reader'у через `--trust-key`. Флаг trust
+key можно повторить во время ротации. Без signing key создаётся прежний
+`integrity=content_hashed`; signed bundle без matching out-of-band public key можно
+проинспектировать только как blocked и нельзя читать через `--artifact`.
 
 Форматы входов: semantic ref — каталог с `model.yaml` и необязательным `metrics/`;
 dashboard spec — файл `<segment>@<version>.yaml` (версия в имени, чтобы продукт, запинненный

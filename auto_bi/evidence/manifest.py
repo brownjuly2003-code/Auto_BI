@@ -30,6 +30,13 @@ from auto_bi.evidence.model import (
     EvidenceArtifact,
     EvidenceBundle,
     EvidenceClassification,
+    EvidenceIntegrity,
+    EvidenceSignature,
+)
+from auto_bi.evidence.signing import (
+    EvidenceSignatureError,
+    EvidenceSigner,
+    EvidenceVerifier,
 )
 from auto_bi.evidence.store import ArtifactStore, ArtifactStoreError
 from auto_bi.scalars import NonBlankText
@@ -71,12 +78,14 @@ class BundleWriter:
         product_ref: str,
         verifier_version: str,
         created_at: str,
+        signer: EvidenceSigner | None = None,
     ) -> None:
         self._store = store
         self._run_id = run_id
         self._product_ref = product_ref
         self._verifier_version = verifier_version
         self._created_at = created_at
+        self._signer = signer
         self._artifacts: list[EvidenceArtifact] = []
         self._claims: list[Claim] = []
         self._payloads: dict[str, bytes] = {}
@@ -162,7 +171,7 @@ class BundleWriter:
 
     def build(self) -> EvidenceBundle:
         """The bundle as it stands — validated, not yet written."""
-        return EvidenceBundle(
+        bundle = EvidenceBundle(
             run_id=self._run_id,
             product_ref=self._product_ref,
             created_at=self._created_at,
@@ -170,6 +179,31 @@ class BundleWriter:
             artifacts=list(self._artifacts),
             claims=list(self._claims),
         )
+        if self._signer is None:
+            return bundle
+
+        signature = EvidenceSignature(
+            algorithm=self._signer.algorithm,
+            key_id=self._signer.key_id,
+            value=self._signer.sign(
+                bundle.signing_bytes(
+                    algorithm=self._signer.algorithm,
+                    key_id=self._signer.key_id,
+                    signed_at=self._created_at,
+                )
+            ),
+            signed_at=self._created_at,
+        )
+        payload = bundle.model_dump(mode="json")
+        payload.update(
+            integrity=EvidenceIntegrity.SIGNED.value,
+            signature=signature.model_dump(mode="json"),
+        )
+        signed = EvidenceBundle.model_validate(payload)
+        # `signed` is a claim, not merely an envelope: authenticate it with the public half
+        # before allowing those bytes to reach the evidence store.
+        self._signer.verify(signed.signing_bytes(), signature)
+        return signed
 
     def write(self) -> WrittenBundle:
         """Validate, then write payloads and the canonical manifest.
@@ -226,7 +260,12 @@ def read_bundle(store: ArtifactStore, run_id: str) -> EvidenceBundle:
     return EvidenceBundle.model_validate(json.loads(raw.decode("utf-8")))
 
 
-def verify_bundle(store: ArtifactStore, run_id: str) -> list[BundleProblem]:
+def verify_bundle(
+    store: ArtifactStore,
+    run_id: str,
+    *,
+    verifier: EvidenceVerifier | None = None,
+) -> list[BundleProblem]:
     """Re-check a written bundle: manifest, presence, and every content address."""
     problems: list[BundleProblem] = []
     try:
@@ -275,6 +314,10 @@ def verify_bundle(store: ArtifactStore, run_id: str) -> list[BundleProblem]:
             )
         )
 
+    signature_problem = verify_bundle_signature(bundle, verifier)
+    if signature_problem is not None:
+        problems.append(signature_problem)
+
     for artifact in bundle.artifacts:
         try:
             payload = store.get(run_id, artifact.path)
@@ -310,6 +353,32 @@ def verify_bundle(store: ArtifactStore, run_id: str) -> list[BundleProblem]:
     return problems
 
 
+def verify_bundle_signature(
+    bundle: EvidenceBundle, verifier: EvidenceVerifier | None
+) -> BundleProblem | None:
+    """Authenticate a signed manifest against an explicitly supplied trust root."""
+    if bundle.integrity is EvidenceIntegrity.CONTENT_HASHED:
+        return None
+    if verifier is None:
+        return BundleProblem(
+            code="evidence.signature_untrusted",
+            severity=Severity.BLOCK,
+            detail="signed evidence requires an explicitly configured public trust root",
+        )
+    signature = bundle.signature
+    if signature is None:  # pragma: no cover - enforced by EvidenceBundle
+        return BundleProblem(
+            code="evidence.signature_invalid",
+            severity=Severity.BLOCK,
+            detail="signed evidence has no signature envelope",
+        )
+    try:
+        verifier.verify(bundle.signing_bytes(), signature)
+    except EvidenceSignatureError as exc:
+        return BundleProblem(code=exc.code, severity=Severity.BLOCK, detail=exc.detail)
+    return None
+
+
 __all__ = [
     "MANIFEST_PATH",
     "BundleProblem",
@@ -317,4 +386,5 @@ __all__ = [
     "WrittenBundle",
     "read_bundle",
     "verify_bundle",
+    "verify_bundle_signature",
 ]

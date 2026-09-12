@@ -5,18 +5,19 @@
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
 привязкой его reviewed-запроса к governed-модели; read-only capture reviewed-запроса
-реализован и проверен на живых PostgreSQL и ClickHouse; human/design-partner gate остаётся открытым
+реализован и проверен на живых PostgreSQL и ClickHouse; evidence manifest получает
+opt-in Ed25519 authentication; human/design-partner gate остаётся открытым
 
-**Версии evidence:** `VERIFIER_VERSION=13`, `CHECK_VERSION=9`
+**Версии evidence:** `VERIFIER_VERSION=14`, `CHECK_VERSION=9`
 
 Сохранённые pilot-bundles в `docs/pilot/` выпущены verifier 7 и такими остаются: они
 исторические артефакты, а не выход сегодняшнего гейта. `auto_bi decision evidence` по ним
 проходит (проверено 2026-09-07, exit `0`) — перепроверка адресует то, что запечатано, и не
 требует текущей версии. Новый прогон на тех же входах даст другой `run_id` и bundle
-verifier 13: chart-разрешение, проверка provenance, governance-привязка reviewed-запроса и
-runtime cost facts изменили evidence artifact. У pilot-числа attestation'а нет, поэтому сегодняшний прогон на
-тех же входах вынес бы по нему `provenance.unattested` (review) — это и есть содержание
-изменения, а не регресс стенда.
+verifier 14: chart-разрешение, проверка provenance, governance-привязка reviewed-запроса,
+runtime cost facts и signing identity изменили evidence artifact. У pilot-числа
+attestation'а нет, поэтому сегодняшний прогон на тех же входах вынес бы по нему
+`provenance.unattested` (review) — это и есть содержание изменения, а не регресс стенда.
 
 ## Коротко
 
@@ -55,7 +56,10 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   governed-витрины (в том числе голое имя, которого не объявляет ни один governed-источник
   его scope'а) — `asset.query_ungoverned_field` (обе review), неразрешимая без
   догадки часть запроса — `asset.query_fields_unchecked` (advisory).
-- `auto_bi decision evidence` перепроверяет digest каждого artifact в bundle.
+- `auto_bi decision verify --signing-key <private.pem>` opt-in подписывает canonical
+  manifest Ed25519-ключом; private key читается только по явному внешнему пути.
+- `auto_bi decision evidence --trust-key <public.pem>` перепроверяет digest каждого
+  artifact и подпись против pinned public trust root. Для ротации флаг повторяется.
 - `auto_bi decision investigate <plan.yaml> --results <result.yaml> ... --output <dir>`
   запускает только offline investigation skills и требует новый output-каталог.
 - Без `--dwh` engine checks дают `check.not_configured`; с `--dwh` работают
@@ -77,6 +81,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
+| Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; offline tests пройдены, operational key не создавался |
 | Continuous platform | заблокирована до human/design-partner evidence |
 
 Четыре tracked pilot-сценария, найденные дефекты и Mac verifier 7 evidence описаны в
@@ -120,8 +125,9 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 - Gate остаётся pure и сам не выполняет **verified-asset SQL**. Отдельный
   `auto_bi decision capture` теперь исполняет его read-only драйвером, канонизирует ответ и
   формирует attestation; snapshot, среда и запрос затем сверяются с тем, что гейт держит
-  независимо. Но того, что runner действительно выполнил заявленный запрос, attestation
-  криптографически не доказывает: это подпись над снятием, а trust root отложен.
+  независимо. Ed25519 теперь аутентифицирует producer и неизменность итогового bundle, но
+  не доказывает, что capture runner действительно исполнил заявленный запрос: для этого
+  private key должен быть изолирован внутри capture/execution boundary.
 - Governance reviewed-запроса покрывает таблицы и колонки. Колонка приписывается
   таблице там, где выбора не оставляет сам SQL, а для голого имени — там, где его не
   оставляет governed-модель: ровно один источник scope'а объявляет это имя, и все
@@ -172,9 +178,15 @@ uv run auto_bi decision investigate tests/fixtures/investigation/weekly_margin.y
 ```bash
 uv run auto_bi decision validate <contracts/>
 uv run auto_bi decision verify <contracts/> --base <base/> --candidate <candidate/> \
-  --dashboards <dashboards/> --evidence .evidence
-uv run auto_bi decision evidence .evidence
+  --dashboards <dashboards/> --evidence .evidence --signing-key <private.pem>
+uv run auto_bi decision evidence .evidence --trust-key <public.pem>
 ```
+
+Без `--signing-key` сохраняется совместимый `integrity=content_hashed`. Signing key —
+внешний unencrypted PKCS#8 PEM; на Mac он хранится вне checkout/evidence с mode `0600`.
+Trust root — один или несколько SPKI public PEM. Private key в Git, документацию, evidence
+или логи не помещается; инфраструктура и реальный operational key на этой Windows-машине
+не создаются.
 
 `investigate` пишет ровно четыре файла: canonical `plan.json`, canonical
 `results.json` с входами и ordered skill outputs, typed `brief.json` и
@@ -188,6 +200,7 @@ Windows-машине для документационной проверки н
 
 ## Что делать дальше
 
+Разрешённый срез подписи закрыт [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
 Незаблокированных implementation-срезов сейчас нет.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
@@ -197,10 +210,11 @@ Windows-машине для документационной проверки н
    trusted provider/extension и его pin/contract; до этого `cost.not_measured` — правильный
    результат.
 
-Отложено текущим решением 3 (не начинать без нового решения о trust root):
+Отдельно не начинать без нового решения о trusted capture boundary:
 
-1. **Подпись над снятием** — единственное, что закрывает «attestation может соврать»;
-   до неё provenance честно остаётся утверждением, три поля которого проверены.
+1. **Подпись самим capture runner** — manifest signing не доказывает факт исполнения SQL;
+   для этого private key должен быть недоступен вызывающей стороне и изолирован внутри
+   trusted capture/execution boundary.
 
 Заблокировано до human/design-partner review (не начинать): production-certified brief,
 scheduler, PostgreSQL platform runtime, REST/MCP, notifications, actions.
@@ -212,7 +226,9 @@ scheduler, PostgreSQL platform runtime, REST/MCP, notifications, actions.
 
 1. Human owner review остаётся внешним gate и не подменяется синтетической оценкой.
 2. До публикации fork остаётся без remote и использует текущую локальную package identity.
-3. Offline alpha использует `integrity=content_hashed`; подпись и trust root отложены.
+3. Release evidence поддерживает два честно различимых режима: совместимый
+   `integrity=content_hashed` и opt-in `integrity=signed` с Ed25519 и out-of-band SPKI
+   trust root по [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
 4. Реализованный alpha-срез ограничен supplied canonical results и локальными
    plan/results/brief artifacts; continuous runtime и внешние actions не начинаются.
 5. Human/design-partner review остаётся hard gate перед production-certified brief,
@@ -222,5 +238,6 @@ scheduler, PostgreSQL platform runtime, REST/MCP, notifications, actions.
 
 1. Текущий Git status, код и [целевая архитектура](DECISIONOPS_ARCHITECTURE.md).
 2. [ADR 0003](adr/0003-decisionops-additive-control-plane.md),
-   [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) и tracked pilot evidence.
+   [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md),
+   [ADR 0005](adr/0005-ed25519-evidence-trust-root.md) и tracked pilot evidence.
 3. Для baseline v0.5.0 — [ARCHITECTURE.md](ARCHITECTURE.md) и [CURRENT_STATE.md](CURRENT_STATE.md).

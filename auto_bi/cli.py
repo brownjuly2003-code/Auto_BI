@@ -210,6 +210,11 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument(
         "--evidence", required=True, help="Directory the evidence bundle is written to"
     )
+    verify.add_argument(
+        "--signing-key",
+        default="",
+        help="Ed25519 PKCS#8 private-key PEM used to seal the evidence manifest",
+    )
     verify.add_argument("--dashboards", default=None, help="Directory of delivered DashboardSpecs")
     verify.add_argument("--assets", default=None, help="Verified asset repository (file or dir)")
     verify.add_argument(
@@ -247,6 +252,12 @@ def main(argv: list[str] | None = None) -> int:
         "--expect-digest",
         default="",
         help="Manifest digest the bundle must have; a mismatch blocks",
+    )
+    evidence.add_argument(
+        "--trust-key",
+        action="append",
+        default=[],
+        help="Trusted Ed25519 public-key PEM; repeat during key rotation",
     )
     evidence.add_argument(
         "--json", action="store_true", help="Emit the inspection as JSON and nothing else"
@@ -468,10 +479,12 @@ def _decision_verify(args: argparse.Namespace) -> int:
     from datetime import UTC, datetime
 
     from auto_bi.decision.use_cases import VerifyError, VerifyRequest, verify
+    from auto_bi.evidence.signing import EvidenceSignatureError, load_ed25519_signer
     from auto_bi.verification.model import EXIT_ERROR, exit_code_for
 
     created_at = args.created_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
+        signer = load_ed25519_signer(args.signing_key) if args.signing_key else None
         report = verify(
             VerifyRequest(
                 contract_paths=args.paths,
@@ -485,9 +498,10 @@ def _decision_verify(args: argparse.Namespace) -> int:
                 environment_ref=args.environment,
                 product_id=args.product,
                 probe=_environment_probe(args.dwh),
+                signer=signer,
             )
         )
-    except VerifyError as exc:
+    except (VerifyError, EvidenceSignatureError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
@@ -513,12 +527,22 @@ def _decision_evidence(args: argparse.Namespace) -> int:
 
     from auto_bi.decision.use_cases import VerifyError, locate_evidence
     from auto_bi.evidence.inspect import EvidenceReadError, inspect_bundle, read_artifact
+    from auto_bi.evidence.signing import (
+        EvidenceSignatureError,
+        load_ed25519_trust_store,
+    )
     from auto_bi.verification.model import EXIT_ERROR, exit_code_for
 
     try:
+        verifier = load_ed25519_trust_store(args.trust_key) if args.trust_key else None
         location = locate_evidence(args.path, args.run)
         if args.artifact:
-            artifact, payload = read_artifact(location.store, location.run_id, args.artifact)
+            artifact, payload = read_artifact(
+                location.store,
+                location.run_id,
+                args.artifact,
+                verifier=verifier,
+            )
             try:
                 print(payload.decode("utf-8"))
             except UnicodeDecodeError:
@@ -530,9 +554,12 @@ def _decision_evidence(args: argparse.Namespace) -> int:
                 return EXIT_ERROR
             return 0
         inspection = inspect_bundle(
-            location.store, location.run_id, expected_digest=args.expect_digest or None
+            location.store,
+            location.run_id,
+            expected_digest=args.expect_digest or None,
+            verifier=verifier,
         )
-    except (VerifyError, EvidenceReadError) as exc:
+    except (VerifyError, EvidenceReadError, EvidenceSignatureError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
@@ -546,6 +573,9 @@ def _decision_evidence(args: argparse.Namespace) -> int:
             print(f"product   {bundle.product_ref}")
             print(f"created   {bundle.created_at}   verifier {bundle.verifier_version}")
             print(f"integrity {bundle.integrity.value}")
+            if bundle.signature is not None:
+                status = "verified" if inspection.signature_verified else "unverified"
+                print(f"signature {status}   key {bundle.signature.key_id}")
             for claim in bundle.claims:
                 print(f"claim     {claim.claim_type.value:<13} {claim.summary_code:<24} ")
                 print(f"{'':<10} {claim.claim_id} <- {', '.join(claim.evidence_refs)}")

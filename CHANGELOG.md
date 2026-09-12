@@ -16,6 +16,18 @@
 
 ### Added
 
+- **Evidence manifest получает opt-in Ed25519 authentication** (`VERIFIER_VERSION` 13 →
+  14, `CHECK_VERSION` остаётся 9). `decision verify --signing-key <private.pem>` подписывает
+  domain-separated RFC 8785 manifest unencrypted PKCS#8 ключом по явному внешнему пути и
+  выставляет `integrity=signed` только после self-verification. `decision evidence
+  --trust-key <public.pem>` проверяет подпись против out-of-band pinned SPKI trust root;
+  флаг повторяется для overlap-ротации, а signed artifact без подходящего ключа не
+  выдаётся. `key_id` — SHA-256 raw Ed25519 public key, signature — canonical unpadded
+  base64url. Algorithm/key identity входит в idempotency key, поэтому unsigned, signed и
+  rotated-key runs получают разные `run_id`. Старые `content_hashed` bundles остаются
+  читаемыми. Private key не записывается в evidence, Git или ошибки; production KMS и
+  trusted capture boundary не заявлены ([ADR 0005](docs/adr/0005-ed25519-evidence-trust-root.md)).
+
 - **`dwh.cost` проверяет runtime-границы exact reference-запроса**
   (`VERIFIER_VERSION` 12 → 13, `CHECK_VERSION` 8 → 9). После безопасных plan/access/
   security-проверок ClickHouse выполняет запрос через command API с `FORMAT Null` под

@@ -426,8 +426,9 @@ pass | pass_with_advisory | needs_review | block
 
 Идемпотency key для one-shot verify (`release_gate.idempotency_key`) строится из
 digest product spec, base и candidate snapshots, policy version, execution
-environment и verifier version. Повтор может переиспользовать только полный
-terminal bundle с тем же ключом.
+environment, evidence-signing identity (`unsigned` либо algorithm + `key_id`) и verifier
+version. Повтор может переиспользовать только полный terminal bundle с тем же ключом;
+ротация signing key создаёт другой `run_id`.
 
 Того, что снималось **в момент** прогона — показаний движка (§8.2 шаг 7) и записанных
 результатов кандидата (§8.4), — в ключе нет: это наблюдения момента, и ключ по ним сделал
@@ -444,7 +445,7 @@ terminal bundle с тем же ключом.
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=13`, `CHECK_VERSION=9`.
+`VERIFIER_VERSION=14`, `CHECK_VERSION=9`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -778,10 +779,11 @@ Metamorphic checks объявляются явно в `tolerance.aggregate_check
 запрос читает чужую витрину или необъявленную колонку своей.
 
 Четвёртое — **что runner действительно выполнил этот запрос** — здесь непроверяемо и не
-заявляется: attestation может соврать, и поймала бы это только подпись над снятием, а
-trust root отложен (§9.3). Что проверка убирает — молчаливый случай: число без attestation
-теперь называется `provenance.unattested`, а не проходит через сверку, читающуюся как
-доказательство.
+заявляется. §9.3 теперь аутентифицирует producer и неизменность итогового evidence bundle,
+но не превращает входную attestation в показание trusted runner: для этого private key
+должен быть изолирован внутри capture/execution boundary. Что проверка убирает уже сейчас —
+молчаливый случай: число без attestation называется `provenance.unattested`, а не проходит
+через сверку, читающуюся как доказательство.
 
 Остальные коды: `provenance.snapshot_unstated` / `environment_unstated` / `query_unstated`
 (не назван тот, с чем есть что сверить), `provenance.hand_entered` и
@@ -893,10 +895,27 @@ layout, написанный для человека, а не для машин�
 
 ### 9.3 Integrity и подпись
 
-Local/MVP guarantee — `integrity=content_hashed`, не «подписано» и не
-«tamper-proof». `EvidenceSigner` вводится как optional port. Только успешная
-верификация подписи позволяет выставить `integrity=signed`; provider ключа/KMS
-не выбирается до pilot requirements.
+Подпись opt-in: без signing key сохраняется прежний
+`integrity=content_hashed`. С `--signing-key` writer загружает unencrypted Ed25519 PKCS#8
+PEM по явному пути, подписывает canonical manifest и только после self-verification
+выставляет `integrity=signed`. Private key живёт вне Git, evidence и логов; bootstrap
+хранит его только на Mac с mode `0600`. KMS и remote signing этим решением не вводятся.
+
+Trust root — не ключ из manifest, а один или несколько pinned Ed25519 public SPKI PEM,
+переданных reader'у повторяемым `--trust-key`. `key_id` имеет вид
+`sha256:<64 lowercase hex>` и считается от raw 32-byte public key. Несколько ключей дают
+overlap-ротацию; старые public keys хранятся весь retention соответствующего evidence.
+Signed bundle без подходящего out-of-band ключа получает blocking
+`evidence.signature_untrusted`/`evidence.signature_key_untrusted`; artifact из него не
+выдаётся.
+
+Signing payload — domain-separated
+`auto-bi.io/evidence-manifest/v1 + NUL + RFC8785(manifest)`. В подписанные данные входят
+`integrity=signed`, `algorithm=ed25519`, `key_id` и `signed_at`; только
+`signature.value` заменён пустой строкой. Ed25519 signature хранится как canonical
+unpadded base64url. `signed_at` равен детерминированному `created_at` и является
+утверждением подписанта, а не trusted timestamp. Подробности и границы доверия закреплены
+в [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
 
 ### 9.4 Lineage
 
@@ -945,7 +964,8 @@ Cache/reuse key включает actor/tenant/policy context. Cross-tenant resul
 | Permission leak | actor-bound DWH execution + adversarial fixtures |
 | Stale source | snapshot timestamp/version + freshness gate |
 | Partial result accepted as full | explicit completeness marker |
-| Evidence tampering | canonical digest; optional verified signature later |
+| Evidence tampering | RFC 8785 digest + opt-in Ed25519 signature against pinned out-of-band public keys |
+| Signing key compromise | private key outside Git/evidence/logs, Mac mode `0600`, explicit path, key rotation |
 | Path traversal/artifact overwrite | store-owned paths + confinement |
 | BI side effects during CI gate | pure compiler port; no `build()` |
 | External schema drift | version pin + conformance fixtures + gap report |
@@ -983,7 +1003,8 @@ Redis/Kafka не добавляются без измеренного contention
 ```text
 auto_bi decision validate <product.yaml>
 auto_bi decision verify <product.yaml> --base <ref> --candidate <ref> --evidence <dir>
-auto_bi decision evidence <run-or-path>
+        [--signing-key <private.pem>]
+auto_bi decision evidence <run-or-path> [--trust-key <public.pem>]...
 auto_bi decision investigate <plan.yaml> --results <result.yaml> ... --output <dir>
 ```
 
@@ -1010,9 +1031,10 @@ auto_bi decision capture <assets> --candidate <ref> --dwh <engine> --output <new
         [--asset <id>] [--environment <ref>] [--captured-at <ts>]
 auto_bi decision verify <paths…> --base <ref> --candidate <ref> --evidence <dir>
         [--dashboards <dir>] [--assets <path>] [--results <file>]
-        [--product <id>] [--environment <ref>] [--created-at <ts>] [--json]
+        [--product <id>] [--environment <ref>] [--created-at <ts>]
+        [--signing-key <private.pem>] [--json]
 auto_bi decision evidence <run-or-path> [--run <id>] [--artifact <id>]
-        [--expect-digest <sha256:…>] [--json]
+        [--expect-digest <sha256:…>] [--trust-key <public.pem>]... [--json]
 auto_bi decision investigate <plan.yaml> --results <result.yaml> [<result.yaml> ...]
         --output <new-dir>
 ```
@@ -1025,11 +1047,13 @@ asset'а и создаёт новый gate-ready result с attestation; суще
 `verify` — полный гейт §8.2 для ОДНОГО продукта: один run = один продукт, потому
 что и idempotency key, и evidence bundle называют один `product_ref`.
 `evidence` — чтение уже написанного bundle: пересчёт каждого content address,
-список claim'ов и артефактов, при `--artifact` — сам payload. Его вердикт про
-целостность, а не про релиз: целый bundle с вердиктом `block` внутри — это
-рабочий bundle, и команда выходит с `0`. `restricted`-payload не печатается
-никогда (§10.2), а артефакт, который больше не хешируется в свой адрес, не
-выдаётся вовсе — это уже не то, на чём принималось решение.
+список claim'ов и артефактов, при `--artifact` — сам payload. Для signed bundle
+повторяемый `--trust-key` задаёт out-of-band trust root; без совпавшего public key
+inspection блокируется, а artifact не выдаётся. Его вердикт про целостность и
+аутентичность, а не про релиз: целый bundle с вердиктом `block` внутри — это рабочий
+bundle, и команда выходит с `0`. `restricted`-payload не печатается никогда (§10.2), а
+артефакт, который больше не хешируется в свой адрес, не выдаётся вовсе — это уже не то,
+на чём принималось решение.
 
 `investigate` — внутренний offline alpha. Команда принимает один strict plan и ровно
 по одному `CanonicalMetricResult` для каждой метрики declared steps. Порядок входных
@@ -1144,7 +1168,8 @@ domain state machine.
 | governed query дороже policy получает review | ✅ `dwh.cost` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`, `tests/test_runtime_probe.py`): `max_scanned_rows` берётся только из плана; ClickHouse exact SELECT проверяет bytes+timeout с `FORMAT Null`, PostgreSQL потоково проверяет timeout; превышение и missing runtime evidence → review, успешная engine-enforced проверка → `cost.within_budget`. PostgreSQL scanned bytes остаются явно неизмеренными. Не «block»: число остаётся верным, а выпускать ли метрику дороже объявления — решение владельца |
 | row/column restriction проверяется negative-тестом, а не декларацией | ✅ `dwh.security` при `--dwh` (`tests/test_environment_checks.py`, `tests/test_environment_probe.py`); прогнано вживую на ClickHouse 24.8.14.39 и PostgreSQL 14.24 — withheld column → block, применённая политика → review, RLS без permissive → block |
 | stale source возвращает honest insufficient/block | ✅ stale **verified asset** → `asset.stale_snapshot` (review), недоступный результат → `insufficient`, freshness самого источника → `dwh.freshness` (review) при `--dwh` (`tests/test_environment_checks.py`) |
-| поданное число нельзя выдать за проверенное | ✅ `results.provenance` (`tests/test_result_provenance.py` + gate-прогоны в `tests/test_decision_verify.py`) — число без attestation, из чужого snapshot'а, с чужой среды или из не-reviewed запроса названо, но не заблокировано. Того, что runner действительно выполнил заявленный запрос, проверка не доказывает: это подпись, а trust root отложен |
+| поданное число нельзя выдать за проверенное | ✅ `results.provenance` (`tests/test_result_provenance.py` + gate-прогоны в `tests/test_decision_verify.py`) — число без attestation, из чужого snapshot'а, с чужой среды или из не-reviewed запроса названо, но не заблокировано. Ed25519 trust root аутентифицирует итоговый evidence producer, но факт исполнения runner'ом потребует изоляции private key внутри capture boundary |
+| signed evidence нельзя прочитать как trusted с чужим ключом | ✅ `tests/test_evidence_signing.py` — self-verification writer'а, pinned public trust root, overlap-ротация, tamper/wrong-key/invalid-base64url negative paths и fail-closed artifact read |
 
 ### 15.4 Compatibility gate
 
@@ -1192,6 +1217,7 @@ acceptance. Граница и основания зафиксированы в
 | BI compiler расходится с build | shared pure builders + mutation-spy tests |
 | Result comparator даёт false equivalence | typed schema/key/unit/completeness before values |
 | Evidence слишком тяжёлый/чувствительный | content-addressed blobs + restricted store |
+| Evidence signer скомпрометирован | внешний private-key path на Mac + `0600`; key identity в run id; overlap-ротация trust root |
 | SQLite переписывается раньше продукта | file-based MVP + repository ports first |
 | LLM создаёт ложную уверенность | deterministic verdict + typed claim classes |
 
@@ -1205,9 +1231,12 @@ acceptance. Граница и основания зафиксированы в
    artifact после native source.
 3. Нужен ли отдельный distribution/package name до `v0.6.0`.
 4. Где будет новый remote repository.
-5. Нужна ли подпись evidence и какой trust root допустим.
-6. Нужен ли PostgreSQL в pilot или filesystem/SQLite достаточно.
-7. Какой BI contract требует live result reconciliation первым.
+5. Нужен ли PostgreSQL в pilot или filesystem/SQLite достаточно.
+6. Какой BI contract требует live result reconciliation первым.
+7. Какой managed key custody/KMS заменит Mac file key перед production-контуром.
+
+Подпись evidence и bootstrap trust root выбраны в
+[ADR 0005](adr/0005-ed25519-evidence-trust-root.md); этот вопрос больше не открыт.
 
 ## 19. Bootstrap acceptance
 
@@ -1230,6 +1259,9 @@ acceptance. Граница и основания зафиксированы в
 - [Current baseline state](CURRENT_STATE.md)
 - [BIAdapter ADR](adr/0001-bi-adapter-contract.md)
 - [Durable build-attempt ADR](adr/0002-durable-build-attempt-reconciliation.md)
+- [DecisionOps additive control plane ADR](adr/0003-decisionops-additive-control-plane.md)
+- [Synthetic proxy boundary ADR](adr/0004-synthetic-proxy-offline-investigation.md)
+- [Ed25519 evidence trust-root ADR](adr/0005-ed25519-evidence-trust-root.md)
 
 Первичные внешние:
 

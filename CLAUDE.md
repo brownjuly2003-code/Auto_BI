@@ -52,7 +52,9 @@ GraceKelly (локальный сервис, должен быть запуще�
 - Python 3.12 + uv; ruff + black; pytest. FastAPI, pydantic v2, sqlglot, httpx.
 - Без LangChain/LangGraph — агент = простая state machine.
 - Код/идентификаторы — английский; доки и общение — русский.
-- Секреты только в `.env` (в `.gitignore`); в логи/доки не попадают.
+- Секреты только в `.env` (в `.gitignore`). Единственное документированное исключение —
+  DecisionOps Ed25519 signing key: explicit PKCS#8 path вне checkout/evidence, на Mac с
+  mode `0600`. Значения секретов в логи/доки не попадают.
 - Локальный стенд: `docker-compose up` (Superset + ClickHouse с демо-DM).
 
 ## Стопперы переключения модели (/auto)
@@ -73,6 +75,9 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-12 — решение 3 пересмотрено: canonical evidence manifest поддерживает opt-in
+  Ed25519 signature; trust root — pinned public SPKI PEM, signing identity входит в
+  `run_id`. Реальный private key и инфраструктура на Windows не создавались; ADR 0005.
 - 2026-09-12 — PostgreSQL `max_scanned_bytes`: native API PostgreSQL 14–18 не
   предоставляет ни exact-query scanned-byte counter, ни byte ceiling; buffer/cache/I/O
   counters измеряют другой контракт. До named trusted provider/extension остаётся честный
