@@ -526,12 +526,17 @@ def _decision_evidence(args: argparse.Namespace) -> int:
     import json
 
     from auto_bi.decision.use_cases import VerifyError, locate_evidence
-    from auto_bi.evidence.inspect import EvidenceReadError, inspect_bundle, read_artifact
+    from auto_bi.evidence.inspect import (
+        EvidenceDigestError,
+        EvidenceReadError,
+        inspect_bundle,
+        read_artifact,
+    )
     from auto_bi.evidence.signing import (
         EvidenceSignatureError,
         load_ed25519_trust_store,
     )
-    from auto_bi.verification.model import EXIT_ERROR, exit_code_for
+    from auto_bi.verification.model import EXIT_ERROR, Verdict, exit_code_for
 
     try:
         verifier = load_ed25519_trust_store(args.trust_key) if args.trust_key else None
@@ -541,6 +546,7 @@ def _decision_evidence(args: argparse.Namespace) -> int:
                 location.store,
                 location.run_id,
                 args.artifact,
+                expected_digest=args.expect_digest or None,
                 verifier=verifier,
             )
             try:
@@ -559,6 +565,9 @@ def _decision_evidence(args: argparse.Namespace) -> int:
             expected_digest=args.expect_digest or None,
             verifier=verifier,
         )
+    except EvidenceDigestError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return exit_code_for(Verdict.BLOCK)
     except (VerifyError, EvidenceReadError, EvidenceSignatureError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR

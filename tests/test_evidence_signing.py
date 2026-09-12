@@ -183,6 +183,7 @@ def test_cli_refuses_signed_artifact_without_the_trust_root(
     assert main(_verify_argv(case, "--signing-key", str(private_path), "--json")) == 0
     capsys.readouterr()
     evidence = case.root / "evidence"
+    manifest_digest = digest_bytes(next(evidence.iterdir()).joinpath("manifest.json").read_bytes())
 
     assert (
         main(
@@ -192,6 +193,8 @@ def test_cli_refuses_signed_artifact_without_the_trust_root(
                 str(evidence),
                 "--artifact",
                 "check-semantic.diff",
+                "--expect-digest",
+                manifest_digest,
             ]
         )
         == EXIT_ERROR
@@ -206,6 +209,8 @@ def test_cli_refuses_signed_artifact_without_the_trust_root(
                 str(evidence),
                 "--artifact",
                 "check-semantic.diff",
+                "--expect-digest",
+                manifest_digest,
                 "--trust-key",
                 str(public_path),
             ]
@@ -213,6 +218,36 @@ def test_cli_refuses_signed_artifact_without_the_trust_root(
         == 0
     )
     assert json.loads(capsys.readouterr().out)["changes"] == []
+
+
+def test_a_trusted_signature_cannot_override_an_unexpected_artifact_pin(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    private_path, public_path, _ = _key_files(tmp_path, "trusted")
+    case = Case(tmp_path / "case").with_candidate()
+    assert main(_verify_argv(case, "--signing-key", str(private_path), "--json")) == 0
+    evidence = case.root / "evidence"
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "decision",
+                "evidence",
+                str(evidence),
+                "--artifact",
+                "check-semantic.diff",
+                "--expect-digest",
+                "sha256:" + "0" * 64,
+                "--trust-key",
+                str(public_path),
+            ]
+        )
+        == 4
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "evidence.digest_unexpected" in captured.err
 
 
 def test_cli_reports_an_unreadable_private_key_without_echoing_it(

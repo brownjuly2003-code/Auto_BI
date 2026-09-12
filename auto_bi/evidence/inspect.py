@@ -22,6 +22,8 @@ Two refusals are deliberate:
 
 from __future__ import annotations
 
+import json
+
 from pydantic import Field, model_validator
 
 from auto_bi.evidence.canonical import digest_bytes
@@ -57,6 +59,16 @@ class EvidenceReadError(Exception):
     Distinct from a blocking problem on purpose: a problem is a graded finding *about* a
     bundle, while this says the caller never got one to grade.
     """
+
+
+class EvidenceDigestError(EvidenceReadError):
+    """The caller pinned a different manifest (exit 4, not a reader failure)."""
+
+    code = "evidence.digest_unexpected"
+
+    def __init__(self, detail: str) -> None:
+        self.detail = detail
+        super().__init__(f"{self.code}: {detail}")
 
 
 class BundleInspection(StrictModel):
@@ -166,12 +178,24 @@ def read_artifact(
     run_id: str,
     artifact_id: str,
     *,
+    expected_digest: str | None = None,
     verifier: EvidenceVerifier | None = None,
 ) -> tuple[EvidenceArtifact, bytes]:
     """One payload out of a bundle — only if it is still what the manifest addresses."""
     try:
-        bundle = read_bundle(store, run_id)
+        raw = store.get(run_id, MANIFEST_PATH)
     except (ArtifactStoreError, ValueError) as exc:
+        raise EvidenceReadError(
+            f"run {run_id!r} has no readable {MANIFEST_PATH}, so nothing can be read out of it"
+        ) from exc
+    manifest_digest = digest_bytes(raw)
+    if expected_digest and expected_digest != manifest_digest:
+        raise EvidenceDigestError(
+            f"manifest hashes to {manifest_digest}, the caller expected {expected_digest}"
+        )
+    try:
+        bundle = EvidenceBundle.model_validate(json.loads(raw.decode("utf-8")))
+    except ValueError as exc:
         raise EvidenceReadError(
             f"run {run_id!r} has no readable {MANIFEST_PATH}, so nothing can be read out of it"
         ) from exc
@@ -208,4 +232,10 @@ def read_artifact(
     return artifact, payload
 
 
-__all__ = ["BundleInspection", "EvidenceReadError", "inspect_bundle", "read_artifact"]
+__all__ = [
+    "BundleInspection",
+    "EvidenceDigestError",
+    "EvidenceReadError",
+    "inspect_bundle",
+    "read_artifact",
+]

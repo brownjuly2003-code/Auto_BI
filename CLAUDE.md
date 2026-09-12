@@ -83,6 +83,9 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-12 — исправлен обход `--expect-digest` в `decision evidence --artifact`:
+  неверный manifest pin блокирует выдачу payload с exit `4`; проверки подписи и
+  classification сохранены. Срез реализован Luna xhigh и одобрен Astra xhigh.
 - 2026-09-12 — по synthetic Astra xhigh review R3/R4 owner-summary объясняет границы
   reconciliation, attestation, compiled-reference cost и подписи; verifier 15, check 9.
   Исторические signed bundles не изменены; human/production acceptance не заявляется.

@@ -470,6 +470,48 @@ def test_evidence_prints_one_artifact_and_nothing_else(
     assert payload["changes"] == []
 
 
+def test_evidence_artifact_honors_the_manifest_digest_pin(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    evidence = _written_bundle(tmp_path)
+    capsys.readouterr()
+    main(["decision", "evidence", str(evidence), "--json"])
+    digest = json.loads(capsys.readouterr().out)["manifest_digest"]
+
+    code = main(
+        [
+            "decision",
+            "evidence",
+            str(evidence),
+            "--artifact",
+            "check-semantic.diff",
+            "--expect-digest",
+            digest,
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert json.loads(captured.out)["changes"] == []
+    assert captured.err == ""
+
+    stale = "sha256:" + "0" * 64
+    code = main(
+        [
+            "decision",
+            "evidence",
+            str(evidence),
+            "--artifact",
+            "check-semantic.diff",
+            "--expect-digest",
+            stale,
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 4
+    assert captured.out == ""
+    assert "evidence.digest_unexpected" in captured.err
+
+
 def test_evidence_refuses_to_print_a_payload_that_is_not_text(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

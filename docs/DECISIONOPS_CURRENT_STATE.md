@@ -231,6 +231,10 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 `How to read this evidence` отделяет reconciliation от semantic approval, attestation
 от execution proof, cost compiled reference SQL от capture SQL и подпись от sign-off.
 Исторические bundles остаются на исходных версиях; grading проверок не менялся.
+Следующий выявленный Astra-срез закрыт:
+[`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
+Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки
+подписи, classification и выбранного payload. Версии evidence не менялись.
 Правила закреплены в [AGENTS.md](../AGENTS.md) и
 [ADR 0006](adr/0006-modelled-review-development-gate.md).
 Зависимость от локального proxy отменена владельцем в `AGENTS.md`; модельные агенты

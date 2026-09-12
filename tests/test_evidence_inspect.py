@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from auto_bi.evidence.canonical import digest_bytes
 from auto_bi.evidence.inspect import (
     BundleInspection,
+    EvidenceDigestError,
     EvidenceReadError,
     inspect_bundle,
     read_artifact,
@@ -110,7 +111,31 @@ def test_a_tampered_payload_cannot_be_read_as_evidence(tmp_path: Path) -> None:
     assert inspection.bundle is not None  # the manifest is still readable; the payload is not
 
     with pytest.raises(EvidenceReadError, match="does not hash"):
-        read_artifact(store_of(tmp_path), RUN, "result-candidate")
+        read_artifact(store_of(tmp_path), RUN, "result-candidate", expected_digest=written.digest)
+
+
+def test_a_pinned_artifact_rejects_an_unexpected_manifest_digest(tmp_path: Path) -> None:
+    full_bundle(tmp_path).write()
+
+    with pytest.raises(EvidenceDigestError, match=r"evidence\.digest_unexpected"):
+        read_artifact(
+            store_of(tmp_path),
+            RUN,
+            "check-freshness",
+            expected_digest=digest_bytes(b"another bundle"),
+        )
+
+
+def test_a_pinned_artifact_does_not_verify_unselected_damaged_payloads(tmp_path: Path) -> None:
+    written = full_bundle(tmp_path).write()
+    (tmp_path / RUN / "reports" / "summary.md").write_bytes(b"damaged unrelated report")
+
+    artifact, payload = read_artifact(
+        store_of(tmp_path), RUN, "check-freshness", expected_digest=written.digest
+    )
+
+    assert artifact.artifact_id == "check-freshness"
+    assert b"freshness.within_max_age" in payload
 
 
 def test_a_manifest_that_does_not_parse_leaves_no_bundle_to_show(tmp_path: Path) -> None:
@@ -207,7 +232,9 @@ def test_a_restricted_payload_is_named_but_never_printed(tmp_path: Path) -> None
     assert SECRET not in inspection.model_dump_json()
 
     with pytest.raises(EvidenceReadError, match="restricted"):
-        read_artifact(store_of(tmp_path), RUN, artifact_id)
+        read_artifact(
+            store_of(tmp_path), RUN, artifact_id, expected_digest=inspection.manifest_digest
+        )
 
 
 def test_an_artifact_the_store_no_longer_holds_is_reported(tmp_path: Path) -> None:
@@ -215,7 +242,12 @@ def test_an_artifact_the_store_no_longer_holds_is_reported(tmp_path: Path) -> No
     (tmp_path / RUN / "checks" / "check-freshness.json").unlink()
 
     with pytest.raises(EvidenceReadError, match="not in the store"):
-        read_artifact(store_of(tmp_path), RUN, "check-freshness")
+        read_artifact(
+            store_of(tmp_path),
+            RUN,
+            "check-freshness",
+            expected_digest=digest_bytes((tmp_path / RUN / "manifest.json").read_bytes()),
+        )
 
 
 def test_reading_an_artifact_the_bundle_does_not_list_is_an_error(tmp_path: Path) -> None:
