@@ -75,12 +75,14 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
-- 2026-09-12 — R3 live owner package остановлен по S7: после успешного `SELECT 1`
-  два exact 13-недельных read-only запроса и scoped `system.processes`/admin-cancel не
-  получили ответа в пределах 10–55 секунд; причина не установлена, модель не менять.
+- 2026-09-12 — техническая часть R3 закрыта tracked live owner package: Mac, нативный
+  ClickHouse 24.8.14.39 на изолированных портах, attested capture, все пять DWH checks и
+  signed bundle `run-a7e2e9f914a502de`; pinned-key inspection проходит. Предыдущий S7 снят
+  для этого среза без Docker/Colima; human/design-partner outcome остаётся внешним gate.
 - 2026-09-12 — решение 3 пересмотрено: canonical evidence manifest поддерживает opt-in
   Ed25519 signature; trust root — pinned public SPKI PEM, signing identity входит в
-  `run_id`. Реальный private key и инфраструктура на Windows не создавались; ADR 0005.
+  `run_id`. Pilot-only private key создан вне checkout на Mac с mode `0600`; production key
+  и инфраструктура на Windows не создавались; ADR 0005.
 - 2026-09-12 — PostgreSQL `max_scanned_bytes`: native API PostgreSQL 14–18 не
   предоставляет ни exact-query scanned-byte counter, ни byte ceiling; buffer/cache/I/O
   counters измеряют другой контракт. До named trusted provider/extension остаётся честный

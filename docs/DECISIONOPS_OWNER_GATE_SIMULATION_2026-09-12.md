@@ -1,8 +1,8 @@
 # DecisionOps — synthetic owner review 2026-09-12
 
-**Proxy verdict:** scope и действие владельца читаются из свежих v14 отчётов; пакет для
-реального owner review требует уточнений ниже. Human/design-partner outcome не измерен,
-Task 8 и hard gate остаются открытыми; production acceptance не заявляется.
+**Proxy verdict:** scope и действие владельца читаются из свежих v14 отчётов; единый live
+owner-пакет для R3 теперь сохранён и проверяем. Human/design-partner outcome не измерен,
+Task 8 human outcome и hard gate остаются открытыми; production acceptance не заявляется.
 
 ## Сценарий и метод
 
@@ -17,6 +17,10 @@ timezone `Europe/Moscow → UTC` у `metric://sales/gross_margin_pct`, и не �
 [архитектура](DECISIONOPS_ARCHITECTURE.md), [pilot](DECISIONOPS_PILOT_2026-08-25.md),
 [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md),
 [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
+
+Технический follow-up R3 выполнен на HEAD `4f7d165` в разрешённом Mac-контуре с нативным
+ClickHouse 24.8.14.39. Его входы, attested result, signed evidence и public trust root лежат
+в [live owner-review package](pilot/2026-09-12-owner-review-live-r3/README.md).
 
 ## Walkthrough и ответы simulated owner
 
@@ -43,11 +47,11 @@ timezone `Europe/Moscow → UTC` у `metric://sales/gross_margin_pct`, и не �
 
 | Возможность | Наблюдение и граница evidence |
 |---|---|
-| Chart impact | Свежий affected называет dashboard, но 0 charts и 0 unresolved. В tracked `weekly_margin@7.yaml` единственный чарт `revenue_by_region` считает SUM(revenue), а не ratio маржи. Положительный `computes_metric` и `chart.opaque_sql` представлены в `tests/test_decision_verify.py`; этот pilot их не демонстрирует. |
-| Provenance / governance | `unattested` виден рядом с успешным reconciliation. У pilot asset нет `reference_query`, поэтому отсутствие `query_ungoverned` не доказывает governance SQL. В текущем контракте reviewed SQL сверяется со snapshot по таблицам/колонкам; matching attestation сама этого не заменяет. |
-| Reviewed capture | CLI help показывает asset selection, candidate, environment и новый output. Прочитаны контрактные тесты exact SQL, canonical YAML, nullable/schema и отказа от overwrite до подключения. Для pilot сначала нужен reviewed SQL; живой capture в этом review не выполнялся. |
-| Runtime cost | Свежий offline отчёт честно показывает `check.not_configured`. По архитектуре exact reference SELECT метрики имеет CH byte/timeout limits и PG statement timeout; это отдельный запрос от asset capture. `max_scanned_rows` остаётся оценкой плана, PG scanned bytes — `cost.not_measured` (review). Живые counters здесь не измерены. |
-| Ed25519 | ADR и CLI tests различают content hashes и pinned public trust root: signed inspection без ключа — block/4, выдача artifact без trust root — usage error/2; правильный ключ разрешает чтение. Подпись доказывает producer/неизменность bundle, но не SQL execution и не trusted time. Наши CLI bundles unsigned; operational key не создавался. |
+| Chart impact | Chart overlay и live R3 bundle называют один `computes_metric` chart и отдельный `chart.opaque_sql`; владелец видит и доказанную связь, и границу resolver. |
+| Provenance / governance | Live result имеет `query_run` attestation на candidate snapshot и точный digest reviewed SQL. `results.provenance` и reconciliation проходят; reviewed asset всё равно invalidated из-за semantic change, поэтому совпавшее число не отменяет review. |
+| Reviewed capture | `decision capture` исполнил reviewed SQL на Mac под `gate_ro` и записал canonical result `msk=0.452054` с environment, executor, query и semantic digests. |
+| Runtime cost | ClickHouse plan оценил 91 строку; exact reference SELECT завершился под engine limits 1 000 000 bytes и 5 000 ms. PostgreSQL scanned bytes по-прежнему остаются отдельной честной границей `cost.not_measured`. |
+| Ed25519 | Live manifest подписан pilot-only ключом вне checkout; inspection с tracked public SPKI дала `signature_verified=true`. Подпись доказывает producer/неизменность bundle, но не production sign-off, trusted time или человеческое решение. |
 
 Понятность verdict, changed scope и первого owner action в прочитанных v14 summary
 проходит proxy-проверку. Разобраться, как устранить provenance gap и какие гарантии даёт
@@ -61,7 +65,7 @@ Severity: P1 — искажает основу решения; P2 — мешае
 |---|---|---|
 | R1 | P1 | Current state называет `docs/pilot/` verifier 7, фактические manifest — v2. Четыре tracked пути подтверждены `git ls-files`; v7 run ID есть в тексте прежнего review, но не в tracked evidence. Развести исторические наборы и дать проверяемое расположение v7, прежде чем ссылаться на него в owner gate. Это документационное расхождение, не отказ integrity checker. |
 | R2 | P2 | Pilot не показывает chart, вычисляющий governed-маржу: владелец получает affected dashboard и ноль charts. Это пробел демонстрации, а не установленный дефект resolver. Для реального review нужен соответствующий чарт и отдельный unresolved пример. |
-| R3 | P2 | Нет единого показанного owner-пакета с reviewed SQL → capture → governance → runtime cost → authenticated evidence. Наличие отдельных контрактов не доказывает, что owner правильно свяжет эти гарантии. Подготовить такой пример в разрешённом контуре и наблюдать его прочтение человеком. |
+| R3 | P2 | Техническая часть закрыта tracked live-пакетом: reviewed SQL → capture → governance → runtime cost → authenticated evidence. Наблюдение за тем, правильно ли владелец связывает гарантии, остаётся частью human gate. |
 | R4 | P3 | `computes_metric`, `provenance`, `trust root` и `cost.not_measured` требуют понимания границ. Проверить у владельца, что совпавшее число или signed bundle не принимаются за доказательство исполнения SQL/production sign-off. |
 
 ## Follow-up 2026-09-12
@@ -72,8 +76,12 @@ Severity: P1 — искажает основу решения; P2 — мешае
   [tracked chart-impact overlay](pilot/2026-09-12-owner-review-chart-impact/README.md).
   Свежий verifier 14 report называет ровно один chart `computes_metric` и один unresolved
   `chart.opaque_sql`; bundle содержит 18 artifacts и проходит integrity inspection.
-- R3 и R4 остаются открытыми и требуют разрешённого live-контура и наблюдения за реальным
-  владельцем. Overlay не меняет human/design-partner gate.
+- Техническая часть R3 закрыта
+  [live owner-review package](pilot/2026-09-12-owner-review-live-r3/README.md): capture
+  аттестует candidate, runtime checks исполнены на Mac, signed bundle проходит pinned-key
+  inspection. Его release verdict ожидаемо `block` из-за governed timezone change.
+- R4 и наблюдаемая человеком часть R3 остаются открытыми до review реального владельца.
+  Live package не меняет human/design-partner gate.
 
 ## Команды и машинное время
 
@@ -88,6 +96,7 @@ Severity: P1 — искажает основу решения; P2 — мешае
 | `decision validate …ch-tz-margin/contracts` | 1128 | 0; 0 issues |
 | `decision verify`, affected v14 | 2934 | 4; block |
 | `decision verify`, control v14 | 1715 | 3; needs_review |
+| Mac R3 runner: capture → signed verify → trusted inspection | 15870 | 0; inner verify 4, final `DONE` |
 
 Воспроизведение из корня репозитория, PowerShell; каждому запуску нужен свой новый
 evidence-каталог. Все строки `decision …` выше имеют префикс `uv run auto_bi`.
@@ -106,13 +115,16 @@ Affected: `run-a7c5f8da2860617b`, digest
 `sha256:65e4a6de720e1d085fbc21c7c9e16844b45b1202abb2a46d4b5f89fb46b6c5d4`.
 Control: `run-65ea807cc9489802`, digest
 `sha256:fd066cf114d745c45e4bda7c05f40b89f2b5f72c0985595a773a86497fb25c0a`.
-Новые bundles находятся в ignored `.tmp/`; tracked pilot не изменялся.
+Два synthetic bundles находятся в ignored `.tmp/`. Отдельный live R3 bundle сохранён в
+`docs/pilot/2026-09-12-owner-review-live-r3/` и проверяется так:
 
-Запущен один offline pytest по `test_decision_verify`, `test_decision_chart_impact`,
-`test_result_provenance`, `test_result_capture`, `test_result_probe`,
-`test_environment_checks`, `test_runtime_probe`, `test_evidence_signing`,
-`test_decision_cli` (`tests/<name>.py -q`). На момент записи завершение не подтверждено:
-PowerShell-команды задержались без результата; свежий pass этих тестов не заявляется.
+```powershell
+$live = 'docs/pilot/2026-09-12-owner-review-live-r3'
+uv run auto_bi decision evidence "$live/evidence" --trust-key "$live/trust/evidence-public.pem" --expect-digest sha256:87cf811193731d9a8e2cdafdacf1d7e2e9c3c2068bb1a9083b517b6fc7f19519
+```
+
+Свежая проверка документации и tracked-ссылок:
+`uv run pytest tests/test_docs_as_code.py -q` — `24 passed`, exit `0`.
 
 ## Что обязательно для реального owner gate
 

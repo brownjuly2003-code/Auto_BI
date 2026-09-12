@@ -6,7 +6,8 @@
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
 привязкой его reviewed-запроса к governed-модели; read-only capture reviewed-запроса
 реализован и проверен на живых PostgreSQL и ClickHouse; evidence manifest получает
-opt-in Ed25519 authentication; human/design-partner gate остаётся открытым
+opt-in Ed25519 authentication; единый signed R3 owner-пакет выпущен на Mac;
+human/design-partner gate остаётся открытым
 
 **Версии evidence:** `VERIFIER_VERSION=14`, `CHECK_VERSION=9`
 
@@ -19,7 +20,10 @@ Mac verifier 7 runs из proxy-review 2026-09-04 в Git не сохранены.
 governance reviewed-запроса, runtime cost facts и signing identity. У исторического
 pilot-числа нет attestation, поэтому свежий прогон показывает `provenance.unattested`
 (review). Dashboard-only overlay с теми же semantic snapshots и продуктом сохраняет
-`run_id`; конкретный bundle различается evidence digest и каталогом.
+`run_id`; конкретный bundle различается evidence digest и каталогом. Отдельный
+[live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md) связывает эти возможности
+в одном Mac-прогоне: candidate capture аттестован, ClickHouse runtime checks исполнены,
+manifest подписан и проверен по сохранённому public trust root.
 
 ## Коротко
 
@@ -75,15 +79,15 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Область | Состояние |
 |---|---|
 | Tasks 1–7 | завершены |
-| Task 8: технический pilot | завершён на ClickHouse 24.8.14.39 |
-| Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 follow-up закрыт tracked chart overlay |
+| Task 8: технический pilot | завершён на ClickHouse 24.8.14.39; R3 unified live package tracked и проверен |
+| Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
 | Chart-level impact | реализован 2026-09-07; tracked verifier 14 overlay показывает `computes_metric` и `chart.opaque_sql`, грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
-| Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; offline tests пройдены, operational key не создавался |
+| Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; pilot-only signer создан вне checkout на Mac, production trust root не назначен |
 | Continuous platform | заблокирована до human/design-partner evidence |
 
 Четыре tracked pilot-сценария и найденные дефекты описаны в
@@ -94,7 +98,9 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 подтвердила scope/actionability свежих verifier 14 отчётов. Её пробел R2 закрыт отдельным
 [tracked chart-impact overlay](pilot/2026-09-12-owner-review-chart-impact/README.md): affected
 report содержит один `computes_metric` chart и один именованный `chart.opaque_sql` gap.
-Это всё ещё proxy. Task 8 human outcome остаётся открытым,
+[Live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md) добавляет к тому же change
+reviewed capture, provenance/governance, все пять live DWH checks и signed evidence.
+Это всё ещё техническая подготовка. Task 8 human outcome остаётся открытым,
 а [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) не разблокирует
 scheduler, PostgreSQL, REST/MCP, notifications или actions.
 
@@ -132,8 +138,9 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   `auto_bi decision capture` теперь исполняет его read-only драйвером, канонизирует ответ и
   формирует attestation; snapshot, среда и запрос затем сверяются с тем, что гейт держит
   независимо. Ed25519 теперь аутентифицирует producer и неизменность итогового bundle, но
-  не доказывает, что capture runner действительно исполнил заявленный запрос: для этого
-  private key должен быть изолирован внутри capture/execution boundary.
+  сама не доказывает, что capture runner действительно исполнил заявленный запрос. R3 pilot
+  выполняет capture и signing одним runner'ом с ключом вне checkout; production-доказательство
+  требует boundary, в которой private key недоступен вызывающей стороне.
 - Governance reviewed-запроса покрывает таблицы и колонки. Колонка приписывается
   таблице там, где выбора не оставляет сам SQL, а для голого имени — там, где его не
   оставляет governed-модель: ровно один источник scope'а объявляет это имя, и все
@@ -185,6 +192,11 @@ pilot-входов без этих полей; сам tracked historical bundle 
 Его verifier 14 bundle имеет release verdict `block` (exit `4`) и отдельно проходит
 integrity inspection (exit `0`); исторические `2026-08-25` dashboard inputs не менялись.
 
+Единый live owner-review пример находится в
+[`docs/pilot/2026-09-12-owner-review-live-r3/`](pilot/2026-09-12-owner-review-live-r3/README.md).
+Его signed verifier 14 bundle имеет release verdict `block` (exit `4`) и проходит inspection
+с pinned public key (`signature_verified=true`, exit `0`).
+
 Шаблон для собственных контрактов — тот же вызов со своими путями:
 
 ```bash
@@ -195,10 +207,9 @@ uv run auto_bi decision evidence .evidence --trust-key <public.pem>
 ```
 
 Без `--signing-key` сохраняется совместимый `integrity=content_hashed`. Signing key —
-внешний unencrypted PKCS#8 PEM; на Mac он хранится вне checkout/evidence с mode `0600`.
-Trust root — один или несколько SPKI public PEM. Private key в Git, документацию, evidence
-или логи не помещается; инфраструктура и реальный operational key на этой Windows-машине
-не создаются.
+внешний unencrypted PKCS#8 PEM; pilot-only ключ R3 хранится на Mac вне checkout/evidence с
+mode `0600`. Trust root — один или несколько SPKI public PEM. Private key в Git,
+документацию, evidence, логи или Windows workspace не помещается; production key не назначен.
 
 `investigate` пишет ровно четыре файла: canonical `plan.json`, canonical
 `results.json` с входами и ordered skill outputs, typed `brief.json` и
@@ -213,7 +224,8 @@ Windows-машине для документационной проверки н
 ## Что делать дальше
 
 Разрешённый срез подписи закрыт [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
-Незаблокированных implementation-срезов сейчас нет.
+Техническая часть R3 закрыта tracked live package. Следующий продуктовый шаг — наблюдаемый
+review реального владельца; незаблокированных implementation-срезов сейчас нет.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 
@@ -251,5 +263,6 @@ scheduler, PostgreSQL platform runtime, REST/MCP, notifications, actions.
 1. Текущий Git status, код и [целевая архитектура](DECISIONOPS_ARCHITECTURE.md).
 2. [ADR 0003](adr/0003-decisionops-additive-control-plane.md),
    [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md),
-   [ADR 0005](adr/0005-ed25519-evidence-trust-root.md) и tracked pilot evidence.
+   [ADR 0005](adr/0005-ed25519-evidence-trust-root.md) и tracked pilot evidence, включая
+   [live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md).
 3. Для baseline v0.5.0 — [ARCHITECTURE.md](ARCHITECTURE.md) и [CURRENT_STATE.md](CURRENT_STATE.md).
