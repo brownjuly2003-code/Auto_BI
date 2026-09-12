@@ -133,6 +133,7 @@ def render_summary(
         intro=review_intro,
     )
     lines += _undone_section([check for check in checks if check.summary_code in _UNDONE])
+    lines += _reading_guide_section()
     lines += _table_section(checks)
     return "\n".join(lines) + "\n"
 
@@ -236,6 +237,31 @@ def _table_section(checks: Sequence[CheckResult]) -> list[str]:
             f"| {_cell(check.detail)} |"
         )
     return lines
+
+
+def _reading_guide_section() -> list[str]:
+    """State the boundaries an owner needs before reading the check table."""
+    return [
+        "",
+        "## How to read this evidence",
+        "",
+        "- If `results.reconcile` is `result.equivalent`, it means only that the supplied "
+        "result rows agree; it is not semantic approval.",
+        "- When `results.provenance` is established, it means a supplied attestation matches "
+        "the reviewed query and semantic snapshot, and, when this run declares one, the "
+        "environment. It does not independently prove that SQL executed.",
+        "- `dwh.cost` bounds concern compiled metric reference SQL; they do not measure the "
+        "captured reviewed asset SQL.",
+        "- Unavailable numeric counters stay unknown. Successful execution under "
+        "engine-enforced limits can confirm bounds without an exact numeric measurement; "
+        "neither `cost.not_measured` "
+        "nor a skipped check is a pass.",
+        "- A successfully verified signature authenticates the producer and bundle integrity, "
+        "but it does not prove SQL execution or production sign-off. Verify it separately "
+        "with `auto_bi decision evidence` and a trusted public key.",
+        "- The report is sealed before the bundle verification check. It does not assert that "
+        "this bundle is signed or verified.",
+    ]
 
 
 def _cell(text: str) -> str:

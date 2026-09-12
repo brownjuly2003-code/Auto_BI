@@ -7,10 +7,10 @@ impact доведён до чарта; происхождение кандида
 привязкой его reviewed-запроса к governed-модели; read-only capture reviewed-запроса
 реализован и проверен на живых PostgreSQL и ClickHouse; evidence manifest получает
 opt-in Ed25519 authentication; единый signed R3 owner-пакет выпущен на Mac;
-следующий development review — моделирование на Astra xhigh по ADR 0006;
+Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=14`, `CHECK_VERSION=9`
+**Версии evidence:** `VERIFIER_VERSION=15`, `CHECK_VERSION=9`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -225,13 +225,16 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 ## Что делать дальше
 
 Разрешённый срез подписи закрыт [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
-Техническая часть R3 закрыта tracked live package. По решению владельца следующий шаг —
-моделирование owner-review через Astra xhigh: проверить live R3 package и R3/R4,
-выбрать ограниченный implementation-срез; простые задачи делегировать Luna xhigh.
+Техническая часть R3 закрыта tracked live package. Выполнено
+[Astra xhigh review R3/R4](DECISIONOPS_ASTRA_REVIEW_2026-09-12.md): выбран ограниченный
+срез пояснений гарантий в owner-summary реализован Luna xhigh. Раздел
+`How to read this evidence` отделяет reconciliation от semantic approval, attestation
+от execution proof, cost compiled reference SQL от capture SQL и подпись от sign-off.
+Исторические bundles остаются на исходных версиях; grading проверок не менялся.
 Правила закреплены в [AGENTS.md](../AGENTS.md) и
 [ADR 0006](adr/0006-modelled-review-development-gate.md).
-Текущий execution blocker: проверка proxy `127.0.0.1:12334` завершилась ошибкой,
-поэтому агенты не запускались и новое Astra-review ещё не выполнено.
+Зависимость от локального proxy отменена владельцем в `AGENTS.md`; модельные агенты
+запускаются без этой проверки. Новый runtime или внешние actions не начинаются.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 

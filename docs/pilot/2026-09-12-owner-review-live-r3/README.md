@@ -40,6 +40,11 @@ policies.
 `elapsed_ns`; успешное завершение при engine-enforced limits записано как
 `checked_bounds=[max_scanned_bytes, timeout_ms]`.
 
+Эти cost limits проверены для compiled metric reference SQL (`GROUP BY date, store_id`),
+сохранённого в `check-dwh.cost.json`. Capture исполнил другой reviewed asset SQL:
+13-недельный фильтр и `GROUP BY region`. `dwh.cost` этого пакета не доказывает соблюдение
+metric cost limits именно запросом capture.
+
 ## Evidence
 
 - run: `run-a7e2e9f914a502de`;

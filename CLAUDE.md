@@ -83,6 +83,9 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-12 — по synthetic Astra xhigh review R3/R4 owner-summary объясняет границы
+  reconciliation, attestation, compiled-reference cost и подписи; verifier 15, check 9.
+  Исторические signed bundles не изменены; human/production acceptance не заявляется.
 - 2026-09-12 — техническая часть R3 закрыта tracked live owner package: Mac, нативный
   ClickHouse 24.8.14.39 на изолированных портах, attested capture, все пять DWH checks и
   signed bundle `run-a7e2e9f914a502de`; pinned-key inspection проходит. Предыдущий S7 снят

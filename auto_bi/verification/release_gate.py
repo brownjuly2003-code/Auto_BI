@@ -112,7 +112,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 14 — a run can seal its canonical manifest with an authenticated Ed25519 envelope. The
 #: new run identity avoids verifier-13 bundles, and its signing identity also separates
 #: unsigned, signed and rotated-key runs under verifier 14.
-VERIFIER_VERSION = "14"
+#: 15 — the owner summary adds a general guide to reading supplied results, provenance,
+#: cost measurements and separately verified signatures. The report remains sealed before
+#: bundle verification and makes no signature claim of its own.
+VERIFIER_VERSION = "15"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
