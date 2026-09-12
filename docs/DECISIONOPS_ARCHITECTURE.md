@@ -614,12 +614,19 @@ Gate выполняет шаги в фиксированном порядке:
   нулевая граница без соответствующего counter остаётся неизмеренной. PostgreSQL выполняет
   SELECT в read-only транзакции, применяет transaction-local `statement_timeout` и
   отбрасывает строки через потоковый cursor; честного exact-query `scanned_bytes` PostgreSQL
-  не отдаёт, поэтому этот потолок там
-  остаётся `cost.not_measured` (**review**), без пересчёта planner cost или buffer blocks в
-  придуманные байты. Независимый safety timeout 60 секунд не считается нарушением более
-  длинного contract timeout. Превышение и отсутствие runtime evidence — **review**; успешное
-  engine-enforced выполнение подтверждает границу. Метрика с потолком, но без
-  скомпилированного reference-запроса даёт ровно один advisory `cost.plan_unavailable`,
+  не отдаёт. Это проверено по native API PostgreSQL 14–18: `EXPLAIN (ANALYZE, BUFFERS)`
+  показывает non-distinct buffer accesses, `pg_stat_get_xact_blocks_fetched` — block read
+  requests текущей транзакции, а `pg_stat_io` — I/O/cache events; появившийся в PostgreSQL 18
+  `pg_stat_get_backend_io` сужает те же I/O-счётчики до одного backend, но не превращает
+  physical reads и cache hits в байты, логически просканированные одним statement. Ни один
+  из этих API не ставит byte ceiling. Поэтому потолок остаётся `cost.not_measured`
+  (**review**) без пересчёта planner cost, buffer blocks или I/O bytes в придуманные scanned
+  bytes. Возобновление требует named trusted provider/extension с pinned контрактом
+  query-scoped scanned bytes и enforcement. Независимый safety timeout 60 секунд не
+  считается нарушением более длинного contract timeout. Превышение и отсутствие runtime
+  evidence — **review**; успешное engine-enforced выполнение подтверждает границу. Метрика
+  с потолком, но без скомпилированного reference-запроса даёт ровно один advisory
+  `cost.plan_unavailable`,
   потому что шаг 6 уже назвал этот гэп, и находка на каждый потолок дала бы одной границе
   несколько весов. Typed `executions` сохраняются в evidence рядом с `plans`. Прогон без
   `--dwh` выносит все пять проверок как `check.not_configured` — ответ, а не пропуск: чистый

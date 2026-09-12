@@ -112,8 +112,11 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   термов, потому что в IR у чарта нет ссылки на метрику.
 - `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
   под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
-  `timeout_ms`. PostgreSQL не отдаёт честный exact-query `scanned_bytes`, поэтому этот один
-  потолок остаётся явным `cost.not_measured` (**review**), а не planner-аппроксимацией.
+  `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:
+  `EXPLAIN (ANALYZE, BUFFERS)` и transaction counters считают block requests,
+  `pg_stat_io`/PostgreSQL 18 `pg_stat_get_backend_io` — I/O и cache events, и ни один из
+  них не ставит byte ceiling. Поэтому этот потолок остаётся явным `cost.not_measured`
+  (**review**), а не переименованной planner/buffer/I/O-аппроксимацией.
 - Gate остаётся pure и сам не выполняет **verified-asset SQL**. Отдельный
   `auto_bi decision capture` теперь исполняет его read-only драйвером, канонизирует ответ и
   формирует attestation; snapshot, среда и запрос затем сверяются с тем, что гейт держит
@@ -185,14 +188,19 @@ Windows-машине для документационной проверки н
 
 ## Что делать дальше
 
-Не заблокировано human gate (можно брать сразу):
+Незаблокированных implementation-срезов сейчас нет.
 
-1. **PostgreSQL `dwh.cost.max_scanned_bytes`** — runtime timeout уже проверяется; для байтов
-   нужен доказуемый exact-query источник. Planner cost и приблизительная сумма buffer blocks
-   намеренно не выдаются за сканированные байты.
-2. **Подпись над снятием** — единственное, что закрывает «attestation может соврать».
-   Отложено вместе с trust root (решение 3 ниже), и до неё provenance честно остаётся
-   утверждением, три поля которого проверены.
+Технически заблокировано до named engine capability (не повторять как локальный research-срез):
+
+1. **PostgreSQL `dwh.cost.max_scanned_bytes`** — native API PostgreSQL 14–18 не даёт
+   exact-query scanned-byte counter или byte ceiling. Возобновлять только с конкретным
+   trusted provider/extension и его pin/contract; до этого `cost.not_measured` — правильный
+   результат.
+
+Отложено текущим решением 3 (не начинать без нового решения о trust root):
+
+1. **Подпись над снятием** — единственное, что закрывает «attestation может соврать»;
+   до неё provenance честно остаётся утверждением, три поля которого проверены.
 
 Заблокировано до human/design-partner review (не начинать): production-certified brief,
 scheduler, PostgreSQL platform runtime, REST/MCP, notifications, actions.

@@ -73,6 +73,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-12 — PostgreSQL `max_scanned_bytes`: native API PostgreSQL 14–18 не
+  предоставляет ни exact-query scanned-byte counter, ни byte ceiling; buffer/cache/I/O
+  counters измеряют другой контракт. До named trusted provider/extension остаётся честный
+  `cost.not_measured`.
 - 2026-09-12 — `dwh.cost`: runtime-границы exact reference-запроса проверяются под
   engine limits — ClickHouse для bytes и timeout, PostgreSQL для timeout; недоступные в
   PostgreSQL scanned bytes остаются явно неизмеренными.

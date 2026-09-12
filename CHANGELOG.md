@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **PostgreSQL `max_scanned_bytes` теперь явно capability-gated.** Контракты native API
+  PostgreSQL 14–18 не дают ни per-query scanned-byte counter, ни engine byte ceiling:
+  `EXPLAIN (ANALYZE, BUFFERS)` и `pg_stat_get_xact_blocks_fetched` считают обращения к
+  блокам, `pg_stat_io` — I/O/cache events, а PostgreSQL 18 `pg_stat_get_backend_io` лишь
+  сужает те же I/O-счётчики до backend. Эти величины не переименовываются в scanned bytes;
+  до выбора trusted provider/extension сохраняется `cost.not_measured`. Runtime-поведение
+  не менялось, поэтому версии verifier/check не повышались.
+
 ### Added
 
 - **`dwh.cost` проверяет runtime-границы exact reference-запроса**
