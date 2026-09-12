@@ -1,6 +1,8 @@
 # ADR 0004: synthetic proxy разрешает только offline investigation alpha
 
 **Статус:** Accepted
+Procedural human gate для продолжения разработки заменён
+[ADR 0006](0006-modelled-review-development-gate.md); границы достоверности evidence сохраняются.
 **Дата:** 2026-09-04
 **Связано:** [текущее состояние](../DECISIONOPS_CURRENT_STATE.md),
 [целевая архитектура](../DECISIONOPS_ARCHITECTURE.md),

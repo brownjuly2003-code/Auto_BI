@@ -7,7 +7,8 @@ impact доведён до чарта; происхождение кандида
 привязкой его reviewed-запроса к governed-модели; read-only capture reviewed-запроса
 реализован и проверен на живых PostgreSQL и ClickHouse; evidence manifest получает
 opt-in Ed25519 authentication; единый signed R3 owner-пакет выпущен на Mac;
-human/design-partner gate остаётся открытым
+следующий development review — моделирование на Astra xhigh по ADR 0006;
+human/design-partner outcome не измерен и не требуется для продолжения разработки
 
 **Версии evidence:** `VERIFIER_VERSION=14`, `CHECK_VERSION=9`
 
@@ -219,13 +220,18 @@ scope stop завершаются кодом `2` до записи output-кат
 аналитический вход остаётся evidence-backed gap без factual claim.
 
 Флаг `--dwh clickhouse|greenplum` включает пять read-only engine checks. На этой
-Windows-машине для документационной проверки не требуется поднимать WSL/Docker.
+Windows-машине запрещено поднимать WSL/Docker и аналогичные среды; стенды — только Mac.
 
 ## Что делать дальше
 
 Разрешённый срез подписи закрыт [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
-Техническая часть R3 закрыта tracked live package. Следующий продуктовый шаг — наблюдаемый
-review реального владельца; незаблокированных implementation-срезов сейчас нет.
+Техническая часть R3 закрыта tracked live package. По решению владельца следующий шаг —
+моделирование owner-review через Astra xhigh: проверить live R3 package и R3/R4,
+выбрать ограниченный implementation-срез; простые задачи делегировать Luna xhigh.
+Правила закреплены в [AGENTS.md](../AGENTS.md) и
+[ADR 0006](adr/0006-modelled-review-development-gate.md).
+Текущий execution blocker: проверка proxy `127.0.0.1:12334` завершилась ошибкой,
+поэтому агенты не запускались и новое Astra-review ещё не выполнено.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 
@@ -240,23 +246,25 @@ review реального владельца; незаблокированных
    для этого private key должен быть недоступен вызывающей стороне и изолирован внутри
    trusted capture/execution boundary.
 
-Заблокировано до human/design-partner review (не начинать): production-certified brief,
-scheduler, PostgreSQL platform runtime, REST/MCP, notifications, actions.
+Scheduler, PostgreSQL platform runtime, REST/MCP, notifications и actions не начинать
+автоматически: следующий срез выбирается после Astra-review. Production acceptance
+и human/design-partner evidence модельным review не заявляются.
 
 Журналы закрытых срезов — [typed investigation](history/TYPED_INVESTIGATION_MVP.md) и
 [chart-level impact](history/CHART_LEVEL_IMPACT.md).
 
 ## Решения для текущего scope
 
-1. Human owner review остаётся внешним gate и не подменяется синтетической оценкой.
+1. Development gate — моделирование owner-review только через Astra xhigh;
+   человеческое review для продолжения разработки не требуется, human evidence не заявляется.
 2. До публикации fork остаётся без remote и использует текущую локальную package identity.
 3. Release evidence поддерживает два честно различимых режима: совместимый
    `integrity=content_hashed` и opt-in `integrity=signed` с Ed25519 и out-of-band SPKI
    trust root по [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
 4. Реализованный alpha-срез ограничен supplied canonical results и локальными
    plan/results/brief artifacts; continuous runtime и внешние actions не начинаются.
-5. Human/design-partner review остаётся hard gate перед production-certified brief,
-   scheduler, PostgreSQL, REST/MCP, notifications и actions.
+5. Дальнейшие срезы выбираются через Astra-review по ADR 0006; synthetic outcome
+   не означает production-certified brief или разрешение внешних действий.
 
 ## Источники истины
 

@@ -1188,7 +1188,7 @@ Architecture bootstrap
   -> one-shot release/evidence gate
   -> pure Superset/DataLens compile conformance
   -> typed offline investigation + exploratory brief
-  -> human/design-partner outcome gate
+  -> Astra xhigh modelled development review (ADR 0006)
   -> production-certified brief / recurring runs / PostgreSQL
   -> read-only MCP / proposal actions
 ```
@@ -1200,11 +1200,14 @@ deterministic skills, synthetic truth sets и evidence-backed Markdown без ф
 `auto_bi decision investigate`; synthetic probe и `exploratory` brief не считаются
 human outcome.
 
-Hard gate остаётся перед continuous platform: без наблюдаемого теста с actual/likely
-user, измеримого сокращения review time и design partner evidence не начинаются
-scheduler/PostgreSQL, notifications, REST/MCP или actions и не заявляется production
-acceptance. Граница и основания зафиксированы в
-[ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md).
+По решению владельца от 2026-09-12 следующий development gate — только моделирование
+через Astra xhigh; человеческое review для продолжения разработки не требуется.
+Конкретные срезы scheduler/PostgreSQL, notifications, REST/MCP или actions выбираются
+после этого review, с собственными техническими gates. Synthetic review не измеряет
+human time, не является human/design-partner evidence и не доказывает production
+acceptance. Актуальный порядок —
+[ADR 0006](adr/0006-modelled-review-development-gate.md); evidence-ограничения
+[ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) сохраняются.
 
 ## 17. Риски и решения
 
