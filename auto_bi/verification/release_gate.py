@@ -130,7 +130,9 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: also moves inputs the other way: a bare name that governed sources declare at two
 #: different lateral levels, and a name read beside an ungoverned mart written at an
 #: outer lateral level, now carry `asset.query_fields_unchecked` where verifier 16
-#: graded clean.
+#: graded clean. A name written inside a lateral body may therefore move in either
+#: direction, an advisory that became `needs_review` included, so an old bundle must not
+#: be read against the current rules.
 VERIFIER_VERSION = "17"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
@@ -160,7 +162,9 @@ VERIFIER_VERSION = "17"
 #: the body, may therefore be a clean pass here. A query rule 10 graded clean may now
 #: carry an advisory, where a bare name is declared by governed sources at two
 #: different lateral levels, or is read beside an ungoverned mart written at an outer
-#: lateral level.
+#: lateral level. A name written inside a lateral body can move either way under
+#: rule 11 — an advisory under rule 10 may be `needs_review` here — so a `pass`
+#: written under rule 10 does not answer today's question.
 CHECK_VERSION = "11"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over

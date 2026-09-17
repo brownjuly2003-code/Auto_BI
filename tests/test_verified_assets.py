@@ -1176,6 +1176,42 @@ def test_an_ungoverned_outer_lateral_sibling_leaves_an_inner_name_unchecked(
     assert "cannot see" in findings[1].detail
 
 
+def test_a_lateral_branch_with_no_from_is_decided_by_the_sibling(tmp_path: Path) -> None:
+    """A UNION branch with no FROM of its own still reads the enclosing lateral's sibling.
+
+    The sibling does not declare `discount`, so the name is an undeclared column of
+    `dm.sales_daily` rather than an advisory that the branch offers no source of its own.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT t.x FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT sum(discount) AS x UNION ALL SELECT 0 AS x) AS t"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "dm.sales_daily.discount" in findings[0].detail
+
+
+def test_a_derived_table_name_inside_a_lateral_stays_unchecked(tmp_path: Path) -> None:
+    """A derived-table column written inside a lateral body sits beside a table candidate.
+
+    `y` is produced by `(SELECT 1 AS y)`; walking in `dm.sales_daily` puts that nearest
+    source beside a table, so the model cannot attribute the name.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT t.x FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT y AS x FROM (SELECT 1 AS y) AS d UNION ALL SELECT 0 AS x) AS t"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "y could not be attributed" in findings[0].detail
+
+
 def test_an_enclosed_name_with_no_local_source_cites_the_enclosing_query(
     tmp_path: Path,
 ) -> None:

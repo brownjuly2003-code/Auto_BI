@@ -80,6 +80,13 @@ attributed to the nearest — deliberately, because attributing it would mean sp
 innermost-first resolution for every correlated scope. The same flattening also leaves a
 name unchecked when the levels name one and the same governed table.
 
+Widening the candidate set of a scope inside a lateral body changes what the model can decide
+there, so the same statement can grade differently after this change — stricter as well as
+looser, and between the two finding codes as well. The scenarios below carry the cases. The
+one transition widening cannot produce is a clean grade turning into
+`asset.query_ungoverned_field`: a name the model has already settled keeps its declarer. That
+is why the verifier and check versions moved.
+
 ### Scenario: a table joined to itself offers two candidates
 
 - **GIVEN** a snapshot declaring `category` on `dm.sales_daily`, and a reviewed query
@@ -158,6 +165,15 @@ name unchecked when the levels name one and the same governed table.
 - **THEN** there is no finding — the subquery inside the lateral body still reads the sibling
   `dm.sales_daily`, so `category` is graded as its column rather than left unchecked
 
+### Scenario: a lateral nested in a lateral body still reads the outer sibling mart
+
+- **GIVEN** a snapshot declaring `revenue` on `dm.sales_daily` and not on `dm.stores`, and a
+  reviewed query `SELECT t.x FROM dm.sales_daily AS a, LATERAL (SELECT 1 AS x FROM
+  dm.stores AS b, LATERAL (SELECT sum(revenue) AS y FROM dm.stores AS d) AS u) AS t`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — the nested lateral still reads the outer lateral's preceding
+  FROM item, so `revenue` is graded as a column of `dm.sales_daily`
+
 ### Scenario: a derived table inside a lateral body does not read the lateral's siblings
 
 - **GIVEN** a snapshot declaring `category` on `dm.sales_daily` and not on `dm.stores`, and a
@@ -189,6 +205,27 @@ name unchecked when the levels name one and the same governed table.
   `asset.query_fields_unchecked` naming `revenue`: the ungoverned mart is written at an
   outer lateral level and is a candidate of the inner body too, so `d` declaring the name
   does not settle it
+
+### Scenario: a lateral branch with no FROM of its own is decided by the sibling mart
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and not declaring `discount` on it, and a
+  reviewed query `SELECT t.x FROM dm.sales_daily AS a, LATERAL (SELECT sum(discount) AS x
+  UNION ALL SELECT 0 AS x) AS t`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.sales_daily.discount`:
+  a branch with no FROM of its own is decided by the sibling walked in from the enclosing
+  lateral, so a name that sibling does not declare is a review finding rather than an
+  advisory that the branch offers no source of its own
+
+### Scenario: a derived-table name inside a lateral body stays unchecked
+
+- **GIVEN** a snapshot governing `dm.sales_daily`, and a reviewed query `SELECT t.x FROM
+  dm.sales_daily AS a, LATERAL (SELECT y AS x FROM (SELECT 1 AS y) AS d UNION ALL SELECT 0
+  AS x) AS t`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_fields_unchecked` naming `y`: the name's nearest
+  source is a derived table written inside the lateral body, and it now sits beside a table
+  candidate, so the model cannot attribute it
 
 ## Requirement: an undeclared column of a governed mart is named
 
