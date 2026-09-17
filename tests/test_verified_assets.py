@@ -386,6 +386,22 @@ def _stores_also_declaring(*columns: str) -> Any:
     return both
 
 
+def _also_governing_stg_sales_daily(*columns: str) -> Any:
+    """The base model plus `stg.sales_daily` — same short name, different mart."""
+    extra = model()
+    extra.tables.append(
+        Table(
+            name="stg.sales_daily",
+            grain=["date"],
+            columns=[
+                Column(name=column, type="String", role=ColumnRole.DIMENSION) for column in columns
+            ],
+            physical=Physical(engine="clickhouse"),
+        )
+    )
+    return extra
+
+
 def test_a_bare_column_two_governed_sources_declare_is_not_guessed_at_but_said(
     tmp_path: Path,
 ) -> None:
@@ -535,15 +551,30 @@ def test_an_unknown_qualifier_is_not_called_an_unreadable_scope(tmp_path: Path) 
     assert "cannot see into" not in detail
 
 
-def test_a_scope_with_no_source_of_its_own_says_that_and_not_more(tmp_path: Path) -> None:
-    """The inner SELECT has no FROM at all — no source was withheld, there was none."""
+def test_a_correlated_scope_with_no_source_of_its_own_names_the_enclosing_query(
+    tmp_path: Path,
+) -> None:
+    """The inner SELECT has no FROM at all — the name comes from the query around it."""
     base = snap(tmp_path, "base")
     sql = "SELECT (SELECT max(revenue)) FROM dm.sales_daily AS a"
     findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
     assert codes(findings) == ["asset.query_fields_unchecked"]
     detail = findings[0].detail
+    assert "enclosing query" in detail
+    assert "cannot see into" not in detail
+    assert "offers no source" not in detail
+
+
+def test_a_root_derived_table_with_no_from_is_sourceless(tmp_path: Path) -> None:
+    """Nothing encloses a root FROM subquery, so an empty FROM is sourceless, not outer."""
+    base = snap(tmp_path, "base")
+    sql = "SELECT t.x FROM (SELECT discount AS x) AS t"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    detail = findings[0].detail
     assert "offers no source" in detail
     assert "cannot see into" not in detail
+    assert "enclosing query" not in detail
 
 
 @pytest.mark.parametrize(
@@ -630,3 +661,368 @@ def test_clickhouse_reads_column_case_as_clickhouse_does(tmp_path: Path) -> None
         tmp_path / "repo", asset(reference_query=query("SELECT Region FROM dm.sales_daily"))
     )
     assert codes(repo.ungoverned(base)) == ["asset.query_ungoverned_field"]
+
+
+# --- the sources a scope actually reads ---------------------------------------
+
+
+def test_a_cte_nobody_reads_is_not_a_source_in_scope(tmp_path: Path) -> None:
+    """Declaring a CTE does not put it in the FROM, so it offers a bare name nothing.
+
+    The same statement without the WITH clause is graded cleanly; a CTE beside it that no
+    FROM names cannot make `category` less decidable than it already was.
+    """
+    base = snap(tmp_path, "base")
+    sql = "WITH x AS (SELECT 1 AS one) SELECT category FROM dm.sales_daily AS a"
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
+def test_a_cte_nobody_reads_does_not_hide_an_undeclared_column(tmp_path: Path) -> None:
+    """Counting the unread CTE as a source degraded a real finding into an advisory."""
+    base = snap(tmp_path, "base")
+    sql = "WITH x AS (SELECT 1 AS one) SELECT discount FROM dm.sales_daily AS a"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "discount" in findings[0].detail and "dm.sales_daily" in findings[0].detail
+
+
+def test_a_cte_inherited_into_an_inner_scope_is_not_a_source_there(tmp_path: Path) -> None:
+    """sqlglot hands every CTE down into nested scopes; the inner FROM still names one source."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "WITH s AS (SELECT 1 AS one) "
+        "SELECT (SELECT max(revenue) FROM dm.sales_daily AS q) AS m FROM dm.sales_daily AS a"
+    )
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
+def test_an_unaliased_self_join_still_offers_two_sources(tmp_path: Path) -> None:
+    """Two FROM items are two sources even where sqlglot has to invent the second name."""
+    base = snap(tmp_path, "base")
+    sql = "SELECT category FROM dm.sales_daily JOIN dm.sales_daily ON 1 = 1"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "category" in findings[0].detail
+
+
+# --- a bare name written where the engine may look outward --------------------
+
+
+@pytest.mark.parametrize("engine", ["postgresql", "clickhouse"])
+def test_a_bare_name_in_an_exists_subquery_may_be_the_enclosing_query(
+    tmp_path: Path, engine: str
+) -> None:
+    """`store_id` is the outer query's declared column, not an undeclared one of `dm.stores`.
+
+    One structural rule for every engine: the gate does not know which server version is
+    behind the asset, and calling this a column of `dm.stores` rejects valid reviewed SQL.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a "
+        "WHERE EXISTS (SELECT 1 FROM dm.stores AS b WHERE b.id = store_id)"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine=engine))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "store_id" in findings[0].detail
+    assert "enclosing query" in findings[0].detail
+
+
+@pytest.mark.parametrize("engine", ["postgresql", "clickhouse"])
+def test_a_bare_name_in_a_scalar_subquery_may_be_the_enclosing_query(
+    tmp_path: Path, engine: str
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, (SELECT max(b.id) FROM dm.stores AS b WHERE b.id = store_id) AS m "
+        "FROM dm.sales_daily AS a"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine=engine))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "store_id" in findings[0].detail
+    assert "enclosing query" in findings[0].detail
+
+
+@pytest.mark.parametrize("engine", ["postgresql", "clickhouse"])
+def test_a_bare_name_in_an_exists_union_branch_may_be_the_enclosing_query(
+    tmp_path: Path, engine: str
+) -> None:
+    """A UNION branch shares the subquery's range: `store_id` is still the outer column."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a WHERE EXISTS ("
+        "SELECT 1 FROM dm.stores AS b WHERE b.id = store_id "
+        "UNION ALL SELECT 1 FROM dm.stores AS c WHERE c.id = store_id)"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine=engine))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "store_id" in findings[0].detail
+    assert "enclosing query" in findings[0].detail
+
+
+@pytest.mark.parametrize("engine", ["postgresql", "clickhouse"])
+def test_a_bare_name_in_a_scalar_union_branch_may_be_the_enclosing_query(
+    tmp_path: Path, engine: str
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, (SELECT max(b.id) FROM dm.stores AS b WHERE b.id = store_id "
+        "UNION ALL SELECT 1) AS m FROM dm.sales_daily AS a"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine=engine))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "store_id" in findings[0].detail
+    assert "enclosing query" in findings[0].detail
+
+
+def test_a_subquery_bare_name_its_own_source_declares_is_graded_there(tmp_path: Path) -> None:
+    """The innermost level that has the column is where the engine reads it."""
+    base = snap(tmp_path, "base")
+    sql = "SELECT a.region FROM dm.sales_daily AS a WHERE a.store_id IN (SELECT id FROM dm.stores)"
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
+def test_a_scalar_subquery_bare_name_its_own_source_declares_is_graded_there(
+    tmp_path: Path,
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = "SELECT a.region, (SELECT max(id) FROM dm.stores AS b) AS m FROM dm.sales_daily AS a"
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
+def test_two_local_sources_declaring_a_subquery_bare_name_stay_contested(tmp_path: Path) -> None:
+    """Looking outward is one more candidate, not fewer: what two local sources dispute stands."""
+    base = snap(tmp_path, "both", semantic=_stores_also_declaring("region"))
+    sql = (
+        "SELECT a.date FROM dm.sales_daily AS a WHERE EXISTS ("
+        "SELECT 1 FROM dm.sales_daily AS s JOIN dm.stores AS t ON s.store_id = t.id "
+        "WHERE region = 'north')"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "region is declared by several" in findings[0].detail
+
+
+def test_a_root_derived_table_is_not_enclosed(tmp_path: Path) -> None:
+    """Nothing encloses a root FROM subquery, so its one source decides as it always did."""
+    base = snap(tmp_path, "base")
+    sql = "SELECT t.x FROM (SELECT discount AS x FROM dm.sales_daily) AS t"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "dm.sales_daily.discount" in findings[0].detail
+
+
+def test_two_marts_sharing_a_short_name_are_two_candidates(tmp_path: Path) -> None:
+    """`dm.sales_daily` and `stg.sales_daily` key on the same alias; they are still two sources.
+
+    sqlglot stores the second under `sales_daily_2` while `Scope.references` repeats
+    `sales_daily`. Looking the FROM items up by that name collapses both onto the first
+    mart and grades a column only the second declares as undeclared.
+    """
+    base = snap(tmp_path, "stg", semantic=_also_governing_stg_sales_daily("discount"))
+    sql = "SELECT discount FROM dm.sales_daily JOIN stg.sales_daily ON 1 = 1"
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
+def test_two_marts_sharing_a_short_name_neither_declaring_are_both_named(tmp_path: Path) -> None:
+    """Identity, not the short name: both FROM items are candidates when neither declares it."""
+    base = snap(tmp_path, "stg", semantic=_also_governing_stg_sales_daily())
+    sql = "SELECT discount FROM dm.sales_daily JOIN stg.sales_daily ON 1 = 1"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    detail = findings[0].detail
+    assert "discount" in detail
+    assert "dm.sales_daily" in detail and "stg.sales_daily" in detail
+
+
+def test_a_cte_sharing_a_marts_short_name_does_not_swallow_the_mart(tmp_path: Path) -> None:
+    """`FROM sales_daily` is the CTE; `FROM dm.sales_daily` beside it is still the mart.
+
+    Looking both FROM items up by the short name in `Scope.sources` collapses them onto
+    the CTE, and the bare `discount` then vanishes as a CTE column. HEAD reported the
+    name unchecked; grading it clean would hide a partially-checked query.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "WITH sales_daily AS (SELECT 1 AS one) "
+        "SELECT discount FROM sales_daily JOIN dm.sales_daily ON 1 = 1"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "discount" in findings[0].detail
+
+
+def test_a_cte_joined_to_itself_offers_two_sources(tmp_path: Path) -> None:
+    """Two FROM items are two sources even when they name the same CTE."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "WITH x AS (SELECT region, revenue FROM dm.sales_daily) "
+        "SELECT region FROM x AS p JOIN x AS q ON 1 = 1"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "region" in findings[0].detail
+
+
+def test_a_derived_table_nested_in_a_subquery_is_not_enclosed(tmp_path: Path) -> None:
+    """A FROM-subquery cannot read the query around it, even when it sits inside an IN.
+
+    `discount` is graded as an undeclared column of `dm.sales_daily`. The IN subquery's
+    bare `x` may still be unchecked — its only source is the derived table, whose columns
+    the snapshot cannot see — but it is not an enclosing-query remainder: the derived
+    table does not read outward.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a WHERE a.store_id IN "
+        "(SELECT x FROM (SELECT discount AS x FROM dm.sales_daily) AS t)"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert "asset.query_ungoverned_field" in codes(findings)
+    assert any("dm.sales_daily.discount" in item.detail for item in findings)
+    assert all("enclosing query" not in item.detail for item in findings)
+
+
+def test_a_union_inside_a_derived_table_is_not_enclosed(tmp_path: Path) -> None:
+    """A set-operation branch inside a FROM-subquery still cannot read around it."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT t.x FROM (SELECT discount AS x FROM dm.sales_daily "
+        "UNION ALL SELECT discount AS x FROM dm.sales_daily) AS t"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "dm.sales_daily.discount" in findings[0].detail
+    assert all("enclosing query" not in item.detail for item in findings)
+
+
+def test_a_cte_body_inside_exists_is_not_enclosed(tmp_path: Path) -> None:
+    """A CTE body is a new range; EXISTS around it does not make `discount` an outer name."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a WHERE EXISTS "
+        "(WITH c AS (SELECT discount FROM dm.sales_daily) SELECT 1 FROM c)"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "dm.sales_daily.discount" in findings[0].detail
+    assert all("enclosing query" not in item.detail for item in findings)
+
+
+def test_a_lateral_reads_its_sibling_sources(tmp_path: Path) -> None:
+    """A LATERAL body sees the FROM items that precede it.
+
+    sqlglot puts those siblings in the LATERAL node's `lateral_sources`, not in the inner
+    SELECT's `references`. Dropping them would treat `category` as an undeclared column of
+    `dm.stores` (or as an outer name this check cannot follow) even though the sibling
+    mart declares it.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT t.x FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT category AS x FROM dm.stores AS b WHERE b.id = a.store_id) AS t"
+    )
+    assert (
+        repository(
+            tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+        ).ungoverned(base)
+        == []
+    )
+
+
+def test_a_root_lateral_is_not_enclosed(tmp_path: Path) -> None:
+    """A LATERAL at the root has no query outside its siblings; the candidate set is complete.
+
+    What a lateral body reads beyond its own FROM are the FROM items written before it, and
+    those are already local candidates. Counting the root as enclosed turned a real field
+    finding into an advisory whose reason ("enclosing query") is untrue.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, t.total FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT sum(discount) AS total FROM dm.stores AS b WHERE b.id = a.store_id) AS t"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field"]
+    assert "discount" in findings[0].detail
+    assert all("enclosing query" not in item.detail for item in findings)
+
+
+def test_a_root_table_function_is_not_enclosed(tmp_path: Path) -> None:
+    """unnest at the root is a UDTF whose only readable sources are the FROM siblings.
+
+    `tags` is an undeclared column of `dm.sales_daily`. Marking the UDTF enclosed turned
+    that into an enclosing-query advisory, which is untrue: there is no query outside those
+    siblings. `t` is the table-function's own output and is not a mart column — that
+    remainder is unchanged.
+    """
+    base = snap(tmp_path, "base")
+    sql = "SELECT t FROM dm.sales_daily AS a, unnest(tags) AS t"
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert "asset.query_ungoverned_field" in codes(findings)
+    assert any("dm.sales_daily.tags" in item.detail for item in findings)
+    assert all("enclosing query" not in item.detail for item in findings)
+
+
+def test_a_lateral_inside_exists_stays_enclosed(tmp_path: Path) -> None:
+    """A lateral nested in EXISTS still reads that subquery's enclosing query."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a WHERE EXISTS ("
+        "SELECT 1 FROM dm.stores AS b, LATERAL "
+        "(SELECT 1 FROM dm.stores AS c WHERE c.id = store_id) AS t)"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "store_id" in findings[0].detail
+    assert "enclosing query" in findings[0].detail
+
+
+def test_a_root_lateral_settles_a_sibling_column(tmp_path: Path) -> None:
+    """revenue is the sibling mart's column; the candidate set at the root is complete."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, t.total FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT sum(revenue) AS total FROM dm.stores AS b WHERE b.id = a.store_id) AS t"
+    )
+    assert (
+        repository(
+            tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+        ).ungoverned(base)
+        == []
+    )
+
+
+def test_an_enclosed_name_with_no_local_source_cites_the_enclosing_query(
+    tmp_path: Path,
+) -> None:
+    """A correlated subquery with no FROM of its own is reading the query around it."""
+    base = snap(tmp_path, "base")
+    sql = "SELECT a.region, (SELECT store_id) AS m FROM dm.sales_daily AS a"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "store_id" in findings[0].detail
+    assert "enclosing query" in findings[0].detail
+    assert "offers no source" not in findings[0].detail

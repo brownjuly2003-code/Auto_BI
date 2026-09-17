@@ -241,18 +241,26 @@ class VerifiedAssetRepository:
         prevent, and neither is visible to a comparison of two numbers.
 
         **Only what something decides.** A column is attributed to a table when the
-        statement leaves no choice — qualified, or unqualified with a single source in scope.
-        Where the statement alone does not, the governed model is asked next: the engine
-        accepted this SQL, so a bare name resolved to exactly one of the sources in its
-        scope, and when the snapshot declares that name on exactly one of them, reading it
-        there describes the query rather than guesses about it. That deduction needs the
-        whole scope visible — one ungoverned mart, CTE or subquery beside it holds columns
-        the snapshot knows nothing about, and then the name is left alone. Two governed
-        sources declaring it — two sources, even where they are one table joined to itself —
-        leave the same choice the engine would have had, and picking one is a guess a gate
-        must not make (invariant 6). What could not be attributed is *said* rather than
-        skipped (`asset.query_fields_unchecked`), per reference and with the reason that
-        applies to it, so a partial check never reads as a clean one.
+        statement leaves no choice — qualified, or unqualified with a single source in scope,
+        where the sources of a scope are the ones its own FROM/JOIN clauses read rather than
+        every CTE standing around it. Where the statement alone does not decide, the governed
+        model is asked next: the engine accepted this SQL, so a bare name resolved to exactly
+        one of the sources in its scope, and when the snapshot declares that name on exactly
+        one of them, reading it there describes the query rather than guesses about it. That
+        deduction needs the whole scope visible — one ungoverned mart, CTE or subquery beside
+        it holds columns the snapshot knows nothing about, and then the name is left alone.
+        Two governed sources declaring it — two sources, even where they are one table joined
+        to itself — leave the same choice the engine would have had, and picking one is a
+        guess a gate must not make (invariant 6).
+
+        A bare name inside a correlated scope is asked the same question of its *local*
+        sources only. SQL resolves it at the innermost level that has the column, so one
+        local source declaring it settles it there; but where no local source declares it the
+        name may belong to the query around it, and calling it an undeclared column of the
+        local mart would reject valid reviewed SQL over a column the outer query declares.
+        What could not be attributed is *said* rather than skipped
+        (`asset.query_fields_unchecked`), per reference and with the reason that applies to
+        it, so a partial check never reads as a clean one.
 
         Case is read the way the asset's engine reads it: ClickHouse distinguishes
         `Sales_Daily` from `sales_daily`, the PostgreSQL family folds an *unquoted*
@@ -382,6 +390,7 @@ def _query_findings(
     # as a clean one, which is exactly what this check exists to prevent.
     settled: set[AmbiguousRef] = set()
     contested: set[AmbiguousRef] = set()
+    outward: set[AmbiguousRef] = set()
     for ambiguous_ref in reads.ambiguous:
         scope = (
             _governed_scope(ambiguous_ref.candidates, governed_table)
@@ -390,8 +399,12 @@ def _query_findings(
         )
         # Nothing the model can see decides this one: an ungoverned mart, a CTE or a
         # subquery in scope holds columns the snapshot says nothing about, so it can neither
-        # rule that source in nor rule it out. Left to `_unchecked_reason`.
+        # rule that source in nor rule it out. An enclosed name with no source of its own
+        # is the exception: the engine is certainly reading the query around it, and that
+        # is the enclosing-query remainder rather than the sourceless one.
         if not scope:
+            if ambiguous_ref.enclosed and not ambiguous_ref.candidates and ambiguous_ref.all_tables:
+                outward.add(ambiguous_ref)
             continue
         declaring = [
             table
@@ -400,10 +413,18 @@ def _query_findings(
         ]
         if len(declaring) == 1:
             # One governed source in scope declares it and the engine accepted the SQL, so
-            # the name resolved there. Reading that is a reading of the query, not a guess.
+            # the name resolved there — and for a name that could also have been read from
+            # the enclosing query, the innermost level holding the column is where SQL says
+            # the engine reads it. Reading that is a reading of the query, not a guess.
             settled.add(ambiguous_ref)
         elif declaring:
             contested.add(ambiguous_ref)  # the statement would be ambiguous for the engine too
+        elif ambiguous_ref.enclosed:
+            # Written where the engine may look outward, and declared on no source of its
+            # own scope: it is either the enclosing query's column or an undeclared column
+            # of the local table, and nothing here tells the two apart. Calling it the local
+            # table's undeclared field rejects valid reviewed SQL, so it stays unchecked.
+            outward.add(ambiguous_ref)
         else:
             # Read from somewhere in a scope the model sees whole, and declared nowhere in
             # it: naming it is as solid as naming an undeclared qualified column.
@@ -424,7 +445,7 @@ def _query_findings(
             )
         )
 
-    unchecked = _unchecked_reason(reads, settled=settled, contested=contested)
+    unchecked = _unchecked_reason(reads, settled=settled, contested=contested, outward=outward)
     if unchecked is not None:
         findings.append(
             _asset_finding(item, "asset.query_fields_unchecked", Severity.ADVISORY, unchecked)
@@ -451,7 +472,11 @@ def _governed_scope(
 
 
 def _unchecked_reason(
-    reads: ColumnReads, *, settled: set[AmbiguousRef], contested: set[AmbiguousRef]
+    reads: ColumnReads,
+    *,
+    settled: set[AmbiguousRef],
+    contested: set[AmbiguousRef],
+    outward: set[AmbiguousRef],
 ) -> str | None:
     """Why the field-level check could not cover the whole query, if it could not.
 
@@ -460,9 +485,11 @@ def _unchecked_reason(
     declaring the name is a statement nobody can pin down; a scope holding a mart, CTE or
     subquery the model cannot see into is a hole in what the gate was given; a qualifier no
     enclosing scope declares is a mistake in the statement itself, with no source withheld
-    from anyone; and a scope with no source of its own withheld nothing either. A reference
-    the model *did* settle — declared on one source, or reported as declared on none — is
-    not a remainder at all and is never repeated here.
+    from anyone; a scope with no source of its own withheld nothing either, unless it can
+    read the query around it — then the name certainly comes from there, which is a limit of
+    this check rather than anything wrong with the SQL. A reference the model *did* settle —
+    declared on one source, or reported as declared on none — is not a remainder at all and
+    is never repeated here.
     """
     reasons: list[str] = []
     if reads.starred:
@@ -478,10 +505,13 @@ def _unchecked_reason(
         )
     stray: set[str] = set()
     sourceless: set[str] = set()
+    enclosing: set[str] = set()
     unseen: set[str] = set()
     for ref in reads.ambiguous - settled - contested:
         if ref.qualifier:
             stray.add(f"{ref.qualifier}.{ref.name}")
+        elif ref in outward:
+            enclosing.add(ref.name)
         elif not ref.candidates and ref.all_tables:
             sourceless.add(ref.name)
         else:  # candidates the model could not read, or a source that is not a table at all
@@ -495,8 +525,15 @@ def _unchecked_reason(
     if sourceless:
         names = sorted(sourceless)
         reasons.append(
-            f"{', '.join(names)} {_agrees(names)} read in a scope that offers no source of "
-            "its own"
+            f"{', '.join(names)} {_agrees(names)} read in a scope that offers no source of its own"
+        )
+    correlated = sorted(enclosing)
+    if correlated:
+        reasons.append(
+            f"{', '.join(correlated)} may be read from an enclosing query: no source in "
+            f"{'its' if len(correlated) == 1 else 'their'} own scope declares "
+            f"{'it' if len(correlated) == 1 else 'them'}, and this check does not follow a "
+            "name outward"
         )
     opaque = sorted(unseen)
     if opaque:

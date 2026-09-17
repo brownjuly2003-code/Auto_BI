@@ -8,7 +8,7 @@ from typing import NamedTuple
 
 import sqlglot
 from sqlglot import expressions as exp
-from sqlglot.optimizer.scope import Scope, build_scope
+from sqlglot.optimizer.scope import Scope, ScopeType, build_scope
 
 from auto_bi.agent.query_plan import PlanCache
 from auto_bi.introspect.base import RunQuery
@@ -197,6 +197,16 @@ class AmbiguousRef(NamedTuple):
     #: no candidates that is what separates a qualifier nothing declares from a scope that
     #: offered nothing — one is a mistake in the statement, the other a shape of it.
     qualifier: str = ""
+    #: The name was written in a scope that can read its enclosing query (a scalar, `IN` or
+    #: `EXISTS` subquery, a lateral written inside one of those, or a branch of a set
+    #: operation written in one of them), so the candidates are the *local* sources only:
+    #: SQL resolves such a name at the innermost level that has the column and outward from
+    #: there, and the enclosing levels are candidates this slice does not enumerate. A
+    #: lateral's own readable outer sources are its FROM siblings, already local candidates,
+    #: so a root lateral is not marked. A derived table and a CTE body cannot read around
+    #: them, even nested inside a subquery, and are not marked. A caller that finds the name
+    #: declared on none of the local candidates has therefore learnt nothing about it.
+    enclosed: bool = False
 
 
 class ColumnReads(NamedTuple):
@@ -208,8 +218,11 @@ class ColumnReads(NamedTuple):
     """
 
     attributed: frozenset[ColumnRef]
-    #: Names SQL alone cannot pin to one table — unqualified with several sources in scope,
-    #: or qualified by a name no enclosing scope declares.
+    #: Names SQL alone cannot pin to one table — unqualified with several of the sources its
+    #: scope reads, unqualified in a scalar/`IN`/`EXISTS` subquery, a lateral written inside
+    #: one of those, or a branch of a set operation written in one of those (the name may
+    #: come from this level or the query around it), or qualified by a name no enclosing
+    #: scope declares.
     unattributed: frozenset[str]
     #: The statement selects `*` somewhere, so the columns it reads depend on the physical
     #: table and cannot be known from the text.
@@ -223,13 +236,36 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     """Columns a SELECT reads, attributed only where SQL itself leaves no choice.
 
     Attribution is scope-local and follows the language's own resolution rule: a qualified
-    column resolves through the enclosing scopes, an unqualified one only when its scope has
-    exactly one source. Nothing is inferred beyond that — a bare `category` in a two-table
-    join could come from either, and a caller that guesses which has stopped describing the
-    query. What the remainder's scope offered is reported (`ColumnReads.ambiguous`) so a
-    caller holding a model of those tables can narrow it on evidence rather than on a coin
-    toss. Columns of a CTE or subquery are not a table's columns and are simply not
-    reported; projection aliases are not reads at all and sqlglot already excludes them.
+    column resolves through the enclosing scopes, an unqualified one only when the sources
+    its scope *reads* come to exactly one. Two things follow from taking that rule literally.
+
+    A scope's sources are its own FROM/JOIN items — the CTEs it names included, the ones it
+    does not excluded. `WITH x AS (…) SELECT category FROM dm.sales_daily` reads one source;
+    `x` is a query nobody ran, and counting it would make a decidable name undecidable for
+    no reason the statement gives.
+
+    An unqualified name written where *this* scope can read its enclosing query is not
+    decided by a single local source either. That is a fact of the scope's own shape — a
+    scalar, `IN` or `EXISTS` subquery, a lateral written inside one of those, or a branch
+    of a set operation written in one of those — not of an inherited flag: a derived table
+    and a CTE body introduce a new range SQL does not look out of, even when they sit
+    inside a subquery. A UNION branch shares the range of the set operation around it, so
+    it is enclosed exactly when that set operation is. A LATERAL inherits the same way:
+    what it reads beyond its own FROM are the FROM items written before it, already local
+    candidates, so a root lateral is not enclosed and a lateral inside a subquery is.
+    SQL resolves a correlated name at the innermost level whose sources have the column
+    and only then outward, so `WHERE b.id = store_id` inside an `EXISTS` may be the outer
+    query's `store_id` — the text alone does not say. One structural rule serves every
+    engine: which server accepts a correlated reference is not something this function can
+    know. Such a reference comes back in `ambiguous` marked `enclosed`, with its local
+    candidates and no claim about the levels above.
+
+    Nothing is inferred beyond that — a bare `category` in a two-table join could come from
+    either, and a caller that guesses which has stopped describing the query. What the
+    remainder's scope offered is reported (`ColumnReads.ambiguous`) so a caller holding a
+    model of those tables can narrow it on evidence rather than on a coin toss. Columns of a
+    CTE or subquery are not a table's columns and are simply not reported; projection aliases
+    are not reads at all and sqlglot already excludes them.
     """
     root = _parse_one_select(sql, dialect=dialect)
     root_scope = build_scope(root)
@@ -270,9 +306,12 @@ def _ambiguous_ref(scope: Scope, column: exp.Column, *, quoted: bool) -> Ambiguo
     that name, so the tables standing beside it are not what it was written against. The
     sources are counted, not deduplicated: `dm.sales_daily AS a JOIN dm.sales_daily AS b`
     leaves a bare name as undecidable as any other two-source join does, and reporting one
-    candidate there would invite a caller to attribute what the engine itself rejects.
+    candidate there would invite a caller to attribute what the engine itself rejects. In a
+    scalar/`IN`/`EXISTS` subquery, a lateral written inside one of those, or a set-operation
+    branch written in one of those the candidates are complete only for this level, which
+    `enclosed` says out loud rather than leaving the caller to assume otherwise.
     """
-    sources = [] if column.table else list(scope.sources.values())
+    sources = [] if column.table else _read_sources(scope)
     return AmbiguousRef(
         name=column.name,
         quoted=quoted,
@@ -281,7 +320,100 @@ def _ambiguous_ref(scope: Scope, column: exp.Column, *, quoted: bool) -> Ambiguo
         ),
         all_tables=all(isinstance(source, exp.Table) for source in sources),
         qualifier=column.table,
+        enclosed=not column.table and _reads_enclosing(scope),
     )
+
+
+def _read_sources(scope: Scope) -> list[exp.Expression | Scope]:
+    """The sources a scope reads: the tables, derived tables, laterals and CTEs its own
+    FROM/JOIN clauses name.
+
+    `Scope.sources` is wider than the question an unqualified name asks. sqlglot puts every
+    CTE of a WITH clause there whether or not the FROM names it, and `Scope.branch` hands
+    those entries down into every nested scope — so a CTE nobody reads, and a CTE read two
+    levels up, both arrive as things this scope "offers". Neither is a place the engine could
+    have read the column from. `Scope.references` lists exactly the FROM/JOIN items.
+
+    Each FROM/JOIN item is identified from the reference node itself, never by looking the
+    alias up in `Scope.sources`. That dict is keyed by a de-duplicated name (`sales_daily`,
+    `sales_daily_2`) while `references` repeats the raw `alias_or_name`; the lookup then
+    returns whichever entry won the short name. When that winner is a CTE Scope,
+    `FROM sales_daily JOIN dm.sales_daily` collapses onto the CTE, and a CTE joined to
+    itself (`FROM x AS p JOIN x AS q`) becomes one source. sqlglot's `sales_daily_2`
+    renaming is private to the library; the node is what the statement listed, and two
+    items stay two sources.
+
+    A LATERAL body also reads the FROM items that precede it. sqlglot 30.14.0 parses
+    `FROM a, LATERAL (SELECT …) AS t` as a UDTF (the LATERAL node) wrapping an inner
+    SUBQUERY: `lateral_sources` holds the siblings on the UDTF, and the inner SELECT's
+    `references` list only its own FROM. Those siblings are kept as readable sources of
+    both, or a LATERAL loses the marts it can actually see.
+    """
+    read: list[exp.Expression | Scope] = []
+    cte_sources = scope.cte_sources
+    for _alias, node in scope.references:
+        read.append(_referenced_source(node, cte_sources))
+    for item in scope.lateral_sources.values():
+        read.append(item)
+    parent = scope.parent
+    if parent is not None and parent.scope_type is ScopeType.UDTF:
+        for item in parent.lateral_sources.values():
+            read.append(item)
+    return read
+
+
+def _referenced_source(
+    node: exp.Expression, cte_sources: dict[str, exp.Expression | Scope]
+) -> exp.Expression | Scope:
+    """The source a FROM/JOIN item denotes, decided from the node rather than from a name.
+
+    A derived table, UDTF or subquery is not a table. An `exp.Table` whose unqualified
+    name is a CTE visible here (`Scope.cte_sources`, which already merges inherited names)
+    and which carries no catalog/db qualification is that CTE — `FROM sales_daily` beside
+    a CTE of that name is the CTE, `FROM dm.sales_daily` is still the mart. Anything else
+    is the table the node names. Returning the CTE Scope (not the Table) is what keeps
+    `isinstance(..., exp.Table)` from treating a query as a physical mart.
+    """
+    if not isinstance(node, exp.Table):
+        return node
+    if not node.db and not node.catalog and node.name in cte_sources:
+        return cte_sources[node.name]
+    return node
+
+
+def _reads_enclosing(scope: Scope) -> bool:
+    """Whether this scope can see the query around it.
+
+    sqlglot's `can_be_correlated` is inherited by every nested scope (`Scope.branch` ORs
+    it down), including a derived table and a CTE body that cannot actually read outward.
+    Decide from this scope's own shape: a scalar/`IN`/`EXISTS` subquery (`SUBQUERY`) can;
+    a derived table and a CTE body cannot, wherever they sit.
+
+    A set-operation branch (`ScopeType.UNION`) shares the range of the set operation it is
+    written in: the engine still resolves a bare name in that branch against the same
+    enclosing query the subquery around the UNION can see. Recursing through UNION only —
+    not through DERIVED_TABLE or CTE — is what keeps a UNION at the root, and a UNION
+    inside a FROM-subquery or CTE body, un-enclosed. A UNION of UNIONs walks up until it
+    hits a non-UNION parent.
+
+    A LATERAL or table-function body (`ScopeType.UDTF`) inherits enclosure from the level
+    that contains it, the same way a UNION branch does. What it reads beyond its own FROM
+    are the FROM items written before it, and `_read_sources` already offers exactly those
+    as local candidates (`lateral_sources`, including the parent UDTF's) — so at a level
+    that cannot itself read outward the candidate set is complete and one source decides,
+    while a lateral inside a scalar/`IN`/`EXISTS` subquery stays enclosed because that
+    subquery's own enclosing query is still readable. sqlglot 30.14.0 nests a LATERAL as
+    a UDTF wrapping an inner SUBQUERY: that inner SELECT is decided through its UDTF
+    parent, before the plain SUBQUERY test, or a root lateral's body would be marked
+    enclosed just for being a SUBQUERY.
+    """
+    if scope.scope_type is ScopeType.UNION:
+        return scope.parent is not None and _reads_enclosing(scope.parent)
+    if scope.scope_type is ScopeType.UDTF:
+        return scope.parent is not None and _reads_enclosing(scope.parent)
+    if scope.parent is not None and scope.parent.scope_type is ScopeType.UDTF:
+        return _reads_enclosing(scope.parent)
+    return scope.scope_type is ScopeType.SUBQUERY
 
 
 def _owning_scope(column: exp.Column, owners: dict[int, Scope]) -> Scope | None:
@@ -298,7 +430,17 @@ def _owning_scope(column: exp.Column, owners: dict[int, Scope]) -> Scope | None:
 def _column_source(scope: Scope, column: exp.Column) -> exp.Expression | Scope | None:
     """The source a column resolves to, or ``None`` when SQL does not decide it."""
     if not column.table:
-        sources = list(scope.sources.values())
+        # A scope decides a bare name only through the sources it reads (`_read_sources`),
+        # and only where nothing above it could have supplied the name instead: inside a
+        # scalar/IN/EXISTS subquery, a lateral written inside one of those, or a
+        # set-operation branch written in one of those the engine looks at this level first
+        # and at the enclosing query next, so one source here is a candidate rather than an
+        # answer. That is this scope's shape, not an inherited flag: a derived table or CTE
+        # body nested inside a subquery still cannot read around it, and a root lateral's
+        # siblings are already local candidates.
+        if _reads_enclosing(scope):
+            return None
+        sources = _read_sources(scope)
         return sources[0] if len(sources) == 1 else None
     # A correlated column is qualified by an alias its own scope never declares; the
     # language resolves that outward, and so must this.

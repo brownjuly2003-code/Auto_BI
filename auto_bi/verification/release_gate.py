@@ -115,7 +115,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 15 — the owner summary adds a general guide to reading supplied results, provenance,
 #: cost measurements and separately verified signatures. The report remains sealed before
 #: bundle verification and makes no signature claim of its own.
-VERIFIER_VERSION = "15"
+#: 16 — a reviewed query's bare column is now resolved against the sources its own scope
+#: reads and is left unchecked where a correlated scope may have read it from the query
+#: around it. The same inputs therefore move against verifier 15 in three directions: a
+#: bare name beside an unread CTE is graded where it was only an advisory, a subquery's
+#: bare name its own table does not declare is an advisory where it was `needs_review`,
+#: and a query verifier 15 graded clean may now carry an advisory, where a subquery's only
+#: source is a CTE or derived table whose columns the snapshot cannot see.
+VERIFIER_VERSION = "16"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -132,7 +139,13 @@ VERIFIER_VERSION = "15"
 #: grades outright.
 #: 9 — byte/time cost ceilings use exact-query runtime facts. Missing evidence is now review,
 #: while successful engine-enforced completion can pass a bound rule 8 called unmeasurable.
-CHECK_VERSION = "9"
+#: 10 — `assets.invalidated` asks the field question of the sources a scope actually reads,
+#: and stops asking it of a bare name a correlated scope may have taken from the enclosing
+#: query. An advisory under rule 9 may therefore be a review finding or a clean pass here,
+#: a review finding under rule 9 may be an advisory, and a query rule 9 graded clean may
+#: now carry an advisory, where a subquery's only source is a CTE or derived table whose
+#: columns the snapshot cannot see.
+CHECK_VERSION = "10"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

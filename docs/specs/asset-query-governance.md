@@ -47,6 +47,32 @@ scope the snapshot declares it on, but only when every source in that scope is a
 snapshot governs. Where two such sources declare the name, or any source in scope is
 ungoverned or is not a table, the system SHALL NOT attribute the name. Sources are counted
 as the statement lists them, not as distinct tables: a table joined to itself is two sources.
+A source is identified by the FROM/JOIN item the statement names, not by its unqualified
+table name: two marts whose short names collide (`dm.sales_daily JOIN stg.sales_daily`) are
+two distinct candidates.
+
+The sources of a scope are the ones it **reads** — the tables, derived tables, laterals and
+CTEs its own FROM/JOIN clauses name. A CTE its FROM does not name SHALL NOT count as a source
+of that scope, whether its WITH clause declared it or an enclosing query did: a query nobody
+ran is not a place the engine could have read the column from, and counting it would leave a
+name undecidable that the same statement without the WITH clause decides.
+
+An unqualified name written in a scope that can read its enclosing query — a scalar, `IN` or
+`EXISTS` subquery, a lateral written inside a scope that can itself read outward, or a branch
+of a set operation written in one of them — SHALL NOT be attributed on the strength of a
+single local source. A lateral's own readable outer sources are the FROM items written before
+it, which are already its local candidates, so it reads the query around the level containing
+it only where that level does. A plain non-lateral derived table and a CTE body SHALL NOT be
+treated as able to read the query around them, wherever they sit: they introduce a new range
+that SQL does not look out of. SQL resolves a correlated name at the innermost level whose
+sources have the column and only then outward, so the local sources of a correlated scope are
+candidates rather than the whole set. Where exactly one local governed source declares the
+name it is attributed there, because that innermost level is where the engine reads it; where
+none of them declares it the system SHALL leave the name unchecked rather than report it as an
+undeclared column of the local table, since it may be a column of the query around it. The
+rule is structural and the same on every engine: the gate does not know which server version
+is behind the asset, and grading one engine's tolerance of correlated references onto another
+would reject valid SQL.
 
 ### Scenario: a table joined to itself offers two candidates
 
@@ -55,6 +81,15 @@ as the statement lists them, not as distinct tables: a table joined to itself is
 - **WHEN** the gate grades the asset
 - **THEN** the findings carry `asset.query_fields_unchecked` naming `category`, and no field is
   attributed on its behalf
+
+### Scenario: two marts whose short names collide are two candidates
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and `stg.sales_daily`, declaring `discount`
+  on only `stg.sales_daily`, and a reviewed query
+  `SELECT discount FROM dm.sales_daily JOIN stg.sales_daily ON 1 = 1`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — the two FROM items are two sources even though they share a
+  short name, and the model leaves one candidate
 
 ### Scenario: the model leaves one candidate for a bare column
 
@@ -72,6 +107,32 @@ as the statement lists them, not as distinct tables: a table joined to itself is
 - **WHEN** the gate grades the asset
 - **THEN** the findings carry `asset.query_fields_unchecked` naming `region`, and no field is
   attributed on its behalf
+
+### Scenario: a CTE nobody reads offers no candidate
+
+- **GIVEN** a snapshot declaring `category` on `dm.sales_daily`, and a reviewed query
+  `WITH x AS (SELECT 1 AS one) SELECT category FROM dm.sales_daily AS a`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — `category` is graded as a column of `dm.sales_daily`, exactly
+  as it is in the same statement without the WITH clause
+
+### Scenario: a subquery's bare name its own source declares is graded there
+
+- **GIVEN** a snapshot declaring `id` on `dm.stores`, and a reviewed query
+  `SELECT a.region FROM dm.sales_daily AS a WHERE a.store_id IN (SELECT id FROM dm.stores)`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — the innermost level holding the column is where the engine
+  reads it
+
+### Scenario: a derived table nested in a subquery is not enclosed
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and not declaring `discount` on it, and a
+  reviewed query `SELECT a.region FROM dm.sales_daily AS a WHERE a.store_id IN (SELECT x FROM
+  (SELECT discount AS x FROM dm.sales_daily) AS t)`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.sales_daily.discount`:
+  the FROM-subquery cannot read the query around it, so its one source decides as it does at
+  the root
 
 ## Requirement: an undeclared column of a governed mart is named
 
@@ -95,8 +156,9 @@ the model attributes — and SHALL state which part and why, so a partial check 
 clean one. The remainder is counted per *reference*, not per name: one reference the model
 resolves SHALL NOT cover another reference of the same name that nothing resolves. The reason
 SHALL distinguish a name several governed sources declare, a scope holding a source the
-snapshot cannot see into, a qualifier no enclosing scope declares, and a scope with no source
-of its own — a wrong reason sends the reader after a fix the query does not need.
+snapshot cannot see into, a qualifier no enclosing scope declares, a scope with no source
+of its own, and a name that may have been read from the enclosing query — a wrong reason sends
+the reader after a fix the query does not need.
 
 ### Scenario: the query selects a star
 
@@ -113,3 +175,13 @@ of its own — a wrong reason sends the reader after a fix the query does not ne
 - **WHEN** the gate grades the asset
 - **THEN** the findings carry `asset.query_fields_unchecked` naming `z.category`, and its detail
   says that no enclosing scope declares that qualifier rather than that a source was invisible
+
+### Scenario: a subquery's bare name no local source declares is unchecked, not ungoverned
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and `dm.stores`, declaring `store_id` on the
+  first and only `id` on the second, and a reviewed query `SELECT a.region FROM dm.sales_daily
+  AS a WHERE EXISTS (SELECT 1 FROM dm.stores AS b WHERE b.id = store_id)`
+- **WHEN** the gate grades the asset on any engine
+- **THEN** the findings carry `asset.query_fields_unchecked` naming `store_id` and saying it may
+  be read from the enclosing query, and carry no `asset.query_ungoverned_field`: the valid
+  reviewed query is not rejected over a column the outer query declares
