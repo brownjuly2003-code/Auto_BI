@@ -122,7 +122,16 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: bare name its own table does not declare is an advisory where it was `needs_review`,
 #: and a query verifier 15 graded clean may now carry an advisory, where a subquery's only
 #: source is a CTE or derived table whose columns the snapshot cannot see.
-VERIFIER_VERSION = "16"
+#: 17 — a LATERAL body's sibling FROM items are now visible at every nested scope that
+#: can read them, so any scope nested in a lateral body, including a subquery written
+#: inside it, that verifier 16 reported as `asset.query_ungoverned_field` on the body's
+#: own table (or left as `asset.query_fields_unchecked` for a subquery that only the
+#: sibling declares) can grade clean as a column of the sibling mart. The same walk
+#: also moves inputs the other way: a bare name that governed sources declare at two
+#: different lateral levels, and a name read beside an ungoverned mart written at an
+#: outer lateral level, now carry `asset.query_fields_unchecked` where verifier 16
+#: graded clean.
+VERIFIER_VERSION = "17"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -145,7 +154,14 @@ VERIFIER_VERSION = "16"
 #: a review finding under rule 9 may be an advisory, and a query rule 9 graded clean may
 #: now carry an advisory, where a subquery's only source is a CTE or derived table whose
 #: columns the snapshot cannot see.
-CHECK_VERSION = "10"
+#: 11 — `assets.invalidated` asks the field question of a LATERAL body's sibling sources
+#: at every nested level that can read them. A review finding under rule 10 on a
+#: set-operation or nested-lateral body, or an advisory on a subquery written inside
+#: the body, may therefore be a clean pass here. A query rule 10 graded clean may now
+#: carry an advisory, where a bare name is declared by governed sources at two
+#: different lateral levels, or is read beside an ungoverned mart written at an outer
+#: lateral level.
+CHECK_VERSION = "11"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

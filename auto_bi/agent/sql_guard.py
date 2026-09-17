@@ -335,30 +335,37 @@ def _read_sources(scope: Scope) -> list[exp.Expression | Scope]:
     have read the column from. `Scope.references` lists exactly the FROM/JOIN items.
 
     Each FROM/JOIN item is identified from the reference node itself, never by looking the
-    alias up in `Scope.sources`. That dict is keyed by a de-duplicated name (`sales_daily`,
-    `sales_daily_2`) while `references` repeats the raw `alias_or_name`; the lookup then
-    returns whichever entry won the short name. When that winner is a CTE Scope,
-    `FROM sales_daily JOIN dm.sales_daily` collapses onto the CTE, and a CTE joined to
-    itself (`FROM x AS p JOIN x AS q`) becomes one source. sqlglot's `sales_daily_2`
+    alias up in `Scope.sources`. That dict is keyed by a de-duplicated name while
+    `references` repeats the raw name; the lookup then returns whichever entry won the
+    short name. The shapes that collapse are the ones where `references` is
+    `['sales_daily', 'sales_daily']` and `sources` has renamed the second entry
+    `sales_daily_2`: `FROM sales_daily JOIN dm.sales_daily` (the CTE wins the short name
+    and swallows the mart) and `FROM dm.sales_daily JOIN stg.sales_daily` (the lookup
+    would merge two distinct marts into one candidate). An unaliased self-join collapses
+    harmlessly because the lookup returns the same node twice. sqlglot's `sales_daily_2`
     renaming is private to the library; the node is what the statement listed, and two
     items stay two sources.
 
-    A LATERAL body also reads the FROM items that precede it. sqlglot 30.14.0 parses
-    `FROM a, LATERAL (SELECT …) AS t` as a UDTF (the LATERAL node) wrapping an inner
-    SUBQUERY: `lateral_sources` holds the siblings on the UDTF, and the inner SELECT's
-    `references` list only its own FROM. Those siblings are kept as readable sources of
-    both, or a LATERAL loses the marts it can actually see.
+    A LATERAL body also reads the FROM items written before it. sqlglot hangs those
+    siblings on the UDTF scope (`FROM a, LATERAL (SELECT …) AS t` is a UDTF wrapping an
+    inner SUBQUERY whose `references` list only its own FROM); the body itself may sit
+    several scopes below it — a set operation inserts a SUBQUERY and a UNION branch
+    scope (one more UNION level per further branch), and a lateral nested in a lateral
+    body sits under another UDTF. Walking ancestors and stopping at a derived table or
+    CTE body is what keeps the siblings visible at every level that can actually see
+    them: a derived table or CTE written inside a lateral is a wall, because it cannot
+    read what is written around it.
     """
     read: list[exp.Expression | Scope] = []
     cte_sources = scope.cte_sources
     for _alias, node in scope.references:
         read.append(_referenced_source(node, cte_sources))
-    for item in scope.lateral_sources.values():
-        read.append(item)
-    parent = scope.parent
-    if parent is not None and parent.scope_type is ScopeType.UDTF:
-        for item in parent.lateral_sources.values():
-            read.append(item)
+    node_scope = scope
+    while node_scope is not None:
+        read.extend(node_scope.lateral_sources.values())
+        if node_scope.scope_type in (ScopeType.DERIVED_TABLE, ScopeType.CTE):
+            break
+        node_scope = node_scope.parent
     return read
 
 
@@ -399,13 +406,13 @@ def _reads_enclosing(scope: Scope) -> bool:
     A LATERAL or table-function body (`ScopeType.UDTF`) inherits enclosure from the level
     that contains it, the same way a UNION branch does. What it reads beyond its own FROM
     are the FROM items written before it, and `_read_sources` already offers exactly those
-    as local candidates (`lateral_sources`, including the parent UDTF's) — so at a level
-    that cannot itself read outward the candidate set is complete and one source decides,
-    while a lateral inside a scalar/`IN`/`EXISTS` subquery stays enclosed because that
-    subquery's own enclosing query is still readable. sqlglot 30.14.0 nests a LATERAL as
-    a UDTF wrapping an inner SUBQUERY: that inner SELECT is decided through its UDTF
-    parent, before the plain SUBQUERY test, or a root lateral's body would be marked
-    enclosed just for being a SUBQUERY.
+    as local candidates (`lateral_sources`, including every enclosing UDTF up to a derived
+    table or CTE body) — so at a level that cannot itself read outward the candidate set
+    is complete and one source decides, while a lateral inside a scalar/`IN`/`EXISTS`
+    subquery stays enclosed because that subquery's own enclosing query is still readable.
+    sqlglot 30.14.0 nests a LATERAL as a UDTF wrapping an inner SUBQUERY: that inner SELECT
+    is decided through its UDTF parent, before the plain SUBQUERY test, or a root lateral's
+    body would be marked enclosed just for being a SUBQUERY.
     """
     if scope.scope_type is ScopeType.UNION:
         return scope.parent is not None and _reads_enclosing(scope.parent)

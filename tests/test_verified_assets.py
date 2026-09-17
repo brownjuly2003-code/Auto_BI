@@ -1014,6 +1014,168 @@ def test_a_root_lateral_settles_a_sibling_column(tmp_path: Path) -> None:
     )
 
 
+def test_a_union_inside_a_lateral_still_reads_siblings(tmp_path: Path) -> None:
+    """A set-operation branch several scopes below the UDTF still sees the sibling mart.
+
+    sqlglot hangs `lateral_sources` on the UDTF; a UNION inserts a SUBQUERY between the
+    UDTF and the branch, and the branch is itself a UNION scope. Dropping the siblings
+    at those levels grades `category` as an undeclared column of `dm.stores` even though
+    the sibling `dm.sales_daily` declares it, and the same statement without the UNION
+    is clean.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, t.x FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT category AS x FROM dm.stores AS b "
+        "UNION ALL SELECT category AS x FROM dm.stores AS c) AS t"
+    )
+    assert (
+        repository(
+            tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+        ).ungoverned(base)
+        == []
+    )
+
+
+def test_a_nested_lateral_still_reads_outer_siblings(tmp_path: Path) -> None:
+    """A lateral nested in a lateral body still sees the outer lateral's preceding FROM.
+
+    The inner body sits under another UDTF; walking only one parent drops `dm.sales_daily`
+    and grades `revenue` as an undeclared column of `dm.stores`.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT t.x FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT 1 AS x FROM dm.stores AS b, LATERAL "
+        "(SELECT sum(revenue) AS y FROM dm.stores AS d) AS u) AS t"
+    )
+    assert (
+        repository(
+            tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+        ).ungoverned(base)
+        == []
+    )
+
+
+def test_a_subquery_inside_a_lateral_still_reads_siblings(tmp_path: Path) -> None:
+    """A subquery nested in a lateral body still sees the sibling mart.
+
+    The ancestor walk does not stop at SUBQUERY, so the lateral's preceding FROM items
+    remain local candidates there. Leaving them out would leave `category` unchecked as
+    an enclosing name, even though PostgreSQL resolves it to `dm.sales_daily`.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, t.x FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT 1 AS x FROM dm.stores AS b WHERE b.id IN "
+        "(SELECT category FROM dm.stores AS c)) AS t"
+    )
+    assert (
+        repository(
+            tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+        ).ungoverned(base)
+        == []
+    )
+
+
+def test_a_derived_table_inside_a_lateral_does_not_read_siblings(tmp_path: Path) -> None:
+    """A FROM-subquery inside a lateral is a wall: it cannot see the lateral's siblings."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, t.x FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT y AS x FROM (SELECT category AS y FROM dm.stores AS b) AS inner_t) AS t"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert "asset.query_ungoverned_field" in codes(findings)
+    assert any("dm.stores.category" in item.detail for item in findings)
+    assert all("sales_daily.category" not in item.detail for item in findings)
+
+
+def test_a_cte_body_inside_a_lateral_does_not_read_siblings(tmp_path: Path) -> None:
+    """A CTE body inside a lateral is a wall: it cannot see the lateral's siblings."""
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, t.x FROM dm.sales_daily AS a, LATERAL "
+        "(WITH c AS (SELECT category AS y FROM dm.stores AS b) SELECT y AS x FROM c) AS t"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert "asset.query_ungoverned_field" in codes(findings)
+    assert any("dm.stores.category" in item.detail for item in findings)
+    assert all("sales_daily.category" not in item.detail for item in findings)
+
+
+def test_a_name_declared_at_two_lateral_levels_stays_unchecked(tmp_path: Path) -> None:
+    """Siblings walked in from an enclosing lateral sit beside the inner body's own FROM.
+
+    PostgreSQL would resolve `revenue` to the nearer `b`, but the candidate set is not
+    ordered by level, so two governed sources declaring the name leave it unchecked.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT t.x FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT 1 AS x FROM dm.sales_daily AS b, LATERAL "
+        "(SELECT sum(revenue) AS y FROM dm.stores AS d) AS u) AS t"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "revenue" in findings[0].detail
+    assert "several of the governed sources" in findings[0].detail
+
+
+def test_a_union_in_a_lateral_with_the_column_on_both_levels_stays_unchecked(
+    tmp_path: Path,
+) -> None:
+    """A set-operation branch seeing both its own FROM and the enclosing lateral's sibling.
+
+    Both levels name the same governed table — `a` and `b` are both `dm.sales_daily`; that
+    is the point. Flattening them contests `category` even though the field question has
+    one answer whichever level wins, and the one-level rule attributed the name to `b`
+    alone.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT t.x FROM dm.sales_daily AS a, LATERAL "
+        "(SELECT category AS x FROM dm.sales_daily AS b UNION ALL SELECT 'z' AS x) AS t"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "category" in findings[0].detail
+    assert "several of the governed sources" in findings[0].detail
+
+
+def test_an_ungoverned_outer_lateral_sibling_leaves_an_inner_name_unchecked(
+    tmp_path: Path,
+) -> None:
+    """An ungoverned mart two lateral levels out is still a candidate of the inner body.
+
+    `d` declares `revenue`, but the outer ungoverned mart is a candidate too, so the
+    name stays unchecked beside the ungoverned-mart finding.
+    """
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT t.x FROM dm.other AS a, LATERAL "
+        "(SELECT 1 AS x FROM dm.stores AS b, LATERAL "
+        "(SELECT sum(revenue) AS y FROM dm.sales_daily AS d) AS u) AS t"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned", "asset.query_fields_unchecked"]
+    assert "dm.other" in findings[0].detail
+    assert "revenue" in findings[1].detail
+    assert "cannot see" in findings[1].detail
+
+
 def test_an_enclosed_name_with_no_local_source_cites_the_enclosing_query(
     tmp_path: Path,
 ) -> None:

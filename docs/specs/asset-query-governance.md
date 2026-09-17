@@ -74,6 +74,12 @@ rule is structural and the same on every engine: the gate does not know which se
 is behind the asset, and grading one engine's tolerance of correlated references onto another
 would reject valid SQL.
 
+The sources walked in from enclosing lateral levels are candidates beside the nearest ones,
+not ordered by level, so a name several levels declare stays unchecked instead of being
+attributed to the nearest — deliberately, because attributing it would mean specifying
+innermost-first resolution for every correlated scope. The same flattening also leaves a
+name unchecked when the levels name one and the same governed table.
+
 ### Scenario: a table joined to itself offers two candidates
 
 - **GIVEN** a snapshot declaring `category` on `dm.sales_daily`, and a reviewed query
@@ -133,6 +139,56 @@ would reject valid SQL.
 - **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.sales_daily.discount`:
   the FROM-subquery cannot read the query around it, so its one source decides as it does at
   the root
+
+### Scenario: a lateral body written as a set operation still reads the sibling mart
+
+- **GIVEN** a snapshot declaring `category` on `dm.sales_daily` and not on `dm.stores`, and a
+  reviewed query `SELECT a.region, t.x FROM dm.sales_daily AS a, LATERAL (SELECT category AS x
+  FROM dm.stores AS b UNION ALL SELECT category AS x FROM dm.stores AS c) AS t`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — each branch of the set operation still reads the sibling
+  `dm.sales_daily`, so `category` is graded as its column
+
+### Scenario: a subquery written inside a lateral body still reads the sibling mart
+
+- **GIVEN** a snapshot declaring `category` on `dm.sales_daily` and not on `dm.stores`, and a
+  reviewed query `SELECT a.region, t.x FROM dm.sales_daily AS a, LATERAL (SELECT 1 AS x FROM
+  dm.stores AS b WHERE b.id IN (SELECT category FROM dm.stores AS c)) AS t`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — the subquery inside the lateral body still reads the sibling
+  `dm.sales_daily`, so `category` is graded as its column rather than left unchecked
+
+### Scenario: a derived table inside a lateral body does not read the lateral's siblings
+
+- **GIVEN** a snapshot declaring `category` on `dm.sales_daily` and not on `dm.stores`, and a
+  reviewed query `SELECT a.region, t.x FROM dm.sales_daily AS a, LATERAL (SELECT y AS x FROM
+  (SELECT category AS y FROM dm.stores AS b) AS inner_t) AS t`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.stores.category`: the
+  derived table cannot read the lateral's siblings, so its one source decides as it does at
+  the root
+
+### Scenario: a name declared at two lateral levels stays unchecked
+
+- **GIVEN** a snapshot declaring `revenue` on `dm.sales_daily` and not on `dm.stores`, and a
+  reviewed query `SELECT t.x FROM dm.sales_daily AS a, LATERAL (SELECT 1 AS x FROM
+  dm.sales_daily AS b, LATERAL (SELECT sum(revenue) AS y FROM dm.stores AS d) AS u) AS t`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_fields_unchecked` naming `revenue`: the outer
+  sibling and the nearer `b` both declare it, and the sources walked in from enclosing
+  lateral levels sit beside the nearest ones rather than being ordered by level
+
+### Scenario: an ungoverned mart at an outer lateral level leaves an inner name unchecked
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and `dm.stores` and not `dm.other`,
+  declaring `revenue` on `dm.sales_daily`, and a reviewed query `SELECT t.x FROM dm.other
+  AS a, LATERAL (SELECT 1 AS x FROM dm.stores AS b, LATERAL (SELECT sum(revenue) AS y FROM
+  dm.sales_daily AS d) AS u) AS t`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned` naming `dm.other` and
+  `asset.query_fields_unchecked` naming `revenue`: the ungoverned mart is written at an
+  outer lateral level and is a candidate of the inner body too, so `d` declaring the name
+  does not settle it
 
 ## Requirement: an undeclared column of a governed mart is named
 
