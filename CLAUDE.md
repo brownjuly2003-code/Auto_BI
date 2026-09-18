@@ -83,6 +83,27 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-18 — словарное правило доведено: закрытый набор типизированных геттеров
+  (`dictGet<Type>` по целым 8…256, float, decimal, date/datetime, uuid, ip, string, bool)
+  называет чтение, scalar `WITH (SELECT …) AS alias` считается, когда алиас прочитан, клауза
+  непрочитанного вызова правдива для каждого случая. Пере-сообщение через алиас из
+  неисполняемой CTE и асимметрия правила звезды отложены в T-11. VERIFIER_VERSION 20 → 21,
+  CHECK_VERSION остаётся 11. Реализовано grok xhigh (`grokw`), ревью — Opus через MyFlow
+  (`opus-sub`, второй голос `fable`; GLM-5.3 и Codex недоступны): моделированное ревью, не
+  Astra по ADR 0006 и не human evidence.
+- 2026-09-18 — metric-derived гэпы (`chart.metric_unread`, `chart.metric_unknown`,
+  `chart.formula_untyped`) записываются только для изменения, которое достигает продукта в
+  scope; per-product scoping гэпа остаётся открытым. VERIFIER_VERSION 19 → 20, CHECK_VERSION
+  остаётся 11. Реализовано grok xhigh (`grokw`), ревью — Opus через MyFlow (`opus-sub`, второй
+  голос `fable`; GLM-5.3 и Codex недоступны): моделированное ревью, не Astra по ADR 0006 и не
+  human evidence.
+- 2026-09-18 — словарный вызов ClickHouse в исполняемом scope либо называет чтение
+  `<словарь>.<атрибут>` (литеральный геттер, кортеж — по чтению на атрибут), либо оставляет
+  плитку прочитанной частично (`chart.sql_partial`), `dictHas`/`dictIsIn` включительно.
+  VERIFIER_VERSION 18 → 19, CHECK_VERSION остаётся 11. Реализовано grok xhigh (`grokw`),
+  ревью — Opus через MyFlow (`opus-cli`, на части прогонов молча отдавший haiku, затем
+  `opus-sub`; второй голос `fable`; GLM-5.3 и Codex недоступны): моделированное ревью, не
+  Astra по ADR 0006 и не human evidence.
 - 2026-09-17 — операторский `raw_sql` читается из SQL: `reads_field` там, где statement сам
   атрибутирует чтение, никогда `computes_metric`; `chart.opaque_sql` — неразобранный SQL,
   `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с
