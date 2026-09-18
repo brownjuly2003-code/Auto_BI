@@ -210,8 +210,10 @@ def _impact_section(
     if chart_gaps:
         lines += [
             "",
-            "Charts this run could not resolve — a tile missing from the lists above may be "
-            "one of these, not an absence:",
+            "Charts this run could not resolve in whole — a tile missing from the lists "
+            "above may be one of these rather than an absence, and a tile named above may "
+            "appear here because part of its query was not read, or because its SQL does "
+            "not settle whether it computes a governed metric:",
             "",
         ]
         lines += [f"- `{gap.code}` {gap.subject} — {gap.detail}" for gap in chart_gaps]

@@ -12,8 +12,10 @@ Two relations are kept apart on purpose, because they are different claims:
   tile *is* the governed number. A chart is never annotated with a metric ref in the IR, so
   this one is an inference, and it is only made on an exact term match.
 
-Anything the IR cannot answer (operator SQL, a dashboard spec that was not loaded, a
-formula with no typed terms) leaves a named gap instead of an empty list.
+Anything the resolver cannot answer (operator SQL it could not read or could only
+read in part, a parseable operator tile whose SQL does not say whether it computes
+a changed metric, a dashboard spec that was not loaded, a formula with no typed terms)
+leaves a named gap instead of an empty list.
 """
 
 from __future__ import annotations
@@ -21,7 +23,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from auto_bi.decision.impact import ChartRelation, ImpactReport, resolve_impact
+from auto_bi.decision.impact import (
+    ChartRelation,
+    ImpactReport,
+    _sql_partial_detail,
+    resolve_impact,
+)
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.semantic.diff import SemanticDiff, diff_snapshots
@@ -137,6 +144,24 @@ def dashboard(*, with_raw_sql: bool = False) -> DashboardSpec:
     )
 
 
+def operator_dashboard(sql: str, *, chart_id: str = "operator_table") -> DashboardSpec:
+    """A dashboard whose only tile is operator SQL — isolates the raw_sql path."""
+    return DashboardSpec.model_validate(
+        {
+            "title": "Недельная маржа",
+            "target_bi": "superset",
+            "charts": [
+                {
+                    "id": chart_id,
+                    "title": "Операторский срез",
+                    "viz": "table",
+                    "query": {"table": "dm.sales_daily", "raw_sql": sql},
+                }
+            ],
+        }
+    )
+
+
 def both_products() -> list[DecisionProductSpec]:
     """One product, scoped to both contracts, so both metrics reach the same dashboard."""
     scope = product().scope.model_dump()
@@ -244,18 +269,469 @@ def test_a_joined_dimension_is_a_column_the_chart_reads(tmp_path: Path) -> None:
     assert impact.charts[0].relation is ChartRelation.READS_FIELD
 
 
-def test_operator_sql_is_a_named_gap_not_an_absent_chart(tmp_path: Path) -> None:
+def test_operator_sql_reading_a_changed_field_resolves_to_reads_field(tmp_path: Path) -> None:
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT sum(revenue) FROM dm.sales_daily")},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_that_reads_nothing_changed_produces_neither_impact_nor_gap(
+    tmp_path: Path,
+) -> None:
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 3, "Product category")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT sum(revenue) FROM dm.sales_daily")},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert impact.charts == []
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_selecting_star_is_a_partial_gap(tmp_path: Path) -> None:
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT * FROM dm.sales_daily")},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert impact.charts == []
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "*" in report.chart_gaps[0].detail
+    assert not any(gap.code == "chart.opaque_sql" for gap in report.chart_gaps)
+
+
+def test_operator_sql_bare_column_over_a_join_is_partial_and_still_resolves_attributed_reads(
+    tmp_path: Path,
+) -> None:
+    sql = (
+        "SELECT dm.sales_daily.revenue, category FROM dm.sales_daily "
+        "JOIN dm.stores ON dm.sales_daily.store_id = dm.stores.id"
+    )
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "category" in report.chart_gaps[0].detail
+
+
+def test_unparseable_operator_sql_is_opaque_and_does_not_raise(tmp_path: Path) -> None:
     _, report = resolved(
         tmp_path,
         candidate=_reformulated(),
-        dashboards={DASHBOARD: dashboard(with_raw_sql=True)},
+        dashboards={DASHBOARD: operator_dashboard("this is not SQL")},
     )
     assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
         ("chart.opaque_sql", f"{DASHBOARD}#operator_table")
     ]
-    assert [chart.chart for chart in impact_of(report, "metric.formula_changed").charts] == [
-        "margin_by_region"
+    assert "could not be read" in report.chart_gaps[0].detail
+
+
+def test_operator_sql_on_a_metric_change_is_named_metric_unread(tmp_path: Path) -> None:
+    """The SQL reproduces the formula as text, but this resolver does not claim computes_metric."""
+    sql = "SELECT region, sum(gross_margin)/sum(revenue) FROM dm.sales_daily GROUP BY region"
+    _, report = resolved(
+        tmp_path,
+        candidate=_reformulated(),
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "metric.formula_changed")
+    assert impact.charts == []
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.metric_unread", f"{DASHBOARD}#operator_table")
     ]
+    assert "computes a governed metric" in report.chart_gaps[0].detail
+    assert not any(gap.code == "chart.sql_partial" for gap in report.chart_gaps)
+
+
+def test_operator_sql_that_names_none_of_a_metrics_columns_is_not_this_tile(
+    tmp_path: Path,
+) -> None:
+    """Read in whole, and none of the metric's columns: that is an answer, not a hole."""
+    _, report = resolved(
+        tmp_path,
+        candidate=_reformulated(),
+        dashboards={DASHBOARD: operator_dashboard("SELECT sum(store_id) FROM dm.sales_daily")},
+    )
+    impact = impact_of(report, "metric.formula_changed")
+    assert impact.charts == []
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_count_star_beside_an_attributed_read_is_not_a_partial_gap(
+    tmp_path: Path,
+) -> None:
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={
+            DASHBOARD: operator_dashboard("SELECT count(*), sum(revenue) FROM dm.sales_daily")
+        },
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_count_distinct_star_beside_an_attributed_read_is_not_a_partial_gap(
+    tmp_path: Path,
+) -> None:
+    """sqlglot wraps COUNT(DISTINCT *) as Count(Distinct(Star)); that star still reads no column."""
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={
+            DASHBOARD: operator_dashboard(
+                "SELECT count(DISTINCT *), sum(revenue) FROM dm.sales_daily"
+            )
+        },
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_count_distinct_star_alone_is_not_this_tile(tmp_path: Path) -> None:
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT count(DISTINCT *) FROM dm.sales_daily")},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert impact.charts == []
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_star_in_an_unread_cte_is_not_a_partial_gap(tmp_path: Path) -> None:
+    """A SELECT * in a CTE the FROM never names is a query nobody ran, not an unread tile."""
+    sql = "WITH x AS (SELECT * FROM dm.stores) SELECT sum(revenue) FROM dm.sales_daily"
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_unread_cte_star_does_not_block_ruling_out_a_metric(
+    tmp_path: Path,
+) -> None:
+    """If the unused CTE star were a hole, the tile could not be ruled out as the metric."""
+    sql = "WITH x AS (SELECT * FROM dm.stores) SELECT sum(store_id) FROM dm.sales_daily"
+    _, report = resolved(
+        tmp_path,
+        candidate=_reformulated(),
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "metric.formula_changed")
+    assert impact.charts == []
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_star_in_a_cte_the_from_names_is_still_a_partial_gap(
+    tmp_path: Path,
+) -> None:
+    sql = "WITH x AS (SELECT * FROM dm.stores) SELECT * FROM x"
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert impact.charts == []
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "*" in report.chart_gaps[0].detail
+
+
+def test_operator_sql_star_in_an_in_subquery_is_still_a_partial_gap(tmp_path: Path) -> None:
+    """An IN-subquery ran; its SELECT * is a hole, unlike a CTE nobody named."""
+    sql = "SELECT sum(revenue) FROM dm.sales_daily WHERE store_id IN (SELECT * FROM dm.stores)"
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+
+
+def test_operator_sql_table_function_source_names_the_unnamed_read(tmp_path: Path) -> None:
+    clause = "a column is read from a table function the statement does not name"
+    for i, sql in enumerate(
+        (
+            "SELECT sum(revenue) FROM numbers(10)",
+            "SELECT sum(revenue) FROM merge('dm','^sales_daily$')",
+            "SELECT sum(revenue) FROM cluster('c', dm, sales_daily)",
+        )
+    ):
+        _, report = resolved(
+            tmp_path / str(i),
+            candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+            dashboards={DASHBOARD: operator_dashboard(sql)},
+        )
+        impact = impact_of(report, "field.description_changed")
+        assert impact.charts == [], sql
+        assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+            ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+        ], sql
+        assert clause in report.chart_gaps[0].detail, sql
+        assert "  could not be reconciled" not in report.chart_gaps[0].detail, sql
+
+
+def test_operator_sql_bare_table_matching_the_tile_is_qualified_through_it(
+    tmp_path: Path,
+) -> None:
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT sum(revenue) FROM sales_daily")},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_bare_table_that_is_not_the_tiles_is_a_partial_gap(
+    tmp_path: Path,
+) -> None:
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT sum(revenue) FROM other_table")},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert impact.charts == []
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert (
+        "other_table could not be reconciled with the tile's table" in report.chart_gaps[0].detail
+    )
+
+
+def test_operator_sql_catalog_prefixed_table_that_is_the_tiles_is_qualified_through_it(
+    tmp_path: Path,
+) -> None:
+    """A catalog prefix of the tile's table is that table, not a third id form fields miss."""
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT sum(revenue) FROM cat.dm.sales_daily")},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_catalog_prefixed_table_that_is_not_the_tiles_is_a_partial_gap(
+    tmp_path: Path,
+) -> None:
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT sum(revenue) FROM cat.other.table")},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert impact.charts == []
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert (
+        "cat.other.table could not be reconciled with the tile's table"
+        in report.chart_gaps[0].detail
+    )
+
+
+def test_operator_sql_holding_a_template_placeholder_is_never_read_in_whole(
+    tmp_path: Path,
+) -> None:
+    """Superset is the v1 BI: `{{ … }}` parses as an empty map and hides what it expands to."""
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={
+            DASHBOARD: operator_dashboard(
+                "SELECT sum(revenue) FROM dm.sales_daily WHERE {{ filter }}"
+            )
+        },
+    )
+    impact = impact_of(report, "field.description_changed")
+    # The attributed read is still reported: what the statement did say stands.
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "template placeholder" in report.chart_gaps[0].detail
+
+
+def test_a_placeholder_inside_a_string_literal_is_a_value_and_no_gap(tmp_path: Path) -> None:
+    """`dt > '{{ from_dttm }}'` templates a value, not a column: flagging it would be noise."""
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={
+            DASHBOARD: operator_dashboard(
+                "SELECT sum(revenue) FROM dm.sales_daily WHERE dt > '{{ from_dttm }}'"
+            )
+        },
+    )
+    assert report.chart_gaps == []
+    assert impact_of(report, "field.description_changed").charts[0].relation is (
+        ChartRelation.READS_FIELD
+    )
+
+
+def test_a_written_map_literal_is_not_a_template_placeholder(tmp_path: Path) -> None:
+    """`map('k', revenue)` carries entries and names its column; only the empty map hides."""
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT map('k', revenue) FROM dm.sales_daily")},
+    )
+    assert report.chart_gaps == []
+    assert (
+        "dm.sales_daily.revenue" in impact_of(report, "field.description_changed").charts[0].detail
+    )
+
+
+def test_operator_sql_selecting_a_columns_matcher_is_a_partial_gap(tmp_path: Path) -> None:
+    """`COLUMNS('re')` is ClickHouse's `*`: it reads columns and leaves no Star behind."""
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard("SELECT COLUMNS('rev.*') FROM dm.sales_daily")},
+    )
+    assert impact_of(report, "field.description_changed").charts == []
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "COLUMNS(...)" in report.chart_gaps[0].detail
+
+
+def test_operator_sql_joining_with_using_is_a_partial_gap(tmp_path: Path) -> None:
+    """A USING key belongs to both sides and is attributed to neither."""
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={
+            DASHBOARD: operator_dashboard(
+                "SELECT a.revenue FROM dm.sales_daily AS a JOIN dm.stores AS b USING (store_id)"
+            )
+        },
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "JOIN USING key" in report.chart_gaps[0].detail
+
+
+def test_a_hidden_read_keeps_a_metric_change_from_being_ruled_out(tmp_path: Path) -> None:
+    """A templated tile naming none of the metric's columns is not "not this tile"."""
+    _, report = resolved(
+        tmp_path,
+        candidate=_reformulated(),
+        dashboards={
+            DASHBOARD: operator_dashboard(
+                "SELECT sum(store_id) FROM dm.sales_daily WHERE {{ filter }}"
+            )
+        },
+    )
+    assert {gap.code for gap in report.chart_gaps} == {"chart.sql_partial", "chart.metric_unread"}
+
+
+def test_sql_partial_unreconciled_clause_reads_as_a_sentence_for_one_name_and_several() -> None:
+    assert _sql_partial_detail(
+        projection_star=False,
+        unattributed=frozenset(),
+        unreconciled=frozenset({"other_table"}),
+    ) == (
+        "operator SQL was not fully resolved: other_table could not be reconciled "
+        "with the tile's table"
+    )
+    assert _sql_partial_detail(
+        projection_star=False,
+        unattributed=frozenset(),
+        unreconciled=frozenset({"b", "a"}),
+    ) == ("operator SQL was not fully resolved: a, b could not be reconciled with the tile's table")
+
+
+def test_sql_partial_unnamed_source_clause_names_the_unread_part() -> None:
+    assert _sql_partial_detail(
+        projection_star=False,
+        unattributed=frozenset(),
+        unreconciled=frozenset(),
+        unnamed_source=True,
+    ) == (
+        "operator SQL was not fully resolved: a column is read from a table function "
+        "the statement does not name"
+    )
+
+
+def test_ir_and_operator_sql_tiles_on_the_same_dashboard_each_resolve_once(
+    tmp_path: Path,
+) -> None:
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: dashboard(with_raw_sql=True)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    refs = [chart.ref for chart in impact.charts]
+    assert refs == sorted(set(refs))
+    by_chart = {chart.chart: chart.relation for chart in impact.charts}
+    assert by_chart["operator_table"] is ChartRelation.READS_FIELD
+    assert by_chart["margin_by_region"] is ChartRelation.READS_FIELD
+    assert by_chart["revenue_trend"] is ChartRelation.READS_FIELD
+    assert report.chart_gaps == []
 
 
 def test_a_dashboard_spec_that_was_not_loaded_is_a_named_gap(tmp_path: Path) -> None:

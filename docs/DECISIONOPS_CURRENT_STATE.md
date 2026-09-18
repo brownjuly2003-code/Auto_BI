@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-12
+**Обновлено:** 2026-09-17
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=17`, `CHECK_VERSION=11`
+**Версии evidence:** `VERIFIER_VERSION=18`, `CHECK_VERSION=11`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -125,9 +125,18 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 - Для external/reviewed-SQL формул и неизвестного семейства движков reference SQL
   остаётся явным semantic gap; такая формула не несёт термов, поэтому и до плитки
   не разрешается (`chart.formula_untyped`).
-- Chart-разрешение не заменяет lineage: плитка на операторском `raw_sql` остаётся
-  `chart.opaque_sql`, а связь «чарт считает метрику» — вывод по точному совпадению
-  термов, потому что в IR у чарта нет ссылки на метрику.
+- Chart-разрешение не заменяет lineage: операторский `raw_sql` читается из самого SQL
+  (только там, где statement не оставляет выбора), и неразрешённая часть выходит
+  именованным гэпом — `chart.opaque_sql`, если текст не разобрать, `chart.sql_partial`,
+  если statement выбирает `*` (не `COUNT(*)` / `COUNT(DISTINCT *)`, и не `*` внутри CTE,
+  которую FROM не называет), не атрибутирует имя, несёт имя таблицы, которое не совпадает
+  с таблицей плитки (голое или catalog-префикс чужой таблицы), или читает колонку из
+  источника, который statement не именует (table function / subquery),
+  `chart.metric_unread`, если разобранный SQL не говорит, считает ли плитка изменённую
+  метрику, кроме случая, когда statement прочитан целиком и не называет ни одной колонки
+  её термов. Связь «чарт считает метрику» — по-прежнему вывод по точному совпадению термов
+  IR-меры, потому что в IR у чарта нет ссылки на метрику, а из произвольного SQL этот срез
+  агрегат не читает.
 - `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
   под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
   `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:

@@ -1385,22 +1385,101 @@ def test_impact_names_the_tile_that_computes_the_changed_metric(tmp_path: Path) 
     assert "chart `dashboard://weekly_margin@7#margin_by_region` — computes_metric" in summary
 
 
-def test_a_tile_the_run_cannot_read_is_named_in_the_report(tmp_path: Path) -> None:
-    """An operator `raw_sql` tile: the IR does not say what it reads, and silence would lie."""
-    case = _with_margin_tile(Case(tmp_path))
+def _with_operator_tile(case: Case, sql: str, *, chart_id: str = "operator_table") -> Case:
     spec = yaml.safe_load((case.dashboards / "weekly_margin@7.yaml").read_text(encoding="utf-8"))
     spec["charts"].append(
+        {
+            "id": chart_id,
+            "title": "Операторский срез",
+            "viz": "table",
+            "query": {"table": "dm.sales_daily", "raw_sql": sql},
+        }
+    )
+    _write_yaml(case.dashboards / "weekly_margin@7.yaml", spec)
+    return case
+
+
+def test_a_tile_the_run_cannot_read_is_named_in_the_report(tmp_path: Path) -> None:
+    """A parseable operator tile on a metric change: silence would lie."""
+    case = _with_operator_tile(
+        _with_margin_tile(Case(tmp_path)),
+        "SELECT region, sum(revenue) FROM dm.sales_daily GROUP BY region",
+    )
+
+    report = case.with_candidate(contract=_formula_change()).run()
+
+    payload = _check_payload(tmp_path, report, "impact.products")
+    assert [(gap["code"], gap["subject"]) for gap in payload["chart_gaps"]] == [
+        ("chart.metric_unread", "dashboard://weekly_margin@7#operator_table")
+    ]
+    summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "Charts this run could not resolve in whole — a tile missing from the lists above "
+        "may be one of these rather than an absence, and a tile named above may appear here "
+        "because part of its query was not read, or because its SQL does not settle whether "
+        "it computes a governed metric:"
+    ) in summary
+    assert "`chart.metric_unread` dashboard://weekly_margin@7#operator_table" in summary
+    assert "not resolved at all" not in detail_of(report, "impact.products")
+    assert (
+        "1 delivered chart(s) named (0 read only in part); of the tiles not named: "
+        "0 whose SQL could not be read, 0 read only in part, "
+        "1 read in whole but not settled against a changed metric"
+    ) in detail_of(report, "impact.products")
+
+
+def test_a_named_and_gapped_tile_is_counted_once_in_the_products_detail(tmp_path: Path) -> None:
+    """One tile named and gapped is one tile, not a named tile plus its gap rows."""
+    sql = (
+        "SELECT sum(gross_margin) FROM dm.sales_daily "
+        "WHERE store_id IN (SELECT store_id FROM dm.stores)"
+    )
+    spec = dashboard_spec()
+    spec["charts"] = [
         {
             "id": "operator_table",
             "title": "Операторский срез",
             "viz": "table",
-            "query": {
-                "table": "dm.sales_daily",
-                "raw_sql": "SELECT region, sum(revenue) FROM dm.sales_daily GROUP BY region",
-            },
+            "query": {"table": "dm.sales_daily", "raw_sql": sql},
         }
-    )
+    ]
+    case = Case(tmp_path)
     _write_yaml(case.dashboards / "weekly_margin@7.yaml", spec)
+
+    report = case.with_candidate(model=_removed_field()).run()
+
+    payload = _check_payload(tmp_path, report, "impact.products")
+    tiles = {
+        chart["ref"] for item in payload["impacts"] for chart in item["charts"] if item["products"]
+    }
+    gapped = {
+        gap["subject"]
+        for gap in payload["chart_gaps"]
+        if gap["subject"].startswith("dashboard://") and "#" in gap["subject"]
+    }
+    assert tiles == {"dashboard://weekly_margin@7#operator_table"}
+    assert gapped == tiles
+    assert {gap["code"] for gap in payload["chart_gaps"]} >= {
+        "chart.sql_partial",
+        "chart.metric_unread",
+    }
+    assert (
+        "1 delivered chart(s) named (1 read only in part); of the tiles not named: "
+        "0 whose SQL could not be read, 0 read only in part, "
+        "0 read in whole but not settled against a changed metric"
+    ) in detail_of(report, "impact.products")
+    assert "not resolved at all" not in detail_of(report, "impact.products")
+    summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
+        encoding="utf-8"
+    )
+    assert "chart `dashboard://weekly_margin@7#operator_table` — reads_field" in summary
+    assert "`chart.sql_partial` dashboard://weekly_margin@7#operator_table" in summary
+
+
+def test_unparseable_operator_sql_is_named_opaque_in_the_report(tmp_path: Path) -> None:
+    case = _with_operator_tile(_with_margin_tile(Case(tmp_path)), "this is not SQL")
 
     report = case.with_candidate(contract=_formula_change()).run()
 
@@ -1408,11 +1487,76 @@ def test_a_tile_the_run_cannot_read_is_named_in_the_report(tmp_path: Path) -> No
     assert [(gap["code"], gap["subject"]) for gap in payload["chart_gaps"]] == [
         ("chart.opaque_sql", "dashboard://weekly_margin@7#operator_table")
     ]
+    assert (
+        "1 delivered chart(s) named (0 read only in part); of the tiles not named: "
+        "1 whose SQL could not be read, 0 read only in part, "
+        "0 read in whole but not settled against a changed metric"
+    ) in detail_of(report, "impact.products")
     summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
         encoding="utf-8"
     )
-    assert "Charts this run could not resolve" in summary
     assert "`chart.opaque_sql` dashboard://weekly_margin@7#operator_table" in summary
+
+
+def test_partially_read_operator_sql_is_named_in_the_report(tmp_path: Path) -> None:
+    case = _with_operator_tile(_with_margin_tile(Case(tmp_path)), "SELECT * FROM dm.sales_daily")
+
+    report = case.with_candidate(contract=_formula_change()).run()
+
+    payload = _check_payload(tmp_path, report, "impact.products")
+    assert any(gap["code"] == "chart.sql_partial" for gap in payload["chart_gaps"])
+    # The partial read of a tile no impact names has its own count: dropping it would
+    # leave a tile in the gap list below and in none of the numbers above it.
+    assert (
+        "1 delivered chart(s) named (0 read only in part); of the tiles not named: "
+        "0 whose SQL could not be read, 1 read only in part, "
+        "0 read in whole but not settled against a changed metric"
+    ) in detail_of(report, "impact.products")
+    summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
+        encoding="utf-8"
+    )
+    assert "`chart.sql_partial` dashboard://weekly_margin@7#operator_table" in summary
+
+
+def test_the_products_detail_counts_every_tile_exactly_once(tmp_path: Path) -> None:
+    """Four tiles, four buckets: named, unreadable, read in part, metric not settled."""
+    case = _with_operator_tile(
+        _with_operator_tile(
+            _with_operator_tile(
+                _with_margin_tile(Case(tmp_path)), "this is not SQL", chart_id="opaque_table"
+            ),
+            "SELECT * FROM dm.sales_daily",
+            chart_id="starred_table",
+        ),
+        "SELECT region, sum(revenue) FROM dm.sales_daily GROUP BY region",
+        chart_id="read_table",
+    )
+
+    report = case.with_candidate(contract=_formula_change()).run()
+
+    payload = _check_payload(tmp_path, report, "impact.products")
+    tiles = {
+        chart["ref"] for item in payload["impacts"] for chart in item["charts"] if item["products"]
+    }
+    gapped = {
+        gap["subject"]
+        for gap in payload["chart_gaps"]
+        if gap["subject"].startswith("dashboard://") and "#" in gap["subject"]
+    }
+    assert tiles == {"dashboard://weekly_margin@7#margin_by_region"}
+    assert gapped == {
+        "dashboard://weekly_margin@7#opaque_table",
+        "dashboard://weekly_margin@7#starred_table",
+        "dashboard://weekly_margin@7#read_table",
+    }
+    assert (
+        "1 delivered chart(s) named (0 read only in part); of the tiles not named: "
+        "1 whose SQL could not be read, 1 read only in part, "
+        "1 read in whole but not settled against a changed metric"
+    ) in detail_of(report, "impact.products")
+    # The four numbers add up to the tiles this product's changes touched — an owner
+    # who sums them gets the dashboard, not more than it holds.
+    assert len(tiles | gapped) == 1 + 1 + 1 + 1
 
 
 def test_the_same_change_still_blocks_the_product_that_depends_on_it(tmp_path: Path) -> None:

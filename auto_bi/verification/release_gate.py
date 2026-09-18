@@ -133,7 +133,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: graded clean. A name written inside a lateral body may therefore move in either
 #: direction, an advisory that became `needs_review` included, so an old bundle must not
 #: be read against the current rules.
-VERIFIER_VERSION = "17"
+#: 18 — chart resolution now reads an operator `raw_sql` tile from its SQL, so the same
+#: inputs name tiles (and `chart.sql_partial` / `chart.metric_unread` holes) verifier 17
+#: left as `chart.opaque_sql`. Chart resolution is evidence and does not grade, so
+#: CHECK_VERSION does not move.
+VERIFIER_VERSION = "18"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -618,6 +622,31 @@ def _check_impact(writer: BundleWriter, impact: ImpactReport, product_ref: str) 
     # Counted over the reaching changes only, for the same reason the section is: a tile
     # named under somebody else's metric is in the payload, not in this product's count.
     tiles = {chart.ref for item in reaching for chart in item.charts}
+    # Bucket by code: `chart.metric_unread` is a withheld relation on a tile that may
+    # have been read in whole, `chart.sql_partial` is a partial read, `chart.opaque_sql`
+    # is unread SQL. Set-difference of every dashboard-scoped gap from `tiles` called
+    # the first two "not resolved at all". Metric-id and dashboard-id gaps stay out.
+    # Gap subjects are scoped to dashboards of reaching changes, matching `tiles`.
+    reaching_dashboards = {dashboard for item in reaching for dashboard in item.dashboards}
+
+    def _tile_gap_subjects(code: str) -> set[str]:
+        return {
+            gap.subject
+            for gap in impact.chart_gaps
+            if gap.code == code
+            and any(gap.subject.startswith(f"{dashboard}#") for dashboard in reaching_dashboards)
+        }
+
+    partial = _tile_gap_subjects("chart.sql_partial")
+    opaque = _tile_gap_subjects("chart.opaque_sql")
+    metric_unread = _tile_gap_subjects("chart.metric_unread")
+    # The four numbers partition the tiles this product's changes touched: a tile is
+    # named, or it is not named and then falls under the worst thing missing from it.
+    # Without the third bucket a tile read only in part and named by no impact would be
+    # in the summary's gap list and in none of these counts.
+    unnamed_opaque = opaque - tiles
+    unnamed_partial = partial - tiles - unnamed_opaque
+    unnamed_metric = metric_unread - tiles - unnamed_opaque - unnamed_partial
     return CheckResult(
         check_id="impact.products",
         check_version=CHECK_VERSION,
@@ -628,8 +657,10 @@ def _check_impact(writer: BundleWriter, impact: ImpactReport, product_ref: str) 
         detail=(
             f"{len(reaching)} of {len(impact.impacts)} change(s) reach this product; "
             f"{len(escalated)} escalated from review to block because it is governed; "
-            f"{len(tiles)} delivered chart(s) named, {len(impact.chart_gaps)} the IR "
-            "could not resolve"
+            f"{len(tiles)} delivered chart(s) named ({len(tiles & partial)} read only in part); "
+            f"of the tiles not named: {len(unnamed_opaque)} whose SQL could not be read, "
+            f"{len(unnamed_partial)} read only in part, "
+            f"{len(unnamed_metric)} read in whole but not settled against a changed metric"
         ),
         evidence_refs=[ref],
     )
