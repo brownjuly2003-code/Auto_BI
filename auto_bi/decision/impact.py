@@ -37,7 +37,12 @@ operator tile whose SQL does not say whether it computes a changed metric
 did not load; a formula with no typed terms; a metric whose definition was not supplied.
 Parseable operator SQL that attributes every read and matches no changed field is a
 resolved "not this tile", not a hole; the same answer holds for a metric whose term
-columns the SQL was read in whole and does not name.
+columns the SQL was read in whole and does not name. Metric-derived gaps
+(`chart.metric_unread`, `chart.metric_unknown`, `chart.formula_untyped`) are raised
+only for a change that reaches an in-scope product: a change nobody in scope depends
+on does not ask those questions. Relating a tile as `computes_metric` is not a gap
+and still happens — a delivered tile that computes a metric no in-scope product
+declares is an undeclared dependency the report is obliged to name.
 """
 
 from __future__ import annotations
@@ -116,6 +121,9 @@ class ImpactReport(StrictModel):
     impacts: list[ProductImpact] = Field(default_factory=list)
     #: Why a tile is missing from `charts` where the resolver could not answer.
     #: Report-level: a gap is a property of the resolver's inputs, not of one change.
+    #: Metric-derived gaps (`chart.metric_unread`, `chart.metric_unknown`,
+    #: `chart.formula_untyped`) are raised only for a change that reaches an in-scope
+    #: product; `computes_metric` on a change that reaches none is evidence, not a gap.
     chart_gaps: list[ChartGap] = Field(default_factory=list)
 
 
@@ -170,7 +178,7 @@ def resolve_impact(
                     {dashboard.ref for item in affected for dashboard in item.delivery.dashboards}
                 ),
                 owners=sorted({item.metadata.owner for item in affected}),
-                charts=resolver.charts_for(change),
+                charts=resolver.charts_for(change, reaches_product=bool(affected)),
             )
         )
 
@@ -217,7 +225,7 @@ class _ChartResolver:
     def gaps(self) -> list[ChartGap]:
         return [self._gaps[key] for key in sorted(self._gaps)]
 
-    def charts_for(self, change: SemanticChange) -> list[ChartImpact]:
+    def charts_for(self, change: SemanticChange, *, reaches_product: bool) -> list[ChartImpact]:
         for ref in self._missing:
             # Named from the first change on, not at construction: an empty diff resolves
             # nothing, and a hole in a resolution nobody attempted is not a finding.
@@ -230,14 +238,26 @@ class _ChartResolver:
             # Nothing to scan: the missing specs are already named, and reporting a metric
             # as unresolvable on top of that would give one hole two names.
             return []
-        computed = self._typed_terms(change.impact.metrics)
+        # Metric-derived gaps answer a question an in-scope product asked. One flag
+        # is read at two sites: `_typed_terms(..., name_gaps=reaches_product)` withholds
+        # `chart.metric_unknown` / `chart.formula_untyped`, and `_match_raw` withholds
+        # `chart.metric_unread`. Typed terms still resolve so an IR tile that
+        # reproduces them is named `computes_metric`. Field reads run below.
+        computed = self._typed_terms(change.impact.metrics, name_gaps=reaches_product)
         fields = set(change.impact.fields)
         found: dict[str, ChartImpact] = {}
         for dashboard_ref, spec in self._loaded:
             for chart in spec.charts:
                 ref = f"{dashboard_ref}#{chart.id}"
                 if chart.query.raw_sql is not None:
-                    impact = self._match_raw(dashboard_ref, chart.id, chart.query, computed, fields)
+                    impact = self._match_raw(
+                        dashboard_ref,
+                        chart.id,
+                        chart.query,
+                        computed,
+                        fields,
+                        reaches_product=reaches_product,
+                    )
                 else:
                     impact = self._match(dashboard_ref, chart.id, chart.query, computed, fields)
                 if impact is not None:
@@ -251,6 +271,8 @@ class _ChartResolver:
         query: ChartQuery,
         computed: Mapping[str, tuple[MetricTerm, ...]],
         fields: set[str],
+        *,
+        reaches_product: bool,
     ) -> ChartImpact | None:
         """Field reads of an operator SQL tile, attributed only where the statement decides.
 
@@ -265,7 +287,8 @@ class _ChartResolver:
         that claim. The unanswered metric relation is a separate gap (`chart.metric_unread`)
         from a partial SQL read (`chart.sql_partial`): they are different claims, and folding
         them would make a tile that was only unread as a metric look like one whose columns
-        were not attributed.
+        were not attributed. The gap is raised only for a change that reaches an in-scope
+        product, because it answers a question only such a product asks.
         """
         sql = query.raw_sql
         if sql is None:
@@ -326,7 +349,7 @@ class _ChartResolver:
                 ),
             )
 
-        if computed:
+        if computed and reaches_product:
             # Separate from sql_partial: this is the metric relation we refuse to infer,
             # not a column the statement failed to attribute. Detail is independent of
             # the change because `_add_gap` keeps the first (code, subject).
@@ -449,20 +472,24 @@ class _ChartResolver:
             )
         return None
 
-    def _typed_terms(self, metric_ids: Sequence[str]) -> dict[str, tuple[MetricTerm, ...]]:
+    def _typed_terms(
+        self, metric_ids: Sequence[str], *, name_gaps: bool
+    ) -> dict[str, tuple[MetricTerm, ...]]:
         typed: dict[str, tuple[MetricTerm, ...]] = {}
         for metric_id in metric_ids:
             known = self._known.get(metric_id)
             if known is None:
-                self._add_gap(
-                    "chart.metric_unknown",
-                    metric_id,
-                    "the metric's definition was not supplied, so no tile could be matched",
-                )
+                if name_gaps:
+                    self._add_gap(
+                        "chart.metric_unknown",
+                        metric_id,
+                        "the metric's definition was not supplied, so no tile could be matched",
+                    )
                 continue
-            if known.untyped:
+            if known.untyped and name_gaps:
                 # Recorded even when the other snapshot's terms did match a tile: the half
-                # that cannot be resolved is a hole, not a rounding error on the half that could.
+                # that cannot be resolved is a hole, not a rounding error on the half that
+                # could. A change that reaches no in-scope product does not ask this.
                 self._add_gap(
                     "chart.formula_untyped",
                     metric_id,

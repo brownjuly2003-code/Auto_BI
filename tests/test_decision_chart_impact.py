@@ -789,6 +789,8 @@ def test_a_tile_is_named_even_when_no_product_declares_the_metric(tmp_path: Path
 
     Grading is untouched — `products` stays empty, so the verdict is what it was. Saying
     nothing here would let a delivered tile move on a change the report called out of scope.
+    A metric-derived gap on this change would answer a question nobody asked; the tile is
+    still named.
     """
     scope = product().scope.model_dump()
     scope["metrics"] = ["metric://ops/on_time_rate@1"]
@@ -802,6 +804,12 @@ def test_a_tile_is_named_even_when_no_product_declares_the_metric(tmp_path: Path
     assert impact.products == []
     assert impact.severity is Severity.REVIEW
     assert [chart.chart for chart in impact.charts] == ["margin_by_region"]
+    assert impact.charts[0].relation is ChartRelation.COMPUTES_METRIC
+    assert not {gap.code for gap in report.chart_gaps} & {
+        "chart.metric_unread",
+        "chart.metric_unknown",
+        "chart.formula_untyped",
+    }
 
 
 def test_a_change_no_tile_touches_names_no_tile(tmp_path: Path) -> None:

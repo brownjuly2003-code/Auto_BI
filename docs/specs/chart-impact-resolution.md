@@ -63,8 +63,9 @@ attribute that is not a literal, a membership or hierarchy test (`dictHas`, `dic
 resolver does not know — is an unread part that names the call. Only calls the statement runs
 count: a call inside a CTE the statement never names, or inside a scalar `WITH <expr> AS alias`
 whose alias nothing reads, is neither a read nor an unread part.
-When the change carries typed metric terms, the system SHALL name that tile with
-`chart.metric_unread` unless its SQL was read in whole and names none of those terms' columns.
+When the change reaches an in-scope product and carries typed metric terms, the system
+SHALL name that tile with `chart.metric_unread` unless its SQL was read in whole and names
+none of those terms' columns.
 
 ### Scenario: an operator SQL tile reading a changed field
 
@@ -82,8 +83,9 @@ When the change carries typed metric terms, the system SHALL name that tile with
 
 ### Scenario: a metric change names a parseable operator tile
 
-- **GIVEN** a change to a metric whose typed terms are on `dm.sales_daily` and a tile whose
-  `raw_sql` is `SELECT region, sum(gross_margin)/sum(revenue) FROM dm.sales_daily GROUP BY region`
+- **GIVEN** a change to a metric whose typed terms are on `dm.sales_daily`, an in-scope
+  product that depends on that metric, and a tile whose `raw_sql` is
+  `SELECT region, sum(gross_margin)/sum(revenue) FROM dm.sales_daily GROUP BY region`
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the report carries `chart.metric_unread` naming that tile
 
@@ -243,11 +245,61 @@ When the change carries typed metric terms, the system SHALL name that tile with
 ## Requirement: an unresolvable input is named rather than silently dropped
 
 The system SHALL record a chart gap for every input the resolver could not read — a dashboard
-spec the run did not load, a metric whose definition was not supplied, and a metric whose
-formula carries no typed terms — keyed so one hole is reported once.
+spec the run did not load, and, when the change being resolved reaches an in-scope product, a
+metric whose definition was not supplied and a metric whose formula carries no typed terms —
+keyed so one hole is reported once.
 
 ### Scenario: a metric with an external formula
 
-- **GIVEN** a change to a metric whose formula carries no typed terms
+- **GIVEN** a change to a metric whose formula carries no typed terms and an in-scope product
+  that depends on that metric
 - **WHEN** impact is resolved with a dashboard supplied
 - **THEN** the report carries `chart.formula_untyped` naming that metric
+
+## Requirement: a gap answers a question an in-scope product asked
+
+The system SHALL raise a metric-derived chart gap — `chart.metric_unread`,
+`chart.metric_unknown`, `chart.formula_untyped` — only while resolving a change that reaches
+at least one in-scope product. A change that reaches no in-scope product asks none of those
+questions, and an unanswered question nobody asked is not a hole in this report. Relating a
+tile as `computes_metric` is evidence, not a gap: a delivered tile that computes a metric
+no in-scope product declares SHALL still be named. Field reads and tile-level gaps
+(`chart.opaque_sql`, `chart.sql_partial`, `chart.dashboard_spec_missing`) are not
+metric-derived and SHALL still be recorded.
+
+### Scenario: a typed metric change that reaches no in-scope product records no metric_unread
+
+- **GIVEN** a change to a metric whose typed terms are on `dm.sales_daily`, a product in
+  scope that does not depend on that metric, and a parseable tile whose `raw_sql` names
+  those terms' columns
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries no `chart.metric_unread` for that tile
+
+### Scenario: a tile that computes a metric of a change that reaches nobody is still named
+
+- **GIVEN** a change to a metric whose typed terms a delivered tile reproduces, and a
+  product in scope that does not depend on that metric
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `computes_metric`
+  and the report carries no metric-derived chart gap
+
+### Scenario: the same change reaching a product still raises metric_unread
+
+- **GIVEN** the same typed metric change and parseable tile, and an in-scope product that
+  depends on that metric
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries `chart.metric_unread` naming that tile
+
+### Scenario: a tile whose SQL did not parse is still named opaque for a change that reaches nobody
+
+- **GIVEN** a change to a metric no in-scope product depends on and a tile whose `raw_sql`
+  could not be parsed
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries `chart.opaque_sql` naming that tile
+
+### Scenario: a field change that carries no metric still resolves its tile reads
+
+- **GIVEN** a change touching `dm.stores.id`, which no in-scope metric depends on, and a
+  tile that reads that field
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`

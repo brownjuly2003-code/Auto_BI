@@ -141,7 +141,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: `<dictionary>.<attribute>` when both are literals, and otherwise leaves the tile
 #: `chart.sql_partial`, so the same inputs can name a tile or a hole verifier 18 read as
 #: "not this tile". Evidence only: CHECK_VERSION does not move.
-VERIFIER_VERSION = "19"
+#: 20 — metric-derived chart gaps (`chart.metric_unread`, `chart.metric_unknown`,
+#: `chart.formula_untyped`) are raised only for a change that reaches an in-scope
+#: product, so the same inputs can yield fewer gaps than verifier 19. Evidence only:
+#: CHECK_VERSION does not move.
+VERIFIER_VERSION = "20"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
