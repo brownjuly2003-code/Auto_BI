@@ -282,3 +282,178 @@ the reader after a fix the query does not need.
 - **THEN** the findings carry `asset.query_fields_unchecked` naming `store_id` and saying it may
   be read from the enclosing query, and carry no `asset.query_ungoverned_field`: the valid
   reviewed query is not rejected over a column the outer query declares
+
+## Requirement: a ClickHouse alias is read through, not as a column
+
+On ClickHouse the system SHALL NOT treat a bare name that is an alias visible at the place
+it is written as a column read — neither attributed nor unattributed — except inside that
+alias's own defining expression, where the name is the column. Inside the definition of
+SELECT-list alias X, a WITH expression read through from it included, X is the column.
+Identifiers are compared as written (case-sensitive). A visible alias wins over a table
+column of the same name.
+
+A SELECT-list alias SHALL be visible in the query level that defines it — other SELECT
+expressions, WHERE, PREWHERE, GROUP BY, HAVING, ORDER BY, LIMIT BY — and SHALL NOT be
+visible in a subquery. A `WITH <expr> AS alias` (and `WITH (SELECT …) AS alias`) SHALL be
+visible in the query that declares it and in every subquery and UNION branch below it.
+
+When a scope references an expression-form `WITH <expr> AS a` — directly, or through
+another alias whose definition references it — the system SHALL grade every column written
+in `<expr>` as if written in that referencing scope, under the same `_column_source` /
+`_ambiguous_ref` rules. A query nested in `<expr>` SHALL be graded as the same subquery
+written at the reference: its own FROM, with bare names enclosed toward the referencing
+scope. Referenced from two levels, the columns are graded at each. An alias nothing
+references reads nothing. A SELECT-list alias needs no read-through: its definition is
+already graded where it is written. A SELECT-list alias that can reach itself through
+SELECT-list or WITH definitions is a column wherever it is referenced, a WITH body in the
+read-through included. A WITH reference that closes a cycle on the read-through path is a
+column, and the definitions on the way are still read. The read-through has a depth cap
+and an expansion budget; a reference past them is reported unattributed under its own
+name, so the gate names a source it did not read rather than skipping it. A cut expansion
+is not memoised: a later shallower reference expands it again. A `WITH (SELECT …) AS a`
+keeps its own scope and FROM; only the reference `a` is the alias.
+
+The PostgreSQL family is unchanged: there a WITH defines CTEs only and WHERE cannot read a
+SELECT alias, so a bare name is a column. `extract_table_refs` and star handling are
+unchanged. An alias written on the right-hand side of `IN` is an alias; `IN <table>` is a
+later task.
+
+This rule does not cover an alias defined outside the SELECT list (`WHERE (x AS y) > 1`)
+or an ARRAY JOIN alias. A lambda parameter is not a column, even when named like a visible
+alias.
+
+### Scenario: a literal WITH alias in WHERE is not a column of the mart
+
+- **GIVEN** a snapshot declaring `region` and `revenue` on `dm.sales_daily`, and a reviewed
+  query `WITH 100 AS floor_value SELECT region, sum(revenue) AS m FROM dm.sales_daily
+  WHERE revenue > floor_value GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — `floor_value` is the WITH alias, not `dm.sales_daily.floor_value`
+
+### Scenario: a WITH alias on the right of IN is not a column of the mart
+
+- **GIVEN** a snapshot declaring `region` and `revenue` on `dm.sales_daily`, and a reviewed
+  query `WITH ['north', 'south'] AS allowed SELECT region, sum(revenue) AS m FROM
+  dm.sales_daily WHERE region IN allowed GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — `allowed` is the WITH alias, not `dm.sales_daily.allowed`
+
+### Scenario: a SELECT alias used in another SELECT expression is not a column of the mart
+
+- **GIVEN** a snapshot declaring `region` and `revenue` on `dm.sales_daily`, and a reviewed
+  query `SELECT region, sum(revenue) AS m, m * 2 AS m2 FROM dm.sales_daily GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — `m` is the SELECT alias, not `dm.sales_daily.m`
+
+### Scenario: a SELECT alias in WHERE is not a column of the mart
+
+- **GIVEN** a snapshot declaring `region` and `revenue` on `dm.sales_daily`, and a reviewed
+  query `SELECT region AS r, sum(revenue) FROM dm.sales_daily WHERE r != '' GROUP BY r`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — `r` is the SELECT alias; `region` is the column that was read
+
+### Scenario: a referenced expression WITH is read through to the undeclared column
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and not declaring `internal_cost_raw` on
+  it, and a reviewed query `WITH internal_cost_raw * 2 AS c2 SELECT region, sum(c2) FROM
+  dm.sales_daily GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming
+  `dm.sales_daily.internal_cost_raw`, and do not name `c2`
+
+### Scenario: a query nested in a referenced expression WITH is graded as at the reference
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and not declaring `internal_cost_raw` on
+  it, and a reviewed query `WITH 1 + (SELECT max(internal_cost_raw) FROM dm.sales_daily)
+  AS s SELECT region, sum(revenue) + s AS m FROM dm.sales_daily GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_fields_unchecked` (advisory) naming
+  `internal_cost_raw` as unresolved — the nested query is graded as the same subquery
+  written at the reference, so the name is enclosed, not a silent pass and not
+  `asset.query_ungoverned_field` on the alias
+
+### Scenario: a WITH alias chain past the read-through depth cap is unattributed under its name
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and a reviewed query
+  `WITH revenue AS a0, a0 + 1 AS a1, …, a{N-1} + 1 AS aN SELECT aN FROM dm.sales_daily`
+  where N exceeds the read-through depth cap
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_fields_unchecked` naming the alias at the cap,
+  with the reason that it "could not be attributed to one table without guessing, and the
+  scope offers a source this snapshot cannot see into" — the unexpanded definition is that
+  source — not a silent pass and not `dm.sales_daily.revenue`. A later shallower reference
+  to an alias whose deeper expansion was cut is expanded again; a cut expansion is not
+  memoised.
+
+### Scenario: a SELECT alias that keeps the column name still reads that column
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and not declaring `internal_cost_raw` on
+  it, and a reviewed query `WITH internal_cost_raw * 2 AS c2 SELECT region, sum(c2) AS
+  internal_cost_raw FROM dm.sales_daily GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming
+  `dm.sales_daily.internal_cost_raw` — inside the definition of SELECT alias
+  `internal_cost_raw`, the WITH body is part of that definition, so the name is the column
+
+### Scenario: a cycle across SELECT and WITH aliases is read as columns
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and a reviewed query
+  `WITH r + 1 AS w SELECT revenue * 2 AS r, w AS revenue FROM dm.sales_daily`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.sales_daily.r` —
+  both `r` and `revenue` are SELECT aliases on a cycle through WITH, so each is a column
+  wherever it is referenced; `revenue` is declared, `r` is not
+
+### Scenario: an alias self-reference still reads the column
+
+- **GIVEN** a snapshot declaring `revenue` on `dm.sales_daily`, and a reviewed query
+  `SELECT sum(revenue) AS revenue FROM dm.sales_daily`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — inside the defining expression the name is the column
+
+### Scenario: a visible alias wins over a table column of the same name
+
+- **GIVEN** a snapshot declaring `region` on `dm.sales_daily`, and a reviewed query
+  `WITH 1 AS region SELECT region FROM dm.sales_daily`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — `region` is the WITH alias, not a column of the mart
+
+### Scenario: a SELECT alias is not visible in a subquery
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and `dm.stores`, and a reviewed query
+  `SELECT region AS r FROM dm.sales_daily WHERE (SELECT r FROM dm.stores LIMIT 1) != ''`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_fields_unchecked` naming `r` — the subquery's
+  bare name is still graded as a column, because SELECT aliases are not visible there
+
+### Scenario: a WITH alias is visible in a subquery
+
+- **GIVEN** a snapshot declaring `region` on `dm.sales_daily`, and a reviewed query
+  `WITH 1 AS k SELECT region FROM dm.sales_daily WHERE (SELECT k FROM dm.stores LIMIT 1) != 0`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — `k` is the WITH alias, visible in the subquery
+
+### Scenario: an unreferenced expression WITH reads nothing
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and not declaring `internal_cost_raw` on
+  it, and a reviewed query `WITH internal_cost_raw * 2 AS c2 SELECT region FROM
+  dm.sales_daily`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — nothing references `c2`, so the expression is not read
+
+### Scenario: ClickHouse alias names are compared as written
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and not declaring `K` on it, and a
+  reviewed query `WITH 1 AS k SELECT K FROM dm.sales_daily`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.sales_daily.K` —
+  `K` is not the alias `k`
+
+### Scenario: the PostgreSQL family still reads a SELECT alias as a column
+
+- **GIVEN** a snapshot declaring `region` and `revenue` on `dm.sales_daily`, and a
+  PostgreSQL-family asset whose reviewed query is `SELECT region, sum(revenue) AS m, m * 2
+  AS m2 FROM dm.sales_daily GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.sales_daily.m` —
+  WHERE cannot read a SELECT alias there, so the bare name is a column exactly as before

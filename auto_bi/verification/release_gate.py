@@ -173,7 +173,21 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: expression-form star is not a `chart.sql_partial`; a named CTE declared
 #: inside a nested query and never named does not run. Evidence only:
 #: CHECK_VERSION does not move.
-VERIFIER_VERSION = "23"
+#: 24 — a ClickHouse alias is not a column read, and an expression-form WITH
+#: alias is read through. The same operator SQL can lose a `chart.sql_partial`
+#: that named the alias as unattributed, and can gain a `reads_field` for a
+#: column written only in the WITH expression. Inside the definition of SELECT
+#: alias X, a WITH expression read through from it included, X is the column, so
+#: a convert-and-keep-the-name tile now names that column. A name inside a query
+#: nested in a referenced WITH expression is now graded (as the same subquery
+#: written at the reference) and can raise the unresolved-field advisory. A
+#: pathological alias chain past the read-through depth cap or expansion budget
+#: is `chart.sql_partial` / `asset.query_fields_unchecked` under the alias's own
+#: name. Field-level governance findings move with CHECK_VERSION 12 (fewer
+#: `asset.query_ungoverned_field` for alias names; a new one when a referenced
+#: WITH expression reads an undeclared column; an advisory for a name inside a
+#: nested query of that expression). Both directions.
+VERIFIER_VERSION = "24"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -205,7 +219,21 @@ VERIFIER_VERSION = "23"
 #: lateral level. A name written inside a lateral body can move either way under
 #: rule 11 — an advisory under rule 10 may be `needs_review` here — so a `pass`
 #: written under rule 10 does not answer today's question.
-CHECK_VERSION = "11"
+#: 12 — `assets.invalidated` no longer treats a ClickHouse alias as a column of the
+#: table in scope, so a reviewed query that reads a number only through an alias of
+#: declared columns no longer carries `asset.query_ungoverned_field`. The same
+#: change grades columns written in a referenced expression-form `WITH <expr> AS a`
+#: at the referencing scope, so a query that previously named the alias as the
+#: undeclared field now names the column the expression reads — a new
+#: `asset.query_ungoverned_field` where rule 11 was silent, or a clean pass where
+#: rule 11 named the alias. Inside the definition of SELECT alias X, a WITH
+#: expression read through from it included, X is the column, so convert-and-keep-
+#: the-name SQL names the kept column. A name inside a query nested in that
+#: expression is graded as the same subquery written at the reference and can raise
+#: `asset.query_fields_unchecked`. A reference past the read-through depth cap or
+#: expansion budget raises the same advisory under the alias's own name. Both
+#: directions, so a `pass` written under rule 11 does not answer today's question.
+CHECK_VERSION = "12"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

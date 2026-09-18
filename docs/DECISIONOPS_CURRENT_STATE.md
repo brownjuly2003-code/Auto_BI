@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=23`, `CHECK_VERSION=11`
+**Версии evidence:** `VERIFIER_VERSION=24`, `CHECK_VERSION=12`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -92,8 +92,18 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   scope'а — те, что он читает: непрочитанный CTE колонок не предлагает. Голое имя в
   подзапросе, который может читать охватывающий запрос, приписывается только когда его
   объявляет один локальный governed-источник, иначе остаётся непроверенным; тело LATERAL
-  видит предшествующие FROM на каждом уровне до стены derived table/CTE. Неразрешимая без
-  догадки часть запроса — `asset.query_fields_unchecked` (advisory).
+  видит предшествующие FROM на каждом уровне до стены derived table/CTE. На ClickHouse
+  видимый алиас — не чтение колонки: SELECT-алиас виден на уровне запроса, `WITH <expr>
+  AS a` — в нём и во всех подзапросах ниже; ссылка на expression-form WITH читается
+  насквозь (колонки из `<expr>` грейдятся в referencing scope; запрос, вложенный в
+  `<expr>`, — как тот же подзапрос на месте ссылки, голые имена enclosed; внутри
+  определения SELECT-алиаса X, WITH-выражение, прочитанное насквозь из него, включено,
+  X — колонка; SELECT-алиас на цикле через SELECT- или WITH-определения — колонка где
+  бы на него ни сослались; WITH-ссылка, замыкающая цикл на пути раскрытия, — колонка,
+  определения по пути всё равно читаются; ссылка за глубиной/бюджетом раскрытий —
+  unattributed под своим именем, обрезанное раскрытие не мемоизируется). PostgreSQL-семейство
+  без изменений. Неразрешимая без догадки часть запроса — `asset.query_fields_unchecked`
+  (advisory).
 - `auto_bi decision verify --signing-key <private.pem>` opt-in подписывает canonical
   manifest Ed25519-ключом; private key читается только по явному внешнему пути.
 - `auto_bi decision evidence --trust-key <public.pem>` перепроверяет digest каждого
@@ -115,9 +125,9 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
+| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; ClickHouse-алиас больше не `chart.sql_partial` «not attributed to a table», а чтение через expression-form WITH даёт `reads_field`; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
-| Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE |
+| Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE; 2026-09-18 ClickHouse-алиас читается насквозь, а не как колонка (`CHECK_VERSION` 11 → 12) |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
 | Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; pilot-only signer создан вне checkout на Mac, production trust root не назначен |
 | Continuous platform | заблокирована до human/design-partner evidence |
@@ -175,7 +185,9 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   читает `rev` как таблицу (`region IN (SELECT * FROM rev)`), sqlglot разбирает `rev`
   как колонку, sql_guard приписывает её таблице плитки, и плитка выглядит прочитанной
   целиком (`SELECT sum(revenue) FROM dm.sales_daily WHERE region IN rev` против
-  изменения `dm.rev.revenue` даёт пустые `charts` и `chart_gaps`).
+  изменения `dm.rev.revenue` даёт пустые `charts` и `chart_gaps`). Алиас на том же
+  месте — уже не колонка: `WHERE region IN allowed` при `WITH […] AS allowed` не
+  приписывает `allowed` таблице плитки. `IN <table>` — следующий слайс.
 - Резолвер не моделирует shadowing имён CTE и scalar `WITH`: имя открывает каждую CTE,
   которую оно могло бы назвать (без учёта регистра), включая внешнюю, которую скрывает
   вложенное объявление. Table alias с тем же именем тоже открывает scalar `WITH`
@@ -199,7 +211,19 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 - Governance reviewed-запроса покрывает таблицы и колонки. Колонка приписывается
   таблице там, где выбора не оставляет сам SQL, а для голого имени — там, где его не
   оставляет governed-модель: ровно один источник, который scope читает, объявляет это
-  имя, и все такие источники — governed-таблицы. Голое имя в подзапросе, который может
+  имя, и все такие источники — governed-таблицы. На ClickHouse видимый алиас не
+  колонка: SELECT-алиас виден на уровне запроса и не виден в подзапросе; scalar
+  `WITH` виден в объявившем запросе и ниже; ссылка на `WITH <expr> AS a` читает
+  колонки из `<expr>` в referencing scope, а запрос, вложенный в `<expr>`, — как
+  тот же подзапрос на месте ссылки (свой FROM, голые имена enclosed); внутри
+  определения SELECT-алиаса X, WITH-выражение, прочитанное насквозь из него,
+  включено, X — колонка; SELECT-алиас на цикле через SELECT- или WITH-определения —
+  колонка где бы на него ни сослались; WITH-ссылка, замыкающая цикл на пути
+  раскрытия, — колонка, определения по пути всё равно читаются; обрезанное
+  раскрытие не мемоизируется. PostgreSQL-семейство без изменений.
+  Остаток, который этот слайс не закрывает: алиас вне SELECT-списка
+  (`WHERE (x AS y) > 1`), ARRAY JOIN-алиас (`ARRAY JOIN tags AS a` по-прежнему
+  приписывает `dm.sales_daily.a`), `IN <table>`. Голое имя в подзапросе, который может
   читать охватывающий запрос (scalar/IN/EXISTS), остаётся непроверенным, если его не
   объявляет ни один локальный источник: проверка имя наружу не ведёт. `SELECT *`, имя,
   объявленное несколькими источниками (в том числе на двух LATERAL-уровнях), scope с

@@ -66,7 +66,10 @@ and the Join-table calls below; a construct outside that set is a hole in the de
 a guarantee that the tile was read in whole. One known example is a ClickHouse table name
 on the right of `IN` (`WHERE region IN rev`): ClickHouse reads `rev` as
 `IN (SELECT * FROM rev)`, while sqlglot parses the identifier as a column and the guard
-attributes it to the tile's own table, so the tile looks read in whole.
+attributes it to the tile's own table, so the tile looks read in whole. A ClickHouse alias
+written there is an alias, not a column: `WHERE region IN allowed` with
+`WITH ['north', 'south'] AS allowed` does not attribute `allowed` to the tile's table.
+`IN <table>` remains the next task.
 A ClickHouse dictionary call — any function whose name begins with `dict`, case-insensitive —
 SHALL either name the read it performs or leave the tile read in part. The resolver names a
 closed set of attribute readers: `dictGet`, `dictGetOrDefault`, `dictGetOrNull`, `dictGetAll`,
@@ -111,6 +114,34 @@ none of those terms' columns.
   `SELECT sum(revenue) FROM dm.sales_daily`
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field`
+
+### Scenario: an operator SQL tile that reads a changed field only through a WITH alias
+
+- **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
+  `WITH revenue * 2 AS r SELECT sum(r) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.sales_daily.revenue`, and the report carries no `chart.sql_partial` for the
+  alias `r`
+
+### Scenario: an unread subquery WITH alias is not an unattributed column
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT dictGet('dm.rev','revenue',toUInt64(1))) AS a, (SELECT a + 1) AS b
+  SELECT sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report names neither a chart impact nor a chart gap for that tile — `a` is
+  a WITH alias visible in the unread subquery, not a column the statement failed to
+  attribute
+
+### Scenario: a live expression WITH alias is not an unattributed column
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH dictGet('dm.rev','revenue',toUInt64(1)) AS a, (SELECT a) AS s
+  SELECT s, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue`, and the report carries no `chart.sql_partial` naming `a`
 
 ### Scenario: an operator SQL tile whose reads the statement does not decide
 
