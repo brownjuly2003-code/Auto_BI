@@ -313,8 +313,9 @@ class _ChartResolver:
         unreconciled: set[str] = set()
         unnamed_source = False
         for name, attribute in dictionary.reads:
-            # A dictionary is addressed like a table (`db.dict`), so its attribute gets the
-            # id a table column would, and a name that is not an id lands where one would.
+            # A dictionary or Join table is addressed like a table (`db.dict` / `db.table`),
+            # so its column gets the id a table column would, and a name that is not an id
+            # lands where one would.
             table_id = _reconcile_sql_table(name, query.table)
             if table_id is None:
                 unreconciled.add(name)
@@ -419,9 +420,10 @@ class _ChartResolver:
         return self._hidden[sql]
 
     def _dictionary_reads(self, sql: str) -> _DictionaryReads:
-        """What the ClickHouse dictionary calls the statement runs read. Memoised per text.
+        """What the ClickHouse dictionary and Join-table calls the statement runs read.
 
-        Unparseable text has no calls to read; `_column_reads` has already named it opaque.
+        Memoised per text. Unparseable text has no calls to read; `_column_reads` has
+        already named it opaque.
         """
         if sql not in self._dictionary:
             root = self._parsed(sql)
@@ -635,10 +637,11 @@ def _is_template_placeholder(node: exp.VarMap) -> bool:
 
 @dataclass(frozen=True)
 class _DictionaryReads:
-    """ClickHouse dictionary calls in the scopes a statement runs, split by what they say.
+    """ClickHouse dictionary and Join-table calls a statement runs, split by what they say.
 
-    `reads` are `(dictionary, attribute)` pairs the call names in literals; `clauses` name
-    each call whose read the statement does not spell out.
+    `reads` are `(table, column)` pairs the call names in literals — a dictionary and
+    attribute, or a Join table and column; `clauses` name each call whose read the
+    statement does not spell out.
     """
 
     reads: tuple[tuple[str, str], ...] = ()
@@ -681,38 +684,45 @@ _DICT_GET_TYPES = (
 _DICT_GET = re.compile(
     r"dictget(?:all|(?:" + "|".join(_DICT_GET_TYPES) + r"))?(?:ordefault|ornull)?"
 )
+#: Closed set of Join-table readers. ClickHouse's `joinGet` takes a single value column;
+#: `joinGetOrNull` is the only sibling that still names that column. Compared lower-cased.
+_JOIN_GET_READERS = frozenset({"joinget", "joingetornull"})
 
 
 def _dictionary_calls(root: exp.Expression) -> list[tuple[exp.Func, str]]:
-    """Functions whose name begins with `dict` — ClickHouse's dictionary family."""
+    """Functions in ClickHouse's dictionary (`dict…`) or Join-table (`joinget…`) family."""
     found: list[tuple[exp.Func, str]] = []
     for call in root.find_all(exp.Func):
         name = call.name if isinstance(call, exp.Anonymous) else call.sql_name()
-        if name.lower().startswith("dict"):
+        if name.lower().startswith(("dict", "joinget")):
             found.append((call, name))
     return found
 
 
 def _dictionary_reads_in(root: exp.Expression) -> _DictionaryReads:
-    """Name the read of each dictionary call the statement runs, or name the call as unread.
+    """Name the read of each dictionary or Join-table call the statement runs, or name it unread.
 
-    A dictionary call is any function whose name begins with `dict`, ClickHouse's
-    dictionary family. `extract_column_refs` sees only its key column, so a call that
-    reads an attribute and is not expanded here would leave the tile looking read in whole.
-    Two outcomes, and the second is the default so a dictionary function added to
-    ClickHouse later is a hole, not silence: an attribute reader in `_DICT_GET` with a
-    literal dictionary and literal attribute(s) resolves to `(dictionary, attribute)`
-    reads; any other call — `dictHas` and `dictIsIn` included, which read the key and
-    parent attributes without naming them — is one clause naming it. A call the statement
-    never runs (a named CTE the FROM never names, a scalar `WITH` alias nobody reads) is
-    skipped. `_projection_star_in_reachable` skips a star in an unread named CTE and in an
-    unread `WITH (SELECT …) AS alias`, but not in the expression form `WITH <expr> AS
-    alias`, where a star still counts — the two paths are not symmetric yet (T-11).
+    A dictionary call is any function whose name begins with `dict`; a Join-table call,
+    with `joinget` — ClickHouse's two families that fetch a column while leaving
+    `extract_column_refs` looking only at the key. A call that reads a column and is not
+    expanded here would leave the tile looking read in whole. Two outcomes, and the second
+    is the default so a function added to ClickHouse later is a hole, not silence: an
+    attribute reader in `_DICT_GET` with a literal dictionary and literal attribute(s)
+    resolves to `(dictionary, attribute)` reads; a Join-table reader in `_JOIN_GET_READERS`
+    with a literal table and one literal column resolves to `(table, column)` — a tuple of
+    columns is not ClickHouse's `joinGet` signature, so it is a clause, not a read. Any
+    other call — `dictHas` and `dictIsIn` included, which read the key and parent
+    attributes without naming them, or a `joinget*` name outside the reader set — is one
+    clause naming it. A call the statement never runs (a named CTE the FROM never names, a
+    scalar `WITH` alias nobody reads) is skipped. `_projection_star_in_reachable` skips a
+    star in an unread named CTE and in an unread `WITH (SELECT …) AS alias`, but not in
+    the expression form `WITH <expr> AS alias`, where a star still counts — the two paths
+    are not symmetric yet (T-11).
 
     The scope tree is built only when there is a call to place: on this path a tile with no
-    `dict…` function must not pay for `build_scope`, and must not make sqlglot warn on
-    ordinary SQL such as `WITH toUInt64(1) AS r`. A starred tile still pays for one on the
-    star path, whether or not it calls a dictionary.
+    `dict…` or `joinget…` function must not pay for `build_scope`, and must not make
+    sqlglot warn on ordinary SQL such as `WITH toUInt64(1) AS r`. A starred tile still
+    pays for one on the star path, whether or not it calls either family.
     """
     calls = _dictionary_calls(root)
     if not calls:
@@ -723,11 +733,17 @@ def _dictionary_reads_in(root: exp.Expression) -> _DictionaryReads:
     for call, name in calls:
         if not in_run(call):
             continue
-        named = _literal_dictionary_reads(call) if _DICT_GET.fullmatch(name.lower()) else []
+        lowered = name.lower()
+        if lowered.startswith("joinget"):
+            named = _literal_join_get_reads(call) if lowered in _JOIN_GET_READERS else []
+            unread = "Join table"
+        else:
+            named = _literal_dictionary_reads(call) if _DICT_GET.fullmatch(lowered) else []
+            unread = "dictionary"
         if named:
             reads.extend(pair for pair in named if pair not in reads)
             continue
-        clause = f"it calls {name}(...), whose dictionary read this run could not name"
+        clause = f"it calls {name}(...), whose {unread} read this run could not name"
         if clause not in clauses:
             clauses.append(clause)
     return _DictionaryReads(reads=tuple(reads), clauses=tuple(clauses))
@@ -746,11 +762,32 @@ def _literal_dictionary_reads(call: exp.Func) -> list[tuple[str, str]]:
     return [(args[0].name, item.name) for item in attributes]
 
 
+def _literal_join_get_reads(call: exp.Func) -> list[tuple[str, str]]:
+    """`(table, column)` when both are one string literal; empty otherwise.
+
+    ClickHouse's joinGet takes a single value column; a tuple in the second argument is
+    not a read.
+    """
+    args = call.expressions
+    if len(args) < 2:
+        return []
+    table, column = args[0], args[1]
+    if not (
+        isinstance(table, exp.Literal)
+        and table.is_string
+        and isinstance(column, exp.Literal)
+        and column.is_string
+    ):
+        return []
+    return [(table.name, column.name)]
+
+
 def _runs_in_statement(root: exp.Expression) -> Callable[[exp.Expression], bool]:
     """Whether a node sits in a scope the statement reads (see `_reachable_scopes`).
 
     Without a scope tree every node counts, and so does a node no scope owns: for a
-    dictionary call the careful answer is that it ran — skipping it would be silence. The
+    dictionary or Join-table call the careful answer is that it ran — skipping it would
+    be silence. The
     one exception is ClickHouse's scalar `WITH`: `WITH <expr> AS alias` (body is not a
     Query, so no scope owns it) runs only when the alias is read elsewhere;
     `WITH (SELECT …) AS alias` is owned by that subquery's scope and

@@ -55,9 +55,12 @@ never resolved as "this tile does not read the change": a template placeholder, 
 `COLUMNS('re')` selector and a `JOIN … USING` key each read columns while leaving neither a star
 nor an unattributed name behind, so silence about them would read as an answer. The rule is the
 contract; a construct found later is named the same way rather than reopening the question.
-Today the resolver recognises those three constructs and the ClickHouse dictionary calls below;
-a construct outside that set is a hole in the detector, not a guarantee that the tile was read in
-whole.
+Today the resolver recognises those three constructs, the ClickHouse dictionary calls below,
+and the Join-table calls below; a construct outside that set is a hole in the detector, not
+a guarantee that the tile was read in whole. One known example is a ClickHouse table name
+on the right of `IN` (`WHERE region IN rev`): ClickHouse reads `rev` as
+`IN (SELECT * FROM rev)`, while sqlglot parses the identifier as a column and the guard
+attributes it to the tile's own table, so the tile looks read in whole.
 A ClickHouse dictionary call — any function whose name begins with `dict`, case-insensitive —
 SHALL either name the read it performs or leave the tile read in part. The resolver names a
 closed set of attribute readers: `dictGet`, `dictGetOrDefault`, `dictGetOrNull`, `dictGetAll`,
@@ -76,6 +79,15 @@ or inside `WITH (SELECT …) AS alias` whose alias nothing reads, is neither a r
 unread part. A dictionary call inside ClickHouse's scalar `WITH` — both the expression form
 and the subquery form — counts when the alias is read elsewhere; a named CTE counts when
 FROM/JOIN names it.
+A ClickHouse Join-table call — any function whose name begins with `joinget`,
+case-insensitive — SHALL either name the read it performs or leave the tile read in part,
+through the same reachability rule as a dictionary call. The resolver names a closed set of
+readers: `joinGet` and `joinGetOrNull`. A call in that set whose Join table and column are
+each one string literal is read as `<table>.<column>`, reconciled like a table name, and
+counts as an attributed read — for `reads_field` and for the metric rule alike. Every other
+Join-table call — a table or column that is not a literal, a tuple of columns, a function
+outside that set — is an unread part that names the call as one whose Join table read this
+run could not name.
 When the change reaches an in-scope product and carries typed metric terms, the system
 SHALL name that tile with `chart.metric_unread` unless its SQL was read in whole and names
 none of those terms' columns.
@@ -275,6 +287,48 @@ none of those terms' columns.
   SELECT x FROM dm.sales_daily`
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the report names neither a chart impact nor a chart gap for that tile
+
+### Scenario: a literal joinGet call is read as the Join table's column
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `SELECT joinGet('dm.rev', 'revenue', toUInt64(1)) AS r, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field` naming
+  `dm.rev.revenue`, and the report carries no chart gap for it
+
+### Scenario: a joinGet call whose table or column is not a literal leaves the tile read in part
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `SELECT joinGet(concat('dm.', 'rev'), 'revenue', toUInt64(1)) AS r, sum(revenue)
+  FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries `chart.sql_partial` naming that tile and saying it calls
+  `joinGet(...)`, whose Join table read this run could not name
+
+### Scenario: a joinGet call in a CTE the query does not read changes nothing
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH x AS (SELECT joinGet('dm.rev', 'revenue', toUInt64(1)) AS r FROM dm.sales_daily)
+  SELECT sum(store_id) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report names neither a chart impact nor a chart gap for that tile
+
+### Scenario: a joinGet call in a scalar subquery WITH nobody reads changes nothing
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT joinGet('dm.rev', 'revenue', toUInt64(1))) AS r
+  SELECT sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report names neither a chart impact nor a chart gap for that tile
+
+### Scenario: a joinGet call in a scalar subquery WITH the query reads is read
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT joinGet('dm.rev', 'revenue', toUInt64(1))) AS r
+  SELECT sum(revenue) * r FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field` naming
+  `dm.rev.revenue`
 
 ### Scenario: a bare table name that is the tile's own table is qualified through it
 

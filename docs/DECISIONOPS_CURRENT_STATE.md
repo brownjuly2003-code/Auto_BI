@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-17
+**Обновлено:** 2026-09-18
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=21`, `CHECK_VERSION=11`
+**Версии evidence:** `VERIFIER_VERSION=22`, `CHECK_VERSION=11`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -71,7 +71,10 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   литеральными словарём и атрибутом читается как `<словарь>.<атрибут>` (кортеж атрибутов —
   по чтению на каждый) и участвует в `reads_field` и правиле метрики как любое
   атрибутированное чтение; любой другой `dict…` — нелитеральный аргумент, `dictHas` /
-  `dictIsIn`, иерархия, неизвестная функция — `chart.sql_partial`. Metric-derived гэпы
+  `dictIsIn`, иерархия, неизвестная функция — `chart.sql_partial`. То же для семейства
+  Join-таблицы: `joinGet` / `joinGetOrNull` с литеральными таблицей и одной колонкой
+  читается как `<таблица>.<колонка>`; любой другой `joinget…` — `chart.sql_partial`.
+  Metric-derived гэпы
   (`chart.metric_unread`, `chart.metric_unknown`, `chart.formula_untyped`) записываются
   только для изменения, которое достигает хотя бы одного продукта в scope: вопрос,
   которого никто в scope не задавал, дырой этого отчёта не является.
@@ -108,7 +111,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse называет чтение `<словарь>.<атрибут>` или оставляет плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
+| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
@@ -159,15 +162,16 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   IR у чарта нет ссылки на метрику, а из произвольного SQL этот срез агрегат не читает.
   Правило скрытого чтения — контракт (неразворачиваемое выражение оставляет плитку
   прочитанной частично); детектор узнаёт именованный набор конструкций — `{{ … }}`,
-  `COLUMNS('re')`, `JOIN … USING` и словарное семейство ClickHouse, которое теперь
-  default-deny: вызов либо называет чтение, либо оставляет плитку прочитанной частично.
-  Конструкция вне этого набора — дыра детектора, а не гарантия полного чтения, и пример
-  известен: `joinGet('<таблица>', '<колонка>', key)` читает колонку Join-таблицы так же,
-  как `dictGet` читает атрибут словаря, но его имя не начинается с `dict`, и детектор его
-  не узнаёт. Плитка с таким вызовом сегодня снимается ответом «не эта плитка» — ни чтения,
-  ни гэпа (`joinGet('dm.rev', 'revenue', toUInt64(1))` против изменения `dm.rev.revenue`
-  даёт пустые `charts` и `chart_gaps`, тогда как `dictGet` в той же форме даёт
-  `reads_field`). Отложено в T-12.
+  `COLUMNS('re')`, `JOIN … USING`, словарное семейство ClickHouse и семейство
+  `joinGet` / `joinGetOrNull`. Словарный вызов и вызов Join-таблицы — default-deny:
+  литеральный геттер называет чтение `<таблица>.<колонка>` (для словаря — ещё кортеж
+  атрибутов) и участвует в `reads_field` и правиле метрики; любой другой вызов семейства
+  оставляет плитку прочитанной частично. Конструкция вне этого набора — дыра детектора,
+  а не гарантия полного чтения. Известный пример: `WHERE region IN rev` — ClickHouse
+  читает `rev` как таблицу (`region IN (SELECT * FROM rev)`), sqlglot разбирает `rev`
+  как колонку, sql_guard приписывает её таблице плитки, и плитка выглядит прочитанной
+  целиком (`SELECT sum(revenue) FROM dm.sales_daily WHERE region IN rev` против
+  изменения `dm.rev.revenue` даёт пустые `charts` и `chart_gaps`).
 - Разрешение scope пока пере-сообщает в двух местах — на словарном пути и на пути звезды
   (оба воспроизведены, оба отложены в T-11, ни одно не прячет чтение): имя scalar-алиаса,
   прочитанное внутри CTE, которого

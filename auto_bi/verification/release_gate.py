@@ -154,7 +154,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: wording of the dictionary `chart.sql_partial` detail also changed, so the same
 #: unnameable call produces a different detail string. Evidence only: CHECK_VERSION
 #: does not move.
-VERIFIER_VERSION = "21"
+#: 22 — a ClickHouse `joinGet` / `joinGetOrNull` call with a literal Join table and
+#: column now names a `reads_field` where verifier 21 answered "not this tile", and a
+#: non-literal or non-reader `joinget*` call adds a `chart.sql_partial` clause (a gap
+#: where there was none). Evidence only: CHECK_VERSION does not move.
+VERIFIER_VERSION = "22"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
