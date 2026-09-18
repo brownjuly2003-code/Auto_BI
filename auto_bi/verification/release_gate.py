@@ -137,7 +137,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: inputs name tiles (and `chart.sql_partial` / `chart.metric_unread` holes) verifier 17
 #: left as `chart.opaque_sql`. Chart resolution is evidence and does not grade, so
 #: CHECK_VERSION does not move.
-VERIFIER_VERSION = "18"
+#: 19 — a ClickHouse dictionary call in an operator tile now names its read as
+#: `<dictionary>.<attribute>` when both are literals, and otherwise leaves the tile
+#: `chart.sql_partial`, so the same inputs can name a tile or a hole verifier 18 read as
+#: "not this tile". Evidence only: CHECK_VERSION does not move.
+VERIFIER_VERSION = "19"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

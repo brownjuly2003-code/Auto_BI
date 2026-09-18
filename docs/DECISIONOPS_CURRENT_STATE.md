@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=18`, `CHECK_VERSION=11`
+**Версии evidence:** `VERIFIER_VERSION=19`, `CHECK_VERSION=11`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -148,10 +148,11 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   Связь «чарт считает метрику» — вывод по точному совпадению термов IR-меры, потому что в
   IR у чарта нет ссылки на метрику, а из произвольного SQL этот срез агрегат не читает.
   Правило скрытого чтения — контракт (неразворачиваемое выражение оставляет плитку
-  прочитанной частично); сегодня гейт узнаёт три случая (`{{ … }}`, `COLUMNS('re')`,
-  `JOIN … USING`). Конструкция вне этого набора, которая прячет чтение, — дыра детектора:
-  словарная функция вроде `dictGet` считается прочитанной целиком, и связь с метрикой
-  для такой плитки может быть снята.
+  прочитанной частично); сегодня гейт узнаёт `{{ … }}`, `COLUMNS('re')`, `JOIN … USING`
+  и словарные вызовы ClickHouse (`dict*`: литеральный `dictGet` читается как
+  `<словарь>.<атрибут>`, любой другой оставляет плитку прочитанной частично). Конструкция
+  вне этого набора, которая прячет чтение, — по-прежнему дыра детектора, а не гарантия
+  полного чтения.
 - `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
   под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
   `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:

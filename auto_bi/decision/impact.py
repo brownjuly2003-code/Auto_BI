@@ -42,7 +42,8 @@ columns the SQL was read in whole and does not name.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import re
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
@@ -201,6 +202,7 @@ class _ChartResolver:
         self._trees: dict[str, exp.Expression | None] = {}
         self._projection_star: dict[str, bool] = {}
         self._hidden: dict[str, tuple[str, ...]] = {}
+        self._dictionary: dict[str, _DictionaryReads] = {}
         self._known = _terms_by_metric(metrics)
         self._loaded: list[tuple[str, DashboardSpec]] = []
         self._missing: list[str] = []
@@ -282,10 +284,19 @@ class _ChartResolver:
         # Constructs that can hide a read are asked about unconditionally: none of them
         # leaves a star or an unattributed name behind, so the reads above would look
         # complete and the tile would resolve to "not this tile".
-        hidden = self._hidden_reads(sql)
+        dictionary = self._dictionary_reads(sql)
+        hidden = self._hidden_reads(sql) + dictionary.clauses
         attributed: set[str] = set()
         unreconciled: set[str] = set()
         unnamed_source = False
+        for name, attribute in dictionary.reads:
+            # A dictionary is addressed like a table (`db.dict`), so its attribute gets the
+            # id a table column would, and a name that is not an id lands where one would.
+            table_id = _reconcile_sql_table(name, query.table)
+            if table_id is None:
+                unreconciled.add(name)
+            else:
+                attributed.add(f"{table_id}.{attribute}")
         for column in reads.attributed:
             # A table function (`numbers()`, `merge()`, `cluster()`) is parsed as a Table
             # with no catalog/db/identifier, so `_table_ref` yields "". Putting that in
@@ -383,6 +394,18 @@ class _ChartResolver:
                 else _hidden_read_clauses(root)
             )
         return self._hidden[sql]
+
+    def _dictionary_reads(self, sql: str) -> _DictionaryReads:
+        """What the ClickHouse dictionary calls the statement runs read. Memoised per text.
+
+        Unparseable text has no calls to read; `_column_reads` has already named it opaque.
+        """
+        if sql not in self._dictionary:
+            root = self._parsed(sql)
+            self._dictionary[sql] = (
+                _DictionaryReads() if root is None else _dictionary_reads_in(root)
+            )
+        return self._dictionary[sql]
 
     def _parsed(self, sql: str) -> exp.Expression | None:
         """The statement, parsed once per text; `None` when sqlglot could not parse it."""
@@ -581,6 +604,123 @@ def _is_template_placeholder(node: exp.VarMap) -> bool:
     """An empty map: what `{{ name }}` becomes. A written `map('k', v)` carries entries."""
     keys, values = node.args.get("keys"), node.args.get("values")
     return not (keys.expressions if keys else []) and not (values.expressions if values else [])
+
+
+@dataclass(frozen=True)
+class _DictionaryReads:
+    """ClickHouse dictionary calls in the scopes a statement runs, split by what they say.
+
+    `reads` are `(dictionary, attribute)` pairs the call names in literals; `clauses` name
+    each call whose read the statement does not spell out.
+    """
+
+    reads: tuple[tuple[str, str], ...] = ()
+    clauses: tuple[str, ...] = ()
+
+
+#: The attribute readers: `dictGet`, its typed forms (`dictGetString`, `dictGetUInt64`, …)
+#: and either with `OrDefault` / `OrNull`. Their first argument is the dictionary, the
+#: second the attribute or a tuple of attributes. The type list is closed on purpose:
+#: `dictGetHierarchy` and its siblings share the prefix and name no attribute they read.
+_DICT_GET = re.compile(
+    r"dictget(?:u?int(?:8|16|32|64)|float(?:32|64)|date|datetime|uuid|ipv4|ipv6|string)?"
+    r"(?:ordefault|ornull)?"
+)
+
+
+def _dictionary_reads_in(root: exp.Expression) -> _DictionaryReads:
+    """Name the read of each dictionary call the statement runs, or name the call as unread.
+
+    A dictionary call is any function whose name begins with `dict`, ClickHouse's
+    dictionary family. `extract_column_refs` sees only its key column, so a call that
+    reads an attribute and is not expanded here would leave the tile looking read in whole.
+    Two outcomes, and the second is the default so a dictionary function added to
+    ClickHouse later is a hole, not silence: an attribute reader with a literal dictionary
+    and literal attribute(s) resolves to `(dictionary, attribute)` reads; any other call —
+    `dictHas` and `dictIsIn` included, which read the key and parent attributes without
+    naming them — is one clause naming it. A call the statement never runs (a CTE nobody
+    names, a scalar `WITH` alias nobody reads) is skipped, as `_has_projection_star` skips
+    a star there.
+    """
+    in_run = _runs_in_statement(root)
+    reads: list[tuple[str, str]] = []
+    clauses: list[str] = []
+    for call in root.find_all(exp.Func):
+        name = call.name if isinstance(call, exp.Anonymous) else call.sql_name()
+        lowered = name.lower()
+        if not lowered.startswith("dict") or not in_run(call):
+            continue
+        named = _literal_dictionary_reads(call) if _DICT_GET.fullmatch(lowered) else []
+        if named:
+            reads.extend(pair for pair in named if pair not in reads)
+            continue
+        clause = f"it calls {name}(...), which reads a dictionary without naming the attribute"
+        if clause not in clauses:
+            clauses.append(clause)
+    return _DictionaryReads(reads=tuple(reads), clauses=tuple(clauses))
+
+
+def _literal_dictionary_reads(call: exp.Func) -> list[tuple[str, str]]:
+    """`(dictionary, attribute)` pairs when both are string literals; empty otherwise."""
+    args = call.expressions
+    if len(args) < 2 or not (isinstance(args[0], exp.Literal) and args[0].is_string):
+        return []
+    attributes = args[1].expressions if isinstance(args[1], exp.Tuple) else [args[1]]
+    if not attributes or not all(
+        isinstance(item, exp.Literal) and item.is_string for item in attributes
+    ):
+        return []
+    return [(args[0].name, item.name) for item in attributes]
+
+
+def _runs_in_statement(root: exp.Expression) -> Callable[[exp.Expression], bool]:
+    """Whether a node sits in a scope the statement reads (see `_reachable_scopes`).
+
+    Without a scope tree every node counts, and so does a node no scope owns: for a
+    dictionary call the careful answer is that it ran — skipping it would be silence. The
+    one exception is ClickHouse's scalar `WITH <expr> AS alias`: a CTE whose body is not a
+    query, so no scope owns it, and it runs only when the alias is read elsewhere.
+    """
+    root_scope = build_scope(root)
+    if root_scope is None:
+        return lambda _node: True
+    owners = {id(scope.expression): scope for scope in root_scope.traverse()}
+    reachable = {id(scope) for scope in _reachable_scopes(root_scope)}
+
+    def in_run(node: exp.Expression) -> bool:
+        current: exp.Expression | None = node.parent
+        while current is not None:
+            if (
+                isinstance(current, exp.CTE)
+                and not isinstance(current.this, exp.Query)
+                and not _scalar_alias_is_read(root, current)
+            ):
+                return False
+            owner = owners.get(id(current))
+            if owner is not None:
+                return id(owner) in reachable
+            current = current.parent
+        return True
+
+    return in_run
+
+
+def _scalar_alias_is_read(root: exp.Expression, cte: exp.CTE) -> bool:
+    """Whether a column outside the scalar `WITH` names its alias (case-insensitive)."""
+    alias = cte.alias.lower()
+    return any(
+        not column.table
+        and column.name.lower() == alias
+        and not any(ancestor is cte for ancestor in _ancestors(column))
+        for column in root.find_all(exp.Column)
+    )
+
+
+def _ancestors(node: exp.Expression) -> Iterator[exp.Expression]:
+    current = node.parent
+    while current is not None:
+        yield current
+        current = current.parent
 
 
 def _star_is_count_arg(star: exp.Star) -> bool:
