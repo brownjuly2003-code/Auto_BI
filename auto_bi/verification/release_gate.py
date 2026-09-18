@@ -165,7 +165,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: builder does not reach (an argument of `arrayJoin((SELECT groupArray(a) FROM
 #: x))`); a scalar alias read only through a tuple access at any depth (`t.1`,
 #: `t.a.b`) is read — for a star under an expression-form WITH this matches 22,
-#: for a star under a subquery-form WITH and for a dictionary call it is new.
+#: for a star under a subquery-form WITH and for a dictionary call it is new; a
+#: database or catalog qualifier that shares a scalar alias (`dm.sales_daily.revenue`
+#: beside `WITH … AS dm`) opens that WITH — more reads than 22, a documented
+#: over-report.
 #: Fewer reads and gaps than 22: a dead reader opens nothing; an unread
 #: expression-form star is not a `chart.sql_partial`; a named CTE declared
 #: inside a nested query and never named does not run. Evidence only:

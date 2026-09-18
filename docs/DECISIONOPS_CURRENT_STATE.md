@@ -65,7 +65,7 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   сам атрибутирует чтение, `computes_metric` не выводится; нерешаемые плитки выходят
   именованными `chart_gaps` (`chart.opaque_sql` — текст не разобрали, `chart.sql_partial` —
   прочитали частично, `chart.metric_unread` — связь с метрикой не вывели). Словарный вызов
-  ClickHouse в scope, который statement исполняет, либо называет своё чтение, либо оставляет
+  ClickHouse в исполняемой части statement либо называет своё чтение, либо оставляет
   плитку прочитанной частично: геттер из закрытого набора (`dictGet`, `dictGetOrDefault`,
   `dictGetOrNull`, `dictGetAll` и типизированные `dictGet<Type>` с теми же суффиксами) с
   литеральными словарём и атрибутом читается как `<словарь>.<атрибут>` (кортеж атрибутов —
@@ -74,10 +74,14 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   `dictIsIn`, иерархия, неизвестная функция — `chart.sql_partial`. То же для семейства
   Join-таблицы: `joinGet` / `joinGetOrNull` с литеральными таблицей и одной колонкой
   читается как `<таблица>.<колонка>`; любой другой `joinget…` — `chart.sql_partial`.
-  Metric-derived гэпы (`chart.metric_unread`, `chart.metric_unknown`,
-  `chart.formula_untyped`) записываются только для изменения, которое достигает хотя бы
-  одного продукта в scope: вопрос, которого никто в scope не задавал, дырой этого
-  отчёта не является.
+  Какая часть statement исполняется, решает один обход гейтов CTE, общий для словаря,
+  Join-таблицы и звезды: именованная CTE открывается, когда исполняемая неквалифицированная
+  ссылка на таблицу её называет, scalar `WITH` — когда исполняемая колонка читает алиас
+  (голое имя или обращение к кортежу с любого уровня). Плитка без словарного или Join-вызова
+  и без звезды обход не делает. Metric-derived гэпы (`chart.metric_unread`,
+  `chart.metric_unknown`, `chart.formula_untyped`) записываются только для изменения,
+  которое достигает хотя бы одного продукта в scope: вопрос, которого никто в scope не
+  задавал, дырой этого отчёта не является.
 - `results.provenance` оценивает, откуда пришло кандидатное число: snapshot, среда и
   исполненный запрос сверяются с тем, что гейт держит независимо; число без attestation
   называется `provenance.unattested`. Ни одна находка не блокирует.
@@ -111,7 +115,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; scalar `WITH` и звезда считаются только в исполняемой части statement; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
+| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
@@ -177,7 +181,7 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   вложенное объявление. Table alias с тем же именем тоже открывает scalar `WITH`
   (`t.region` при `FROM dm.sales_daily AS t` открывает `WITH … AS t`); database
   qualifier с тем же именем — тоже (`dm.sales_daily.revenue` открывает `WITH … AS dm`).
-  Оба случая пере-сообщают чтение и ничего не прячут (F-T-11-3, F-T-11-7).
+  Все три случая пере-сообщают чтение и ничего не прячут (F-T-11-3, F-T-11-7, F-T-11-13).
 - `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
   под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
   `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:
@@ -338,6 +342,21 @@ MyFlow, потому что GLM-5.3 и Codex (Astra/Luna) 2026-09-17 были н
 субагент `opus-sub` (opus high) и второй голос `fable`, потому что GLM-5.3 и Codex
 2026-09-18 были недоступны: моделированное ревью, не Astra-review по ADR 0006 и не human
 evidence.
+Закрыто семейство Join-таблицы: `joinGet` / `joinGetOrNull` с литеральными таблицей и одной
+колонкой называет чтение `<таблица>.<колонка>`, любой другой `joinget…` оставляет плитку
+прочитанной частично с клаузой «whose Join table read this run could not name» (срез T-12,
+verifier 22).
+Закрыт общий обход гейтов: какая часть operator SQL исполняется, решает один обход
+разобранного дерева — именованная CTE открывается, когда исполняемая неквалифицированная
+ссылка на таблицу её называет, scalar `WITH` — когда исполняемая колонка читает алиас
+(голое имя или обращение к кортежу с любого уровня); словарь, Join-таблица и звезда идут
+по одному правилу, вычисленному один раз на SQL; плитка без такого вызова и без звезды
+обход не делает (срез T-11, verifier 23). Первое ревью T-11 нашло, что достижимость по
+sqlglot scopes прятала чтения, которые HEAD видел: sqlglot не строит scope внутри
+expression-form `WITH`; починка — обход гейтов.
+Два среза (T-12 и T-11) реализованы grok xhigh (`grokw`); ревью — Opus через MyFlow
+(`opus-sub`), без второго голоса; GLM-5.3 и Codex недоступны: моделированное ревью, не
+Astra-review по ADR 0006 и не human evidence.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 

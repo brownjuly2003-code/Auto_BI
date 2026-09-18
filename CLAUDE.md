@@ -83,6 +83,22 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-18 — какая часть operator SQL исполняется, решает один обход гейтов CTE,
+  общий для словаря, Join-таблицы и звезды: именованная CTE открывается исполняемой
+  неквалифицированной ссылкой, scalar `WITH` — исполняемым чтением алиаса (голое имя
+  или кортеж); вложенный запрос в живой части исполняется, мёртвый читатель ничего не
+  открывает. Shadowing, table alias и database qualifier с тем же именем — известные
+  пере-сообщения. Оба пункта, отложенные в T-11, закрыты. VERIFIER_VERSION 22 → 23,
+  CHECK_VERSION остаётся 11. Реализовано grok xhigh (`grokw`), ревью — Opus через
+  MyFlow (`opus-sub`), без второго голоса; GLM-5.3 и Codex недоступны: моделированное
+  ревью, не Astra по ADR 0006 и не human evidence.
+- 2026-09-18 — `joinGet` / `joinGetOrNull` с литеральными Join-таблицей и одной колонкой
+  называют чтение `<таблица>.<колонка>`; любой другой `joinget…` оставляет плитку
+  прочитанной частично (`chart.sql_partial`) с клаузой «whose Join table read this run
+  could not name». VERIFIER_VERSION 21 → 22, CHECK_VERSION остаётся 11. Реализовано
+  grok xhigh (`grokw`), ревью — Opus через MyFlow (`opus-sub`), без второго голоса;
+  GLM-5.3 и Codex недоступны: моделированное ревью, не Astra по ADR 0006 и не human
+  evidence.
 - 2026-09-18 — словарное правило доведено: закрытый набор типизированных геттеров
   (`dictGet<Type>` по целым 8…256, float, decimal, date/datetime, uuid, ip, string, bool)
   называет чтение, scalar `WITH (SELECT …) AS alias` считается, когда алиас прочитан, клауза
