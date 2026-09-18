@@ -158,7 +158,19 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: column now names a `reads_field` where verifier 21 answered "not this tile", and a
 #: non-literal or non-reader `joinget*` call adds a `chart.sql_partial` clause (a gap
 #: where there was none). Evidence only: CHECK_VERSION does not move.
-VERIFIER_VERSION = "22"
+#: 23 — more reads and gaps than 22: a CTE is now named case-insensitively and
+#: regardless of declaration order (a forward reference); a query nested anywhere
+#: in a running part of the statement runs, and a named CTE it names opens — that
+#: covers a query inside a live scalar WITH body and a subquery sqlglot's scope
+#: builder does not reach (an argument of `arrayJoin((SELECT groupArray(a) FROM
+#: x))`); a scalar alias read only through a tuple access at any depth (`t.1`,
+#: `t.a.b`) is read — for a star under an expression-form WITH this matches 22,
+#: for a star under a subquery-form WITH and for a dictionary call it is new.
+#: Fewer reads and gaps than 22: a dead reader opens nothing; an unread
+#: expression-form star is not a `chart.sql_partial`; a named CTE declared
+#: inside a nested query and never named does not run. Evidence only:
+#: CHECK_VERSION does not move.
+VERIFIER_VERSION = "23"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

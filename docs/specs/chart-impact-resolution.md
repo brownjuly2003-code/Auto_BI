@@ -40,15 +40,21 @@ attributing a column only where the statement itself leaves no choice, and SHALL
 chart gap naming the tile when its SQL cannot be parsed or when part of what it reads could not
 be attributed — so a tile resolved in part is not read as one resolved in whole. A star that
 reads no column (`COUNT(*)`, `COUNT(DISTINCT *)`) and a star written in a scope the statement
-never reads — `*` inside a named CTE the FROM never names, or inside the subquery form of
-ClickHouse's scalar `WITH` (`WITH (SELECT …) AS alias`) whose alias nothing reads — are not
+never reads — `*` inside a named CTE the FROM never names, or inside ClickHouse's scalar
+`WITH` (the expression form `WITH <expr> AS alias` or the subquery form
+`WITH (SELECT …) AS alias`) whose alias no running part of the statement reads — are not
 unread parts. Either of those scopes read (FROM/JOIN names the CTE, or the alias is read
-elsewhere) makes the star an unread part. A star inside the expression form
-`WITH <expr> AS alias` is an unread part whether or not the alias is read: the star rule tests
-reachability for query-bodied scopes only, so it names one gap more than the statement
-justifies — the direction that hides nothing. A column
-whose source is a table function the statement does not name is an unread part, reported as
-such rather than as an empty table name.
+by a part of the statement that runs) makes the star an unread part. A star inside
+ClickHouse's scalar `WITH` follows its alias the same way a dictionary call does. A query
+nested inside the body of a scalar `WITH` is part of that `WITH`: it runs when the `WITH`
+is live, and the named CTEs it names and the `WITH`s it declares follow the same rules.
+Shadowing is not modelled: a name opens every CTE it could name, compared
+case-insensitively, which can only over-report. A tuple access at any depth (`t.1`,
+`t.name`, `t.a.b`) reads the scalar alias through its leftmost qualifier; a table alias
+or a database qualifier with the same name opens it too, which is an over-report. A
+column whose source is a table function
+the statement does not name is an unread part, reported as such rather than as an empty
+table name.
 
 An expression the system cannot expand into column reads SHALL leave the tile read in part,
 never resolved as "this tile does not read the change": a template placeholder, ClickHouse's
@@ -74,11 +80,18 @@ call — a dictionary or attribute that is not a literal, a membership or hierar
 (`dictHas`, `dictIsIn`, `dictGetHierarchy`, `dictGetChildren`, `dictGetDescendants`), a
 function outside that set — is an unread part that names the call as one whose dictionary
 read this run could not name. Only calls the statement runs count: a call inside a named CTE
-the FROM/JOIN never names, inside a scalar `WITH <expr> AS alias` whose alias nothing reads,
-or inside `WITH (SELECT …) AS alias` whose alias nothing reads, is neither a read nor an
-unread part. A dictionary call inside ClickHouse's scalar `WITH` — both the expression form
-and the subquery form — counts when the alias is read elsewhere; a named CTE counts when
-FROM/JOIN names it.
+the FROM/JOIN never names, inside a scalar `WITH <expr> AS alias` whose alias no running
+part reads, or inside `WITH (SELECT …) AS alias` whose alias no running part reads, is
+neither a read nor an unread part. A dictionary call inside ClickHouse's scalar `WITH` —
+both the expression form and the subquery form — counts when the alias is read by a part
+of the statement that runs; a named CTE counts when FROM/JOIN names it. A scalar alias
+read only inside a CTE the statement never runs does not make that `WITH` live. A query
+nested inside the body of a scalar `WITH` is part of that `WITH`: it runs when the `WITH`
+is live, and the named CTEs it names and the `WITH`s it declares follow the same rules.
+Shadowing is not modelled: a name opens every CTE it could name, compared
+case-insensitively, which can only over-report. A tuple access at any depth (`t.1`,
+`t.name`, `t.a.b`) reads the scalar alias through its leftmost qualifier; a table alias
+or a database qualifier with the same name opens it too, which is an over-report.
 A ClickHouse Join-table call — any function whose name begins with `joinget`,
 case-insensitive — SHALL either name the read it performs or leave the tile read in part,
 through the same reachability rule as a dictionary call. The resolver names a closed set of
@@ -145,14 +158,145 @@ none of those terms' columns.
 - **THEN** the change carries a chart impact for that tile with relation `reads_field` and
   the report carries no `chart.sql_partial` gap for it
 
-### Scenario: a star in an expression `WITH` is an unread part either way
+### Scenario: a star in an unread expression `WITH` is not a hole
 
 - **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
-  `WITH tuple(*) AS t SELECT sum(revenue) FROM dm.sales_daily`, whose alias `t` the
-  statement never reads
+  `WITH tuple(*) AS t SELECT sum(revenue) FROM dm.sales_daily`, whose alias `t` no
+  running part of the statement reads
 - **WHEN** impact is resolved with that dashboard supplied
-- **THEN** the report carries a `chart.sql_partial` gap naming that tile, the same gap it
-  carries when the statement does read `t`
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  and the report carries no `chart.sql_partial` gap for it
+
+### Scenario: a star in a read expression `WITH` is an unread part
+
+- **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
+  `WITH tuple(*) AS t SELECT t, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  and the report carries a `chart.sql_partial` gap naming that tile
+
+### Scenario: a star reached through a subquery inside a live expression WITH is an unread part
+
+- **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
+  `WITH tuple(*) AS t, x AS (SELECT t AS z FROM dm.other),
+  1 + (SELECT z FROM x) AS s SELECT s, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  and the report carries a `chart.sql_partial` gap naming that tile and saying it selects *
+
+### Scenario: a star in a nested WITH inside a live expression-form body is an unread part
+
+- **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
+  `WITH 1 + (WITH tuple(*) AS q SELECT q) AS s SELECT s, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  and the report carries a `chart.sql_partial` gap naming that tile and saying it selects *
+
+### Scenario: a dictionary call whose alias only a dead CTE reads changes nothing
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT dictGet('dm.rev', 'revenue', toUInt64(1))) AS r,
+  x AS (SELECT r AS z FROM dm.other) SELECT sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report names neither a chart impact nor a chart gap for that tile
+
+### Scenario: a star whose alias only a dead CTE reads is not a hole
+
+- **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT * FROM dm.other) AS r, x AS (SELECT r AS z FROM dm.other)
+  SELECT sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  and the report carries no `chart.sql_partial` gap for it
+
+### Scenario: a dictionary call whose alias is read only by an unread alias changes nothing
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH dictGet('dm.rev', 'revenue', toUInt64(1)) AS a, a + 1 AS b
+  SELECT sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report names neither a chart impact nor a chart gap for that tile
+
+### Scenario: a dictionary call whose alias is read through a live alias chain is read
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH dictGet('dm.rev', 'revenue', toUInt64(1)) AS a, a + 1 AS b
+  SELECT b, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue`
+
+### Scenario: a dictionary call reached through a subquery inside a live expression WITH is read
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH dictGet('dm.rev', 'revenue', toUInt64(1)) AS a, x AS (SELECT a AS z FROM dm.other),
+  1 + (SELECT z FROM x) AS s SELECT s, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue`
+
+### Scenario: a dictionary call in a nested WITH inside a live expression-form body is read
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH 1 + (WITH dictGet('dm.rev', 'revenue', toUInt64(1)) AS q SELECT q) AS s
+  SELECT s, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue`
+
+### Scenario: a named CTE named only from a subquery inside a live expression WITH is read
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH x AS (SELECT dictGet('dm.rev', 'revenue', toUInt64(1)) AS v FROM dm.other),
+  1 + (SELECT v FROM x) AS r SELECT r, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue`
+
+### Scenario: a named CTE declared inside a live expression-form body and never named changes nothing
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH 1 + (WITH x AS (SELECT dictGet('dm.rev', 'revenue', toUInt64(1)) AS v FROM dm.other)
+  SELECT 1) AS s SELECT s, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report names neither a chart impact nor a chart gap for that tile
+
+### Scenario: a named CTE declared inside a live expression-form body and named there is read
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH 1 + (WITH x AS (SELECT dictGet('dm.rev', 'revenue', toUInt64(1)) AS v FROM dm.other)
+  SELECT v FROM x) AS s SELECT s, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue`
+
+### Scenario: a shadowed scalar alias is a known over-report
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH dictGet('dm.rev', 'revenue', toUInt64(1)) AS a
+  SELECT sum(revenue) FROM (WITH 1 AS a SELECT revenue, a FROM dm.sales_daily)`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue` — the inner `a` is the inner WITH's literal, but shadowing is
+  not modelled, so the name also opens the outer WITH; that over-reports and hides nothing
+
+### Scenario: a tuple-element access reads a scalar WITH alias
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT dictGet('dm.rev', 'revenue', toUInt64(1)), 2) AS t
+  SELECT t.1, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue`
+
+### Scenario: a two-level tuple access reads a scalar WITH alias
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT dictGet('dm.rev', 'revenue', toUInt64(1)), 2) AS t
+  SELECT t.a.1, sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue`
 
 ### Scenario: a table-function source is named as unread, not as an empty table
 

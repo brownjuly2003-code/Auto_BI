@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=22`, `CHECK_VERSION=11`
+**Версии evidence:** `VERIFIER_VERSION=23`, `CHECK_VERSION=11`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -74,10 +74,10 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   `dictIsIn`, иерархия, неизвестная функция — `chart.sql_partial`. То же для семейства
   Join-таблицы: `joinGet` / `joinGetOrNull` с литеральными таблицей и одной колонкой
   читается как `<таблица>.<колонка>`; любой другой `joinget…` — `chart.sql_partial`.
-  Metric-derived гэпы
-  (`chart.metric_unread`, `chart.metric_unknown`, `chart.formula_untyped`) записываются
-  только для изменения, которое достигает хотя бы одного продукта в scope: вопрос,
-  которого никто в scope не задавал, дырой этого отчёта не является.
+  Metric-derived гэпы (`chart.metric_unread`, `chart.metric_unknown`,
+  `chart.formula_untyped`) записываются только для изменения, которое достигает хотя бы
+  одного продукта в scope: вопрос, которого никто в scope не задавал, дырой этого
+  отчёта не является.
 - `results.provenance` оценивает, откуда пришло кандидатное число: snapshot, среда и
   исполненный запрос сверяются с тем, что гейт держит независимо; число без attestation
   называется `provenance.unattested`. Ни одна находка не блокирует.
@@ -111,7 +111,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
+| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; scalar `WITH` и звезда считаются только в исполняемой части statement; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
@@ -172,14 +172,12 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   как колонку, sql_guard приписывает её таблице плитки, и плитка выглядит прочитанной
   целиком (`SELECT sum(revenue) FROM dm.sales_daily WHERE region IN rev` против
   изменения `dm.rev.revenue` даёт пустые `charts` и `chart_gaps`).
-- Разрешение scope пока пере-сообщает в двух местах — на словарном пути и на пути звезды
-  (оба воспроизведены, оба отложены в T-11, ни одно не прячет чтение): имя scalar-алиаса,
-  прочитанное внутри CTE, которого
-  statement не исполняет, всё равно делает этот `WITH` достижимым — `WITH (SELECT
-  dictGet('dm.rev','revenue',toUInt64(1))) AS r, x AS (SELECT r AS z FROM dm.other) SELECT
-  sum(revenue) FROM dm.sales_daily` называет чтение `dm.rev.revenue`, которого никто не
-  делает; а правило звезды не симметрично словарному — звезда внутри `WITH <expr> AS alias`
-  считается, прочитан алиас или нет.
+- Резолвер не моделирует shadowing имён CTE и scalar `WITH`: имя открывает каждую CTE,
+  которую оно могло бы назвать (без учёта регистра), включая внешнюю, которую скрывает
+  вложенное объявление. Table alias с тем же именем тоже открывает scalar `WITH`
+  (`t.region` при `FROM dm.sales_daily AS t` открывает `WITH … AS t`); database
+  qualifier с тем же именем — тоже (`dm.sales_daily.revenue` открывает `WITH … AS dm`).
+  Оба случая пере-сообщают чтение и ничего не прячут (F-T-11-3, F-T-11-7).
 - `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
   под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
   `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:

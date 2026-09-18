@@ -48,6 +48,7 @@ declares is an undeclared dependency the report is obliged to name.
 from __future__ import annotations
 
 import re
+from collections import defaultdict, deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -55,7 +56,6 @@ from enum import StrEnum
 import sqlglot
 from pydantic import Field
 from sqlglot import expressions as exp
-from sqlglot.optimizer.scope import Scope, build_scope
 
 from auto_bi.agent.sql_guard import ColumnReads, extract_column_refs
 from auto_bi.decision.spec import DecisionProductSpec
@@ -209,6 +209,7 @@ class _ChartResolver:
         self._reads: dict[str, ColumnReads | None] = {}
         self._trees: dict[str, exp.Expression | None] = {}
         self._projection_star: dict[str, bool] = {}
+        self._open_cte: dict[str, set[int]] = {}
         self._hidden: dict[str, tuple[str, ...]] = {}
         self._dictionary: dict[str, _DictionaryReads] = {}
         self._known = _terms_by_metric(metrics)
@@ -391,20 +392,22 @@ class _ChartResolver:
         return self._reads[sql]
 
     def _has_projection_star(self, sql: str) -> bool:
-        """A star that reads columns, in a scope the statement actually runs.
+        """A star that reads columns, in a part of the statement that runs.
 
         COUNT(*) and COUNT(DISTINCT *) read no column — sqlglot wraps the latter as
         Count(Distinct(Star)), so the star's parent is Distinct, not Count. Walking
         through that wrapper (not `find_ancestor(Count)`) keeps a SELECT * inside a
         counted subquery a hole. A star inside a named CTE the FROM never names, or
-        inside a scalar `WITH` whose alias nothing reads, is a query nobody ran
-        (`sql_guard._read_sources`); counting it would mark a fully attributed tile
-        unread. Memoised so a model-wide edit does not re-walk the same tile per change.
+        inside a scalar `WITH` whose alias no running part reads, is a query nobody
+        ran; counting it would mark a fully attributed tile unread. Memoised so a
+        model-wide edit does not re-walk the same tile per change.
         """
         if sql not in self._projection_star:
             root = self._parsed(sql)
             self._projection_star[sql] = (
-                True if root is None else _projection_star_in_reachable(root)
+                True
+                if root is None
+                else _projection_star_in_reachable(root, open_ids=self._open_cte_ids(sql))
             )
         return self._projection_star[sql]
 
@@ -427,10 +430,24 @@ class _ChartResolver:
         """
         if sql not in self._dictionary:
             root = self._parsed(sql)
-            self._dictionary[sql] = (
-                _DictionaryReads() if root is None else _dictionary_reads_in(root)
-            )
+            if root is None:
+                self._dictionary[sql] = _DictionaryReads()
+            else:
+                calls = _dictionary_calls(root)
+                if not calls:
+                    self._dictionary[sql] = _DictionaryReads()
+                else:
+                    self._dictionary[sql] = _dictionary_reads_in(
+                        root, open_ids=self._open_cte_ids(sql)
+                    )
         return self._dictionary[sql]
+
+    def _open_cte_ids(self, sql: str) -> set[int]:
+        """Ids of open CTE gates for this SQL; computed at most once per text."""
+        if sql not in self._open_cte:
+            root = self._parsed(sql)
+            self._open_cte[sql] = set() if root is None else _open_cte_gates(root)
+        return self._open_cte[sql]
 
     def _parsed(self, sql: str) -> exp.Expression | None:
         """The statement, parsed once per text; `None` when sqlglot could not parse it."""
@@ -699,7 +716,9 @@ def _dictionary_calls(root: exp.Expression) -> list[tuple[exp.Func, str]]:
     return found
 
 
-def _dictionary_reads_in(root: exp.Expression) -> _DictionaryReads:
+def _dictionary_reads_in(
+    root: exp.Expression, *, open_ids: set[int] | None = None
+) -> _DictionaryReads:
     """Name the read of each dictionary or Join-table call the statement runs, or name it unread.
 
     A dictionary call is any function whose name begins with `dict`; a Join-table call,
@@ -713,21 +732,24 @@ def _dictionary_reads_in(root: exp.Expression) -> _DictionaryReads:
     columns is not ClickHouse's `joinGet` signature, so it is a clause, not a read. Any
     other call — `dictHas` and `dictIsIn` included, which read the key and parent
     attributes without naming them, or a `joinget*` name outside the reader set — is one
-    clause naming it. A call the statement never runs (a named CTE the FROM never names, a
-    scalar `WITH` alias nobody reads) is skipped. `_projection_star_in_reachable` skips a
-    star in an unread named CTE and in an unread `WITH (SELECT …) AS alias`, but not in
-    the expression form `WITH <expr> AS alias`, where a star still counts — the two paths
-    are not symmetric yet (T-11).
+    clause naming it. A call the statement never runs (a named CTE the FROM never names,
+    a scalar `WITH` whose alias no running part reads) is skipped. The star path uses
+    the same `_runs_in_statement` predicate.
 
-    The scope tree is built only when there is a call to place: on this path a tile with no
-    `dict…` or `joinget…` function must not pay for `build_scope`, and must not make
-    sqlglot warn on ordinary SQL such as `WITH toUInt64(1) AS r`. A starred tile still
-    pays for one on the star path, whether or not it calls either family.
+    The reachability walk runs only when there is a call to place: on this path a tile
+    with no `dict…` or `joinget…` function must not enter `_runs_in_statement`. A starred
+    tile still walks on the star path, whether or not it calls either family. The
+    `_ChartResolver` computes the open set once per SQL and passes it here so the two
+    paths do not walk twice.
     """
     calls = _dictionary_calls(root)
     if not calls:
         return _DictionaryReads()
-    in_run = _runs_in_statement(root)
+    in_run = (
+        _runs_in_statement(root)
+        if open_ids is None
+        else _runs_in_statement(root, open_ids=open_ids)
+    )
     reads: list[tuple[str, str]] = []
     clauses: list[str] = []
     for call, name in calls:
@@ -782,51 +804,38 @@ def _literal_join_get_reads(call: exp.Func) -> list[tuple[str, str]]:
     return [(table.name, column.name)]
 
 
-def _runs_in_statement(root: exp.Expression) -> Callable[[exp.Expression], bool]:
-    """Whether a node sits in a scope the statement reads (see `_reachable_scopes`).
+def _runs_in_statement(
+    root: exp.Expression, *, open_ids: set[int] | None = None
+) -> Callable[[exp.Expression], bool]:
+    """Whether a node sits in a part of the statement that runs.
 
-    Without a scope tree every node counts, and so does a node no scope owns: for a
-    dictionary or Join-table call the careful answer is that it ran — skipping it would
-    be silence. The
-    one exception is ClickHouse's scalar `WITH`: `WITH <expr> AS alias` (body is not a
-    Query, so no scope owns it) runs only when the alias is read elsewhere;
-    `WITH (SELECT …) AS alias` is owned by that subquery's scope and
-    `_reachable_scopes` includes it when the alias is read. A query-bodied CTE is
-    owned by that query's scope and is treated as run only when FROM/JOIN names it.
+    The gates are the statement's `exp.CTE` nodes: named CTEs and ClickHouse scalar
+    `WITH` (both `WITH <expr> AS alias` and `WITH (SELECT …) AS alias`). A node runs
+    iff every CTE among its ancestors is open. Nothing else is a gate: a subquery,
+    derived table, UNION branch, LATERAL / UNNEST / VALUES, or a query nested inside
+    a scalar `WITH` body runs when what encloses it runs.
+
+    A named CTE opens when a running `exp.Table` without a database or catalog names
+    it (case-insensitive) and the CTE's declaring query is an ancestor of that table.
+    A scalar CTE opens when a running column names it (case-insensitive), the column
+    is not inside that CTE, and the declaring query is an ancestor of the column.
+    A column names the alias through its leftmost written part: catalog if set, else
+    db, else table, else its own name (a bare column). A tuple access at any depth
+    (`t.1`, `t.name`, `t.a.b`) therefore reads the alias. A table alias or a database
+    qualifier with the same name therefore opens the scalar `WITH` as well — an
+    over-report, the direction that hides nothing. Start with every gate closed. A
+    name referenced only from inside the gate it would open cannot open it, so a
+    cycle nobody outside reads stays closed.
+
+    Shadowing is not modelled: a name opens every CTE it could name. That can only
+    over-report.
     """
-    root_scope = build_scope(root)
-    if root_scope is None:
-        return lambda _node: True
-    owners = {id(scope.expression): scope for scope in root_scope.traverse()}
-    reachable = {id(scope) for scope in _reachable_scopes(root_scope)}
+    resolved_ids = _open_cte_gates(root) if open_ids is None else open_ids
 
     def in_run(node: exp.Expression) -> bool:
-        current: exp.Expression | None = node.parent
-        while current is not None:
-            if (
-                isinstance(current, exp.CTE)
-                and not isinstance(current.this, exp.Query)
-                and not _cte_alias_is_read(root, current)
-            ):
-                return False
-            owner = owners.get(id(current))
-            if owner is not None:
-                return id(owner) in reachable
-            current = current.parent
-        return True
+        return _node_runs(node, resolved_ids)
 
     return in_run
-
-
-def _cte_alias_is_read(root: exp.Expression, cte: exp.CTE) -> bool:
-    """Whether a column outside this CTE names its alias (case-insensitive)."""
-    alias = cte.alias.lower()
-    return any(
-        not column.table
-        and column.name.lower() == alias
-        and not any(ancestor is cte for ancestor in _ancestors(column))
-        for column in root.find_all(exp.Column)
-    )
 
 
 def _ancestors(node: exp.Expression) -> Iterator[exp.Expression]:
@@ -834,6 +843,134 @@ def _ancestors(node: exp.Expression) -> Iterator[exp.Expression]:
     while current is not None:
         yield current
         current = current.parent
+
+
+def _node_runs(node: exp.Expression, open_ids: set[int]) -> bool:
+    """A node runs iff every `exp.CTE` among its ancestors is open."""
+    return all(
+        not isinstance(ancestor, exp.CTE) or id(ancestor) in open_ids
+        for ancestor in _ancestors(node)
+    )
+
+
+def _declaring_query(cte: exp.CTE) -> exp.Expression | None:
+    """The query that owns this WITH: CTE → With → Select or Union."""
+    parent = cte.parent
+    if parent is None:
+        return None
+    return parent.parent
+
+
+@dataclass(frozen=True, slots=True)
+class _CteGate:
+    cte_id: int
+    declaring_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CteRef:
+    """A name that can open a CTE gate once it sits in a running part of the statement."""
+
+    name: str
+    enclosing: frozenset[int]
+    ancestors: frozenset[int]
+    named: bool
+
+
+def _enclosing_and_ancestors(node: exp.Expression) -> tuple[frozenset[int], frozenset[int]]:
+    """CTE ids among *node*'s ancestors, and the ids of every ancestor."""
+    enclosing: list[int] = []
+    ancestors: list[int] = []
+    for ancestor in _ancestors(node):
+        ancestors.append(id(ancestor))
+        if isinstance(ancestor, exp.CTE):
+            enclosing.append(id(ancestor))
+    return frozenset(enclosing), frozenset(ancestors)
+
+
+def _column_leftmost_name(column: exp.Column) -> str:
+    """The leftmost written part of a column: catalog, else db, else table, else name.
+
+    sqlglot parks a deeper tuple access in the qualifier slots (`t.a.b` is
+    Column(this=b, table=a, db=t); `t.a.b.c` puts `t` in catalog). Scalar gates
+    read that leftmost part as the candidate alias.
+    """
+    for part in (column.catalog, column.db, column.table, column.name):
+        if part:
+            return part.lower()
+    return ""
+
+
+def _open_cte_gates(root: exp.Expression) -> set[int]:
+    """Ids of CTE gates that a running part of the statement opens.
+
+    Linear worklist: each reference is processed once, each gate opens once. A name
+    opens every CTE it could name, compared case-insensitively, whose declaring
+    query encloses the name. A column names a scalar alias through its leftmost
+    written part, so a tuple access at any depth (`t.1`, `t.a.b`) opens it; named
+    CTEs still open only through an unqualified table.
+    """
+    named_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
+    scalar_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
+    for cte in root.find_all(exp.CTE):
+        alias = cte.alias.lower()
+        if not alias:
+            continue
+        declaring = _declaring_query(cte)
+        if declaring is None:
+            continue
+        gate = _CteGate(id(cte), id(declaring))
+        if cte.args.get("scalar"):
+            scalar_by_alias[alias].append(gate)
+        else:
+            named_by_alias[alias].append(gate)
+    if not named_by_alias and not scalar_by_alias:
+        return set()
+
+    refs: list[_CteRef] = []
+    for table in root.find_all(exp.Table):
+        if table.db or table.catalog or not table.name:
+            continue
+        enclosing, ancestors = _enclosing_and_ancestors(table)
+        refs.append(_CteRef(table.name.lower(), enclosing, ancestors, True))
+    for column in root.find_all(exp.Column):
+        alias = _column_leftmost_name(column)
+        if not alias:
+            continue
+        enclosing, ancestors = _enclosing_and_ancestors(column)
+        refs.append(_CteRef(alias, enclosing, ancestors, False))
+
+    waiting: dict[int, list[int]] = defaultdict(list)
+    for index, ref in enumerate(refs):
+        for cte_id in ref.enclosing:
+            waiting[cte_id].append(index)
+
+    open_ids: set[int] = set()
+    queued = [not ref.enclosing for ref in refs]
+    work: deque[int] = deque(index for index, ready in enumerate(queued) if ready)
+
+    def _open_gate(gate: _CteGate, ref: _CteRef) -> None:
+        if gate.cte_id in open_ids:
+            return
+        if gate.declaring_id not in ref.ancestors:
+            return
+        if not ref.named and gate.cte_id in ref.enclosing:
+            return
+        open_ids.add(gate.cte_id)
+        for waiter in waiting.get(gate.cte_id, ()):
+            if not queued[waiter] and refs[waiter].enclosing <= open_ids:
+                queued[waiter] = True
+                work.append(waiter)
+
+    while work:
+        ref = refs[work.popleft()]
+        if ref.named:
+            for gate in named_by_alias.get(ref.name, ()):
+                _open_gate(gate, ref)
+        else:
+            for gate in scalar_by_alias.get(ref.name, ()):
+                _open_gate(gate, ref)
+    return open_ids
 
 
 def _star_is_count_arg(star: exp.Star) -> bool:
@@ -848,102 +985,21 @@ def _star_is_count_arg(star: exp.Star) -> bool:
     return isinstance(parent, exp.Count)
 
 
-def _cte_scopes_read_as_columns(scope: Scope) -> list[Scope]:
-    """Scalar-subquery WITH scopes whose alias is read as a bare column.
+def _projection_star_in_reachable(
+    root: exp.Expression, *, open_ids: set[int] | None = None
+) -> bool:
+    """True when a non-COUNT star sits in a part of the statement that runs.
 
-    `WITH (SELECT …) AS alias` never lists the alias as a FROM source, so the
-    FROM/JOIN walk would skip it; the alias is still a value the statement runs.
-    Discriminate on sqlglot's `cte.args['scalar']`, not on the node type: a
-    parenthesised named CTE (`WITH x AS ((SELECT …))`) also parses as
-    `CTE(this=Subquery)` but has no `scalar` arg, and a bare column of the same
-    name is a column, not the CTE. A query-bodied CTE (`WITH name AS (SELECT …)`)
-    is reachable only through FROM/JOIN. A CTE nobody names at all is not
-    returned. Used by both the projection-star walk and the dictionary walk,
-    via `_reachable_scopes`.
-
-    sqlglot's `Scope.branch` copies `cte_sources` into nested UDTF scopes
-    (VALUES / LATERAL / UNNEST) whose `expression` is not a Query and has no
-    `.ctes`. Guard the expression type, not only the sources dict.
+    This is `_runs_in_statement` applied to each star — the same predicate as the
+    dictionary and Join-table path. `open_ids` is the set `_ChartResolver` shares
+    with that path; omitted, it is computed here.
     """
-    expression = scope.expression
-    if not isinstance(expression, exp.Query):
-        return []
-    sources = scope.cte_sources
-    if not sources:
-        return []
-    found: list[Scope] = []
-    for cte in expression.ctes:
-        inner = sources.get(cte.alias)
-        if (
-            isinstance(inner, Scope)
-            and isinstance(cte.this, exp.Subquery)
-            and bool(cte.args.get("scalar"))
-            and _cte_alias_is_read(expression, cte)
-        ):
-            found.append(inner)
-    return found
-
-
-def _reachable_scopes(root_scope: Scope) -> list[Scope]:
-    """Scopes the executed statement reads — FROM/JOIN, used CTEs, subqueries, unions.
-
-    A scalar subquery WITH (`WITH (SELECT …) AS alias`) whose alias is not a FROM
-    source but is read as a bare column elsewhere is a value the statement runs,
-    so its scope is included. A query-bodied CTE is included only when FROM/JOIN
-    names it. `Scope.traverse()` includes a CTE nobody named at all; walking
-    those would mark a decidable tile unread.
-    """
-    seen: set[int] = set()
-    stack = [root_scope]
-    reachable: list[Scope] = []
-    while stack:
-        scope = stack.pop()
-        if id(scope) in seen:
-            continue
-        seen.add(id(scope))
-        reachable.append(scope)
-        cte_sources = scope.cte_sources
-        for alias, node in scope.references:
-            if (
-                isinstance(node, exp.Table)
-                and not node.db
-                and not node.catalog
-                and node.name in cte_sources
-            ):
-                source = cte_sources[node.name]
-                if isinstance(source, Scope):
-                    stack.append(source)
-            elif not isinstance(node, exp.Table):
-                source = scope.sources.get(alias)
-                if isinstance(source, Scope):
-                    stack.append(source)
-        stack.extend(_cte_scopes_read_as_columns(scope))
-        stack.extend(scope.subquery_scopes)
-        stack.extend(scope.union_scopes)
-        stack.extend(scope.udtf_scopes)
-        stack.extend(scope.derived_table_scopes)
-    return reachable
-
-
-def _projection_star_in_reachable(root: exp.Expression) -> bool:
-    """True when a non-COUNT star appears in a scope the statement actually reads."""
-    root_scope = build_scope(root)
-    if root_scope is None:
-        return any(not _star_is_count_arg(star) for star in root.find_all(exp.Star))
-    owners = {id(scope.expression): scope for scope in root_scope.traverse()}
-    reachable = {id(scope) for scope in _reachable_scopes(root_scope)}
-    for star in root.find_all(exp.Star):
-        if _star_is_count_arg(star):
-            continue
-        node: exp.Expression | None = star.parent
-        while node is not None:
-            owner = owners.get(id(node))
-            if owner is not None:
-                if id(owner) in reachable:
-                    return True
-                break
-            node = node.parent
-    return False
+    in_run = (
+        _runs_in_statement(root)
+        if open_ids is None
+        else _runs_in_statement(root, open_ids=open_ids)
+    )
+    return any(not _star_is_count_arg(star) and in_run(star) for star in root.find_all(exp.Star))
 
 
 def _reconcile_sql_table(sql_table: str, query_table: str) -> str | None:
