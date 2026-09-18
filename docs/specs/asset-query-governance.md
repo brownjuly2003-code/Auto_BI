@@ -52,10 +52,12 @@ table name: two marts whose short names collide (`dm.sales_daily JOIN stg.sales_
 two distinct candidates.
 
 The sources of a scope are the ones it **reads** — the tables, derived tables, laterals and
-CTEs its own FROM/JOIN clauses name. A CTE its FROM does not name SHALL NOT count as a source
-of that scope, whether its WITH clause declared it or an enclosing query did: a query nobody
-ran is not a place the engine could have read the column from, and counting it would leave a
-name undecidable that the same statement without the WITH clause decides.
+CTEs its own FROM/JOIN clauses name. A CTE its FROM/JOIN does not name SHALL NOT count as a
+source of that scope, whether its WITH clause declared it or an enclosing query did: among the
+sources of a scope the engine resolves a name against the ones it reads, and counting it would
+leave a name undecidable that this scope otherwise decides. A CTE no scope in the statement names at all is
+the limiting case of the same rule — a query nobody ran — and chart impact reuses the rule there
+to decide whether a star is a hole.
 
 An unqualified name written in a scope that can read its enclosing query — a scalar, `IN` or
 `EXISTS` subquery, a lateral written inside a scope that can itself read outward, or a branch
@@ -84,8 +86,10 @@ Widening the candidate set of a scope inside a lateral body changes what the mod
 there, so the same statement can grade differently after this change — stricter as well as
 looser, and between the two finding codes as well. The scenarios below carry the cases. The
 one transition widening cannot produce is a clean grade turning into
-`asset.query_ungoverned_field`: a name the model has already settled keeps its declarer. That
-is why the verifier and check versions moved.
+`asset.query_ungoverned_field`: widening only adds candidates, so a name one governed source
+already declared keeps that declarer, and a name resolved to a derived table keeps that source
+in scope — either way the model never ends up with a governed source that declares nothing.
+That is why the verifier and check versions moved.
 
 ### Scenario: a table joined to itself offers two candidates
 

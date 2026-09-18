@@ -17,11 +17,18 @@ human/design-partner outcome не измерен и не требуется дл
 exit `0`), потому что перепроверка адресует запечатанный bundle и не требует текущей версии.
 Mac verifier 7 runs из proxy-review 2026-09-04 в Git не сохранены. Отдельный
 [chart-impact overlay](pilot/2026-09-12-owner-review-chart-impact/README.md) выпущен verifier
-14 и tracked вместе с evidence. Текущий гейт добавляет chart resolution, provenance,
-governance reviewed-запроса, runtime cost facts и signing identity. У исторического
-pilot-числа нет attestation, поэтому свежий прогон показывает `provenance.unattested`
-(review). Dashboard-only overlay с теми же semantic snapshots и продуктом сохраняет
-`run_id`; конкретный bundle различается evidence digest и каталогом. Отдельный
+14 и tracked вместе с evidence: его `operator_table`
+(`raw_sql: SELECT region, sum(revenue) FROM dm.sales_daily GROUP BY region`) записан как
+`chart.opaque_sql`. Текущий гейт добавляет chart resolution, provenance, governance
+reviewed-запроса, runtime cost facts и signing identity; свежий прогон на тех же входах
+overlay читает operator SQL и для этой плитки называет `chart.metric_unread` —
+statement прочитан целиком, связь с изменённой метрикой не выведена, `computes_metric` не
+заявляется, вердикт остаётся `block`, — а detail `impact.products` пишет «1 delivered
+chart(s) named (0 read only in part); of the tiles not named: 0 whose SQL could not be
+read, 0 read only in part, 1 read in whole but not settled against a changed metric».
+У исторического pilot-числа нет attestation, поэтому свежий прогон показывает
+`provenance.unattested` (review). Dashboard-only overlay с теми же semantic snapshots и
+продуктом сохраняет `run_id`; конкретный bundle различается evidence digest и каталогом. Отдельный
 [live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md) связывает эти возможности
 в одном Mac-прогоне: candidate capture аттестован, ClickHouse runtime checks исполнены,
 manifest подписан и проверен по сохранённому public trust root.
@@ -53,15 +60,22 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   guard, сверяет типы и nullable-контракт с asset'ом и пишет новый gate-ready YAML с
   canonical result и attestation, привязанной к digest кандидатного semantic snapshot'а.
 - `auto_bi decision verify` выполняет one-shot gate без удалённой BI-мутации; impact
-  доходит до конкретного чарта доставляемого дашборда (`computes_metric` / `reads_field`),
-  а нерешаемые плитки выходят именованными `chart_gaps`.
+  доходит до конкретного чарта доставляемого дашборда (`computes_metric` / `reads_field`).
+  Плитка с оператором `raw_sql` читается из своего SQL: `reads_field` там, где statement
+  сам атрибутирует чтение, `computes_metric` не выводится; нерешаемые плитки выходят
+  именованными `chart_gaps` (`chart.opaque_sql` — текст не разобрали, `chart.sql_partial` —
+  прочитали частично, `chart.metric_unread` — связь с метрикой не вывели).
 - `results.provenance` оценивает, откуда пришло кандидатное число: snapshot, среда и
   исполненный запрос сверяются с тем, что гейт держит независимо; число без attestation
   называется `provenance.unattested`. Ни одна находка не блокирует.
 - `assets.invalidated` дополнительно сверяет reviewed `reference_query` с кандидатным
   snapshot'ом: неуправляемая витрина — `asset.query_ungoverned`, необъявленная колонка
-  governed-витрины (в том числе голое имя, которого не объявляет ни один governed-источник
-  его scope'а) — `asset.query_ungoverned_field` (обе review), неразрешимая без
+  governed-витрины (в том числе голое имя, которого не объявляет ни один governed-источник,
+  который его scope читает) — `asset.query_ungoverned_field` (обе review). Источники
+  scope'а — те, что он читает: непрочитанный CTE колонок не предлагает. Голое имя в
+  подзапросе, который может читать охватывающий запрос, приписывается только когда его
+  объявляет один локальный governed-источник, иначе остаётся непроверенным; тело LATERAL
+  видит предшествующие FROM на каждом уровне до стены derived table/CTE. Неразрешимая без
   догадки часть запроса — `asset.query_fields_unchecked` (advisory).
 - `auto_bi decision verify --signing-key <private.pem>` opt-in подписывает canonical
   manifest Ed25519-ключом; private key читается только по явному внешнему пути.
@@ -84,9 +98,9 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07; tracked verifier 14 overlay показывает `computes_metric` и `chart.opaque_sql`, грейдинг не меняет |
+| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
-| Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом |
+| Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
 | Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; pilot-only signer создан вне checkout на Mac, production trust root не назначен |
 | Continuous platform | заблокирована до human/design-partner evidence |
@@ -99,6 +113,8 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 подтвердила scope/actionability свежих verifier 14 отчётов. Её пробел R2 закрыт отдельным
 [tracked chart-impact overlay](pilot/2026-09-12-owner-review-chart-impact/README.md): affected
 report содержит один `computes_metric` chart и один именованный `chart.opaque_sql` gap.
+Свежий прогон на тех же входах сохраняет `computes_metric` и для `operator_table` называет
+`chart.metric_unread`.
 [Live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md) добавляет к тому же change
 reviewed capture, provenance/governance, все пять live DWH checks и signed evidence.
 Это всё ещё техническая подготовка. Task 8 human outcome остаётся открытым,
@@ -125,18 +141,17 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 - Для external/reviewed-SQL формул и неизвестного семейства движков reference SQL
   остаётся явным semantic gap; такая формула не несёт термов, поэтому и до плитки
   не разрешается (`chart.formula_untyped`).
-- Chart-разрешение не заменяет lineage: операторский `raw_sql` читается из самого SQL
-  (только там, где statement не оставляет выбора), и неразрешённая часть выходит
-  именованным гэпом — `chart.opaque_sql`, если текст не разобрать, `chart.sql_partial`,
-  если statement выбирает `*` (не `COUNT(*)` / `COUNT(DISTINCT *)`, и не `*` внутри CTE,
-  которую FROM не называет), не атрибутирует имя, несёт имя таблицы, которое не совпадает
-  с таблицей плитки (голое или catalog-префикс чужой таблицы), или читает колонку из
-  источника, который statement не именует (table function / subquery),
-  `chart.metric_unread`, если разобранный SQL не говорит, считает ли плитка изменённую
-  метрику, кроме случая, когда statement прочитан целиком и не называет ни одной колонки
-  её термов. Связь «чарт считает метрику» — по-прежнему вывод по точному совпадению термов
-  IR-меры, потому что в IR у чарта нет ссылки на метрику, а из произвольного SQL этот срез
-  агрегат не читает.
+- Chart-разрешение не заменяет lineage: операторский `raw_sql` больше не непрозрачен как
+  таковой — `chart.opaque_sql` это SQL, который не разобрали, `chart.sql_partial` — SQL,
+  прочитанный частично, `chart.metric_unread` — связь с метрикой, которую резолвер
+  отказывается выводить, а `computes_metric` для operator SQL по-прежнему не заявляется.
+  Связь «чарт считает метрику» — вывод по точному совпадению термов IR-меры, потому что в
+  IR у чарта нет ссылки на метрику, а из произвольного SQL этот срез агрегат не читает.
+  Правило скрытого чтения — контракт (неразворачиваемое выражение оставляет плитку
+  прочитанной частично); сегодня гейт узнаёт три случая (`{{ … }}`, `COLUMNS('re')`,
+  `JOIN … USING`). Конструкция вне этого набора, которая прячет чтение, — дыра детектора:
+  словарная функция вроде `dictGet` считается прочитанной целиком, и связь с метрикой
+  для такой плитки может быть снята.
 - `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
   под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
   `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:
@@ -153,10 +168,23 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   требует boundary, в которой private key недоступен вызывающей стороне.
 - Governance reviewed-запроса покрывает таблицы и колонки. Колонка приписывается
   таблице там, где выбора не оставляет сам SQL, а для голого имени — там, где его не
-  оставляет governed-модель: ровно один источник scope'а объявляет это имя, и все
-  источники scope'а — governed-таблицы. `SELECT *`, имя, объявленное несколькими
-  источниками, и scope с неуправляемой витриной, CTE или подзапросом остаются
-  непроверенными — названными (`asset.query_fields_unchecked`), а не молча пропущенными.
+  оставляет governed-модель: ровно один источник, который scope читает, объявляет это
+  имя, и все такие источники — governed-таблицы. Голое имя в подзапросе, который может
+  читать охватывающий запрос (scalar/IN/EXISTS), остаётся непроверенным, если его не
+  объявляет ни один локальный источник: проверка имя наружу не ведёт. `SELECT *`, имя,
+  объявленное несколькими источниками (в том числе на двух LATERAL-уровнях), scope с
+  неуправляемой витриной, читаемым CTE или подзапросом остаются непроверенными —
+  названными (`asset.query_fields_unchecked`), а не молча пропущенными.
+- Источники, дошедшие с охватывающих LATERAL-уровней, — кандидаты рядом с ближайшими, а
+  не упорядоченные по уровню, поэтому имя, которое объявляют несколько уровней, остаётся
+  непроверенным вместо того, чтобы быть приписанным ближайшему: innermost-first изменил бы
+  контракт атрибуции для каждого коррелированного scope и сначала должен быть задан как
+  требование.
+- `chart.metric_unread` записывается для каждого изменения, которое резолвер обходит, в
+  том числе для того, от которого продукт в scope не зависит, поэтому бакет
+  `impact.products` может посчитать плитку против чужой метрики — это добавляет счёт, дыру
+  не прячет, а какое изменение вправе записать metric-гэп, остаётся открытым решением о
+  scope.
 - Нет измеренного человеком owner outcome: proxy-review не заменяет время и
   подтверждение понятности от живого владельца.
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
@@ -251,6 +279,25 @@ digest, pin, подпись и возвращённый bundle использу�
 [ADR 0006](adr/0006-modelled-review-development-gate.md).
 Зависимость от локального proxy отменена владельцем в `AGENTS.md`; модельные агенты
 запускаются без этой проверки. Новый runtime или внешние actions не начинаются.
+
+Закрыто разрешение голого имени по источникам, которые его scope читает: непрочитанный CTE
+больше не держит атрибуцию, а имя в коррелированном подзапросе, которого не объявляет ни
+один локальный источник, остаётся `asset.query_fields_unchecked`, а не ложным
+`asset.query_ungoverned_field`.
+Закрыт обход LATERAL: предшествующие FROM-элементы доходят до каждого уровня тела до стены
+derived table/CTE; кандидаты с охватывающих уровней сидят рядом с ближайшими, не
+упорядоченные по уровню.
+Закрыта запись направлений LATERAL: durable spec и комментарии версий записывают, что имя
+внутри тела может сдвинуть грейдинг в любую сторону, `needs_review` включительно; три
+сценария фиксируют направления, у которых не было покрытия. Поведение на этом срезе не
+менялось.
+Закрыто чтение operator SQL: операторский `raw_sql` читается из SQL (`reads_field`, никогда
+`computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` —
+частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; `impact.products`
+раскладывает плитки по коду гэпа.
+Четыре среза реализованы grok xhigh (`grokw`) и ревьюированы Opus (`opus-cli`) через
+MyFlow, потому что GLM-5.3 и Codex (Astra/Luna) 2026-09-17 были недоступны: моделированное
+ревью, не Astra-review по ADR 0006 и не human evidence.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 

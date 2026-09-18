@@ -49,6 +49,8 @@ never resolved as "this tile does not read the change": a template placeholder, 
 `COLUMNS('re')` selector and a `JOIN … USING` key each read columns while leaving neither a star
 nor an unattributed name behind, so silence about them would read as an answer. The rule is the
 contract; a construct found later is named the same way rather than reopening the question.
+Today the resolver recognises those three constructs; a construct outside them is a hole in the
+detector, not a guarantee that the tile was read in whole.
 When the change carries typed metric terms, the system SHALL name that tile with
 `chart.metric_unread` unless its SQL was read in whole and names none of those terms' columns.
 

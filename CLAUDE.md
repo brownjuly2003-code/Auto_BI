@@ -83,6 +83,27 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-17 — операторский `raw_sql` читается из SQL: `reads_field` там, где statement сам
+  атрибутирует чтение, никогда `computes_metric`; `chart.opaque_sql` — неразобранный SQL,
+  `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с
+  метрикой; `impact.products` раскладывает плитки по коду гэпа. VERIFIER_VERSION 17 → 18,
+  CHECK_VERSION остаётся 11. Реализовано grok xhigh (`grokw`), ревью — Opus (`opus-cli`)
+  через MyFlow: моделированное ревью, не Astra по ADR 0006 и не human evidence.
+- 2026-09-17 — durable spec и комментарии версий записывают, что имя внутри тела LATERAL
+  может сдвинуть грейдинг в любую сторону, `needs_review` включительно; три сценария
+  фиксируют направления, у которых не было покрытия. Поведение не менялось. Реализовано
+  grok xhigh (`grokw`), ревью — Opus (`opus-cli`) через MyFlow: моделированное ревью, не
+  Astra по ADR 0006 и не human evidence.
+- 2026-09-17 — предшествующие FROM-элементы LATERAL доходят до каждого уровня тела до стены
+  derived table/CTE; кандидаты с охватывающих уровней рядом с ближайшими, не упорядочены
+  по уровню. VERIFIER_VERSION 16 → 17, CHECK_VERSION 10 → 11. Реализовано grok xhigh
+  (`grokw`), ревью — Opus (`opus-cli`) через MyFlow: моделированное ревью, не Astra по
+  ADR 0006 и не human evidence.
+- 2026-09-17 — голое имя разрешается только по источникам, которые scope читает; имя в
+  коррелированном подзапросе, которого локальный источник не объявляет, остаётся
+  `asset.query_fields_unchecked`. VERIFIER_VERSION 15 → 16, CHECK_VERSION 9 → 10.
+  Реализовано grok xhigh (`grokw`), ревью — Opus (`opus-cli`) через MyFlow: моделированное
+  ревью, не Astra по ADR 0006 и не human evidence.
 - 2026-09-12 — полная evidence inspection использует один manifest snapshot для
   digest, подписи и возвращённой модели; замена файла между проверками больше не
   смешивает версии. Формат evidence и writer не изменены.
