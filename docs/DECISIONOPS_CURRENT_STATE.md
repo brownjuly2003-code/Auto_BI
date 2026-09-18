@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=20`, `CHECK_VERSION=11`
+**Версии evidence:** `VERIFIER_VERSION=21`, `CHECK_VERSION=11`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,

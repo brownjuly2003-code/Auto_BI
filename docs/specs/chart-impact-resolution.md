@@ -40,9 +40,15 @@ attributing a column only where the statement itself leaves no choice, and SHALL
 chart gap naming the tile when its SQL cannot be parsed or when part of what it reads could not
 be attributed — so a tile resolved in part is not read as one resolved in whole. A star that
 reads no column (`COUNT(*)`, `COUNT(DISTINCT *)`) and a star written in a scope the statement
-never reads (`*` inside a CTE the FROM never names) are not unread parts. A column whose source
-is a table function the statement does not name is an unread part, reported as such rather than
-as an empty table name.
+never reads — `*` inside a named CTE the FROM never names, or inside the subquery form of
+ClickHouse's scalar `WITH` (`WITH (SELECT …) AS alias`) whose alias nothing reads — are not
+unread parts. Either of those scopes read (FROM/JOIN names the CTE, or the alias is read
+elsewhere) makes the star an unread part. A star inside the expression form
+`WITH <expr> AS alias` is an unread part whether or not the alias is read: the star rule tests
+reachability for query-bodied scopes only, so it names one gap more than the statement
+justifies — the direction that hides nothing. A column
+whose source is a table function the statement does not name is an unread part, reported as
+such rather than as an empty table name.
 
 An expression the system cannot expand into column reads SHALL leave the tile read in part,
 never resolved as "this tile does not read the change": a template placeholder, ClickHouse's
@@ -53,16 +59,23 @@ Today the resolver recognises those three constructs and the ClickHouse dictiona
 a construct outside that set is a hole in the detector, not a guarantee that the tile was read in
 whole.
 A ClickHouse dictionary call — any function whose name begins with `dict`, case-insensitive —
-SHALL either name the read it performs or leave the tile read in part. An attribute reader
-(`dictGet`, `dictGetOrDefault`, `dictGetOrNull` and their typed forms such as `dictGetString`)
-whose dictionary and attribute (or tuple of attributes) are string literals is read as
-`<dictionary>.<attribute>`, reconciled like a table name, and counts as an attributed read — for
-`reads_field` and for the metric rule alike. Every other dictionary call — a dictionary or
-attribute that is not a literal, a membership or hierarchy test (`dictHas`, `dictIsIn`,
-`dictGetHierarchy`) that reads a key or parent attribute without naming it, a function the
-resolver does not know — is an unread part that names the call. Only calls the statement runs
-count: a call inside a CTE the statement never names, or inside a scalar `WITH <expr> AS alias`
-whose alias nothing reads, is neither a read nor an unread part.
+SHALL either name the read it performs or leave the tile read in part. The resolver names a
+closed set of attribute readers: `dictGet`, `dictGetOrDefault`, `dictGetOrNull`, `dictGetAll`,
+and the typed forms `dictGet<Type>`, `dictGet<Type>OrDefault` and `dictGet<Type>OrNull` where
+`<Type>` is an unsigned or signed integer (8/16/32/64/128/256), float32/64,
+decimal32/64/128/256, date, date32, datetime, datetime64, uuid, ipv4, ipv6, string or bool.
+A call in that set whose dictionary and attribute (or tuple of attributes) are string
+literals is read as `<dictionary>.<attribute>`, reconciled like a table name, and counts as
+an attributed read — for `reads_field` and for the metric rule alike. Every other dictionary
+call — a dictionary or attribute that is not a literal, a membership or hierarchy test
+(`dictHas`, `dictIsIn`, `dictGetHierarchy`, `dictGetChildren`, `dictGetDescendants`), a
+function outside that set — is an unread part that names the call as one whose dictionary
+read this run could not name. Only calls the statement runs count: a call inside a named CTE
+the FROM/JOIN never names, inside a scalar `WITH <expr> AS alias` whose alias nothing reads,
+or inside `WITH (SELECT …) AS alias` whose alias nothing reads, is neither a read nor an
+unread part. A dictionary call inside ClickHouse's scalar `WITH` — both the expression form
+and the subquery form — counts when the alias is read elsewhere; a named CTE counts when
+FROM/JOIN names it.
 When the change reaches an in-scope product and carries typed metric terms, the system
 SHALL name that tile with `chart.metric_unread` unless its SQL was read in whole and names
 none of those terms' columns.
@@ -119,6 +132,15 @@ none of those terms' columns.
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field` and
   the report carries no `chart.sql_partial` gap for it
+
+### Scenario: a star in an expression `WITH` is an unread part either way
+
+- **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
+  `WITH tuple(*) AS t SELECT sum(revenue) FROM dm.sales_daily`, whose alias `t` the
+  statement never reads
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries a `chart.sql_partial` gap naming that tile, the same gap it
+  carries when the statement does read `t`
 
 ### Scenario: a table-function source is named as unread, not as an empty table
 
@@ -179,7 +201,8 @@ none of those terms' columns.
   `SELECT sum(revenue), dictGet(dict_name, 'revenue', region) FROM dm.sales_daily`
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field` and the
-  report carries `chart.sql_partial` naming `dictGet(...)` as the unread part
+  report carries `chart.sql_partial` naming that tile and saying it calls `dictGet(...)`,
+  whose dictionary read this run could not name
 
 ### Scenario: a dictionary membership test leaves the tile read in part
 
@@ -187,7 +210,8 @@ none of those terms' columns.
   `SELECT sum(revenue), dictHas('dm.rev', region) FROM dm.sales_daily`
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field` and the
-  report carries `chart.sql_partial` naming `dictHas(...)` as the unread part
+  report carries `chart.sql_partial` naming that tile and saying it calls `dictHas(...)`,
+  whose dictionary read this run could not name
 
 ### Scenario: a dictionary call in a CTE the query does not read changes nothing
 
@@ -211,6 +235,46 @@ none of those terms' columns.
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field` naming
   `dm.rev.revenue`
+
+### Scenario: a dictionary call in a scalar subquery WITH the query reads is read
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT dictGet('dm.rev', 'revenue', toUInt64(1))) AS r
+  SELECT sum(revenue) * r FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field` naming
+  `dm.rev.revenue`
+
+### Scenario: a dictionary call in a scalar subquery WITH nobody reads changes nothing
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT dictGet('dm.rev', 'revenue', toUInt64(1))) AS r
+  SELECT sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report names neither a chart impact nor a chart gap for that tile
+
+### Scenario: a star in a scalar subquery WITH the query reads is a hole
+
+- **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
+  `WITH (SELECT * FROM dm.stores) AS m SELECT sum(revenue) * m FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field` and the
+  report carries `chart.sql_partial` naming that tile and saying it selects *
+
+### Scenario: a star in a named CTE whose alias is a coincidental column is not a hole
+
+- **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
+  `WITH x AS (SELECT * FROM dm.other) SELECT x FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries no `chart.sql_partial` gap for it
+
+### Scenario: a dictionary call in a named CTE whose alias is a coincidental column changes nothing
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH x AS (SELECT dictGet('dm.rev', 'revenue', region) AS a FROM dm.other)
+  SELECT x FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report names neither a chart impact nor a chart gap for that tile
 
 ### Scenario: a bare table name that is the tile's own table is qualified through it
 

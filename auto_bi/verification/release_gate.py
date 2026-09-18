@@ -145,7 +145,16 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: `chart.formula_untyped`) are raised only for a change that reaches an in-scope
 #: product, so the same inputs can yield fewer gaps than verifier 19. Evidence only:
 #: CHECK_VERSION does not move.
-VERIFIER_VERSION = "20"
+#: 21 — a dictionary call (and a projection star) inside `WITH (SELECT …) AS alias`
+#: whose alias the statement reads as a column is now in a scope the statement runs,
+#: so the same inputs can name a tile or a hole verifier 20 skipped as "not this tile".
+#: A typed `dictGet<Type>` call with a literal dictionary and attribute now names a
+#: read and carries no gap where verifier 20 left `chart.sql_partial` — fewer gaps on
+#: the same inputs, the direction that matters when re-reading an old bundle. The
+#: wording of the dictionary `chart.sql_partial` detail also changed, so the same
+#: unnameable call produces a different detail string. Evidence only: CHECK_VERSION
+#: does not move.
+VERIFIER_VERSION = "21"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

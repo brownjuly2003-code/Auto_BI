@@ -395,10 +395,10 @@ class _ChartResolver:
         COUNT(*) and COUNT(DISTINCT *) read no column — sqlglot wraps the latter as
         Count(Distinct(Star)), so the star's parent is Distinct, not Count. Walking
         through that wrapper (not `find_ancestor(Count)`) keeps a SELECT * inside a
-        counted subquery a hole. A star inside a CTE the FROM never names is a query
-        nobody ran (`sql_guard._read_sources`); counting it would mark a fully
-        attributed tile unread. Memoised so a model-wide edit does not re-walk the
-        same tile per change.
+        counted subquery a hole. A star inside a named CTE the FROM never names, or
+        inside a scalar `WITH` whose alias nothing reads, is a query nobody ran
+        (`sql_guard._read_sources`); counting it would mark a fully attributed tile
+        unread. Memoised so a model-wide edit does not re-walk the same tile per change.
         """
         if sql not in self._projection_star:
             root = self._parsed(sql)
@@ -645,14 +645,52 @@ class _DictionaryReads:
     clauses: tuple[str, ...] = ()
 
 
-#: The attribute readers: `dictGet`, its typed forms (`dictGetString`, `dictGetUInt64`, …)
-#: and either with `OrDefault` / `OrNull`. Their first argument is the dictionary, the
-#: second the attribute or a tuple of attributes. The type list is closed on purpose:
-#: `dictGetHierarchy` and its siblings share the prefix and name no attribute they read.
-_DICT_GET = re.compile(
-    r"dictget(?:u?int(?:8|16|32|64)|float(?:32|64)|date|datetime|uuid|ipv4|ipv6|string)?"
-    r"(?:ordefault|ornull)?"
+#: Closed set of attribute readers. `dictGet`, `dictGetAll`, the typed forms below, and
+#: each of those with `OrDefault` / `OrNull`. First argument is the dictionary, second
+#: the attribute or a tuple of attributes. A `dict*` name outside this set — including
+#: `dictGetHierarchy` and its siblings — is a clause, not a read.
+_DICT_GET_TYPES = (
+    "uint8",
+    "uint16",
+    "uint32",
+    "uint64",
+    "uint128",
+    "uint256",
+    "int8",
+    "int16",
+    "int32",
+    "int64",
+    "int128",
+    "int256",
+    "float32",
+    "float64",
+    "decimal32",
+    "decimal64",
+    "decimal128",
+    "decimal256",
+    "date",
+    "date32",
+    "datetime",
+    "datetime64",
+    "uuid",
+    "ipv4",
+    "ipv6",
+    "string",
+    "bool",
 )
+_DICT_GET = re.compile(
+    r"dictget(?:all|(?:" + "|".join(_DICT_GET_TYPES) + r"))?(?:ordefault|ornull)?"
+)
+
+
+def _dictionary_calls(root: exp.Expression) -> list[tuple[exp.Func, str]]:
+    """Functions whose name begins with `dict` — ClickHouse's dictionary family."""
+    found: list[tuple[exp.Func, str]] = []
+    for call in root.find_all(exp.Func):
+        name = call.name if isinstance(call, exp.Anonymous) else call.sql_name()
+        if name.lower().startswith("dict"):
+            found.append((call, name))
+    return found
 
 
 def _dictionary_reads_in(root: exp.Expression) -> _DictionaryReads:
@@ -662,26 +700,34 @@ def _dictionary_reads_in(root: exp.Expression) -> _DictionaryReads:
     dictionary family. `extract_column_refs` sees only its key column, so a call that
     reads an attribute and is not expanded here would leave the tile looking read in whole.
     Two outcomes, and the second is the default so a dictionary function added to
-    ClickHouse later is a hole, not silence: an attribute reader with a literal dictionary
-    and literal attribute(s) resolves to `(dictionary, attribute)` reads; any other call —
-    `dictHas` and `dictIsIn` included, which read the key and parent attributes without
-    naming them — is one clause naming it. A call the statement never runs (a CTE nobody
-    names, a scalar `WITH` alias nobody reads) is skipped, as `_has_projection_star` skips
-    a star there.
+    ClickHouse later is a hole, not silence: an attribute reader in `_DICT_GET` with a
+    literal dictionary and literal attribute(s) resolves to `(dictionary, attribute)`
+    reads; any other call — `dictHas` and `dictIsIn` included, which read the key and
+    parent attributes without naming them — is one clause naming it. A call the statement
+    never runs (a named CTE the FROM never names, a scalar `WITH` alias nobody reads) is
+    skipped. `_projection_star_in_reachable` skips a star in an unread named CTE and in an
+    unread `WITH (SELECT …) AS alias`, but not in the expression form `WITH <expr> AS
+    alias`, where a star still counts — the two paths are not symmetric yet (T-11).
+
+    The scope tree is built only when there is a call to place: on this path a tile with no
+    `dict…` function must not pay for `build_scope`, and must not make sqlglot warn on
+    ordinary SQL such as `WITH toUInt64(1) AS r`. A starred tile still pays for one on the
+    star path, whether or not it calls a dictionary.
     """
+    calls = _dictionary_calls(root)
+    if not calls:
+        return _DictionaryReads()
     in_run = _runs_in_statement(root)
     reads: list[tuple[str, str]] = []
     clauses: list[str] = []
-    for call in root.find_all(exp.Func):
-        name = call.name if isinstance(call, exp.Anonymous) else call.sql_name()
-        lowered = name.lower()
-        if not lowered.startswith("dict") or not in_run(call):
+    for call, name in calls:
+        if not in_run(call):
             continue
-        named = _literal_dictionary_reads(call) if _DICT_GET.fullmatch(lowered) else []
+        named = _literal_dictionary_reads(call) if _DICT_GET.fullmatch(name.lower()) else []
         if named:
             reads.extend(pair for pair in named if pair not in reads)
             continue
-        clause = f"it calls {name}(...), which reads a dictionary without naming the attribute"
+        clause = f"it calls {name}(...), whose dictionary read this run could not name"
         if clause not in clauses:
             clauses.append(clause)
     return _DictionaryReads(reads=tuple(reads), clauses=tuple(clauses))
@@ -705,8 +751,11 @@ def _runs_in_statement(root: exp.Expression) -> Callable[[exp.Expression], bool]
 
     Without a scope tree every node counts, and so does a node no scope owns: for a
     dictionary call the careful answer is that it ran — skipping it would be silence. The
-    one exception is ClickHouse's scalar `WITH <expr> AS alias`: a CTE whose body is not a
-    query, so no scope owns it, and it runs only when the alias is read elsewhere.
+    one exception is ClickHouse's scalar `WITH`: `WITH <expr> AS alias` (body is not a
+    Query, so no scope owns it) runs only when the alias is read elsewhere;
+    `WITH (SELECT …) AS alias` is owned by that subquery's scope and
+    `_reachable_scopes` includes it when the alias is read. A query-bodied CTE is
+    owned by that query's scope and is treated as run only when FROM/JOIN names it.
     """
     root_scope = build_scope(root)
     if root_scope is None:
@@ -720,7 +769,7 @@ def _runs_in_statement(root: exp.Expression) -> Callable[[exp.Expression], bool]
             if (
                 isinstance(current, exp.CTE)
                 and not isinstance(current.this, exp.Query)
-                and not _scalar_alias_is_read(root, current)
+                and not _cte_alias_is_read(root, current)
             ):
                 return False
             owner = owners.get(id(current))
@@ -732,8 +781,8 @@ def _runs_in_statement(root: exp.Expression) -> Callable[[exp.Expression], bool]
     return in_run
 
 
-def _scalar_alias_is_read(root: exp.Expression, cte: exp.CTE) -> bool:
-    """Whether a column outside the scalar `WITH` names its alias (case-insensitive)."""
+def _cte_alias_is_read(root: exp.Expression, cte: exp.CTE) -> bool:
+    """Whether a column outside this CTE names its alias (case-insensitive)."""
     alias = cte.alias.lower()
     return any(
         not column.table
@@ -762,11 +811,50 @@ def _star_is_count_arg(star: exp.Star) -> bool:
     return isinstance(parent, exp.Count)
 
 
+def _cte_scopes_read_as_columns(scope: Scope) -> list[Scope]:
+    """Scalar-subquery WITH scopes whose alias is read as a bare column.
+
+    `WITH (SELECT …) AS alias` never lists the alias as a FROM source, so the
+    FROM/JOIN walk would skip it; the alias is still a value the statement runs.
+    Discriminate on sqlglot's `cte.args['scalar']`, not on the node type: a
+    parenthesised named CTE (`WITH x AS ((SELECT …))`) also parses as
+    `CTE(this=Subquery)` but has no `scalar` arg, and a bare column of the same
+    name is a column, not the CTE. A query-bodied CTE (`WITH name AS (SELECT …)`)
+    is reachable only through FROM/JOIN. A CTE nobody names at all is not
+    returned. Used by both the projection-star walk and the dictionary walk,
+    via `_reachable_scopes`.
+
+    sqlglot's `Scope.branch` copies `cte_sources` into nested UDTF scopes
+    (VALUES / LATERAL / UNNEST) whose `expression` is not a Query and has no
+    `.ctes`. Guard the expression type, not only the sources dict.
+    """
+    expression = scope.expression
+    if not isinstance(expression, exp.Query):
+        return []
+    sources = scope.cte_sources
+    if not sources:
+        return []
+    found: list[Scope] = []
+    for cte in expression.ctes:
+        inner = sources.get(cte.alias)
+        if (
+            isinstance(inner, Scope)
+            and isinstance(cte.this, exp.Subquery)
+            and bool(cte.args.get("scalar"))
+            and _cte_alias_is_read(expression, cte)
+        ):
+            found.append(inner)
+    return found
+
+
 def _reachable_scopes(root_scope: Scope) -> list[Scope]:
     """Scopes the executed statement reads — FROM/JOIN, used CTEs, subqueries, unions.
 
-    `Scope.traverse()` includes a CTE nobody named. sql_guard._read_sources documents
-    that shape as a query nobody ran; walking it here would mark a decidable tile unread.
+    A scalar subquery WITH (`WITH (SELECT …) AS alias`) whose alias is not a FROM
+    source but is read as a bare column elsewhere is a value the statement runs,
+    so its scope is included. A query-bodied CTE is included only when FROM/JOIN
+    names it. `Scope.traverse()` includes a CTE nobody named at all; walking
+    those would mark a decidable tile unread.
     """
     seen: set[int] = set()
     stack = [root_scope]
@@ -792,6 +880,7 @@ def _reachable_scopes(root_scope: Scope) -> list[Scope]:
                 source = scope.sources.get(alias)
                 if isinstance(source, Scope):
                     stack.append(source)
+        stack.extend(_cte_scopes_read_as_columns(scope))
         stack.extend(scope.subquery_scopes)
         stack.extend(scope.union_scopes)
         stack.extend(scope.udtf_scopes)

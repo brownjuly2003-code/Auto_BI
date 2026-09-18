@@ -464,7 +464,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=20`, `CHECK_VERSION=11`.
+`VERIFIER_VERSION=21`, `CHECK_VERSION=11`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
