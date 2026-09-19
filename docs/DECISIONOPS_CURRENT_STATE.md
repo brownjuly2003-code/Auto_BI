@@ -79,7 +79,10 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   ссылка на таблицу её называет или когда исполняемое голое `IN <name>`, которое не
   видимый алиас, её называет; scalar `WITH` — когда исполняемая колонка читает алиас
   (голое имя или обращение к кортежу с любого уровня). Плитка без словарного или Join-вызова
-  и без звезды обход не делает. Metric-derived гэпы (`chart.metric_unread`,
+  и без звезды обход не делает. На ClickHouse видимый алиас — не колонка таблицы плитки, а
+  чтение через expression-form `WITH` даёт `reads_field`; `WHERE region IN dm.rev` читается
+  как `IN (SELECT * FROM dm.rev)`, поэтому изменение `dm.rev.revenue` оставляет плитку
+  прочитанной частично (`chart.sql_partial`, «it selects *»), а не молчит. Metric-derived гэпы (`chart.metric_unread`,
   `chart.metric_unknown`, `chart.formula_untyped`) записываются только для изменения,
   которое достигает хотя бы одного продукта в scope: вопрос, которого никто в scope не
   задавал, дырой этого отчёта не является.
@@ -103,8 +106,9 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   бы на него ни сослались; WITH-ссылка, замыкающая цикл на пути раскрытия, — колонка,
   определения по пути всё равно читаются; ссылка за глубиной/бюджетом раскрытий —
   unattributed под своим именем, обрезанное раскрытие не мемоизируется). На ClickHouse
-  `x IN <table>` читается как `x IN (SELECT * FROM <table>)`. PostgreSQL-семейство
-  без изменений. Неразрешимая без догадки часть запроса — `asset.query_fields_unchecked`
+  `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной колонки
+  `dm.sales_daily.rev` больше нет, а неуправляемая таблица справа от `IN` —
+  `asset.query_ungoverned` (review). PostgreSQL-семейство без изменений. Неразрешимая без догадки часть запроса — `asset.query_fields_unchecked`
   (advisory).
 - `auto_bi decision verify --signing-key <private.pem>` opt-in подписывает canonical
   manifest Ed25519-ключом; private key читается только по явному внешнему пути.
@@ -127,9 +131,9 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; ClickHouse-алиас больше не `chart.sql_partial` «not attributed to a table», а чтение через expression-form WITH даёт `reads_field`; `IN <table>` читается как звезда над этой таблицей и открывает именованную CTE; tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
+| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; ClickHouse-алиас больше не `chart.sql_partial` «not attributed to a table», а чтение через expression-form WITH даёт `reads_field` (verifier 24); `IN <table>` читается как звезда над этой таблицей и открывает именованную CTE (verifier 25); tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
-| Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE; 2026-09-18 ClickHouse-алиас читается насквозь, а не как колонка (`CHECK_VERSION` 11 → 12); `x IN <table>` читается как `x IN (SELECT * FROM <table>)` (`CHECK_VERSION` 12 → 13) |
+| Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE; 2026-09-18 ClickHouse-алиас читается насквозь, а не как колонка (`CHECK_VERSION` 11 → 12); `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной находки поля `IN rev` больше нет, неуправляемая таблица справа от `IN` — review `asset.query_ungoverned` (`CHECK_VERSION` 12 → 13) |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
 | Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; pilot-only signer создан вне checkout на Mac, production trust root не назначен |
 | Continuous platform | заблокирована до human/design-partner evidence |
@@ -188,7 +192,9 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   колонки той таблицы — `chart.sql_partial` (звезда), а не молчание. Алиас на том же
   месте — не колонка: `WHERE region IN allowed` при `WITH […] AS allowed` не
   приписывает `allowed` таблице плитки и не открывает именованную CTE. Голое имя на
-  правой стороне `IN`, которое не видимый алиас, открывает именованную CTE.
+  правой стороне `IN`, которое не видимый алиас, открывает именованную CTE; видимый
+  scalar WITH- или SELECT-алиас с тем же именем выигрывает у CTE, и табличная форма тогда
+  молчит там, где `IN (SELECT * FROM x)` назвал бы чтение CTE (F-T-14-3).
 - Резолвер не моделирует shadowing имён CTE и scalar `WITH`: имя открывает каждую CTE,
   которую оно могло бы назвать (без учёта регистра), включая внешнюю, которую скрывает
   вложенное объявление. Table alias с тем же именем тоже открывает scalar `WITH`
@@ -225,7 +231,16 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   `x IN (SELECT * FROM <table>)`. PostgreSQL-семейство без изменений.
   Остаток, который этот слайс не закрывает: алиас вне SELECT-списка
   (`WHERE (x AS y) > 1`), ARRAY JOIN-алиас (`ARRAY JOIN tags AS a` по-прежнему
-  приписывает `dm.sales_daily.a`). Голое имя в подзапросе, который может
+  приписывает `dm.sales_daily.a`). Имя, объявленное и WITH-, и SELECT-алиасом на одном
+  уровне, читается как колонка: `WITH revenue AS X, X * 2 AS w SELECT w AS X FROM
+  dm.sales_daily` даёт `asset.query_ungoverned_field` на `dm.sales_daily.X` (F-T-13-17,
+  риск принят). Видимый scalar WITH- или SELECT-алиас справа от `IN` выигрывает у
+  одноимённой CTE, и табличная форма молчит там, где подзапросная открыла бы CTE
+  (F-T-14-3). Оба случая требуют одного имени, объявленного дважды, — ClickHouse такой
+  statement, скорее всего, отвергает. FROM-алиас справа от `IN` читается как таблица
+  этого имени, как и в подзапросной форме: `FROM dm.sales_daily AS rev WHERE region IN
+  rev` даёт `asset.query_ungoverned` на `rev` (F-T-14-1) — пере-сообщение, чтения не
+  прячет. Голое имя в подзапросе, который может
   читать охватывающий запрос (scalar/IN/EXISTS), остаётся непроверенным, если его не
   объявляет ни один локальный источник: проверка имя наружу не ведёт. `SELECT *`, имя,
   объявленное несколькими источниками (в том числе на двух LATERAL-уровнях), scope с
@@ -383,6 +398,19 @@ expression-form `WITH`; починка — обход гейтов.
 Два среза (T-12 и T-11) реализованы grok xhigh (`grokw`); ревью — Opus через MyFlow
 (`opus-sub`), без второго голоса; GLM-5.3 и Codex недоступны: моделированное ревью, не
 Astra-review по ADR 0006 и не human evidence.
+Закрыто чтение ClickHouse-алиаса: видимый SELECT- или WITH-алиас больше не колонка таблицы
+в scope, а колонки `WITH <expr> AS a` читаются там, где `a` используется (срез T-13,
+verifier 24, check 12). Реализовано grok xhigh (`grokw`); ревью — Opus через MyFlow
+(`opus-sub`), три прохода, без второго голоса; GLM-5.3 и Codex недоступны.
+Закрыто `x IN <table>`: таблица справа от `IN` читается ровно как `x IN (SELECT * FROM
+<table>)` — в governance-проверке и в достижимости chart impact (срез T-14, verifier 25,
+check 13). Срез начал grok xhigh (`grokw`); оба grok-аккаунта упёрлись в лимиты, и
+закончил opus-high (`claude -p`, claude-opus-5, effort high); ранний выход в
+`clickhouse_in_table_fields` добавил оркестратор после красного полного гейта. Ревью —
+один проход Fable (claude-fable-5-1, effort medium), записанный через MyFlow как внешнее
+ревью: Opus-ревьюеры пропущены, потому что делят движок с автором, GLM-5.3 и Codex упёрлись
+в rate limit. Оба среза — моделированное ревью, не Astra-review по ADR 0006, не human
+evidence и не production/design-partner acceptance.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 

@@ -322,7 +322,11 @@ SELECT alias, so a bare name is a column. An alias written on the right-hand sid
 
 This rule does not cover an alias defined outside the SELECT list (`WHERE (x AS y) > 1`)
 or an ARRAY JOIN alias. A lambda parameter is not a column, even when named like a visible
-alias.
+alias. A name declared both as a WITH alias and as a SELECT alias at one query level is
+read as a column: `WITH revenue AS X, X * 2 AS w SELECT w AS X FROM dm.sales_daily`
+carries `asset.query_ungoverned_field` naming `dm.sales_daily.X`. That is the
+false-reject direction — it names a column nobody has and hides no read — on a statement
+ClickHouse most likely rejects; the risk is accepted (F-T-13-17).
 
 ### Scenario: a literal WITH alias in WHERE is not a column of the mart
 
@@ -480,6 +484,16 @@ alias. A CTE named `<name>` in scope SHALL be the CTE, exactly as the same name 
 FROM would be. Literal lists (`IN (1, 2)`, `IN ('a')`, `IN tuple(...)`) and subquery
 forms SHALL be unchanged. The PostgreSQL family SHALL be unchanged. The function form
 `in(x, t)` does not parse in sqlglot 30.14.0 and SHALL remain a parse error.
+
+Two known departures from the subquery form stay open. A visible scalar WITH or SELECT
+alias on the right of `IN` wins over a named CTE of the same name, so
+`WITH x AS (SELECT region FROM dm.sales_daily), ('a') AS x … WHERE region IN x` stays
+silent where `WHERE region IN (SELECT * FROM x)` opens the CTE and names the star
+(F-T-14-3); it needs one name declared twice, which ClickHouse most likely rejects. A
+FROM alias named on the right of `IN` is read as a table of that name, as it is in the
+subquery form: `SELECT region FROM dm.sales_daily AS rev WHERE region IN rev` carries
+`asset.query_ungoverned` naming `rev` (F-T-14-1). That direction over-reports a table
+nobody has and never hides a read.
 
 ### Scenario: a bare table on the right of IN is the table, not a column of the mart
 

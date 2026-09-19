@@ -71,7 +71,10 @@ matching the subquery form. A visible alias written there stays an alias:
 `WHERE region IN allowed` with `WITH ['north', 'south'] AS allowed` does not
 attribute `allowed` to the tile's table and does not open a named CTE. A bare name
 on the right of `IN` that is not a visible alias opens a named CTE of that name
-exactly as an unqualified `FROM` would.
+exactly as an unqualified `FROM` would. A visible scalar WITH or SELECT alias there
+wins over a named CTE of the same name, so the table form stays silent where
+`IN (SELECT * FROM x)` would open the CTE (F-T-14-3); it needs one name declared twice,
+which ClickHouse most likely rejects.
 A ClickHouse dictionary call — any function whose name begins with `dict`, case-insensitive —
 SHALL either name the read it performs or leave the tile read in part. The resolver names a
 closed set of attribute readers: `dictGet`, `dictGetOrDefault`, `dictGetOrNull`, `dictGetAll`,
