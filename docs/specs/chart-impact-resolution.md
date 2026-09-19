@@ -63,13 +63,15 @@ nor an unattributed name behind, so silence about them would read as an answer. 
 contract; a construct found later is named the same way rather than reopening the question.
 Today the resolver recognises those three constructs, the ClickHouse dictionary calls below,
 and the Join-table calls below; a construct outside that set is a hole in the detector, not
-a guarantee that the tile was read in whole. One known example is a ClickHouse table name
-on the right of `IN` (`WHERE region IN rev`): ClickHouse reads `rev` as
-`IN (SELECT * FROM rev)`, while sqlglot parses the identifier as a column and the guard
-attributes it to the tile's own table, so the tile looks read in whole. A ClickHouse alias
-written there is an alias, not a column: `WHERE region IN allowed` with
-`WITH ['north', 'south'] AS allowed` does not attribute `allowed` to the tile's table.
-`IN <table>` remains the next task.
+a guarantee that the tile was read in whole. A ClickHouse table name on the right of
+`IN` (`WHERE region IN rev` / `WHERE region IN dm.rev`) is read as
+`IN (SELECT * FROM <name>)`: the tile selects `*` from that table, so a change to a
+column of it is a `chart.sql_partial` star hole rather than a silent "not this tile",
+matching the subquery form. A visible alias written there stays an alias:
+`WHERE region IN allowed` with `WITH ['north', 'south'] AS allowed` does not
+attribute `allowed` to the tile's table and does not open a named CTE. A bare name
+on the right of `IN` that is not a visible alias opens a named CTE of that name
+exactly as an unqualified `FROM` would.
 A ClickHouse dictionary call — any function whose name begins with `dict`, case-insensitive —
 SHALL either name the read it performs or leave the tile read in part. The resolver names a
 closed set of attribute readers: `dictGet`, `dictGetOrDefault`, `dictGetOrNull`, `dictGetAll`,
@@ -274,6 +276,31 @@ none of those terms' columns.
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field`
   naming `dm.rev.revenue`
+
+### Scenario: an operator SQL tile filtering IN a table is a star over that table
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `SELECT sum(revenue) FROM dm.sales_daily WHERE region IN dm.rev`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries `chart.sql_partial` naming that tile and saying it
+  selects `*`, and names no `reads_field` of `dm.rev.revenue` — the same as
+  `WHERE region IN (SELECT * FROM dm.rev)`
+
+### Scenario: a named CTE opened by IN is read
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `WITH x AS (SELECT dictGet('dm.rev','revenue',toUInt64(1)) AS v FROM dm.other)
+  SELECT sum(revenue) FROM dm.sales_daily WHERE region IN x`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the change carries a chart impact for that tile with relation `reads_field`
+  naming `dm.rev.revenue`
+
+### Scenario: a literal IN list does not open a named CTE
+
+- **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
+  `SELECT sum(revenue) FROM dm.sales_daily WHERE region IN ('a')`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report names neither a chart impact nor a chart gap for that tile
 
 ### Scenario: a named CTE named only from a subquery inside a live expression WITH is read
 

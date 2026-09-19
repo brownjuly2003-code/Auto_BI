@@ -133,6 +133,8 @@ class TableRef(NamedTuple):
 def extract_table_refs(sql: str, *, dialect: str = DIALECT) -> frozenset[TableRef]:
     """Physical tables referenced by a SELECT, with their quoting (CTE aliases excluded)."""
     root = _parse_one_select(sql, dialect=dialect)
+    if dialect == "clickhouse":
+        _rewrite_clickhouse_in_tables(root)
     cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
     tables: set[TableRef] = set()
     for table in root.find_all(exp.Table):
@@ -299,10 +301,17 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     expands it again. An alias nothing references reads nothing. A SELECT-list alias needs
     no read-through: its definition is already graded where it is written. A
     `WITH (SELECT …) AS a` keeps its own scope and FROM; only the reference `a` is the
-    alias. The PostgreSQL family is unchanged: there a WITH defines CTEs only and WHERE
-    cannot read a SELECT alias, so a bare name is a column.
+    alias. On ClickHouse, `x [GLOBAL] [NOT] IN <name>` where `<name>` is the Column in
+    `In.args["field"]` and not a visible alias is rewritten to `x IN (SELECT * FROM
+    <name>)` before scoping, so it grades as that subquery: the same TableRef, the
+    same star outcome. A CTE of that name is the CTE, as it is in FROM. Literal lists
+    and subquery forms are unchanged. The PostgreSQL family is unchanged: there a
+    WITH defines CTEs only and WHERE cannot read a SELECT alias, so a bare name is a
+    column, and `IN <name>` stays the column sqlglot parsed.
     """
     root = _parse_one_select(sql, dialect=dialect)
+    if dialect == "clickhouse":
+        _rewrite_clickhouse_in_tables(root)
     root_scope = build_scope(root)
     if root_scope is None:  # pragma: no mutate block - Select/Union always defines a scope
         raise SQLGuardError("SELECT does not define a query scope")
@@ -355,8 +364,10 @@ class _ReadThroughState:
     the `(alias, scope, owner)` triples already expanded in full; the Scope
     objects themselves are kept as values so a branch scope from
     `_grade_nested_query` cannot be garbage-collected and reuse an `id()` that
-    would hide a later read. A truncated expansion is not recorded: a later
-    shallower reference expands it again.
+    would hide a later read. `cyclic` is keyed by `(id(definition), id(scope))`
+    and holds the Scope so a cycle that exists only in an inner scope does not
+    turn an outer reference of the same declaration into a column. A truncated
+    expansion is not recorded: a later shallower reference expands it again.
     """
 
     __slots__ = ("cyclic", "done", "expansions", "on_path", "path")
@@ -365,7 +376,7 @@ class _ReadThroughState:
         self.path: list[_ClickHouseAlias] = []
         self.on_path: set[int] = set()
         self.done: dict[tuple[int, int, int], Scope] = {}
-        self.cyclic: set[int] = set()
+        self.cyclic: dict[tuple[int, int], Scope] = {}
         self.expansions = 0
 
 
@@ -473,6 +484,78 @@ def _clickhouse_alias_ref(
             return with_alias
         current = current.parent
     return None
+
+
+def _column_as_table(column: exp.Column) -> exp.Table:
+    """Map sqlglot's Column encoding of a table name to a Table.
+
+    `IN db.table` is Column(this=table, table=db); a three-part name uses db as
+    the catalog slot. Quoted identifiers travel with the Identifier nodes.
+    """
+    idents = [
+        part
+        for part in (
+            column.args.get("catalog"),
+            column.args.get("db"),
+            column.args.get("table"),
+            column.args.get("this"),
+        )
+        if isinstance(part, exp.Identifier)
+    ]
+    this = idents[-1].copy() if idents else None
+    db = idents[-2].copy() if len(idents) >= 2 else None
+    catalog = idents[-3].copy() if len(idents) >= 3 else None
+    return exp.Table(this=this, db=db, catalog=catalog)
+
+
+def _star_subquery_from(table: exp.Table) -> exp.Subquery:
+    """`(SELECT * FROM <table>)` — ClickHouse's reading of `IN <table>`."""
+    select = exp.Select().select(exp.Star()).from_(table, copy=False)
+    return exp.Subquery(this=select)
+
+
+def clickhouse_in_table_fields(root: exp.Expression) -> tuple[exp.Column, ...]:
+    """Columns that ClickHouse reads as `IN (SELECT * FROM <name>)`, not as aliases.
+
+    `<name>` is the Column in `In.args["field"]` (bare or qualified). A visible
+    alias — `_clickhouse_alias_ref` in that column's scope — stays an alias, so a
+    cyclic SELECT alias counts as a column there and becomes a table. A column
+    sqlglot did not put in any query scope is left alone. A statement with no
+    Column on the right of any IN returns at once, without building scopes or the
+    alias index: most statements have none, and the grading builds both anyway.
+    """
+    fields = [
+        field
+        for field in (node.args.get("field") for node in root.find_all(exp.In))
+        if isinstance(field, exp.Column)
+    ]
+    if not fields:
+        return ()
+    aliases = _clickhouse_aliases(root)
+    root_scope = build_scope(root)
+    if root_scope is None:  # pragma: no mutate block - Select/Union always defines a scope
+        return ()
+    owners = {id(scope.expression): scope for scope in root_scope.traverse()}
+    found: list[exp.Column] = []
+    for field in fields:
+        scope = _owning_scope(field, owners)
+        if scope is None:
+            continue
+        if _clickhouse_alias_ref(field, scope, aliases) is not None:
+            continue
+        found.append(field)
+    return tuple(found)
+
+
+def _rewrite_clickhouse_in_tables(root: exp.Expression) -> None:
+    """Replace `x IN <table>` with `x IN (SELECT * FROM <table>)` when not an alias."""
+    for column in clickhouse_in_table_fields(root):
+        node = column.parent
+        if not isinstance(node, exp.In):
+            continue
+        table = _column_as_table(column)
+        node.set("field", None)
+        node.set("query", _star_subquery_from(table))
 
 
 def _column_owner(
@@ -768,8 +851,8 @@ def _unread_alias_ref(column: exp.Column) -> AmbiguousRef:
     )
 
 
-def _mark_cyclic(state: _ReadThroughState, alias: _ClickHouseAlias) -> None:
-    """Mark *alias* and every alias after it on the expansion path as cyclic."""
+def _mark_cyclic(state: _ReadThroughState, alias: _ClickHouseAlias, scope: Scope) -> None:
+    """Mark *alias* and every alias after it on the expansion path as cyclic in *scope*."""
     ident = id(alias.definition)
     started = False
     for item in state.path:
@@ -777,7 +860,7 @@ def _mark_cyclic(state: _ReadThroughState, alias: _ClickHouseAlias) -> None:
         if item_id == ident:
             started = True
         if started:
-            state.cyclic.add(item_id)
+            state.cyclic[(item_id, id(scope))] = scope
 
 
 def _read_through_alias(
@@ -795,21 +878,23 @@ def _read_through_alias(
     Loose columns are graded in *scope*. A query nested in the definition is graded
     as the same subquery written at the reference — its own FROM, enclosed toward
     *scope* — because sqlglot builds no scope for those bodies. Expansion is keyed
-    by declaration identity and memoised per (alias, scope, owner); a cycle is a
-    column; a reference past the depth cap or expansion budget is unattributed
-    under its own name. A loose column that resolves to *owner* (the SELECT-list
-    alias whose definition this expansion is part of) is the column, not the
-    alias. Returns True when this expansion or a subtree hit the cap or budget;
-    such an expansion is not recorded in ``done``.
+    by declaration identity and memoised per (alias, scope, owner); a cycle in
+    *scope* is a column there, keyed by (declaration, scope), so an inner-only
+    cycle does not hide an outer read of the same alias; a reference past the
+    depth cap or expansion budget is unattributed under its own name. A loose
+    column that resolves to *owner* (the SELECT-list alias whose definition this
+    expansion is part of) is the column, not the alias. Returns True when this
+    expansion or a subtree hit the cap or budget; such an expansion is not
+    recorded in ``done``.
     """
     if not alias.read_through:
         return False
     ident = id(alias.definition)
     if ident in state.on_path:
-        _mark_cyclic(state, alias)
+        _mark_cyclic(state, alias, scope)
         _attribute_column(scope, column, attributed, ambiguous)
         return False
-    if ident in state.cyclic:
+    if (ident, id(scope)) in state.cyclic:
         _attribute_column(scope, column, attributed, ambiguous)
         return False
     done_key = (ident, id(scope), _owner_key(owner))

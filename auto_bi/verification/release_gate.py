@@ -187,7 +187,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: `asset.query_ungoverned_field` for alias names; a new one when a referenced
 #: WITH expression reads an undeclared column; an advisory for a name inside a
 #: nested query of that expression). Both directions.
-VERIFIER_VERSION = "24"
+#: 25 — ClickHouse `x IN <table>` is read as `x IN (SELECT * FROM <table>)`.
+#: The same operator SQL loses a false `chart.sql_partial` that named the
+#: table as an unattributed column of the tile, and gains a star hole (and a
+#: named-CTE open) for the table the right-hand side names. Field-level
+#: governance findings move with CHECK_VERSION 13. Both directions.
+VERIFIER_VERSION = "25"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -233,7 +238,13 @@ VERIFIER_VERSION = "24"
 #: `asset.query_fields_unchecked`. A reference past the read-through depth cap or
 #: expansion budget raises the same advisory under the alias's own name. Both
 #: directions, so a `pass` written under rule 11 does not answer today's question.
-CHECK_VERSION = "12"
+#: 13 — `assets.invalidated` reads ClickHouse `x IN <table>` as
+#: `x IN (SELECT * FROM <table>)`. A false `asset.query_ungoverned_field` for a
+#: column nobody has (`dm.sales_daily.rev` from `WHERE region IN rev`) is gone;
+#: an ungoverned table on the right of IN that rule 12 raised as an advisory or
+#: nothing now carries REVIEW `asset.query_ungoverned`. Both directions, so a
+#: `pass` written under rule 12 does not answer today's question.
+CHECK_VERSION = "13"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

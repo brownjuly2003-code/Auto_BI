@@ -306,17 +306,19 @@ scope. Referenced from two levels, the columns are graded at each. An alias noth
 references reads nothing. A SELECT-list alias needs no read-through: its definition is
 already graded where it is written. A SELECT-list alias that can reach itself through
 SELECT-list or WITH definitions is a column wherever it is referenced, a WITH body in the
-read-through included. A WITH reference that closes a cycle on the read-through path is a
-column, and the definitions on the way are still read. The read-through has a depth cap
+read-through included. A WITH reference that closes a cycle on the read-through path
+in that referencing scope is a column there, and the definitions on the way are still
+read. A cycle is keyed by declaration and referencing scope, so a cycle that exists
+only in an inner scope SHALL NOT turn an outer reference of the same alias into a
+column. The read-through has a depth cap
 and an expansion budget; a reference past them is reported unattributed under its own
 name, so the gate names a source it did not read rather than skipping it. A cut expansion
 is not memoised: a later shallower reference expands it again. A `WITH (SELECT …) AS a`
 keeps its own scope and FROM; only the reference `a` is the alias.
 
 The PostgreSQL family is unchanged: there a WITH defines CTEs only and WHERE cannot read a
-SELECT alias, so a bare name is a column. `extract_table_refs` and star handling are
-unchanged. An alias written on the right-hand side of `IN` is an alias; `IN <table>` is a
-later task.
+SELECT alias, so a bare name is a column. An alias written on the right-hand side of
+`IN` is an alias.
 
 This rule does not cover an alias defined outside the SELECT list (`WHERE (x AS y) > 1`)
 or an ARRAY JOIN alias. A lambda parameter is not a column, even when named like a visible
@@ -457,3 +459,61 @@ alias.
 - **WHEN** the gate grades the asset
 - **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.sales_daily.m` —
   WHERE cannot read a SELECT alias there, so the bare name is a column exactly as before
+
+### Scenario: an inner-only WITH cycle does not hide the outer read
+
+- **GIVEN** a snapshot declaring `revenue` on `dm.sales_daily`, and a reviewed query
+  `WITH b + 1 AS a, revenue AS b SELECT a, (WITH a + 1 AS b SELECT a FROM
+  dm.sales_daily) AS z FROM dm.sales_daily`
+- **WHEN** the gate grades the asset
+- **THEN** the outer reference `a` is graded as `dm.sales_daily.revenue`, as it is in
+  the outer statement alone — the inner `WITH` that shadows `b` and cycles on `a`
+  does not turn the outer alias into `dm.sales_daily.a`
+
+## Requirement: a table on the right of IN is read
+
+On ClickHouse the system SHALL grade `x [GLOBAL] [NOT] IN <name>`, where `<name>` is
+the identifier sqlglot parks in `In.args["field"]` (bare or qualified) and is not a
+visible alias, as `x IN (SELECT * FROM <name>)`: the same table refs, the same column
+reads, the same ungoverned findings. A visible alias on that side SHALL remain an
+alias. A CTE named `<name>` in scope SHALL be the CTE, exactly as the same name in
+FROM would be. Literal lists (`IN (1, 2)`, `IN ('a')`, `IN tuple(...)`) and subquery
+forms SHALL be unchanged. The PostgreSQL family SHALL be unchanged. The function form
+`in(x, t)` does not parse in sqlglot 30.14.0 and SHALL remain a parse error.
+
+### Scenario: a bare table on the right of IN is the table, not a column of the mart
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and not `rev`, and a reviewed query
+  `SELECT region, sum(revenue) AS m FROM dm.sales_daily WHERE region IN rev GROUP BY
+  region`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned` naming `rev` and
+  `asset.query_fields_unchecked` for the star, and do not carry
+  `asset.query_ungoverned_field` naming `dm.sales_daily.rev` — the grade is the same
+  as `WHERE region IN (SELECT * FROM rev)`
+
+### Scenario: a qualified table on the right of IN is read
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and not `dm.rev`, and a reviewed
+  query `SELECT region, sum(revenue) AS m FROM dm.sales_daily WHERE region IN dm.rev
+  GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned` naming `dm.rev` and
+  `asset.query_fields_unchecked` for the star — the same as
+  `WHERE region IN (SELECT * FROM dm.rev)`
+
+### Scenario: a SELECT alias on the right of IN stays an alias
+
+- **GIVEN** a snapshot declaring `region` on `dm.sales_daily`, and a reviewed query
+  `SELECT region AS r FROM dm.sales_daily WHERE region IN r`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — `r` is the SELECT alias, not table `r`
+
+### Scenario: a CTE named on the right of IN is the CTE
+
+- **GIVEN** a snapshot governing `dm.sales_daily`, and a reviewed query
+  `WITH x AS (SELECT region FROM dm.sales_daily) SELECT region FROM dm.sales_daily
+  WHERE region IN x`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_fields_unchecked` for the star and do not
+  name table `x` — `x` is the CTE, the same as `WHERE region IN (SELECT * FROM x)`

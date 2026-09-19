@@ -57,7 +57,11 @@ import sqlglot
 from pydantic import Field
 from sqlglot import expressions as exp
 
-from auto_bi.agent.sql_guard import ColumnReads, extract_column_refs
+from auto_bi.agent.sql_guard import (
+    ColumnReads,
+    clickhouse_in_table_fields,
+    extract_column_refs,
+)
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.ir.spec import ChartQuery, DashboardSpec, Measure, measure_alias
 from auto_bi.refs import ContractRef
@@ -816,8 +820,11 @@ def _runs_in_statement(
     a scalar `WITH` body runs when what encloses it runs.
 
     A named CTE opens when a running `exp.Table` without a database or catalog names
-    it (case-insensitive) and the CTE's declaring query is an ancestor of that table.
-    A scalar CTE opens when a running column names it (case-insensitive), the column
+    it (case-insensitive) and the CTE's declaring query is an ancestor of that table,
+    or when a running bare Column in `In.args["field"]` that is not a visible alias
+    names it — ClickHouse reads that as `IN (SELECT * FROM <name>)`, the same
+    unqualified table. A scalar CTE opens when a running column names it
+    (case-insensitive), the column
     is not inside that CTE, and the declaring query is an ancestor of the column.
     A column names the alias through its leftmost written part: catalog if set, else
     db, else table, else its own name (a bare column). A tuple access at any depth
@@ -908,7 +915,8 @@ def _open_cte_gates(root: exp.Expression) -> set[int]:
     opens every CTE it could name, compared case-insensitively, whose declaring
     query encloses the name. A column names a scalar alias through its leftmost
     written part, so a tuple access at any depth (`t.1`, `t.a.b`) opens it; named
-    CTEs still open only through an unqualified table.
+    CTEs open through an unqualified table and through a bare `IN <name>` that is
+    not a visible alias.
     """
     named_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
     scalar_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
@@ -939,6 +947,12 @@ def _open_cte_gates(root: exp.Expression) -> set[int]:
             continue
         enclosing, ancestors = _enclosing_and_ancestors(column)
         refs.append(_CteRef(alias, enclosing, ancestors, False))
+    if named_by_alias:
+        for column in clickhouse_in_table_fields(root):
+            if column.table or column.db or column.catalog or not column.name:
+                continue
+            enclosing, ancestors = _enclosing_and_ancestors(column)
+            refs.append(_CteRef(column.name.lower(), enclosing, ancestors, True))
 
     waiting: dict[int, list[int]] = defaultdict(list)
     for index, ref in enumerate(refs):
@@ -999,7 +1013,10 @@ def _projection_star_in_reachable(
         if open_ids is None
         else _runs_in_statement(root, open_ids=open_ids)
     )
-    return any(not _star_is_count_arg(star) and in_run(star) for star in root.find_all(exp.Star))
+    if any(not _star_is_count_arg(star) and in_run(star) for star in root.find_all(exp.Star)):
+        return True
+    # ClickHouse `IN <table>` is `IN (SELECT * FROM <table>)`; sqlglot leaves no Star.
+    return any(in_run(column) for column in clickhouse_in_table_fields(root))
 
 
 def _reconcile_sql_table(sql_table: str, query_table: str) -> str | None:
