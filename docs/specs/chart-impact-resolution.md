@@ -109,9 +109,10 @@ counts as an attributed read — for `reads_field` and for the metric rule alike
 Join-table call — a table or column that is not a literal, a tuple of columns, a function
 outside that set — is an unread part that names the call as one whose Join table read this
 run could not name.
-When the change reaches an in-scope product and carries typed metric terms, the system
-SHALL name that tile with `chart.metric_unread` unless its SQL was read in whole and names
-none of those terms' columns.
+When the change carries typed metric terms and an in-scope product delivering that tile's
+exact pinned dashboard ref declares one of them, the system SHALL name that tile with
+`chart.metric_unread` unless its SQL was read in whole and names none of the declared
+metrics' term columns.
 
 ### Scenario: an operator SQL tile reading a changed field
 
@@ -158,7 +159,8 @@ none of those terms' columns.
 ### Scenario: a metric change names a parseable operator tile
 
 - **GIVEN** a change to a metric whose typed terms are on `dm.sales_daily`, an in-scope
-  product that depends on that metric, and a tile whose `raw_sql` is
+  product that depends on that metric and delivers the dashboard, and a tile whose
+  `raw_sql` is
   `SELECT region, sum(gross_margin)/sum(revenue) FROM dm.sales_daily GROUP BY region`
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the report carries `chart.metric_unread` naming that tile
@@ -584,11 +586,17 @@ keyed so one hole is reported once.
 The system SHALL raise a metric-derived chart gap — `chart.metric_unread`,
 `chart.metric_unknown`, `chart.formula_untyped` — only while resolving a change that reaches
 at least one in-scope product. A change that reaches no in-scope product asks none of those
-questions, and an unanswered question nobody asked is not a hole in this report. Relating a
+questions, and an unanswered question nobody asked is not a hole in this report.
+`chart.metric_unread` is asked per dashboard: the system SHALL raise it on a tile only when
+an in-scope product delivering that tile's exact pinned dashboard ref declares one of the
+changed metrics. A dashboard several products deliver asks the union of what they declare;
+a change carrying several metrics is filtered independently for each dashboard; two
+versions of one dashboard are two refs and are never merged; and neither the question nor
+its answer depends on the order the products are supplied in. Relating a
 tile as `computes_metric` is evidence, not a gap: a delivered tile that computes a metric
 no in-scope product declares SHALL still be named. Field reads and tile-level gaps
 (`chart.opaque_sql`, `chart.sql_partial`, `chart.dashboard_spec_missing`) are not
-metric-derived and SHALL still be recorded.
+metric-derived, follow the whole change and SHALL still be recorded.
 
 ### Scenario: a typed metric change that reaches no in-scope product records no metric_unread
 
@@ -598,6 +606,40 @@ metric-derived and SHALL still be recorded.
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the report carries no `chart.metric_unread` for that tile
 
+### Scenario: a dashboard delivered only by another product's change carries no metric_unread
+
+- **GIVEN** a change to a metric that an in-scope product A depends on, a dashboard A
+  delivers whose tile's `raw_sql` names that metric's term columns, and a dashboard only
+  an in-scope product B delivers carrying the same SQL, whose product declares none of the
+  changed metrics
+- **WHEN** impact is resolved with both dashboards supplied
+- **THEN** the report carries `chart.metric_unread` for A's tile and none for B's tile
+
+### Scenario: a shared dashboard asks the union of its deliverers
+
+- **GIVEN** the same change, a dashboard both A and B deliver whose tile's `raw_sql` names
+  that metric's term columns, and B declaring none of the changed metrics
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries `chart.metric_unread` for that tile
+
+### Scenario: a mixed-metric change is filtered per dashboard
+
+- **GIVEN** a change carrying two metrics, a dashboard A delivers whose product declares
+  the first, a dashboard B delivers whose product declares the second, and each dashboard
+  carrying one tile whose `raw_sql` is read in whole and names only the first metric's
+  term columns
+- **WHEN** impact is resolved with both dashboards supplied
+- **THEN** the report carries `chart.metric_unread` for A's tile and none for B's tile
+
+### Scenario: two versions of one dashboard are not merged
+
+- **GIVEN** a change to a metric, a product A that delivers `dashboard://x@7` and declares
+  that metric, a product B that delivers `dashboard://x@6` and declares none of the changed
+  metrics, and both tiles' `raw_sql` naming that metric's term columns
+- **WHEN** impact is resolved with both dashboard versions supplied
+- **THEN** the report carries `chart.metric_unread` for the `@7` tile and none for the
+  `@6` tile
+
 ### Scenario: a tile that computes a metric of a change that reaches nobody is still named
 
 - **GIVEN** a change to a metric whose typed terms a delivered tile reproduces, and a
@@ -606,10 +648,18 @@ metric-derived and SHALL still be recorded.
 - **THEN** the change carries a chart impact for that tile with relation `computes_metric`
   and the report carries no metric-derived chart gap
 
+### Scenario: a tile that computes another product's metric is still named
+
+- **GIVEN** a change to a metric an in-scope product A depends on, and a tile on a
+  dashboard only an in-scope product B delivers whose measure reproduces that metric's
+  typed terms
+- **WHEN** impact is resolved with both dashboards supplied
+- **THEN** the change carries a chart impact for that tile with relation `computes_metric`
+
 ### Scenario: the same change reaching a product still raises metric_unread
 
 - **GIVEN** the same typed metric change and parseable tile, and an in-scope product that
-  depends on that metric
+  depends on that metric and delivers the dashboard
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the report carries `chart.metric_unread` naming that tile
 
@@ -626,3 +676,11 @@ metric-derived and SHALL still be recorded.
   tile that reads that field
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field`
+
+### Scenario: field reads keep the whole change on a dashboard that declares nothing
+
+- **GIVEN** a change touching `dm.sales_daily.revenue` and two dashboards each carrying a
+  tile that reads that field, one of them delivered only by a product that declares none
+  of the changed metrics
+- **WHEN** impact is resolved with both dashboards supplied
+- **THEN** the change carries a chart impact for each tile with relation `reads_field`

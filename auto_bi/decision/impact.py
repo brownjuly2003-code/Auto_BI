@@ -40,9 +40,13 @@ resolved "not this tile", not a hole; the same answer holds for a metric whose t
 columns the SQL was read in whole and does not name. Metric-derived gaps
 (`chart.metric_unread`, `chart.metric_unknown`, `chart.formula_untyped`) are raised
 only for a change that reaches an in-scope product: a change nobody in scope depends
-on does not ask those questions. Relating a tile as `computes_metric` is not a gap
-and still happens — a delivered tile that computes a metric no in-scope product
-declares is an undeclared dependency the report is obliged to name.
+on does not ask those questions. `chart.metric_unread` is scoped one link further, to
+the dashboard: it is raised on a tile only when an in-scope product delivering that
+exact pinned dashboard ref declares one of the changed metrics, so a change that
+reaches product A does not leave an unanswered question on a dashboard only product B
+delivers. Relating a tile as `computes_metric` is not a gap and still happens — a
+delivered tile that computes a metric no in-scope product declares is an undeclared
+dependency the report is obliged to name.
 """
 
 from __future__ import annotations
@@ -127,7 +131,9 @@ class ImpactReport(StrictModel):
     #: Report-level: a gap is a property of the resolver's inputs, not of one change.
     #: Metric-derived gaps (`chart.metric_unread`, `chart.metric_unknown`,
     #: `chart.formula_untyped`) are raised only for a change that reaches an in-scope
-    #: product; `computes_metric` on a change that reaches none is evidence, not a gap.
+    #: product; `chart.metric_unread`, further, only on a dashboard one of whose
+    #: deliverers declares a changed metric. `computes_metric` on a change that reaches
+    #: none is evidence, not a gap.
     chart_gaps: list[ChartGap] = Field(default_factory=list)
 
 
@@ -148,10 +154,7 @@ def resolve_impact(
     specs: Mapping[str, DashboardSpec] = dashboards or {}
     by_metric: dict[str, list[DecisionProductSpec]] = {}
     for product in products:
-        for ref in product.scope.metrics:
-            # Products pin a version; a change to the metric reaches them whatever the new
-            # version is. Whether the pin still resolves is `decision validate`'s question.
-            identifier = str(ContractRef.parse(ref).without_version())
+        for identifier in _scoped_metric_ids(product):
             by_metric.setdefault(identifier, []).append(product)
 
     resolver = _ChartResolver(products, specs, metrics)
@@ -219,8 +222,15 @@ class _ChartResolver:
         self._known = _terms_by_metric(metrics)
         self._loaded: list[tuple[str, DashboardSpec]] = []
         self._missing: list[str] = []
-        delivered = {item.ref for product in products for item in product.delivery.dashboards}
-        for ref in sorted(delivered):
+        self._declared: dict[str, frozenset[str]] = {}
+        for product in products:
+            # Per exact pinned dashboard ref: the union of what its deliverers declare,
+            # so the metric question a dashboard was asked is decided dashboard by
+            # dashboard. Two versions of one dashboard are two refs and never merge.
+            scoped = frozenset(_scoped_metric_ids(product))
+            for item in product.delivery.dashboards:
+                self._declared[item.ref] = self._declared.get(item.ref, frozenset()) | scoped
+        for ref in sorted(self._declared):
             spec = dashboards.get(ref)
             if spec is None:
                 self._missing.append(ref)
@@ -243,15 +253,24 @@ class _ChartResolver:
             # Nothing to scan: the missing specs are already named, and reporting a metric
             # as unresolvable on top of that would give one hole two names.
             return []
-        # Metric-derived gaps answer a question an in-scope product asked. One flag
-        # is read at two sites: `_typed_terms(..., name_gaps=reaches_product)` withholds
-        # `chart.metric_unknown` / `chart.formula_untyped`, and `_match_raw` withholds
-        # `chart.metric_unread`. Typed terms still resolve so an IR tile that
-        # reproduces them is named `computes_metric`. Field reads run below.
+        # Metric-derived gaps answer a question an in-scope product asked.
+        # `_typed_terms(..., name_gaps=reaches_product)` withholds `chart.metric_unknown`
+        # / `chart.formula_untyped`; `_match_raw` withholds `chart.metric_unread`, and
+        # what it may decide on is scoped here to the dashboard — the changed metrics the
+        # in-scope products delivering that exact pinned ref declare. Typed terms still
+        # resolve for the whole change so an IR tile that reproduces them is named
+        # `computes_metric`. Field reads run below.
         computed = self._typed_terms(change.impact.metrics, name_gaps=reaches_product)
         fields = set(change.impact.fields)
         found: dict[str, ChartImpact] = {}
         for dashboard_ref, spec in self._loaded:
+            # A dashboard asks the union of what its deliverers declare: a shared one
+            # asks every changed metric any of them scopes, a mixed change its own half,
+            # and two versions of one dashboard are two refs that never merge.
+            declared = self._declared.get(dashboard_ref, frozenset())
+            asked = {
+                metric_id: terms for metric_id, terms in computed.items() if metric_id in declared
+            }
             for chart in spec.charts:
                 ref = f"{dashboard_ref}#{chart.id}"
                 if chart.query.raw_sql is not None:
@@ -259,7 +278,7 @@ class _ChartResolver:
                         dashboard_ref,
                         chart.id,
                         chart.query,
-                        computed,
+                        asked,
                         fields,
                         reaches_product=reaches_product,
                     )
@@ -293,7 +312,10 @@ class _ChartResolver:
         from a partial SQL read (`chart.sql_partial`): they are different claims, and folding
         them would make a tile that was only unread as a metric look like one whose columns
         were not attributed. The gap is raised only for a change that reaches an in-scope
-        product, because it answers a question only such a product asks.
+        product, because it answers a question only such a product asks: `computed` arrives
+        already scoped to that question — the changed metrics the in-scope products
+        delivering this tile's dashboard declare — so a change reaching only another
+        product's metric leaves this tile an answer, not a hole.
         """
         sql = query.raw_sql
         if sql is None:
@@ -536,6 +558,17 @@ class _KnownMetric:
     #: `terms`, because a metric typed before and external after is both matchable and
     #: unresolvable, and collapsing that into one field would drop half the answer.
     untyped: bool = False
+
+
+def _scoped_metric_ids(product: DecisionProductSpec) -> set[str]:
+    """The metric ids a product scopes, version-stripped.
+
+    Products pin a version; a change to the metric reaches them whatever the new version
+    is. Whether the pin still resolves is `decision validate`'s question. Both halves of
+    the chain strip the same way: which products a change reaches, and which changed
+    metrics each delivered dashboard was asked about.
+    """
+    return {str(ContractRef.parse(ref).without_version()) for ref in product.scope.metrics}
 
 
 def _terms_by_metric(metrics: Sequence[MetricNode]) -> dict[str, _KnownMetric]:

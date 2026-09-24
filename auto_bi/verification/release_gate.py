@@ -192,7 +192,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: table as an unattributed column of the tile, and gains a star hole (and a
 #: named-CTE open) for the table the right-hand side names. Field-level
 #: governance findings move with CHECK_VERSION 13. Both directions.
-VERIFIER_VERSION = "25"
+#: 26 — a raw-SQL tile's `chart.metric_unread` is decided per dashboard, against
+#: the changed metrics the in-scope products delivering that exact pinned
+#: dashboard ref declare, so the same inputs can carry fewer `chart.metric_unread`
+#: gaps than verifier 25: a dashboard delivered only by products that declare
+#: none of those metrics no longer carries one. Field reads, the IR
+#: `computes_metric` term match and the tile-level gaps keep the whole change.
+#: Evidence only: CHECK_VERSION does not move.
+VERIFIER_VERSION = "26"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

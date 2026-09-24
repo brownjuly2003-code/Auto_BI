@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-18
+**Обновлено:** 2026-09-22
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=25`, `CHECK_VERSION=13`
+**Версии evidence:** `VERIFIER_VERSION=26`, `CHECK_VERSION=13`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -85,7 +85,13 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   прочитанной частично (`chart.sql_partial`, «it selects *»), а не молчит. Metric-derived гэпы (`chart.metric_unread`,
   `chart.metric_unknown`, `chart.formula_untyped`) записываются только для изменения,
   которое достигает хотя бы одного продукта в scope: вопрос, которого никто в scope не
-  задавал, дырой этого отчёта не является.
+  задавал, дырой этого отчёта не является. `chart.metric_unread` при этом спрашивается по
+  дашборду: гэп ложится на плитку raw-SQL, только когда продукт в scope, доставляющий
+  именно этот точный pinned ref, декларирует одну из изменённых метрик — общий дашборд
+  спрашивает объединение деклараций всех доставляющих продуктов, смешанное изменение
+  фильтруется по каждому дашборду независимо, две версии одного дашборда не сливаются;
+  чтения полей, IR-совпадение `computes_metric` и структурные гэпы остаются всем
+  изменением.
 - `results.provenance` оценивает, откуда пришло кандидатное число: snapshot, среда и
   исполненный запрос сверяются с тем, что гейт держит независимо; число без attestation
   называется `provenance.unattested`. Ни одна находка не блокирует.
@@ -131,7 +137,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; ClickHouse-алиас больше не `chart.sql_partial` «not attributed to a table», а чтение через expression-form WITH даёт `reads_field` (verifier 24); `IN <table>` читается как звезда над этой таблицей и открывает именованную CTE (verifier 25); tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
+| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; ClickHouse-алиас больше не `chart.sql_partial` «not attributed to a table», а чтение через expression-form WITH даёт `reads_field` (verifier 24); `IN <table>` читается как звезда над этой таблицей и открывает именованную CTE (verifier 25); 2026-09-22 `chart.metric_unread` решается по каждому дашборду — объединением метрик продуктов в scope, доставляющих этот точный pinned ref (verifier 26); tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE; 2026-09-18 ClickHouse-алиас читается насквозь, а не как колонка (`CHECK_VERSION` 11 → 12); `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной находки поля `IN rev` больше нет, неуправляемая таблица справа от `IN` — review `asset.query_ungoverned` (`CHECK_VERSION` 12 → 13) |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
@@ -251,12 +257,6 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   непроверенным вместо того, чтобы быть приписанным ближайшему: innermost-first изменил бы
   контракт атрибуции для каждого коррелированного scope и сначала должен быть задан как
   требование.
-- Открыто, на плитках какого продукта metric-derived гэп вправе быть записан: резолвер
-  держит дашборды всех продуктов в scope одним списком, поэтому гэп по изменению, которое
-  достигает продукта A, попадает и на плитку дашборда, который доставляет продукт B, эту
-  метрику не читающий. Гэп дедуплицируется по `(code, subject)`, поэтому такая плитка
-  попадает в бакет `impact.products` — счёт добавляется, дыра не прячется; per-product
-  scoping гэпа — отдельное, не принятое решение.
 - Нет измеренного человеком owner outcome: proxy-review не заменяет время и
   подтверждение понятности от живого владельца.
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
@@ -411,6 +411,19 @@ check 13). Срез начал grok xhigh (`grokw`); оба grok-аккаунт�
 ревью: Opus-ревьюеры пропущены, потому что делят движок с автором, GLM-5.3 и Codex упёрлись
 в rate limit. Оба среза — моделированное ревью, не Astra-review по ADR 0006, не human
 evidence и не production/design-partner acceptance.
+Закрыт per-dashboard scope metric-гэпа: `chart.metric_unread` на плитке raw-SQL возникает,
+только когда продукт в scope, доставляющий именно этот точный pinned ref дашборда,
+декларирует одну из изменённых метрик — объединением деклараций всех доставляющих
+продуктов (общий дашборд), с независимой фильтрацией смешанного изменения по каждому
+дашборду, без слияния версий дашборда и независимо от порядка продуктов; чтения полей,
+IR-совпадение `computes_metric` и структурные гэпы (`chart.opaque_sql`,
+`chart.sql_partial`, `chart.dashboard_spec_missing`) остаются всем изменением.
+`chart.metric_unknown` и `chart.formula_untyped` — уровнем изменения: их subject —
+метрика, не плитка (срез T-17, verifier 26, check 13). Реализовано GLM 5.3 xhigh
+(изолированный профиль, попытка продолжена после rate limit); ревью — synthetic Astra
+xhigh read-only, записанное оркестратором в ворк-ордере и направившее правку (восстановлен
+`reaches_product` на `_match_raw`, фильтрация `computed` перенесена в `charts_for`):
+моделированное ревью, не human evidence и не production/design-partner acceptance.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 
