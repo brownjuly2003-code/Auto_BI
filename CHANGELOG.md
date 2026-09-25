@@ -16,6 +16,18 @@
 
 ### Added
 
+- **Колонки из `HAVING` и `QUALIFY` читаются как из любой другой клаузы** (`CHECK_VERSION`
+  14 → 15, `VERIFIER_VERSION` 27 → 28). `Scope.columns` sqlglot опускал голое `cost` как
+  возможный output alias, поэтому reviewed PostgreSQL `HAVING sum(cost) > 0` и ClickHouse
+  `QUALIFY row_number() OVER (PARTITION BY cost) = 1` могли пройти как чистые. Теперь
+  PostgreSQL читает input текущего query level, а ClickHouse сначала применяет прежнее
+  правило видимого alias/read-through; окно в `QUALIFY` включает `PARTITION BY` и `ORDER BY`.
+  Направление одно: добавляются `asset.query_ungoverned_field` (review),
+  `asset.query_fields_unchecked` (advisory) и chart `reads_field`; ни одна находка не
+  снимается. Реализовано `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат
+  `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human
+  evidence и не production/design-partner acceptance.
+
 - **Metric-гэп `chart.metric_unread` задаётся по каждому дашборду** (`VERIFIER_VERSION`
   25 → 26, `CHECK_VERSION` остаётся 13). Резолвер держит дашборды всех продуктов в scope
   одним списком, поэтому изменение, достигающее продукта A, поднимало
@@ -47,7 +59,9 @@
   (например, `internal_cost_raw` в `(internal_cost_raw AS y)`). Реализовано
   `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью —
   `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human evidence и не
-  production/design-partner acceptance.
+  production/design-partner acceptance. Итог ревью — шесть проходов `gpt-6-astra` xhigh через
+  MyFlow (2026-09-24): девять находок, восемь исправлены, одна (порог по wall-clock) отклонена
+  с доказательством, последний проход — 0 findings.
 
 - **`x IN <table>` читается как таблица, которую оно называет** (`CHECK_VERSION` 12 → 13,
   `VERIFIER_VERSION` 24 → 25). ClickHouse исполняет `x IN rev` как `x IN (SELECT * FROM

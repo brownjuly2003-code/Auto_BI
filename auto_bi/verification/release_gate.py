@@ -205,7 +205,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: can name a real read (for example `internal_cost_raw` in `(internal_cost_raw AS y)`).
 #: ARRAY JOIN still reads its source array. Both directions, so a verifier 26 report does
 #: not answer today's chart-read question.
-VERIFIER_VERSION = "27"
+#: 28 — unqualified inputs in HAVING and QUALIFY are reads. The only direction is added
+#: evidence: a new REVIEW `asset.query_ungoverned_field`, a new advisory
+#: `asset.query_fields_unchecked`, and a new chart `reads_field`; no finding is removed.
+VERIFIER_VERSION = "28"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -264,7 +267,10 @@ VERIFIER_VERSION = "27"
 #: written and can name a real field (for example `internal_cost_raw` in
 #: `(internal_cost_raw AS y)`). ARRAY JOIN still reads its source array. Both directions,
 #: so a `pass` written under rule 13 does not answer today's question.
-CHECK_VERSION = "14"
+#: 15 — unqualified inputs in HAVING and QUALIFY are reads. The only direction is added
+#: evidence: a new REVIEW `asset.query_ungoverned_field`, a new advisory
+#: `asset.query_fields_unchecked`, and a new chart `reads_field`; no finding is removed.
+CHECK_VERSION = "15"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-24
+**Обновлено:** 2026-09-25
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=27`, `CHECK_VERSION=14`
+**Версии evidence:** `VERIFIER_VERSION=28`, `CHECK_VERSION=15`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -251,11 +251,6 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   объявленное несколькими источниками (в том числе на двух LATERAL-уровнях), scope с
   неуправляемой витриной, читаемым CTE или подзапросом остаются непроверенными —
   названными (`asset.query_fields_unchecked`), а не молча пропущенными.
-- Предсуществующий остаток атрибуции: фильтр `sqlglot Scope.columns` на обоих диалектах
-  пропускает неквалифицированную колонку в `HAVING` или `QUALIFY`, если она не находится
-  внутри inline-определения. Поэтому `SELECT region FROM dm.sales_daily GROUP BY region
-  HAVING sum(cost) > 0` читает только `region` и не называет `cost`; этот срез его не
-  исправляет.
 - Источники, дошедшие с охватывающих LATERAL-уровней, — кандидаты рядом с ближайшими, а
   не упорядоченные по уровню, поэтому имя, которое объявляют несколько уровней, остаётся
   непроверенным вместо того, чтобы быть приписанным ближайшему: innermost-first изменил бы
@@ -440,7 +435,20 @@ level, но не в подзапросе, верхнеуровневый SELECT-
 пропускала, теперь грейдится на месте и может назвать реальное поле (`internal_cost_raw` в
 `(internal_cost_raw AS y)`). Реализовано `gpt-5.6-terra` xhigh (Codex companion,
 MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow: моделированное
-ревью, не human evidence и не production/design-partner acceptance.
+ревью, не human evidence и не production/design-partner acceptance. Итог ревью — шесть
+проходов `gpt-6-astra` xhigh через MyFlow (2026-09-24): девять находок, восемь исправлены,
+одна (порог по wall-clock) отклонена с доказательством, последний проход — 0 findings.
+
+Закрыто чтение неквалифицированных input-колонок из HAVING и QUALIFY (срез T-19, verifier
+28, check 15): PostgreSQL читает input своего query level, а ClickHouse сначала применяет
+обычное read-through видимого алиаса и только затем источник. `cost` у единственного
+источника теперь даёт `asset.query_ungoverned_field`; в join управляемых таблиц, ни одна из
+которых не объявляет `cost`, тот же review называет `cost (read from one of ...)`. Advisory
+`asset.query_fields_unchecked` возникает, когда имя объявляют несколько источников или scope
+держит источник, внутрь которого snapshot не видит. Raw-SQL плитка получает `reads_field`.
+Направление одно: только добавляются чтения и находки. Реализовано `gpt-5.6-terra` xhigh
+(Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
+моделированное ревью, не human evidence и не production/design-partner acceptance.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 

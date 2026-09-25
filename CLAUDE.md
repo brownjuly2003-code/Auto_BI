@@ -83,6 +83,14 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-25 — голые input-колонки `HAVING` и `QUALIFY` читаются как из любой другой
+  клаузы: PostgreSQL не видит output alias в `HAVING`, а ClickHouse сначала применяет
+  видимый alias/read-through; `PARTITION BY` и `ORDER BY` окна в `QUALIFY` тоже читаются.
+  VERIFIER_VERSION 27 → 28, CHECK_VERSION 14 → 15: направление одно — добавляются review
+  `asset.query_ungoverned_field`, advisory `asset.query_fields_unchecked` и chart
+  `reads_field`, ни одна находка не снимается. Реализовано `gpt-5.6-terra` xhigh (Codex
+  companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
+  моделированное ревью, не human evidence и не production/design-partner acceptance.
 - 2026-09-22 — `chart.metric_unread` спрашивается по дашборду: гэп на плитке raw-SQL
   возникает, только когда продукт в scope, доставляющий именно этот точный pinned ref
   дашборда, декларирует одну из изменённых метрик — объединением деклараций всех
@@ -107,7 +115,9 @@ GraceKelly (локальный сервис, должен быть запуще�
   поле (`internal_cost_raw` в `(internal_cost_raw AS y)`). Реализовано `gpt-5.6-terra`
   xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh
   через MyFlow: моделированное ревью, не human evidence и не production/design-partner
-  acceptance.
+  acceptance. Итог ревью — шесть проходов `gpt-6-astra` xhigh через MyFlow (2026-09-24):
+  девять находок, восемь исправлены, одна (порог по wall-clock) отклонена с доказательством,
+  последний проход — 0 findings.
 - 2026-09-18 — на ClickHouse `x IN <table>` читается ровно как `x IN (SELECT * FROM
   <table>)` — в governance-проверке и в достижимости chart impact: ложной находки поля для
   `IN rev` больше нет, а неуправляемая таблица справа от `IN` теперь даёт review

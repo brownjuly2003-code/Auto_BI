@@ -662,6 +662,23 @@ def _loose_columns(node: exp.Expression) -> list[exp.Column]:
     return [child for child in node.walk(prune=prune) if isinstance(child, exp.Column)]
 
 
+def _having_qualify_columns(scope: Scope) -> list[exp.Column]:
+    """Bare columns sqlglot omits from ``Scope.columns`` in HAVING and QUALIFY.
+
+    sqlglot treats those names as potential projection aliases.  Alias visibility is an
+    engine rule, though: PostgreSQL has no output alias there, and ClickHouse resolves a
+    visible alias through the ordinary ClickHouse alias index before this column can be
+    attributed.  Nested query bodies keep their own scope.
+    """
+    columns: list[exp.Column] = []
+    for name in ("having", "qualify"):
+        clause = scope.expression.args.get(name)
+        if clause is None:
+            continue
+        columns.extend(column for column in _loose_columns(clause) if not column.table)
+    return columns
+
+
 def _attribute_column(
     scope: Scope,
     column: exp.Column,
@@ -706,15 +723,22 @@ def _grade_columns(
             declarations = aliases.local.get(id(scope.expression))
         else:
             declarations = None
-        if declarations:
+        clause_columns = _having_qualify_columns(scope)
+        if declarations or clause_columns:
             columns = list(columns)
             seen_columns = {id(column) for column in columns}
-            for declared in declarations:
-                for column in _loose_columns(declared.definition):
-                    if id(column) in seen_columns:
-                        continue
-                    seen_columns.add(id(column))
-                    columns.append(column)
+            if declarations:
+                for declared in declarations:
+                    for column in _loose_columns(declared.definition):
+                        if id(column) in seen_columns:
+                            continue
+                        seen_columns.add(id(column))
+                        columns.append(column)
+            for column in clause_columns:
+                if id(column) in seen_columns:
+                    continue
+                seen_columns.add(id(column))
+                columns.append(column)
         for column in columns:
             # A scope lists the columns of its nested subqueries too, and resolving one of
             # those against *this* scope's sources would attribute it to a table it was

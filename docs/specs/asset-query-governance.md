@@ -51,6 +51,14 @@ A source is identified by the FROM/JOIN item the statement names, not by its unq
 table name: two marts whose short names collide (`dm.sales_daily JOIN stg.sales_daily`) are
 two distinct candidates.
 
+An unqualified name written in `HAVING` or `QUALIFY` SHALL be graded by those same rules. In
+the PostgreSQL family an output alias is not visible in `HAVING`, so the name is an input
+column of that query level (or a correlated enclosing level). On ClickHouse a visible alias
+still wins and is read through under this requirement's ClickHouse-alias rule; every other
+name is an input column of the query level. A window's `PARTITION BY` and `ORDER BY` in
+`QUALIFY` are part of that clause. The alias rule does not create a second exception for
+these clauses.
+
 The sources of a scope are the ones it **reads** — the tables, derived tables, laterals and
 CTEs its own FROM/JOIN clauses name. A CTE its FROM/JOIN does not name SHALL NOT count as a
 source of that scope, whether its WITH clause declared it or an enclosing query did: among the
@@ -90,6 +98,22 @@ one transition widening cannot produce is a clean grade turning into
 already declared keeps that declarer, and a name resolved to a derived table keeps that source
 in scope — either way the model never ends up with a governed source that declares nothing.
 That is why the verifier and check versions moved.
+
+### Scenario: a PostgreSQL HAVING input is a read
+
+- **GIVEN** a snapshot governing `dm.sales_daily`, declaring `region` and `revenue` but not
+  `cost`, and a PostgreSQL-family reviewed query `SELECT region FROM dm.sales_daily GROUP BY
+  region HAVING sum(cost) > 0`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.sales_daily.cost`
+
+### Scenario: a ClickHouse QUALIFY window input is a read
+
+- **GIVEN** a snapshot governing `dm.sales_daily`, declaring `region` and `revenue` but not
+  `cost`, and a ClickHouse reviewed query `SELECT region FROM dm.sales_daily QUALIFY
+  row_number() OVER (PARTITION BY cost ORDER BY cost) = 1`
+- **WHEN** the gate grades the asset
+- **THEN** the findings carry `asset.query_ungoverned_field` naming `dm.sales_daily.cost`
 
 ### Scenario: a table joined to itself offers two candidates
 
