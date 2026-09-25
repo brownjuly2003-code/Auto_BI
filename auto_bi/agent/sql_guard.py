@@ -218,6 +218,16 @@ class AmbiguousRef(NamedTuple):
     enclosed: bool = False
 
 
+def star_reads_columns(star: exp.Star) -> bool:
+    """Whether this star expands to source columns rather than counting rows.
+
+    Only a direct `COUNT(*)` argument is the row count. A `DISTINCT` node between
+    the star and `Count` means `COUNT(DISTINCT *)`, whose value depends on every
+    source column where the dialect accepts it.
+    """
+    return not isinstance(star.parent, exp.Count)
+
+
 class ColumnReads(NamedTuple):
     """What a SELECT reads at column level, and what saying more would take a guess.
 
@@ -233,8 +243,8 @@ class ColumnReads(NamedTuple):
     #: come from this level or the query around it), or qualified by a name no enclosing
     #: scope declares.
     unattributed: frozenset[str]
-    #: The statement selects `*` somewhere, so the columns it reads depend on the physical
-    #: table and cannot be known from the text.
+    #: A star in the statement reads source columns, so those columns depend on the physical
+    #: table and cannot be known from the text. A direct `COUNT(*)` argument counts rows.
     starred: bool
     #: The same remainder with its scope kept, one entry per unattributed reference. Names
     #: alone are what `unattributed` reports; this is what a caller needs to narrow them.
@@ -328,7 +338,7 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     return ColumnReads(
         attributed=frozenset(attributed),
         unattributed=frozenset(ref.name for ref in ambiguous),
-        starred=root.find(exp.Star) is not None,
+        starred=any(star_reads_columns(star) for star in root.find_all(exp.Star)),
         ambiguous=frozenset(ambiguous),
         opaque_settings=(
             _clickhouse_opaque_settings(root) if dialect == "clickhouse" else frozenset()

@@ -395,10 +395,10 @@ def test_operator_sql_count_star_beside_an_attributed_read_is_not_a_partial_gap(
     assert report.chart_gaps == []
 
 
-def test_operator_sql_count_distinct_star_beside_an_attributed_read_is_not_a_partial_gap(
+def test_operator_sql_count_distinct_star_beside_an_attributed_read_is_a_partial_gap(
     tmp_path: Path,
 ) -> None:
-    """sqlglot wraps COUNT(DISTINCT *) as Count(Distinct(Star)); that star still reads no column."""
+    """The distinct value depends on every source column where this expression runs."""
     _, report = resolved(
         tmp_path,
         candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
@@ -413,10 +413,13 @@ def test_operator_sql_count_distinct_star_beside_an_attributed_read_is_not_a_par
         ("operator_table", ChartRelation.READS_FIELD)
     ]
     assert "dm.sales_daily.revenue" in impact.charts[0].detail
-    assert report.chart_gaps == []
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "it selects *" in report.chart_gaps[0].detail
 
 
-def test_operator_sql_count_distinct_star_alone_is_not_this_tile(tmp_path: Path) -> None:
+def test_operator_sql_count_distinct_star_alone_is_a_partial_gap(tmp_path: Path) -> None:
     _, report = resolved(
         tmp_path,
         candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
@@ -424,7 +427,10 @@ def test_operator_sql_count_distinct_star_alone_is_not_this_tile(tmp_path: Path)
     )
     impact = impact_of(report, "field.description_changed")
     assert impact.charts == []
-    assert report.chart_gaps == []
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "it selects *" in report.chart_gaps[0].detail
 
 
 def test_operator_sql_star_in_an_unread_cte_is_not_a_partial_gap(tmp_path: Path) -> None:

@@ -272,14 +272,19 @@ finding, a column of a table already reported as ungoverned.
 ## Requirement: a partial field check says so
 
 The system SHALL report `asset.query_fields_unchecked` (severity advisory) whenever part of the
-reviewed query could not be graded at field level — a `*`, or a name neither the statement nor
-the model attributes — and SHALL state which part and why, so a partial check never reads as a
-clean one. The remainder is counted per *reference*, not per name: one reference the model
+reviewed query could not be graded at field level — a `*` that reads source columns, or a name
+neither the statement nor the model attributes — and SHALL state which part and why, so a
+partial check never reads as a clean one. The remainder is counted per *reference*, not per
+name: one reference the model
 resolves SHALL NOT cover another reference of the same name that nothing resolves. The reason
 SHALL distinguish a name several governed sources declare, a scope holding a source the
 snapshot cannot see into, a qualifier no enclosing scope declares, a scope with no source
 of its own, and a name that may have been read from the enclosing query — a wrong reason sends
 the reader after a fix the query does not need.
+
+`COUNT(*)` is not a column-reading star: it counts rows, so it does not make the field check
+partial. `COUNT(DISTINCT *)` remains a star because its distinct value depends on every source
+column where the engine accepts it.
 
 On ClickHouse, a `SETTINGS` item names a query setting and gives it a value; neither side is a
 table-column read, at any SELECT, UNION branch, subquery or CTE query level. A visible alias
@@ -304,6 +309,14 @@ columns and does not add a table-column read or a partial-field-check reason.
 - **WHEN** the gate grades the asset
 - **THEN** it carries `asset.query_fields_unchecked` naming `additional_table_filters`, not a
   review finding for `dm.sales_daily.additional_table_filters`
+
+### Scenario: a row count is not a star
+
+- **GIVEN** a snapshot declaring `region` on `dm.sales_daily`, and a reviewed query
+  `SELECT region, count(*) FROM dm.sales_daily GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** it carries no partial-field-check advisory: `COUNT(*)` counts rows rather than
+  source columns
 
 ### Scenario: the query selects a star
 

@@ -67,6 +67,7 @@ from auto_bi.agent.sql_guard import (
     _is_clickhouse_setting_column,
     clickhouse_in_table_fields,
     extract_column_refs,
+    star_reads_columns,
 )
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.ir.spec import ChartQuery, DashboardSpec, Measure, measure_alias
@@ -330,8 +331,8 @@ class _ChartResolver:
 
         # `unattributed` is the honest remainder. `ambiguous` is not consulted: chart
         # impact has no semantic model to settle a name with. `starred` is whether a
-        # star appears at all — COUNT(*) included — so a projection star is a narrower
-        # question, asked only when sql_guard reported one.
+        # column-reading star appears anywhere in the text, run or not, so a star in a
+        # part that runs is a narrower question, asked only when sql_guard reported one.
         projection_star = reads.starred and self._has_projection_star(sql)
         # Constructs that can hide a read are asked about unconditionally: none of them
         # leaves a star or an unattributed name behind, so the reads above would look
@@ -428,10 +429,11 @@ class _ChartResolver:
     def _has_projection_star(self, sql: str) -> bool:
         """A star that reads columns, in a part of the statement that runs.
 
-        COUNT(*) and COUNT(DISTINCT *) read no column — sqlglot wraps the latter as
-        Count(Distinct(Star)), so the star's parent is Distinct, not Count. Walking
-        through that wrapper (not `find_ancestor(Count)`) keeps a SELECT * inside a
-        counted subquery a hole. A star inside a named CTE the FROM never names, or
+        Only COUNT(*) reads no column. sqlglot wraps COUNT(DISTINCT *) as
+        Count(Distinct(Star)), so its star's parent is Distinct and it reads source
+        columns. Binding the exception to the direct Count parent (not
+        `find_ancestor(Count)`) keeps a SELECT * inside a counted subquery a hole. A
+        star inside a named CTE the FROM never names, or
         inside a scalar `WITH` whose alias no running part reads, is a query nobody
         ran; counting it would mark a fully attributed tile unread. Memoised so a
         model-wide edit does not re-walk the same tile per change.
@@ -1041,22 +1043,10 @@ def _open_cte_gates(root: exp.Expression) -> set[int]:
     return open_ids
 
 
-def _star_is_count_arg(star: exp.Star) -> bool:
-    """COUNT(*) / COUNT(DISTINCT *) read no column; any other star is a hole.
-
-    Bound to the immediate aggregate: `find_ancestor(Count)` would treat
-    `SELECT count(*) FROM (SELECT * FROM t)` as a count-star and hide the inner `*`.
-    """
-    parent = star.parent
-    if isinstance(parent, exp.Distinct):
-        parent = parent.parent
-    return isinstance(parent, exp.Count)
-
-
 def _projection_star_in_reachable(
     root: exp.Expression, *, open_ids: set[int] | None = None
 ) -> bool:
-    """True when a non-COUNT star sits in a part of the statement that runs.
+    """True when a column-reading star sits in a part of the statement that runs.
 
     This is `_runs_in_statement` applied to each star — the same predicate as the
     dictionary and Join-table path. `open_ids` is the set `_ChartResolver` shares
@@ -1067,7 +1057,7 @@ def _projection_star_in_reachable(
         if open_ids is None
         else _runs_in_statement(root, open_ids=open_ids)
     )
-    if any(not _star_is_count_arg(star) and in_run(star) for star in root.find_all(exp.Star)):
+    if any(star_reads_columns(star) and in_run(star) for star in root.find_all(exp.Star)):
         return True
     # ClickHouse `IN <table>` is `IN (SELECT * FROM <table>)`; sqlglot leaves no Star.
     return any(in_run(column) for column in clickhouse_in_table_fields(root))

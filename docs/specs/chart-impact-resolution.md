@@ -38,12 +38,14 @@ field the change touches, qualifying a bare column with the query's own base tab
 The system SHALL resolve the field reads of a tile carrying operator `raw_sql` from that SQL,
 attributing a column only where the statement itself leaves no choice, and SHALL report a
 chart gap naming the tile when its SQL cannot be parsed or when part of what it reads could not
-be attributed — so a tile resolved in part is not read as one resolved in whole. A star that
-reads no column (`COUNT(*)`, `COUNT(DISTINCT *)`) and a star written in a scope the statement
-never reads — `*` inside a named CTE the FROM never names, or inside ClickHouse's scalar
-`WITH` (the expression form `WITH <expr> AS alias` or the subquery form
-`WITH (SELECT …) AS alias`) whose alias no running part of the statement reads — are not
-unread parts. Either of those scopes read (FROM/JOIN names the CTE, or the alias is read
+be attributed — so a tile resolved in part is not read as one resolved in whole. This deliberately
+changed requirement follows SQL semantics: a star reads no column only as `COUNT(*)`, which
+counts rows; `COUNT(DISTINCT *)` is a star because its distinct value depends on every source
+column where it runs. A star written in a scope the statement never reads — `*` inside a named
+CTE the FROM never names, or inside ClickHouse's scalar `WITH` (the expression form
+`WITH <expr> AS alias` or the subquery form `WITH (SELECT …) AS alias`) whose alias no
+running part of the statement reads — is not an unread part either. Either of those scopes
+read (FROM/JOIN names the CTE, or the alias is read
 by a part of the statement that runs) makes the star an unread part. A star inside
 ClickHouse's scalar `WITH` follows its alias the same way a dictionary call does. A query
 nested inside the body of a scalar `WITH` is part of that `WITH`: it runs when the `WITH`
@@ -195,13 +197,14 @@ metrics' term columns.
 - **THEN** the change carries a chart impact for that tile with relation `reads_field` and
   the report carries no `chart.sql_partial` gap for it
 
-### Scenario: count-distinct-star beside an attributed read is not a hole
+### Scenario: count-distinct-star beside an attributed read is read in part
 
 - **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is
   `SELECT count(DISTINCT *), sum(revenue) FROM dm.sales_daily`
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field` and
-  the report carries no `chart.sql_partial` gap for it
+  the report carries a `chart.sql_partial` gap for it: the distinct value depends on every
+  source column
 
 ### Scenario: a star in a CTE the query does not read is not a hole
 

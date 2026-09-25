@@ -213,7 +213,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: `reads_field`, and `chart.sql_partial` findings go away. `additional_table_filters` moves
 #: from that phantom REVIEW to the advisory `asset.query_fields_unchecked` and a
 #: `chart.sql_partial`, because its row-filter SQL is not read. Both directions.
-VERIFIER_VERSION = "29"
+#: 30 — A direct COUNT(*) is a row count, not a column-reading star. Governance drops the
+#: advisory `asset.query_fields_unchecked` whose only reason was a COUNT(*) star; chart impact
+#: adds `chart.sql_partial` for a tile that counts DISTINCT *, where it resolved to "not this
+#: tile" or to its other reads alone.
+VERIFIER_VERSION = "30"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -280,7 +284,11 @@ VERIFIER_VERSION = "29"
 #: `asset.query_fields_unchecked`; `additional_table_filters` instead produces that advisory
 #: because its row-filter SQL is opaque. Chart `reads_field` / `chart.sql_partial` changes
 #: from the same phantom names are recorded by verifier 29. Both directions.
-CHECK_VERSION = "16"
+#: 17 — A direct COUNT(*) is a row count, not a column-reading star. Governance drops the
+#: advisory `asset.query_fields_unchecked` whose only reason was a COUNT(*) star; chart impact
+#: adds `chart.sql_partial` for a tile that counts DISTINCT *, where it resolved to "not this
+#: tile" or to its other reads alone.
+CHECK_VERSION = "17"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

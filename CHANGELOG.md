@@ -16,6 +16,15 @@
 
 ### Added
 
+- **`COUNT(*)` не читает колонки, а `COUNT(DISTINCT *)` читает все** (`CHECK_VERSION`
+  16 → 17, `VERIFIER_VERSION` 29 → 30). Прямой `COUNT(*)` считает строки, поэтому governance
+  снимает advisory `asset.query_fields_unchecked`, когда его единственной причиной была
+  звезда. `COUNT(DISTINCT *)` зависит от всех колонок источника там, где движок его принимает:
+  chart impact теперь оставляет `chart.sql_partial` для плитки, которая прежде была «не этой
+  плиткой» либо была названа только по другим чтениям. Реализовано `gpt-5.6-terra` xhigh
+  (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
+  моделированное ревью, не human evidence и не production/design-partner acceptance.
+
 - **ClickHouse `SETTINGS` не читается как колонка** (`CHECK_VERSION` 15 → 16,
   `VERIFIER_VERSION` 28 → 29). Имя и значение настройки больше не дают phantom review
   `asset.query_ungoverned_field`, advisory `asset.query_fields_unchecked`, chart
@@ -25,6 +34,7 @@
   `additional_result_filter` не добавляет чтение таблицы. Реализовано `gpt-5.6-terra` xhigh
   (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через
   MyFlow: моделированное ревью, не human evidence и не production/design-partner acceptance.
+  Итог ревью — один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
 
 - **Колонки из `HAVING` и `QUALIFY` читаются как из любой другой клаузы** (`CHECK_VERSION`
   14 → 15, `VERIFIER_VERSION` 27 → 28). `Scope.columns` sqlglot опускал голое `cost` как

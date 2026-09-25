@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=29`, `CHECK_VERSION=16`
+**Версии evidence:** `VERIFIER_VERSION=30`, `CHECK_VERSION=17`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -247,10 +247,12 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   rev` даёт `asset.query_ungoverned` на `rev` (F-T-14-1) — пере-сообщение, чтения не
   прячет. Голое имя в подзапросе, который может
   читать охватывающий запрос (scalar/IN/EXISTS), остаётся непроверенным, если его не
-  объявляет ни один локальный источник: проверка имя наружу не ведёт. `SELECT *`, имя,
-  объявленное несколькими источниками (в том числе на двух LATERAL-уровнях), scope с
-  неуправляемой витриной, читаемым CTE или подзапросом остаются непроверенными —
-  названными (`asset.query_fields_unchecked`), а не молча пропущенными.
+  объявляет ни один локальный источник: проверка имя наружу не ведёт. `SELECT *` и
+  `COUNT(DISTINCT *)` остаются непроверенными — distinct-значение зависит от всех колонок
+  источника; один `COUNT(*)` считает строки и колонок не читает. Имя, объявленное
+  несколькими источниками (в том числе на двух LATERAL-уровнях), scope с неуправляемой
+  витриной, читаемым CTE или подзапросом остаются непроверенными — названными
+  (`asset.query_fields_unchecked`), а не молча пропущенными.
 - На ClickHouse `SETTINGS` — настройка, не чтение поля: ни имя, ни значение не участвуют в
   governance или alias read-through на любом query level. `additional_table_filters` хранит
   непрочитанный SQL row filter и поэтому оставляет проверку частичной; `additional_result_filter`
@@ -466,7 +468,15 @@ phantom review оставляет advisory `asset.query_fields_unchecked` и `ch
 что его SQL row filter не прочитан; `additional_result_filter` чтения не добавляет. Реализовано
 `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью —
 `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human evidence и не
-production/design-partner acceptance.
+production/design-partner acceptance. Итог ревью — один проход `gpt-6-astra` xhigh через
+MyFlow (2026-09-25): 0 findings.
+
+Закрыта асимметрия чтения `*` (срез T-21, verifier 30, check 17): один `COUNT(*)` считает
+строки и больше не даёт advisory `asset.query_fields_unchecked`, а `COUNT(DISTINCT *)` зависит
+от всех колонок источника и оставляет операторскую плитку частично прочитанной
+(`chart.sql_partial`), а не «не этой плиткой». Реализовано `gpt-5.6-terra` xhigh (Codex
+companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
+моделированное ревью, не human evidence и не production/design-partner acceptance.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 

@@ -83,6 +83,14 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-25 — один `COUNT(*)` считает строки, а `COUNT(DISTINCT *)` зависит от всех
+  колонок источника. Governance снимает advisory `asset.query_fields_unchecked`, когда его
+  единственной причиной была звезда `COUNT(*)`; chart impact добавляет `chart.sql_partial` для
+  плитки с `COUNT(DISTINCT *)`, которая раньше была «не этой плиткой» либо была названа только
+  по другим чтениям. VERIFIER_VERSION 29 → 30, CHECK_VERSION 16 → 17. Реализовано
+  `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью —
+  `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human evidence и не
+  production/design-partner acceptance.
 - 2026-09-25 — ClickHouse `SETTINGS` не читает имя или значение настройки как поле на любом
   query level. Уходят phantom review `asset.query_ungoverned_field`, advisory
   `asset.query_fields_unchecked`, chart `reads_field` и `chart.sql_partial` на имени
@@ -91,7 +99,8 @@ GraceKelly (локальный сервис, должен быть запуще�
   читается. VERIFIER_VERSION 28 → 29, CHECK_VERSION 15 → 16. Реализовано
   `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью —
   `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human evidence и не
-  production/design-partner acceptance.
+  production/design-partner acceptance. Итог ревью — один проход `gpt-6-astra` xhigh через
+  MyFlow (2026-09-25): 0 findings.
 - 2026-09-25 — голые input-колонки `HAVING` и `QUALIFY` читаются как из любой другой
   клаузы: PostgreSQL не видит output alias в `HAVING`, а ClickHouse сначала применяет
   видимый alias/read-through; `PARTITION BY` и `ORDER BY` окна в `QUALIFY` тоже читаются.
