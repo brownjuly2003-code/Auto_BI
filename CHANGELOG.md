@@ -16,6 +16,16 @@
 
 ### Added
 
+- **ClickHouse `SETTINGS` не читается как колонка** (`CHECK_VERSION` 15 → 16,
+  `VERIFIER_VERSION` 28 → 29). Имя и значение настройки больше не дают phantom review
+  `asset.query_ungoverned_field`, advisory `asset.query_fields_unchecked`, chart
+  `reads_field` или `chart.sql_partial` на имени настройки. `additional_table_filters`
+  вместо phantom review теперь даёт advisory `asset.query_fields_unchecked` и
+  `chart.sql_partial`: это SQL-текст row filter, который reader не разбирает;
+  `additional_result_filter` не добавляет чтение таблицы. Реализовано `gpt-5.6-terra` xhigh
+  (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через
+  MyFlow: моделированное ревью, не human evidence и не production/design-partner acceptance.
+
 - **Колонки из `HAVING` и `QUALIFY` читаются как из любой другой клаузы** (`CHECK_VERSION`
   14 → 15, `VERIFIER_VERSION` 27 → 28). `Scope.columns` sqlglot опускал голое `cost` как
   возможный output alias, поэтому reviewed PostgreSQL `HAVING sum(cost) > 0` и ClickHouse
@@ -26,7 +36,10 @@
   `asset.query_fields_unchecked` (advisory) и chart `reads_field`; ни одна находка не
   снимается. Реализовано `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат
   `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human
-  evidence и не production/design-partner acceptance.
+  evidence и не production/design-partner acceptance. Итог ревью — один проход
+  `gpt-6-astra` xhigh через MyFlow (2026-09-25): одна находка (голое имя над единственным
+  подзапросом или CTE) отклонена воспроизведением — её запрос отвергают оба движка, а имя
+  читается так же, как в любой другой клаузе.
 
 - **Metric-гэп `chart.metric_unread` задаётся по каждому дашборду** (`VERIFIER_VERSION`
   25 → 26, `CHECK_VERSION` остаётся 13). Резолвер держит дашборды всех продуктов в scope

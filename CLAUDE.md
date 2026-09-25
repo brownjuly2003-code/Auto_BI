@@ -83,6 +83,15 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-25 — ClickHouse `SETTINGS` не читает имя или значение настройки как поле на любом
+  query level. Уходят phantom review `asset.query_ungoverned_field`, advisory
+  `asset.query_fields_unchecked`, chart `reads_field` и `chart.sql_partial` на имени
+  настройки; `additional_table_filters` вместо phantom review даёт advisory
+  `asset.query_fields_unchecked` и `chart.sql_partial`, потому что его row-filter SQL не
+  читается. VERIFIER_VERSION 28 → 29, CHECK_VERSION 15 → 16. Реализовано
+  `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью —
+  `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human evidence и не
+  production/design-partner acceptance.
 - 2026-09-25 — голые input-колонки `HAVING` и `QUALIFY` читаются как из любой другой
   клаузы: PostgreSQL не видит output alias в `HAVING`, а ClickHouse сначала применяет
   видимый alias/read-through; `PARTITION BY` и `ORDER BY` окна в `QUALIFY` тоже читаются.
@@ -90,7 +99,10 @@ GraceKelly (локальный сервис, должен быть запуще�
   `asset.query_ungoverned_field`, advisory `asset.query_fields_unchecked` и chart
   `reads_field`, ни одна находка не снимается. Реализовано `gpt-5.6-terra` xhigh (Codex
   companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
-  моделированное ревью, не human evidence и не production/design-partner acceptance.
+  моделированное ревью, не human evidence и не production/design-partner acceptance. Итог
+  ревью — один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): одна находка (голое
+  имя над единственным подзапросом или CTE) отклонена воспроизведением — её запрос
+  отвергают оба движка, а имя читается так же, как в любой другой клаузе.
 - 2026-09-22 — `chart.metric_unread` спрашивается по дашборду: гэп на плитке raw-SQL
   возникает, только когда продукт в scope, доставляющий именно этот точный pinned ref
   дашборда, декларирует одну из изменённых метрик — объединением деклараций всех

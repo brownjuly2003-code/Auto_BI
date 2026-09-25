@@ -63,6 +63,8 @@ from sqlglot import expressions as exp
 
 from auto_bi.agent.sql_guard import (
     ColumnReads,
+    _clickhouse_setting_items,
+    _is_clickhouse_setting_column,
     clickhouse_in_table_fields,
     extract_column_refs,
 )
@@ -362,7 +364,12 @@ class _ChartResolver:
             attributed.add(f"{table_id}.{column.name}")
 
         unread = bool(
-            projection_star or reads.unattributed or unreconciled or unnamed_source or hidden
+            projection_star
+            or reads.unattributed
+            or unreconciled
+            or unnamed_source
+            or hidden
+            or reads.opaque_settings
         )
         if unread:
             self._add_gap(
@@ -373,6 +380,7 @@ class _ChartResolver:
                     unattributed=reads.unattributed,
                     unreconciled=frozenset(unreconciled),
                     unnamed_source=unnamed_source,
+                    opaque_settings=_opaque_setting_clauses(reads.opaque_settings),
                     hidden=hidden,
                 ),
             )
@@ -640,6 +648,7 @@ def _sql_partial_detail(
     unattributed: frozenset[str],
     unreconciled: frozenset[str],
     unnamed_source: bool = False,
+    opaque_settings: tuple[str, ...] = (),
     hidden: tuple[str, ...] = (),
 ) -> str:
     """Which part of the operator SQL the statement itself did not decide."""
@@ -658,8 +667,17 @@ def _sql_partial_detail(
         # Empty `_table_ref` name: a table function, not a missing word. A subquery or CTE
         # source never reaches here — sql_guard attributes the inner query's reads itself.
         parts.append("a column is read from a table function the statement does not name")
+    parts.extend(opaque_settings)
     parts.extend(hidden)
     return "operator SQL was not fully resolved: " + "; ".join(parts)
+
+
+def _opaque_setting_clauses(settings: frozenset[str]) -> tuple[str, ...]:
+    """One unread row-filter clause for every setting the SQL reader leaves opaque."""
+    return tuple(
+        f"it sets {setting}, a row filter written as SQL text that this resolver does not read"
+        for setting in sorted(settings)
+    )
 
 
 def _hidden_read_clauses(root: exp.Expression) -> tuple[str, ...]:
@@ -968,6 +986,7 @@ def _open_cte_gates(root: exp.Expression) -> set[int]:
     if not named_by_alias and not scalar_by_alias:
         return set()
 
+    setting_items = frozenset(id(item) for item in _clickhouse_setting_items(root))
     refs: list[_CteRef] = []
     for table in root.find_all(exp.Table):
         if table.db or table.catalog or not table.name:
@@ -975,6 +994,8 @@ def _open_cte_gates(root: exp.Expression) -> set[int]:
         enclosing, ancestors = _enclosing_and_ancestors(table)
         refs.append(_CteRef(table.name.lower(), enclosing, ancestors, True))
     for column in root.find_all(exp.Column):
+        if _is_clickhouse_setting_column(column, setting_items):
+            continue
         alias = _column_leftmost_name(column)
         if not alias:
             continue

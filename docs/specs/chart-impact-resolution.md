@@ -76,6 +76,12 @@ alias there
 wins over a named CTE of the same name, so the table form stays silent where
 `IN (SELECT * FROM x)` would open the CTE (F-T-14-3); it needs one name declared twice,
 which ClickHouse most likely rejects.
+A ClickHouse `SETTINGS` item is not a table-column read. `additional_table_filters` is an
+opaque exception: it carries row-filter SQL the engine applies to a table, but the resolver
+does not parse the predicate text. A tile carrying that setting SHALL therefore have a
+`chart.sql_partial` gap with a clause naming `additional_table_filters`, rather than being
+resolved as "not this tile" for a changed field the predicate may read. `additional_result_filter`
+filters result columns and does not add such a gap.
 A ClickHouse dictionary call — any function whose name begins with `dict`, case-insensitive —
 SHALL either name the read it performs or leave the tile read in part. The resolver names a
 closed set of attribute readers: `dictGet`, `dictGetOrDefault`, `dictGetOrNull`, `dictGetAll`,
@@ -114,6 +120,14 @@ When the change carries typed metric terms and an in-scope product delivering th
 exact pinned dashboard ref declares one of them, the system SHALL name that tile with
 `chart.metric_unread` unless its SQL was read in whole and names none of the declared
 metrics' term columns.
+
+### Scenario: a ClickHouse row-filter setting leaves a tile read in part
+
+- **GIVEN** a change touching `dm.sales_daily.cost` and a tile whose `raw_sql` is
+  `SELECT region FROM dm.sales_daily SETTINGS additional_table_filters = {'dm.sales_daily': 'cost > 0'}`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries `chart.sql_partial` naming that tile and
+  `additional_table_filters`, rather than resolving it as not reading the changed field
 
 ### Scenario: an operator SQL tile reading a changed field
 

@@ -208,7 +208,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 28 — unqualified inputs in HAVING and QUALIFY are reads. The only direction is added
 #: evidence: a new REVIEW `asset.query_ungoverned_field`, a new advisory
 #: `asset.query_fields_unchecked`, and a new chart `reads_field`; no finding is removed.
-VERIFIER_VERSION = "28"
+#: 29 — ClickHouse SETTINGS names and values are no longer field reads. Their phantom REVIEW
+#: `asset.query_ungoverned_field`, advisory `asset.query_fields_unchecked`, chart
+#: `reads_field`, and `chart.sql_partial` findings go away. `additional_table_filters` moves
+#: from that phantom REVIEW to the advisory `asset.query_fields_unchecked` and a
+#: `chart.sql_partial`, because its row-filter SQL is not read. Both directions.
+VERIFIER_VERSION = "29"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -270,7 +275,12 @@ VERIFIER_VERSION = "28"
 #: 15 — unqualified inputs in HAVING and QUALIFY are reads. The only direction is added
 #: evidence: a new REVIEW `asset.query_ungoverned_field`, a new advisory
 #: `asset.query_fields_unchecked`, and a new chart `reads_field`; no finding is removed.
-CHECK_VERSION = "15"
+#: 16 — ClickHouse SETTINGS names and values are no longer fields of a reviewed query. This
+#: removes their phantom REVIEW `asset.query_ungoverned_field` and advisory
+#: `asset.query_fields_unchecked`; `additional_table_filters` instead produces that advisory
+#: because its row-filter SQL is opaque. Chart `reads_field` / `chart.sql_partial` changes
+#: from the same phantom names are recorded by verifier 29. Both directions.
+CHECK_VERSION = "16"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

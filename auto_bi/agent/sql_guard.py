@@ -239,6 +239,9 @@ class ColumnReads(NamedTuple):
     #: The same remainder with its scope kept, one entry per unattributed reference. Names
     #: alone are what `unattributed` reports; this is what a caller needs to narrow them.
     ambiguous: frozenset[AmbiguousRef] = frozenset()
+    #: ClickHouse SETTINGS that carry a row filter as SQL text. Its columns are not in the
+    #: statement tree, so the query is only partly read at field level.
+    opaque_settings: frozenset[str] = frozenset()
 
 
 def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
@@ -327,6 +330,9 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
         unattributed=frozenset(ref.name for ref in ambiguous),
         starred=root.find(exp.Star) is not None,
         ambiguous=frozenset(ambiguous),
+        opaque_settings=(
+            _clickhouse_opaque_settings(root) if dialect == "clickhouse" else frozenset()
+        ),
     )
 
 
@@ -352,6 +358,8 @@ class _ClickHouseAliasIndex(NamedTuple):
     owners: dict[int, tuple[_ClickHouseAlias, ...]]
     #: Bare fields on the right of `IN`, collected with the alias walk.
     in_fields: tuple[exp.Column, ...]
+    #: Direct SETTINGS-item expressions, whose Column nodes are query options rather than reads.
+    setting_items: frozenset[int]
     #: `Scope.columns` by expression identity. Read-through branches reuse the
     #: same nested Select expressions, so their columns do not need recollecting.
     scope_columns: dict[int, tuple[exp.Column, ...]]
@@ -391,6 +399,46 @@ class _ReadThroughState:
 
 
 _QUERY_BODY = (exp.Select, exp.Union, exp.Subquery)
+
+
+_CLICKHOUSE_OPAQUE_SETTINGS = frozenset({"additional_table_filters"})
+
+
+def _clickhouse_setting_items(root: exp.Expression) -> tuple[exp.Expression, ...]:
+    """Direct expressions of every SELECT/UNION branch's SETTINGS clause."""
+    return tuple(
+        item
+        for query in root.find_all(exp.Query)
+        for item in query.args.get("settings") or ()
+        if isinstance(item, exp.Expression)
+    )
+
+
+def _clickhouse_opaque_settings(root: exp.Expression) -> frozenset[str]:
+    """SETTINGS whose SQL-text value can add a table row filter outside this AST."""
+    names: set[str] = set()
+    for item in _clickhouse_setting_items(root):
+        name = item.this if isinstance(item, exp.EQ) else None
+        if (
+            isinstance(name, exp.Column)
+            and not name.table
+            and (name.name.casefold() in _CLICKHOUSE_OPAQUE_SETTINGS)
+        ):
+            names.add(name.name)
+    return frozenset(names)
+
+
+def _is_clickhouse_setting_column(column: exp.Column, setting_items: frozenset[int]) -> bool:
+    """Whether a Column belongs directly to SETTINGS rather than to an invalid nested query."""
+    current: exp.Expression = column
+    while current.parent is not None:
+        parent = current.parent
+        if isinstance(parent, _QUERY_BODY):
+            return False
+        if id(parent) in setting_items:
+            return True
+        current = parent
+    return False
 
 
 def _clickhouse_aliases(root: exp.Expression) -> _ClickHouseAliasIndex:
@@ -486,6 +534,7 @@ def _clickhouse_aliases(root: exp.Expression) -> _ClickHouseAliasIndex:
         local={sid: tuple(declared) for sid, declared in local_map.items() if declared},
         owners=owner_map,
         in_fields=tuple(in_fields),
+        setting_items=frozenset(id(item) for item in _clickhouse_setting_items(root)),
         scope_columns={},
         select_on_cycle={},
         held_scopes=[],
@@ -744,6 +793,8 @@ def _grade_columns(
             # those against *this* scope's sources would attribute it to a table it was
             # never written against. Each column is graded once, where it was written.
             if _owning_scope(column, owners) is not scope:
+                continue
+            if aliases is not None and _is_clickhouse_setting_column(column, aliases.setting_items):
                 continue
             if aliases is not None:
                 alias = _clickhouse_alias_ref(column, scope, aliases)

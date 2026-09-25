@@ -497,6 +497,10 @@ def _unchecked_reason(
             "it selects *, so which columns it reads depends on the physical table rather "
             "than on the SQL"
         )
+    for setting in sorted(reads.opaque_settings):
+        reasons.append(
+            f"it sets {setting}, a row filter written as SQL text that this check does not read"
+        )
     disputed = sorted({ref.name for ref in contested})
     if disputed:
         reasons.append(

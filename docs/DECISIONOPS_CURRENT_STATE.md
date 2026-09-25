@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=28`, `CHECK_VERSION=15`
+**Версии evidence:** `VERIFIER_VERSION=29`, `CHECK_VERSION=16`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -251,6 +251,10 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   объявленное несколькими источниками (в том числе на двух LATERAL-уровнях), scope с
   неуправляемой витриной, читаемым CTE или подзапросом остаются непроверенными —
   названными (`asset.query_fields_unchecked`), а не молча пропущенными.
+- На ClickHouse `SETTINGS` — настройка, не чтение поля: ни имя, ни значение не участвуют в
+  governance или alias read-through на любом query level. `additional_table_filters` хранит
+  непрочитанный SQL row filter и поэтому оставляет проверку частичной; `additional_result_filter`
+  не добавляет чтение колонки таблицы.
 - Источники, дошедшие с охватывающих LATERAL-уровней, — кандидаты рядом с ближайшими, а
   не упорядоченные по уровню, поэтому имя, которое объявляют несколько уровней, остаётся
   непроверенным вместо того, чтобы быть приписанным ближайшему: innermost-first изменил бы
@@ -448,7 +452,21 @@ MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh че�
 держит источник, внутрь которого snapshot не видит. Raw-SQL плитка получает `reads_field`.
 Направление одно: только добавляются чтения и находки. Реализовано `gpt-5.6-terra` xhigh
 (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
-моделированное ревью, не human evidence и не production/design-partner acceptance.
+моделированное ревью, не human evidence и не production/design-partner acceptance. Итог ревью
+— один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): одна находка (голое имя над
+единственным подзапросом или CTE) отклонена воспроизведением — её запрос отвергают оба
+движка, а имя читается так же, как в любой другой клаузе.
+
+Закрыто чтение ClickHouse `SETTINGS` как настроек, а не колонок (срез T-20, verifier 29,
+check 16): `max_threads`, `join_use_nulls` и значение-идентификатор вроде `random` больше не
+дают phantom field read на любом query level и не открывают видимый alias. Уходят ложные
+review `asset.query_ungoverned_field`, advisory `asset.query_fields_unchecked`, chart
+`reads_field` и `chart.sql_partial` на имени настройки. `additional_table_filters` вместо
+phantom review оставляет advisory `asset.query_fields_unchecked` и `chart.sql_partial`, потому
+что его SQL row filter не прочитан; `additional_result_filter` чтения не добавляет. Реализовано
+`gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью —
+`gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human evidence и не
+production/design-partner acceptance.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 

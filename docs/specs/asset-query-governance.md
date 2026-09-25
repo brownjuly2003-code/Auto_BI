@@ -281,6 +281,30 @@ snapshot cannot see into, a qualifier no enclosing scope declares, a scope with 
 of its own, and a name that may have been read from the enclosing query — a wrong reason sends
 the reader after a fix the query does not need.
 
+On ClickHouse, a `SETTINGS` item names a query setting and gives it a value; neither side is a
+table-column read, at any SELECT, UNION branch, subquery or CTE query level. A visible alias
+with the setting's name is not read through. `additional_table_filters` is the exception to a
+complete field check: its value holds row-filter SQL the engine applies to a table, and the
+reader does not parse that predicate. It SHALL therefore produce the advisory
+`asset.query_fields_unchecked` naming the setting. `additional_result_filter` filters result
+columns and does not add a table-column read or a partial-field-check reason.
+
+### Scenario: an ordinary ClickHouse setting is not a column read
+
+- **GIVEN** a snapshot declaring `region` and `revenue` on `dm.sales_daily`, and a reviewed
+  query `SELECT region, sum(revenue) FROM dm.sales_daily GROUP BY region SETTINGS max_threads = 8`
+- **WHEN** the gate grades the asset
+- **THEN** it carries no finding: `max_threads` is a setting, not
+  `dm.sales_daily.max_threads`
+
+### Scenario: a ClickHouse row-filter setting makes the field check partial
+
+- **GIVEN** a snapshot declaring `region` on `dm.sales_daily`, and a reviewed query
+  `SELECT region FROM dm.sales_daily SETTINGS additional_table_filters = {'dm.sales_daily': 'cost > 0'}`
+- **WHEN** the gate grades the asset
+- **THEN** it carries `asset.query_fields_unchecked` naming `additional_table_filters`, not a
+  review finding for `dm.sales_daily.additional_table_filters`
+
 ### Scenario: the query selects a star
 
 - **GIVEN** a reviewed query `SELECT * FROM dm.sales_daily`
