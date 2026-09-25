@@ -31,6 +31,22 @@
   изменением; `chart.metric_unknown` и `chart.formula_untyped` — уровнем изменения.
   Реализовано GLM 5.3 xhigh (изолированный профиль), ревью — synthetic Astra xhigh
   read-only по ворк-ордеру: моделированное ревью, не human evidence и не
+  production/design-partner acceptance. Финальный post-implementation review — один проход
+  `gpt-6-astra` xhigh через MyFlow (2026-09-24), 0 findings.
+
+- **ClickHouse inline- и ARRAY JOIN-алиасы больше не читаются как поля таблицы**
+  (`CHECK_VERSION` 13 → 14, `VERIFIER_VERSION` 26 → 27). Псевдополя вроде
+  `dm.sales_daily.a`, `dm.sales_daily.y` и `dm.sales_daily.r` исчезают из governance и
+  chart impact: alias виден во всём своём query level, но не в подзапросе; его определение
+  грейдится на месте. Верхнеуровневый SELECT-алиас сохраняет приоритет, а без него берётся
+  первое inline/ARRAY JOIN-объявление имени. `ARRAY JOIN tags AS a` по-прежнему читает
+  `tags`, `ARRAY JOIN tags` и `ARRAY JOIN tags AS tags` не меняются; alias справа от `IN`
+  не становится таблицей. Направления оба: уходят ложные `asset.query_ungoverned_field`
+  и phantom `reads_field` на алиасе, но inline-определение в HAVING или QUALIFY, которое
+  прежняя атрибуция пропускала, теперь грейдится на месте и может назвать реальное поле
+  (например, `internal_cost_raw` в `(internal_cost_raw AS y)`). Реализовано
+  `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью —
+  `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human evidence и не
   production/design-partner acceptance.
 
 - **`x IN <table>` читается как таблица, которую оно называет** (`CHECK_VERSION` 12 → 13,

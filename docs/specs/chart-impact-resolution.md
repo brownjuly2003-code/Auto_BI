@@ -71,7 +71,8 @@ matching the subquery form. A visible alias written there stays an alias:
 `WHERE region IN allowed` with `WITH ['north', 'south'] AS allowed` does not
 attribute `allowed` to the tile's table and does not open a named CTE. A bare name
 on the right of `IN` that is not a visible alias opens a named CTE of that name
-exactly as an unqualified `FROM` would. A visible scalar WITH or SELECT alias there
+exactly as an unqualified `FROM` would. A visible scalar WITH, SELECT, inline or ARRAY JOIN
+alias there
 wins over a named CTE of the same name, so the table form stays silent where
 `IN (SELECT * FROM x)` would open the CTE (F-T-14-3); it needs one name declared twice,
 which ClickHouse most likely rejects.

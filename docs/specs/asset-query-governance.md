@@ -287,15 +287,20 @@ the reader after a fix the query does not need.
 
 On ClickHouse the system SHALL NOT treat a bare name that is an alias visible at the place
 it is written as a column read — neither attributed nor unattributed — except inside that
-alias's own defining expression, where the name is the column. Inside the definition of
-SELECT-list alias X, a WITH expression read through from it included, X is the column.
+alias's own defining expression, where the name is the column. Inside the definition of a
+query-level alias X, a WITH expression read through from it included, X is the column.
 Identifiers are compared as written (case-sensitive). A visible alias wins over a table
 column of the same name.
 
-A SELECT-list alias SHALL be visible in the query level that defines it — other SELECT
-expressions, WHERE, PREWHERE, GROUP BY, HAVING, ORDER BY, LIMIT BY — and SHALL NOT be
-visible in a subquery. A `WITH <expr> AS alias` (and `WITH (SELECT …) AS alias`) SHALL be
-visible in the query that declares it and in every subquery and UNION branch below it.
+A SELECT-list alias, an inline `<expr> AS name` written anywhere else in its Select level,
+and `[LEFT] ARRAY JOIN <expr> AS name` SHALL be visible in the query level that defines it —
+including other SELECT expressions, WHERE, PREWHERE, GROUP BY, HAVING, QUALIFY, ORDER BY,
+LIMIT BY and JOIN conditions — and SHALL NOT be visible in a subquery. The inline form may be
+nested inside a SELECT-list expression. A top-level SELECT-list declaration wins when it has
+the same name as an inline or ARRAY JOIN declaration; otherwise the first inline or ARRAY JOIN
+declaration sqlglot yields wins. Every definition is still graded where it is written. A
+`WITH <expr> AS alias` (and `WITH (SELECT …) AS alias`) SHALL be visible in the query that
+declares it and in every subquery and UNION branch below it.
 
 When a scope references an expression-form `WITH <expr> AS a` — directly, or through
 another alias whose definition references it — the system SHALL grade every column written
@@ -303,9 +308,9 @@ in `<expr>` as if written in that referencing scope, under the same `_column_sou
 `_ambiguous_ref` rules. A query nested in `<expr>` SHALL be graded as the same subquery
 written at the reference: its own FROM, with bare names enclosed toward the referencing
 scope. Referenced from two levels, the columns are graded at each. An alias nothing
-references reads nothing. A SELECT-list alias needs no read-through: its definition is
-already graded where it is written. A SELECT-list alias that can reach itself through
-SELECT-list or WITH definitions is a column wherever it is referenced, a WITH body in the
+references reads nothing. A query-level alias needs no read-through: its definition is
+already graded where it is written. A query-level alias that can reach itself through
+query-level or WITH definitions is a column wherever it is referenced, a WITH body in the
 read-through included. A WITH reference that closes a cycle on the read-through path
 in that referencing scope is a column there, and the definitions on the way are still
 read. A cycle is keyed by declaration and referencing scope, so a cycle that exists
@@ -317,12 +322,13 @@ is not memoised: a later shallower reference expands it again. A `WITH (SELECT �
 keeps its own scope and FROM; only the reference `a` is the alias.
 
 The PostgreSQL family is unchanged: there a WITH defines CTEs only and WHERE cannot read a
-SELECT alias, so a bare name is a column. An alias written on the right-hand side of
-`IN` is an alias.
+SELECT alias, so a bare name is a column. A visible ClickHouse query-level alias written on
+the right-hand side of `IN` is an alias.
 
-This rule does not cover an alias defined outside the SELECT list (`WHERE (x AS y) > 1`)
-or an ARRAY JOIN alias. A lambda parameter is not a column, even when named like a visible
-alias. A name declared both as a WITH alias and as a SELECT alias at one query level is
+An ARRAY JOIN without `AS name` keeps its array expression as a column, and
+`ARRAY JOIN tags AS tags` reads the defining `tags` as that column. A lambda parameter is not
+a column, even when named like a visible alias. A name declared both as a WITH alias and as a
+SELECT alias at one query level is
 read as a column: `WITH revenue AS X, X * 2 AS w SELECT w AS X FROM dm.sales_daily`
 carries `asset.query_ungoverned_field` naming `dm.sales_daily.X`. That is the
 false-reject direction — it names a column nobody has and hides no read — on a statement
@@ -357,6 +363,23 @@ ClickHouse most likely rejects; the risk is accepted (F-T-13-17).
   query `SELECT region AS r, sum(revenue) FROM dm.sales_daily WHERE r != '' GROUP BY r`
 - **WHEN** the gate grades the asset
 - **THEN** there is no finding — `r` is the SELECT alias; `region` is the column that was read
+
+### Scenario: an inline alias in WHERE is not a column of the mart
+
+- **GIVEN** a snapshot declaring `region` and `revenue` on `dm.sales_daily`, and a reviewed
+  query `SELECT region, sum(revenue) FROM dm.sales_daily WHERE (revenue AS y) > 1 AND y < 10
+  GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding — `y` is the inline alias; `revenue` is graded where its alias
+  is defined
+
+### Scenario: an ARRAY JOIN alias is not a column of the mart
+
+- **GIVEN** a snapshot declaring `revenue` but not `tags` or `a` on `dm.sales_daily`, and a
+  reviewed query `SELECT a, sum(revenue) FROM dm.sales_daily ARRAY JOIN tags AS a GROUP BY a`
+- **WHEN** the gate grades the asset
+- **THEN** the finding names `dm.sales_daily.tags`, and does not name `dm.sales_daily.a` — the
+  array source is still a read, while `a` is the unfolded-element alias
 
 ### Scenario: a referenced expression WITH is read through to the undeclared column
 
@@ -485,8 +508,8 @@ FROM would be. Literal lists (`IN (1, 2)`, `IN ('a')`, `IN tuple(...)`) and subq
 forms SHALL be unchanged. The PostgreSQL family SHALL be unchanged. The function form
 `in(x, t)` does not parse in sqlglot 30.14.0 and SHALL remain a parse error.
 
-Two known departures from the subquery form stay open. A visible scalar WITH or SELECT
-alias on the right of `IN` wins over a named CTE of the same name, so
+Two known departures from the subquery form stay open. A visible scalar WITH, SELECT, inline
+or ARRAY JOIN alias on the right of `IN` wins over a named CTE of the same name, so
 `WITH x AS (SELECT region FROM dm.sales_daily), ('a') AS x … WHERE region IN x` stays
 silent where `WHERE region IN (SELECT * FROM x)` opens the CTE and names the star
 (F-T-14-3); it needs one name declared twice, which ClickHouse most likely rejects. A
@@ -522,6 +545,13 @@ nobody has and never hides a read.
   `SELECT region AS r FROM dm.sales_daily WHERE region IN r`
 - **WHEN** the gate grades the asset
 - **THEN** there is no finding — `r` is the SELECT alias, not table `r`
+
+### Scenario: an ARRAY JOIN alias on the right of IN stays an alias
+
+- **GIVEN** a snapshot declaring `region` on `dm.sales_daily`, and a reviewed query
+  `SELECT region FROM dm.sales_daily ARRAY JOIN tags AS a WHERE region IN a`
+- **WHEN** the gate grades the asset
+- **THEN** no table `a` or field `dm.sales_daily.a` is named; `a` is the ARRAY JOIN alias
 
 ### Scenario: a CTE named on the right of IN is the CTE
 

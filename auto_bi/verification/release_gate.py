@@ -199,7 +199,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: none of those metrics no longer carries one. Field reads, the IR
 #: `computes_metric` term match and the tile-level gaps keep the whole change.
 #: Evidence only: CHECK_VERSION does not move.
-VERIFIER_VERSION = "26"
+#: 27 — ClickHouse inline and ARRAY JOIN aliases are query-level aliases, so the same
+#: operator SQL can lose a phantom `reads_field` on the alias. An inline definition in
+#: HAVING or QUALIFY that earlier attribution skipped is now graded where written, so it
+#: can name a real read (for example `internal_cost_raw` in `(internal_cost_raw AS y)`).
+#: ARRAY JOIN still reads its source array. Both directions, so a verifier 26 report does
+#: not answer today's chart-read question.
+VERIFIER_VERSION = "27"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -251,7 +257,14 @@ VERIFIER_VERSION = "26"
 #: an ungoverned table on the right of IN that rule 12 raised as an advisory or
 #: nothing now carries REVIEW `asset.query_ungoverned`. Both directions, so a
 #: `pass` written under rule 12 does not answer today's question.
-CHECK_VERSION = "13"
+#: 14 — `assets.invalidated` no longer treats a visible ClickHouse inline or ARRAY JOIN
+#: alias as a field of the table in scope. It removes false
+#: `asset.query_ungoverned_field` findings for phantom alias fields, but an inline
+#: definition in HAVING or QUALIFY that earlier attribution skipped is now graded where
+#: written and can name a real field (for example `internal_cost_raw` in
+#: `(internal_cost_raw AS y)`). ARRAY JOIN still reads its source array. Both directions,
+#: so a `pass` written under rule 13 does not answer today's question.
+CHECK_VERSION = "14"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

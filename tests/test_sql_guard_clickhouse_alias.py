@@ -279,11 +279,10 @@ def test_a_lambda_parameter_is_not_an_alias_or_a_column() -> None:
     assert unattributed(shadowed) == []
 
 
-def test_an_array_join_alias_is_still_attributed() -> None:
-    """Out of scope: ARRAY JOIN `tags AS a` still attributes `dm.sales_daily.a`."""
+def test_an_array_join_alias_is_not_attributed() -> None:
+    """ARRAY JOIN `tags AS a` reads the array, not a phantom `dm.sales_daily.a`."""
     sql = "SELECT a, sum(revenue) FROM dm.sales_daily ARRAY JOIN tags AS a GROUP BY a"
     assert attributed(sql) == [
-        "dm.sales_daily.a",
         "dm.sales_daily.revenue",
         "dm.sales_daily.tags",
     ]

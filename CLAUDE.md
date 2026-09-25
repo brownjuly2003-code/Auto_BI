@@ -95,6 +95,18 @@ GraceKelly (локальный сервис, должен быть запуще�
   limit); ревью — synthetic Astra xhigh read-only по ворк-ордеру, направившее правку
   (восстановлен `reaches_product` на `_match_raw`, фильтрация `computed` — в
   `charts_for`): моделированное ревью, не human evidence и не production/design-partner
+  acceptance. Финальный post-implementation review — один проход `gpt-6-astra` xhigh через
+  MyFlow (2026-09-24), 0 findings.
+- 2026-09-24 — ClickHouse inline- и ARRAY JOIN-алиасы читаются как алиасы, не как поля
+  таблицы: `ARRAY JOIN tags AS a` читает `tags`, но не phantom `dm.sales_daily.a`; inline
+  alias виден на своём query level, включая ссылку до текстового объявления, и не виден в
+  подзапросе. Верхнеуровневый SELECT-алиас сохраняет приоритет, а alias справа от `IN` не
+  становится таблицей. VERIFIER_VERSION 26 → 27, CHECK_VERSION 13 → 14: направления оба —
+  уходят ложные findings на именах алиасов, но inline-определение в HAVING или QUALIFY,
+  которое прежняя атрибуция пропускала, теперь грейдится на месте и может назвать реальное
+  поле (`internal_cost_raw` в `(internal_cost_raw AS y)`). Реализовано `gpt-5.6-terra`
+  xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh
+  через MyFlow: моделированное ревью, не human evidence и не production/design-partner
   acceptance.
 - 2026-09-18 — на ClickHouse `x IN <table>` читается ровно как `x IN (SELECT * FROM
   <table>)` — в governance-проверке и в достижимости chart impact: ложной находки поля для

@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-22
+**Обновлено:** 2026-09-24
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=26`, `CHECK_VERSION=13`
+**Версии evidence:** `VERIFIER_VERSION=27`, `CHECK_VERSION=14`
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -137,9 +137,9 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
 | Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; ClickHouse-алиас больше не `chart.sql_partial` «not attributed to a table», а чтение через expression-form WITH даёт `reads_field` (verifier 24); `IN <table>` читается как звезда над этой таблицей и открывает именованную CTE (verifier 25); 2026-09-22 `chart.metric_unread` решается по каждому дашборду — объединением метрик продуктов в scope, доставляющих этот точный pinned ref (verifier 26); tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
+| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; ClickHouse-алиас больше не `chart.sql_partial` «not attributed to a table», а чтение через expression-form WITH даёт `reads_field` (verifier 24); `IN <table>` читается как звезда над этой таблицей и открывает именованную CTE (verifier 25); 2026-09-22 `chart.metric_unread` решается по каждому дашборду — объединением метрик продуктов в scope, доставляющих этот точный pinned ref (verifier 26); 2026-09-24 inline- и ARRAY JOIN-алиасы не дают phantom `reads_field`, но ARRAY source остаётся чтением (verifier 27); tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
-| Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE; 2026-09-18 ClickHouse-алиас читается насквозь, а не как колонка (`CHECK_VERSION` 11 → 12); `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной находки поля `IN rev` больше нет, неуправляемая таблица справа от `IN` — review `asset.query_ungoverned` (`CHECK_VERSION` 12 → 13) |
+| Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE; 2026-09-18 ClickHouse-алиас читается насквозь, а не как колонка (`CHECK_VERSION` 11 → 12); `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной находки поля `IN rev` больше нет, неуправляемая таблица справа от `IN` — review `asset.query_ungoverned` (`CHECK_VERSION` 12 → 13); 2026-09-24 inline- и ARRAY JOIN-алиасы не именуются как поля, но их определения и source array грейдятся (`CHECK_VERSION` 13 → 14) |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
 | Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; pilot-only signer создан вне checkout на Mac, production trust root не назначен |
 | Continuous platform | заблокирована до human/design-partner evidence |
@@ -229,18 +229,17 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   `WITH` виден в объявившем запросе и ниже; ссылка на `WITH <expr> AS a` читает
   колонки из `<expr>` в referencing scope, а запрос, вложенный в `<expr>`, — как
   тот же подзапрос на месте ссылки (свой FROM, голые имена enclosed); внутри
-  определения SELECT-алиаса X, WITH-выражение, прочитанное насквозь из него,
-  включено, X — колонка; SELECT-алиас на цикле через SELECT- или WITH-определения —
+  определения query-level алиаса X, WITH-выражение, прочитанное насквозь из него,
+  включено, X — колонка; query-level алиас на цикле через query-level или WITH-определения —
   колонка где бы на него ни сослались; WITH-ссылка, замыкающая цикл на пути
   раскрытия, — колонка, определения по пути всё равно читаются; обрезанное
   раскрытие не мемоизируется. На ClickHouse `x IN <table>` читается как
-  `x IN (SELECT * FROM <table>)`. PostgreSQL-семейство без изменений.
-  Остаток, который этот слайс не закрывает: алиас вне SELECT-списка
-  (`WHERE (x AS y) > 1`), ARRAY JOIN-алиас (`ARRAY JOIN tags AS a` по-прежнему
-  приписывает `dm.sales_daily.a`). Имя, объявленное и WITH-, и SELECT-алиасом на одном
+  `x IN (SELECT * FROM <table>)`. PostgreSQL-семейство без изменений. Inline-алиас в
+  любой клаузе своего уровня и ARRAY JOIN-алиас видны на этом уровне, их определения
+  грейдятся на месте, а в подзапрос они не видны. Имя, объявленное и WITH-, и SELECT-алиасом на одном
   уровне, читается как колонка: `WITH revenue AS X, X * 2 AS w SELECT w AS X FROM
   dm.sales_daily` даёт `asset.query_ungoverned_field` на `dm.sales_daily.X` (F-T-13-17,
-  риск принят). Видимый scalar WITH- или SELECT-алиас справа от `IN` выигрывает у
+  риск принят). Видимый scalar WITH-, SELECT-, inline- или ARRAY JOIN-алиас справа от `IN` выигрывает у
   одноимённой CTE, и табличная форма молчит там, где подзапросная открыла бы CTE
   (F-T-14-3). Оба случая требуют одного имени, объявленного дважды, — ClickHouse такой
   statement, скорее всего, отвергает. FROM-алиас справа от `IN` читается как таблица
@@ -252,6 +251,11 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   объявленное несколькими источниками (в том числе на двух LATERAL-уровнях), scope с
   неуправляемой витриной, читаемым CTE или подзапросом остаются непроверенными —
   названными (`asset.query_fields_unchecked`), а не молча пропущенными.
+- Предсуществующий остаток атрибуции: фильтр `sqlglot Scope.columns` на обоих диалектах
+  пропускает неквалифицированную колонку в `HAVING` или `QUALIFY`, если она не находится
+  внутри inline-определения. Поэтому `SELECT region FROM dm.sales_daily GROUP BY region
+  HAVING sum(cost) > 0` читает только `region` и не называет `cost`; этот срез его не
+  исправляет.
 - Источники, дошедшие с охватывающих LATERAL-уровней, — кандидаты рядом с ближайшими, а
   не упорядоченные по уровню, поэтому имя, которое объявляют несколько уровней, остаётся
   непроверенным вместо того, чтобы быть приписанным ближайшему: innermost-first изменил бы
@@ -423,7 +427,20 @@ IR-совпадение `computes_metric` и структурные гэпы (`c
 (изолированный профиль, попытка продолжена после rate limit); ревью — synthetic Astra
 xhigh read-only, записанное оркестратором в ворк-ордере и направившее правку (восстановлен
 `reaches_product` на `_match_raw`, фильтрация `computed` перенесена в `charts_for`):
-моделированное ревью, не human evidence и не production/design-partner acceptance.
+моделированное ревью, не human evidence и не production/design-partner acceptance. Финальный
+post-implementation review — один проход `gpt-6-astra` xhigh через MyFlow (2026-09-24),
+0 findings.
+
+Закрыт остаток ClickHouse inline- и ARRAY JOIN-алиасов: alias виден на всём своём query
+level, но не в подзапросе, верхнеуровневый SELECT-алиас сохраняет приоритет, а ARRAY source
+остаётся чтением (срез T-18, verifier 27, check 14). Поэтому `ARRAY JOIN tags AS a` больше
+не даёт phantom `dm.sales_daily.a`, однако по-прежнему называет `dm.sales_daily.tags`; тот
+же видимый alias справа от `IN` не открывает одноимённую CTE. Направления оба: снимаются
+ложные поля алиасов, но inline-определение в HAVING или QUALIFY, которое прежняя атрибуция
+пропускала, теперь грейдится на месте и может назвать реальное поле (`internal_cost_raw` в
+`(internal_cost_raw AS y)`). Реализовано `gpt-5.6-terra` xhigh (Codex companion,
+MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow: моделированное
+ревью, не human evidence и не production/design-partner acceptance.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 

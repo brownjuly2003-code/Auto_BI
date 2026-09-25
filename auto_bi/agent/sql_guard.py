@@ -278,10 +278,11 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     On ClickHouse a bare name that is an alias visible at the place it is written is not a
     column read — neither attributed nor unattributed — except inside that alias's own
     defining expression, where the name is the column (`sum(revenue) AS revenue`). Inside
-    the definition of SELECT-list alias X, a WITH expression read through from it included,
-    X is the column. A SELECT-list alias is visible in the query level that defines it
-    (other SELECT expressions, WHERE, PREWHERE, GROUP BY, HAVING, ORDER BY, LIMIT BY) and
-    not in a subquery. A `WITH <expr> AS alias` (and `WITH (SELECT …) AS alias`) is visible
+    the definition of a query-level alias X, a WITH expression read through from it included,
+    X is the column. A SELECT-list, inline, or ARRAY JOIN alias is visible in the query level
+    that defines it (including other SELECT expressions, WHERE, PREWHERE, GROUP BY, HAVING,
+    QUALIFY, ORDER BY, LIMIT BY, and JOIN conditions) and not in a subquery. A
+    `WITH <expr> AS alias` (and `WITH (SELECT …) AS alias`) is visible
     in the query that declares it and in every subquery and UNION branch below it. A visible
     alias wins over a table column of the same name; identifiers are compared as written.
     When a scope references an expression-form `WITH <expr> AS a` — directly, or through
@@ -291,7 +292,7 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     toward the referencing scope. sqlglot 30.14.0 builds no scope for those bodies
     (`scope.py:708` "Cannot traverse scope"), so the read-through builds one with
     `Scope.branch` and `_traverse_scope` — the same helpers `_traverse_subqueries` uses for
-    an inline subquery. A SELECT-list alias that can reach itself through SELECT-list or
+    an inline subquery. A query-level alias that can reach itself through query-level or
     WITH definitions is a column wherever it is referenced, a WITH body in the read-through
     included. A WITH reference that closes a cycle on the read-through path is a column, and
     the definitions on the way are still read. Read-through of a WITH alias is bounded by a
@@ -310,14 +311,14 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     column, and `IN <name>` stays the column sqlglot parsed.
     """
     root = _parse_one_select(sql, dialect=dialect)
+    aliases = _clickhouse_aliases(root) if dialect == "clickhouse" else None
     if dialect == "clickhouse":
-        _rewrite_clickhouse_in_tables(root)
+        _rewrite_clickhouse_in_tables(root, aliases)
     root_scope = build_scope(root)
     if root_scope is None:  # pragma: no mutate block - Select/Union always defines a scope
         raise SQLGuardError("SELECT does not define a query scope")
     scopes = list(root_scope.traverse())
     owners = {id(scope.expression): scope for scope in scopes}
-    aliases = _clickhouse_aliases(root) if dialect == "clickhouse" else None
     attributed: set[ColumnRef] = set()
     ambiguous: set[AmbiguousRef] = set()
     _grade_columns(scopes, owners, aliases, attributed, ambiguous, _ReadThroughState())
@@ -330,7 +331,7 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
 
 
 class _ClickHouseAlias(NamedTuple):
-    """One ClickHouse SELECT-list or scalar WITH alias, as written."""
+    """One ClickHouse query-level or scalar WITH alias, as written."""
 
     name: str
     definition: exp.Expression
@@ -345,14 +346,23 @@ class _ClickHouseAliasIndex(NamedTuple):
 
     select: dict[int, dict[str, _ClickHouseAlias]]
     with_: dict[int, dict[str, _ClickHouseAlias]]
-    #: SELECT-list aliases whose SCC has more than one member, filled lazily
+    #: Non-projection declarations whose loose reads Scope.columns may omit.
+    local: dict[int, tuple[_ClickHouseAlias, ...]]
+    #: Enclosing local declarations for nodes in an alias definition.
+    owners: dict[int, tuple[_ClickHouseAlias, ...]]
+    #: Bare fields on the right of `IN`, collected with the alias walk.
+    in_fields: tuple[exp.Column, ...]
+    #: `Scope.columns` by expression identity. Read-through branches reuse the
+    #: same nested Select expressions, so their columns do not need recollecting.
+    scope_columns: dict[int, tuple[exp.Column, ...]]
+    #: Query-level aliases whose SCC has more than one member, filled lazily
     #: per `id(scope)` — a branch scope's WITH visibility depends on its parent.
     select_on_cycle: dict[int, frozenset[str]]
     #: Scope objects held so `select_on_cycle` / `with_reaches` keys stay unique.
     held_scopes: list[Scope]
-    #: SELECT-list alias names each expression-form WITH reaches at a scope,
-    #: keyed by `(id(definition), id(scope))`.
-    with_reaches: dict[tuple[int, int], frozenset[str]]
+    #: Query-level alias names each expression-form WITH reaches at a scope,
+    #: keyed by `(id(definition), id(scope), enclosing definition identities)`.
+    with_reaches: dict[tuple[int, int, int | tuple[int, ...]], frozenset[str]]
 
 
 class _ReadThroughState:
@@ -361,7 +371,7 @@ class _ReadThroughState:
     `path` is the aliases being expanded right now, across scopes, keyed by
     declaration identity (`id(definition)`), never by name — an inner WITH
     alias that shadows an outer name is a different declaration. `done` holds
-    the `(alias, scope, owner)` triples already expanded in full; the Scope
+    the `(alias, scope, owners)` triples already expanded in full; the Scope
     objects themselves are kept as values so a branch scope from
     `_grade_nested_query` cannot be garbage-collected and reuse an `id()` that
     would hide a later read. `cyclic` is keyed by `(id(definition), id(scope))`
@@ -375,7 +385,7 @@ class _ReadThroughState:
     def __init__(self) -> None:
         self.path: list[_ClickHouseAlias] = []
         self.on_path: set[int] = set()
-        self.done: dict[tuple[int, int, int], Scope] = {}
+        self.done: dict[tuple[int, int, int | tuple[int, ...]], Scope] = {}
         self.cyclic: dict[tuple[int, int], Scope] = {}
         self.expansions = 0
 
@@ -384,24 +394,66 @@ _QUERY_BODY = (exp.Select, exp.Union, exp.Subquery)
 
 
 def _clickhouse_aliases(root: exp.Expression) -> _ClickHouseAliasIndex:
-    """SELECT-list and scalar WITH aliases declared on each query node."""
+    """Query-level and scalar WITH aliases declared on each query node."""
     select_map: dict[int, dict[str, _ClickHouseAlias]] = {}
     with_map: dict[int, dict[str, _ClickHouseAlias]] = {}
-    seen: set[int] = set()
-    nodes: list[exp.Expression] = []
-    if isinstance(root, exp.Query):
-        nodes.append(root)
-        seen.add(id(root))
-    for node in root.find_all(exp.Query):
-        nid = id(node)
-        if nid in seen:
-            continue
-        seen.add(nid)
-        nodes.append(node)
-    for node in nodes:
-        nid = id(node)
-        select_aliases: dict[str, _ClickHouseAlias] = {}
+    local_map: dict[int, list[_ClickHouseAlias]] = {}
+    owner_map: dict[int, tuple[_ClickHouseAlias, ...]] = {}
+    in_fields: list[exp.Column] = []
+    projected_ids: dict[int, set[int]] = {}
+    contexts: dict[int, tuple[exp.Select | None, tuple[_ClickHouseAlias, ...]]] = {}
+
+    # `find_all(exp.Alias)` from every Select revisits nested query levels, which
+    # makes a deeply nested statement quadratic. A single breadth-first walk both
+    # preserves sqlglot's declaration order and assigns every physical alias to
+    # the nearest Select without climbing its ancestors again.
+    for node in root.walk(bfs=True):
+        parent = node.parent
+        context, node_owners = (
+            contexts.get(id(parent), (None, ())) if parent is not None else (None, ())
+        )
         if isinstance(node, exp.Select):
+            context, node_owners = node, ()
+        elif isinstance(node, exp.CTE):
+            context, node_owners = None, ()
+        elif isinstance(node, (exp.Subquery, exp.Union)):
+            context = None
+
+        if isinstance(node, exp.In):
+            field = node.args.get("field")
+            if isinstance(field, exp.Column):
+                in_fields.append(field)
+
+        if not isinstance(node, exp.Query):
+            if not isinstance(node, exp.Alias) or context is None:
+                if node_owners and isinstance(node, exp.Column):
+                    owner_map[id(node)] = node_owners
+                contexts[id(node)] = (context, node_owners)
+                continue
+            sid = id(context)
+            name = node.alias
+            if not name:
+                if node_owners and isinstance(node, exp.Column):
+                    owner_map[id(node)] = node_owners
+                contexts[id(node)] = (context, node_owners)
+                continue
+            declared = _ClickHouseAlias(name=name, definition=node.this, read_through=False)
+            if id(node) not in projected_ids[sid]:
+                local_map[sid].append(declared)
+                # A top-level SELECT alias wins. The first remaining declaration is what
+                # sqlglot yields, matching ClickHouse's rejection of conflicting aliases.
+                select_map[sid].setdefault(name, declared)
+            node_owners = (*node_owners, declared)
+            owner_map[id(node.this)] = node_owners
+            contexts[id(node)] = (context, node_owners)
+            continue
+
+        nid = id(node)
+        if isinstance(node, exp.Select):
+            select_aliases: dict[str, _ClickHouseAlias] = {}
+            select_map[nid] = select_aliases
+            local_map[nid] = []
+            projected_ids[nid] = {id(projected) for projected in node.expressions}
             for projected in node.expressions:
                 if not isinstance(projected, exp.Alias):
                     continue
@@ -411,7 +463,6 @@ def _clickhouse_aliases(root: exp.Expression) -> _ClickHouseAliasIndex:
                 select_aliases[name] = _ClickHouseAlias(
                     name=name, definition=projected.this, read_through=False
                 )
-        select_map[nid] = select_aliases
         with_aliases: dict[str, _ClickHouseAlias] = {}
         clause = node.args.get("with_")
         if isinstance(clause, exp.With):
@@ -428,9 +479,14 @@ def _clickhouse_aliases(root: exp.Expression) -> _ClickHouseAliasIndex:
                     read_through=not isinstance(body, _QUERY_BODY),
                 )
         with_map[nid] = with_aliases
+        contexts[nid] = (context, node_owners)
     return _ClickHouseAliasIndex(
         select=select_map,
         with_=with_map,
+        local={sid: tuple(declared) for sid, declared in local_map.items() if declared},
+        owners=owner_map,
+        in_fields=tuple(in_fields),
+        scope_columns={},
         select_on_cycle={},
         held_scopes=[],
         with_reaches={},
@@ -447,6 +503,11 @@ def _inside(node: exp.Expression, ancestor: exp.Expression) -> bool:
     return False
 
 
+def _inside_own_alias_definition(column: exp.Column, aliases: _ClickHouseAliasIndex) -> bool:
+    """Whether a local query-level alias with this name directly encloses *column*."""
+    return any(owner.name == column.name for owner in aliases.owners.get(id(column), ()))
+
+
 def _clickhouse_alias_ref(
     column: exp.Column,
     scope: Scope,
@@ -456,12 +517,12 @@ def _clickhouse_alias_ref(
 ) -> _ClickHouseAlias | None:
     """The visible alias this bare name is, or ``None`` when it is a column.
 
-    A SELECT-list alias of this query level wins over a WITH alias of the same name,
-    except inside that SELECT alias's defining expression — there the name is the
+    A query-level alias of this query level wins over a WITH alias of the same name,
+    except inside that alias's defining expression — there the name is the
     column, or a WITH alias still visible. A WITH alias is visible in this query and
     every subquery and UNION branch below the query that declared it. Inside the
     expression that defines alias X, the name X is the column, not that alias.
-    A SELECT-list alias that would close a cycle through SELECT-list or WITH
+    A query-level alias that would close a cycle through query-level or WITH
     definitions is a column: ClickHouse rejects the statement, and reporting that
     it reads nothing would hide the names. Graph construction passes
     ``ignore_cycle=True`` so the on-cycle set is not consulted while it is built.
@@ -473,7 +534,8 @@ def _clickhouse_alias_ref(
         return None
     select_aliases = aliases.select.get(id(scope.expression), {})
     select_alias = select_aliases.get(name)
-    if select_alias is not None and not _inside(column, select_alias.definition):
+    inside_own_definition = _inside_own_alias_definition(column, aliases)
+    if select_alias is not None and not inside_own_definition:
         if not ignore_cycle and name in _select_aliases_on_cycle(scope, aliases):
             return None
         return select_alias
@@ -514,7 +576,9 @@ def _star_subquery_from(table: exp.Table) -> exp.Subquery:
     return exp.Subquery(this=select)
 
 
-def clickhouse_in_table_fields(root: exp.Expression) -> tuple[exp.Column, ...]:
+def clickhouse_in_table_fields(
+    root: exp.Expression, aliases: _ClickHouseAliasIndex | None = None
+) -> tuple[exp.Column, ...]:
     """Columns that ClickHouse reads as `IN (SELECT * FROM <name>)`, not as aliases.
 
     `<name>` is the Column in `In.args["field"]` (bare or qualified). A visible
@@ -524,14 +588,19 @@ def clickhouse_in_table_fields(root: exp.Expression) -> tuple[exp.Column, ...]:
     Column on the right of any IN returns at once, without building scopes or the
     alias index: most statements have none, and the grading builds both anyway.
     """
-    fields = [
-        field
-        for field in (node.args.get("field") for node in root.find_all(exp.In))
-        if isinstance(field, exp.Column)
-    ]
+    if aliases is None:
+        fields = [
+            field
+            for field in (node.args.get("field") for node in root.find_all(exp.In))
+            if isinstance(field, exp.Column)
+        ]
+        if not fields:
+            return ()
+        aliases = _clickhouse_aliases(root)
+    else:
+        fields = aliases.in_fields
     if not fields:
         return ()
-    aliases = _clickhouse_aliases(root)
     root_scope = build_scope(root)
     if root_scope is None:  # pragma: no mutate block - Select/Union always defines a scope
         return ()
@@ -547,9 +616,11 @@ def clickhouse_in_table_fields(root: exp.Expression) -> tuple[exp.Column, ...]:
     return tuple(found)
 
 
-def _rewrite_clickhouse_in_tables(root: exp.Expression) -> None:
+def _rewrite_clickhouse_in_tables(
+    root: exp.Expression, aliases: _ClickHouseAliasIndex | None = None
+) -> None:
     """Replace `x IN <table>` with `x IN (SELECT * FROM <table>)` when not an alias."""
-    for column in clickhouse_in_table_fields(root):
+    for column in clickhouse_in_table_fields(root, aliases):
         node = column.parent
         if not isinstance(node, exp.In):
             continue
@@ -558,30 +629,22 @@ def _rewrite_clickhouse_in_tables(root: exp.Expression) -> None:
         node.set("query", _star_subquery_from(table))
 
 
-def _column_owner(
-    column: exp.Column, scope: Scope, aliases: _ClickHouseAliasIndex
-) -> _ClickHouseAlias | None:
-    """The SELECT-list alias of *scope*'s level whose definition contains *column*.
+def _column_owners(
+    node: exp.Expression, aliases: _ClickHouseAliasIndex
+) -> tuple[_ClickHouseAlias, ...]:
+    """Actual query-level alias definitions of *scope*'s level enclosing *node*.
 
-    Walks the column's ancestors, not the SELECT list: a generated chain of
-    thousands of aliases would otherwise be quadratic in `_grade_columns`.
+    Every declaration counts, including one that lost the indexed-name precedence:
+    inside its own definition its name is still a column. The alias index records
+    this while walking the AST, so grading does not walk the ancestors again.
     """
-    select_aliases = aliases.select.get(id(scope.expression), {})
-    if not select_aliases:
-        return None
-    current: exp.Expression | None = column
-    while current is not None and current is not scope.expression:
-        parent = current.parent
-        if parent is None:
-            break
-        if isinstance(parent, exp.Alias) and parent.parent is scope.expression:
-            return select_aliases.get(parent.alias)
-        current = parent
-    return None
+    return aliases.owners.get(id(node), ())
 
 
-def _owner_key(owner: _ClickHouseAlias | None) -> int:
-    return id(owner.definition) if owner is not None else 0
+def _owner_key(owners: tuple[_ClickHouseAlias, ...]) -> int | tuple[int, ...]:
+    if not owners:
+        return 0
+    return tuple(id(owner.definition) for owner in owners)
 
 
 def _loose_columns(node: exp.Expression) -> list[exp.Column]:
@@ -631,7 +694,28 @@ def _grade_columns(
     """
     truncated = False
     for scope in scopes:
-        for column in scope.columns:
+        if aliases is None:
+            columns: tuple[exp.Column, ...] | list[exp.Column] = scope.columns
+        else:
+            scope_id = id(scope.expression)
+            columns = aliases.scope_columns.get(scope_id)
+            if columns is None:
+                columns = tuple(scope.columns)
+                aliases.scope_columns[scope_id] = columns
+        if aliases is not None and aliases.local:
+            declarations = aliases.local.get(id(scope.expression))
+        else:
+            declarations = None
+        if declarations:
+            columns = list(columns)
+            seen_columns = {id(column) for column in columns}
+            for declared in declarations:
+                for column in _loose_columns(declared.definition):
+                    if id(column) in seen_columns:
+                        continue
+                    seen_columns.add(id(column))
+                    columns.append(column)
+        for column in columns:
             # A scope lists the columns of its nested subqueries too, and resolving one of
             # those against *this* scope's sources would attribute it to a table it was
             # never written against. Each column is graded once, where it was written.
@@ -640,9 +724,9 @@ def _grade_columns(
             if aliases is not None:
                 alias = _clickhouse_alias_ref(column, scope, aliases)
                 if alias is not None:
-                    owner = _column_owner(column, scope, aliases) if alias.read_through else None
+                    alias_owners = _column_owners(column, aliases) if alias.read_through else ()
                     if _read_through_alias(
-                        alias, column, scope, aliases, attributed, ambiguous, state, owner
+                        alias, column, scope, aliases, attributed, ambiguous, state, alias_owners
                     ):
                         truncated = True
                     continue
@@ -651,15 +735,19 @@ def _grade_columns(
 
 
 def _select_aliases_reached_from_with(
-    start: _ClickHouseAlias, scope: Scope, aliases: _ClickHouseAliasIndex
+    start: _ClickHouseAlias,
+    scope: Scope,
+    aliases: _ClickHouseAliasIndex,
+    owners: tuple[_ClickHouseAlias, ...],
 ) -> frozenset[str]:
-    """SELECT-list aliases of *scope*'s level reached through *start*'s WITH body.
+    """Query-level aliases of *scope*'s level reached through *start*'s WITH body.
 
-    Nested queries are not followed: SELECT aliases are not visible there. Names
+    Nested queries are not followed: query-level aliases are not visible there. Names
     resolve with the raw rule that does not consult the on-cycle set, so the
     SELECT graph does not depend on itself. Memoised per (declaration, scope).
     """
-    key = (id(start.definition), id(scope))
+    owner_key = _owner_key(owners)
+    key = (id(start.definition), id(scope), owner_key)
     cached = aliases.with_reaches.get(key)
     if cached is not None:
         return cached
@@ -673,7 +761,7 @@ def _select_aliases_reached_from_with(
         ident = id(alias.definition)
         if ident in seen:
             continue
-        memo = aliases.with_reaches.get((ident, id(scope)))
+        memo = aliases.with_reaches.get((ident, id(scope), owner_key))
         if memo is not None:
             reached.update(memo)
             continue
@@ -681,6 +769,8 @@ def _select_aliases_reached_from_with(
         for column in _loose_columns(alias.definition):
             resolved = _clickhouse_alias_ref(column, scope, aliases, ignore_cycle=True)
             if resolved is None:
+                continue
+            if owners and any(resolved.name == owner.name for owner in owners):
                 continue
             if resolved.read_through:
                 stack.append(resolved)
@@ -693,7 +783,7 @@ def _select_aliases_reached_from_with(
 
 
 def _select_alias_graph(scope: Scope, aliases: _ClickHouseAliasIndex) -> dict[str, list[str]]:
-    """a → b when a's definition, following WITH bodies at *scope*, reaches SELECT alias b.
+    """a → b when a's definition, following WITH bodies at *scope*, reaches query-level alias b.
 
     Reaching a itself is the owner case (a column), not a self-edge. Nested queries
     are not followed. Names resolve without the on-cycle set.
@@ -702,12 +792,15 @@ def _select_alias_graph(scope: Scope, aliases: _ClickHouseAliasIndex) -> dict[st
     graph: dict[str, list[str]] = {name: [] for name in select_aliases}
     for name, alias in select_aliases.items():
         seen: set[str] = set()
+        owners = _column_owners(alias.definition, aliases)
         for column in _loose_columns(alias.definition):
             resolved = _clickhouse_alias_ref(column, scope, aliases, ignore_cycle=True)
             if resolved is None:
                 continue
             if resolved.read_through:
-                others = _select_aliases_reached_from_with(resolved, scope, aliases)
+                others = _select_aliases_reached_from_with(resolved, scope, aliases, owners)
+            elif owners and any(resolved.name == owner.name for owner in owners):
+                continue
             elif resolved.name in select_aliases:
                 others = frozenset({resolved.name})
             else:
@@ -778,7 +871,7 @@ def _strongly_connected_multi(graph: dict[str, list[str]]) -> frozenset[str]:
 
 
 def _select_aliases_on_cycle(scope: Scope, aliases: _ClickHouseAliasIndex) -> frozenset[str]:
-    """SELECT-list aliases that can reach themselves through SELECT or WITH definitions.
+    """Query-level aliases that can reach themselves through query-level or WITH definitions.
 
     The name inside an alias's own definition is the column, so the graph has no
     self-edge from that case: an alias is on a cycle iff its strongly connected
@@ -871,18 +964,18 @@ def _read_through_alias(
     attributed: set[ColumnRef],
     ambiguous: set[AmbiguousRef],
     state: _ReadThroughState,
-    owner: _ClickHouseAlias | None,
+    owners: tuple[_ClickHouseAlias, ...],
 ) -> bool:
     """Grade columns of a referenced expression-form WITH as if written in *scope*.
 
     Loose columns are graded in *scope*. A query nested in the definition is graded
     as the same subquery written at the reference — its own FROM, enclosed toward
     *scope* — because sqlglot builds no scope for those bodies. Expansion is keyed
-    by declaration identity and memoised per (alias, scope, owner); a cycle in
+    by declaration identity and memoised per (alias, scope, owners); a cycle in
     *scope* is a column there, keyed by (declaration, scope), so an inner-only
     cycle does not hide an outer read of the same alias; a reference past the
     depth cap or expansion budget is unattributed under its own name. A loose
-    column that resolves to *owner* (the SELECT-list alias whose definition this
+    column that resolves to an owner (a query-level alias whose definition this
     expansion is part of) is the column, not the alias. Returns True when this
     expansion or a subtree hit the cap or budget; such an expansion is not
     recorded in ``done``.
@@ -897,7 +990,7 @@ def _read_through_alias(
     if (ident, id(scope)) in state.cyclic:
         _attribute_column(scope, column, attributed, ambiguous)
         return False
-    done_key = (ident, id(scope), _owner_key(owner))
+    done_key = (ident, id(scope), _owner_key(owners))
     if done_key in state.done:
         return False
     if (
@@ -914,7 +1007,7 @@ def _read_through_alias(
         for nested_column in _loose_columns(alias.definition):
             nested = _clickhouse_alias_ref(nested_column, scope, aliases)
             if nested is not None:
-                if owner is not None and nested is owner:
+                if owners and any(nested.name == owner.name for owner in owners):
                     _attribute_column(scope, nested_column, attributed, ambiguous)
                     continue
                 if _read_through_alias(
@@ -925,7 +1018,7 @@ def _read_through_alias(
                     attributed,
                     ambiguous,
                     state,
-                    owner,
+                    owners,
                 ):
                     truncated = True
                 continue
