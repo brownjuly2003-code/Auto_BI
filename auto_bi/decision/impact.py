@@ -903,9 +903,9 @@ def _runs_in_statement(
     name referenced only from inside the gate it would open cannot open it, so a
     cycle nobody outside reads stays closed.
 
-    A nested scalar WITH declaration shadows an outer one when the reference binds
-    unambiguously. Named CTE shadowing and references inside their own scalar WITH
-    definition stay conservative and can still over-report.
+    A nested named CTE or scalar WITH declaration shadows an outer one when the
+    reference binds unambiguously. Same-level duplicates and references inside
+    their own definition stay conservative and can still over-report.
     """
     resolved_ids = _open_cte_gates(root) if open_ids is None else open_ids
 
@@ -953,6 +953,7 @@ class _CteRef:
     ancestors: frozenset[int]
     named: bool
     scalar_declaring_id: int | None = None
+    named_declaring_id: int | None = None
 
 
 def _enclosing_and_ancestors(node: exp.Expression) -> tuple[frozenset[int], frozenset[int]]:
@@ -983,12 +984,12 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
     """Ids of CTE gates that a running part of the statement opens.
 
     Linear worklist: each reference is processed once, each gate opens once. A name
-    opens every named CTE it could name, compared case-insensitively, whose
-    declaring query encloses the name. A column names a scalar alias through its
-    leftmost written part, so a tuple access at any depth (`t.1`, `t.a.b`) opens
-    the nearest scalar declaration; same-level duplicates and self-references stay
-    conservative. Named CTEs open through an unqualified table and through a bare
-    `IN <name>` that is not a visible alias.
+    opens the nearest named CTE declaration it could name, compared
+    case-insensitively, whose declaring query encloses the name. A column names a
+    scalar alias through its leftmost written part, so a tuple access at any depth
+    (`t.1`, `t.a.b`) opens the nearest scalar declaration; same-level duplicates
+    and self-references stay conservative. Named CTEs open through an unqualified
+    table and through a bare `IN <name>` that is not a visible alias.
     """
     named_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
     scalar_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
@@ -1006,17 +1007,37 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
             named_by_alias[alias].append(gate)
     if not named_by_alias and not scalar_by_alias:
         return set()
+    named_declaring_ids = {
+        alias: {gate.declaring_id for gate in gates} for alias, gates in named_by_alias.items()
+    }
     scalar_declaring_ids = {
         alias: {gate.declaring_id for gate in gates} for alias, gates in scalar_by_alias.items()
     }
 
     setting_items = frozenset(id(item) for item in _clickhouse_setting_items(root))
     refs: list[_CteRef] = []
+
+    def add_named_ref(node: exp.Expression, name: str) -> None:
+        enclosing, ancestors = _enclosing_and_ancestors(node)
+        nearest_declaring = next(
+            (
+                id(ancestor)
+                for ancestor in _ancestors(node)
+                if id(ancestor) in named_declaring_ids.get(name, ())
+            ),
+            None,
+        )
+        if any(
+            gate.declaring_id == nearest_declaring and gate.cte_id in enclosing
+            for gate in named_by_alias.get(name, ())
+        ):
+            nearest_declaring = None
+        refs.append(_CteRef(name, enclosing, ancestors, True, named_declaring_id=nearest_declaring))
+
     for table in root.find_all(exp.Table):
         if table.db or table.catalog or not table.name:
             continue
-        enclosing, ancestors = _enclosing_and_ancestors(table)
-        refs.append(_CteRef(table.name.lower(), enclosing, ancestors, True))
+        add_named_ref(table, table.name.lower())
     for column in root.find_all(exp.Column):
         if _is_clickhouse_setting_column(column, setting_items):
             continue
@@ -1041,8 +1062,7 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
         for column in clickhouse_in_table_fields(root):
             if column.table or column.db or column.catalog or not column.name:
                 continue
-            enclosing, ancestors = _enclosing_and_ancestors(column)
-            refs.append(_CteRef(column.name.lower(), enclosing, ancestors, True))
+            add_named_ref(column, column.name.lower())
 
     waiting: dict[int, list[int]] = defaultdict(list)
     for index, ref in enumerate(refs):
@@ -1070,6 +1090,11 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
         ref = refs[work.popleft()]
         if ref.named:
             for gate in named_by_alias.get(ref.name, ()):
+                if (
+                    ref.named_declaring_id is not None
+                    and gate.declaring_id != ref.named_declaring_id
+                ):
+                    continue
                 _open_gate(gate, ref)
         else:
             for gate in scalar_by_alias.get(ref.name, ()):

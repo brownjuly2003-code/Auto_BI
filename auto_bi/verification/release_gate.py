@@ -234,7 +234,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: scalar WITH bodies. A tile verifier 33 called `chart.sql_partial` may now be read
 #: in whole and ruled out for a changed metric. Reachable JOINs keep the gap;
 #: CHECK_VERSION does not move because asset checks are unchanged.
-VERIFIER_VERSION = "34"
+#: 35 — a nested named CTE shadows an outer CTE of the same name for unambiguous
+#: operator SQL references. An outer CTE that only the inner reference appeared to
+#: open no longer adds false chart reads or partial-read gaps. Evidence only;
+#: CHECK_VERSION does not move.
+VERIFIER_VERSION = "35"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

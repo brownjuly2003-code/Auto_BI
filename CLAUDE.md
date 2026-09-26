@@ -83,6 +83,15 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-26 — однозначная ссылка на named CTE в операторском SQL теперь связывается с
+  ближайшим объявлением: внутренняя CTE не открывает одноимённую внешнюю и не добавляет
+  ложные chart reads или `chart.sql_partial`. `FROM` и bare `IN <name>` следуют одному
+  правилу; отдельная внешняя ссылка сохраняет реальный гэп. Self-reference и одноуровневые
+  дубликаты остаются conservative. `VERIFIER_VERSION` 34 → 35, `CHECK_VERSION` остаётся 18.
+  Полный offline pytest до трёх дополнительных граничных тестов: 2628 passed, 21 skipped,
+  38 deselected; после них chart-impact suite: 179 passed. Strict mypy: 0 ошибок в 120
+  модулях. Синтетическое ревью `gpt-6-astra` xhigh: дефектов кода нет, один пробел покрытия
+  закрыт тестами; не human/production acceptance.
 - 2026-09-26 — chart impact учитывает `JOIN … USING` только в исполняемой части SQL:
   непрочитанная named CTE или scalar `WITH` не создаёт ложный `chart.sql_partial`,
   достижимый JOIN сохраняет гэп. `VERIFIER_VERSION` 33 → 34, `CHECK_VERSION` остаётся 18.

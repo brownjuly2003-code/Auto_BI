@@ -565,6 +565,49 @@ _READS_REV = (
 )
 
 
+def test_a_nested_named_cte_opens_the_nearest_same_name_dictionary() -> None:
+    sql = (
+        "WITH x AS (SELECT 1 AS v FROM dm.other), "
+        f"wrapper AS (WITH x AS (SELECT {_DICT_GET_REV} AS v FROM dm.other) "
+        "SELECT v FROM x) "
+        "SELECT sum(revenue) FROM wrapper"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
+        reads=(("dm.rev", "revenue"),)
+    )
+
+
+def test_a_named_cte_self_reference_keeps_the_outer_dictionary_read() -> None:
+    sql = (
+        f"WITH x AS (SELECT {_DICT_GET_REV} AS v FROM dm.other), "
+        "wrapper AS (WITH x AS (SELECT v FROM x) SELECT v FROM x) "
+        "SELECT sum(revenue) FROM wrapper"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
+        reads=(("dm.rev", "revenue"),)
+    )
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        (
+            f"WITH x AS (SELECT {_DICT_GET_REV} AS v FROM dm.other), "
+            "x AS (SELECT 1 AS v FROM dm.other) SELECT v FROM x"
+        ),
+        (
+            "WITH x AS (SELECT 1 AS v FROM dm.other), "
+            f"x AS (SELECT {_DICT_GET_REV} AS v FROM dm.other) SELECT v FROM x"
+        ),
+    ],
+    ids=["dictionary-first", "harmless-first"],
+)
+def test_same_level_named_cte_duplicates_keep_a_conservative_dictionary_read(sql: str) -> None:
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
+        reads=(("dm.rev", "revenue"),)
+    )
+
+
 @pytest.mark.parametrize(
     "sql,reads",
     [

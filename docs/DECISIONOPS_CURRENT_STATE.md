@@ -10,9 +10,19 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=34`, `CHECK_VERSION=18`
+**Версии evidence:** `VERIFIER_VERSION=35`, `CHECK_VERSION=18`
 
-**Последний срез (2026-09-26):** chart impact учитывает `JOIN … USING` только в
+**Последний срез (2026-09-26):** однозначная ссылка на named CTE внутри вложенного
+`WITH` связывается с ближайшим объявлением. Внутренняя CTE больше не открывает
+одноимённую внешнюю и её ложный `chart.sql_partial`; отдельное внешнее чтение
+сохраняет гэп. Self-reference и одноуровневые дубликаты остаются консервативными.
+`VERIFIER_VERSION` 34 → 35, `CHECK_VERSION` остаётся 18. Полный offline pytest до
+добавления трёх граничных тестов: 2628 passed, 21 skipped, 38 deselected; после них
+chart-impact suite: 179 passed. Strict mypy: 0 ошибок в 120 модулях. Синтетическое
+ревью `gpt-6-astra` xhigh: дефектов кода не найдено, один пробел покрытия закрыт
+тестами; не human/production acceptance.
+
+**Предыдущий срез (2026-09-26):** chart impact учитывает `JOIN … USING` только в
 исполняемой части операторского SQL. Ключ JOIN в непрочитанной named CTE или scalar
 `WITH` больше не создаёт ложный `chart.sql_partial`; открытая ссылка сохраняет гэп.
 `VERIFIER_VERSION` 33 → 34, `CHECK_VERSION` остаётся 18. Полный offline pytest:
@@ -20,7 +30,7 @@ human/design-partner outcome не измерен и не требуется дл
 Ruff и Black чистые. Синтетическое ревью `gpt-6-astra` xhigh: 0 actionable
 findings, не human/production acceptance.
 
-**Предыдущий срез (2026-09-26):** chart impact учитывает ClickHouse `COLUMNS('regex')`
+**Перед ним (2026-09-26):** chart impact учитывает ClickHouse `COLUMNS('regex')`
 только в исполняемой части операторского SQL. Селектор в непрочитанной named CTE или
 scalar `WITH` больше не создаёт ложный `chart.sql_partial`, а открытая ссылка сохраняет
 гэп. Governance reviewed asset SQL по-прежнему проверяет весь AST. `VERIFIER_VERSION`
@@ -28,7 +38,7 @@ scalar `WITH` больше не создаёт ложный `chart.sql_partial`,
 38 deselected; strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые. Синтетическое
 ревью `gpt-6-astra` xhigh: 0 actionable findings, не human/production acceptance.
 
-**Перед ним (2026-09-26):** ClickHouse `COLUMNS('regex')` в reviewed asset SQL
+**Ранее (2026-09-26):** ClickHouse `COLUMNS('regex')` в reviewed asset SQL
 оставляет advisory `asset.query_fields_unchecked`: regex выбирает физические колонки,
 полный набор которых SQL не перечисляет. Явное соседнее чтение грейдится отдельно;
 PostgreSQL-семейство без изменений. `VERIFIER_VERSION` 31 → 32, `CHECK_VERSION` 17 → 18.
@@ -244,10 +254,10 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   правой стороне `IN`, которое не видимый алиас, открывает именованную CTE; видимый
   scalar WITH- или SELECT-алиас с тем же именем выигрывает у CTE, и табличная форма тогда
   молчит там, где `IN (SELECT * FROM x)` назвал бы чтение CTE (F-T-14-3).
-- Резолвер связывает ссылку на scalar `WITH` с ближайшим объявлением, когда такое связывание
-  однозначно: вложенное объявление не открывает скрытое внешнее (F-T-11-3), в том числе для
-  `dictGet`, `joinGet` и `*`. Self-reference, дубликаты scalar-алиасов на одном уровне и
-  shadowing именованных CTE остаются conservative. Table alias с тем же именем по-прежнему
+- Резолвер связывает ссылку на scalar `WITH` или named CTE с ближайшим объявлением, когда
+  такое связывание однозначно: вложенное объявление не открывает скрытое внешнее (F-T-11-3),
+  в том числе для `dictGet`, `joinGet`, `*` и `JOIN … USING`. Self-reference и дубликаты
+  одноимённых объявлений на одном уровне остаются conservative. Table alias по-прежнему
   открывает scalar `WITH` (`t.region` при `FROM dm.sales_daily AS t`); database qualifier с
   тем же именем — тоже (`dm.sales_daily.revenue` открывает `WITH … AS dm`), поэтому F-T-11-7
   и F-T-11-13 остаются пере-сообщениями, которые ничего не прячут.
@@ -522,6 +532,11 @@ MyFlow (2026-09-25): 0 findings.
 companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
 моделированное ревью, не human evidence и не production/design-partner acceptance. Итог ревью —
 один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
+
+Закрыто открытие затенённой named CTE одноимённой ссылкой из вложенного `WITH`
+(verifier 35, check 18): chart impact выбирает ближайшее объявление для однозначной
+табличной ссылки и `IN <name>`, а отдельное внешнее чтение по-прежнему открывает
+внешнюю CTE. Self-reference и одноуровневые дубликаты остаются conservative.
 
 Закрыт ложный `chart.sql_partial` от `JOIN … USING` в непрочитанной named CTE или
 scalar `WITH` (verifier 34, check 18): ключ JOIN оставляет гэп только если его часть
