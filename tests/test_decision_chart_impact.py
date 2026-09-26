@@ -866,6 +866,45 @@ def test_operator_sql_join_using_in_a_reachable_scalar_with_is_a_partial_gap(
     assert "JOIN USING key" in report.chart_gaps[0].detail
 
 
+def test_operator_sql_nested_join_using_in_an_unread_outer_cte_is_not_a_partial_gap(
+    tmp_path: Path,
+) -> None:
+    sql = (
+        "WITH outer_cte AS (WITH inner_cte AS (SELECT a.revenue FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b USING (store_id)) SELECT sum(revenue) FROM inner_cte) "
+        "SELECT sum(revenue) FROM dm.sales_daily"
+    )
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_nested_join_using_in_a_reachable_outer_cte_is_a_partial_gap(
+    tmp_path: Path,
+) -> None:
+    sql = (
+        "WITH outer_cte AS (WITH inner_cte AS (SELECT a.revenue FROM dm.sales_daily AS a "
+        "JOIN dm.stores AS b USING (store_id)) SELECT sum(revenue) FROM inner_cte) "
+        "SELECT sum(revenue) FROM outer_cte"
+    )
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "JOIN USING key" in report.chart_gaps[0].detail
+
+
 def test_operator_sql_join_using_in_an_unread_cte_does_not_block_ruling_out_a_metric(
     tmp_path: Path,
 ) -> None:
