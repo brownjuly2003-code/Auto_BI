@@ -10,9 +10,19 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=36`, `CHECK_VERSION=18`
+**Версии evidence:** `VERIFIER_VERSION=37`, `CHECK_VERSION=18`
 
-**Последний срез (2026-09-26):** двухчастная колонка `t.column` с однозначным явным
+**Последний срез (2026-09-26):** обычная трёхчастная колонка `dm.sales_daily.revenue`
+больше не открывает scalar `WITH dm`, если точно совпадает с единственным неалиасированным
+именованным источником `FROM`/`JOIN` своего SELECT и имя `dm` не занято другим источником.
+Ложные chart reads и `chart.sql_partial` исчезают; несовпадение, дубликаты, конфликтующие
+алиасы и catalog-источник остаются консервативными. `VERIFIER_VERSION` 36 → 37,
+`CHECK_VERSION` остаётся 18. Синтетическое review — `gpt-6-astra` xhigh,
+3 P2 закрыты red-green тестами; не human/production acceptance. Полный offline pytest:
+2647 passed, 21 skipped, 38 deselected; docs-as-code: 24 passed; strict mypy:
+0 ошибок в 120 модулях, Ruff и Black чистые.
+
+**Предыдущий срез (2026-09-26):** двухчастная колонка `t.column` с однозначным явным
 алиасом именованного табличного источника `FROM`/`JOIN … AS t` своего SELECT больше не открывает
 одноимённый scalar `WITH t`. Ложные chart reads и `chart.sql_partial` исчезают; настоящий
 доступ к `t.1` и отдельное чтение scalar alias остаются. `VERIFIER_VERSION` 35 → 36,
@@ -269,9 +279,10 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   в том числе для `dictGet`, `joinGet`, `*` и `JOIN … USING`. Self-reference и дубликаты
   одноимённых объявлений на одном уровне остаются conservative. Обычная двухчастная колонка
   `t.region` при однозначном явном алиасе именованного `FROM`/`JOIN`-источника того же SELECT читает
-  таблицу и не открывает scalar `WITH t` (F-T-11-7). Database qualifier с тем же именем
-  по-прежнему открывает scalar `WITH` (`dm.sales_daily.revenue` открывает `WITH … AS dm`):
-  F-T-11-13 остаётся консервативным пере-сообщением.
+  таблицу и не открывает scalar `WITH t` (F-T-11-7). Обычная трёхчастная колонка
+  `dm.sales_daily.revenue` также не открывает scalar `WITH dm`, когда она точно называет
+  единственный неалиасированный источник своего SELECT и `dm` не конфликтует с другим
+  именем источника (F-T-11-13). Иначе связывание остаётся консервативным.
 - `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
   под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
   `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:

@@ -1269,14 +1269,67 @@ def test_a_dictionary_call_read_through_a_deeper_tuple_access_follows_its_alias(
         assert charts(report) == []
 
 
-def test_a_database_qualifier_opens_a_scalar_with_as_a_known_over_report(
+def test_a_database_qualifier_matching_its_own_source_does_not_open_a_scalar_with(
     tmp_path: Path,
 ) -> None:
-    """Documented over-report: `dm.sales_daily.revenue` also opens scalar `WITH … AS dm`."""
+    """A three-part source reference binds to its exact unaliased FROM source."""
     sql = (
         f"WITH (SELECT {_DICT_GET_REV}) AS dm "
         "SELECT sum(dm.sales_daily.revenue) FROM dm.sales_daily"
     )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads()
+    _, report = field_change(tmp_path, sql, "dm.rev.revenue")
+    assert charts(report) == []
+    assert report.chart_gaps == []
+    _, source_report = field_change(tmp_path, sql, "dm.sales_daily.revenue")
+    assert charts(source_report) == [
+        ("operator_table", ChartRelation.READS_FIELD, "query reads dm.sales_daily.revenue")
+    ]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        (
+            f"WITH (SELECT {_DICT_GET_REV}) AS dm "
+            "SELECT sum(dm.other.revenue) FROM dm.sales_daily"
+        ),
+        (
+            f"WITH (SELECT {_DICT_GET_REV}) AS dm "
+            "SELECT sum(dm.sales_daily.revenue) FROM dm.sales_daily "
+            "JOIN dm.sales_daily ON 1 = 1"
+        ),
+        (
+            f"WITH (SELECT {_DICT_GET_REV}) AS dm "
+            "SELECT sum(dm.sales_daily.revenue) FROM dm.sales_daily AS dm"
+        ),
+        (
+            f"WITH (SELECT {_DICT_GET_REV}) AS dm "
+            "SELECT sum(dm.sales_daily.revenue) FROM dm.sales_daily "
+            "JOIN dm.other AS dm ON 1 = 1"
+        ),
+        (
+            f"WITH (SELECT {_DICT_GET_REV}) AS dm "
+            "SELECT sum(dm.sales_daily.revenue) FROM cat.dm.sales_daily"
+        ),
+        (
+            f"WITH (SELECT {_DICT_GET_REV}) AS dm "
+            "SELECT sum(dm.sales_daily.revenue) FROM dm.sales_daily "
+            "JOIN cat.dm.sales_daily ON 1 = 1"
+        ),
+    ],
+    ids=[
+        "database-table-mismatch",
+        "duplicate-source",
+        "aliased-source",
+        "conflicting-source-alias",
+        "catalog-source",
+        "mixed-catalog-duplicate",
+    ],
+)
+def test_a_non_matching_or_ambiguous_database_qualifier_keeps_scalar_with_read(
+    tmp_path: Path, sql: str
+) -> None:
     assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
         reads=(("dm.rev", "revenue"),)
     )

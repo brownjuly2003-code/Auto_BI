@@ -58,7 +58,9 @@ at any depth (`t.1`,
 `t.name`, `t.a.b`) reads the scalar alias through its leftmost qualifier, except an
 ordinary two-part `t.column` whose `t` is an unambiguous explicit alias of a named table
 source in its own SELECT: that column names the source. A database qualifier still opens
-the scalar alias, which is a conservative over-report. A
+the scalar alias unless an ordinary three-part `db.table.column` exactly names one
+unaliased named table source in its own SELECT and no source also uses `db` as its name.
+Mismatch, duplicate or catalog sources remain conservative. A
 column whose source is a table function
 the statement does not name is an unread part, reported as such rather than as an empty
 table name.
@@ -125,7 +127,9 @@ at any depth (`t.1`,
 `t.name`, `t.a.b`) reads the scalar alias through its leftmost qualifier, except an
 ordinary two-part `t.column` whose `t` is an unambiguous explicit alias of a named table
 source in its own SELECT: that column names the source. A database qualifier still opens
-the scalar alias, which is a conservative over-report.
+the scalar alias unless an ordinary three-part `db.table.column` exactly names one
+unaliased named table source in its own SELECT and no source also uses `db` as its name.
+Mismatch, duplicate or catalog sources remain conservative.
 A ClickHouse Join-table call — any function whose name begins with `joinget`,
 case-insensitive — SHALL either name the read it performs or leave the tile read in part,
 through the same reachability rule as a dictionary call. The resolver names a closed set of
@@ -394,6 +398,15 @@ metrics' term columns.
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the report carries neither a chart impact nor a chart gap for that tile:
   `t.region` and `t.revenue` name columns of the named table source, not the scalar `WITH`
+
+### Scenario: a database-qualified column names its own table source
+
+- **GIVEN** a tile whose `raw_sql` is
+  `WITH (SELECT dictGet('dm.rev', 'revenue', toUInt64(1))) AS dm
+  SELECT sum(dm.sales_daily.revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved for changes to `dm.rev.revenue` and `dm.sales_daily.revenue`
+- **THEN** the dictionary change has neither chart impact nor chart gap; the table change
+  carries `reads_field` for that tile
 
 ### Scenario: a two-level tuple access reads a scalar WITH alias
 

@@ -241,7 +241,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 36 — an ordinary two-part column qualified by one explicit named-table alias
 #: in its own SELECT no longer opens an equally named scalar WITH in operator SQL.
 #: False chart reads and partial-read gaps disappear; CHECK_VERSION does not move.
-VERIFIER_VERSION = "36"
+#: 37 — an ordinary three-part column naming one unaliased named-table source
+#: in its own SELECT no longer opens a scalar WITH named like its database.
+#: Conflicting source names remain conservative. Evidence only; CHECK_VERSION stays 18.
+VERIFIER_VERSION = "37"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

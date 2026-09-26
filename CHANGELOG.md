@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **Трёхчастная колонка больше не открывает одноимённый scalar `WITH` при точном
+  совпадении с табличным источником.** `dm.sales_daily.revenue` читает единственный
+  неалиасированный `FROM`/`JOIN dm.sales_daily` своего SELECT, а не скрытое
+  `WITH … AS dm`. Дубликаты, конфликтующие имена и catalog-источники остаются
+  conservative. `VERIFIER_VERSION` 36 → 37, `CHECK_VERSION` остаётся 18.
+  Синтетическое review `gpt-6-astra` xhigh: 3 P2 закрыты red-green тестами, не
+  human/production acceptance. Полный offline pytest: 2647 passed, 21 skipped,
+  38 deselected; docs-as-code: 24 passed; strict mypy чистый, Ruff и Black чистые.
+
 - **Chart impact учитывает достижимость `JOIN … USING`.** Ключ JOIN в непрочитанной
   named CTE или scalar `WITH` больше не создаёт ложный `chart.sql_partial`; открытая
   ссылка сохраняет гэп. `VERIFIER_VERSION` 33 → 34, `CHECK_VERSION` остаётся 18. Полный

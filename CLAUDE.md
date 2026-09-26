@@ -83,6 +83,14 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-26 — F-T-11-13: обычная `dm.sales_daily.revenue` с точным единственным
+  неалиасированным именованным источником своего SELECT больше не открывает scalar
+  `WITH dm`. Ложные chart reads и `chart.sql_partial` исчезают; несовпадение,
+  дубликаты, конфликтующие имена и catalog-источник остаются conservative.
+  `VERIFIER_VERSION` 36 → 37, `CHECK_VERSION` остаётся 18. Синтетическое review —
+  `gpt-6-astra` xhigh: 3 P2 закрыты red-green тестами, не human/production acceptance.
+  Полный offline pytest: 2647 passed, 21 skipped, 38 deselected; docs-as-code: 24 passed;
+  strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
 - 2026-09-26 — F-T-11-7: `t.region` при однозначном явном `FROM`/`JOIN … AS t` своего
   SELECT больше не открывает одноимённый scalar `WITH t` в операторском SQL. Ложные
   chart reads и `chart.sql_partial` исчезают; реальный table read, tuple `t.1` и
