@@ -10,8 +10,8 @@ column.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
-from time import perf_counter
 
 import pytest
 
@@ -496,10 +496,7 @@ def test_a_long_select_alias_chain_is_linear_and_reads_the_source_column() -> No
     parts = ["revenue AS a0"]
     parts.extend(f"a{i - 1} + a{i - 1} AS a{i}" for i in range(1, n + 1))
     sql = f"SELECT {', '.join(parts)} FROM dm.sales_daily"
-    started = perf_counter()
-    reads = extract_column_refs(sql, dialect="clickhouse")
-    elapsed = perf_counter() - started
-    assert elapsed < 2.0, elapsed
+    reads = _budgeted_reads(sql)
     assert sorted(f"{ref.table.name}.{ref.name}" for ref in reads.attributed) == [
         "dm.sales_daily.revenue"
     ]
@@ -527,10 +524,35 @@ def _unread_alias(name: str) -> AmbiguousRef:
     )
 
 
-def _timed_reads(sql: str) -> tuple[ColumnReads, float]:
-    started = perf_counter()
-    reads = extract_column_refs(sql, dialect="clickhouse")
-    return reads, perf_counter() - started
+def _budgeted_reads(sql: str, *, max_calls: int = 100_000) -> ColumnReads:
+    """Bound parser and read-through work without scheduler-sensitive timing."""
+    calls = 0
+
+    class BudgetExceeded(BaseException):
+        pass
+
+    def count_calls(_frame: object, event: str, _arg: object) -> None:
+        nonlocal calls
+        if event == "call":
+            calls += 1
+            if calls > max_calls:
+                raise BudgetExceeded
+
+    previous = sys.getprofile()
+    try:
+        sys.setprofile(count_calls)
+        return extract_column_refs(sql, dialect="clickhouse")
+    except BudgetExceeded:
+        raise AssertionError(f"read work budget: {calls} > {max_calls} Python calls") from None
+    finally:
+        sys.setprofile(previous)
+
+
+def test_read_work_budget_stops_and_releases_profiler() -> None:
+    previous = sys.getprofile()
+    with pytest.raises(AssertionError, match="work budget"):
+        _budgeted_reads(_with_linear_chain(40), max_calls=1)
+    assert sys.getprofile() is previous
 
 
 def _with_linear_chain(n: int) -> str:
@@ -575,8 +597,7 @@ def _capped_alias_name(n: int) -> str:
 
 
 def test_a_with_doubling_chain_is_linear_and_reads_the_source_column() -> None:
-    reads, elapsed = _timed_reads(_with_doubling_chain(60))
-    assert elapsed < 2.0, elapsed
+    reads = _budgeted_reads(_with_doubling_chain(60))
     assert sorted(f"{ref.table.name}.{ref.name}" for ref in reads.attributed) == [
         "dm.sales_daily.revenue"
     ]
@@ -584,8 +605,7 @@ def test_a_with_doubling_chain_is_linear_and_reads_the_source_column() -> None:
 
 
 def test_a_select_forward_chain_is_iterative_and_reads_the_source_column() -> None:
-    reads, elapsed = _timed_reads(_select_forward_chain(3000))
-    assert elapsed < 2.0, elapsed
+    reads = _budgeted_reads(_select_forward_chain(3000), max_calls=3_000_000)
     assert sorted(f"{ref.table.name}.{ref.name}" for ref in reads.attributed) == [
         "dm.sales_daily.revenue"
     ]
@@ -593,8 +613,7 @@ def test_a_select_forward_chain_is_iterative_and_reads_the_source_column() -> No
 
 
 def test_a_with_linear_chain_below_the_depth_cap_reads_the_source_column() -> None:
-    reads, elapsed = _timed_reads(_with_linear_chain(40))
-    assert elapsed < 2.0, elapsed
+    reads = _budgeted_reads(_with_linear_chain(40))
     assert sorted(f"{ref.table.name}.{ref.name}" for ref in reads.attributed) == [
         "dm.sales_daily.revenue"
     ]
@@ -603,8 +622,7 @@ def test_a_with_linear_chain_below_the_depth_cap_reads_the_source_column() -> No
 
 def test_a_with_linear_chain_past_the_depth_cap_is_unattributed_under_its_name() -> None:
     n = 3000
-    reads, elapsed = _timed_reads(_with_linear_chain(n))
-    assert elapsed < 2.0, elapsed
+    reads = _budgeted_reads(_with_linear_chain(n), max_calls=3_000_000)
     name = _capped_alias_name(n)
     assert reads.attributed == frozenset()
     assert reads.unattributed == frozenset({name})
@@ -619,16 +637,14 @@ def test_a_nested_query_chain_below_the_depth_cap_matches_the_inline_form() -> N
     with_reads, inline_reads = assert_with_matches_inline(
         _nested_query_chain_with(n), _nested_query_chain_inline(n)
     )
-    reads, elapsed = _timed_reads(_nested_query_chain_with(40))
-    assert elapsed < 2.0, elapsed
+    reads = _budgeted_reads(_nested_query_chain_with(40))
     assert reads.attributed == with_reads.attributed == inline_reads.attributed
     assert reads.ambiguous == with_reads.ambiguous == inline_reads.ambiguous
 
 
 def test_a_nested_query_chain_past_the_depth_cap_is_unattributed_under_its_name() -> None:
     n = 300
-    reads, elapsed = _timed_reads(_nested_query_chain_with(n))
-    assert elapsed < 2.0, elapsed
+    reads = _budgeted_reads(_nested_query_chain_with(n), max_calls=500_000)
     name = _capped_alias_name(n)
     assert reads.attributed == frozenset()
     assert reads.unattributed == frozenset({name})
@@ -638,8 +654,7 @@ def test_a_nested_query_chain_past_the_depth_cap_is_unattributed_under_its_name(
 def test_a_nested_query_doubling_chain_hits_the_expansion_budget() -> None:
     n = 40
     assert 2 ** (n + 1) - 1 > CLICKHOUSE_ALIAS_READ_THROUGH_BUDGET
-    reads, elapsed = _timed_reads(_nested_query_doubling_chain(n))
-    assert elapsed < 2.0, elapsed
+    reads = _budgeted_reads(_nested_query_doubling_chain(n), max_calls=2_000_000)
     assert reads.attributed == frozenset()
     budget_names = {
         "a1",
@@ -895,11 +910,10 @@ def test_a_cut_reference_uses_the_unseen_source_advisory_wording(tmp_path: Path)
 
 
 def test_select_aliases_over_a_long_with_chain_stay_linear() -> None:
-    """300 SELECT aliases, each reading the top of a 300-long WITH chain, under 2 s."""
+    """300 SELECT aliases, each reading the top of a 300-long WITH chain."""
     n = 300
     with_parts = ["revenue AS a0"]
     with_parts.extend(f"a{i - 1} + 1 AS a{i}" for i in range(1, n))
     select_parts = [f"a{n - 1} AS s{i}" for i in range(n)]
     sql = f"WITH {', '.join(with_parts)} SELECT {', '.join(select_parts)} FROM dm.sales_daily"
-    _reads, elapsed = _timed_reads(sql)
-    assert elapsed < 2.0, elapsed
+    _budgeted_reads(sql, max_calls=2_000_000)

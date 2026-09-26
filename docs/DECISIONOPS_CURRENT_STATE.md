@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-25
+**Обновлено:** 2026-09-26
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -478,6 +478,12 @@ MyFlow (2026-09-25): 0 findings.
 companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
 моделированное ревью, не human evidence и не production/design-partner acceptance. Итог ревью —
 один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
+
+Девять offline-тестов ClickHouse alias read-through теперь ограничивают число Python-вызовов
+парсера и reader'а вместо двух секунд wall-clock. Бюджет прерывает вычисление при превышении;
+прежние SQL и семантические assertions сохранены. Production-код и версии evidence не
+менялись. Моделированное ревью `gpt-6-astra` xhigh (2026-09-26): 0 actionable findings;
+полный offline pytest — 2596 passed, 21 skipped, 38 deselected, Ruff и Black чистые.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 

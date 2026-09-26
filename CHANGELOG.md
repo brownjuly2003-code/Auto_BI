@@ -6,6 +6,14 @@
 
 ### Changed
 
+- **Offline-тесты ClickHouse alias read-through ограничивают объём работы.** Девять
+  проверок с порогом в две секунды заменены бюджетом Python-вызовов парсера и reader'а:
+  превышение прерывает вычисление, прежние SQL и семантические assertions сохранены.
+  Это убирает зависимость гейта от загрузки хоста; C-операции и elapsed time бюджет не
+  измеряет. Версии verifier/check не менялись. Моделированное ревью `gpt-6-astra` xhigh
+  (2026-09-26): 0 actionable findings; offline pytest — 2596 passed, 21 skipped,
+  38 deselected, Ruff и Black чистые.
+
 - **PostgreSQL `max_scanned_bytes` теперь явно capability-gated.** Контракты native API
   PostgreSQL 14–18 не дают ни per-query scanned-byte counter, ни engine byte ceiling:
   `EXPLAIN (ANALYZE, BUFFERS)` и `pg_stat_get_xact_blocks_fetched` считают обращения к

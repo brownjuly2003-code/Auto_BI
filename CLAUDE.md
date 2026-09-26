@@ -83,6 +83,12 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-26 — девять offline-тестов ClickHouse alias read-through больше не зависят от
+  порога `elapsed < 2.0`: бюджет Python-вызовов прерывает реальную работу парсера и reader'а,
+  семантические assertions сохранены. Production-код и версии evidence не менялись.
+  Моделированное ревью `gpt-6-astra` xhigh: 0 actionable findings, не human/production
+  acceptance. Полный offline pytest: 2596 passed, 21 skipped, 38 deselected; Ruff и Black
+  чистые.
 - 2026-09-25 — один `COUNT(*)` считает строки, а `COUNT(DISTINCT *)` зависит от всех
   колонок источника. Governance снимает advisory `asset.query_fields_unchecked`, когда его
   единственной причиной была звезда `COUNT(*)`; chart impact добавляет `chart.sql_partial` для
