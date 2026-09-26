@@ -414,7 +414,7 @@ _QUERY_BODY = (exp.Select, exp.Union, exp.Subquery)
 _CLICKHOUSE_OPAQUE_SETTINGS = frozenset({"additional_table_filters"})
 
 
-def _clickhouse_setting_items(root: exp.Expression) -> tuple[exp.Expression, ...]:
+def _clickhouse_setting_items(root: exp.Expr) -> tuple[exp.Expression, ...]:
     """Direct expressions of every SELECT/UNION branch's SETTINGS clause."""
     return tuple(
         item
@@ -440,7 +440,7 @@ def _clickhouse_opaque_settings(root: exp.Expression) -> frozenset[str]:
 
 def _is_clickhouse_setting_column(column: exp.Column, setting_items: frozenset[int]) -> bool:
     """Whether a Column belongs directly to SETTINGS rather than to an invalid nested query."""
-    current: exp.Expression = column
+    current: exp.Expr = column
     while current.parent is not None:
         parent = current.parent
         if isinstance(parent, _QUERY_BODY):
@@ -451,7 +451,7 @@ def _is_clickhouse_setting_column(column: exp.Column, setting_items: frozenset[i
     return False
 
 
-def _clickhouse_aliases(root: exp.Expression) -> _ClickHouseAliasIndex:
+def _clickhouse_aliases(root: exp.Expr) -> _ClickHouseAliasIndex:
     """Query-level and scalar WITH aliases declared on each query node."""
     select_map: dict[int, dict[str, _ClickHouseAlias]] = {}
     with_map: dict[int, dict[str, _ClickHouseAlias]] = {}
@@ -554,7 +554,7 @@ def _clickhouse_aliases(root: exp.Expression) -> _ClickHouseAliasIndex:
 
 def _inside(node: exp.Expression, ancestor: exp.Expression) -> bool:
     """Whether *node* is *ancestor* or sits under it."""
-    current: exp.Expression | None = node
+    current: exp.Expr | None = node
     while current is not None:
         if current is ancestor:
             return True
@@ -636,7 +636,7 @@ def _star_subquery_from(table: exp.Table) -> exp.Subquery:
 
 
 def clickhouse_in_table_fields(
-    root: exp.Expression, aliases: _ClickHouseAliasIndex | None = None
+    root: exp.Expr, aliases: _ClickHouseAliasIndex | None = None
 ) -> tuple[exp.Column, ...]:
     """Columns that ClickHouse reads as `IN (SELECT * FROM <name>)`, not as aliases.
 
@@ -647,6 +647,7 @@ def clickhouse_in_table_fields(
     Column on the right of any IN returns at once, without building scopes or the
     alias index: most statements have none, and the grading builds both anyway.
     """
+    fields: tuple[exp.Column, ...] | list[exp.Column]
     if aliases is None:
         fields = [
             field
@@ -715,7 +716,7 @@ def _loose_columns(node: exp.Expression) -> list[exp.Column]:
     rather than pruning them and leaving them ungraded.
     """
 
-    def prune(child: exp.Expression) -> bool:
+    def prune(child: exp.Expr) -> bool:
         return child is not node and isinstance(child, _QUERY_BODY)
 
     return [child for child in node.walk(prune=prune) if isinstance(child, exp.Column)]
@@ -770,14 +771,16 @@ def _grade_columns(
     """
     truncated = False
     for scope in scopes:
+        columns: tuple[exp.Column, ...] | list[exp.Column]
         if aliases is None:
-            columns: tuple[exp.Column, ...] | list[exp.Column] = scope.columns
+            columns = scope.columns
         else:
             scope_id = id(scope.expression)
-            columns = aliases.scope_columns.get(scope_id)
-            if columns is None:
-                columns = tuple(scope.columns)
-                aliases.scope_columns[scope_id] = columns
+            cached_columns = aliases.scope_columns.get(scope_id)
+            if cached_columns is None:
+                cached_columns = tuple(scope.columns)
+                aliases.scope_columns[scope_id] = cached_columns
+            columns = cached_columns
         if aliases is not None and aliases.local:
             declarations = aliases.local.get(id(scope.expression))
         else:
@@ -981,7 +984,7 @@ def _outermost_nested_queries(node: exp.Expression) -> list[exp.Expression]:
     """Outermost Select/Union/Subquery bodies nested in *node*."""
     found: list[exp.Expression] = []
 
-    def prune(child: exp.Expression) -> bool:
+    def prune(child: exp.Expr) -> bool:
         if child is not node and isinstance(child, _QUERY_BODY):
             found.append(child)
             return True
@@ -1144,7 +1147,7 @@ def _ambiguous_ref(scope: Scope, column: exp.Column, *, quoted: bool) -> Ambiguo
     )
 
 
-def _read_sources(scope: Scope) -> list[exp.Expression | Scope]:
+def _read_sources(scope: Scope) -> list[exp.Selectable | Scope]:
     """The sources a scope reads: the tables, derived tables, laterals and CTEs its own
     FROM/JOIN clauses name.
 
@@ -1176,11 +1179,11 @@ def _read_sources(scope: Scope) -> list[exp.Expression | Scope]:
     them: a derived table or CTE written inside a lateral is a wall, because it cannot
     read what is written around it.
     """
-    read: list[exp.Expression | Scope] = []
+    read: list[exp.Selectable | Scope] = []
     cte_sources = scope.cte_sources
     for _alias, node in scope.references:
         read.append(_referenced_source(node, cte_sources))
-    node_scope = scope
+    node_scope: Scope | None = scope
     while node_scope is not None:
         read.extend(node_scope.lateral_sources.values())
         if node_scope.scope_type in (ScopeType.DERIVED_TABLE, ScopeType.CTE):
@@ -1190,8 +1193,8 @@ def _read_sources(scope: Scope) -> list[exp.Expression | Scope]:
 
 
 def _referenced_source(
-    node: exp.Expression, cte_sources: dict[str, exp.Expression | Scope]
-) -> exp.Expression | Scope:
+    node: exp.Selectable, cte_sources: dict[str, exp.Table | Scope]
+) -> exp.Selectable | Scope:
     """The source a FROM/JOIN item denotes, decided from the node rather than from a name.
 
     A derived table, UDTF or subquery is not a table. An `exp.Table` whose unqualified
@@ -1254,7 +1257,7 @@ def _owning_scope(column: exp.Column, owners: dict[int, Scope]) -> Scope | None:
     return None
 
 
-def _column_source(scope: Scope, column: exp.Column) -> exp.Expression | Scope | None:
+def _column_source(scope: Scope, column: exp.Column) -> exp.Selectable | Scope | None:
     """The source a column resolves to, or ``None`` when SQL does not decide it."""
     if not column.table:
         # A scope decides a bare name only through the sources it reads (`_read_sources`),

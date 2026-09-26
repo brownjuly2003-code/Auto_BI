@@ -12,7 +12,13 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=31`, `CHECK_VERSION=17`
 
-**Последний срез (2026-09-26):** однозначная ссылка внутри вложенного scalar `WITH` теперь
+**Последний срез (2026-09-26):** восстановлен package-wide strict mypy для SQL AST.
+Аннотации `Expr`/`Selectable`, nullable cache/scope и коллекций согласованы с sqlglot без
+изменения SQL-поведения или версий evidence. Strict mypy: 0 ошибок в 120 модулях; полный
+offline pytest: 2603 passed, 21 skipped, 38 deselected. Синтетическое ревью `gpt-6-astra`
+xhigh: 0 actionable findings, не human/production acceptance.
+
+**Предыдущий срез (2026-09-26):** однозначная ссылка внутри вложенного scalar `WITH` теперь
 связывается с ближайшим объявлением. Внутренний алиас не открывает внешние `dictGet`, `joinGet`
 или `*`; self-reference, дубликаты на одном уровне и shadowing именованных CTE остаются
 conservative. Итоговое synthetic/modelled review `gpt-6-astra` xhigh — 0 actionable findings;

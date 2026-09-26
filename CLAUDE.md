@@ -83,6 +83,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-26 — восстановлен package-wide strict mypy для SQL AST: типы `Expr`/`Selectable`,
+  nullable cache/scope и коллекций согласованы с sqlglot без изменения SQL-поведения.
+  Версии evidence остаются 31/17. Strict mypy: 0 ошибок в 120 модулях; полный offline pytest:
+  2603 passed, 21 skipped, 38 deselected. Синтетическое ревью `gpt-6-astra` xhigh:
+  0 actionable findings, не human/production acceptance.
 - 2026-09-26 — однозначная ссылка внутри вложенного scalar `WITH` теперь связывается с
   ближайшим объявлением: внутренний алиас не открывает внешние `dictGet`, `joinGet` или `*`.
   Self-reference, дубликаты на одном уровне и shadowing именованных CTE остаются conservative;

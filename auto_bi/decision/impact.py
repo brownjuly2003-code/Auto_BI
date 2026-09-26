@@ -217,7 +217,7 @@ class _ChartResolver:
     ) -> None:
         self._gaps: dict[tuple[str, str], ChartGap] = {}
         self._reads: dict[str, ColumnReads | None] = {}
-        self._trees: dict[str, exp.Expression | None] = {}
+        self._trees: dict[str, exp.Expr | None] = {}
         self._projection_star: dict[str, bool] = {}
         self._open_cte: dict[str, set[int]] = {}
         self._hidden: dict[str, tuple[str, ...]] = {}
@@ -485,7 +485,7 @@ class _ChartResolver:
             self._open_cte[sql] = set() if root is None else _open_cte_gates(root)
         return self._open_cte[sql]
 
-    def _parsed(self, sql: str) -> exp.Expression | None:
+    def _parsed(self, sql: str) -> exp.Expr | None:
         """The statement, parsed once per text; `None` when sqlglot could not parse it."""
         if sql not in self._trees:
             try:
@@ -682,7 +682,7 @@ def _opaque_setting_clauses(settings: frozenset[str]) -> tuple[str, ...]:
     )
 
 
-def _hidden_read_clauses(root: exp.Expression) -> tuple[str, ...]:
+def _hidden_read_clauses(root: exp.Expr) -> tuple[str, ...]:
     """Constructs that can hide a column read, each named as an unread part.
 
     The rule is the contract, not the list: an expression this resolver cannot expand
@@ -763,7 +763,7 @@ _DICT_GET = re.compile(
 _JOIN_GET_READERS = frozenset({"joinget", "joingetornull"})
 
 
-def _dictionary_calls(root: exp.Expression) -> list[tuple[exp.Func, str]]:
+def _dictionary_calls(root: exp.Expr) -> list[tuple[exp.Func, str]]:
     """Functions in ClickHouse's dictionary (`dict…`) or Join-table (`joinget…`) family."""
     found: list[tuple[exp.Func, str]] = []
     for call in root.find_all(exp.Func):
@@ -773,9 +773,7 @@ def _dictionary_calls(root: exp.Expression) -> list[tuple[exp.Func, str]]:
     return found
 
 
-def _dictionary_reads_in(
-    root: exp.Expression, *, open_ids: set[int] | None = None
-) -> _DictionaryReads:
+def _dictionary_reads_in(root: exp.Expr, *, open_ids: set[int] | None = None) -> _DictionaryReads:
     """Name the read of each dictionary or Join-table call the statement runs, or name it unread.
 
     A dictionary call is any function whose name begins with `dict`; a Join-table call,
@@ -862,8 +860,8 @@ def _literal_join_get_reads(call: exp.Func) -> list[tuple[str, str]]:
 
 
 def _runs_in_statement(
-    root: exp.Expression, *, open_ids: set[int] | None = None
-) -> Callable[[exp.Expression], bool]:
+    root: exp.Expr, *, open_ids: set[int] | None = None
+) -> Callable[[exp.Expr], bool]:
     """Whether a node sits in a part of the statement that runs.
 
     The gates are the statement's `exp.CTE` nodes: named CTEs and ClickHouse scalar
@@ -893,20 +891,20 @@ def _runs_in_statement(
     """
     resolved_ids = _open_cte_gates(root) if open_ids is None else open_ids
 
-    def in_run(node: exp.Expression) -> bool:
+    def in_run(node: exp.Expr) -> bool:
         return _node_runs(node, resolved_ids)
 
     return in_run
 
 
-def _ancestors(node: exp.Expression) -> Iterator[exp.Expression]:
+def _ancestors(node: exp.Expr) -> Iterator[exp.Expr]:
     current = node.parent
     while current is not None:
         yield current
         current = current.parent
 
 
-def _node_runs(node: exp.Expression, open_ids: set[int]) -> bool:
+def _node_runs(node: exp.Expr, open_ids: set[int]) -> bool:
     """A node runs iff every `exp.CTE` among its ancestors is open."""
     return all(
         not isinstance(ancestor, exp.CTE) or id(ancestor) in open_ids
@@ -914,7 +912,7 @@ def _node_runs(node: exp.Expression, open_ids: set[int]) -> bool:
     )
 
 
-def _declaring_query(cte: exp.CTE) -> exp.Expression | None:
+def _declaring_query(cte: exp.CTE) -> exp.Expr | None:
     """The query that owns this WITH: CTE → With → Select or Union."""
     parent = cte.parent
     if parent is None:
@@ -963,7 +961,7 @@ def _column_leftmost_name(column: exp.Column) -> str:
     return ""
 
 
-def _open_cte_gates(root: exp.Expression) -> set[int]:
+def _open_cte_gates(root: exp.Expr) -> set[int]:
     """Ids of CTE gates that a running part of the statement opens.
 
     Linear worklist: each reference is processed once, each gate opens once. A name
@@ -1066,9 +1064,7 @@ def _open_cte_gates(root: exp.Expression) -> set[int]:
     return open_ids
 
 
-def _projection_star_in_reachable(
-    root: exp.Expression, *, open_ids: set[int] | None = None
-) -> bool:
+def _projection_star_in_reachable(root: exp.Expr, *, open_ids: set[int] | None = None) -> bool:
     """True when a column-reading star sits in a part of the statement that runs.
 
     This is `_runs_in_statement` applied to each star — the same predicate as the

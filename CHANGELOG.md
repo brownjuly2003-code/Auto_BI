@@ -6,6 +6,12 @@
 
 ### Changed
 
+- **Восстановлен package-wide strict mypy для SQL AST.** Аннотации sqlglot `Expr` и
+  `Selectable`, nullable cache/scope и типы коллекций приведены к фактическим контрактам;
+  SQL-поведение и версии evidence не менялись. Strict mypy: 0 ошибок в 120 модулях; полный
+  offline pytest: 2603 passed, 21 skipped, 38 deselected. Синтетическое ревью `gpt-6-astra`
+  xhigh: 0 actionable findings, не human/production acceptance.
+
 - **Offline-тесты ClickHouse alias read-through ограничивают объём работы.** Девять
   проверок с порогом в две секунды заменены бюджетом Python-вызовов парсера и reader'а:
   превышение прерывает вычисление, прежние SQL и семантические assertions сохранены.
