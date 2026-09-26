@@ -83,6 +83,15 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-26 — F-T-11-7: `t.region` при однозначном явном `FROM`/`JOIN … AS t` своего
+  SELECT больше не открывает одноимённый scalar `WITH t` в операторском SQL. Ложные
+  chart reads и `chart.sql_partial` исчезают; реальный table read, tuple `t.1` и
+  отдельное чтение scalar alias сохраняются. `VERIFIER_VERSION` 35 → 36,
+  `CHECK_VERSION` остаётся 18. Итоговое синтетическое `gpt-6-astra` xhigh review:
+  0 actionable findings после закрытия P2; не human/production acceptance.
+  Полный offline pytest: 2641 passed, 21 skipped,
+  38 deselected; chart-impact suite: 260 passed; docs-as-code: 24 passed;
+  strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
 - 2026-09-26 — однозначная ссылка на named CTE в операторском SQL теперь связывается с
   ближайшим объявлением: внутренняя CTE не открывает одноимённую внешнюю и не добавляет
   ложные chart reads или `chart.sql_partial`. `FROM` и bare `IN <name>` следуют одному

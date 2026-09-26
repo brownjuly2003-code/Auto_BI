@@ -10,9 +10,19 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=35`, `CHECK_VERSION=18`
+**Версии evidence:** `VERIFIER_VERSION=36`, `CHECK_VERSION=18`
 
-**Последний срез (2026-09-26):** однозначная ссылка на named CTE внутри вложенного
+**Последний срез (2026-09-26):** двухчастная колонка `t.column` с однозначным явным
+алиасом именованного табличного источника `FROM`/`JOIN … AS t` своего SELECT больше не открывает
+одноимённый scalar `WITH t`. Ложные chart reads и `chart.sql_partial` исчезают; настоящий
+доступ к `t.1` и отдельное чтение scalar alias остаются. `VERIFIER_VERSION` 35 → 36,
+`CHECK_VERSION` остаётся 18. Итоговое синтетическое `gpt-6-astra` xhigh review:
+0 actionable findings после закрытия P2; не human/production acceptance.
+Полный offline pytest: 2641 passed, 21 skipped,
+38 deselected; chart-impact suite: 260 passed; docs-as-code: 24 passed; strict mypy:
+0 ошибок в 120 модулях, Ruff и Black чистые.
+
+**Срез verifier 35 (2026-09-26):** однозначная ссылка на named CTE внутри вложенного
 `WITH` связывается с ближайшим объявлением. Внутренняя CTE больше не открывает
 одноимённую внешнюю и её ложный `chart.sql_partial`; отдельное внешнее чтение
 сохраняет гэп. Self-reference и одноуровневые дубликаты остаются консервативными.
@@ -22,7 +32,7 @@ chart-impact suite: 179 passed. Strict mypy: 0 ошибок в 120 модуля�
 ревью `gpt-6-astra` xhigh: дефектов кода не найдено, один пробел покрытия закрыт
 тестами; не human/production acceptance.
 
-**Предыдущий срез (2026-09-26):** chart impact учитывает `JOIN … USING` только в
+**Срез verifier 34 (2026-09-26):** chart impact учитывает `JOIN … USING` только в
 исполняемой части операторского SQL. Ключ JOIN в непрочитанной named CTE или scalar
 `WITH` больше не создаёт ложный `chart.sql_partial`; открытая ссылка сохраняет гэп.
 `VERIFIER_VERSION` 33 → 34, `CHECK_VERSION` остаётся 18. Полный offline pytest:
@@ -30,7 +40,7 @@ chart-impact suite: 179 passed. Strict mypy: 0 ошибок в 120 модуля�
 Ruff и Black чистые. Синтетическое ревью `gpt-6-astra` xhigh: 0 actionable
 findings, не human/production acceptance.
 
-**Перед ним (2026-09-26):** chart impact учитывает ClickHouse `COLUMNS('regex')`
+**Срез verifier 33 (2026-09-26):** chart impact учитывает ClickHouse `COLUMNS('regex')`
 только в исполняемой части операторского SQL. Селектор в непрочитанной named CTE или
 scalar `WITH` больше не создаёт ложный `chart.sql_partial`, а открытая ссылка сохраняет
 гэп. Governance reviewed asset SQL по-прежнему проверяет весь AST. `VERIFIER_VERSION`
@@ -257,10 +267,11 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
 - Резолвер связывает ссылку на scalar `WITH` или named CTE с ближайшим объявлением, когда
   такое связывание однозначно: вложенное объявление не открывает скрытое внешнее (F-T-11-3),
   в том числе для `dictGet`, `joinGet`, `*` и `JOIN … USING`. Self-reference и дубликаты
-  одноимённых объявлений на одном уровне остаются conservative. Table alias по-прежнему
-  открывает scalar `WITH` (`t.region` при `FROM dm.sales_daily AS t`); database qualifier с
-  тем же именем — тоже (`dm.sales_daily.revenue` открывает `WITH … AS dm`), поэтому F-T-11-7
-  и F-T-11-13 остаются пере-сообщениями, которые ничего не прячут.
+  одноимённых объявлений на одном уровне остаются conservative. Обычная двухчастная колонка
+  `t.region` при однозначном явном алиасе именованного `FROM`/`JOIN`-источника того же SELECT читает
+  таблицу и не открывает scalar `WITH t` (F-T-11-7). Database qualifier с тем же именем
+  по-прежнему открывает scalar `WITH` (`dm.sales_daily.revenue` открывает `WITH … AS dm`):
+  F-T-11-13 остаётся консервативным пере-сообщением.
 - `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
   под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
   `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:
@@ -532,6 +543,10 @@ MyFlow (2026-09-25): 0 findings.
 companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
 моделированное ревью, не human evidence и не production/design-partner acceptance. Итог ревью —
 один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
+
+Закрыто ложное открытие scalar `WITH` через однозначный явный алиас именованного табличного источника
+того же SELECT (verifier 36, check 18): `t.region` читает таблицу `AS t`, не скрытое
+определение `WITH … AS t`. Настоящий tuple-доступ `t.1` и отдельное чтение alias сохраняются.
 
 Закрыто открытие затенённой named CTE одноимённой ссылкой из вложенного `WITH`
 (verifier 35, check 18): chart impact выбирает ближайшее объявление для однозначной

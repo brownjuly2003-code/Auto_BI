@@ -238,7 +238,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: operator SQL references. An outer CTE that only the inner reference appeared to
 #: open no longer adds false chart reads or partial-read gaps. Evidence only;
 #: CHECK_VERSION does not move.
-VERIFIER_VERSION = "35"
+#: 36 — an ordinary two-part column qualified by one explicit named-table alias
+#: in its own SELECT no longer opens an equally named scalar WITH in operator SQL.
+#: False chart reads and partial-read gaps disappear; CHECK_VERSION does not move.
+VERIFIER_VERSION = "36"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

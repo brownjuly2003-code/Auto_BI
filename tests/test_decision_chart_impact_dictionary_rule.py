@@ -1008,8 +1008,8 @@ def test_a_outer_scalar_alias_read_in_another_branch_remains_visible(tmp_path: P
 # --- F-T-11-7: a tuple-element access reads the scalar alias --------------------------------
 #
 # `t.1` parses as Column(this=Literal 1, table=t). A qualified column whose table
-# names the scalar alias is a reader, whatever its `this`. A table alias with the
-# same name opens it too — a documented over-report.
+# names the scalar alias is a reader, whatever its `this`. A same-level explicit
+# table alias shadows the scalar alias for ordinary table-qualified columns.
 
 
 @pytest.mark.parametrize(
@@ -1054,6 +1054,11 @@ def test_a_star_read_through_a_tuple_element_follows_its_alias(
             True,
         ),
         (
+            f"WITH tuple({_DICT_GET_REV}, 2) AS t "
+            "SELECT t.1, sum(revenue) FROM dm.sales_daily AS t",
+            True,
+        ),
+        (
             f"WITH tuple({_DICT_GET_REV}, 2) AS t SELECT sum(revenue) FROM dm.sales_daily",
             False,
         ),
@@ -1062,6 +1067,7 @@ def test_a_star_read_through_a_tuple_element_follows_its_alias(
         "subquery-tuple-element-read",
         "subquery-tuple-element-unread-control",
         "expression-tuple-element-read",
+        "expression-tuple-element-with-table-alias",
         "expression-tuple-element-unread-control",
     ],
 )
@@ -1078,23 +1084,116 @@ def test_a_dictionary_call_read_through_a_tuple_element_follows_its_alias(
         assert report.chart_gaps == []
 
 
-def test_a_same_named_table_alias_opens_a_scalar_with_as_a_known_over_report(
+def test_a_same_named_table_alias_does_not_open_a_scalar_with(
     tmp_path: Path,
 ) -> None:
-    """Documented over-report: `FROM dm.sales_daily AS t` also opens scalar `WITH … AS t`.
-
-    `t.region` / `t.revenue` are columns of the table alias, not of the scalar WITH.
-    Shadowing is not modelled, so the qualifier still opens the WITH; that hides nothing.
-    """
+    """A same-level table alias shadows an equally named scalar WITH alias."""
     sql = (
         f"WITH (SELECT {_DICT_GET_REV}) AS t "
         "SELECT t.region, sum(t.revenue) FROM dm.sales_daily AS t"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads()
+    _, report = field_change(tmp_path, sql, "dm.rev.revenue")
+    assert charts(report) == []
+    assert report.chart_gaps == []
+    _, source_report = field_change(tmp_path, sql, "dm.sales_daily.revenue")
+    assert charts(source_report) == [
+        ("operator_table", ChartRelation.READS_FIELD, "query reads dm.sales_daily.revenue")
+    ]
+
+
+def test_a_separate_scalar_reference_survives_a_same_named_table_alias(tmp_path: Path) -> None:
+    sql = (
+        f"WITH {_DICT_GET_REV} AS t "
+        "SELECT t.region FROM dm.sales_daily AS t "
+        "UNION ALL SELECT t FROM dm.sales_daily"
     )
     assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
         reads=(("dm.rev", "revenue"),)
     )
     _, report = field_change(tmp_path, sql, "dm.rev.revenue")
     assert charts(report) == [_READS_REV]
+
+
+def test_a_same_named_join_alias_does_not_open_a_scalar_with(tmp_path: Path) -> None:
+    """A JOIN table alias shadows an equally named scalar WITH alias."""
+    sql = (
+        f"WITH (SELECT {_DICT_GET_REV}) AS t "
+        "SELECT s.region, sum(s.revenue) FROM dm.sales_daily AS s "
+        "JOIN dm.other AS t ON s.region = t.region"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads()
+    _, report = field_change(tmp_path, sql, "dm.rev.revenue")
+    assert charts(report) == []
+    assert report.chart_gaps == []
+
+
+def test_a_named_cte_table_alias_does_not_open_a_scalar_with() -> None:
+    sql = (
+        f"WITH c AS (SELECT region FROM dm.sales_daily), (SELECT {_DICT_GET_REV}) AS t "
+        "SELECT t.region FROM c AS t"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads()
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        f"WITH (SELECT {_DICT_GET_REV}) AS t SELECT t.region FROM dm.sales_daily AS T",
+        f"WITH (SELECT {_DICT_GET_REV}) AS t "
+        "SELECT (SELECT t.region FROM dm.other) FROM dm.sales_daily AS t",
+    ],
+    ids=["case-distinct-alias", "outer-query-alias"],
+)
+def test_a_distinct_table_alias_does_not_hide_a_scalar_with(sql: str) -> None:
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
+        reads=(("dm.rev", "revenue"),)
+    )
+
+
+def test_a_same_named_table_alias_hides_a_scalar_star(tmp_path: Path) -> None:
+    """A table-qualified column does not make a same-named scalar star reachable."""
+    sql = "WITH tuple(*) AS t SELECT t.region, sum(t.revenue) FROM dm.sales_daily AS t"
+    root = sqlglot.parse_one(sql, read="clickhouse")
+    assert _projection_star_in_reachable(root) is False
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    assert report.chart_gaps == []
+
+
+def test_a_duplicate_table_aliases_keep_a_scalar_with_read_for_a_derived_join(
+    tmp_path: Path,
+) -> None:
+    sql = (
+        f"WITH (SELECT {_DICT_GET_REV}) AS t "
+        "SELECT t.region FROM dm.sales_daily AS t "
+        "JOIN (SELECT region FROM dm.other) AS t ON t.region = t.region"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
+        reads=(("dm.rev", "revenue"),)
+    )
+    _, report = field_change(tmp_path, sql, "dm.rev.revenue")
+    assert charts(report) == [_READS_REV]
+    assert report.chart_gaps == []
+
+
+def test_a_duplicate_table_aliases_keep_a_scalar_with_read_for_a_numbers_join(
+    tmp_path: Path,
+) -> None:
+    sql = (
+        f"WITH (SELECT {_DICT_GET_REV}) AS t "
+        "SELECT t.region FROM dm.sales_daily AS t "
+        "JOIN numbers(1) AS t ON 1 = 1"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
+        reads=(("dm.rev", "revenue"),)
+    )
+    _, report = field_change(tmp_path, sql, "dm.rev.revenue")
+    assert charts(report) == [_READS_REV]
+    assert report.chart_gaps == []
 
 
 # --- F-T-11-13: a tuple access at any depth reads the scalar alias --------------------------

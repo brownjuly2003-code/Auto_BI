@@ -897,9 +897,11 @@ def _runs_in_statement(
     is not inside that CTE, and the declaring query is an ancestor of the column.
     A column names the alias through its leftmost written part: catalog if set, else
     db, else table, else its own name (a bare column). A tuple access at any depth
-    (`t.1`, `t.name`, `t.a.b`) therefore reads the alias. A table alias or a database
-    qualifier with the same name therefore opens the scalar `WITH` as well — an
-    over-report, the direction that hides nothing. Start with every gate closed. A
+    (`t.1`, `t.name`, `t.a.b`) therefore reads the alias, except when an ordinary
+    two-part column names one unambiguous explicit alias of a named table source
+    in its own SELECT.
+    A database qualifier with the same name still opens the scalar `WITH` — a
+    conservative over-report. Start with every gate closed. A
     name referenced only from inside the gate it would open cannot open it, so a
     cycle nobody outside reads stays closed.
 
@@ -987,9 +989,11 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
     opens the nearest named CTE declaration it could name, compared
     case-insensitively, whose declaring query encloses the name. A column names a
     scalar alias through its leftmost written part, so a tuple access at any depth
-    (`t.1`, `t.a.b`) opens the nearest scalar declaration; same-level duplicates
-    and self-references stay conservative. Named CTEs open through an unqualified
-    table and through a bare `IN <name>` that is not a visible alias.
+    (`t.1`, `t.a.b`) opens the nearest scalar declaration. An ordinary two-part
+    column qualified by one unambiguous explicit named-table alias in its own SELECT
+    names that source instead. Same-level duplicates and self-references stay
+    conservative. Named CTEs open through an unqualified table and through a bare
+    `IN <name>` that is not a visible alias.
     """
     named_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
     scalar_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
@@ -1016,6 +1020,8 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
 
     setting_items = frozenset(id(item) for item in _clickhouse_setting_items(root))
     refs: list[_CteRef] = []
+    source_names: dict[int, dict[str, int]] = defaultdict(dict)
+    explicit_table_aliases: dict[int, set[str]] = defaultdict(set)
 
     def add_named_ref(node: exp.Expression, name: str) -> None:
         enclosing, ancestors = _enclosing_and_ancestors(node)
@@ -1034,6 +1040,28 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
             nearest_declaring = None
         refs.append(_CteRef(name, enclosing, ancestors, True, named_declaring_id=nearest_declaring))
 
+    for source_clause in root.find_all(exp.From, exp.Join):
+        source = source_clause.this
+        if not isinstance(source, exp.Expression):
+            continue
+        query = source_clause.find_ancestor(exp.Select)
+        if query is None:
+            continue
+        name = source.alias
+        if not name and isinstance(source, exp.Table) and isinstance(source.this, exp.Identifier):
+            name = source.name
+        if not name:
+            continue
+        query_id = id(query)
+        names = source_names[query_id]
+        names[name] = names.get(name, 0) + 1
+        if (
+            isinstance(source, exp.Table)
+            and isinstance(source.this, exp.Identifier)
+            and source.alias
+        ):
+            explicit_table_aliases[query_id].add(name)
+
     for table in root.find_all(exp.Table):
         if table.db or table.catalog or not table.name:
             continue
@@ -1041,6 +1069,20 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
     for column in root.find_all(exp.Column):
         if _is_clickhouse_setting_column(column, setting_items):
             continue
+        if (
+            column.table
+            and not column.db
+            and not column.catalog
+            and isinstance(column.this, exp.Identifier)
+        ):
+            query = column.find_ancestor(exp.Select)
+            if query is not None:
+                query_id = id(query)
+                if (
+                    column.table in explicit_table_aliases.get(query_id, ())
+                    and source_names[query_id].get(column.table) == 1
+                ):
+                    continue
         alias = _column_leftmost_name(column)
         if not alias:
             continue
