@@ -83,6 +83,12 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-26 — однозначная ссылка внутри вложенного scalar `WITH` теперь связывается с
+  ближайшим объявлением: внутренний алиас не открывает внешние `dictGet`, `joinGet` или `*`.
+  Self-reference, дубликаты на одном уровне и shadowing именованных CTE остаются conservative;
+  `VERIFIER_VERSION` 30 → 31, `CHECK_VERSION` остаётся 17. Итоговое synthetic/modelled review
+  `gpt-6-astra` xhigh — 0 actionable findings; полный offline pytest — 2603 passed, 21 skipped,
+  38 deselected. Это не human evidence и не production/design-partner acceptance.
 - 2026-09-26 — девять offline-тестов ClickHouse alias read-through больше не зависят от
   порога `elapsed < 2.0`: бюджет Python-вызовов прерывает реальную работу парсера и reader'а,
   семантические assertions сохранены. Production-код и версии evidence не менялись.

@@ -24,6 +24,13 @@
 
 ### Added
 
+- **Однозначная ссылка на scalar `WITH` связывается с ближайшим объявлением** (`VERIFIER_VERSION`
+  30 → 31, `CHECK_VERSION` остаётся 17). Вложенный `WITH 1 AS a` больше не открывает внешнее
+  чтение `dictGet`, `joinGet` или `*`, когда внутреннее объявление однозначно его скрывает;
+  self-reference, дубликаты scalar-алиасов на одном уровне и shadowing именованных CTE остаются
+  conservative и могут пере-сообщать. Выбор среза помечен как synthetic/modelled review
+  `gpt-6-astra` xhigh: это не human evidence и не production/design-partner acceptance.
+
 - **`COUNT(*)` не читает колонки, а `COUNT(DISTINCT *)` читает все** (`CHECK_VERSION`
   16 → 17, `VERIFIER_VERSION` 29 → 30). Прямой `COUNT(*)` считает строки, поэтому governance
   снимает advisory `asset.query_fields_unchecked`, когда его единственной причиной была

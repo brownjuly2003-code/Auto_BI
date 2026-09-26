@@ -880,15 +880,80 @@ def test_a_star_reached_through_a_nested_query_inside_a_live_expression_with(
         assert report.chart_gaps == []
 
 
-def test_a_shadowed_scalar_alias_is_a_known_over_report(tmp_path: Path) -> None:
-    """F-T-11-3: shadowing is not modelled, so the inner `a` still opens the outer WITH.
-
-    The inner `a` is the inner WITH's literal 1. The resolver still names a read of
-    `dm.rev.revenue`. That over-reports and hides nothing.
-    """
+def test_a_shadowed_scalar_alias_does_not_open_outer_dictionary_read(tmp_path: Path) -> None:
+    """An inner scalar WITH declaration shadows the outer dictionary alias."""
     sql = (
         f"WITH {_DICT_GET_REV} AS a "
         "SELECT sum(revenue) FROM (WITH 1 AS a SELECT revenue, a FROM dm.sales_daily)"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads()
+    _, report = field_change(tmp_path, sql, "dm.rev.revenue")
+    assert charts(report) == []
+    assert report.chart_gaps == []
+
+
+def test_a_shadowing_inner_scalar_alias_still_reads_its_definition(tmp_path: Path) -> None:
+    sql = (
+        "WITH dictGet('dm.rev', 'cost', toUInt64(1)) AS a "
+        f"SELECT sum(revenue) FROM (WITH {_DICT_GET_REV} AS a "
+        "SELECT revenue, a FROM dm.sales_daily)"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
+        reads=(("dm.rev", "revenue"),)
+    )
+    _, report = field_change(tmp_path, sql, "dm.rev.revenue")
+    assert charts(report) == [_READS_REV]
+
+
+def test_a_scalar_alias_without_inner_declaration_still_opens(tmp_path: Path) -> None:
+    sql = (
+        f"WITH {_DICT_GET_REV} AS a "
+        "SELECT sum(revenue) FROM (SELECT revenue, a FROM dm.sales_daily)"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
+        reads=(("dm.rev", "revenue"),)
+    )
+    _, report = field_change(tmp_path, sql, "dm.rev.revenue")
+    assert charts(report) == [_READS_REV]
+
+
+@pytest.mark.parametrize(
+    "inner_value,access", [("1", "a"), ("tuple(1)", "a.1")], ids=["bare", "tuple-element"]
+)
+def test_a_shadowed_scalar_alias_does_not_open_outer_star(inner_value: str, access: str) -> None:
+    sql = (
+        "WITH tuple(*) AS a "
+        f"SELECT sum(revenue) FROM (WITH {inner_value} AS a "
+        f"SELECT revenue, {access} FROM dm.sales_daily)"
+    )
+    assert _projection_star_in_reachable(sqlglot.parse_one(sql, read="clickhouse")) is False
+
+
+def test_a_shadowed_scalar_alias_does_not_open_outer_join_read(tmp_path: Path) -> None:
+    sql = (
+        "WITH joinGet('dm.joined', 'value', toUInt64(1)) AS a "
+        "SELECT sum(revenue) FROM (WITH 1 AS a SELECT revenue, a FROM dm.sales_daily)"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads()
+    _, report = field_change(tmp_path, sql, "dm.joined.value")
+    assert charts(report) == []
+
+
+def test_a_scalar_alias_reference_inside_its_definition_stays_conservative() -> None:
+    sql = (
+        f"WITH {_DICT_GET_REV} AS a "
+        "SELECT sum(revenue) FROM (WITH a + 1 AS a SELECT revenue, a FROM dm.sales_daily)"
+    )
+    assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
+        reads=(("dm.rev", "revenue"),)
+    )
+
+
+def test_a_outer_scalar_alias_read_in_another_branch_remains_visible(tmp_path: Path) -> None:
+    sql = (
+        f"WITH {_DICT_GET_REV} AS a "
+        "SELECT sum(revenue) FROM (WITH 1 AS a SELECT revenue, a FROM dm.sales_daily) "
+        "UNION ALL SELECT a FROM dm.sales_daily"
     )
     assert _dictionary_reads_in(sqlglot.parse_one(sql, read="clickhouse")) == _DictionaryReads(
         reads=(("dm.rev", "revenue"),)

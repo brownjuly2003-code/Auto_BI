@@ -50,8 +50,11 @@ by a part of the statement that runs) makes the star an unread part. A star insi
 ClickHouse's scalar `WITH` follows its alias the same way a dictionary call does. A query
 nested inside the body of a scalar `WITH` is part of that `WITH`: it runs when the `WITH`
 is live, and the named CTEs it names and the `WITH`s it declares follow the same rules.
-Shadowing is not modelled: a name opens every CTE it could name, compared
-case-insensitively, which can only over-report. A tuple access at any depth (`t.1`,
+An unambiguous reference inside nested scalar `WITH` declarations binds to the nearest
+declaration, compared case-insensitively, so an inner declaration suppresses a hidden outer
+one for dictionary, Join-table and star reachability. Self-references, same-level duplicate
+scalar aliases and named-CTE shadowing remain conservative and can over-report. A tuple access
+at any depth (`t.1`,
 `t.name`, `t.a.b`) reads the scalar alias through its leftmost qualifier; a table alias
 or a database qualifier with the same name opens it too, which is an over-report. A
 column whose source is a table function
@@ -105,8 +108,11 @@ of the statement that runs; a named CTE counts when FROM/JOIN names it. A scalar
 read only inside a CTE the statement never runs does not make that `WITH` live. A query
 nested inside the body of a scalar `WITH` is part of that `WITH`: it runs when the `WITH`
 is live, and the named CTEs it names and the `WITH`s it declares follow the same rules.
-Shadowing is not modelled: a name opens every CTE it could name, compared
-case-insensitively, which can only over-report. A tuple access at any depth (`t.1`,
+An unambiguous reference inside nested scalar `WITH` declarations binds to the nearest
+declaration, compared case-insensitively, so an inner declaration suppresses a hidden outer
+one for dictionary, Join-table and star reachability. Self-references, same-level duplicate
+scalar aliases and named-CTE shadowing remain conservative and can over-report. A tuple access
+at any depth (`t.1`,
 `t.name`, `t.a.b`) reads the scalar alias through its leftmost qualifier; a table alias
 or a database qualifier with the same name opens it too, which is an over-report.
 A ClickHouse Join-table call — any function whose name begins with `joinget`,
@@ -351,15 +357,14 @@ metrics' term columns.
 - **THEN** the change carries a chart impact for that tile with relation `reads_field`
   naming `dm.rev.revenue`
 
-### Scenario: a shadowed scalar alias is a known over-report
+### Scenario: a shadowed scalar alias does not open the outer WITH
 
 - **GIVEN** a change touching `dm.rev.revenue` and a tile whose `raw_sql` is
   `WITH dictGet('dm.rev', 'revenue', toUInt64(1)) AS a
   SELECT sum(revenue) FROM (WITH 1 AS a SELECT revenue, a FROM dm.sales_daily)`
 - **WHEN** impact is resolved with that dashboard supplied
-- **THEN** the change carries a chart impact for that tile with relation `reads_field`
-  naming `dm.rev.revenue` — the inner `a` is the inner WITH's literal, but shadowing is
-  not modelled, so the name also opens the outer WITH; that over-reports and hides nothing
+- **THEN** the report carries neither a chart impact nor a chart gap for that tile — the inner
+  `a` binds to the nearest scalar `WITH` declaration, so the outer dictionary call does not run
 
 ### Scenario: a tuple-element access reads a scalar WITH alias
 

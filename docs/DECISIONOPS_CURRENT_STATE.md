@@ -10,7 +10,14 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=30`, `CHECK_VERSION=17`
+**Версии evidence:** `VERIFIER_VERSION=31`, `CHECK_VERSION=17`
+
+**Последний срез (2026-09-26):** однозначная ссылка внутри вложенного scalar `WITH` теперь
+связывается с ближайшим объявлением. Внутренний алиас не открывает внешние `dictGet`, `joinGet`
+или `*`; self-reference, дубликаты на одном уровне и shadowing именованных CTE остаются
+conservative. Итоговое synthetic/modelled review `gpt-6-astra` xhigh — 0 actionable findings;
+полный offline pytest: 2603 passed, 21 skipped, 38 deselected. Это не human evidence и не
+production/design-partner acceptance.
 
 Четыре исторических tracked pilot-bundle в `docs/pilot/2026-08-25-ch-*` выпущены verifier 2
 и такими остаются: `auto_bi decision evidence` по ним проходит (все проверены 2026-09-12,
@@ -201,12 +208,13 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   правой стороне `IN`, которое не видимый алиас, открывает именованную CTE; видимый
   scalar WITH- или SELECT-алиас с тем же именем выигрывает у CTE, и табличная форма тогда
   молчит там, где `IN (SELECT * FROM x)` назвал бы чтение CTE (F-T-14-3).
-- Резолвер не моделирует shadowing имён CTE и scalar `WITH`: имя открывает каждую CTE,
-  которую оно могло бы назвать (без учёта регистра), включая внешнюю, которую скрывает
-  вложенное объявление. Table alias с тем же именем тоже открывает scalar `WITH`
-  (`t.region` при `FROM dm.sales_daily AS t` открывает `WITH … AS t`); database
-  qualifier с тем же именем — тоже (`dm.sales_daily.revenue` открывает `WITH … AS dm`).
-  Все три случая пере-сообщают чтение и ничего не прячут (F-T-11-3, F-T-11-7, F-T-11-13).
+- Резолвер связывает ссылку на scalar `WITH` с ближайшим объявлением, когда такое связывание
+  однозначно: вложенное объявление не открывает скрытое внешнее (F-T-11-3), в том числе для
+  `dictGet`, `joinGet` и `*`. Self-reference, дубликаты scalar-алиасов на одном уровне и
+  shadowing именованных CTE остаются conservative. Table alias с тем же именем по-прежнему
+  открывает scalar `WITH` (`t.region` при `FROM dm.sales_daily AS t`); database qualifier с
+  тем же именем — тоже (`dm.sales_daily.revenue` открывает `WITH … AS dm`), поэтому F-T-11-7
+  и F-T-11-13 остаются пере-сообщениями, которые ничего не прячут.
 - `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
   под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
   `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:

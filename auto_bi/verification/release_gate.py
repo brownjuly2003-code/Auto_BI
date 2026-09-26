@@ -217,7 +217,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: advisory `asset.query_fields_unchecked` whose only reason was a COUNT(*) star; chart impact
 #: adds `chart.sql_partial` for a tile that counts DISTINCT *, where it resolved to "not this
 #: tile" or to its other reads alone.
-VERIFIER_VERSION = "30"
+#: 31 — a nested scalar WITH declaration shadows an outer one in operator SQL, so chart
+#: impact drops false `reads_field` and `chart.sql_partial` evidence from an outer alias
+#: that only the inner alias was read as. An actual outer read remains visible. Chart
+#: evidence only; CHECK_VERSION does not move.
+VERIFIER_VERSION = "31"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
