@@ -6,6 +6,13 @@
 
 ### Changed
 
+- **Chart impact учитывает достижимость `JOIN … USING`.** Ключ JOIN в непрочитанной
+  named CTE или scalar `WITH` больше не создаёт ложный `chart.sql_partial`; открытая
+  ссылка сохраняет гэп. `VERIFIER_VERSION` 33 → 34, `CHECK_VERSION` остаётся 18. Полный
+  offline pytest: 2623 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120
+  модулях, Ruff и Black чистые. Синтетическое ревью `gpt-6-astra` xhigh:
+  0 actionable findings, не human/production acceptance.
+
 - **Chart impact учитывает достижимость ClickHouse `COLUMNS('regex')`.** Селектор в
   непрочитанной named CTE или scalar `WITH` больше не создаёт ложный `chart.sql_partial`;
   ссылка из исполняемой части сохраняет гэп. Governance reviewed asset SQL продолжает

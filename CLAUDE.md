@@ -83,6 +83,12 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-26 — chart impact учитывает `JOIN … USING` только в исполняемой части SQL:
+  непрочитанная named CTE или scalar `WITH` не создаёт ложный `chart.sql_partial`,
+  достижимый JOIN сохраняет гэп. `VERIFIER_VERSION` 33 → 34, `CHECK_VERSION` остаётся 18.
+  Полный offline pytest: 2623 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок
+  в 120 модулях, Ruff и Black чистые. Синтетическое ревью `gpt-6-astra` xhigh:
+  0 actionable findings, не human/production acceptance.
 - 2026-09-26 — chart impact учитывает ClickHouse `COLUMNS('regex')` только в исполняемой
   части операторского SQL: непрочитанные named CTE и scalar `WITH` больше не дают ложный
   `chart.sql_partial`, а открытая ссылка сохраняет гэп. Governance reviewed asset SQL

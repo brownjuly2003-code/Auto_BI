@@ -230,7 +230,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: scalar WITH bodies. A tile that verifier 32 called `chart.sql_partial` may now be read
 #: in whole and ruled out for a changed metric. Selectors reached by the statement keep
 #: the partial-read gap. CHECK_VERSION does not move: asset governance still scans all AST.
-VERIFIER_VERSION = "33"
+#: 34 — operator chart impact ignores `JOIN ... USING` keys in unread named CTEs or
+#: scalar WITH bodies. A tile verifier 33 called `chart.sql_partial` may now be read
+#: in whole and ruled out for a changed metric. Reachable JOINs keep the gap;
+#: CHECK_VERSION does not move because asset checks are unchanged.
+VERIFIER_VERSION = "34"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

@@ -455,10 +455,12 @@ class _ChartResolver:
                 self._hidden[sql] = ("this run could not re-read its SQL",)
             else:
                 columns = tuple(root.find_all(exp.Columns))
+                joins = tuple(join for join in root.find_all(exp.Join) if join.args.get("using"))
                 self._hidden[sql] = _hidden_read_clauses(
                     root,
                     columns=columns,
-                    open_ids=self._open_cte_ids(sql) if columns else None,
+                    joins=joins,
+                    open_ids=self._open_cte_ids(sql) if columns or joins else None,
                 )
         return self._hidden[sql]
 
@@ -690,6 +692,7 @@ def _hidden_read_clauses(
     root: exp.Expr,
     *,
     columns: tuple[exp.Columns, ...] | None = None,
+    joins: tuple[exp.Join, ...] | None = None,
     open_ids: set[int] | None = None,
 ) -> tuple[str, ...]:
     """Constructs that can hide a column read, each named as an unread part.
@@ -707,11 +710,14 @@ def _hidden_read_clauses(
         clauses.append("it holds a template placeholder this run cannot expand")
     if columns is None:
         columns = tuple(root.find_all(exp.Columns))
-    in_run = _runs_in_statement(root, open_ids=open_ids) if columns else None
-    if columns and in_run is not None and any(in_run(node) for node in columns):
-        clauses.append("it selects COLUMNS(...), which is ClickHouse's form of *")
-    if any(join.args.get("using") for join in root.find_all(exp.Join)):
-        clauses.append("a JOIN USING key is attributed to no table")
+    if joins is None:
+        joins = tuple(join for join in root.find_all(exp.Join) if join.args.get("using"))
+    if columns or joins:
+        in_run = _runs_in_statement(root, open_ids=open_ids)
+        if any(in_run(node) for node in columns):
+            clauses.append("it selects COLUMNS(...), which is ClickHouse's form of *")
+        if any(in_run(join) for join in joins):
+            clauses.append("a JOIN USING key is attributed to no table")
     return tuple(clauses)
 
 

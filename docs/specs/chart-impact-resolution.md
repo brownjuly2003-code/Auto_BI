@@ -70,6 +70,9 @@ For chart impact, `COLUMNS('re')` follows the same execution gates as a column-r
 a selector inside a named CTE or scalar `WITH` that no running part reads does not make the
 tile partial; a reference that opens that gate makes the selector an unread part. This is a
 chart-reachability rule; reviewed-asset field governance retains its whole-AST remainder.
+The `JOIN … USING` key follows the same execution gates for chart impact: a JOIN inside an
+unread named CTE or scalar `WITH` leaves no partial-read gap; opening that part of the
+statement restores the gap.
 Today the resolver recognises those three constructs, the ClickHouse dictionary calls below,
 and the Join-table calls below; a construct outside that set is a hole in the detector, not
 a guarantee that the tile was read in whole. A ClickHouse table name on the right of
@@ -442,6 +445,24 @@ metrics' term columns.
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field` and the
   report carries `chart.sql_partial` naming the USING key as the unread part
+
+### Scenario: a JOIN USING key in an unread CTE is not a chart gap
+
+- **GIVEN** a tile whose `raw_sql` is
+  `WITH unused AS (SELECT a.revenue FROM dm.sales_daily AS a
+  JOIN dm.stores AS b USING (store_id)) SELECT sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries no `chart.sql_partial` for that tile; naming `unused` from
+  the running statement would open the CTE and restore the gap
+
+### Scenario: a JOIN USING key in an unread scalar WITH is not a chart gap
+
+- **GIVEN** a tile whose `raw_sql` is
+  `WITH (SELECT a.revenue FROM dm.sales_daily AS a
+  JOIN dm.stores AS b USING (store_id)) AS unused SELECT sum(revenue) FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries no `chart.sql_partial` for that tile; reading `unused` would
+  open the scalar `WITH` and restore the gap
 
 ### Scenario: a literal dictionary call is read as the dictionary's attribute
 
