@@ -221,7 +221,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: impact drops false `reads_field` and `chart.sql_partial` evidence from an outer alias
 #: that only the inner alias was read as. An actual outer read remains visible. Chart
 #: evidence only; CHECK_VERSION does not move.
-VERIFIER_VERSION = "31"
+#: 32 — field-level governance now reports a ClickHouse `COLUMNS(...)` selector as an
+#: incomplete physical-column read, where verifier 31 could return a false clean result.
+#: Named column findings remain alongside the new advisory. The selector's evidence is
+#: also carried through the typed `ColumnReads` remainder, so an old bundle does not answer
+#: today's field-read question.
+VERIFIER_VERSION = "32"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -292,7 +297,11 @@ VERIFIER_VERSION = "31"
 #: advisory `asset.query_fields_unchecked` whose only reason was a COUNT(*) star; chart impact
 #: adds `chart.sql_partial` for a tile that counts DISTINCT *, where it resolved to "not this
 #: tile" or to its other reads alone.
-CHECK_VERSION = "17"
+#: 18 — A ClickHouse `COLUMNS(...)` selector reads a physical set of columns that the SQL
+#: text does not enumerate. Governance adds `asset.query_fields_unchecked` where check
+#: version 17 could return clean or report only a named-field review; no existing field
+#: finding is removed. PostgreSQL-family parsing keeps its prior result.
+CHECK_VERSION = "18"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

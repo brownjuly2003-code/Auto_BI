@@ -286,6 +286,16 @@ the reader after a fix the query does not need.
 partial. `COUNT(DISTINCT *)` remains a star because its distinct value depends on every source
 column where the engine accepts it.
 
+On ClickHouse, `COLUMNS('regex')` selects physical columns without enumerating them in the
+reviewed SQL. The field check SHALL report `asset.query_fields_unchecked` and name
+`COLUMNS(...)` as the unresolved selector, including when it is inside an expression or a
+nested query. The check SHALL NOT treat matching columns declared by the snapshot as the
+complete expansion. Named column reads beside the selector are graded normally. Like `*`,
+governance currently scans the whole statement tree for this remainder, including an
+unreferenced CTE or scalar `WITH`; reachability precision is not changed by this rule.
+The rule applies only to ClickHouse AST selectors, not to PostgreSQL-family queries or
+literal/comment text that merely contains `COLUMNS(...)`.
+
 On ClickHouse, a `SETTINGS` item names a query setting and gives it a value; neither side is a
 table-column read, at any SELECT, UNION branch, subquery or CTE query level. A visible alias
 with the setting's name is not read through. `additional_table_filters` is the exception to a
@@ -324,6 +334,22 @@ columns and does not add a table-column read or a partial-field-check reason.
 - **WHEN** the gate grades the asset
 - **THEN** the findings carry `asset.query_fields_unchecked` and its detail says the columns read
   depend on the physical table rather than on the SQL
+
+### Scenario: a ClickHouse regex selector leaves a field-check remainder
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and a reviewed ClickHouse query
+  `SELECT COLUMNS('rev.*') FROM dm.sales_daily`
+- **WHEN** the gate grades the asset
+- **THEN** it carries `asset.query_fields_unchecked` (advisory), with a reason naming
+  `COLUMNS(...)` and the physical columns that the SQL does not enumerate
+
+### Scenario: a named field beside a selector is still graded
+
+- **GIVEN** a snapshot that does not declare `internal_cost_raw` on `dm.sales_daily`, and a
+  reviewed ClickHouse query `SELECT COLUMNS('rev.*'), internal_cost_raw FROM dm.sales_daily`
+- **WHEN** the gate grades the asset
+- **THEN** it carries both `asset.query_ungoverned_field` (review) for the named field and
+  `asset.query_fields_unchecked` (advisory) for the selector
 
 ### Scenario: a resolved name does not cover an unresolvable one beside it
 

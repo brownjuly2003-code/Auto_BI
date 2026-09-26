@@ -10,15 +10,23 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=31`, `CHECK_VERSION=17`
+**Версии evidence:** `VERIFIER_VERSION=32`, `CHECK_VERSION=18`
 
-**Последний срез (2026-09-26):** восстановлен package-wide strict mypy для SQL AST.
+**Последний срез (2026-09-26):** ClickHouse `COLUMNS('regex')` в reviewed asset SQL
+оставляет advisory `asset.query_fields_unchecked`: regex выбирает физические колонки,
+полный набор которых SQL не перечисляет. Явное соседнее чтение грейдится отдельно;
+PostgreSQL-семейство без изменений. `VERIFIER_VERSION` 31 → 32, `CHECK_VERSION` 17 → 18.
+Полный offline pytest: 2612 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в
+120 модулях. Итоговое синтетическое ревью `gpt-6-astra` xhigh: 0 actionable findings,
+не human/production acceptance.
+
+**Предыдущий срез (2026-09-26):** восстановлен package-wide strict mypy для SQL AST.
 Аннотации `Expr`/`Selectable`, nullable cache/scope и коллекций согласованы с sqlglot без
 изменения SQL-поведения или версий evidence. Strict mypy: 0 ошибок в 120 модулях; полный
 offline pytest: 2603 passed, 21 skipped, 38 deselected. Синтетическое ревью `gpt-6-astra`
 xhigh: 0 actionable findings, не human/production acceptance.
 
-**Предыдущий срез (2026-09-26):** однозначная ссылка внутри вложенного scalar `WITH` теперь
+**Перед ним (2026-09-26):** однозначная ссылка внутри вложенного scalar `WITH` теперь
 связывается с ближайшим объявлением. Внутренний алиас не открывает внешние `dictGet`, `joinGet`
 или `*`; self-reference, дубликаты на одном уровне и shadowing именованных CTE остаются
 conservative. Итоговое synthetic/modelled review `gpt-6-astra` xhigh — 0 actionable findings;
@@ -127,7 +135,10 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   unattributed под своим именем, обрезанное раскрытие не мемоизируется). На ClickHouse
   `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной колонки
   `dm.sales_daily.rev` больше нет, а неуправляемая таблица справа от `IN` —
-  `asset.query_ungoverned` (review). PostgreSQL-семейство без изменений. Неразрешимая без догадки часть запроса — `asset.query_fields_unchecked`
+  `asset.query_ungoverned` (review). PostgreSQL-семейство без изменений. ClickHouse
+  `COLUMNS('regex')` оставляет `asset.query_fields_unchecked`: выбранный набор физических
+  колонок нельзя доказать по SQL или перечню snapshot-полей. Явные соседние чтения
+  грейдятся отдельно. Неразрешимая без догадки часть запроса — `asset.query_fields_unchecked`
   (advisory).
 - `auto_bi decision verify --signing-key <private.pem>` opt-in подписывает canonical
   manifest Ed25519-ключом; private key читается только по явному внешнему пути.
@@ -492,6 +503,14 @@ MyFlow (2026-09-25): 0 findings.
 companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
 моделированное ревью, не human evidence и не production/design-partner acceptance. Итог ревью —
 один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
+
+Закрыт false-clean governance ClickHouse `COLUMNS('regex')` (verifier 32, check 18):
+`asset.query_fields_unchecked` называет неперечисленные физические колонки, а соседнее
+именованное чтение сохраняет собственный review. Проверка видит селектор в выражении и
+вложенном запросе; как для `*`, область пока весь AST, включая непрочитанную CTE или
+scalar `WITH`. PostgreSQL-семейство и chart impact не менялись. Выбор среза —
+синтетическая оценка `gpt-6-astra` xhigh, итог — 0 actionable findings, не
+human/production acceptance.
 
 Девять offline-тестов ClickHouse alias read-through теперь ограничивают число Python-вызовов
 парсера и reader'а вместо двух секунд wall-clock. Бюджет прерывает вычисление при превышении;

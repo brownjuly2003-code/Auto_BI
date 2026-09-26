@@ -83,6 +83,13 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-26 — ClickHouse `COLUMNS('regex')` больше не даёт false-clean governance:
+  `asset.query_fields_unchecked` называет физические колонки, не перечисленные SQL;
+  соседние именованные поля продолжают грейдиться. PostgreSQL-семейство и chart impact
+  без изменений. `VERIFIER_VERSION` 31 → 32, `CHECK_VERSION` 17 → 18. Выбор среза —
+  синтетическая оценка `gpt-6-astra` xhigh: 0 actionable findings, не human/production
+  acceptance. Полный offline pytest: 2612 passed, 21 skipped, 38 deselected; strict mypy:
+  0 ошибок в 120 модулях, Ruff и Black чистые.
 - 2026-09-26 — восстановлен package-wide strict mypy для SQL AST: типы `Expr`/`Selectable`,
   nullable cache/scope и коллекций согласованы с sqlglot без изменения SQL-поведения.
   Версии evidence остаются 31/17. Strict mypy: 0 ошибок в 120 модулях; полный offline pytest:

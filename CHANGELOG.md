@@ -30,6 +30,17 @@
 
 ### Added
 
+- **ClickHouse `COLUMNS('regex')` оставляет честный остаток field governance**
+  (`VERIFIER_VERSION` 31 → 32, `CHECK_VERSION` 17 → 18). Селектор выбирает физические
+  колонки, которые reviewed SQL не перечисляет, поэтому `assets.invalidated` добавляет
+  advisory `asset.query_fields_unchecked` с причиной про `COLUMNS(...)`. Именованные поля
+  рядом по-прежнему грейдятся, PostgreSQL-семейство и chart impact не меняются. Правило
+  применяется ко всему AST, как и текущая проверка `*`; достижимость непрочитанных CTE и
+  scalar `WITH` остаётся отдельной задачей. Выбор среза — синтетическая оценка
+  `gpt-6-astra` xhigh: 0 actionable findings, не human/production acceptance. Полный
+  offline pytest: 2612 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120
+  модулях, Ruff и Black чистые.
+
 - **Однозначная ссылка на scalar `WITH` связывается с ближайшим объявлением** (`VERIFIER_VERSION`
   30 → 31, `CHECK_VERSION` остаётся 17). Вложенный `WITH 1 AS a` больше не открывает внешнее
   чтение `dictGet`, `joinGet` или `*`, когда внутреннее объявление однозначно его скрывает;

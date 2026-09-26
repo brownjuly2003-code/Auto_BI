@@ -231,9 +231,10 @@ def star_reads_columns(star: exp.Star) -> bool:
 class ColumnReads(NamedTuple):
     """What a SELECT reads at column level, and what saying more would take a guess.
 
-    `unattributed` and `starred` are the honest remainder, reported rather than resolved:
-    a caller grading governance must be able to say the check was partial, because a
-    silent skip and a clean result look identical to whoever reads the verdict.
+    `unattributed`, `starred`, and `column_selectors` are the honest remainder, reported
+    rather than resolved: a caller grading governance must be able to say the check was
+    partial, because a silent skip and a clean result look identical to whoever reads the
+    verdict.
     """
 
     attributed: frozenset[ColumnRef]
@@ -246,6 +247,9 @@ class ColumnReads(NamedTuple):
     #: A star in the statement reads source columns, so those columns depend on the physical
     #: table and cannot be known from the text. A direct `COUNT(*)` argument counts rows.
     starred: bool
+    #: ClickHouse `COLUMNS(...)` selects a physical set of columns that the SQL text does not
+    #: enumerate. The selector is kept as a typed remainder even though it leaves no `Star`.
+    column_selectors: frozenset[str] = frozenset()
     #: The same remainder with its scope kept, one entry per unattributed reference. Names
     #: alone are what `unattributed` reports; this is what a caller needs to narrow them.
     ambiguous: frozenset[AmbiguousRef] = frozenset()
@@ -339,6 +343,11 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
         attributed=frozenset(attributed),
         unattributed=frozenset(ref.name for ref in ambiguous),
         starred=any(star_reads_columns(star) for star in root.find_all(exp.Star)),
+        column_selectors=(
+            frozenset({"COLUMNS(...)"})
+            if dialect == "clickhouse" and root.find(exp.Columns) is not None
+            else frozenset()
+        ),
         ambiguous=frozenset(ambiguous),
         opaque_settings=(
             _clickhouse_opaque_settings(root) if dialect == "clickhouse" else frozenset()

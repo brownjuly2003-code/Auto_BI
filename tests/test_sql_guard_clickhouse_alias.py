@@ -125,6 +125,84 @@ def test_a_literal_with_alias_in_where_is_not_a_column(tmp_path: Path) -> None:
     assert ungoverned_codes(tmp_path, FLOOR_VALUE) == []
 
 
+def test_a_columns_selector_is_an_unchecked_remainder(tmp_path: Path) -> None:
+    sql = "SELECT COLUMNS('rev.*') FROM dm.sales_daily"
+    reads = extract_column_refs(sql, dialect="clickhouse")
+    assert reads.column_selectors == frozenset({"COLUMNS(...)"})
+    assert reads.attributed == frozenset()
+    assert reads.unattributed == frozenset()
+    assert reads.starred is False
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(
+        snap(tmp_path, "base")
+    )
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "COLUMNS(...)" in findings[0].detail
+    assert "physical selected columns" in findings[0].detail
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT sum(COLUMNS('rev.*')) FROM dm.sales_daily",
+        "SELECT (SELECT COLUMNS('rev.*') FROM dm.sales_daily) FROM dm.sales_daily",
+    ],
+)
+def test_a_columns_selector_inside_an_expression_or_nested_query_stays_unchecked(
+    tmp_path: Path, sql: str
+) -> None:
+    reads = extract_column_refs(sql, dialect="clickhouse")
+    assert reads.column_selectors == frozenset({"COLUMNS(...)"})
+    assert ungoverned_codes(tmp_path, sql) == ["asset.query_fields_unchecked"]
+
+
+def test_a_columns_selector_does_not_hide_a_named_field_review(tmp_path: Path) -> None:
+    sql = "SELECT COLUMNS('rev.*'), internal_cost_raw FROM dm.sales_daily"
+    reads = extract_column_refs(sql, dialect="clickhouse")
+    assert reads.column_selectors == frozenset({"COLUMNS(...)"})
+    assert ungoverned_codes(tmp_path, sql) == [
+        "asset.query_ungoverned_field",
+        "asset.query_fields_unchecked",
+    ]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 'COLUMNS(...)' FROM dm.sales_daily",
+        "-- COLUMNS('rev.*')\nSELECT revenue FROM dm.sales_daily",
+    ],
+)
+def test_columns_text_in_a_literal_or_comment_does_not_trigger(tmp_path: Path, sql: str) -> None:
+    reads = extract_column_refs(sql, dialect="clickhouse")
+    assert reads.column_selectors == frozenset()
+    assert ungoverned_codes(tmp_path, sql) == []
+
+
+def test_a_columns_function_in_the_postgres_family_is_unchanged(tmp_path: Path) -> None:
+    sql = "SELECT COLUMNS('rev.*') FROM dm.sales_daily"
+    reads = extract_column_refs(sql, dialect="postgres")
+    assert reads.column_selectors == frozenset()
+    assert ungoverned_codes(tmp_path, sql, engine="greenplum") == []
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected_codes"),
+    [
+        (
+            "SELECT internal_cost_raw FROM dm.sales_daily",
+            ["asset.query_ungoverned_field"],
+        ),
+        ("SELECT COUNT(*) FROM dm.sales_daily", []),
+    ],
+)
+def test_named_reads_and_count_star_keep_their_existing_governance(
+    tmp_path: Path, sql: str, expected_codes: list[str]
+) -> None:
+    reads = extract_column_refs(sql, dialect="clickhouse")
+    assert reads.column_selectors == frozenset()
+    assert ungoverned_codes(tmp_path, sql) == expected_codes
+
+
 def test_a_with_alias_on_the_right_of_in_is_not_a_column(tmp_path: Path) -> None:
     """`IN <alias>` is an alias (rule 1); `IN <table>` is the next task."""
     assert attributed(ALLOWED) == ["dm.sales_daily.region", "dm.sales_daily.revenue"]
