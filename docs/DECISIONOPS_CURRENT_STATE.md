@@ -10,9 +10,17 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=32`, `CHECK_VERSION=18`
+**Версии evidence:** `VERIFIER_VERSION=33`, `CHECK_VERSION=18`
 
-**Последний срез (2026-09-26):** ClickHouse `COLUMNS('regex')` в reviewed asset SQL
+**Последний срез (2026-09-26):** chart impact учитывает ClickHouse `COLUMNS('regex')`
+только в исполняемой части операторского SQL. Селектор в непрочитанной named CTE или
+scalar `WITH` больше не создаёт ложный `chart.sql_partial`, а открытая ссылка сохраняет
+гэп. Governance reviewed asset SQL по-прежнему проверяет весь AST. `VERIFIER_VERSION`
+32 → 33, `CHECK_VERSION` остаётся 18. Полный offline pytest: 2618 passed, 21 skipped,
+38 deselected; strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые. Синтетическое
+ревью `gpt-6-astra` xhigh: 0 actionable findings, не human/production acceptance.
+
+**Предыдущий срез (2026-09-26):** ClickHouse `COLUMNS('regex')` в reviewed asset SQL
 оставляет advisory `asset.query_fields_unchecked`: regex выбирает физические колонки,
 полный набор которых SQL не перечисляет. Явное соседнее чтение грейдится отдельно;
 PostgreSQL-семейство без изменений. `VERIFIER_VERSION` 31 → 32, `CHECK_VERSION` 17 → 18.
@@ -20,13 +28,13 @@ PostgreSQL-семейство без изменений. `VERIFIER_VERSION` 31 �
 120 модулях. Итоговое синтетическое ревью `gpt-6-astra` xhigh: 0 actionable findings,
 не human/production acceptance.
 
-**Предыдущий срез (2026-09-26):** восстановлен package-wide strict mypy для SQL AST.
+**Перед ним (2026-09-26):** восстановлен package-wide strict mypy для SQL AST.
 Аннотации `Expr`/`Selectable`, nullable cache/scope и коллекций согласованы с sqlglot без
 изменения SQL-поведения или версий evidence. Strict mypy: 0 ошибок в 120 модулях; полный
 offline pytest: 2603 passed, 21 skipped, 38 deselected. Синтетическое ревью `gpt-6-astra`
 xhigh: 0 actionable findings, не human/production acceptance.
 
-**Перед ним (2026-09-26):** однозначная ссылка внутри вложенного scalar `WITH` теперь
+**Более ранний срез (2026-09-26):** однозначная ссылка внутри вложенного scalar `WITH` теперь
 связывается с ближайшим объявлением. Внутренний алиас не открывает внешние `dictGet`, `joinGet`
 или `*`; self-reference, дубликаты на одном уровне и shadowing именованных CTE остаются
 conservative. Итоговое synthetic/modelled review `gpt-6-astra` xhigh — 0 actionable findings;
@@ -213,7 +221,9 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   Правило скрытого чтения — контракт (неразворачиваемое выражение оставляет плитку
   прочитанной частично); детектор узнаёт именованный набор конструкций — `{{ … }}`,
   `COLUMNS('re')`, `JOIN … USING`, словарное семейство ClickHouse и семейство
-  `joinGet` / `joinGetOrNull`. Словарный вызов и вызов Join-таблицы — default-deny:
+  `joinGet` / `joinGetOrNull`. Для chart impact `COLUMNS('re')` учитывается только в
+  исполняемой части SQL: непрочитанные named CTE и scalar `WITH` гэпа не создают.
+  Словарный вызов и вызов Join-таблицы — default-deny:
   литеральный геттер называет чтение `<таблица>.<колонка>` (для словаря — ещё кортеж
   атрибутов) и участвует в `reads_field` и правиле метрики; любой другой вызов семейства
   оставляет плитку прочитанной частично. Конструкция вне этого набора — дыра детектора,
@@ -503,6 +513,12 @@ MyFlow (2026-09-25): 0 findings.
 companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
 моделированное ревью, не human evidence и не production/design-partner acceptance. Итог ревью —
 один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
+
+Закрыт ложный `chart.sql_partial` от ClickHouse `COLUMNS('regex')` в непрочитанной
+named CTE или scalar `WITH` (verifier 33, check 18): в chart impact селектор следует
+достижимости исполняемой части statement, а открытый селектор сохраняет гэп. Governance
+reviewed asset SQL продолжает проверять весь AST. Синтетическое ревью `gpt-6-astra`
+xhigh: 0 actionable findings, не human/production acceptance.
 
 Закрыт false-clean governance ClickHouse `COLUMNS('regex')` (verifier 32, check 18):
 `asset.query_fields_unchecked` называет неперечисленные физические колонки, а соседнее

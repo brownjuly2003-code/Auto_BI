@@ -66,6 +66,10 @@ never resolved as "this tile does not read the change": a template placeholder, 
 `COLUMNS('re')` selector and a `JOIN … USING` key each read columns while leaving neither a star
 nor an unattributed name behind, so silence about them would read as an answer. The rule is the
 contract; a construct found later is named the same way rather than reopening the question.
+For chart impact, `COLUMNS('re')` follows the same execution gates as a column-reading star:
+a selector inside a named CTE or scalar `WITH` that no running part reads does not make the
+tile partial; a reference that opens that gate makes the selector an unread part. This is a
+chart-reachability rule; reviewed-asset field governance retains its whole-AST remainder.
 Today the resolver recognises those three constructs, the ClickHouse dictionary calls below,
 and the Join-table calls below; a construct outside that set is a hole in the detector, not
 a guarantee that the tile was read in whole. A ClickHouse table name on the right of
@@ -412,6 +416,24 @@ metrics' term columns.
 - **GIVEN** a tile whose `raw_sql` is `SELECT COLUMNS('rev.*') FROM dm.sales_daily`
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the report carries `chart.sql_partial` naming that tile and the selector
+
+### Scenario: a COLUMNS selector in an unread CTE is not a chart gap
+
+- **GIVEN** a tile whose `raw_sql` is
+  `WITH unused AS (SELECT COLUMNS('rev.*') FROM dm.sales_daily)
+  SELECT region FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries no `chart.sql_partial` for that tile: the selector's CTE is
+  not read by the statement
+
+### Scenario: a COLUMNS selector in an unread scalar WITH is not a chart gap
+
+- **GIVEN** a tile whose `raw_sql` is
+  `WITH (SELECT COLUMNS('rev.*') FROM dm.sales_daily) AS unused
+  SELECT region FROM dm.sales_daily`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the report carries no `chart.sql_partial` for that tile; reading `unused` would
+  open the gate and make the selector a partial read
 
 ### Scenario: a JOIN USING key is an unread part
 

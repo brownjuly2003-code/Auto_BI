@@ -497,7 +497,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=32`, `CHECK_VERSION=18`.
+`VERIFIER_VERSION=33`, `CHECK_VERSION=18`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -785,8 +785,12 @@ function / subquery, которую statement не именует), `chart.metri
 «не эта плитка». Сегодня гейт узнаёт именованный набор случаев этого контракта — `{{ … }}`,
 `COLUMNS('re')`, ключ `JOIN … USING`, словарное семейство ClickHouse и семейство
 `joinGet` / `joinGetOrNull`; конструкция вне набора — дыра детектора, не гарантия, что
-плитка прочитана целиком. `WHERE region IN rev` / `WHERE region IN dm.rev` читается
-как `IN (SELECT * FROM <name>)`: плитка выбирает `*` из этой таблицы, поэтому
+плитка прочитана целиком. Для chart impact `COLUMNS('re')` учитывается только в
+исполняемой части statement: селектор в непрочитанной CTE или scalar `WITH` не даёт
+`chart.sql_partial`, а открытая ссылка сохраняет гэп. Governance reviewed asset SQL
+пока продолжает проверять селектор во всём AST. `WHERE region IN rev` /
+`WHERE region IN dm.rev` читается как `IN (SELECT * FROM <name>)`: плитка выбирает `*`
+из этой таблицы, поэтому
 изменение колонки той таблицы — `chart.sql_partial` (звезда), а не молчание «не эта
 плитка», в точности как у подзапросной формы. Алиас на том же месте — не колонка:
 `WHERE region IN allowed` при `WITH […] AS allowed` не приписывает `allowed` таблице

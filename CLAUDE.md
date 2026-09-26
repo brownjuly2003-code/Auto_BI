@@ -83,6 +83,13 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-26 — chart impact учитывает ClickHouse `COLUMNS('regex')` только в исполняемой
+  части операторского SQL: непрочитанные named CTE и scalar `WITH` больше не дают ложный
+  `chart.sql_partial`, а открытая ссылка сохраняет гэп. Governance reviewed asset SQL
+  остаётся whole-AST; `VERIFIER_VERSION` 32 → 33, `CHECK_VERSION` остаётся 18. Полный
+  offline pytest: 2618 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120
+  модулях, Ruff и Black чистые. Синтетическое ревью `gpt-6-astra` xhigh:
+  0 actionable findings, не human/production acceptance.
 - 2026-09-26 — ClickHouse `COLUMNS('regex')` больше не даёт false-clean governance:
   `asset.query_fields_unchecked` называет физические колонки, не перечисленные SQL;
   соседние именованные поля продолжают грейдиться. PostgreSQL-семейство и chart impact

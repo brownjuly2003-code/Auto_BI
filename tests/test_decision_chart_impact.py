@@ -659,6 +659,118 @@ def test_operator_sql_selecting_a_columns_matcher_is_a_partial_gap(tmp_path: Pat
     assert "COLUMNS(...)" in report.chart_gaps[0].detail
 
 
+def test_operator_sql_columns_in_an_unread_cte_is_not_a_partial_gap(tmp_path: Path) -> None:
+    """A COLUMNS selector in a CTE the FROM never names is not executed by the statement."""
+    sql = (
+        "WITH unused AS (SELECT COLUMNS('rev.*') FROM dm.sales_daily) "
+        "SELECT sum(revenue) FROM dm.sales_daily"
+    )
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_columns_in_an_unread_scalar_with_is_not_a_partial_gap(
+    tmp_path: Path,
+) -> None:
+    """An unread scalar WITH body is also outside the statement's executable part."""
+    sql = (
+        "WITH (SELECT COLUMNS('rev.*') FROM dm.sales_daily) AS unused "
+        "SELECT sum(revenue) FROM dm.sales_daily"
+    )
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert report.chart_gaps == []
+
+
+def test_operator_sql_columns_in_a_reachable_named_cte_is_a_partial_gap(tmp_path: Path) -> None:
+    sql = "WITH used AS (SELECT COLUMNS('rev.*') FROM dm.sales_daily) " "SELECT * FROM used"
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert impact.charts == []
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "COLUMNS(...)" in report.chart_gaps[0].detail
+
+
+def test_operator_sql_columns_in_a_reachable_scalar_with_is_a_partial_gap(tmp_path: Path) -> None:
+    sql = (
+        "WITH (SELECT COLUMNS('rev.*') FROM dm.sales_daily) AS used "
+        "SELECT sum(revenue) FROM dm.sales_daily WHERE revenue = used"
+    )
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "COLUMNS(...)" in report.chart_gaps[0].detail
+
+
+def test_operator_sql_columns_in_a_nested_expression_is_a_partial_gap(tmp_path: Path) -> None:
+    sql = (
+        "SELECT sum(revenue) FROM dm.sales_daily "
+        "WHERE store_id IN (SELECT sum(COLUMNS('rev.*')) FROM dm.sales_daily)"
+    )
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert [(gap.code, gap.subject) for gap in report.chart_gaps] == [
+        ("chart.sql_partial", f"{DASHBOARD}#operator_table")
+    ]
+    assert "COLUMNS(...)" in report.chart_gaps[0].detail
+
+
+def test_operator_sql_unread_columns_selector_does_not_block_ruling_out_a_metric(
+    tmp_path: Path,
+) -> None:
+    sql = (
+        "WITH unused AS (SELECT COLUMNS('rev.*') FROM dm.sales_daily) "
+        "SELECT sum(store_id) FROM dm.sales_daily"
+    )
+    _, report = resolved(
+        tmp_path,
+        candidate=_reformulated(),
+        dashboards={DASHBOARD: operator_dashboard(sql)},
+    )
+    impact = impact_of(report, "metric.formula_changed")
+    assert impact.charts == []
+    assert report.chart_gaps == []
+
+
 def test_operator_sql_joining_with_using_is_a_partial_gap(tmp_path: Path) -> None:
     """A USING key belongs to both sides and is attributed to neither."""
     _, report = resolved(

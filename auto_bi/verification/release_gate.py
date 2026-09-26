@@ -226,7 +226,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: Named column findings remain alongside the new advisory. The selector's evidence is
 #: also carried through the typed `ColumnReads` remainder, so an old bundle does not answer
 #: today's field-read question.
-VERIFIER_VERSION = "32"
+#: 33 — operator chart impact ignores `COLUMNS(...)` selectors in unread named CTEs or
+#: scalar WITH bodies. A tile that verifier 32 called `chart.sql_partial` may now be read
+#: in whole and ruled out for a changed metric. Selectors reached by the statement keep
+#: the partial-read gap. CHECK_VERSION does not move: asset governance still scans all AST.
+VERIFIER_VERSION = "33"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

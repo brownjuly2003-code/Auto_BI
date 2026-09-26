@@ -6,6 +6,14 @@
 
 ### Changed
 
+- **Chart impact учитывает достижимость ClickHouse `COLUMNS('regex')`.** Селектор в
+  непрочитанной named CTE или scalar `WITH` больше не создаёт ложный `chart.sql_partial`;
+  ссылка из исполняемой части сохраняет гэп. Governance reviewed asset SQL продолжает
+  проверять весь AST. `VERIFIER_VERSION` 32 → 33, `CHECK_VERSION` остаётся 18. Полный
+  offline pytest: 2618 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120
+  модулях, Ruff и Black чистые. Синтетическое ревью `gpt-6-astra` xhigh:
+  0 actionable findings, не human/production acceptance.
+
 - **Восстановлен package-wide strict mypy для SQL AST.** Аннотации sqlglot `Expr` и
   `Selectable`, nullable cache/scope и типы коллекций приведены к фактическим контрактам;
   SQL-поведение и версии evidence не менялись. Strict mypy: 0 ошибок в 120 модулях; полный

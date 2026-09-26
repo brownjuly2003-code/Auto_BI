@@ -451,11 +451,15 @@ class _ChartResolver:
         """Clauses for the constructs that can hide a column read. Memoised per text."""
         if sql not in self._hidden:
             root = self._parsed(sql)
-            self._hidden[sql] = (
-                ("this run could not re-read its SQL",)
-                if root is None
-                else _hidden_read_clauses(root)
-            )
+            if root is None:
+                self._hidden[sql] = ("this run could not re-read its SQL",)
+            else:
+                columns = tuple(root.find_all(exp.Columns))
+                self._hidden[sql] = _hidden_read_clauses(
+                    root,
+                    columns=columns,
+                    open_ids=self._open_cte_ids(sql) if columns else None,
+                )
         return self._hidden[sql]
 
     def _dictionary_reads(self, sql: str) -> _DictionaryReads:
@@ -682,21 +686,29 @@ def _opaque_setting_clauses(settings: frozenset[str]) -> tuple[str, ...]:
     )
 
 
-def _hidden_read_clauses(root: exp.Expr) -> tuple[str, ...]:
+def _hidden_read_clauses(
+    root: exp.Expr,
+    *,
+    columns: tuple[exp.Columns, ...] | None = None,
+    open_ids: set[int] | None = None,
+) -> tuple[str, ...]:
     """Constructs that can hide a column read, each named as an unread part.
 
     The rule is the contract, not the list: an expression this resolver cannot expand
     into column reads leaves the tile read in part, never resolved as "not this tile".
     Each of these leaves neither a star nor an unattributed name, so without this the
     reads would look complete — a Superset tile templated with `{{ … }}` (sqlglot parses
-    the placeholder as an empty map), ClickHouse's `COLUMNS('re')` selector, which is its
-    form of `*`, and a `JOIN … USING` key, which names no table to attribute it to.
+    the placeholder as an empty map), ClickHouse's executable `COLUMNS('re')` selector,
+    which is its form of `*`, and a `JOIN … USING` key, which names no table to attribute it to.
     A `{% … %}` block does not parse at all and is already `chart.opaque_sql`.
     """
     clauses: list[str] = []
     if any(_is_template_placeholder(node) for node in root.find_all(exp.VarMap)):
         clauses.append("it holds a template placeholder this run cannot expand")
-    if root.find(exp.Columns) is not None:
+    if columns is None:
+        columns = tuple(root.find_all(exp.Columns))
+    in_run = _runs_in_statement(root, open_ids=open_ids) if columns else None
+    if columns and in_run is not None and any(in_run(node) for node in columns):
         clauses.append("it selects COLUMNS(...), which is ClickHouse's form of *")
     if any(join.args.get("using") for join in root.find_all(exp.Join)):
         clauses.append("a JOIN USING key is attributed to no table")
