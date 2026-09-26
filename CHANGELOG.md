@@ -24,6 +24,7 @@
   плиткой» либо была названа только по другим чтениям. Реализовано `gpt-5.6-terra` xhigh
   (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
   моделированное ревью, не human evidence и не production/design-partner acceptance.
+  Итог ревью — один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
 
 - **ClickHouse `SETTINGS` не читается как колонка** (`CHECK_VERSION` 15 → 16,
   `VERIFIER_VERSION` 28 → 29). Имя и значение настройки больше не дают phantom review

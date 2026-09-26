@@ -90,7 +90,8 @@ GraceKelly (локальный сервис, должен быть запуще�
   по другим чтениям. VERIFIER_VERSION 29 → 30, CHECK_VERSION 16 → 17. Реализовано
   `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью —
   `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human evidence и не
-  production/design-partner acceptance.
+  production/design-partner acceptance. Итог ревью — один проход `gpt-6-astra` xhigh через
+  MyFlow (2026-09-25): 0 findings.
 - 2026-09-25 — ClickHouse `SETTINGS` не читает имя или значение настройки как поле на любом
   query level. Уходят phantom review `asset.query_ungoverned_field`, advisory
   `asset.query_fields_unchecked`, chart `reads_field` и `chart.sql_partial` на имени

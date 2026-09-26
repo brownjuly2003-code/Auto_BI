@@ -476,7 +476,8 @@ MyFlow (2026-09-25): 0 findings.
 от всех колонок источника и оставляет операторскую плитку частично прочитанной
 (`chart.sql_partial`), а не «не этой плиткой». Реализовано `gpt-5.6-terra` xhigh (Codex
 companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
-моделированное ревью, не human evidence и не production/design-partner acceptance.
+моделированное ревью, не human evidence и не production/design-partner acceptance. Итог ревью —
+один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
 
 Технически заблокировано до named engine capability (не повторять как локальный research-срез):
 
