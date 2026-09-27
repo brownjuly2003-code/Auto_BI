@@ -10,9 +10,28 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=39`, `CHECK_VERSION=20`
+**Версии evidence:** `VERIFIER_VERSION=40`, `CHECK_VERSION=21`
 
-**Последний срез (2026-09-27):** PostgreSQL-семейство теперь разбирает целое имя в
+**Последний срез (2026-09-27):** PostgreSQL-семейство разрешает целое голое имя в
+`ORDER BY` и `DISTINCT ON` сначала через выходной столбец SELECT с учётом регистра
+идентификатора; имя внутри выражения читает input-колонку. `ORDER BY` над
+`UNION`/`INTERSECT`/`EXCEPT` разрешает целое имя через выход левой ветки, не оставляя
+ложного sourceless advisory; корневые `INTERSECT` и `EXCEPT` guard по-прежнему
+отклоняет, для них правило действует во вложенном запросе. Оконные, `WITHIN GROUP` и
+агрегатные сортировки, остальные формы `GROUP BY`, ClickHouse и chart impact сохранили
+прежние чтения. `VERIFIER_VERSION` 39 → 40,
+`CHECK_VERSION` 20 → 21. Реализовано `gpt-6-sol` high через MyFlow-кандидат `sol-high`;
+унарный `+` сохраняет input-чтение и не даёт имени неалиасированной проекции,
+сортировка после скобочного запроса относится к его телу, а `(column)` сохраняет
+имя выхода. Полный offline pytest: 2737 passed, 20 skipped, 38 deselected; strict mypy:
+0 ошибок в 120 модулях, Ruff и Black чистые. Правила сверены вживую на PostgreSQL 16.15
+(одноразовый кластер на Mac); ClickHouse 24.8.14.39 форму `(SELECT …) ORDER BY …`
+отвергает синтаксически. Синтетическое ревью `gpt-6-astra` xhigh через MyFlow: проход 1
+— три находки (унарный `+`, сортировка после скобочного запроса, `(column)`) исправлены,
+проход 2 — F-T-24-7 (`+dm.stores.id`) исправлена, проход 3 — 0 findings; не
+human/production acceptance.
+
+**Предыдущий срез (2026-09-27):** PostgreSQL-семейство теперь разбирает целое имя в
 `GROUP BY` по правилам движка: локальная колонка выигрывает у одноимённого выходного
 столбца, а при отсутствии объявления в governed-источниках остаётся advisory
 `asset.query_fields_unchecked` вместо ложного `asset.query_ungoverned_field`. Имя
@@ -357,8 +376,9 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   (`asset.query_fields_unchecked`), а не молча пропущенными.
   В PostgreSQL-семействе целое имя `GROUP BY`, совпадающее с допустимым выходным
   столбцом, проверяется после локальных источников и оставляет advisory, если ни один
-  governed-источник его не объявляет; имена `ORDER BY` и `DISTINCT ON` пока читаются
-  так, как их выдаёт sqlglot.
+  governed-источник его не объявляет; целое голое имя `ORDER BY` и `DISTINCT ON`
+  сначала называет выход SELECT, а имя внутри выражения читает input-колонку.
+  `ORDER BY` set operation называет выход левой ветки.
 - На ClickHouse `SETTINGS` — настройка, не чтение поля: ни имя, ни значение не участвуют в
   governance или alias read-through на любом query level. `additional_table_filters` хранит
   непрочитанный SQL row filter и поэтому оставляет проверку частичной; `additional_result_filter`
@@ -638,7 +658,7 @@ Scheduler, PostgreSQL platform runtime, REST/MCP, notifications и actions не 
 
 Журналы закрытых срезов — [typed investigation](history/TYPED_INVESTIGATION_MVP.md) и
 [chart-level impact](history/CHART_LEVEL_IMPACT.md).
-Следующий отдельный SQL-срез — разрешение PostgreSQL `ORDER BY` и `DISTINCT ON` по правилам движка.
+Разрешение PostgreSQL `ORDER BY` и `DISTINCT ON` по правилам движка закрыто в последнем срезе.
 
 ## Решения для текущего scope
 

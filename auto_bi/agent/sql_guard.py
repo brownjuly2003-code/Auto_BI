@@ -7,6 +7,7 @@ escape hatch later. Plus live validation: EXPLAIN + LIMIT-ed trial run on the DW
 from typing import NamedTuple
 
 import sqlglot
+from sqlglot import TokenType
 from sqlglot import expressions as exp
 from sqlglot.optimizer.scope import Scope, ScopeType, _traverse_scope, build_scope
 
@@ -333,12 +334,18 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     and subquery forms are unchanged. In the PostgreSQL family WITH defines CTEs only,
     and WHERE cannot read a SELECT alias. A whole GROUP BY name offered by a valid
     SELECT output alias may also resolve to that output after local FROM sources;
-    `IN <name>` stays the column sqlglot parsed.
+    `IN <name>` stays the column sqlglot parsed. PostgreSQL also moves an ORDER BY
+    after a parenthesized query onto that query before scopes are built.
     """
     root = _parse_one_select(sql, dialect=dialect)
+    unary_plus_offsets = (
+        _postgres_unary_plus_offsets(sql, dialect) if dialect != "clickhouse" else None
+    )
     aliases = _clickhouse_aliases(root) if dialect == "clickhouse" else None
     if dialect == "clickhouse":
         _rewrite_clickhouse_in_tables(root, aliases)
+    else:
+        _rewrite_postgres_parenthesized_orders(root)
     root_scope = build_scope(root)
     if root_scope is None:  # pragma: no mutate block - Select/Union always defines a scope
         raise SQLGuardError("SELECT does not define a query scope")
@@ -346,7 +353,9 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     owners = {id(scope.expression): scope for scope in scopes}
     attributed: set[ColumnRef] = set()
     ambiguous: set[AmbiguousRef] = set()
-    _grade_columns(scopes, owners, aliases, attributed, ambiguous, _ReadThroughState())
+    _grade_columns(
+        scopes, owners, aliases, attributed, ambiguous, _ReadThroughState(), unary_plus_offsets
+    )
     return ColumnReads(
         attributed=frozenset(attributed),
         unattributed=frozenset(ref.name for ref in ambiguous),
@@ -794,9 +803,123 @@ def _postgres_name(identifier: exp.Expression) -> str:
     return identifier.name.lower()
 
 
-def _postgres_grouping_output(scope: Scope, column: exp.Column) -> bool:
+def _postgres_unary_plus_offsets(sql: str, dialect: str) -> frozenset[int] | None:
+    """Identifier offsets after plus tokens, including intervening parentheses."""
+    tokens = sqlglot.Dialect.get_or_raise(dialect).tokenize(sql)
+    offsets: set[int] = set()
+    has_plus = False
+    for index, token in enumerate(tokens):
+        if token.token_type != TokenType.PLUS:
+            continue
+        has_plus = True
+        following = index + 1
+        while following < len(tokens) and tokens[following].token_type == TokenType.L_PAREN:
+            following += 1
+        if following < len(tokens):
+            offsets.add(tokens[following].start)
+    return frozenset(offsets) if has_plus else None
+
+
+def _postgres_plus_expression(column: exp.Column, offsets: frozenset[int] | None) -> bool:
+    """A column written after a unary plus, which sqlglot drops while parsing."""
+    if offsets is None:
+        return False
+    starts = [part.meta.get("start") for part in column.parts]
+    if not all(isinstance(start, int) for start in starts):
+        return True
+    return any(start in offsets for start in starts)
+
+
+def _rewrite_postgres_parenthesized_orders(root: exp.Expression) -> None:
+    """Attach a parenthesized query's trailing ORDER BY to its query body."""
+    for wrapper in root.find_all(exp.Subquery):
+        order = wrapper.args.get("order")
+        if not isinstance(order, exp.Order):
+            continue
+        target = wrapper.this
+        while (
+            isinstance(target, exp.Subquery)
+            and not target.args.get("alias")
+            and not target.args.get("order")
+        ):
+            target = target.this
+        if isinstance(target, (exp.Select, exp.SetOperation)) and not target.args.get("order"):
+            wrapper.set("order", None)
+            target.set("order", order)
+
+
+def _postgres_output_name(
+    projected: exp.Expression, unary_plus_offsets: frozenset[int] | None
+) -> str | None:
+    """Name exposed by an aliased or plain-column SELECT item."""
+    if isinstance(projected, exp.Alias):
+        alias = projected.args.get("alias")
+        return _postgres_name(alias) if isinstance(alias, exp.Identifier) else None
+    while isinstance(projected, exp.Paren):
+        projected = projected.this
+    if isinstance(projected, exp.Column) and not _postgres_plus_expression(
+        projected, unary_plus_offsets
+    ):
+        return _postgres_name(projected.this)
+    return None
+
+
+def _postgres_sort_output(
+    scope: Scope, column: exp.Column, unary_plus_offsets: frozenset[int] | None
+) -> bool:
+    """A whole SELECT or set-operation sort item naming its output."""
+    if column.table or _postgres_plus_expression(column, unary_plus_offsets):
+        return False
+    node: exp.Expression = column
+    while isinstance(node.parent, exp.Paren):
+        node = node.parent
+    parent = node.parent
+    if isinstance(parent, exp.Ordered):
+        order = parent.parent
+        if not isinstance(order, exp.Order) or order.parent is not scope.expression:
+            return False
+    elif isinstance(parent, exp.Tuple):
+        distinct = parent.parent
+        if not isinstance(distinct, exp.Distinct) or distinct.parent is not scope.expression:
+            return False
+    else:
+        return False
+    output: exp.Expr = scope.expression
+    while isinstance(output, (exp.SetOperation, exp.Subquery, exp.Paren)):
+        output = output.this
+    if not isinstance(output, exp.Select):
+        return False
+    name = _postgres_name(column.this)
+    return any(
+        _postgres_output_name(item, unary_plus_offsets) == name for item in output.expressions
+    )
+
+
+def _postgres_sort_columns(scope: Scope) -> list[exp.Column]:
+    """Restore SELECT sort columns omitted by sqlglot's raw output-name filter."""
+    if not isinstance(scope.expression, exp.Select):
+        return []
+    columns: list[exp.Column] = []
+    order = scope.expression.args.get("order")
+    if isinstance(order, exp.Expression):
+        columns.extend(column for column in _loose_columns(order) if not column.is_star)
+    distinct = scope.expression.args.get("distinct")
+    if isinstance(distinct, exp.Distinct):
+        on = distinct.args.get("on")
+        if isinstance(on, exp.Expression):
+            columns.extend(column for column in _loose_columns(on) if not column.is_star)
+    return columns
+
+
+def _postgres_grouping_output(
+    scope: Scope, column: exp.Column, unary_plus_offsets: frozenset[int] | None
+) -> bool:
     """A whole grouping element that a valid SELECT output alias could supply."""
-    if column.table or not isinstance(scope.expression, exp.Select):
+    if (
+        column.table
+        or not isinstance(scope.expression, exp.Select)
+        or _postgres_plus_expression(column, unary_plus_offsets)
+    ):
         return False
     node: exp.Expression = column
     while node.parent is not None:
@@ -815,7 +938,10 @@ def _postgres_grouping_output(scope: Scope, column: exp.Column) -> bool:
         if not isinstance(projected, exp.Alias):
             continue
         alias = projected.args.get("alias")
-        if not isinstance(alias, exp.Identifier) or _postgres_name(alias) != name:
+        if (
+            not isinstance(alias, exp.Identifier)
+            or _postgres_output_name(projected, unary_plus_offsets) != name
+        ):
             continue
         definition = projected.this
         if isinstance(definition, exp.Column) and _postgres_name(definition.this) == name:
@@ -839,6 +965,7 @@ def _grade_columns(
     attributed: set[ColumnRef],
     ambiguous: set[AmbiguousRef],
     state: _ReadThroughState,
+    unary_plus_offsets: frozenset[int] | None,
 ) -> bool:
     """Grade each column once, in the innermost scope that contains it.
 
@@ -848,7 +975,12 @@ def _grade_columns(
     for scope in scopes:
         columns: tuple[exp.Column, ...] | list[exp.Column]
         if aliases is None:
-            columns = scope.columns
+            columns = list(scope.columns)
+            seen_columns = {id(column) for column in columns}
+            for column in _postgres_sort_columns(scope):
+                if id(column) not in seen_columns:
+                    columns.append(column)
+                    seen_columns.add(id(column))
         else:
             scope_id = id(scope.expression)
             cached_columns = aliases.scope_columns.get(scope_id)
@@ -893,7 +1025,7 @@ def _grade_columns(
                     ):
                         truncated = True
                     continue
-            if aliases is None and _postgres_grouping_output(scope, column):
+            if aliases is None and _postgres_grouping_output(scope, column, unary_plus_offsets):
                 sources = [
                     _referenced_source(node, scope.cte_sources) for _alias, node in scope.references
                 ]
@@ -905,6 +1037,8 @@ def _grade_columns(
                             output_column=True
                         )
                     )
+                continue
+            if aliases is None and _postgres_sort_output(scope, column, unary_plus_offsets):
                 continue
             _attribute_column(scope, column, attributed, ambiguous)
     return truncated
@@ -1104,7 +1238,7 @@ def _grade_nested_query(
     body = query.this if isinstance(query, exp.Subquery) else query
     nested_scopes = list(_traverse_scope(parent.branch(body, scope_type=ScopeType.SUBQUERY)))
     owners = {id(scope.expression): scope for scope in nested_scopes}
-    return _grade_columns(nested_scopes, owners, aliases, attributed, ambiguous, state)
+    return _grade_columns(nested_scopes, owners, aliases, attributed, ambiguous, state, None)
 
 
 def _unread_alias_ref(column: exp.Column) -> AmbiguousRef:

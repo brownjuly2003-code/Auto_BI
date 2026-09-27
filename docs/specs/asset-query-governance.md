@@ -64,9 +64,73 @@ source declares it, SHALL leave it contested when several declare it, and SHALL 
 `asset.query_fields_unchecked` rather than `asset.query_ungoverned_field` when none declares
 it and all local sources are governed tables. With no local source, the output name SHALL
 leave no remainder; a CTE, derived table, or ungoverned source SHALL retain the existing
-unseen-source treatment. A qualified name or a column inside another grouping expression
-SHALL continue to be read as an input column. ClickHouse and chart impact SHALL retain their
-existing results.
+unseen-source treatment. A qualified name, a name inside another grouping expression, or a
+name preceded by unary `+` SHALL continue to be read as an input column. ClickHouse and chart
+impact SHALL retain their existing results.
+
+For the PostgreSQL family, a whole unqualified `ORDER BY` or `DISTINCT ON` item of a SELECT,
+including a parenthesized name, SHALL name that SELECT's output column first when its
+PostgreSQL-folded name matches an aliased or plain-column output name. It SHALL NOT add a
+second input read; otherwise it SHALL be graded as an input column. A name inside a larger
+sort or DISTINCT ON expression SHALL always be graded as an input column, even when an output
+has that name. A whole unqualified `ORDER BY` item of a `UNION`, `INTERSECT`, or `EXCEPT` SHALL
+name the set operation's output column when its folded name matches an output name of the
+leftmost branch, and SHALL NOT add a source read. Other set-operation sort items SHALL keep
+their existing result. Quoted names SHALL compare exactly; unquoted names SHALL fold to lower
+case. A name preceded by unary `+`, including `+(name)`, SHALL be an expression and SHALL be
+graded as an input read rather than an output name. An `ORDER BY` written after a
+parenthesized SELECT or set operation SHALL belong to the query inside those parentheses.
+A plain-column SELECT output enclosed in parentheses SHALL retain that column's output name.
+An unaliased SELECT item preceded by unary `+` SHALL NOT offer that column's name as an output
+name; an explicit alias SHALL still offer its declared name.
+Window ordering and partitioning, `WITHIN GROUP` ordering, aggregate-internal ordering,
+and other `GROUP BY` forms SHALL retain their existing input-resolution rules. ClickHouse and
+chart impact SHALL retain their existing results.
+
+### Scenario: a PostgreSQL sort expression reads its input name
+
+- **GIVEN** `dm.sales_daily` declares `region` but not `r`, and a PostgreSQL query
+  `SELECT region AS r FROM dm.sales_daily ORDER BY r COLLATE "C"`
+- **WHEN** the gate grades the asset
+- **THEN** it grades `region` and reports `asset.query_ungoverned_field` for the input
+  `dm.sales_daily.r`
+
+### Scenario: a folded whole PostgreSQL sort name is the output
+
+- **GIVEN** `dm.sales_daily` declares `region` but not `r`, and a PostgreSQL query
+  `SELECT region AS R FROM dm.sales_daily ORDER BY r`
+- **WHEN** the gate grades the asset
+- **THEN** it grades only the SELECT-list `region` and reports no finding for `r`
+
+### Scenario: a set operation sorts by its output name
+
+- **GIVEN** `dm.sales_daily` declares `region` and `category`, and a PostgreSQL query
+  `SELECT region FROM dm.sales_daily UNION SELECT category FROM dm.sales_daily ORDER BY region`
+- **WHEN** the gate grades the asset
+- **THEN** it grades the branch inputs and reports no sourceless advisory for `region`
+
+### Scenario: unary plus makes a PostgreSQL sort or grouping name an input expression
+
+- **GIVEN** `dm.sales_daily` declares `region` but not `r`, and a PostgreSQL query
+  `SELECT region AS r FROM dm.sales_daily ORDER BY +r`
+- **WHEN** the gate grades the asset
+- **THEN** it reports `asset.query_ungoverned_field` for input `dm.sales_daily.r`; the
+  same input rule applies to `DISTINCT ON (+r)` and `GROUP BY +r`
+
+### Scenario: sorting after a parenthesized query belongs to that query
+
+- **GIVEN** `dm.sales_daily` declares `region` but not `r`, and a PostgreSQL query
+  `SELECT x.r FROM ((SELECT region AS r FROM dm.sales_daily) ORDER BY lower(r)) x`
+- **WHEN** the gate grades the asset
+- **THEN** it reports `asset.query_ungoverned_field` for input `dm.sales_daily.r`
+
+### Scenario: unary plus on a projection does not create a plain-column output name
+
+- **GIVEN** a PostgreSQL query `SELECT +revenue FROM dm.sales_daily UNION SELECT revenue
+  FROM dm.sales_daily ORDER BY revenue`, with `dm.sales_daily.revenue` governed
+- **WHEN** the gate grades the asset
+- **THEN** it reports `asset.query_fields_unchecked` for the sourceless sort name;
+  an explicit `AS revenue` on the leftmost projection removes that remainder
 
 ### Scenario: a whole PostgreSQL grouping name may be an output
 

@@ -250,7 +250,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: `asset.query_ungoverned_field` to advisory `asset.query_fields_unchecked`; without local
 #: sources it stops being a remainder. Aggregate/window outputs, expressions and qualified
 #: names retain input reads; ClickHouse and chart impact are unchanged.
-VERIFIER_VERSION = "39"
+#: 40 — PostgreSQL-family ORDER BY / DISTINCT ON expression names become input reads,
+#: potentially adding REVIEW or advisory findings. Case-folded whole output names stop
+#: producing phantom input REVIEW; a set operation's ORDER BY output name stops producing
+#: a sourceless advisory. A parenthesized query's trailing ORDER BY now grades names it
+#: previously ignored and can add findings; GROUP BY +name moves from output-column
+#: advisory to input REVIEW. Unary plus on an unaliased projection does not create a
+#: plain-column output name. ClickHouse and chart impact are unchanged.
+VERIFIER_VERSION = "40"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -332,7 +339,14 @@ VERIFIER_VERSION = "39"
 #: `asset.query_ungoverned_field` to advisory `asset.query_fields_unchecked`; without local
 #: sources it stops being a remainder. Aggregate/window outputs, expressions and qualified
 #: names retain input reads; ClickHouse and chart impact are unchanged.
-CHECK_VERSION = "20"
+#: 21 — PostgreSQL-family ORDER BY / DISTINCT ON expression names become input reads,
+#: potentially adding REVIEW or advisory findings. Case-folded whole output names stop
+#: producing phantom input REVIEW; a set operation's ORDER BY output name stops producing
+#: a sourceless advisory. A parenthesized query's trailing ORDER BY now grades names it
+#: previously ignored and can add findings; GROUP BY +name moves from output-column
+#: advisory to input REVIEW. Unary plus on an unaliased projection does not create a
+#: plain-column output name. ClickHouse and chart impact are unchanged.
+CHECK_VERSION = "21"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
