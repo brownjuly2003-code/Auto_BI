@@ -296,6 +296,13 @@ unreferenced CTE or scalar `WITH`; reachability precision is not changed by this
 The rule applies only to ClickHouse AST selectors, not to PostgreSQL-family queries or
 literal/comment text that merely contains `COLUMNS(...)`.
 
+For ClickHouse and the PostgreSQL family, a `JOIN ... USING (key, ...)` key is a shared
+column read whose SQL form does not identify one table. The field check SHALL report
+`asset.query_fields_unchecked` (advisory), name every key gathered from the JOIN AST, and say
+that the key cannot be attributed to one table. Explicit neighboring column reads SHALL still
+be graded normally, including undeclared-field findings. This remainder SHALL also be found in
+nested JOINs; `ON` joins and literal or comment text containing `JOIN USING` do not create it.
+
 On ClickHouse, a `SETTINGS` item names a query setting and gives it a value; neither side is a
 table-column read, at any SELECT, UNION branch, subquery or CTE query level. A visible alias
 with the setting's name is not read through. `additional_table_filters` is the exception to a
@@ -359,6 +366,14 @@ columns and does not add a table-column read or a partial-field-check reason.
 - **WHEN** the gate grades the asset
 - **THEN** the findings carry `asset.query_fields_unchecked` naming `z.category`, and its detail
   says that no enclosing scope declares that qualifier rather than that a source was invisible
+
+### Scenario: a JOIN USING key is an unattributed field-check remainder
+
+- **GIVEN** a snapshot governing `dm.sales_daily` and a reviewed query
+  `SELECT a.region FROM dm.sales_daily AS a JOIN dm.sales_daily AS b USING (region)`
+- **WHEN** the gate grades the asset on ClickHouse or the PostgreSQL family
+- **THEN** the findings carry only `asset.query_fields_unchecked` (advisory), and its detail
+  names `region` and says that the `JOIN USING` key cannot be attributed to one table
 
 ### Scenario: a subquery's bare name no local source declares is unchecked, not ungoverned
 

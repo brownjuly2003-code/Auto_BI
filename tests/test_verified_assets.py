@@ -607,6 +607,84 @@ def test_a_self_join_names_the_table_it_is_read_from_once(tmp_path: Path) -> Non
     assert "discount (read from one of dm.sales_daily)" in findings[0].detail
 
 
+@pytest.mark.parametrize("engine", ["clickhouse", "greenplum"])
+def test_join_using_keys_are_named_as_an_unattributed_field_remainder(
+    tmp_path: Path, engine: str
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = "SELECT a.region FROM dm.sales_daily AS a JOIN dm.sales_daily AS b USING (region)"
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine=engine))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "JOIN USING" in findings[0].detail
+    assert "region" in findings[0].detail
+
+
+def test_unknown_join_using_key_stays_unchecked(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = "SELECT a.region FROM dm.sales_daily AS a JOIN dm.sales_daily AS b USING (ghost)"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "JOIN USING" in findings[0].detail and "ghost" in findings[0].detail
+
+
+def test_multiple_join_using_keys_are_named_together(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = "SELECT a.region FROM dm.sales_daily AS a "
+    sql += "JOIN dm.sales_daily AS b USING (region, date)"
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "JOIN USING" in findings[0].detail
+    assert "region" in findings[0].detail and "date" in findings[0].detail
+
+
+def test_join_using_remainder_does_not_hide_an_explicit_ungoverned_field(
+    tmp_path: Path,
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.internal_cost_raw FROM dm.sales_daily AS a "
+        "JOIN dm.sales_daily AS b USING (region)"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field", "asset.query_fields_unchecked"]
+    assert "dm.sales_daily.internal_cost_raw" in findings[0].detail
+    assert "JOIN USING" in findings[1].detail and "region" in findings[1].detail
+
+
+def test_an_on_join_has_no_join_using_field_remainder(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a "
+        "JOIN dm.sales_daily AS b ON a.region = b.region"
+    )
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
+def test_nested_join_using_keys_are_named(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a JOIN ("
+        "SELECT b.region FROM dm.sales_daily AS b "
+        "JOIN dm.sales_daily AS c USING (region)"
+        ") AS nested ON a.region = nested.region"
+    )
+    findings = repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "JOIN USING" in findings[0].detail and "region" in findings[0].detail
+
+
+def test_join_using_words_in_literals_and_comments_are_ignored(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, 'JOIN USING (ghost)' AS note FROM dm.sales_daily AS a "
+        "JOIN dm.sales_daily AS b ON a.region = b.region -- USING (comment_key)"
+    )
+    assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
+
+
 def test_two_contested_names_are_reported_in_the_plural(tmp_path: Path) -> None:
     base = snap(tmp_path, "both", semantic=_stores_also_declaring("region", "category"))
     sql = (

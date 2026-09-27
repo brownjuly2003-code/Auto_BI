@@ -231,10 +231,10 @@ def star_reads_columns(star: exp.Star) -> bool:
 class ColumnReads(NamedTuple):
     """What a SELECT reads at column level, and what saying more would take a guess.
 
-    `unattributed`, `starred`, and `column_selectors` are the honest remainder, reported
-    rather than resolved: a caller grading governance must be able to say the check was
-    partial, because a silent skip and a clean result look identical to whoever reads the
-    verdict.
+    `unattributed`, `starred`, `column_selectors`, and `join_using_keys` are the honest
+    remainder, reported rather than resolved: a caller grading governance must be able to
+    say the check was partial, because a silent skip and a clean result look identical to
+    whoever reads the verdict.
     """
 
     attributed: frozenset[ColumnRef]
@@ -250,6 +250,9 @@ class ColumnReads(NamedTuple):
     #: ClickHouse `COLUMNS(...)` selects a physical set of columns that the SQL text does not
     #: enumerate. The selector is kept as a typed remainder even though it leaves no `Star`.
     column_selectors: frozenset[str] = frozenset()
+    #: `JOIN ... USING` names a key shared by both sources, but gives no table to attribute it
+    #: to. The keys are kept as a typed remainder so governance can name the incomplete check.
+    join_using_keys: frozenset[str] = frozenset()
     #: The same remainder with its scope kept, one entry per unattributed reference. Names
     #: alone are what `unattributed` reports; this is what a caller needs to narrow them.
     ambiguous: frozenset[AmbiguousRef] = frozenset()
@@ -348,11 +351,24 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
             if dialect == "clickhouse" and root.find(exp.Columns) is not None
             else frozenset()
         ),
+        join_using_keys=_join_using_keys(root),
         ambiguous=frozenset(ambiguous),
         opaque_settings=(
             _clickhouse_opaque_settings(root) if dialect == "clickhouse" else frozenset()
         ),
     )
+
+
+def _join_using_keys(root: exp.Expression) -> frozenset[str]:
+    """Names of keys in ``JOIN ... USING`` clauses found in the parsed statement."""
+    keys: set[str] = set()
+    for join in root.find_all(exp.Join):
+        using = join.args.get("using")
+        if using is None:
+            continue
+        items = using if isinstance(using, list) else [using]
+        keys.update(item.name for item in items if isinstance(item, exp.Identifier))
+    return frozenset(keys)
 
 
 class _ClickHouseAlias(NamedTuple):

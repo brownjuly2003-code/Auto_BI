@@ -244,7 +244,9 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 37 — an ordinary three-part column naming one unaliased named-table source
 #: in its own SELECT no longer opens a scalar WITH named like its database.
 #: Conflicting source names remain conservative. Evidence only; CHECK_VERSION stays 18.
-VERIFIER_VERSION = "37"
+#: 38 — governance now reports `JOIN ... USING` keys as an advisory remainder because the
+#: shared key cannot be attributed to one table. Explicit neighboring column findings stay.
+VERIFIER_VERSION = "38"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -319,7 +321,10 @@ VERIFIER_VERSION = "37"
 #: text does not enumerate. Governance adds `asset.query_fields_unchecked` where check
 #: version 17 could return clean or report only a named-field review; no existing field
 #: finding is removed. PostgreSQL-family parsing keeps its prior result.
-CHECK_VERSION = "18"
+#: 19 — `JOIN ... USING` keys are field reads, but their shared SQL form gives no table to
+#: attribute. Governance adds an advisory naming those keys on both engine families while
+#: continuing to grade explicit neighboring columns.
+CHECK_VERSION = "19"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

@@ -502,6 +502,14 @@ def _unchecked_reason(
             "it selects COLUMNS(...), so the physical selected columns cannot be determined "
             "from the SQL"
         )
+    if reads.join_using_keys:
+        keys = sorted(reads.join_using_keys)
+        key_word = "key" if len(keys) == 1 else "keys"
+        verb = "is" if len(keys) == 1 else "are"
+        reasons.append(
+            f"JOIN USING {key_word} {', '.join(keys)} {verb} shared by joined sources and "
+            "cannot be attributed to one table"
+        )
     for setting in sorted(reads.opaque_settings):
         reasons.append(
             f"it sets {setting}, a row filter written as SQL text that this check does not read"

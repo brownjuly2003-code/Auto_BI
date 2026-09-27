@@ -83,6 +83,14 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-27 — governance reviewed SQL теперь называет ключи `JOIN … USING` как
+  advisory `asset.query_fields_unchecked` на ClickHouse и PostgreSQL-семействе:
+  общий ключ нельзя приписать одной таблице, а явные соседние поля грейдятся отдельно.
+  `VERIFIER_VERSION` 37 → 38, `CHECK_VERSION` 18 → 19. Реализовано `gpt-5.6-luna`
+  xhigh; финальное синтетическое `gpt-6-astra` xhigh review: 0 actionable P1/P2,
+  не human/production acceptance. Полный offline pytest: 2655 passed, 21 skipped,
+  38 deselected; docs-as-code: 24 passed; strict mypy: 0 ошибок в 120 модулях,
+  Ruff и Black чистые.
 - 2026-09-26 — F-T-11-13: обычная `dm.sales_daily.revenue` с точным единственным
   неалиасированным именованным источником своего SELECT больше не открывает scalar
   `WITH dm`. Ложные chart reads и `chart.sql_partial` исчезают; несовпадение,

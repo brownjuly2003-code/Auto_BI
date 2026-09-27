@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-26
+**Обновлено:** 2026-09-27
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,9 +10,20 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=37`, `CHECK_VERSION=18`
+**Версии evidence:** `VERIFIER_VERSION=38`, `CHECK_VERSION=19`
 
-**Последний срез (2026-09-26):** обычная трёхчастная колонка `dm.sales_daily.revenue`
+**Последний срез (2026-09-27):** governance reviewed SQL на ClickHouse и
+PostgreSQL-семействе называет ключи `JOIN … USING` как advisory
+`asset.query_fields_unchecked`: общий ключ нельзя приписать одной таблице, поэтому
+частичная проверка больше не выглядит чистой. Явные соседние колонки грейдятся
+отдельно; `JOIN … ON` без изменений. `VERIFIER_VERSION` 37 → 38,
+`CHECK_VERSION` 18 → 19. Выбор среза — синтетическое `gpt-6-astra` xhigh review,
+реализация — `gpt-5.6-luna` xhigh; финальное синтетическое Astra review:
+0 actionable P1/P2, не human/production acceptance. Полный offline pytest:
+2655 passed, 21 skipped, 38 deselected; docs-as-code: 24 passed; strict mypy:
+0 ошибок в 120 модулях, Ruff и Black чистые.
+
+**Предыдущий срез (2026-09-26):** обычная трёхчастная колонка `dm.sales_daily.revenue`
 больше не открывает scalar `WITH dm`, если точно совпадает с единственным неалиасированным
 именованным источником `FROM`/`JOIN` своего SELECT и имя `dm` не занято другим источником.
 Ложные chart reads и `chart.sql_partial` исчезают; несовпадение, дубликаты, конфликтующие
@@ -184,8 +195,10 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   `asset.query_ungoverned` (review). PostgreSQL-семейство без изменений. ClickHouse
   `COLUMNS('regex')` оставляет `asset.query_fields_unchecked`: выбранный набор физических
   колонок нельзя доказать по SQL или перечню snapshot-полей. Явные соседние чтения
-  грейдятся отдельно. Неразрешимая без догадки часть запроса — `asset.query_fields_unchecked`
-  (advisory).
+  грейдятся отдельно. `JOIN … USING` на обоих семействах движков тоже оставляет
+  advisory с именами ключей: общий ключ нельзя приписать одной таблице. Governance
+  собирает этот остаток по всему AST. Неразрешимая без догадки часть запроса —
+  `asset.query_fields_unchecked` (advisory).
 - `auto_bi decision verify --signing-key <private.pem>` opt-in подписывает canonical
   manifest Ed25519-ключом; private key читается только по явному внешнему пути.
 - `auto_bi decision evidence --trust-key <public.pem>` перепроверяет digest каждого
