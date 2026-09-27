@@ -6,6 +6,19 @@
 
 ### Changed
 
+- **PostgreSQL `GROUP BY` разрешает целое имя с учётом выходного столбца SELECT.**
+  Локальная FROM-колонка выигрывает; если модель не объявляет её, возможный выходной
+  столбец оставляет `asset.query_fields_unchecked` вместо ложного
+  `asset.query_ungoverned_field`. Без локального источника остатка нет. Агрегатные и
+  оконные выходы, выражения и квалифицированные имена сохраняют прежнее чтение; ClickHouse
+  и chart impact не менялись. `VERIFIER_VERSION` 38 → 39, `CHECK_VERSION` 19 → 20.
+  Реализовано `gpt-6-sol` high через MyFlow-кандидат `sol-high`; полный offline pytest:
+  2684 passed, 20 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях, Ruff и
+  Black чистые. Правило сверено вживую на PostgreSQL 16.15 (одноразовый кластер на Mac).
+  Синтетическое ревью `gpt-6-astra` xhigh через MyFlow: F-T-23-1 (имя `GROUP BY` в LATERAL
+  без собственного FROM) исправлена, второй проход — 0 findings; не human/production
+  acceptance.
+
 - **`JOIN … USING` в governance reviewed SQL теперь оставляет advisory о ключе.**
   На ClickHouse и PostgreSQL-семействе общий ключ нельзя приписать одной таблице, поэтому
   он получает `asset.query_fields_unchecked`, а явные соседние колонки грейдятся отдельно.

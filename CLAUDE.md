@@ -83,6 +83,17 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-27 — PostgreSQL `GROUP BY` разрешает целое голое имя сначала через локальные
+  FROM-колонки, затем через выходной столбец SELECT: при отсутствии объявления в
+  governed-источниках ложный review заменён advisory; без источников выходное имя не
+  оставляет остатка. Выражения, агрегатные и оконные выходы и квалифицированные имена
+  сохраняют input-чтение; ClickHouse и chart impact не менялись. `VERIFIER_VERSION`
+  38 → 39, `CHECK_VERSION` 19 → 20. Реализовано `gpt-6-sol` high через MyFlow-кандидат
+  `sol-high`; полный offline pytest: 2684 passed, 20 skipped, 38 deselected; strict mypy:
+  0 ошибок в 120 модулях, Ruff и Black чистые. Правило сверено вживую на PostgreSQL 16.15
+  (одноразовый кластер на Mac). Синтетическое ревью `gpt-6-astra` xhigh через MyFlow:
+  F-T-23-1 (имя `GROUP BY` в LATERAL без собственного FROM) исправлена, второй проход
+  — 0 findings; не human/production acceptance.
 - 2026-09-27 — governance reviewed SQL теперь называет ключи `JOIN … USING` как
   advisory `asset.query_fields_unchecked` на ClickHouse и PostgreSQL-семействе:
   общий ключ нельзя приписать одной таблице, а явные соседние поля грейдятся отдельно.

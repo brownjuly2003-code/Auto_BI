@@ -51,6 +51,85 @@ A source is identified by the FROM/JOIN item the statement names, not by its unq
 table name: two marts whose short names collide (`dm.sales_daily JOIN stg.sales_daily`) are
 two distinct candidates.
 
+For the PostgreSQL family, an unqualified name that is a whole `GROUP BY` element, including
+an element of `ROLLUP`, `CUBE`, `GROUPING SETS`, or a parenthesized grouping list, SHALL be
+treated as a possible SELECT output column when that SELECT explicitly aliases an expression
+to the same PostgreSQL-folded name. An alias of a column with that same name, or of an
+expression containing an aggregate or window outside a nested query, SHALL NOT offer this
+alternative. PostgreSQL searches local FROM sources first, the SELECT output list next, and
+enclosing levels last. In a LATERAL body, preceding FROM items belong to the enclosing level
+and SHALL be considered only after that body's SELECT output list for a grouping name. The
+gate SHALL grade the input column when exactly one governed local
+source declares it, SHALL leave it contested when several declare it, and SHALL report
+`asset.query_fields_unchecked` rather than `asset.query_ungoverned_field` when none declares
+it and all local sources are governed tables. With no local source, the output name SHALL
+leave no remainder; a CTE, derived table, or ungoverned source SHALL retain the existing
+unseen-source treatment. A qualified name or a column inside another grouping expression
+SHALL continue to be read as an input column. ClickHouse and chart impact SHALL retain their
+existing results.
+
+### Scenario: a whole PostgreSQL grouping name may be an output
+
+- **GIVEN** `dm.sales_daily` declares `date` and `revenue` but not `month`, and a PostgreSQL
+  query `SELECT date_trunc('month', date) AS month, sum(revenue) FROM dm.sales_daily GROUP BY month`
+- **WHEN** the gate grades the asset
+- **THEN** it grades `date` and `revenue`, and reports one advisory
+  `asset.query_fields_unchecked` naming `month` as a GROUP BY output-column possibility,
+  without `asset.query_ungoverned_field`
+
+### Scenario: a declared input wins over the output
+
+- **GIVEN** `dm.sales_daily` declares `region`, and a PostgreSQL query
+  `SELECT upper(region) AS region, count(*) FROM dm.sales_daily GROUP BY region`
+- **WHEN** the gate grades the asset
+- **THEN** it grades the input `region` and reports no finding
+
+### Scenario: a joined grouping name has no declarer
+
+- **GIVEN** the governed tables `dm.sales_daily` and `dm.stores` do not declare `r`, and a
+  PostgreSQL query `SELECT upper(s.region) AS r, count(*) FROM dm.sales_daily s JOIN
+  dm.stores t ON s.store_id = t.id GROUP BY r`
+- **WHEN** the gate grades the asset
+- **THEN** it reports `asset.query_fields_unchecked` naming `r` and GROUP BY output-column
+  resolution, without a field review
+
+### Scenario: aggregate and window outputs cannot supply a grouping name
+
+- **GIVEN** `dm.sales_daily` declares `region` and `revenue` but neither `total` nor `rn`
+- **WHEN** the gate grades PostgreSQL queries grouping by `total` after
+  `sum(revenue) AS total`, or by `rn` after `rank() OVER (ORDER BY region) AS rn`
+- **THEN** each query reports `asset.query_ungoverned_field` for the corresponding input name
+
+### Scenario: PostgreSQL folds only an unquoted output name
+
+- **GIVEN** `dm.sales_daily` does not declare `month`
+- **WHEN** the gate grades `SELECT date_trunc('month', date) AS Month, count(*) FROM
+  dm.sales_daily GROUP BY MONTH` and the same query with `AS "Month"` and `GROUP BY month`
+- **THEN** the unquoted alias produces a GROUP BY output-column advisory, while the quoted
+  alias produces `asset.query_ungoverned_field` naming `dm.sales_daily.month`
+
+### Scenario: a grouping output needs no source
+
+- **GIVEN** a PostgreSQL query `SELECT 1 AS m GROUP BY m`
+- **WHEN** the gate grades the asset
+- **THEN** it reports no finding and no column remainder
+
+### Scenario: a LATERAL grouping output needs no source of its own
+
+- **GIVEN** a PostgreSQL query `SELECT o.region FROM dm.sales_daily o, LATERAL (SELECT 1
+  AS m GROUP BY m) x`
+- **WHEN** the gate grades the asset
+- **THEN** it reports no finding and no column remainder for `m`, because the preceding
+  `dm.sales_daily` is outside the LATERAL body's own FROM
+
+### Scenario: a grouping output precedes an enclosing query
+
+- **GIVEN** a PostgreSQL query `SELECT region FROM dm.sales_daily o WHERE EXISTS (SELECT
+  upper(i.region) AS r FROM dm.sales_daily i GROUP BY r)` and no local source declares `r`
+- **WHEN** the gate grades the asset
+- **THEN** it reports an advisory naming the GROUP BY output-column possibility for `r`,
+  rather than an enclosing-query remainder
+
 An unqualified name written in `HAVING` or `QUALIFY` SHALL be graded by those same rules. In
 the PostgreSQL family an output alias is not visible in `HAVING`, so the name is an input
 column of that query level (or a correlated enclosing level). On ClickHouse a visible alias

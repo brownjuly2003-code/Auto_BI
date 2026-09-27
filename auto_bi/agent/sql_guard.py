@@ -216,6 +216,10 @@ class AmbiguousRef(NamedTuple):
     #: them, even nested inside a subquery, and are not marked. A caller that finds the name
     #: declared on none of the local candidates has therefore learnt nothing about it.
     enclosed: bool = False
+    #: PostgreSQL searches local FROM sources before the SELECT output list and only then
+    #: enclosing levels. This flag says the output list offered this whole GROUP BY name;
+    #: preceding LATERAL siblings are outside its local FROM/JOIN candidates.
+    output_column: bool = False
 
 
 def star_reads_columns(star: exp.Star) -> bool:
@@ -326,9 +330,10 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     `In.args["field"]` and not a visible alias is rewritten to `x IN (SELECT * FROM
     <name>)` before scoping, so it grades as that subquery: the same TableRef, the
     same star outcome. A CTE of that name is the CTE, as it is in FROM. Literal lists
-    and subquery forms are unchanged. The PostgreSQL family is unchanged: there a
-    WITH defines CTEs only and WHERE cannot read a SELECT alias, so a bare name is a
-    column, and `IN <name>` stays the column sqlglot parsed.
+    and subquery forms are unchanged. In the PostgreSQL family WITH defines CTEs only,
+    and WHERE cannot read a SELECT alias. A whole GROUP BY name offered by a valid
+    SELECT output alias may also resolve to that output after local FROM sources;
+    `IN <name>` stays the column sqlglot parsed.
     """
     root = _parse_one_select(sql, dialect=dialect)
     aliases = _clickhouse_aliases(root) if dialect == "clickhouse" else None
@@ -782,6 +787,51 @@ def _attribute_column(
     attributed.add(ColumnRef(table=_table_ref(source), name=column.name, quoted=quoted))
 
 
+def _postgres_name(identifier: exp.Expression) -> str:
+    """PostgreSQL's spelling for a quoted or folded identifier."""
+    if isinstance(identifier, exp.Identifier) and identifier.quoted:
+        return identifier.name
+    return identifier.name.lower()
+
+
+def _postgres_grouping_output(scope: Scope, column: exp.Column) -> bool:
+    """A whole grouping element that a valid SELECT output alias could supply."""
+    if column.table or not isinstance(scope.expression, exp.Select):
+        return False
+    node: exp.Expression = column
+    while node.parent is not None:
+        parent = node.parent
+        if isinstance(parent, exp.Group):
+            if parent.parent is not scope.expression:
+                return False
+            break
+        if not isinstance(parent, (exp.Rollup, exp.Cube, exp.GroupingSets, exp.Paren, exp.Tuple)):
+            return False
+        node = parent
+    else:
+        return False
+    name = _postgres_name(column.this)
+    for projected in scope.expression.expressions:
+        if not isinstance(projected, exp.Alias):
+            continue
+        alias = projected.args.get("alias")
+        if not isinstance(alias, exp.Identifier) or _postgres_name(alias) != name:
+            continue
+        definition = projected.this
+        if isinstance(definition, exp.Column) and _postgres_name(definition.this) == name:
+            continue
+        if any(
+            isinstance(part, (exp.AggFunc, exp.Window))
+            for part in definition.walk(
+                prune=lambda child, root=definition: child is not root
+                and isinstance(child, _QUERY_BODY)
+            )
+        ):
+            continue
+        return True
+    return False
+
+
 def _grade_columns(
     scopes: list[Scope],
     owners: dict[int, Scope],
@@ -843,6 +893,19 @@ def _grade_columns(
                     ):
                         truncated = True
                     continue
+            if aliases is None and _postgres_grouping_output(scope, column):
+                sources = [
+                    _referenced_source(node, scope.cte_sources) for _alias, node in scope.references
+                ]
+                if sources and not (len(sources) == 1 and not isinstance(sources[0], exp.Table)):
+                    identifier = column.this
+                    quoted = isinstance(identifier, exp.Identifier) and identifier.quoted
+                    ambiguous.add(
+                        _ambiguous_ref(scope, column, quoted=quoted, sources=sources)._replace(
+                            output_column=True
+                        )
+                    )
+                continue
             _attribute_column(scope, column, attributed, ambiguous)
     return truncated
 
@@ -1147,7 +1210,13 @@ def _read_through_alias(
     return truncated
 
 
-def _ambiguous_ref(scope: Scope, column: exp.Column, *, quoted: bool) -> AmbiguousRef:
+def _ambiguous_ref(
+    scope: Scope,
+    column: exp.Column,
+    *,
+    quoted: bool,
+    sources: list[exp.Selectable | Scope] | None = None,
+) -> AmbiguousRef:
     """The unresolved column with whatever its scope offered — nothing where nothing did.
 
     A qualified name gets no candidates: it names a source, and no enclosing scope declares
@@ -1159,7 +1228,8 @@ def _ambiguous_ref(scope: Scope, column: exp.Column, *, quoted: bool) -> Ambiguo
     branch written in one of those the candidates are complete only for this level, which
     `enclosed` says out loud rather than leaving the caller to assume otherwise.
     """
-    sources = [] if column.table else _read_sources(scope)
+    if sources is None:
+        sources = [] if column.table else _read_sources(scope)
     return AmbiguousRef(
         name=column.name,
         quoted=quoted,

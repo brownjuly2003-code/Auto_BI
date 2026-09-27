@@ -391,6 +391,7 @@ def _query_findings(
     settled: set[AmbiguousRef] = set()
     contested: set[AmbiguousRef] = set()
     outward: set[AmbiguousRef] = set()
+    grouping_outputs: set[AmbiguousRef] = set()
     for ambiguous_ref in reads.ambiguous:
         scope = (
             _governed_scope(ambiguous_ref.candidates, governed_table)
@@ -419,6 +420,9 @@ def _query_findings(
             settled.add(ambiguous_ref)
         elif declaring:
             contested.add(ambiguous_ref)  # the statement would be ambiguous for the engine too
+        elif ambiguous_ref.output_column:
+            # PostgreSQL checks the SELECT output list before any enclosing query.
+            grouping_outputs.add(ambiguous_ref)
         elif ambiguous_ref.enclosed:
             # Written where the engine may look outward, and declared on no source of its
             # own scope: it is either the enclosing query's column or an undeclared column
@@ -445,7 +449,13 @@ def _query_findings(
             )
         )
 
-    unchecked = _unchecked_reason(reads, settled=settled, contested=contested, outward=outward)
+    unchecked = _unchecked_reason(
+        reads,
+        settled=settled,
+        contested=contested,
+        outward=outward,
+        grouping_outputs=grouping_outputs,
+    )
     if unchecked is not None:
         findings.append(
             _asset_finding(item, "asset.query_fields_unchecked", Severity.ADVISORY, unchecked)
@@ -477,6 +487,7 @@ def _unchecked_reason(
     settled: set[AmbiguousRef],
     contested: set[AmbiguousRef],
     outward: set[AmbiguousRef],
+    grouping_outputs: set[AmbiguousRef],
 ) -> str | None:
     """Why the field-level check could not cover the whole query, if it could not.
 
@@ -523,12 +534,15 @@ def _unchecked_reason(
     stray: set[str] = set()
     sourceless: set[str] = set()
     enclosing: set[str] = set()
+    output_names: set[str] = set()
     unseen: set[str] = set()
     for ref in reads.ambiguous - settled - contested:
         if ref.qualifier:
             stray.add(f"{ref.qualifier}.{ref.name}")
         elif ref in outward:
             enclosing.add(ref.name)
+        elif ref in grouping_outputs:
+            output_names.add(ref.name)
         elif not ref.candidates and ref.all_tables:
             sourceless.add(ref.name)
         else:  # candidates the model could not read, or a source that is not a table at all
@@ -551,6 +565,16 @@ def _unchecked_reason(
             f"{'its' if len(correlated) == 1 else 'their'} own scope declares "
             f"{'it' if len(correlated) == 1 else 'them'}, and this check does not follow a "
             "name outward"
+        )
+    grouped = sorted(output_names)
+    if grouped:
+        reasons.append(
+            f"{', '.join(grouped)} {_agrees(grouped)} GROUP BY "
+            f"{'a name' if len(grouped) == 1 else 'names'} that may be the SELECT output "
+            f"{'column' if len(grouped) == 1 else 'columns'} of that name: no source in "
+            f"{'its' if len(grouped) == 1 else 'their'} scope declares "
+            f"{'it' if len(grouped) == 1 else 'them'}, and PostgreSQL groups by an output "
+            "column only when no source column has the name"
         )
     opaque = sorted(unseen)
     if opaque:
