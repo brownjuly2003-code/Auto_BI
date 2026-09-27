@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **`JOIN … USING` в governance reviewed SQL теперь оставляет advisory о ключе.**
+  На ClickHouse и PostgreSQL-семействе общий ключ нельзя приписать одной таблице, поэтому
+  он получает `asset.query_fields_unchecked`, а явные соседние колонки грейдятся отдельно.
+  `JOIN … ON` не менялся. `VERIFIER_VERSION` 37 → 38, `CHECK_VERSION` 18 → 19.
+  Реализовано `gpt-5.6-luna` xhigh; финальное синтетическое review `gpt-6-astra` xhigh:
+  0 actionable P1/P2, не human/production acceptance. Полный offline pytest: 2655 passed,
+  21 skipped, 38 deselected; docs-as-code: 24 passed; strict mypy: 0 ошибок в 120 модулях,
+  Ruff и Black чистые.
+
 - **Трёхчастная колонка больше не открывает одноимённый scalar `WITH` при точном
   совпадении с табличным источником.** `dm.sales_daily.revenue` читает единственный
   неалиасированный `FROM`/`JOIN dm.sales_daily` своего SELECT, а не скрытое
@@ -14,6 +23,26 @@
   Синтетическое review `gpt-6-astra` xhigh: 3 P2 закрыты red-green тестами, не
   human/production acceptance. Полный offline pytest: 2647 passed, 21 skipped,
   38 deselected; docs-as-code: 24 passed; strict mypy чистый, Ruff и Black чистые.
+
+- **`t.region` при однозначном явном алиасе именованного табличного источника
+  своего SELECT больше не открывает scalar `WITH t`.** `FROM`/`JOIN … AS t`
+  направляет колонку к таблице: ложные chart reads и `chart.sql_partial` исчезают,
+  а tuple `t.1` и отдельное чтение scalar alias сохраняются.
+  `VERIFIER_VERSION` 35 → 36, `CHECK_VERSION` остаётся 18. Итоговое синтетическое
+  `gpt-6-astra` xhigh review: 0 actionable findings после закрытия P2; не
+  human/production acceptance. Полный offline pytest: 2641 passed, 21 skipped,
+  38 deselected; chart-impact suite: 260 passed; docs-as-code: 24 passed; strict mypy:
+  0 ошибок в 120 модулях, Ruff и Black чистые.
+
+- **Однозначная ссылка на named CTE связывается с ближайшим объявлением.** Внутренняя
+  CTE больше не открывает одноимённую внешнюю и не добавляет ложные chart reads или
+  `chart.sql_partial`; `FROM` и bare `IN <name>` следуют одному правилу, а отдельная
+  внешняя ссылка сохраняет реальный гэп. Self-reference и одноуровневые дубликаты
+  остаются conservative. `VERIFIER_VERSION` 34 → 35, `CHECK_VERSION` остаётся 18.
+  Полный offline pytest до трёх дополнительных граничных тестов: 2628 passed, 21 skipped,
+  38 deselected; после них chart-impact suite: 179 passed; strict mypy: 0 ошибок в 120
+  модулях. Синтетическое ревью `gpt-6-astra` xhigh: дефектов кода нет, один пробел
+  покрытия закрыт тестами; не human/production acceptance.
 
 - **Chart impact учитывает достижимость `JOIN … USING`.** Ключ JOIN в непрочитанной
   named CTE или scalar `WITH` больше не создаёт ложный `chart.sql_partial`; открытая
