@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-27
+**Обновлено:** 2026-09-28
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -12,7 +12,16 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=40`, `CHECK_VERSION=21`
 
-**Последний срез (2026-09-27):** PostgreSQL-семейство разрешает целое голое имя в
+**Последний срез (2026-09-28):** SQL guard теперь переводит `RecursionError`, который sqlglot
+выбрасывает на запросе глубже доступного parser depth, в обычный `SQLGuardError`: загрузка
+`ReferenceQuery` и verified-asset registry получает отказ валидации с указанием глубины вместо
+аварии интерпретатора. `guard_sql`, извлечение таблиц и колонок, а также chart impact сохраняют
+существующее поведение для читаемых запросов; `VERIFIER_VERSION=40` и `CHECK_VERSION=21`
+остаются без изменений. Реализовано как Codex companion Luna xhigh. Целевой прогон T-26:
+190 passed, включая docs-as-code; полный offline pytest: 2745 passed, 21 skipped,
+38 deselected. Strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+
+**Предыдущий срез (2026-09-27):** PostgreSQL-семейство разрешает целое голое имя в
 `ORDER BY` и `DISTINCT ON` сначала через выходной столбец SELECT с учётом регистра
 идентификатора; имя внутри выражения читает input-колонку. `ORDER BY` над
 `UNION`/`INTERSECT`/`EXCEPT` разрешает целое имя через выход левой ветки, не оставляя

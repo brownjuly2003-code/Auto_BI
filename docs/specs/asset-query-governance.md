@@ -10,6 +10,21 @@ number computed partly from data the model says nothing about. `assets.invalidat
 attachment. It never guesses — but "the SQL does not decide it" is not the same as "nothing
 decides it", and where the governed model decides it, the check reads that too.
 
+## Requirement: a query the parser cannot read is refused at the contract boundary
+
+The system SHALL refuse a reviewed `reference_query` at the contract boundary when the SQL
+parser cannot read it because its nesting exceeds the parser's depth, using the same validation
+failure path as any other unreadable or non-plain-SELECT statement. It SHALL report a guard
+rejection rather than leak a parser `RecursionError`.
+
+### Scenario: parser-depth overflow is a guard rejection
+
+- **GIVEN** a verified asset whose reviewed query is a SELECT nested deeper than the SQL parser
+  can read
+- **WHEN** the asset is loaded at the contract boundary
+- **THEN** validation rejects the asset as a non-plain SELECT and the error names the nesting
+  depth; the loader does not expose a bare `RecursionError`
+
 ## Requirement: a reviewed query reading an ungoverned mart is named
 
 The system SHALL report `asset.query_ungoverned` (severity review) for every table a reviewed

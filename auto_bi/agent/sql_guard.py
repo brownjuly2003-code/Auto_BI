@@ -76,7 +76,9 @@ def _parse_one_select(sql: str, *, dialect: str = DIALECT) -> exp.Expression:
     """Parse exactly one SELECT/UNION statement or raise SQLGuardError."""
     try:
         statements = sqlglot.parse(sql, read=dialect)
-    except sqlglot.errors.ParseError as e:
+    except (sqlglot.errors.ParseError, RecursionError) as e:
+        if isinstance(e, RecursionError):
+            raise SQLGuardError("SQL statement nests deeper than this parser reads") from e
         raise SQLGuardError(f"SQL does not parse: {e}") from e
 
     statements = [s for s in statements if s is not None]

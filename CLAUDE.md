@@ -83,6 +83,13 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-28 — SQL guard переводит `RecursionError` sqlglot на запросе глубже parser depth в
+  обычный отказ `SQLGuardError`: `guard_sql`, `ReferenceQuery` и verified-asset registry
+  больше не выпускают аварию интерпретатора, а читаемые запросы и chart impact сохраняют
+  прежнее поведение. `VERIFIER_VERSION=40`, `CHECK_VERSION=21` без изменений. Реализовано как
+  Codex companion Luna xhigh. Целевой прогон T-26: 190 passed, включая docs-as-code;
+  полный offline pytest: 2745 passed, 21 skipped, 38 deselected. Strict mypy:
+  0 ошибок в 120 модулях, Ruff и Black чистые.
 - 2026-09-27 — PostgreSQL `ORDER BY` и `DISTINCT ON` разрешают целое голое имя
   через выход SELECT с учётом регистра, а имя внутри выражения читают как input-колонку.
   `ORDER BY` set operation называет выход левой ветки; корневые `INTERSECT` и

@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **Глубокий reviewed SQL получает отказ guard вместо аварии парсера.**
+  `_parse_one_select` переводит `RecursionError` от sqlglot в `SQLGuardError`, поэтому
+  `guard_sql`, `ReferenceQuery` и загрузка verified assets сообщают о превышении глубины
+  вложенности через существующий путь отказа. Читаемые запросы и chart impact не меняются;
+  `VERIFIER_VERSION=40`, `CHECK_VERSION=21` остаются без изменений. Реализовано как Codex
+  companion Luna xhigh. Целевой прогон T-26: 190 passed, включая docs-as-code;
+  полный offline pytest: 2745 passed, 21 skipped, 38 deselected. Strict mypy:
+  0 ошибок в 120 модулях, Ruff и Black чистые.
+
 - **PostgreSQL `ORDER BY` и `DISTINCT ON` разрешают имена по правилам движка.**
   Целое голое имя называет выход SELECT с учётом PostgreSQL-сворачивания регистра;
   имя внутри выражения читает input-колонку и может добавить review или advisory.
