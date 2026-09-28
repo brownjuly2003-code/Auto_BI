@@ -6,6 +6,16 @@
 
 ### Changed
 
+- **Корневой PostgreSQL `SELECT` в скобках проходит guard.**
+  `(SELECT …) ORDER BY …` сохраняет чтения из сортировки, а также внешних
+  `LIMIT` и `OFFSET` для governance. Неподдержанные и повторные модификаторы
+  остаются отказом; корневые `INTERSECT`/`EXCEPT`, `VALUES` и ClickHouse не расширены.
+  Evidence versions 41/22 остаются: ранее такой reviewed-запрос не проходил
+  границу контракта, поэтому старых CheckResult для него нет. Реализовано Luna xhigh;
+  синтетическое Astra xhigh review: 0 actionable P1/P2, не human/production
+  acceptance. Полный offline pytest: 2774 passed, 21 skipped, 38 deselected;
+  strict mypy, Ruff и Black чистые.
+
 - **Скобочный ClickHouse `ARRAY JOIN` читается как выражение.**
   `ARRAY JOIN (tags AS t)` читает `tags`, но не псевдоколонку `t`;
   `ARRAY JOIN (tags AS t) AS a` объявляет только внешний `a`, поэтому отдельное `t`

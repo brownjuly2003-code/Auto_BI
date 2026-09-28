@@ -18,6 +18,8 @@ DIALECT = "clickhouse"
 TRIAL_LIMIT = 10
 TRIAL_TIMEOUT_S = 30
 
+_POSTGRES_ROOT_QUERY_MODIFIERS = frozenset({"order", "limit", "offset"})
+
 # A nested-query WITH chain costs a few Python frames per alias (read-through,
 # nested-query grade, column loop). 64 keeps that chain clear of RecursionError
 # under pytest's default limit of 1000, and is deep enough that valid ClickHouse
@@ -86,9 +88,45 @@ def _parse_one_select(sql: str, *, dialect: str = DIALECT) -> exp.Expression:
         raise SQLGuardError(f"expected exactly one statement, got {len(statements)}")
 
     root = statements[0]
+    if dialect == "postgres" and isinstance(root, exp.Subquery):
+        root = _normalize_postgres_root_subquery(root)
     if not isinstance(root, exp.Select | exp.Union):
         raise SQLGuardError(f"only SELECT is allowed, got {type(root).__name__}")
     return root
+
+
+def _normalize_postgres_root_subquery(root: exp.Subquery) -> exp.Expression:
+    """Unwrap a bare PostgreSQL root query and preserve supported outer modifiers.
+
+    PostgreSQL parses ``(SELECT ...) ORDER BY ...`` as a ``Subquery`` whose body is
+    the query and whose modifier is attached to the wrapper.  The guard and scope
+    grader operate on the query body, so move the small set of modifiers they can
+    grade there.  A named wrapper, an unsupported modifier, or a duplicate modifier
+    stays wrapped and is rejected by the SELECT-only check instead of being silently
+    dropped.
+    """
+    wrappers: list[exp.Subquery] = []
+    target: exp.Expression = root
+    while isinstance(target, exp.Subquery):
+        wrappers.append(target)
+        target = target.this
+    if not isinstance(target, (exp.Select, exp.Union)):
+        return root
+
+    modifiers: dict[str, exp.Expression | list[exp.Expression]] = {}
+    for wrapper in reversed(wrappers):
+        for name, value in wrapper.args.items():
+            if name == "this" or value is None:
+                continue
+            if name not in _POSTGRES_ROOT_QUERY_MODIFIERS or name in modifiers:
+                return root
+            modifiers[name] = value
+
+    for name, value in modifiers.items():
+        if target.args.get(name) is not None:
+            return root
+        target.set(name, value)
+    return target
 
 
 def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:

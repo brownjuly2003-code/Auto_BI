@@ -83,6 +83,12 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-28 — корневой PostgreSQL `(SELECT …)` с внешними `ORDER BY`, `LIMIT`,
+  `OFFSET` проходит guard и сохраняет чтения для governance; неподдержанные формы
+  остаются отказом. Evidence versions 41/22 без изменений: ранее вход не принимался.
+  Реализовано Luna xhigh; синтетическое Astra xhigh review: 0 actionable P1/P2,
+  не human/production acceptance. Полный offline pytest: 2774 passed, 21 skipped,
+  38 deselected; strict mypy, Ruff и Black чистые.
 - 2026-09-28 — скобочный элемент ClickHouse `ARRAY JOIN (tags AS t)` читает `tags`,
   а `t` — алиас. Внешний `AS a` заменяет внутренний алиас; настоящий скобочный
   SELECT сохраняет свой scope. Поиск таблиц и chart impact при `IN <name>` используют

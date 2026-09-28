@@ -12,7 +12,18 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=41`, `CHECK_VERSION=22`
 
-**Последний срез (2026-09-28):** скобочный элемент ClickHouse `ARRAY JOIN (tags AS t)`
+**Последний срез (2026-09-28):** корневой PostgreSQL-запрос `(SELECT …)` с внешними
+`ORDER BY`, `LIMIT` или `OFFSET` проходит SELECT-only guard. Чтения из внешних
+выражений попадают в governance: целое имя выхода не становится входным полем, а
+имя внутри выражения и скалярного подзапроса проверяется. Неподдержанные и
+повторные модификаторы остаются отказом; корневые `INTERSECT`/`EXCEPT`, `VALUES`
+и ClickHouse не расширены. Версии 41/22 сохраняются: ранее такой `ReferenceQuery`
+не проходил границу контракта, поэтому старых CheckResult для него нет.
+Реализовано Luna xhigh; синтетическое Astra xhigh review: 0 actionable P1/P2,
+не human/production acceptance. Полный offline pytest: 2774 passed, 21 skipped,
+38 deselected; strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+
+**Предыдущий срез (2026-09-28):** скобочный элемент ClickHouse `ARRAY JOIN (tags AS t)`
 читается как выражение: `tags` остаётся чтением, а `t` — алиасом. В
 `ARRAY JOIN (tags AS t) AS a` внешний `a` заменяет внутренний алиас; последующее `t`
 снова грейдится как колонка. Настоящий скобочный SELECT сохраняет свою область.
