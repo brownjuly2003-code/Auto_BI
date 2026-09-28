@@ -257,7 +257,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: previously ignored and can add findings; GROUP BY +name moves from output-column
 #: advisory to input REVIEW. Unary plus on an unaliased projection does not create a
 #: plain-column output name. ClickHouse and chart impact are unchanged.
-VERIFIER_VERSION = "40"
+#: 41 — a parenthesized ClickHouse ARRAY JOIN expression no longer creates a phantom
+#: column or crashes governance. Its outer AS replaces an inner AS, so a later use of
+#: the discarded name becomes a column read and may add review; chart reads can move
+#: in either direction. Parenthesized query items keep their query scope.
+VERIFIER_VERSION = "41"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -346,7 +350,10 @@ VERIFIER_VERSION = "40"
 #: previously ignored and can add findings; GROUP BY +name moves from output-column
 #: advisory to input REVIEW. Unary plus on an unaliased projection does not create a
 #: plain-column output name. ClickHouse and chart impact are unchanged.
-CHECK_VERSION = "21"
+#: 22 — governance grades parenthesized ClickHouse ARRAY JOIN expressions as their
+#: unparenthesized forms, removing phantom field findings and the scope crash. An
+#: outer AS discards the inner alias, so its later name may add a field finding.
+CHECK_VERSION = "22"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

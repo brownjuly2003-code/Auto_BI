@@ -10,9 +10,22 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=40`, `CHECK_VERSION=21`
+**Версии evidence:** `VERIFIER_VERSION=41`, `CHECK_VERSION=22`
 
-**Последний срез (2026-09-28):** SQL guard теперь переводит `RecursionError`, который sqlglot
+**Последний срез (2026-09-28):** скобочный элемент ClickHouse `ARRAY JOIN (tags AS t)`
+читается как выражение: `tags` остаётся чтением, а `t` — алиасом. В
+`ARRAY JOIN (tags AS t) AS a` внешний `a` заменяет внутренний алиас; последующее `t`
+снова грейдится как колонка. Настоящий скобочный SELECT сохраняет свою область.
+Нормализация применяется также при поиске таблиц и чтении операторского SQL, где
+`IN <name>` раньше мог повторно построить scope на исходной форме. Ложные field review и
+chart reads уходят, а запрос с внешним алиасом больше не обрывает governance и не
+даёт `chart.opaque_sql`. `VERIFIER_VERSION` 40 → 41, `CHECK_VERSION` 21 → 22.
+Реализовано как Codex companion Luna xhigh; синтетическое Astra xhigh review:
+0 actionable P1/P2, не human/production acceptance. Целевой прогон T-25:
+303 passed; полный offline pytest: 2751 passed, 21 skipped, 38 deselected.
+Strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+
+**Предыдущий срез (2026-09-28):** SQL guard теперь переводит `RecursionError`, который sqlglot
 выбрасывает на запросе глубже доступного parser depth, в обычный `SQLGuardError`: загрузка
 `ReferenceQuery` и verified-asset registry получает отказ валидации с указанием глубины вместо
 аварии интерпретатора. `guard_sql`, извлечение таблиц и колонок, а также chart impact сохраняют

@@ -337,16 +337,23 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     and WHERE cannot read a SELECT alias. A whole GROUP BY name offered by a valid
     SELECT output alias may also resolve to that output after local FROM sources;
     `IN <name>` stays the column sqlglot parsed. PostgreSQL also moves an ORDER BY
-    after a parenthesized query onto that query before scopes are built.
+    after a parenthesized query onto that query before scopes are built. ClickHouse ARRAY JOIN
+    items that sqlglot wraps in a non-query Subquery or Paren are unwrapped before alias indexing
+    and scoping; ClickHouse 24.8.14.39 EXPLAIN SYNTAX rewrites `(tags AS t) AS a` to `tags AS a`,
+    while `ARRAY JOIN (SELECT ['p','q']) AS a` remains a query; the observed HEAD result for
+    `SELECT a FROM dm.sales_daily ARRAY JOIN (SELECT ['p','q']) AS a` is no attributed column
+    and an unattributed `a`, pinned by the tests.
     """
     root = _parse_one_select(sql, dialect=dialect)
     unary_plus_offsets = (
         _postgres_unary_plus_offsets(sql, dialect) if dialect != "clickhouse" else None
     )
-    aliases = _clickhouse_aliases(root) if dialect == "clickhouse" else None
     if dialect == "clickhouse":
+        _normalize_clickhouse_array_joins(root)
+        aliases = _clickhouse_aliases(root)
         _rewrite_clickhouse_in_tables(root, aliases)
     else:
+        aliases = None
         _rewrite_postgres_parenthesized_orders(root)
     root_scope = build_scope(root)
     if root_scope is None:  # pragma: no mutate block - Select/Union always defines a scope
@@ -676,6 +683,47 @@ def _star_subquery_from(table: exp.Table) -> exp.Subquery:
     return exp.Subquery(this=select)
 
 
+def _normalize_clickhouse_array_join_item(item: exp.Expression) -> exp.Expr:
+    """Unwrap a non-query parenthesized ClickHouse ARRAY JOIN item."""
+    if not isinstance(item, (exp.Subquery, exp.Paren)):
+        return item
+
+    wrappers: list[exp.Subquery | exp.Paren] = []
+    current: exp.Expression = item
+    while isinstance(current, (exp.Subquery, exp.Paren)):
+        wrappers.append(current)
+        current = current.this
+        if isinstance(current, exp.Query) and not isinstance(current, (exp.Subquery, exp.Paren)):
+            return item
+
+    alias: exp.Identifier | None = None
+    for wrapper in wrappers:
+        table_alias = wrapper.args.get("alias")
+        if isinstance(table_alias, exp.TableAlias) and table_alias.this is not None:
+            alias = table_alias.this.copy()
+            break
+
+    if alias is None:
+        return current
+
+    expression = current.this if isinstance(current, exp.Alias) else current
+    return exp.alias_(expression, alias, copy=False)
+
+
+def _normalize_clickhouse_array_joins(root: exp.Expr) -> None:
+    """Make non-query parenthesized ARRAY JOIN items look like ClickHouse's AST."""
+    for join in root.find_all(exp.Join):
+        if join.args.get("kind") != "ARRAY":
+            continue
+        join.set("this", _normalize_clickhouse_array_join_item(join.this))
+        expressions = join.args.get("expressions")
+        if expressions:
+            join.set(
+                "expressions",
+                [_normalize_clickhouse_array_join_item(item) for item in expressions],
+            )
+
+
 def clickhouse_in_table_fields(
     root: exp.Expr, aliases: _ClickHouseAliasIndex | None = None
 ) -> tuple[exp.Column, ...]:
@@ -690,6 +738,7 @@ def clickhouse_in_table_fields(
     """
     fields: tuple[exp.Column, ...] | list[exp.Column]
     if aliases is None:
+        _normalize_clickhouse_array_joins(root)
         fields = [
             field
             for field in (node.args.get("field") for node in root.find_all(exp.In))

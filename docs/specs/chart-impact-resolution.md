@@ -159,6 +159,14 @@ metrics' term columns.
 - **WHEN** impact is resolved with that dashboard supplied
 - **THEN** the change carries a chart impact for that tile with relation `reads_field`
 
+### Scenario: a parenthesized ARRAY JOIN item is readable operator SQL
+
+- **GIVEN** a change touching `dm.sales_daily.tags` and a tile whose `raw_sql` is
+  `SELECT a FROM dm.sales_daily ARRAY JOIN (tags AS t) AS a`
+- **WHEN** impact is resolved with that dashboard supplied
+- **THEN** the tile carries `reads_field` naming `dm.sales_daily.tags`, without
+  `chart.opaque_sql` for the parenthesized item
+
 ### Scenario: an operator SQL tile that reads a changed field only through a WITH alias
 
 - **GIVEN** a change touching `dm.sales_daily.revenue` and a tile whose `raw_sql` is

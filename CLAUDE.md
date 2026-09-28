@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-28 — скобочный элемент ClickHouse `ARRAY JOIN (tags AS t)` читает `tags`,
+  а `t` — алиас. Внешний `AS a` заменяет внутренний алиас; настоящий скобочный
+  SELECT сохраняет свой scope. Поиск таблиц и chart impact при `IN <name>` используют
+  ту же нормализацию. Ложные field review и chart reads уходят, валидный запрос
+  больше не обрывает governance. `VERIFIER_VERSION` 40 → 41,
+  `CHECK_VERSION` 21 → 22.
+  Реализовано как Codex companion Luna xhigh; синтетическое Astra xhigh review:
+  0 actionable P1/P2, не human/production acceptance. Целевой прогон T-25:
+  303 passed; полный offline pytest: 2751 passed, 21 skipped, 38 deselected.
+  Strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
 - 2026-09-28 — SQL guard переводит `RecursionError` sqlglot на запросе глубже parser depth в
   обычный отказ `SQLGuardError`: `guard_sql`, `ReferenceQuery` и verified-asset registry
   больше не выпускают аварию интерпретатора, а читаемые запросы и chart impact сохраняют

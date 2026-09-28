@@ -6,6 +6,18 @@
 
 ### Changed
 
+- **Скобочный ClickHouse `ARRAY JOIN` читается как выражение.**
+  `ARRAY JOIN (tags AS t)` читает `tags`, но не псевдоколонку `t`;
+  `ARRAY JOIN (tags AS t) AS a` объявляет только внешний `a`, поэтому отдельное `t`
+  может добавить governance review. Настоящий скобочный SELECT сохраняет свой scope.
+  Поиск таблиц и chart impact применяют то же правило при `IN <name>`: валидный
+  reviewed SQL больше не обрывает проверку и не превращается в `chart.opaque_sql`.
+  `VERIFIER_VERSION` 40 → 41, `CHECK_VERSION` 21 → 22.
+  Реализовано как Codex companion Luna xhigh; синтетическое Astra xhigh review:
+  0 actionable P1/P2, не human/production acceptance. Целевой прогон T-25:
+  303 passed; полный offline pytest: 2751 passed, 21 skipped, 38 deselected.
+  Strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+
 - **Глубокий reviewed SQL получает отказ guard вместо аварии парсера.**
   `_parse_one_select` переводит `RecursionError` от sqlglot в `SQLGuardError`, поэтому
   `guard_sql`, `ReferenceQuery` и загрузка verified assets сообщают о превышении глубины

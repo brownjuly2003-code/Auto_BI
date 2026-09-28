@@ -562,6 +562,12 @@ declaration sqlglot yields wins. Every definition is still graded where it is wr
 `WITH <expr> AS alias` (and `WITH (SELECT …) AS alias`) SHALL be visible in the query that
 declares it and in every subquery and UNION branch below it.
 
+A parenthesized `[LEFT] ARRAY JOIN` expression SHALL have the same column reads and alias
+visibility as its unparenthesized expression: `(e AS t)` declares `t`, and `(e)` declares
+no alias. For `(e AS t) AS a`, the outer alias SHALL replace `t`, so a later `t` SHALL be
+graded as a column reference. A parenthesized SELECT used as an ARRAY JOIN item SHALL
+retain its own query scope.
+
 When a scope references an expression-form `WITH <expr> AS a` — directly, or through
 another alias whose definition references it — the system SHALL grade every column written
 in `<expr>` as if written in that referencing scope, under the same `_column_source` /
@@ -640,6 +646,29 @@ ClickHouse most likely rejects; the risk is accepted (F-T-13-17).
 - **WHEN** the gate grades the asset
 - **THEN** the finding names `dm.sales_daily.tags`, and does not name `dm.sales_daily.a` — the
   array source is still a read, while `a` is the unfolded-element alias
+
+### Scenario: a parenthesized ARRAY JOIN item keeps its expression alias
+
+- **GIVEN** a snapshot declaring `tags` on `dm.sales_daily` and a reviewed query
+  `SELECT t FROM dm.sales_daily ARRAY JOIN (tags AS t)`
+- **WHEN** the gate grades the asset
+- **THEN** there is no finding: `tags` is read and `t` is the ARRAY JOIN alias
+
+### Scenario: an outer ARRAY JOIN alias replaces the inner alias
+
+- **GIVEN** a snapshot declaring `tags` but not `t` on `dm.sales_daily` and a reviewed query
+  `SELECT t, a FROM dm.sales_daily ARRAY JOIN (tags AS t) AS a`
+- **WHEN** the gate grades the asset
+- **THEN** `asset.query_ungoverned_field` names `dm.sales_daily.t`; `a` is the alias and
+  `tags` is the array source
+
+### Scenario: a parenthesized ARRAY JOIN query retains its scope
+
+- **GIVEN** a reviewed query
+  `SELECT a FROM dm.sales_daily ARRAY JOIN (SELECT ['p', 'q']) AS a`
+- **WHEN** the gate grades the asset
+- **THEN** the parenthesized SELECT keeps its own query scope and is not treated as an
+  expression alias declaration
 
 ### Scenario: a referenced expression WITH is read through to the undeclared column
 
