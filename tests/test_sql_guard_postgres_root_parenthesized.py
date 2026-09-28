@@ -52,6 +52,18 @@ def _reads(sql: str) -> set[str]:
             {"dm.sales_daily.region", "dm.sales_daily.category"},
             [],
         ),
+        (
+            "(SELECT region AS r FROM dm.sales_daily INTERSECT "
+            "SELECT category FROM dm.sales_daily) ORDER BY r",
+            {"dm.sales_daily.region", "dm.sales_daily.category"},
+            [],
+        ),
+        (
+            "(SELECT region AS r FROM dm.sales_daily EXCEPT "
+            "SELECT category FROM dm.sales_daily) ORDER BY r",
+            {"dm.sales_daily.region", "dm.sales_daily.category"},
+            [],
+        ),
     ],
 )
 def test_root_parenthesized_query_is_guarded_and_attributed(
@@ -74,10 +86,6 @@ def test_root_parenthesized_order_expression_reaches_governance(tmp_path: Path) 
 @pytest.mark.parametrize(
     "sql",
     [
-        "(SELECT region FROM dm.sales_daily INTERSECT SELECT category FROM dm.sales_daily) "
-        "ORDER BY region",
-        "(SELECT region FROM dm.sales_daily EXCEPT SELECT category FROM dm.sales_daily) "
-        "ORDER BY region",
         "(VALUES (1)) ORDER BY 1",
         "(SELECT region FROM dm.sales_daily) AS q",
         "(SELECT region FROM dm.sales_daily) FOR UPDATE",

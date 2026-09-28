@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from auto_bi.agent.sql_guard import SQLGuardError, extract_column_refs
+from auto_bi.agent.sql_guard import (
+    SQLGuardError,
+    extract_column_refs,
+    extract_table_names,
+    guard_sql,
+)
 from tests.test_sql_guard_clickhouse_alias import (
     ungoverned_codes,
     ungoverned_detail,
@@ -190,10 +195,93 @@ def test_set_operation_expression_keeps_sourceless_result(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize("dialect", ["postgres", "clickhouse"])
 @pytest.mark.parametrize("operator", ["INTERSECT", "EXCEPT"])
-def test_root_intersect_and_except_stay_refused(dialect: str, operator: str) -> None:
-    sql = f"SELECT region FROM dm.sales_daily {operator} SELECT category FROM dm.sales_daily"
-    with pytest.raises(SQLGuardError, match="only SELECT is allowed"):
-        extract_column_refs(sql, dialect=dialect)
+def test_root_intersect_and_except_read_both_branches(dialect: str, operator: str) -> None:
+    sql = f"SELECT region FROM dm.sales_daily {operator} SELECT name FROM dm.stores"
+    guard_sql(sql, dialect=dialect)
+    assert extract_table_names(sql, dialect=dialect) == {"dm.sales_daily", "dm.stores"}
+    refs = extract_column_refs(sql, dialect=dialect)
+    assert {f"{ref.table.name}.{ref.name}" for ref in refs.attributed} == {
+        "dm.sales_daily.region",
+        "dm.stores.name",
+    }
+    assert not refs.ambiguous and not refs.unattributed
+
+
+@pytest.mark.parametrize("operator", ["INTERSECT", "EXCEPT"])
+def test_root_set_operation_sort_name_reads_output(tmp_path: Path, operator: str) -> None:
+    sql = (
+        f"SELECT region AS r FROM dm.sales_daily {operator} "
+        "SELECT category FROM dm.sales_daily ORDER BY r"
+    )
+    guard_sql(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.region", "dm.sales_daily.category"}
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "clickhouse"])
+@pytest.mark.parametrize("operator", ["INTERSECT", "EXCEPT"])
+def test_root_set_operation_right_branch_reaches_governance(
+    tmp_path: Path, dialect: str, operator: str
+) -> None:
+    sql = (
+        f"SELECT revenue FROM dm.sales_daily {operator} "
+        "SELECT internal_cost_raw FROM dm.sales_daily"
+    )
+    assert ungoverned_pairs(tmp_path, sql, engine=dialect) == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
+def test_clickhouse_root_intersect_reads_with_alias_definition(tmp_path: Path) -> None:
+    sql = (
+        "WITH internal_cost_raw * 2 AS c SELECT c FROM dm.sales_daily "
+        "INTERSECT SELECT revenue FROM dm.sales_daily"
+    )
+    guard_sql(sql, dialect="clickhouse")
+    assert _reads(sql, dialect="clickhouse") == {
+        "dm.sales_daily.internal_cost_raw",
+        "dm.sales_daily.revenue",
+    }
+    assert ungoverned_pairs(tmp_path, sql, engine="clickhouse") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "clickhouse"])
+@pytest.mark.parametrize("operator", ["INTERSECT", "EXCEPT"])
+def test_root_set_operation_scans_forbidden_source(dialect: str, operator: str) -> None:
+    sql = f"SELECT 1 {operator} SELECT * FROM url('s3://bucket/file.csv')"
+    with pytest.raises(SQLGuardError, match="forbidden table function"):
+        guard_sql(sql, dialect=dialect)
+
+
+@pytest.mark.parametrize(
+    "suffix", ["", " UNION SELECT 1", " INTERSECT SELECT 1", " EXCEPT SELECT 1"]
+)
+def test_select_into_is_rejected(suffix: str) -> None:
+    sql = f"SELECT 1 INTO TEMP review_probe_table{suffix}"
+    with pytest.raises(SQLGuardError, match="forbidden construct in SQL: Into"):
+        guard_sql(sql, dialect="postgres")
+
+
+@pytest.mark.parametrize("operator", ["UNION", "INTERSECT", "EXCEPT"])
+@pytest.mark.parametrize("modifier", ["LIMIT", "OFFSET"])
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_set_operation_scalar_modifier_reads_its_subquery(
+    tmp_path: Path, operator: str, modifier: str, wrapped: bool
+) -> None:
+    body = f"SELECT revenue FROM dm.sales_daily {operator} SELECT revenue FROM dm.sales_daily"
+    sql = (
+        f"({body})" if wrapped else body
+    ) + f" {modifier} (SELECT max(s.internal_cost_raw)::int FROM dm.sales_daily AS s)"
+    guard_sql(sql, dialect="postgres")
+    assert _reads(sql) == {
+        "dm.sales_daily.revenue",
+        "dm.sales_daily.internal_cost_raw",
+    }
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
 
 
 @pytest.mark.parametrize(

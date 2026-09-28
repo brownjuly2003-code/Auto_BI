@@ -6,6 +6,17 @@
 
 ### Changed
 
+- **Корневые `INTERSECT` и `EXCEPT` проходят SQL guard.**
+  PostgreSQL и ClickHouse читают обе ветки для governance; PostgreSQL допускает
+  также скобочную форму с внешними `ORDER BY`, `LIMIT`, `OFFSET`.
+  `SELECT INTO` и remote table functions внутри веток отклоняются. Подзапросы в
+  общих `LIMIT`/`OFFSET` теперь учитываются и у ранее допустимого `UNION`.
+  Mac-проверка подтвердила синтаксис обеих операций в PostgreSQL 16.15 и
+  ClickHouse 24.8.14.39. `VERIFIER_VERSION` 41 → 42: operator SQL теперь может
+  заменить `chart.opaque_sql` на `reads_field`. `CHECK_VERSION` 22 → 23:
+  исправленное чтение `UNION` и отказ на ранее допустимый `SELECT INTO` меняют
+  смысл старых CheckResult.
+
 - **Корневой PostgreSQL `SELECT` в скобках проходит guard.**
   `(SELECT …) ORDER BY …` сохраняет чтения из сортировки, а также внешних
   `LIMIT` и `OFFSET` для governance. Неподдержанные и повторные модификаторы

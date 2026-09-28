@@ -848,6 +848,26 @@ def test_a_bare_name_in_an_exists_union_branch_may_be_the_enclosing_query(
 
 
 @pytest.mark.parametrize("engine", ["postgresql", "clickhouse"])
+@pytest.mark.parametrize("operator", ["INTERSECT", "EXCEPT"])
+def test_a_bare_name_in_an_exists_set_operation_branch_may_be_enclosing(
+    tmp_path: Path, engine: str, operator: str
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a WHERE EXISTS ("
+        "SELECT 1 FROM dm.stores AS b WHERE b.id = store_id "
+        f"{operator} SELECT 1 FROM dm.stores AS c WHERE c.id = store_id)"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine=engine))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "store_id" in findings[0].detail
+    assert "enclosing query" in findings[0].detail
+
+
+@pytest.mark.parametrize("engine", ["postgresql", "clickhouse"])
 def test_a_bare_name_in_a_scalar_union_branch_may_be_the_enclosing_query(
     tmp_path: Path, engine: str
 ) -> None:

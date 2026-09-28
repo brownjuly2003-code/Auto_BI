@@ -261,7 +261,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: column or crashes governance. Its outer AS replaces an inner AS, so a later use of
 #: the discarded name becomes a column read and may add review; chart reads can move
 #: in either direction. Parenthesized query items keep their query scope.
-VERIFIER_VERSION = "41"
+#: 42 — ClickHouse operator SQL rooted at INTERSECT/EXCEPT can now name field reads where
+#: the same text previously left chart.opaque_sql. Set-operation LIMIT/OFFSET subqueries
+#: also contribute field reads; SELECT INTO is rejected. Reviewed queries of the new root
+#: shape were previously rejected; changes to existing queries are covered by check 23.
+VERIFIER_VERSION = "42"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -353,7 +357,10 @@ VERIFIER_VERSION = "41"
 #: 22 — governance grades parenthesized ClickHouse ARRAY JOIN expressions as their
 #: unparenthesized forms, removing phantom field findings and the scope crash. An
 #: outer AS discards the inner alias, so its later name may add a field finding.
-CHECK_VERSION = "22"
+#: 23 — set-operation LIMIT/OFFSET subqueries now contribute field reads, so an old
+#: pass on a UNION or nested set operation may become REVIEW or advisory. SELECT INTO
+#: is rejected as a write, including previously accepted SELECT and UNION statements.
+CHECK_VERSION = "23"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

@@ -23,6 +23,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from auto_bi.decision.impact import (
     ChartRelation,
     ImpactReport,
@@ -274,6 +276,22 @@ def test_operator_sql_reading_a_changed_field_resolves_to_reads_field(tmp_path: 
         tmp_path,
         candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
         dashboards={DASHBOARD: operator_dashboard("SELECT sum(revenue) FROM dm.sales_daily")},
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert "dm.sales_daily.revenue" in impact.charts[0].detail
+    assert report.chart_gaps == []
+
+
+@pytest.mark.parametrize("operator", ["INTERSECT", "EXCEPT"])
+def test_operator_root_set_operation_reads_right_branch(tmp_path: Path, operator: str) -> None:
+    sql = f"SELECT gross_margin FROM dm.sales_daily {operator} SELECT revenue FROM dm.sales_daily"
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={DASHBOARD: operator_dashboard(sql)},
     )
     impact = impact_of(report, "field.description_changed")
     assert [(chart.chart, chart.relation) for chart in impact.charts] == [

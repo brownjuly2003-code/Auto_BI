@@ -75,7 +75,7 @@ class SQLGuardError(Exception):
 
 
 def _parse_one_select(sql: str, *, dialect: str = DIALECT) -> exp.Expression:
-    """Parse exactly one SELECT/UNION statement or raise SQLGuardError."""
+    """Parse exactly one SELECT or set-operation statement or raise SQLGuardError."""
     try:
         statements = sqlglot.parse(sql, read=dialect)
     except (sqlglot.errors.ParseError, RecursionError) as e:
@@ -90,7 +90,7 @@ def _parse_one_select(sql: str, *, dialect: str = DIALECT) -> exp.Expression:
     root = statements[0]
     if dialect == "postgres" and isinstance(root, exp.Subquery):
         root = _normalize_postgres_root_subquery(root)
-    if not isinstance(root, exp.Select | exp.Union):
+    if not isinstance(root, exp.Select | exp.SetOperation):
         raise SQLGuardError(f"only SELECT is allowed, got {type(root).__name__}")
     return root
 
@@ -110,7 +110,7 @@ def _normalize_postgres_root_subquery(root: exp.Subquery) -> exp.Expression:
     while isinstance(target, exp.Subquery):
         wrappers.append(target)
         target = target.this
-    if not isinstance(target, (exp.Select, exp.Union)):
+    if not isinstance(target, (exp.Select, exp.SetOperation)):
         return root
 
     modifiers: dict[str, exp.Expression | list[exp.Expression]] = {}
@@ -130,12 +130,12 @@ def _normalize_postgres_root_subquery(root: exp.Subquery) -> exp.Expression:
 
 
 def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
-    """Raise unless sql is exactly one plain SELECT (CTEs allowed, writes/DDL never)."""
+    """Raise unless sql is one read-only SELECT or set operation (CTEs allowed)."""
     root = _parse_one_select(sql, dialect=dialect)
 
     forbidden = (
         exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create, exp.Alter,
-        exp.TruncateTable, exp.Grant, exp.Command, exp.Set,
+        exp.TruncateTable, exp.Grant, exp.Command, exp.Set, exp.Into,
     )  # fmt: skip
     cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
     for node in root.walk():
@@ -323,7 +323,7 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     scalar, `IN` or `EXISTS` subquery, a lateral written inside one of those, or a branch
     of a set operation written in one of those — not of an inherited flag: a derived table
     and a CTE body introduce a new range SQL does not look out of, even when they sit
-    inside a subquery. A UNION branch shares the range of the set operation around it, so
+    inside a subquery. A set-operation branch shares the range of its parent query, so
     it is enclosed exactly when that set operation is. A LATERAL inherits the same way:
     what it reads beyond its own FROM are the FROM items written before it, already local
     candidates, so a root lateral is not enclosed and a lateral inside a subquery is.
@@ -348,7 +348,7 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     that defines it (including other SELECT expressions, WHERE, PREWHERE, GROUP BY, HAVING,
     QUALIFY, ORDER BY, LIMIT BY, and JOIN conditions) and not in a subquery. A
     `WITH <expr> AS alias` (and `WITH (SELECT …) AS alias`) is visible
-    in the query that declares it and in every subquery and UNION branch below it. A visible
+    in the query that declares it and in every subquery and set-operation branch below it. A visible
     alias wins over a table column of the same name; identifiers are compared as written.
     When a scope references an expression-form `WITH <expr> AS a` — directly, or through
     another alias whose definition references it — every column written in `<expr>` is
@@ -394,9 +394,21 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
         aliases = None
         _rewrite_postgres_parenthesized_orders(root)
     root_scope = build_scope(root)
-    if root_scope is None:  # pragma: no mutate block - Select/Union always defines a scope
+    if root_scope is None:  # pragma: no mutate block - SELECT/set ops define a scope
         raise SQLGuardError("SELECT does not define a query scope")
     scopes = list(root_scope.traverse())
+    for scope in scopes:
+        if not isinstance(scope.expression, exp.SetOperation):
+            continue
+        # sqlglot traverses set-operation branches, but omits subqueries in their
+        # shared modifiers (for example, LIMIT (SELECT ...)). Grade those scopes too.
+        for name in ("order", "limit", "offset", "fetch"):
+            modifier = scope.expression.args.get(name)
+            if isinstance(modifier, exp.Expression):
+                for query in _outermost_nested_queries(modifier):
+                    scopes.extend(
+                        _traverse_scope(scope.branch(query, scope_type=ScopeType.SUBQUERY))
+                    )
     owners = {id(scope.expression): scope for scope in scopes}
     attributed: set[ColumnRef] = set()
     ambiguous: set[AmbiguousRef] = set()
@@ -444,7 +456,7 @@ class _ClickHouseAlias(NamedTuple):
 
 
 class _ClickHouseAliasIndex(NamedTuple):
-    """Aliases declared on each Select/Union, keyed by `id(expression)`."""
+    """Aliases declared on each Select/set operation, keyed by `id(expression)`."""
 
     select: dict[int, dict[str, _ClickHouseAlias]]
     with_: dict[int, dict[str, _ClickHouseAlias]]
@@ -494,14 +506,14 @@ class _ReadThroughState:
         self.expansions = 0
 
 
-_QUERY_BODY = (exp.Select, exp.Union, exp.Subquery)
+_QUERY_BODY = (exp.Select, exp.SetOperation, exp.Subquery)
 
 
 _CLICKHOUSE_OPAQUE_SETTINGS = frozenset({"additional_table_filters"})
 
 
 def _clickhouse_setting_items(root: exp.Expr) -> tuple[exp.Expression, ...]:
-    """Direct expressions of every SELECT/UNION branch's SETTINGS clause."""
+    """Direct expressions of every query branch's SETTINGS clause."""
     return tuple(
         item
         for query in root.find_all(exp.Query)
@@ -560,7 +572,7 @@ def _clickhouse_aliases(root: exp.Expr) -> _ClickHouseAliasIndex:
             context, node_owners = node, ()
         elif isinstance(node, exp.CTE):
             context, node_owners = None, ()
-        elif isinstance(node, (exp.Subquery, exp.Union)):
+        elif isinstance(node, (exp.Subquery, exp.SetOperation)):
             context = None
 
         if isinstance(node, exp.In):
@@ -665,7 +677,7 @@ def _clickhouse_alias_ref(
     A query-level alias of this query level wins over a WITH alias of the same name,
     except inside that alias's defining expression — there the name is the
     column, or a WITH alias still visible. A WITH alias is visible in this query and
-    every subquery and UNION branch below the query that declared it. Inside the
+    every subquery and set-operation branch below the query that declared it. Inside the
     expression that defines alias X, the name X is the column, not that alias.
     A query-level alias that would close a cycle through query-level or WITH
     definitions is a column: ClickHouse rejects the statement, and reporting that
@@ -790,7 +802,7 @@ def clickhouse_in_table_fields(
     if not fields:
         return ()
     root_scope = build_scope(root)
-    if root_scope is None:  # pragma: no mutate block - Select/Union always defines a scope
+    if root_scope is None:  # pragma: no mutate block - SELECT/set ops define a scope
         return ()
     owners = {id(scope.expression): scope for scope in root_scope.traverse()}
     found: list[exp.Column] = []
@@ -838,7 +850,7 @@ def _owner_key(owners: tuple[_ClickHouseAlias, ...]) -> int | tuple[int, ...]:
 def _loose_columns(node: exp.Expression) -> list[exp.Column]:
     """Columns written in *node* that are not inside a nested query.
 
-    Nested SELECT/UNION/subquery bodies keep their own FROM. sqlglot 30.14.0
+    Nested SELECT/set-operation/subquery bodies keep their own FROM. sqlglot 30.14.0
     builds no scope for a query nested in an expression-form WITH body, so the
     read-through grades those bodies as a subquery of the referencing scope
     rather than pruning them and leaving them ungraded.
@@ -1292,7 +1304,7 @@ def _select_aliases_on_cycle(scope: Scope, aliases: _ClickHouseAliasIndex) -> fr
 
 
 def _outermost_nested_queries(node: exp.Expression) -> list[exp.Expression]:
-    """Outermost Select/Union/Subquery bodies nested in *node*."""
+    """Outermost SELECT/set-operation/Subquery bodies nested in *node*."""
     found: list[exp.Expression] = []
 
     def prune(child: exp.Expr) -> bool:
@@ -1490,8 +1502,8 @@ def _read_sources(scope: Scope) -> list[exp.Selectable | Scope]:
     A LATERAL body also reads the FROM items written before it. sqlglot hangs those
     siblings on the UDTF scope (`FROM a, LATERAL (SELECT …) AS t` is a UDTF wrapping an
     inner SUBQUERY whose `references` list only its own FROM); the body itself may sit
-    several scopes below it — a set operation inserts a SUBQUERY and a UNION branch
-    scope (one more UNION level per further branch), and a lateral nested in a lateral
+    several scopes below it — a set operation inserts a SUBQUERY and a ScopeType.UNION
+    branch (one more level per further branch), and a lateral nested in a lateral
     body sits under another UDTF. Walking ancestors and stopping at a derived table or
     CTE body is what keeps the siblings visible at every level that can actually see
     them: a derived table or CTE written inside a lateral is a wall, because it cannot
@@ -1539,13 +1551,13 @@ def _reads_enclosing(scope: Scope) -> bool:
 
     A set-operation branch (`ScopeType.UNION`) shares the range of the set operation it is
     written in: the engine still resolves a bare name in that branch against the same
-    enclosing query the subquery around the UNION can see. Recursing through UNION only —
-    not through DERIVED_TABLE or CTE — is what keeps a UNION at the root, and a UNION
-    inside a FROM-subquery or CTE body, un-enclosed. A UNION of UNIONs walks up until it
-    hits a non-UNION parent.
+    enclosing query the subquery around the set operation can see. Recursing through
+    ScopeType.UNION only — not through DERIVED_TABLE or CTE — keeps a root set operation,
+    and one inside a FROM-subquery or CTE body, un-enclosed. Nested set operations walk
+    up until they hit a non-set-operation parent.
 
     A LATERAL or table-function body (`ScopeType.UDTF`) inherits enclosure from the level
-    that contains it, the same way a UNION branch does. What it reads beyond its own FROM
+    that contains it, the same way a set-operation branch does. What it reads beyond its own FROM
     are the FROM items written before it, and `_read_sources` already offers exactly those
     as local candidates (`lateral_sources`, including every enclosing UDTF up to a derived
     table or CTE body) — so at a level that cannot itself read outward the candidate set

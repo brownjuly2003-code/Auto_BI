@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-28 — корневые read-only `INTERSECT`/`EXCEPT` проходят SQL guard на
+  PostgreSQL и ClickHouse; обе ветки грейдятся для governance. Скобочный корень
+  PostgreSQL с внешней сортировкой тоже принимается. `SELECT INTO` отклоняется;
+  scalar `LIMIT`/`OFFSET` на set operation сохраняет чтения подзапроса.
+  Синтаксис обеих операций проверен на Mac в PostgreSQL 16.15 и ClickHouse 24.8.14.39.
+  `VERIFIER_VERSION` 41 → 42 из-за перехода operator SQL от `chart.opaque_sql` к
+  `reads_field`; `CHECK_VERSION` 22 → 23 из-за изменённой оценки прежних запросов.
+  Синтетическое Astra xhigh review: P1/P2 исправлены, не human/production acceptance.
+  Полный offline pytest: 2807 passed, 21 skipped, 38 deselected; strict mypy,
+  Ruff и Black чистые.
 - 2026-09-28 — корневой PostgreSQL `(SELECT …)` с внешними `ORDER BY`, `LIMIT`,
   `OFFSET` проходит guard и сохраняет чтения для governance; неподдержанные формы
   остаются отказом. Evidence versions 41/22 без изменений: ранее вход не принимался.

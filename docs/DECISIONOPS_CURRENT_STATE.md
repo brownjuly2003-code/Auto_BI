@@ -10,9 +10,26 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=41`, `CHECK_VERSION=22`
+**Версии evidence:** `VERIFIER_VERSION=42`, `CHECK_VERSION=23`
 
-**Последний срез (2026-09-28):** корневой PostgreSQL-запрос `(SELECT …)` с внешними
+**Последний срез (2026-09-28):** корневые read-only `INTERSECT` и `EXCEPT` проходят
+SELECT-only guard на PostgreSQL и ClickHouse. Таблицы и поля обеих веток попадают в
+governance; PostgreSQL сохраняет разрешение `ORDER BY` через выход левой ветки и
+принимает скобочный корневой set operation с внешними `ORDER BY`/`LIMIT`/`OFFSET`.
+`SELECT INTO` и remote table functions отклоняются на всём AST; подзапросы в общих
+`LIMIT`/`OFFSET` дают field reads также у ранее допустимого `UNION`;
+корневой `VALUES` и скобочный корень ClickHouse остаются отказом. На Mac проверен
+синтаксис обеих операций в ClickHouse 24.8.14.39 и PostgreSQL 16.15.
+`VERIFIER_VERSION` 41 → 42: прежний ClickHouse operator SQL с таким корнем мог дать
+`chart.opaque_sql`, а теперь назвать `reads_field`. `CHECK_VERSION` 22 → 23:
+исправленное чтение старого `UNION` и отказ на ранее допустимый `SELECT INTO`
+меняют смысл прежних CheckResult.
+Синтетическое Astra xhigh review выявило P1 (`SELECT INTO`) и P2 (чтения в
+`LIMIT`/`OFFSET`); оба исправлены, это не human/production acceptance.
+Полный offline pytest: 2807 passed, 21 skipped, 38 deselected; strict mypy,
+Ruff и Black чистые.
+
+**Предыдущий срез (2026-09-28):** корневой PostgreSQL-запрос `(SELECT …)` с внешними
 `ORDER BY`, `LIMIT` или `OFFSET` проходит SELECT-only guard. Чтения из внешних
 выражений попадают в governance: целое имя выхода не становится входным полем, а
 имя внутри выражения и скалярного подзапроса проверяется. Неподдержанные и
