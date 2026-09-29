@@ -265,7 +265,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: the same text previously left chart.opaque_sql. Set-operation LIMIT/OFFSET subqueries
 #: also contribute field reads; SELECT INTO is rejected. Reviewed queries of the new root
 #: shape were previously rejected; changes to existing queries are covered by check 23.
-VERIFIER_VERSION = "42"
+#: 43 — PostgreSQL ORDER BY / DISTINCT ON can use an unaliased COUNT output's implicit
+#: name, including the left branch of a set operation, instead of a phantom input read.
+#: Existing reviewed queries can lose false governance findings; check 24 records that.
+VERIFIER_VERSION = "43"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -360,7 +363,9 @@ VERIFIER_VERSION = "42"
 #: 23 — set-operation LIMIT/OFFSET subqueries now contribute field reads, so an old
 #: pass on a UNION or nested set operation may become REVIEW or advisory. SELECT INTO
 #: is rejected as a write, including previously accepted SELECT and UNION statements.
-CHECK_VERSION = "23"
+#: 24 — PostgreSQL sorting by an unaliased COUNT output no longer creates a phantom
+#: field REVIEW or sourceless advisory. Real COUNT argument reads remain graded.
+CHECK_VERSION = "24"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

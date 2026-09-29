@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-28
+**Обновлено:** 2026-09-29
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,9 +10,23 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=42`, `CHECK_VERSION=23`
+**Версии evidence:** `VERIFIER_VERSION=43`, `CHECK_VERSION=24`
 
-**Последний срез (2026-09-28):** корневые read-only `INTERSECT` и `EXCEPT` проходят
+**Последний срез (2026-09-29):** PostgreSQL `COUNT(...)` без явного alias даёт
+неявное выходное имя `count` для целого `ORDER BY`/`DISTINCT ON`, в том числе у
+левой ветки `UNION`/`INTERSECT`/`EXCEPT`. Сортировка больше не называет
+несуществующую физическую колонку или sourceless advisory; аргументы `COUNT`
+по-прежнему читаются. Явный `AS` заменяет имя, унарный `+` его убирает;
+квотированное `"Count"(...)` сохраняет регистр выхода, а `ORDER BY count` читает
+input-колонку. `GROUP BY` не получает агрегатный выход. PostgreSQL 16.15 на Mac подтвердил
+обычную и скобочную форму, set operation, `DISTINCT ON` и отказ для `+COUNT`.
+`VERIFIER_VERSION` 42 → 43 и `CHECK_VERSION` 23 → 24: прежний reviewed-запрос
+может потерять ложный governance finding. Срез выбран по синтетическому Astra
+xhigh review; повторное ревью: 0 actionable P1/P2. Полный offline pytest:
+2830 passed, 21 skipped, 38 deselected; strict mypy, Ruff и Black чистые.
+Это не human/production acceptance.
+
+**Предыдущий срез (2026-09-28):** корневые read-only `INTERSECT` и `EXCEPT` проходят
 SELECT-only guard на PostgreSQL и ClickHouse. Таблицы и поля обеих веток попадают в
 governance; PostgreSQL сохраняет разрешение `ORDER BY` через выход левой ветки и
 принимает скобочный корневой set operation с внешними `ORDER BY`/`LIMIT`/`OFFSET`.

@@ -83,6 +83,15 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-29 — PostgreSQL `ORDER BY`/`DISTINCT ON` распознаёт неявное имя
+  `count` у прямого `COUNT(...)` без alias, также в левой ветке set operation.
+  Ложные field review/advisory уходят, чтения аргументов сохраняются; `AS` и
+  унарный `+` сохраняют границы; `"Count"(...)` сохраняет регистр имени.
+  `VERIFIER_VERSION` 42 → 43,
+  `CHECK_VERSION` 23 → 24. PostgreSQL 16.15 проверен на Mac. Срез выбран по
+  синтетическому Astra xhigh review; повторное ревью: 0 actionable P1/P2.
+  Полный offline pytest: 2830 passed, 21 skipped, 38 deselected; strict mypy,
+  Ruff и Black чистые. Это не human/production acceptance.
 - 2026-09-28 — корневые read-only `INTERSECT`/`EXCEPT` проходят SQL guard на
   PostgreSQL и ClickHouse; обе ветки грейдятся для governance. Скобочный корень
   PostgreSQL с внешней сортировкой тоже принимается. `SELECT INTO` отклоняется;

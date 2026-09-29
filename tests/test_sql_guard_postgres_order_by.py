@@ -73,6 +73,82 @@ def test_whole_sort_name_reads_output(tmp_path: Path, sql: str) -> None:
     assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
 
 
+@pytest.mark.parametrize("projected", ["count(*)", "(count(*))"])
+@pytest.mark.parametrize("sort", ["count", "(count)", "COUNT", '"count"', "count DESC NULLS LAST"])
+def test_implicit_count_sort_name_reads_output(tmp_path: Path, projected: str, sort: str) -> None:
+    sql = f"SELECT {projected} FROM dm.sales_daily ORDER BY {sort}"
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert not refs.attributed and not refs.ambiguous and not refs.unattributed
+    assert not refs.starred
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+def test_implicit_count_sort_keeps_argument_read(tmp_path: Path) -> None:
+    sql = "SELECT count(internal_cost_raw) FROM dm.sales_daily ORDER BY count"
+    assert _reads(sql) == {"dm.sales_daily.internal_cost_raw"}
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+    detail = ungoverned_detail(tmp_path / "detail", sql, engine="postgres")
+    assert "internal_cost_raw" in detail and "dm.sales_daily.count" not in detail
+
+
+def test_implicit_count_distinct_on_reads_output(tmp_path: Path) -> None:
+    sql = "SELECT DISTINCT ON (count) count(*) FROM dm.sales_daily ORDER BY count"
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert not refs.attributed and not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("operator", ["UNION", "INTERSECT", "EXCEPT"])
+def test_implicit_count_names_set_output(tmp_path: Path, operator: str) -> None:
+    sql = (
+        f"SELECT count(*) FROM dm.sales_daily {operator} "
+        "SELECT count(*) FROM dm.sales_daily ORDER BY count"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert not refs.attributed and not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("projected", ["count(*) AS n", "+count(*)", "+(count(*))"])
+def test_other_count_projection_does_not_name_set_output(tmp_path: Path, projected: str) -> None:
+    sql = (
+        f"SELECT {projected} FROM dm.sales_daily UNION "
+        "SELECT count(*) FROM dm.sales_daily ORDER BY count"
+    )
+    assert extract_column_refs(sql, dialect="postgres").unattributed == frozenset({"count"})
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_fields_unchecked", "advisory")
+    ]
+
+
+def test_quoted_count_sort_name_must_match_case(tmp_path: Path) -> None:
+    sql = 'SELECT count(*) FROM dm.sales_daily ORDER BY "COUNT"'
+    assert _reads(sql) == {"dm.sales_daily.COUNT"}
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
+@pytest.mark.parametrize("function", ['"Count"', '"COUNT"'])
+def test_quoted_count_function_keeps_its_output_case(tmp_path: Path, function: str) -> None:
+    sql = f"SELECT {function}(revenue) FROM dm.sales_daily ORDER BY count"
+    assert _reads(sql) == {"dm.sales_daily.revenue", "dm.sales_daily.count"}
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
+@pytest.mark.parametrize("function, sort", [('"Count"', '"Count"'), ('"count"', "count")])
+def test_matching_quoted_count_function_names_output(
+    tmp_path: Path, function: str, sort: str
+) -> None:
+    sql = f"SELECT {function}(revenue) FROM dm.sales_daily ORDER BY {sort}"
+    assert _reads(sql) == {"dm.sales_daily.revenue"}
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
 @pytest.mark.parametrize(
     "sql",
     [

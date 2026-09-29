@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **PostgreSQL `COUNT(...)` даёт неявное имя `count` при сортировке.**
+  Целый `ORDER BY`/`DISTINCT ON` и сортировка set operation по левой ветке
+  используют выход `COUNT`, не создавая ложное чтение физического поля или
+  sourceless advisory. Аргументы `COUNT` сохраняют реальные чтения; явный `AS`
+  и унарный `+` сохраняют приоритет; `"Count"(...)` сохраняет регистр выходного
+  имени. Проверено на PostgreSQL 16.15 на Mac.
+  `VERIFIER_VERSION` 42 → 43, `CHECK_VERSION` 23 → 24 из-за изменившихся
+  governance findings.
+
 - **Корневые `INTERSECT` и `EXCEPT` проходят SQL guard.**
   PostgreSQL и ClickHouse читают обе ветки для governance; PostgreSQL допускает
   также скобочную форму с внешними `ORDER BY`, `LIMIT`, `OFFSET`.
