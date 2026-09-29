@@ -106,6 +106,13 @@ name. A quoted function name SHALL retain its spelling: `"Count"(...)` does not 
 lowercase `count`, and `"Sum"(...)` does not expose lowercase `sum`. Aggregate arguments,
 `FILTER` predicates, window partitioning and window ordering SHALL remain input reads.
 The aggregate output SHALL NOT become a `GROUP BY` output-column alternative.
+An unaliased PostgreSQL `ROW_NUMBER() OVER (...)` SELECT item, optionally enclosed in
+parentheses, SHALL offer `row_number` as its implicit output name for the same sort rules.
+An explicit alias SHALL replace that name, and unary `+` before the window call SHALL
+prevent it. A quoted function name SHALL retain its spelling. Window partitioning and
+ordering SHALL remain input reads, including an
+input column itself named `row_number`. The window output SHALL NOT become a `GROUP BY`
+output-column alternative. Other window functions SHALL retain their existing rules.
 Window ordering and partitioning, `WITHIN GROUP` ordering, aggregate-internal ordering,
 and other `GROUP BY` forms SHALL retain their existing input-resolution rules. ClickHouse and
 chart impact SHALL retain their existing results.
@@ -132,6 +139,15 @@ chart impact SHALL retain their existing results.
   dm.sales_daily ORDER BY sum`, with `revenue` governed and no physical column named `sum`
 - **WHEN** the gate grades its field reads
 - **THEN** it reads `revenue`, reports no physical `sum` read and no governance finding
+
+### Scenario: an implicit PostgreSQL ROW_NUMBER output supplies a sort name
+
+- **GIVEN** a PostgreSQL-family reviewed query `SELECT row_number() OVER (PARTITION BY
+  region ORDER BY revenue) FROM dm.sales_daily ORDER BY row_number`, with `region` and
+  `revenue` governed and no physical column named `row_number`
+- **WHEN** the gate grades its field reads
+- **THEN** it reads `region` and `revenue`, reports no physical `row_number` read and no
+  governance finding
 
 ### Scenario: a PostgreSQL sort expression reads its input name
 

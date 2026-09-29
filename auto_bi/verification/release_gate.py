@@ -291,7 +291,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 50 — PostgreSQL ORDER BY / DISTINCT ON and set-operation output resolution also
 #: recognize Window-wrapped unaliased COUNT, SUM, AVG, MIN and MAX outputs. Window
 #: arguments, FILTER predicates, PARTITION BY and inner ORDER BY expressions remain reads.
-VERIFIER_VERSION = "50"
+#: 51 — PostgreSQL ORDER BY / DISTINCT ON and set-operation output resolution also
+#: recognize only Window-wrapped unaliased ROW_NUMBER outputs. Its PARTITION BY and inner
+#: ORDER BY expressions remain reads; bare row_number() and other window functions do not.
+VERIFIER_VERSION = "51"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -405,7 +408,10 @@ VERIFIER_VERSION = "50"
 #: outputs no longer creates a phantom field REVIEW or sourceless advisory. Window
 #: arguments, FILTER predicates, PARTITION BY and inner ORDER BY expressions remain
 #: graded as field reads.
-CHECK_VERSION = "30"
+#: 31 — PostgreSQL sorting by Window-wrapped unaliased ROW_NUMBER outputs no longer creates
+#: a phantom field REVIEW or sourceless advisory. PARTITION BY and inner ORDER BY expressions
+#: remain graded as field reads; bare row_number() and other window functions retain input reads.
+CHECK_VERSION = "31"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

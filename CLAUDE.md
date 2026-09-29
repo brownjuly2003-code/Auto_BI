@@ -83,6 +83,17 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-29 — PostgreSQL `ROW_NUMBER() OVER (…)` без явного alias даёт
+  неявный выход `row_number` для целого `ORDER BY`/`DISTINCT ON` и
+  сортировки set operation по левой ветке; поля `PARTITION BY` и внутреннего
+  `ORDER BY` остаются чтениями. `VERIFIER_VERSION` 50 → 51,
+  `CHECK_VERSION` 30 → 31: прежний reviewed-запрос мог получить ложный
+  governance finding. Red-green: исходный тест упал на ложном
+  `dm.sales_daily.row_number`, затем 15 граничных тестов прошли; целевой
+  gate: 497 passed, полный offline pytest: 2974 passed, 21 skipped,
+  38 deselected. Strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+  Итоговое синтетическое Astra xhigh review: 0 actionable P1/P2; живой
+  PostgreSQL не запускался, human/production acceptance не заявляется.
 - 2026-09-29 — PostgreSQL `COUNT`/`SUM`/`AVG`/`MIN`/`MAX` с `OVER`,
   включая `FILTER (WHERE …)` внутри оконного вызова, сохраняют неявное имя
   выхода для целого `ORDER BY`/`DISTINCT ON` и сортировки set operation по

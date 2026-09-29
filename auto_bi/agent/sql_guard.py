@@ -987,7 +987,7 @@ def _postgres_table_column_alias_in_scope(scope: Scope, column: exp.Column) -> b
 def _postgres_sort_token_info(
     sql: str, dialect: str
 ) -> tuple[frozenset[int] | None, dict[int, str]]:
-    """Track unary plus offsets and quoted aggregate spellings erased by sqlglot."""
+    """Track unary plus offsets and quoted function spellings erased by sqlglot."""
     tokens = sqlglot.Dialect.get_or_raise(dialect).tokenize(sql)
     offsets: set[int] = set()
     quoted_function_names: dict[int, str] = {}
@@ -999,6 +999,7 @@ def _postgres_sort_token_info(
             "avg",
             "min",
             "max",
+            "row_number",
         }:
             quoted_function_names[token.start] = token.text
         if token.token_type != TokenType.PLUS:
@@ -1049,7 +1050,9 @@ def _postgres_output_name(
     if isinstance(projected, exp.Alias):
         alias = projected.args.get("alias")
         return _postgres_name(alias) if isinstance(alias, exp.Identifier) else None
+    windowed = False
     while isinstance(projected, (exp.Paren, exp.Window)):
+        windowed = windowed or isinstance(projected, exp.Window)
         projected = projected.this
     if isinstance(projected, exp.Filter):
         filtered = projected.this
@@ -1060,6 +1063,15 @@ def _postgres_output_name(
         projected, unary_plus_offsets
     ):
         return _postgres_name(projected.this)
+    if windowed and isinstance(projected, exp.RowNumber):
+        start = projected.meta.get("start")
+        if unary_plus_offsets is not None and (
+            not isinstance(start, int) or start in unary_plus_offsets
+        ):
+            return None
+        if quoted_function_names is not None and isinstance(start, int):
+            return quoted_function_names.get(start, "row_number")
+        return "row_number"
     if isinstance(projected, (exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
         start = projected.meta.get("start")
         if unary_plus_offsets is not None and (

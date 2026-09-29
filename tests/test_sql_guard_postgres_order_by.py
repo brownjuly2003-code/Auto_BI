@@ -192,6 +192,119 @@ def test_windowed_implicit_sum_sort_name_reads_output(tmp_path: Path) -> None:
     assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
 
 
+def test_windowed_implicit_row_number_sort_name_reads_output(tmp_path: Path) -> None:
+    sql = (
+        "SELECT row_number() OVER (PARTITION BY region ORDER BY revenue) "
+        "FROM dm.sales_daily ORDER BY row_number"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.region", "dm.sales_daily.revenue"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        (
+            "SELECT DISTINCT ON (row_number) row_number() OVER "
+            "(PARTITION BY region ORDER BY revenue) FROM dm.sales_daily ORDER BY row_number",
+            {"dm.sales_daily.region", "dm.sales_daily.revenue"},
+        ),
+        (
+            "SELECT row_number() OVER (PARTITION BY region ORDER BY revenue) "
+            "FROM dm.sales_daily UNION "
+            "SELECT row_number() OVER (PARTITION BY region ORDER BY revenue) "
+            "FROM dm.sales_daily ORDER BY row_number",
+            {"dm.sales_daily.region", "dm.sales_daily.revenue"},
+        ),
+        (
+            "SELECT (row_number() OVER (PARTITION BY region ORDER BY revenue)) "
+            "FROM dm.sales_daily ORDER BY row_number",
+            {"dm.sales_daily.region", "dm.sales_daily.revenue"},
+        ),
+        ("SELECT row_number() OVER () ORDER BY row_number", set()),
+    ],
+)
+def test_windowed_row_number_output_name_boundaries(
+    tmp_path: Path, sql: str, expected: set[str]
+) -> None:
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == expected
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        (
+            "SELECT row_number() OVER () AS total FROM dm.sales_daily ORDER BY row_number",
+            {"dm.sales_daily.row_number"},
+        ),
+        (
+            'SELECT row_number() OVER () FROM dm.sales_daily ORDER BY "ROW_NUMBER"',
+            {"dm.sales_daily.ROW_NUMBER"},
+        ),
+        (
+            "SELECT +row_number() OVER () FROM dm.sales_daily ORDER BY row_number",
+            {"dm.sales_daily.row_number"},
+        ),
+        (
+            "SELECT row_number() OVER () FROM dm.sales_daily " "ORDER BY dm.sales_daily.row_number",
+            {"dm.sales_daily.row_number"},
+        ),
+        (
+            "SELECT row_number() OVER () FROM dm.sales_daily ORDER BY lower(row_number)",
+            {"dm.sales_daily.row_number"},
+        ),
+        (
+            "SELECT row_number() OVER () FROM dm.sales_daily GROUP BY row_number",
+            {"dm.sales_daily.row_number"},
+        ),
+    ],
+)
+def test_windowed_row_number_output_name_boundaries_remain_input_reads(
+    tmp_path: Path, sql: str, expected: set[str]
+) -> None:
+    assert _reads(sql) == expected
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
+@pytest.mark.parametrize(
+    "function, sort, expected",
+    [
+        ('"ROW_NUMBER"', '"ROW_NUMBER"', set()),
+        ('"ROW_NUMBER"', "row_number", {"dm.sales_daily.row_number"}),
+    ],
+)
+def test_windowed_quoted_row_number_spelling_controls_output_name(
+    tmp_path: Path, function: str, sort: str, expected: set[str]
+) -> None:
+    sql = f"SELECT {function}() OVER () FROM dm.sales_daily ORDER BY {sort}"
+    assert _reads(sql) == expected
+    expected_codes = [] if not expected else ["asset.query_ungoverned_field"]
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == expected_codes
+
+
+def test_bare_row_number_does_not_get_window_output_name(tmp_path: Path) -> None:
+    sql = "SELECT row_number() FROM dm.sales_daily ORDER BY row_number"
+    assert _reads(sql) == {"dm.sales_daily.row_number"}
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
+def test_other_window_functions_do_not_get_row_number_output_name(tmp_path: Path) -> None:
+    sql = "SELECT rank() OVER () FROM dm.sales_daily ORDER BY rank"
+    assert _reads(sql) == {"dm.sales_daily.rank"}
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
 @pytest.mark.parametrize("function", ["count", "sum", "avg", "min", "max"])
 def test_windowed_implicit_aggregate_reads_window_inputs(tmp_path: Path, function: str) -> None:
     sql = (

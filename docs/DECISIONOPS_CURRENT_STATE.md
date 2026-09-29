@@ -10,9 +10,21 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=50`, `CHECK_VERSION=30`
+**Версии evidence:** `VERIFIER_VERSION=51`, `CHECK_VERSION=31`
 
-**Последний срез (2026-09-29):** PostgreSQL `COUNT`, `SUM`, `AVG`, `MIN` и
+**Последний срез (2026-09-29):** PostgreSQL `ROW_NUMBER() OVER (…)` без явного
+alias сохраняет выход `row_number` для целого `ORDER BY`/`DISTINCT ON` и
+сортировки set operation по левой ветке. Ложное чтение физического
+`row_number` уходит; `PARTITION BY` и внутренний `ORDER BY` сохраняют чтения.
+`VERIFIER_VERSION` 50 → 51, `CHECK_VERSION` 30 → 31: прежний reviewed-запрос
+мог получить ложный governance finding. Red-green: исходный тест упал на
+ложном `dm.sales_daily.row_number`, затем 15 граничных тестов прошли; целевой
+gate: 497 passed, полный offline pytest: 2974 passed, 21 skipped,
+38 deselected. Strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+Итоговое синтетическое Astra xhigh review: 0 actionable P1/P2. Живой
+PostgreSQL не запускался; это не human/production acceptance.
+
+**Предыдущий срез (2026-09-29):** PostgreSQL `COUNT`, `SUM`, `AVG`, `MIN` и
 `MAX` с `OVER`, включая форму с `FILTER (WHERE …)`, сохраняют неявное имя
 выхода для целого `ORDER BY`/`DISTINCT ON` и сортировки set operation по
 левой ветке. Ложное чтение поля с именем агрегата уходит; аргументы,
