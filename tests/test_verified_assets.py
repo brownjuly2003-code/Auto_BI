@@ -685,6 +685,98 @@ def test_join_using_words_in_literals_and_comments_are_ignored(tmp_path: Path) -
     assert repository(tmp_path / "repo", asset(reference_query=query(sql))).ungoverned(base) == []
 
 
+@pytest.mark.parametrize("engine", ["postgresql", "greenplum"])
+def test_postgresql_natural_join_keys_depend_on_the_physical_schema(
+    tmp_path: Path, engine: str
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = "SELECT a.region FROM dm.sales_daily AS a NATURAL JOIN dm.sales_daily AS b"
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine=engine))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert findings[0].severity is Severity.ADVISORY
+    assert "NATURAL JOIN" in findings[0].detail
+    assert "physical schema" in findings[0].detail
+
+
+def test_nested_postgresql_natural_join_leaves_a_remainder(tmp_path: Path) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a JOIN ("
+        "SELECT b.region FROM dm.sales_daily AS b "
+        "NATURAL JOIN dm.sales_daily AS c"
+        ") AS nested ON a.region = nested.region"
+    )
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="greenplum"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    assert "NATURAL JOIN" in findings[0].detail
+    assert "physical schema" in findings[0].detail
+
+
+def test_natural_join_derived_sources_explains_unexpanded_output_names(
+    tmp_path: Path,
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = "SELECT 1 FROM (SELECT 1 AS k) a NATURAL JOIN (SELECT 1 AS k) b"
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_fields_unchecked"]
+    detail = findings[0].detail
+    assert "NATURAL JOIN" in detail
+    assert "matching output names" in detail
+    assert "does not expand" in detail
+    assert "may depend on the physical schema" in detail
+
+
+def test_natural_join_remainder_does_not_hide_an_explicit_ungoverned_field(
+    tmp_path: Path,
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = "SELECT a.internal_cost_raw FROM dm.sales_daily AS a " "NATURAL JOIN dm.sales_daily AS b"
+    findings = repository(
+        tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+    ).ungoverned(base)
+    assert codes(findings) == ["asset.query_ungoverned_field", "asset.query_fields_unchecked"]
+    assert "dm.sales_daily.internal_cost_raw" in findings[0].detail
+    assert "NATURAL JOIN" in findings[1].detail
+
+
+@pytest.mark.parametrize("engine", ["postgresql", "greenplum"])
+def test_a_postgresql_on_join_has_no_natural_join_remainder(tmp_path: Path, engine: str) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region FROM dm.sales_daily AS a "
+        "JOIN dm.sales_daily AS b ON a.region = b.region"
+    )
+    assert (
+        repository(tmp_path / "repo", asset(reference_query=query(sql, engine=engine))).ungoverned(
+            base
+        )
+        == []
+    )
+
+
+def test_postgresql_natural_join_words_in_literals_and_comments_are_ignored(
+    tmp_path: Path,
+) -> None:
+    base = snap(tmp_path, "base")
+    sql = (
+        "SELECT a.region, 'NATURAL JOIN dm.sales_daily' AS note "
+        "FROM dm.sales_daily AS a JOIN dm.sales_daily AS b ON a.region = b.region "
+        "-- NATURAL JOIN dm.sales_daily\n"
+    )
+    assert (
+        repository(
+            tmp_path / "repo", asset(reference_query=query(sql, engine="postgresql"))
+        ).ungoverned(base)
+        == []
+    )
+
+
 def test_two_contested_names_are_reported_in_the_plural(tmp_path: Path) -> None:
     base = snap(tmp_path, "both", semantic=_stores_also_declaring("region", "category"))
     sql = (

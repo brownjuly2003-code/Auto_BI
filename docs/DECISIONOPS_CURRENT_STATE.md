@@ -10,9 +10,21 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=44`, `CHECK_VERSION=25`
+**Версии evidence:** `VERIFIER_VERSION=45`, `CHECK_VERSION=26`
 
-**Последний срез (2026-09-29):** PostgreSQL `SUM(...)` без явного alias даёт
+**Последний срез (2026-09-29):** PostgreSQL-семейство отмечает `NATURAL JOIN`
+как частично проверенное чтение: ключи определяются совпадающими выходными
+именами источников, которые эта проверка не разворачивает и которые могут
+зависеть от физической схемы. `asset.query_fields_unchecked` объясняет остаток
+без угадывания имён из snapshot; явные соседние поля проверяются отдельно.
+Учитываются вложенные join, а `ON` и текст в литералах/комментариях не создают
+остаток. `VERIFIER_VERSION` 44 → 45, `CHECK_VERSION` 25 → 26. Два этапа
+red-green тестов закрыли исходный пропуск и неточную причину для производных
+источников. Полный offline pytest: 2847 passed, 21 skipped, 38 deselected;
+strict mypy: 0 ошибок в 120 модулях. Синтетическое Astra xhigh review:
+0 actionable P1/P2 после исправления одного P2. Это не human/production acceptance.
+
+**Предыдущий срез (2026-09-29):** PostgreSQL `SUM(...)` без явного alias даёт
 неявное выходное имя `sum` для целого `ORDER BY`/`DISTINCT ON`, в том числе у
 левой ветки set operation. Ложное чтение физического поля и sourceless advisory
 исчезают; чтения аргументов остаются. Явный `AS`, квотированный регистр и унарный
@@ -734,7 +746,7 @@ Scheduler, PostgreSQL platform runtime, REST/MCP, notifications и actions не 
 
 Журналы закрытых срезов — [typed investigation](history/TYPED_INVESTIGATION_MVP.md) и
 [chart-level impact](history/CHART_LEVEL_IMPACT.md).
-Разрешение PostgreSQL `ORDER BY` и `DISTINCT ON` по правилам движка закрыто в последнем срезе.
+Остаток PostgreSQL `NATURAL JOIN` в governance назван в последнем срезе.
 
 ## Решения для текущего scope
 

@@ -6,6 +6,13 @@
 
 ### Changed
 
+- **PostgreSQL `NATURAL JOIN` сообщает о неявных ключах.**
+  Governance оставляет `asset.query_fields_unchecked`: ключи выбираются по
+  совпадающим выходным колонкам источников, могут зависеть от физической схемы
+  и не выводятся из semantic snapshot. Явные соседние чтения продолжают
+  проверяться; вложенные join учитываются.
+  `VERIFIER_VERSION` 44 → 45, `CHECK_VERSION` 25 → 26.
+
 - **PostgreSQL `SUM(...)` даёт неявное имя `sum` при сортировке.**
   Целый `ORDER BY`/`DISTINCT ON` и сортировка set operation по левой ветке
   используют выход `SUM`, не создавая ложное чтение поля или advisory.

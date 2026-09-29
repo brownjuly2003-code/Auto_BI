@@ -521,6 +521,11 @@ def _unchecked_reason(
             f"JOIN USING {key_word} {', '.join(keys)} {verb} shared by joined sources and "
             "cannot be attributed to one table"
         )
+    if reads.natural_join:
+        reasons.append(
+            "NATURAL JOIN keys come from matching output names of the joined sources; this "
+            "check does not expand those names, which may depend on the physical schema"
+        )
     for setting in sorted(reads.opaque_settings):
         reasons.append(
             f"it sets {setting}, a row filter written as SQL text that this check does not read"

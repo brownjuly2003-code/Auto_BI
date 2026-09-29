@@ -83,6 +83,15 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-29 — PostgreSQL-семейство оставляет `asset.query_fields_unchecked` для
+  `NATURAL JOIN`: ключи берутся из совпадающих выходных имён источников,
+  которые проверка не разворачивает и которые могут зависеть от физической схемы.
+  Явные соседние поля грейдятся отдельно, вложенные join учитываются.
+  `VERIFIER_VERSION` 44 → 45, `CHECK_VERSION` 25 → 26. Red-green тесты закрыли
+  пропуск и неточную причину для производных источников. Полный offline pytest:
+  2847 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях.
+  Синтетическое Astra xhigh review: 0 actionable P1/P2 после исправления P2;
+  не human/production acceptance.
 - 2026-09-29 — PostgreSQL `SUM(...)` без alias даёт неявное имя `sum` для
   целого `ORDER BY`/`DISTINCT ON` и левой ветки set operation. Ложные field
   review/advisory уходят; аргументы сохраняют чтения. `AS`, квотированный

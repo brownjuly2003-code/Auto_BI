@@ -271,7 +271,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 44 — PostgreSQL ORDER BY / DISTINCT ON can also use an unaliased SUM output's implicit
 #: name, including the left branch of a set operation. Existing reviewed queries can lose
 #: a phantom field REVIEW or sourceless advisory; check 25 records that.
-VERIFIER_VERSION = "44"
+#: 45 — PostgreSQL NATURAL JOIN leaves an advisory for keys selected from joined-source
+#: output names, potentially dependent on physical schema. Existing queries can gain it;
+#: check 26 records the changed meaning of assets.invalidated.
+VERIFIER_VERSION = "45"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -370,7 +373,9 @@ VERIFIER_VERSION = "44"
 #: field REVIEW or sourceless advisory. Real COUNT argument reads remain graded.
 #: 25 — PostgreSQL sorting by an unaliased SUM output no longer creates a phantom
 #: field REVIEW or sourceless advisory. Real SUM argument reads remain graded.
-CHECK_VERSION = "25"
+#: 26 — PostgreSQL NATURAL JOIN is now a typed partial field-check remainder because
+#: matching joined-source output names determine its implicit equality keys.
+CHECK_VERSION = "26"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

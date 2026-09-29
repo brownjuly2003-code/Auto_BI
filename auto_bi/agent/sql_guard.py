@@ -276,10 +276,10 @@ def star_reads_columns(star: exp.Star) -> bool:
 class ColumnReads(NamedTuple):
     """What a SELECT reads at column level, and what saying more would take a guess.
 
-    `unattributed`, `starred`, `column_selectors`, and `join_using_keys` are the honest
-    remainder, reported rather than resolved: a caller grading governance must be able to
-    say the check was partial, because a silent skip and a clean result look identical to
-    whoever reads the verdict.
+    `unattributed`, `starred`, `column_selectors`, `join_using_keys`, and `natural_join` are
+    the honest remainder, reported rather than resolved: a caller grading governance must
+    be able to say the check was partial, because a silent skip and a clean result look
+    identical to whoever reads the verdict.
     """
 
     attributed: frozenset[ColumnRef]
@@ -298,6 +298,10 @@ class ColumnReads(NamedTuple):
     #: `JOIN ... USING` names a key shared by both sources, but gives no table to attribute it
     #: to. The keys are kept as a typed remainder so governance can name the incomplete check.
     join_using_keys: frozenset[str] = frozenset()
+    #: PostgreSQL `NATURAL JOIN` chooses equality keys from matching column names exposed by
+    #: joined sources, including derived tables. SQL does not enumerate those names, so the
+    #: join is kept as a typed remainder without guessing them.
+    natural_join: bool = False
     #: The same remainder with its scope kept, one entry per unattributed reference. Names
     #: alone are what `unattributed` reports; this is what a caller needs to narrow them.
     ambiguous: frozenset[AmbiguousRef] = frozenset()
@@ -432,6 +436,7 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
             else frozenset()
         ),
         join_using_keys=_join_using_keys(root),
+        natural_join=(dialect == "postgres" and _has_natural_join(root)),
         ambiguous=frozenset(ambiguous),
         opaque_settings=(
             _clickhouse_opaque_settings(root) if dialect == "clickhouse" else frozenset()
@@ -449,6 +454,11 @@ def _join_using_keys(root: exp.Expression) -> frozenset[str]:
         items = using if isinstance(using, list) else [using]
         keys.update(item.name for item in items if isinstance(item, exp.Identifier))
     return frozenset(keys)
+
+
+def _has_natural_join(root: exp.Expression) -> bool:
+    """Whether the statement contains a PostgreSQL ``NATURAL JOIN`` anywhere in its AST."""
+    return any(join.args.get("method") == "NATURAL" for join in root.find_all(exp.Join))
 
 
 class _ClickHouseAlias(NamedTuple):
