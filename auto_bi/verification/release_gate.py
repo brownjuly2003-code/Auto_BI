@@ -274,7 +274,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 45 — PostgreSQL NATURAL JOIN leaves an advisory for keys selected from joined-source
 #: output names, potentially dependent on physical schema. Existing queries can gain it;
 #: check 26 records the changed meaning of assets.invalidated.
-VERIFIER_VERSION = "45"
+#: 46 — PostgreSQL named-table and parenthesized-JOIN aliases with column lists leave
+#: references to declared output names as an advisory: their physical ordinal lineage
+#: is not proven by the snapshot.
+#: Existing queries can move from a false field REVIEW or clean settlement to the advisory;
+#: named-table references outside the declared alias list keep ordinary physical grading.
+VERIFIER_VERSION = "46"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -375,7 +380,10 @@ VERIFIER_VERSION = "45"
 #: field REVIEW or sourceless advisory. Real SUM argument reads remain graded.
 #: 26 — PostgreSQL NATURAL JOIN is now a typed partial field-check remainder because
 #: matching joined-source output names determine its implicit equality keys.
-CHECK_VERSION = "26"
+#: 27 — PostgreSQL table column alias lists are now a typed partial field-check remainder:
+#: references to their output names cannot be settled against physical snapshot columns.
+#: Adjacent explicit fields and named-table names outside the list retain existing grading.
+CHECK_VERSION = "27"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-29 — PostgreSQL-алиас таблицы со списком выходных имён оставляет
+  `asset.query_fields_unchecked` для ссылок на эти имена: snapshot не доказывает
+  физический ordinal lineage. Покрыты именованная таблица, скобочный `JOIN`,
+  голое и квалифицированное имя, корреляция; соседние физические поля проверяются.
+  `ORDER BY` сохраняет приоритет выхода SELECT, `GROUP BY` внутри LATERAL —
+  локального выхода. `VERIFIER_VERSION` 45 → 46, `CHECK_VERSION` 26 → 27.
+  Синтетические Astra xhigh review выявили четыре P2, закрытые red-green
+  тестами; итоговое review: 0 actionable P1/P2. Полный offline pytest:
+  2868 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях,
+  Ruff и Black чистые. Это не human/production acceptance.
 - 2026-09-29 — PostgreSQL-семейство оставляет `asset.query_fields_unchecked` для
   `NATURAL JOIN`: ключи берутся из совпадающих выходных имён источников,
   которые проверка не разворачивает и которые могут зависеть от физической схемы.

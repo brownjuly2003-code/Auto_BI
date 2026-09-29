@@ -392,7 +392,11 @@ def _query_findings(
     contested: set[AmbiguousRef] = set()
     outward: set[AmbiguousRef] = set()
     grouping_outputs: set[AmbiguousRef] = set()
+    postgres_table_column_aliases: set[AmbiguousRef] = set()
     for ambiguous_ref in reads.ambiguous:
+        if ambiguous_ref.postgres_table_column_alias:
+            postgres_table_column_aliases.add(ambiguous_ref)
+            continue
         scope = (
             _governed_scope(ambiguous_ref.candidates, governed_table)
             if ambiguous_ref.all_tables
@@ -455,6 +459,7 @@ def _query_findings(
         contested=contested,
         outward=outward,
         grouping_outputs=grouping_outputs,
+        postgres_table_column_aliases=postgres_table_column_aliases,
     )
     if unchecked is not None:
         findings.append(
@@ -488,6 +493,7 @@ def _unchecked_reason(
     contested: set[AmbiguousRef],
     outward: set[AmbiguousRef],
     grouping_outputs: set[AmbiguousRef],
+    postgres_table_column_aliases: set[AmbiguousRef],
 ) -> str | None:
     """Why the field-level check could not cover the whole query, if it could not.
 
@@ -526,6 +532,17 @@ def _unchecked_reason(
             "NATURAL JOIN keys come from matching output names of the joined sources; this "
             "check does not expand those names, which may depend on the physical schema"
         )
+    alias_names = sorted(
+        {
+            f"{ref.qualifier}.{ref.name}" if ref.qualifier else ref.name
+            for ref in postgres_table_column_aliases
+        }
+    )
+    if alias_names:
+        reasons.append(
+            f"references {', '.join(alias_names)} use a PostgreSQL table column alias list; "
+            "their physical ordinal lineage is not proven by this snapshot"
+        )
     for setting in sorted(reads.opaque_settings):
         reasons.append(
             f"it sets {setting}, a row filter written as SQL text that this check does not read"
@@ -541,7 +558,7 @@ def _unchecked_reason(
     enclosing: set[str] = set()
     output_names: set[str] = set()
     unseen: set[str] = set()
-    for ref in reads.ambiguous - settled - contested:
+    for ref in reads.ambiguous - settled - contested - postgres_table_column_aliases:
         if ref.qualifier:
             stray.add(f"{ref.qualifier}.{ref.name}")
         elif ref in outward:

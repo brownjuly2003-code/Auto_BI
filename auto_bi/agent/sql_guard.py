@@ -261,6 +261,10 @@ class AmbiguousRef(NamedTuple):
     #: enclosing levels. This flag says the output list offered this whole GROUP BY name;
     #: preceding LATERAL siblings are outside its local FROM/JOIN candidates.
     output_column: bool = False
+    #: PostgreSQL table aliases may rename a prefix of a physical table's output columns.
+    #: The name is a query output, but its physical ordinal source is not proven by the SQL
+    #: or by the governed snapshot, so callers must keep it as an advisory remainder.
+    postgres_table_column_alias: bool = False
 
 
 def star_reads_columns(star: exp.Star) -> bool:
@@ -901,13 +905,31 @@ def _attribute_column(
     column: exp.Column,
     attributed: set[ColumnRef],
     ambiguous: set[AmbiguousRef],
+    *,
+    postgres_table_column_aliases: bool = False,
 ) -> None:
     """Grade one column against *scope*'s sources."""
     identifier = column.this
     quoted = isinstance(identifier, exp.Identifier) and identifier.quoted
     source = _column_source(scope, column)
     if source is None:
-        ambiguous.add(_ambiguous_ref(scope, column, quoted=quoted))
+        ambiguous.add(
+            _ambiguous_ref(
+                scope,
+                column,
+                quoted=quoted,
+                postgres_table_column_aliases=postgres_table_column_aliases,
+            )
+        )
+        return
+    if (
+        postgres_table_column_aliases
+        and isinstance(source, (exp.Table, Scope))
+        and _postgres_table_alias_matches(source, column, scope)
+    ):
+        ambiguous.add(
+            _ambiguous_ref(scope, column, quoted=quoted)._replace(postgres_table_column_alias=True)
+        )
         return
     if not isinstance(source, exp.Table):
         return  # a CTE or subquery column: real, but not a table's
@@ -919,6 +941,47 @@ def _postgres_name(identifier: exp.Expression) -> str:
     if isinstance(identifier, exp.Identifier) and identifier.quoted:
         return identifier.name
     return identifier.name.lower()
+
+
+def _postgres_table_alias_matches(
+    source: exp.Table | Scope, column: exp.Column, scope: Scope
+) -> bool:
+    """Whether a PostgreSQL table expression renames this column output name."""
+    if isinstance(source, Scope):
+        inner = source.expression
+        if not isinstance(inner, exp.Table):
+            return False
+        columns = None
+        wrapper = inner.parent
+    else:
+        alias = source.args.get("alias")
+        columns = alias.args.get("columns") if isinstance(alias, exp.TableAlias) else None
+        wrapper = (
+            source.parent
+            if any(candidate is source for candidate in _read_sources(scope))
+            else None
+        )
+    while isinstance(wrapper, exp.Subquery):
+        alias = wrapper.args.get("alias")
+        if isinstance(alias, exp.TableAlias) and isinstance(alias.args.get("columns"), list):
+            columns = alias.args["columns"]
+        wrapper = wrapper.parent
+    if not isinstance(columns, list):
+        return False
+    name = _postgres_name(column.this)
+    return any(
+        isinstance(item, exp.Identifier) and _postgres_name(item) == name for item in columns
+    )
+
+
+def _postgres_table_column_alias_in_scope(scope: Scope, column: exp.Column) -> bool:
+    """Whether a local physical source exposes this alias-column output name."""
+    sources = [_referenced_source(node, scope.cte_sources) for _alias, node in scope.references]
+    return any(
+        isinstance(source, (exp.Table, Scope))
+        and _postgres_table_alias_matches(source, column, scope)
+        for source in sources
+    )
 
 
 def _postgres_sort_token_info(
@@ -1166,6 +1229,15 @@ def _grade_columns(
                         truncated = True
                     continue
             if aliases is None and _postgres_grouping_output(scope, column, unary_plus_offsets):
+                if _postgres_table_column_alias_in_scope(scope, column):
+                    _attribute_column(
+                        scope,
+                        column,
+                        attributed,
+                        ambiguous,
+                        postgres_table_column_aliases=True,
+                    )
+                    continue
                 sources = [
                     _referenced_source(node, scope.cte_sources) for _alias, node in scope.references
                 ]
@@ -1182,7 +1254,13 @@ def _grade_columns(
                 scope, column, unary_plus_offsets, quoted_function_names
             ):
                 continue
-            _attribute_column(scope, column, attributed, ambiguous)
+            _attribute_column(
+                scope,
+                column,
+                attributed,
+                ambiguous,
+                postgres_table_column_aliases=aliases is None,
+            )
     return truncated
 
 
@@ -1492,6 +1570,7 @@ def _ambiguous_ref(
     *,
     quoted: bool,
     sources: list[exp.Selectable | Scope] | None = None,
+    postgres_table_column_aliases: bool = False,
 ) -> AmbiguousRef:
     """The unresolved column with whatever its scope offered — nothing where nothing did.
 
@@ -1515,6 +1594,15 @@ def _ambiguous_ref(
         all_tables=all(isinstance(source, exp.Table) for source in sources),
         qualifier=column.table,
         enclosed=not column.table and _reads_enclosing(scope),
+        postgres_table_column_alias=(
+            postgres_table_column_aliases
+            and not column.table
+            and any(
+                isinstance(source, (exp.Table, Scope))
+                and _postgres_table_alias_matches(source, column, scope)
+                for source in sources
+            )
+        ),
     )
 
 

@@ -10,9 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=45`, `CHECK_VERSION=26`
+**Версии evidence:** `VERIFIER_VERSION=46`, `CHECK_VERSION=27`
 
-**Последний срез (2026-09-29):** PostgreSQL-семейство отмечает `NATURAL JOIN`
+**Последний срез (2026-09-29):** PostgreSQL-алиас таблицы со списком выходных
+имён (`FROM dm.sales_daily AS s(renamed)`) больше не сопоставляет `s.renamed`
+с физической колонкой по имени. Без доказанного ordinal lineage governance
+оставляет `asset.query_fields_unchecked` с точной причиной; это относится и к
+голому имени, коррелированной ссылке и алиасу над скобочным `JOIN`. Соседние
+именованные физические поля продолжают проверяться, а выходное имя SELECT в
+`ORDER BY` и локальный выход `GROUP BY` в LATERAL сохраняют приоритет.
+`VERIFIER_VERSION` 45 → 46, `CHECK_VERSION` 26 → 27: прежние review и чистый
+результат для таких ссылок могут стать advisory. Red-green тесты закрыли
+четыре P2 из синтетических Astra xhigh review: противоречивую причину advisory,
+ложный остаток у LATERAL `GROUP BY`, голое имя над скобочным `JOIN` и вложенные
+скобки. Итоговое review: 0 actionable P1/P2. Полный offline pytest: 2868 passed,
+21 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях, Ruff и Black
+чистые. Это не human/production acceptance.
+
+**Предыдущий срез (2026-09-29):** PostgreSQL-семейство отмечает `NATURAL JOIN`
 как частично проверенное чтение: ключи определяются совпадающими выходными
 именами источников, которые эта проверка не разворачивает и которые могут
 зависеть от физической схемы. `asset.query_fields_unchecked` объясняет остаток
