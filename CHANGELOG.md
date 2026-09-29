@@ -6,6 +6,17 @@
 
 ### Changed
 
+- **PostgreSQL `AVG`/`MIN`/`MAX` дают неявные имена при сортировке.**
+  Прямые агрегаты без alias разрешают целое имя в `ORDER BY`/`DISTINCT ON`
+  и выход левой ветки set operation без ложного field review или advisory.
+  Чтения аргументов остаются; квотированный регистр, `AS`, унарный `+`,
+  выражения, квалифицированные имена и `GROUP BY` сохраняют границы.
+  `VERIFIER_VERSION` 46 → 47, `CHECK_VERSION` 27 → 28.
+  Red-green: 18 падений, затем 137 passed. Полный offline pytest:
+  2893 passed, 21 skipped, 38 deselected; strict mypy, Ruff и Black чистые.
+  Синтетическое Astra xhigh review: 0 actionable P1/P2;
+  live PostgreSQL не запускался, не human/production acceptance.
+
 - **PostgreSQL `NATURAL JOIN` сообщает о неявных ключах.**
   Governance оставляет `asset.query_fields_unchecked`: ключи выбираются по
   совпадающим выходным колонкам источников, могут зависеть от физической схемы

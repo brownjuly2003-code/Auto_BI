@@ -279,7 +279,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: is not proven by the snapshot.
 #: Existing queries can move from a false field REVIEW or clean settlement to the advisory;
 #: named-table references outside the declared alias list keep ordinary physical grading.
-VERIFIER_VERSION = "46"
+#: 47 — PostgreSQL ORDER BY / DISTINCT ON can use the implicit output names of direct
+#: unaliased AVG, MIN and MAX calls, including the left branch of a set operation.
+#: Existing reviewed queries can lose a phantom field REVIEW or sourceless advisory.
+VERIFIER_VERSION = "47"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -383,7 +386,9 @@ VERIFIER_VERSION = "46"
 #: 27 — PostgreSQL table column alias lists are now a typed partial field-check remainder:
 #: references to their output names cannot be settled against physical snapshot columns.
 #: Adjacent explicit fields and named-table names outside the list retain existing grading.
-CHECK_VERSION = "27"
+#: 28 — PostgreSQL sorting by an unaliased AVG, MIN or MAX output no longer creates a
+#: phantom field REVIEW or sourceless advisory. Aggregate argument reads remain graded.
+CHECK_VERSION = "28"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

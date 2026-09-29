@@ -10,9 +10,21 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=46`, `CHECK_VERSION=27`
+**Версии evidence:** `VERIFIER_VERSION=47`, `CHECK_VERSION=28`
 
-**Последний срез (2026-09-29):** PostgreSQL-алиас таблицы со списком выходных
+**Последний срез (2026-09-29):** прямые PostgreSQL `AVG(...)`, `MIN(...)` и
+`MAX(...)` без alias дают неявные выходные имена для целого `ORDER BY`/`DISTINCT ON`
+и сортировки set operation по левой ветке. Ложные field review/advisory на имени
+функции уходят, чтения аргументов остаются. Квотированный регистр, `AS`, унарный
+`+`, выражения, квалифицированные имена и `GROUP BY` сохраняют границы.
+`VERIFIER_VERSION` 46 → 47, `CHECK_VERSION` 27 → 28. Red-green: 18 падений до
+правки, 137 тестов прошли после; целевой прогон — 372 passed. Полный offline
+pytest: 2893 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120
+модулях, Ruff и Black чистые. Синтетическое Astra xhigh review: 0 actionable
+P1/P2. Живой PostgreSQL на этом срезе не запускался; review не является
+human/production acceptance.
+
+**Предыдущий срез (2026-09-29):** PostgreSQL-алиас таблицы со списком выходных
 имён (`FROM dm.sales_daily AS s(renamed)`) больше не сопоставляет `s.renamed`
 с физической колонкой по имени. Без доказанного ordinal lineage governance
 оставляет `asset.query_fields_unchecked` с точной причиной; это относится и к

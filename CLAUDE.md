@@ -83,6 +83,14 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-29 — прямые PostgreSQL `AVG`, `MIN` и `MAX` без alias дают неявные
+  выходные имена для `ORDER BY`/`DISTINCT ON` и левой ветки set operation;
+  чтения аргументов сохраняются. `VERIFIER_VERSION` 46 → 47,
+  `CHECK_VERSION` 27 → 28. Red-green: 18 падений, затем 137 passed;
+  полный offline pytest: 2893 passed, 21 skipped, 38 deselected;
+  strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+  Синтетическое Astra xhigh review: 0 actionable P1/P2;
+  live PostgreSQL не запускался, не human/production acceptance.
 - 2026-09-29 — PostgreSQL-алиас таблицы со списком выходных имён оставляет
   `asset.query_fields_unchecked` для ссылок на эти имена: snapshot не доказывает
   физический ordinal lineage. Покрыты именованная таблица, скобочный `JOIN`,

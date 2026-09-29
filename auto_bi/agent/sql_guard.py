@@ -993,7 +993,13 @@ def _postgres_sort_token_info(
     quoted_function_names: dict[int, str] = {}
     has_plus = False
     for index, token in enumerate(tokens):
-        if token.token_type == TokenType.IDENTIFIER and token.text.lower() in {"count", "sum"}:
+        if token.token_type == TokenType.IDENTIFIER and token.text.lower() in {
+            "count",
+            "sum",
+            "avg",
+            "min",
+            "max",
+        }:
             quoted_function_names[token.start] = token.text
         if token.token_type != TokenType.PLUS:
             continue
@@ -1049,13 +1055,19 @@ def _postgres_output_name(
         projected, unary_plus_offsets
     ):
         return _postgres_name(projected.this)
-    if isinstance(projected, (exp.Count, exp.Sum)):
+    if isinstance(projected, (exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
         start = projected.meta.get("start")
         if unary_plus_offsets is not None and (
             not isinstance(start, int) or start in unary_plus_offsets
         ):
             return None
-        function_name = "count" if isinstance(projected, exp.Count) else "sum"
+        function_name = {
+            exp.Count: "count",
+            exp.Sum: "sum",
+            exp.Avg: "avg",
+            exp.Min: "min",
+            exp.Max: "max",
+        }[type(projected)]
         if quoted_function_names is not None and isinstance(start, int):
             return quoted_function_names.get(start, function_name)
         return function_name

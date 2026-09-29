@@ -93,6 +93,89 @@ def test_implicit_count_sort_keeps_argument_read(tmp_path: Path) -> None:
     assert "internal_cost_raw" in detail and "dm.sales_daily.count" not in detail
 
 
+@pytest.mark.parametrize(
+    "function, projected, sort",
+    [
+        ("avg", "avg(internal_cost_raw)", "avg"),
+        ("min", "(min(internal_cost_raw))", "(min)"),
+        ("max", "max(internal_cost_raw)", "max DESC NULLS LAST"),
+    ],
+)
+def test_implicit_aggregate_sort_names_read_output_and_argument(
+    tmp_path: Path, function: str, projected: str, sort: str
+) -> None:
+    sql = f"SELECT {projected} FROM dm.sales_daily ORDER BY {sort}"
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.internal_cost_raw"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+    detail = ungoverned_detail(tmp_path / "detail", sql, engine="postgres")
+    assert "internal_cost_raw" in detail and f"dm.sales_daily.{function}" not in detail
+
+
+@pytest.mark.parametrize(
+    "function, sort, expected",
+    [
+        ('"Avg"', '"Avg"', {"dm.sales_daily.revenue"}),
+        ('"Avg"', "avg", {"dm.sales_daily.revenue", "dm.sales_daily.avg"}),
+        ('"Min"', '"Min"', {"dm.sales_daily.revenue"}),
+        ('"Min"', "min", {"dm.sales_daily.revenue", "dm.sales_daily.min"}),
+        ('"Max"', '"Max"', {"dm.sales_daily.revenue"}),
+        ('"Max"', "max", {"dm.sales_daily.revenue", "dm.sales_daily.max"}),
+    ],
+)
+def test_quoted_aggregate_function_spelling_controls_output_name(
+    tmp_path: Path, function: str, sort: str, expected: set[str]
+) -> None:
+    sql = f"SELECT {function}(revenue) FROM dm.sales_daily ORDER BY {sort}"
+    assert _reads(sql) == expected
+    expected_codes = [] if len(expected) == 1 else ["asset.query_ungoverned_field"]
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == expected_codes
+
+
+@pytest.mark.parametrize("function", ["avg", "min", "max"])
+def test_implicit_aggregate_distinct_on_reads_output(tmp_path: Path, function: str) -> None:
+    sql = (
+        f"SELECT DISTINCT ON ({function}) {function}(revenue) "
+        f"FROM dm.sales_daily ORDER BY {function}"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("operator", ["UNION", "INTERSECT", "EXCEPT"])
+@pytest.mark.parametrize("function", ["avg", "min", "max"])
+def test_implicit_aggregate_names_set_output(tmp_path: Path, operator: str, function: str) -> None:
+    sql = (
+        f"SELECT {function}(revenue) FROM dm.sales_daily {operator} "
+        f"SELECT {function}(revenue) FROM dm.sales_daily ORDER BY {function}"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT +avg(revenue) FROM dm.sales_daily ORDER BY avg",
+        "SELECT avg(revenue) + 1 FROM dm.sales_daily ORDER BY avg",
+        "SELECT avg(revenue) FROM dm.sales_daily AS s ORDER BY s.avg",
+        "SELECT avg(revenue) FROM dm.sales_daily GROUP BY avg",
+    ],
+)
+def test_aggregate_output_name_boundaries_remain_input_reads(tmp_path: Path, sql: str) -> None:
+    assert _reads(sql) == {"dm.sales_daily.revenue", "dm.sales_daily.avg"}
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
 def test_implicit_sum_sort_name_reads_output(tmp_path: Path) -> None:
     sql = "SELECT sum(revenue) FROM dm.sales_daily ORDER BY sum"
     refs = extract_column_refs(sql, dialect="postgres")
