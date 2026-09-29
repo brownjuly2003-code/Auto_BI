@@ -1049,7 +1049,7 @@ def _postgres_output_name(
     if isinstance(projected, exp.Alias):
         alias = projected.args.get("alias")
         return _postgres_name(alias) if isinstance(alias, exp.Identifier) else None
-    while isinstance(projected, exp.Paren):
+    while isinstance(projected, (exp.Paren, exp.Window)):
         projected = projected.this
     if isinstance(projected, exp.Filter):
         filtered = projected.this

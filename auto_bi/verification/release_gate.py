@@ -288,7 +288,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: existing reviewed queries can lose a phantom field REVIEW or sourceless advisory.
 #: 49 — chart impact distinguishes ClickHouse's empty `map()` constant from a Superset
 #: `{{ ... }}` template placeholder, so only the latter leaves operator SQL partially read.
-VERIFIER_VERSION = "49"
+#: 50 — PostgreSQL ORDER BY / DISTINCT ON and set-operation output resolution also
+#: recognize Window-wrapped unaliased COUNT, SUM, AVG, MIN and MAX outputs. Window
+#: arguments, FILTER predicates, PARTITION BY and inner ORDER BY expressions remain reads.
+VERIFIER_VERSION = "50"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -398,7 +401,11 @@ VERIFIER_VERSION = "49"
 #: outputs no longer creates a phantom field REVIEW or sourceless advisory, including
 #: DISTINCT ON, set-operation output and parenthesized forms. Arguments and predicates
 #: remain graded as field reads.
-CHECK_VERSION = "29"
+#: 30 — PostgreSQL sorting by Window-wrapped unaliased COUNT, SUM, AVG, MIN or MAX
+#: outputs no longer creates a phantom field REVIEW or sourceless advisory. Window
+#: arguments, FILTER predicates, PARTITION BY and inner ORDER BY expressions remain
+#: graded as field reads.
+CHECK_VERSION = "30"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

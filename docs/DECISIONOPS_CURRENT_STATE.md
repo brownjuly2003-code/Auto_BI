@@ -10,9 +10,22 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=49`, `CHECK_VERSION=29`
+**Версии evidence:** `VERIFIER_VERSION=50`, `CHECK_VERSION=30`
 
-**Последний срез (2026-09-29):** пустой ClickHouse `map()` в operator SQL
+**Последний срез (2026-09-29):** PostgreSQL `COUNT`, `SUM`, `AVG`, `MIN` и
+`MAX` с `OVER`, включая форму с `FILTER (WHERE …)`, сохраняют неявное имя
+выхода для целого `ORDER BY`/`DISTINCT ON` и сортировки set operation по
+левой ветке. Ложное чтение поля с именем агрегата уходит; аргументы,
+предикат `FILTER`, `PARTITION BY` и внутренний `ORDER BY` остаются чтениями.
+`VERIFIER_VERSION` 49 → 50, `CHECK_VERSION` 29 → 30: прежний reviewed-запрос
+мог получить ложный governance finding. Red-green: исходный тест упал на ложном
+`dm.sales_daily.sum`; целевой gate: 482 passed, полный offline pytest:
+2959 passed, 21 skipped, 38 deselected. Strict mypy: 0 ошибок в 120 модулях,
+Ruff и Black чистые. Итоговое синтетическое Astra xhigh review:
+0 actionable P1/P2. Живой PostgreSQL не запускался; это не human/production
+acceptance.
+
+**Предыдущий срез (2026-09-29):** пустой ClickHouse `map()` в operator SQL
 не является шаблоном Superset `{{ … }}` и не оставляет ложный
 `chart.sql_partial`; чтение именованных колонок сохраняется. Настоящий
 `{{ filter }}` оставляет гэп и в том же SQL, где встречается `map()`.
@@ -800,8 +813,6 @@ Scheduler, PostgreSQL platform runtime, REST/MCP, notifications и actions не 
 
 Журналы закрытых срезов — [typed investigation](history/TYPED_INVESTIGATION_MVP.md) и
 [chart-level impact](history/CHART_LEVEL_IMPACT.md).
-Остаток PostgreSQL `NATURAL JOIN` в governance назван в последнем срезе.
-
 ## Решения для текущего scope
 
 1. Development gate — моделирование owner-review только через Astra xhigh;

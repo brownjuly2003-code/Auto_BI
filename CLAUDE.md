@@ -83,6 +83,17 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-29 — PostgreSQL `COUNT`/`SUM`/`AVG`/`MIN`/`MAX` с `OVER`,
+  включая `FILTER (WHERE …)` внутри оконного вызова, сохраняют неявное имя
+  выхода для целого `ORDER BY`/`DISTINCT ON` и сортировки set operation по
+  левой ветке. Аргументы, предикат `FILTER`, `PARTITION BY` и внутренний
+  `ORDER BY` остаются чтениями. `VERIFIER_VERSION` 49 → 50,
+  `CHECK_VERSION` 29 → 30: прежний reviewed-запрос мог получить ложный
+  governance finding. Red-green: исходный тест упал на ложном `dm.sales_daily.sum`;
+  целевой gate: 482 passed, полный offline pytest: 2959 passed, 21 skipped,
+  38 deselected. Strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+  Итоговое синтетическое Astra xhigh review: 0 actionable P1/P2; живой
+  PostgreSQL не запускался, human/production acceptance не заявляется.
 - 2026-09-29 — пустой ClickHouse `map()` в operator SQL больше не считается
   шаблоном Superset `{{ … }}`: ложный `chart.sql_partial` уходит, а настоящий
   шаблон остаётся частично прочитанным и рядом с `map()`. Явные чтения колонок

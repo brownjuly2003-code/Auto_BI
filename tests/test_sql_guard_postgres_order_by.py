@@ -184,6 +184,126 @@ def test_implicit_sum_sort_name_reads_output(tmp_path: Path) -> None:
     assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
 
 
+def test_windowed_implicit_sum_sort_name_reads_output(tmp_path: Path) -> None:
+    sql = "SELECT sum(revenue) OVER () FROM dm.sales_daily ORDER BY sum"
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("function", ["count", "sum", "avg", "min", "max"])
+def test_windowed_implicit_aggregate_reads_window_inputs(tmp_path: Path, function: str) -> None:
+    sql = (
+        f"SELECT {function}(revenue) OVER (PARTITION BY region ORDER BY date) "
+        f"FROM dm.sales_daily ORDER BY {function}"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {
+        "dm.sales_daily.revenue",
+        "dm.sales_daily.region",
+        "dm.sales_daily.date",
+    }
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+def test_windowed_filtered_aggregate_reads_filter_and_window_inputs(tmp_path: Path) -> None:
+    sql = (
+        "SELECT sum(revenue) FILTER (WHERE region = 'north') "
+        "OVER (PARTITION BY store_id ORDER BY date) "
+        "FROM dm.sales_daily ORDER BY sum"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {
+        "dm.sales_daily.revenue",
+        "dm.sales_daily.region",
+        "dm.sales_daily.store_id",
+        "dm.sales_daily.date",
+    }
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        (
+            "SELECT DISTINCT ON (sum) sum(revenue) OVER (PARTITION BY region ORDER BY date) "
+            "FROM dm.sales_daily ORDER BY sum",
+            {"dm.sales_daily.revenue", "dm.sales_daily.region", "dm.sales_daily.date"},
+        ),
+        (
+            "SELECT sum(revenue) OVER () FROM dm.sales_daily UNION "
+            "SELECT sum(revenue) OVER () FROM dm.sales_daily ORDER BY sum",
+            {"dm.sales_daily.revenue"},
+        ),
+        (
+            "SELECT (sum(revenue) OVER ()) FROM dm.sales_daily ORDER BY sum",
+            {"dm.sales_daily.revenue"},
+        ),
+        ("SELECT sum(1) OVER () ORDER BY sum", set()),
+    ],
+)
+def test_windowed_aggregate_output_name_boundaries(
+    tmp_path: Path, sql: str, expected: set[str]
+) -> None:
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == expected
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        (
+            "SELECT sum(revenue) OVER () AS total FROM dm.sales_daily ORDER BY sum",
+            {"dm.sales_daily.revenue", "dm.sales_daily.sum"},
+        ),
+        (
+            'SELECT sum(revenue) OVER () FROM dm.sales_daily ORDER BY "SUM"',
+            {"dm.sales_daily.revenue", "dm.sales_daily.SUM"},
+        ),
+        (
+            "SELECT +sum(revenue) OVER () FROM dm.sales_daily ORDER BY sum",
+            {"dm.sales_daily.revenue", "dm.sales_daily.sum"},
+        ),
+        (
+            "SELECT sum(revenue) OVER () FROM dm.sales_daily ORDER BY lower(sum)",
+            {"dm.sales_daily.revenue", "dm.sales_daily.sum"},
+        ),
+        (
+            "SELECT sum(revenue) OVER () FROM dm.sales_daily GROUP BY sum",
+            {"dm.sales_daily.revenue", "dm.sales_daily.sum"},
+        ),
+    ],
+)
+def test_windowed_aggregate_output_name_boundaries_remain_input_reads(
+    tmp_path: Path, sql: str, expected: set[str]
+) -> None:
+    assert _reads(sql) == expected
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
+@pytest.mark.parametrize(
+    "sort, expected",
+    [
+        ('"Sum"', {"dm.sales_daily.revenue"}),
+        ("sum", {"dm.sales_daily.revenue", "dm.sales_daily.sum"}),
+    ],
+)
+def test_windowed_quoted_aggregate_function_spelling_controls_output_name(
+    tmp_path: Path, sort: str, expected: set[str]
+) -> None:
+    sql = f'SELECT "Sum"(revenue) OVER () FROM dm.sales_daily ORDER BY {sort}'
+    assert _reads(sql) == expected
+    expected_codes = [] if len(expected) == 1 else ["asset.query_ungoverned_field"]
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == expected_codes
+
+
 def test_filtered_sum_sort_name_reads_output(tmp_path: Path) -> None:
     sql = "SELECT sum(revenue) FILTER (WHERE region = 'north') FROM dm.sales_daily ORDER BY sum"
     refs = extract_column_refs(sql, dialect="postgres")
