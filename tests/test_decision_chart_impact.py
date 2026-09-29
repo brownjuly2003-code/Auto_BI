@@ -663,6 +663,62 @@ def test_a_written_map_literal_is_not_a_template_placeholder(tmp_path: Path) -> 
     )
 
 
+def test_an_empty_clickhouse_map_constant_is_not_a_template_placeholder(
+    tmp_path: Path,
+) -> None:
+    """ClickHouse's empty `map()` is a constant, unlike Superset's `{{ … }}` placeholder."""
+    _, report = resolved(
+        tmp_path,
+        candidate=_reformulated(),
+        dashboards={
+            DASHBOARD: operator_dashboard(
+                "SELECT sum(store_id) FROM dm.sales_daily WHERE empty(map())"
+            )
+        },
+    )
+    assert report.chart_gaps == []
+    assert impact_of(report, "metric.formula_changed").charts == []
+
+
+def test_an_empty_clickhouse_map_constant_does_not_hide_a_field_read(
+    tmp_path: Path,
+) -> None:
+    """A changed column remains attributed when `empty(map())` is another predicate."""
+    _, report = resolved(
+        tmp_path,
+        candidate={"semantic": _relabelled(0, 4, "Revenue, net of VAT")},
+        dashboards={
+            DASHBOARD: operator_dashboard(
+                "SELECT sum(revenue) FROM dm.sales_daily WHERE empty(map())"
+            )
+        },
+    )
+    impact = impact_of(report, "field.description_changed")
+    assert [(chart.chart, chart.relation) for chart in impact.charts] == [
+        ("operator_table", ChartRelation.READS_FIELD)
+    ]
+    assert report.chart_gaps == []
+
+
+def test_a_clickhouse_map_constant_does_not_hide_a_real_template(
+    tmp_path: Path,
+) -> None:
+    """A real `{{ … }}` remains a partial read when the same SQL also contains `map()`."""
+    _, report = resolved(
+        tmp_path,
+        candidate=_reformulated(),
+        dashboards={
+            DASHBOARD: operator_dashboard(
+                "SELECT sum(store_id) FROM dm.sales_daily " "WHERE empty(map()) AND {{ filter }}"
+            )
+        },
+    )
+    assert {gap.code for gap in report.chart_gaps} == {"chart.sql_partial", "chart.metric_unread"}
+    assert "template placeholder" in next(
+        gap.detail for gap in report.chart_gaps if gap.code == "chart.sql_partial"
+    )
+
+
 def test_operator_sql_selecting_a_columns_matcher_is_a_partial_gap(tmp_path: Path) -> None:
     """`COLUMNS('re')` is ClickHouse's `*`: it reads columns and leaves no Star behind."""
     _, report = resolved(

@@ -1430,6 +1430,27 @@ def test_a_tile_the_run_cannot_read_is_named_in_the_report(tmp_path: Path) -> No
     ) in detail_of(report, "impact.products")
 
 
+def test_empty_clickhouse_map_is_not_a_gate_level_template_gap(tmp_path: Path) -> None:
+    """The release report keeps a constant `map()` out of chart gap counts."""
+    case = _with_operator_tile(
+        _with_margin_tile(Case(tmp_path)),
+        "SELECT sum(store_id) FROM dm.sales_daily WHERE empty(map())",
+    )
+
+    report = case.with_candidate(contract=_formula_change()).run()
+
+    payload = _check_payload(tmp_path, report, "impact.products")
+    assert payload["chart_gaps"] == []
+    assert [
+        (chart["ref"], chart["relation"]) for item in payload["impacts"] for chart in item["charts"]
+    ] == [("dashboard://weekly_margin@7#margin_by_region", "computes_metric")]
+    summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
+        encoding="utf-8"
+    )
+    assert "chart `dashboard://weekly_margin@7#margin_by_region` — computes_metric" in summary
+    assert "Charts this run could not resolve in whole" not in summary
+
+
 def test_a_named_and_gapped_tile_is_counted_once_in_the_products_detail(tmp_path: Path) -> None:
     """One tile named and gapped is one tile, not a named tile plus its gap rows."""
     sql = (

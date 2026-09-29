@@ -10,9 +10,21 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=48`, `CHECK_VERSION=29`
+**Версии evidence:** `VERIFIER_VERSION=49`, `CHECK_VERSION=29`
 
-**Последний срез (2026-09-29):** PostgreSQL `COUNT`, `SUM`, `AVG`, `MIN` и `MAX`
+**Последний срез (2026-09-29):** пустой ClickHouse `map()` в operator SQL
+не является шаблоном Superset `{{ … }}` и не оставляет ложный
+`chart.sql_partial`; чтение именованных колонок сохраняется. Настоящий
+`{{ filter }}` оставляет гэп и в том же SQL, где встречается `map()`.
+`VERIFIER_VERSION` 48 → 49, потому что меняются chart evidence и identity bundle;
+`CHECK_VERSION` остаётся 29, так как смысл отдельной проверки не меняется.
+Red-green подтвердил ложные `chart.sql_partial` и `chart.metric_unread`; целевой
+gate: 161 passed. Полный offline pytest: 2941 passed, 21 skipped, 38 deselected;
+strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые. Итоговое синтетическое
+Astra xhigh review: 0 actionable P1/P2. Живой ClickHouse не запускался; это не
+human/production acceptance.
+
+**Предыдущий срез (2026-09-29):** PostgreSQL `COUNT`, `SUM`, `AVG`, `MIN` и `MAX`
 с `FILTER (WHERE …)` сохраняют неявное имя выхода для целого `ORDER BY`/
 `DISTINCT ON` и сортировки set operation по левой ветке. Ложное чтение поля с
 именем агрегата уходит; аргументы и предикат `FILTER` остаются чтениями.

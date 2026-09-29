@@ -70,6 +70,8 @@ never resolved as "this tile does not read the change": a template placeholder, 
 `COLUMNS('re')` selector and a `JOIN … USING` key each read columns while leaving neither a star
 nor an unattributed name behind, so silence about them would read as an answer. The rule is the
 contract; a construct found later is named the same way rather than reopening the question.
+ClickHouse's empty `map()` is a value, not a template placeholder; a real `{{ … }}` still leaves
+the tile partially read when the same SQL also contains `map()`.
 For chart impact, `COLUMNS('re')` follows the same execution gates as a column-reading star:
 a selector inside a named CTE or scalar `WITH` that no running part reads does not make the
 tile partial; a reference that opens that gate makes the selector an unread part. This is a

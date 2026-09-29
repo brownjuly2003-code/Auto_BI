@@ -722,9 +722,13 @@ def _hidden_read_clauses(
 
 
 def _is_template_placeholder(node: exp.VarMap) -> bool:
-    """An empty map: what `{{ name }}` becomes. A written `map('k', v)` carries entries."""
+    """An empty source map: what `{{ name }}` becomes; ClickHouse `map()` is a value."""
     keys, values = node.args.get("keys"), node.args.get("values")
-    return not (keys.expressions if keys else []) and not (values.expressions if values else [])
+    if (keys.expressions if keys else []) or (values.expressions if values else []):
+        return False
+    # sqlglot keeps the source function name on a real `map()` VarMap, while its
+    # Superset template equivalent (`{{ ... }}`) has no source name or metadata.
+    return not node.meta.get("name")
 
 
 @dataclass(frozen=True)

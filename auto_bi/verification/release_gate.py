@@ -286,7 +286,9 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: recognize FILTER-wrapped unaliased COUNT, SUM, AVG, MIN and MAX outputs, including
 #: parenthesized projections. Aggregate arguments and FILTER predicates remain reads;
 #: existing reviewed queries can lose a phantom field REVIEW or sourceless advisory.
-VERIFIER_VERSION = "48"
+#: 49 — chart impact distinguishes ClickHouse's empty `map()` constant from a Superset
+#: `{{ ... }}` template placeholder, so only the latter leaves operator SQL partially read.
+VERIFIER_VERSION = "49"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

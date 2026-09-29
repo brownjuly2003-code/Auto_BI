@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-29 — пустой ClickHouse `map()` в operator SQL больше не считается
+  шаблоном Superset `{{ … }}`: ложный `chart.sql_partial` уходит, а настоящий
+  шаблон остаётся частично прочитанным и рядом с `map()`. Явные чтения колонок
+  сохраняются. `VERIFIER_VERSION` 48 → 49, `CHECK_VERSION` остаётся 29;
+  меняется chart evidence, но не грейдинг проверок. Red-green подтвердил ложные
+  `chart.sql_partial` и `chart.metric_unread`; целевой gate: 161 passed. Полный
+  offline pytest: 2941 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок
+  в 120 модулях, Ruff и Black чистые. Синтетическое Astra xhigh review:
+  0 actionable P1/P2. Живой ClickHouse не запускался; это не human/production
+  acceptance.
 - 2026-09-29 — PostgreSQL `COUNT`/`SUM`/`AVG`/`MIN`/`MAX` с `FILTER`
   сохраняют неявное имя выхода в `ORDER BY`/`DISTINCT ON` и сортировке set
   operation; аргументы и предикат остаются чтениями. `VERIFIER_VERSION`
