@@ -268,7 +268,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 43 — PostgreSQL ORDER BY / DISTINCT ON can use an unaliased COUNT output's implicit
 #: name, including the left branch of a set operation, instead of a phantom input read.
 #: Existing reviewed queries can lose false governance findings; check 24 records that.
-VERIFIER_VERSION = "43"
+#: 44 — PostgreSQL ORDER BY / DISTINCT ON can also use an unaliased SUM output's implicit
+#: name, including the left branch of a set operation. Existing reviewed queries can lose
+#: a phantom field REVIEW or sourceless advisory; check 25 records that.
+VERIFIER_VERSION = "44"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -365,7 +368,9 @@ VERIFIER_VERSION = "43"
 #: is rejected as a write, including previously accepted SELECT and UNION statements.
 #: 24 — PostgreSQL sorting by an unaliased COUNT output no longer creates a phantom
 #: field REVIEW or sourceless advisory. Real COUNT argument reads remain graded.
-CHECK_VERSION = "24"
+#: 25 — PostgreSQL sorting by an unaliased SUM output no longer creates a phantom
+#: field REVIEW or sourceless advisory. Real SUM argument reads remain graded.
+CHECK_VERSION = "25"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

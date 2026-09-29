@@ -10,9 +10,21 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=43`, `CHECK_VERSION=24`
+**Версии evidence:** `VERIFIER_VERSION=44`, `CHECK_VERSION=25`
 
-**Последний срез (2026-09-29):** PostgreSQL `COUNT(...)` без явного alias даёт
+**Последний срез (2026-09-29):** PostgreSQL `SUM(...)` без явного alias даёт
+неявное выходное имя `sum` для целого `ORDER BY`/`DISTINCT ON`, в том числе у
+левой ветки set operation. Ложное чтение физического поля и sourceless advisory
+исчезают; чтения аргументов остаются. Явный `AS`, квотированный регистр и унарный
+`+` сохраняют границы; `GROUP BY` не использует агрегатный выход. PostgreSQL 16
+на Mac подтвердил обычную и скобочную форму, set operation, `DISTINCT ON` и
+отказ для `+SUM`. `VERIFIER_VERSION` 43 → 44, `CHECK_VERSION` 24 → 25:
+прежний reviewed-запрос может потерять ложный governance finding. Срез выбран
+по синтетическому Astra xhigh review; итоговое review: 0 actionable P1/P2.
+Полный offline pytest: 2839 passed, 21 skipped, 38 deselected; strict mypy,
+Ruff и Black чистые. Это не human/production acceptance.
+
+**Предыдущий срез (2026-09-29):** PostgreSQL `COUNT(...)` без явного alias даёт
 неявное выходное имя `count` для целого `ORDER BY`/`DISTINCT ON`, в том числе у
 левой ветки `UNION`/`INTERSECT`/`EXCEPT`. Сортировка больше не называет
 несуществующую физическую колонку или sourceless advisory; аргументы `COUNT`

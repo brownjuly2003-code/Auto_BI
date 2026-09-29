@@ -93,6 +93,58 @@ def test_implicit_count_sort_keeps_argument_read(tmp_path: Path) -> None:
     assert "internal_cost_raw" in detail and "dm.sales_daily.count" not in detail
 
 
+def test_implicit_sum_sort_name_reads_output(tmp_path: Path) -> None:
+    sql = "SELECT sum(revenue) FROM dm.sales_daily ORDER BY sum"
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+def test_implicit_sum_names_set_output(tmp_path: Path) -> None:
+    sql = (
+        "SELECT sum(revenue) FROM dm.sales_daily UNION "
+        "SELECT sum(revenue) FROM dm.sales_daily ORDER BY sum"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize(
+    "function, sort, expected",
+    [
+        ('"Sum"', '"Sum"', {"dm.sales_daily.revenue"}),
+        ('"Sum"', "sum", {"dm.sales_daily.revenue", "dm.sales_daily.sum"}),
+        ("sum", '"SUM"', {"dm.sales_daily.revenue", "dm.sales_daily.SUM"}),
+    ],
+)
+def test_implicit_sum_sort_preserves_function_spelling(
+    tmp_path: Path, function: str, sort: str, expected: set[str]
+) -> None:
+    sql = f"SELECT {function}(revenue) FROM dm.sales_daily ORDER BY {sort}"
+    assert _reads(sql) == expected
+    expected_codes = [] if len(expected) == 1 else ["asset.query_ungoverned_field"]
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == expected_codes
+
+
+@pytest.mark.parametrize("projected", ["sum(revenue) AS total", "+sum(revenue)", "+(sum(revenue))"])
+def test_sum_sort_boundaries_keep_alias_and_unary_plus_rules(
+    tmp_path: Path, projected: str
+) -> None:
+    sql = f"SELECT {projected} FROM dm.sales_daily ORDER BY sum"
+    assert "dm.sales_daily.revenue" in _reads(sql)
+    assert "dm.sales_daily.sum" in _reads(sql)
+    assert ungoverned_codes(tmp_path, sql, engine="postgres")
+
+
+def test_sum_group_by_remains_an_input_read(tmp_path: Path) -> None:
+    sql = "SELECT sum(revenue) FROM dm.sales_daily GROUP BY sum"
+    assert _reads(sql) == {"dm.sales_daily.revenue", "dm.sales_daily.sum"}
+    assert ungoverned_codes(tmp_path, sql, engine="postgres")
+
+
 def test_implicit_count_distinct_on_reads_output(tmp_path: Path) -> None:
     sql = "SELECT DISTINCT ON (count) count(*) FROM dm.sales_daily ORDER BY count"
     refs = extract_column_refs(sql, dialect="postgres")

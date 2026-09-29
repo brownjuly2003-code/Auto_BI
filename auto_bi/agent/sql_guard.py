@@ -383,7 +383,7 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     and an unattributed `a`, pinned by the tests.
     """
     root = _parse_one_select(sql, dialect=dialect)
-    unary_plus_offsets, quoted_count_names = (
+    unary_plus_offsets, quoted_function_names = (
         _postgres_sort_token_info(sql, dialect) if dialect != "clickhouse" else (None, {})
     )
     if dialect == "clickhouse":
@@ -420,7 +420,7 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
         ambiguous,
         _ReadThroughState(),
         unary_plus_offsets,
-        quoted_count_names,
+        quoted_function_names,
     )
     return ColumnReads(
         attributed=frozenset(attributed),
@@ -914,14 +914,14 @@ def _postgres_name(identifier: exp.Expression) -> str:
 def _postgres_sort_token_info(
     sql: str, dialect: str
 ) -> tuple[frozenset[int] | None, dict[int, str]]:
-    """Track unary plus offsets and quoted COUNT spellings erased by sqlglot."""
+    """Track unary plus offsets and quoted aggregate spellings erased by sqlglot."""
     tokens = sqlglot.Dialect.get_or_raise(dialect).tokenize(sql)
     offsets: set[int] = set()
-    quoted_count_names: dict[int, str] = {}
+    quoted_function_names: dict[int, str] = {}
     has_plus = False
     for index, token in enumerate(tokens):
-        if token.token_type == TokenType.IDENTIFIER and token.text.lower() == "count":
-            quoted_count_names[token.start] = token.text
+        if token.token_type == TokenType.IDENTIFIER and token.text.lower() in {"count", "sum"}:
+            quoted_function_names[token.start] = token.text
         if token.token_type != TokenType.PLUS:
             continue
         has_plus = True
@@ -930,7 +930,7 @@ def _postgres_sort_token_info(
             following += 1
         if following < len(tokens):
             offsets.add(tokens[following].start)
-    return (frozenset(offsets) if has_plus else None), quoted_count_names
+    return (frozenset(offsets) if has_plus else None), quoted_function_names
 
 
 def _postgres_plus_expression(column: exp.Column, offsets: frozenset[int] | None) -> bool:
@@ -964,9 +964,9 @@ def _rewrite_postgres_parenthesized_orders(root: exp.Expression) -> None:
 def _postgres_output_name(
     projected: exp.Expression,
     unary_plus_offsets: frozenset[int] | None,
-    quoted_count_names: dict[int, str] | None = None,
+    quoted_function_names: dict[int, str] | None = None,
 ) -> str | None:
-    """Name exposed by an aliased, plain-column, or plain COUNT SELECT item."""
+    """Name exposed by an aliased, plain-column, or plain aggregate SELECT item."""
     if isinstance(projected, exp.Alias):
         alias = projected.args.get("alias")
         return _postgres_name(alias) if isinstance(alias, exp.Identifier) else None
@@ -976,15 +976,16 @@ def _postgres_output_name(
         projected, unary_plus_offsets
     ):
         return _postgres_name(projected.this)
-    if isinstance(projected, exp.Count):
+    if isinstance(projected, (exp.Count, exp.Sum)):
         start = projected.meta.get("start")
         if unary_plus_offsets is not None and (
             not isinstance(start, int) or start in unary_plus_offsets
         ):
             return None
-        if quoted_count_names is not None and isinstance(start, int):
-            return quoted_count_names.get(start, "count")
-        return "count"
+        function_name = "count" if isinstance(projected, exp.Count) else "sum"
+        if quoted_function_names is not None and isinstance(start, int):
+            return quoted_function_names.get(start, function_name)
+        return function_name
     return None
 
 
@@ -992,7 +993,7 @@ def _postgres_sort_output(
     scope: Scope,
     column: exp.Column,
     unary_plus_offsets: frozenset[int] | None,
-    quoted_count_names: dict[int, str] | None,
+    quoted_function_names: dict[int, str] | None,
 ) -> bool:
     """A whole SELECT or set-operation sort item naming its output."""
     if column.table or _postgres_plus_expression(column, unary_plus_offsets):
@@ -1018,7 +1019,7 @@ def _postgres_sort_output(
         return False
     name = _postgres_name(column.this)
     return any(
-        _postgres_output_name(item, unary_plus_offsets, quoted_count_names) == name
+        _postgres_output_name(item, unary_plus_offsets, quoted_function_names) == name
         for item in output.expressions
     )
 
@@ -1094,7 +1095,7 @@ def _grade_columns(
     ambiguous: set[AmbiguousRef],
     state: _ReadThroughState,
     unary_plus_offsets: frozenset[int] | None,
-    quoted_count_names: dict[int, str] | None,
+    quoted_function_names: dict[int, str] | None,
 ) -> bool:
     """Grade each column once, in the innermost scope that contains it.
 
@@ -1168,7 +1169,7 @@ def _grade_columns(
                     )
                 continue
             if aliases is None and _postgres_sort_output(
-                scope, column, unary_plus_offsets, quoted_count_names
+                scope, column, unary_plus_offsets, quoted_function_names
             ):
                 continue
             _attribute_column(scope, column, attributed, ambiguous)

@@ -83,6 +83,14 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-29 — PostgreSQL `SUM(...)` без alias даёт неявное имя `sum` для
+  целого `ORDER BY`/`DISTINCT ON` и левой ветки set operation. Ложные field
+  review/advisory уходят; аргументы сохраняют чтения. `AS`, квотированный
+  регистр и унарный `+` сохраняют границы; `GROUP BY` не использует выход.
+  `VERIFIER_VERSION` 43 → 44, `CHECK_VERSION` 24 → 25. PostgreSQL 16
+  проверен на Mac. Синтетическое Astra xhigh review: 0 actionable P1/P2.
+  Полный offline pytest: 2839 passed, 21 skipped, 38 deselected; strict mypy,
+  Ruff и Black чистые. Не human/production acceptance.
 - 2026-09-29 — PostgreSQL `ORDER BY`/`DISTINCT ON` распознаёт неявное имя
   `count` у прямого `COUNT(...)` без alias, также в левой ветке set operation.
   Ложные field review/advisory уходят, чтения аргументов сохраняются; `AS` и

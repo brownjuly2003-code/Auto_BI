@@ -98,11 +98,12 @@ parenthesized SELECT or set operation SHALL belong to the query inside those par
 A plain-column SELECT output enclosed in parentheses SHALL retain that column's output name.
 An unaliased SELECT item preceded by unary `+` SHALL NOT offer that column's name as an output
 name; an explicit alias SHALL still offer its declared name.
-A direct unaliased `COUNT(...)` SELECT item, optionally enclosed in parentheses, SHALL offer
-the implicit output name `count` for these sort rules. An explicit alias SHALL replace that
-name, and unary `+` before `COUNT(...)` SHALL prevent the implicit name. A quoted function
-name SHALL retain its spelling: `"Count"(...)` does not expose lowercase `count`. The
-aggregate output SHALL NOT become a `GROUP BY` output-column alternative.
+A direct unaliased `COUNT(...)` or `SUM(...)` SELECT item, optionally enclosed in parentheses,
+SHALL offer the implicit output name `count` or `sum` for these sort rules. An explicit alias
+SHALL replace that name, and unary `+` before either aggregate SHALL prevent the implicit
+name. A quoted function name SHALL retain its spelling: `"Count"(...)` does not expose
+lowercase `count`, and `"Sum"(...)` does not expose lowercase `sum`. The aggregate output
+SHALL NOT become a `GROUP BY` output-column alternative.
 Window ordering and partitioning, `WITHIN GROUP` ordering, aggregate-internal ordering,
 and other `GROUP BY` forms SHALL retain their existing input-resolution rules. ClickHouse and
 chart impact SHALL retain their existing results.
@@ -114,6 +115,14 @@ chart impact SHALL retain their existing results.
 - **WHEN** the gate grades its field reads
 - **THEN** it reports no physical `count` read and no governance finding; a set operation
   sorting by the same output name of its left branch has no sourceless `count` advisory
+
+### Scenario: an implicit PostgreSQL SUM output supplies a sort name
+
+- **GIVEN** a PostgreSQL-family reviewed query `SELECT sum(revenue) FROM dm.sales_daily ORDER
+  BY sum`, with `revenue` governed and no physical column named `sum`
+- **WHEN** the gate grades its field reads
+- **THEN** it reads `revenue`, reports no physical `sum` read and no governance finding; a
+  set operation sorting by the same output name of its left branch has no `sum` advisory
 
 ### Scenario: a PostgreSQL sort expression reads its input name
 
