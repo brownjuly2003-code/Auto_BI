@@ -6,6 +6,18 @@
 
 ### Changed
 
+- **PostgreSQL агрегаты с `FILTER` сохраняют неявное имя при сортировке.**
+  `COUNT`, `SUM`, `AVG`, `MIN` и `MAX` с `FILTER (WHERE …)` разрешают целое
+  имя в `ORDER BY`/`DISTINCT ON` и выход левой ветки set operation без ложного
+  field review или advisory. Чтения аргумента и предиката сохраняются;
+  `AS`, квотированный регистр, унарный `+`, выражения, квалифицированные имена
+  и `GROUP BY` остаются на прежних границах. `VERIFIER_VERSION` 47 → 48,
+  `CHECK_VERSION` 28 → 29. Выбор среза — синтетическое Astra xhigh review;
+  реализация — Luna xhigh. Полный offline pytest: 2937 passed, 21 skipped,
+  38 deselected; strict mypy, Ruff и Black чистые. Итоговое синтетическое
+  Astra xhigh review: 0 actionable P1/P2; живой PostgreSQL не запускался,
+  не human/production acceptance.
+
 - **PostgreSQL `AVG`/`MIN`/`MAX` дают неявные имена при сортировке.**
   Прямые агрегаты без alias разрешают целое имя в `ORDER BY`/`DISTINCT ON`
   и выход левой ветки set operation без ложного field review или advisory.

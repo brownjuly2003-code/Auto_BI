@@ -10,9 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=47`, `CHECK_VERSION=28`
+**Версии evidence:** `VERIFIER_VERSION=48`, `CHECK_VERSION=29`
 
-**Последний срез (2026-09-29):** прямые PostgreSQL `AVG(...)`, `MIN(...)` и
+**Последний срез (2026-09-29):** PostgreSQL `COUNT`, `SUM`, `AVG`, `MIN` и `MAX`
+с `FILTER (WHERE …)` сохраняют неявное имя выхода для целого `ORDER BY`/
+`DISTINCT ON` и сортировки set operation по левой ветке. Ложное чтение поля с
+именем агрегата уходит; аргументы и предикат `FILTER` остаются чтениями.
+`AS`, квотированный регистр, унарный `+`, выражения, квалифицированные имена и
+`GROUP BY` сохраняют границы. `VERIFIER_VERSION` 47 → 48,
+`CHECK_VERSION` 28 → 29: прежний reviewed-запрос мог дать ложный governance
+finding. Red-green: исходный тест упал на `dm.sales_daily.sum`, после правки
+весь PostgreSQL order-by suite прошёл (181 passed). Срез выбран синтетическим
+Astra xhigh review и реализован Luna xhigh. Полный offline pytest:
+2937 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях,
+Ruff и Black чистые. Итоговое синтетическое Astra xhigh review:
+0 actionable P1/P2. Живой PostgreSQL не запускался; это не human/production
+acceptance.
+
+**Предыдущий срез (2026-09-29):** прямые PostgreSQL `AVG(...)`, `MIN(...)` и
 `MAX(...)` без alias дают неявные выходные имена для целого `ORDER BY`/`DISTINCT ON`
 и сортировки set operation по левой ветке. Ложные field review/advisory на имени
 функции уходят, чтения аргументов остаются. Квотированный регистр, `AS`, унарный

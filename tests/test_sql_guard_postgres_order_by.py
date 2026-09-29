@@ -184,6 +184,143 @@ def test_implicit_sum_sort_name_reads_output(tmp_path: Path) -> None:
     assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
 
 
+def test_filtered_sum_sort_name_reads_output(tmp_path: Path) -> None:
+    sql = "SELECT sum(revenue) FILTER (WHERE region = 'north') FROM dm.sales_daily ORDER BY sum"
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue", "dm.sales_daily.region"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("function", ["count", "sum", "avg", "min", "max"])
+def test_filtered_aggregate_sort_name_reads_output_and_filter(
+    tmp_path: Path, function: str
+) -> None:
+    sql = (
+        f"SELECT {function}(revenue) FILTER (WHERE region = 'north') "
+        f"FROM dm.sales_daily ORDER BY {function}"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue", "dm.sales_daily.region"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("function", ["count", "sum", "avg", "min", "max"])
+def test_filtered_aggregate_distinct_on_reads_output(tmp_path: Path, function: str) -> None:
+    sql = (
+        f"SELECT DISTINCT ON ({function}) {function}(revenue) "
+        f"FILTER (WHERE region = 'north') FROM dm.sales_daily ORDER BY {function}"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue", "dm.sales_daily.region"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("operator", ["UNION", "INTERSECT", "EXCEPT"])
+@pytest.mark.parametrize("function", ["count", "sum", "avg", "min", "max"])
+def test_filtered_aggregate_names_set_output(tmp_path: Path, operator: str, function: str) -> None:
+    sql = (
+        f"SELECT {function}(revenue) FILTER (WHERE region = 'north') FROM dm.sales_daily "
+        f"{operator} SELECT {function}(revenue) FILTER (WHERE region = 'north') "
+        f"FROM dm.sales_daily ORDER BY {function}"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue", "dm.sales_daily.region"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("function", ["count", "sum", "avg", "min", "max"])
+def test_parenthesized_filtered_aggregate_sort_name_reads_output(
+    tmp_path: Path, function: str
+) -> None:
+    sql = (
+        f"SELECT ({function}(revenue) FILTER (WHERE region = 'north')) "
+        f"FROM dm.sales_daily ORDER BY {function}"
+    )
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert _reads(sql) == {"dm.sales_daily.revenue", "dm.sales_daily.region"}
+    assert not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("function", ["count", "sum", "avg", "min", "max"])
+def test_filtered_aggregate_sort_name_without_from(tmp_path: Path, function: str) -> None:
+    sql = f"SELECT {function}(1) FILTER (WHERE true) ORDER BY {function}"
+    refs = extract_column_refs(sql, dialect="postgres")
+    assert not refs.attributed and not refs.ambiguous and not refs.unattributed
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == []
+
+
+@pytest.mark.parametrize("projected", ["sum(revenue) FILTER (WHERE region = 'north') AS total"])
+def test_filtered_aggregate_alias_remains_an_input_read(tmp_path: Path, projected: str) -> None:
+    sql = f"SELECT {projected} FROM dm.sales_daily ORDER BY sum"
+    assert _reads(sql) == {
+        "dm.sales_daily.revenue",
+        "dm.sales_daily.region",
+        "dm.sales_daily.sum",
+    }
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
+@pytest.mark.parametrize("function, sort", [('"Sum"', "sum"), ('"Sum"', '"Sum"')])
+def test_filtered_aggregate_sort_preserves_function_spelling(
+    tmp_path: Path, function: str, sort: str
+) -> None:
+    sql = (
+        f"SELECT {function}(revenue) FILTER (WHERE region = 'north') "
+        f"FROM dm.sales_daily ORDER BY {sort}"
+    )
+    expected = {"dm.sales_daily.revenue", "dm.sales_daily.region"}
+    if sort == "sum":
+        expected.add("dm.sales_daily.sum")
+    assert _reads(sql) == expected
+    expected_codes = [] if len(expected) == 2 else ["asset.query_ungoverned_field"]
+    assert ungoverned_codes(tmp_path, sql, engine="postgres") == expected_codes
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT +sum(revenue) FILTER (WHERE region = 'north') FROM dm.sales_daily ORDER BY sum",
+        "SELECT sum(revenue) FILTER (WHERE region = 'north') "
+        "FROM dm.sales_daily ORDER BY dm.sales_daily.sum",
+        "SELECT sum(revenue) FILTER (WHERE region = 'north') "
+        "FROM dm.sales_daily ORDER BY lower(sum)",
+        "SELECT sum(revenue) FILTER (WHERE region = 'north') FROM dm.sales_daily GROUP BY sum",
+    ],
+)
+def test_filtered_aggregate_output_name_boundaries_remain_input_reads(
+    tmp_path: Path, sql: str
+) -> None:
+    assert _reads(sql) == {
+        "dm.sales_daily.revenue",
+        "dm.sales_daily.region",
+        "dm.sales_daily.sum",
+    }
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
+def test_filtered_aggregate_ungoverned_predicate_is_read(tmp_path: Path) -> None:
+    sql = (
+        "SELECT sum(revenue) FILTER (WHERE internal_cost_raw > 0) "
+        "FROM dm.sales_daily ORDER BY sum"
+    )
+    assert _reads(sql) == {
+        "dm.sales_daily.revenue",
+        "dm.sales_daily.internal_cost_raw",
+    }
+    assert ungoverned_pairs(tmp_path, sql, engine="postgres") == [
+        ("asset.query_ungoverned_field", "review")
+    ]
+
+
 def test_implicit_sum_names_set_output(tmp_path: Path) -> None:
     sql = (
         "SELECT sum(revenue) FROM dm.sales_daily UNION "

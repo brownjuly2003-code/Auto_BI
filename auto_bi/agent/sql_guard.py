@@ -1051,6 +1051,11 @@ def _postgres_output_name(
         return _postgres_name(alias) if isinstance(alias, exp.Identifier) else None
     while isinstance(projected, exp.Paren):
         projected = projected.this
+    if isinstance(projected, exp.Filter):
+        filtered = projected.this
+        if not isinstance(filtered, (exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
+            return None
+        projected = filtered
     if isinstance(projected, exp.Column) and not _postgres_plus_expression(
         projected, unary_plus_offsets
     ):

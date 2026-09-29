@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-29 — PostgreSQL `COUNT`/`SUM`/`AVG`/`MIN`/`MAX` с `FILTER`
+  сохраняют неявное имя выхода в `ORDER BY`/`DISTINCT ON` и сортировке set
+  operation; аргументы и предикат остаются чтениями. `VERIFIER_VERSION`
+  47 → 48, `CHECK_VERSION` 28 → 29. Red-green: ложное чтение
+  `dm.sales_daily.sum` воспроизведено, затем 181 тест PostgreSQL order-by
+  прошёл. Полный offline pytest: 2937 passed, 21 skipped, 38 deselected;
+  strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые. Срез выбран
+  синтетическим Astra xhigh review и реализован Luna xhigh; итоговое review:
+  0 actionable P1/P2. Живой PostgreSQL не запускался; это не human/production
+  acceptance.
 - 2026-09-29 — прямые PostgreSQL `AVG`, `MIN` и `MAX` без alias дают неявные
   выходные имена для `ORDER BY`/`DISTINCT ON` и левой ветки set operation;
   чтения аргументов сохраняются. `VERIFIER_VERSION` 46 → 47,
