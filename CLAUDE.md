@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-30 — governance ClickHouse учитывает точный набор достижимых ключей
+  `JOIN … USING`: непрочитанные named CTE и scalar `WITH` больше не добавляют
+  эту причину partial-field advisory; при соседнем живом JOIN остаются его ключи.
+  Используется общий с chart impact обход гейтов CTE; общий extractor сохраняет
+  whole-AST область. Версии evidence: 55 → 56 / 35 → 36.
+  Luna xhigh: red-green 3 падения, затем 20 новых регрессий; связанный gate: 262 passed.
+  Независимо: 20 passed, strict mypy — 0 ошибок в 120 модулях, Ruff и Black чистые.
+  Полный offline pytest: 3102 passed, 21 skipped, 38 deselected.
+  Итоговое синтетическое Astra xhigh review: 0 actionable P1/P2.
+  Живой ClickHouse не запускался; human/production acceptance не заявляется.
 - 2026-09-30 — governance ClickHouse учитывает `COLUMNS(...)` только в достижимой
   части SQL: непрочитанные named CTE и scalar `WITH` больше не оставляют ложную
   причину partial-field advisory, живой селектор её сохраняет. Общий extractor

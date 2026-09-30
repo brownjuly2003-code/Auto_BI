@@ -306,7 +306,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 55 — ClickHouse governance applies CTE reachability to `COLUMNS(...)` selectors as it
 #: already does for column-reading stars. The shared extractor stays whole-AST; only the
 #: reviewed-query advisory narrows to selectors in query parts that actually run.
-VERIFIER_VERSION = "55"
+#: 56 — ClickHouse governance applies CTE reachability to `JOIN ... USING` keys. The
+#: shared extractor stays whole-AST; only the reviewed-query advisory narrows to keys in
+#: query parts that actually run.
+VERIFIER_VERSION = "56"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -435,7 +438,10 @@ VERIFIER_VERSION = "55"
 #: 35 — `assets.invalidated` applies the same ClickHouse CTE and scalar WITH reachability to
 #: `COLUMNS(...)` selectors. An unread selector no longer leaves a false partial-field
 #: advisory; reachable selectors and all other field reasons keep their contract.
-CHECK_VERSION = "35"
+#: 36 — `assets.invalidated` applies the same ClickHouse CTE and scalar WITH reachability to
+#: `JOIN ... USING` keys. An unread key no longer leaves a false partial-field advisory;
+#: reachable keys and all other field reasons keep their contract.
+CHECK_VERSION = "36"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

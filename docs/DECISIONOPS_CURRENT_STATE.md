@@ -10,9 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=55`, `CHECK_VERSION=35`
+**Версии evidence:** `VERIFIER_VERSION=56`, `CHECK_VERSION=36`
 
 **Последний срез (2026-09-30):** governance reviewed-запроса ClickHouse сообщает
+ключи `JOIN … USING` только из достижимой части SQL. Непрочитанные named CTE
+и scalar `WITH` больше не добавляют эту причину `asset.query_fields_unchecked`;
+при соседнем живом JOIN остаётся точный набор его ключей, включая совпадающий
+с непрочитанным ключ. Используется общий с chart impact обход гейтов CTE;
+общий `ColumnReads.join_using_keys` остаётся whole-AST. Именованные чтения,
+неизвестные таблицы/поля, другие причины advisory и PostgreSQL сохраняют правила.
+`VERIFIER_VERSION` 55 → 56, `CHECK_VERSION` 35 → 36: прежний advisory может исчезнуть.
+Red-green Luna xhigh: 3 падения до правки, затем 20 новых регрессий прошли;
+связанный gate исполнителя: 262 passed. Независимый регрессионный модуль:
+20 passed; strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+Полный offline pytest: 3102 passed, 21 skipped, 38 deselected.
+Выбор среза и итоговое ревью — синтетические Astra xhigh; итог: 0 actionable P1/P2.
+Живой ClickHouse на этом срезе не запускался; human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-09-30):** governance reviewed-запроса ClickHouse сообщает
 `it selects COLUMNS(...)` только для селектора в достижимой части SQL.
 Непрочитанные named CTE и scalar `WITH`, включая цепочки непрочитанных объявлений,
 больше не создают эту причину `asset.query_fields_unchecked`; живой селектор

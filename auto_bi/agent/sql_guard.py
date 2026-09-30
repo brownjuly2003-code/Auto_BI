@@ -551,6 +551,20 @@ def clickhouse_has_reachable_column_selector(sql: str) -> bool:
     return any(_node_runs(columns, open_ids) for columns in root.find_all(exp.Columns))
 
 
+def clickhouse_reachable_join_using_keys(sql: str) -> frozenset[str]:
+    """Names of ``JOIN ... USING`` keys in reachable ClickHouse query parts."""
+    root = _parse_one_select(sql, dialect="clickhouse")
+    open_ids = _open_cte_gates(root)
+    keys: set[str] = set()
+    for join in root.find_all(exp.Join):
+        if not _node_runs(join, open_ids):
+            continue
+        using = join.args.get("using")
+        items = using if isinstance(using, list) else [using]
+        keys.update(item.name for item in items if isinstance(item, exp.Identifier))
+    return frozenset(keys)
+
+
 class ColumnReads(NamedTuple):
     """What a SELECT reads at column level, and what saying more would take a guess.
 

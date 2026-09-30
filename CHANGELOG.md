@@ -6,6 +6,13 @@
 
 ### Changed
 
+- **ClickHouse governance учитывает достижимость ключей `JOIN … USING`.**
+  Непрочитанная named CTE или scalar `WITH` больше не добавляет ключи в причину
+  `asset.query_fields_unchecked`; при соседнем живом JOIN остаются только его
+  ключи. Используется общий с chart impact обход гейтов CTE. Общий extractor
+  сохраняет whole-AST `join_using_keys`, именованные чтения и PostgreSQL — прежние
+  правила. `VERIFIER_VERSION` 55 → 56, `CHECK_VERSION` 35 → 36.
+
 - **ClickHouse governance учитывает достижимость `COLUMNS(...)`.** Селектор в
   непрочитанной named CTE или scalar `WITH` больше не создаёт причину
   `it selects COLUMNS(...)` в `asset.query_fields_unchecked`. Живой селектор

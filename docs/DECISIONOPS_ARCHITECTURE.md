@@ -424,11 +424,14 @@ ClickHouse `COLUMNS('regex')` тоже оставляет advisory: этот с�
 по общему с chart impact обходу гейтов CTE: непрочитанная named CTE или scalar `WITH`
 не создаёт причину `COLUMNS(...)`, а открытая ссылка сохраняет её. Общий extractor
 сохраняет whole-AST `ColumnReads.column_selectors`; регулярное выражение не раскрывается.
-`JOIN … USING` на ClickHouse и
-PostgreSQL-семействе также оставляет advisory
-с именами ключей: SQL не приписывает общий ключ одной таблице. Явные соседние
-колонки грейдятся отдельно; governance собирает эти ключи по всему AST, включая
-вложенный JOIN. PostgreSQL `NATURAL JOIN` оставляет advisory без догадки о ключах:
+`JOIN … USING` на ClickHouse и PostgreSQL-семействе также оставляет advisory
+с именами ключей: SQL не приписывает общий ключ одной таблице. На ClickHouse
+governance собирает точный набор ключей достижимых JOIN по общему с chart impact
+обходу гейтов CTE: непрочитанные named CTE и scalar `WITH` ключей не добавляют.
+Если рядом есть живой JOIN, в причине остаются только его ключи. Общий extractor
+сохраняет whole-AST `ColumnReads.join_using_keys`, PostgreSQL — прежнюю whole-AST
+область. Явные соседние колонки грейдятся отдельно.
+PostgreSQL `NATURAL JOIN` оставляет advisory без догадки о ключах:
 они выбираются по совпадающим именам выходных колонок источников и могут зависеть
 от физической схемы. Явные соседние колонки грейдятся отдельно; остаток ищется во
 всём AST, включая вложенный JOIN. PostgreSQL-алиас именованной таблицы или
@@ -566,7 +569,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=55`, `CHECK_VERSION=35`.
+`VERIFIER_VERSION=56`, `CHECK_VERSION=36`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -860,8 +863,9 @@ function / subquery, которую statement не именует), `chart.metri
 исполняемой части statement: селектор в непрочитанной CTE или scalar `WITH` не даёт
 `chart.sql_partial`, а открытая ссылка сохраняет гэп. Ключ `JOIN … USING` в chart impact
 следует тем же гейтам: непрочитанный JOIN не оставляет гэпа, достижимый оставляет.
-Governance reviewed asset SQL также уточняет достижимость `COLUMNS` через общий обход;
-его остаток `JOIN … USING` сохраняет whole-AST область.
+Governance reviewed asset SQL на ClickHouse также уточняет достижимость `COLUMNS`
+и точный набор ключей `JOIN … USING` через общий обход; общий extractor и
+PostgreSQL governance сохраняют whole-AST область.
 `WHERE region IN rev` /
 `WHERE region IN dm.rev` читается как `IN (SELECT * FROM <name>)`: плитка выбирает `*`
 из этой таблицы, поэтому изменение колонки той таблицы — `chart.sql_partial` (звезда),
