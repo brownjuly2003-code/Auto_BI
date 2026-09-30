@@ -892,11 +892,11 @@ def _runs_in_statement(
     a scalar `WITH` body runs when what encloses it runs.
 
     A named CTE opens when a running `exp.Table` without a database or catalog names
-    it (case-insensitive) and the CTE's declaring query is an ancestor of that table,
+    it (case-sensitive) and the CTE's declaring query is an ancestor of that table,
     or when a running bare Column in `In.args["field"]` that is not a visible alias
     names it — ClickHouse reads that as `IN (SELECT * FROM <name>)`, the same
     unqualified table. A scalar CTE opens when a running column names it
-    (case-insensitive), the column
+    (case-sensitive), the column
     is not inside that CTE, and the declaring query is an ancestor of the column.
     A column names the alias through its leftmost written part: catalog if set, else
     db, else table, else its own name (a bare column). A tuple access at any depth

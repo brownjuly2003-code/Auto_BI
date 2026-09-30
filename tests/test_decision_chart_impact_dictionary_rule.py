@@ -841,10 +841,10 @@ def test_a_star_follows_a_running_reader(tmp_path: Path, sql: str, starred: bool
             False,
         ),
         (
-            # (7) case-insensitive: FROM x opens WITH X
+            # (7) case-sensitive: FROM x does not open WITH X
             f"WITH X AS (SELECT {_DICT_GET_REV} AS v FROM dm.other) "
-            "SELECT sum(revenue) FROM dm.sales_daily, x",
-            True,
+            "SELECT sum(dm.sales_daily.revenue) FROM dm.sales_daily, x",
+            False,
         ),
     ],
     ids=[
@@ -859,7 +859,7 @@ def test_a_star_follows_a_running_reader(tmp_path: Path, sql: str, starred: bool
         "5-control-never-named-outer-unread",
         "5-control-named-outer-unread",
         "6-self-reference-stays-closed",
-        "7-case-insensitive-from-opens-named-cte",
+        "7-different-case-from-does-not-open-named-cte",
     ],
 )
 def test_a_nested_query_inside_a_live_expression_with_follows_reachability(

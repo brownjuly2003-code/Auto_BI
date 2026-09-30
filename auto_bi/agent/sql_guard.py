@@ -341,7 +341,7 @@ def _column_leftmost_name(column: exp.Column) -> str:
     """
     for part in (column.catalog, column.db, column.table, column.name):
         if part:
-            return part.lower()
+            return part
     return ""
 
 
@@ -350,7 +350,7 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
 
     Linear worklist: each reference is processed once, each gate opens once. A name
     opens the nearest named CTE declaration it could name, compared
-    case-insensitively, whose declaring query encloses the name. A column names a
+    case-sensitively, whose declaring query encloses the name. A column names a
     scalar alias through its leftmost written part, so a tuple access at any depth
     (`t.1`, `t.a.b`) opens the nearest scalar declaration. An ordinary two-part
     column qualified by one unambiguous explicit named-table alias, or an ordinary
@@ -362,7 +362,7 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
     named_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
     scalar_by_alias: dict[str, list[_CteGate]] = defaultdict(list)
     for cte in root.find_all(exp.CTE):
-        alias = cte.alias.lower()
+        alias = cte.alias
         if not alias:
             continue
         declaring = _declaring_query(cte)
@@ -443,7 +443,7 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
     for table in root.find_all(exp.Table):
         if table.db or table.catalog or not table.name:
             continue
-        add_named_ref(table, table.name.lower())
+        add_named_ref(table, table.name)
     for column in root.find_all(exp.Column):
         if _is_clickhouse_setting_column(column, setting_items):
             continue
@@ -490,7 +490,7 @@ def _open_cte_gates(root: exp.Expr) -> set[int]:
         for column in clickhouse_in_table_fields(root):
             if column.table or column.db or column.catalog or not column.name:
                 continue
-            add_named_ref(column, column.name.lower())
+            add_named_ref(column, column.name)
 
     waiting: dict[int, list[int]] = defaultdict(list)
     for index, ref in enumerate(refs):

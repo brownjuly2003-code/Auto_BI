@@ -83,6 +83,18 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-30 — общий обход достижимости ClickHouse связывает named CTE и scalar
+  `WITH` с точным регистром: внутреннее `a` не скрывает внешнее `A`, а ссылка
+  на `a` не открывает непрочитанное соседнее `A`. Звёзды, `COLUMNS`, `JOIN … USING`,
+  dictionary- и Join-table-вызовы используют одно правило, включая named CTE в `IN`.
+  Точное затенение, self-reference, дубликаты, квалификаторы и `SETTINGS` сохранены.
+  Версии evidence: 53 → 54 / 33 → 34. Red-green: 15 новых падений и одно в прежнем
+  граничном тесте; 28 новых регрессий прошли, связанный gate: 610 passed.
+  Полный offline pytest: 3065 passed, 21 skipped, 38 deselected; strict mypy:
+  0 ошибок в 120 модулях, Ruff и Black чистые.
+  Синтетическое Astra xhigh review: 0 actionable P1/P2. ClickHouse 24.8.14.39 на Mac
+  подтвердил различие регистра и точное затенение в `FROM`/`IN`; стенд удалён.
+  Human/production acceptance не заявляется.
 - 2026-09-30 — governance ClickHouse сообщает `it selects *` только для звезды,
   читающей колонки в достижимой части SQL: непрочитанные named CTE и scalar
   `WITH` больше не создают эту причину advisory. Общий с chart impact обход

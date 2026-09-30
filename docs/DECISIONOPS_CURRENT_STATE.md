@@ -10,9 +10,25 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=53`, `CHECK_VERSION=33`
+**Версии evidence:** `VERIFIER_VERSION=54`, `CHECK_VERSION=34`
 
-**Последний срез (2026-09-30):** governance reviewed-запроса ClickHouse сообщает
+**Последний срез (2026-09-30):** общий обход достижимости ClickHouse сопоставляет
+named CTE и scalar `WITH` с точным регистром. Внутреннее `a` больше не скрывает
+настоящее чтение внешнего `A`, а чтение `a` не открывает непрочитанное соседнее
+`A`. Правило едино для звёзд, `COLUMNS`, `JOIN … USING`, dictionary- и
+Join-table-вызовов, включая named CTE справа от `IN`. Точное затенение,
+self-reference, одноуровневые дубликаты, табличные квалификаторы и `SETTINGS`
+сохраняют прежние правила. `VERIFIER_VERSION` 53 → 54, `CHECK_VERSION` 33 → 34:
+предупреждения могут добавляться или исчезать. Red-green: 15 падений в новом
+модуле и одно в прежнем граничном тесте; после исправления 28 новых регрессий
+прошли, связанный ClickHouse/chart gate: 610 passed. Полный offline pytest:
+3065 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях,
+Ruff и Black чистые. Синтетическое Astra xhigh review: 0 actionable P1/P2.
+Живой ClickHouse 24.8.14.39 на Mac подтвердил
+различие `A`/`a`, точное затенение и named CTE в `FROM`/`IN`; изолированный
+стенд удалён. Это не human/production acceptance.
+
+**Предыдущий срез (2026-09-30):** governance reviewed-запроса ClickHouse сообщает
 `it selects *` только для звезды, читающей колонки в достижимой части SQL.
 Непрочитанные named CTE и scalar `WITH` больше не создают эту причину
 `asset.query_fields_unchecked`; живое чтение алиаса, кортежа, цепочки CTE и
@@ -526,7 +542,9 @@ scheduler, PostgreSQL, REST/MCP, notifications или actions.
   молчит там, где `IN (SELECT * FROM x)` назвал бы чтение CTE (F-T-14-3).
 - Резолвер связывает ссылку на scalar `WITH` или named CTE с ближайшим объявлением, когда
   такое связывание однозначно: вложенное объявление не открывает скрытое внешнее (F-T-11-3),
-  в том числе для `dictGet`, `joinGet`, `*` и `JOIN … USING`. Self-reference и дубликаты
+  в том числе для `dictGet`, `joinGet`, `*` и `JOIN … USING`. Имена ClickHouse
+  сравниваются с точным регистром: `a` не затеняет `A` и не открывает одноимённое
+  при сворачивании регистра соседнее объявление. Self-reference и дубликаты
   одноимённых объявлений на одном уровне остаются conservative. Обычная двухчастная колонка
   `t.region` при однозначном явном алиасе именованного `FROM`/`JOIN`-источника того же SELECT читает
   таблицу и не открывает scalar `WITH t` (F-T-11-7). Обычная трёхчастная колонка
