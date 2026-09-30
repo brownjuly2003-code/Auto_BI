@@ -297,7 +297,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 52 — PostgreSQL ORDER BY / DISTINCT ON and set-operation output resolution preserve
 #: already known strong output names through CAST and postfix typecasts. Unary plus still
 #: prevents the implicit name; argument, FILTER and window input reads remain graded.
-VERIFIER_VERSION = "52"
+#: 53 — ClickHouse reviewed-query governance reports column-reading stars only in reachable
+#: query parts, using the same CTE gates as chart impact. Unread named CTE and scalar WITH
+#: stars no longer leave the "it selects *" advisory; named reads and other remainders stay.
+VERIFIER_VERSION = "53"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -417,7 +420,10 @@ VERIFIER_VERSION = "52"
 #: 32 — PostgreSQL sorting by a cast of an already known strong output no longer creates
 #: a phantom field REVIEW or ambiguous/sourceless advisory. Cast argument reads remain
 #: graded; unary plus, explicit aliases and input sort expressions retain their boundaries.
-CHECK_VERSION = "32"
+#: 33 — `assets.invalidated` no longer reports "it selects *" for an unreachable ClickHouse
+#: star. Other advisory reasons and explicit table/field findings remain; PostgreSQL keeps
+#: its whole-AST star rule. An earlier advisory may disappear from the same reviewed query.
+CHECK_VERSION = "33"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

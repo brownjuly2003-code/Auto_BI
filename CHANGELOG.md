@@ -6,6 +6,18 @@
 
 ### Changed
 
+- **ClickHouse governance учитывает достижимость звезды.** Звезда в непрочитанной
+  named CTE или scalar `WITH` больше не создаёт причину `it selects *` в
+  `asset.query_fields_unchecked`. Живые звёзды и `IN <table>` сохраняют advisory;
+  обычный `COUNT(*)` остаётся счётчиком строк. Governance использует общий с
+  chart impact обход CTE без изменения его алгоритма. Общий extractor,
+  именованные чтения, неизвестные таблицы и поля, `COLUMNS`, `JOIN … USING` и
+  PostgreSQL сохраняют прежние правила. `VERIFIER_VERSION` 52 → 53,
+  `CHECK_VERSION` 32 → 33. Полный offline pytest: 3037 passed, 21 skipped,
+  38 deselected; strict mypy, Ruff и Black чистые. Синтетическое Astra xhigh
+  review: 0 actionable P1/P2; живой ClickHouse не запускался,
+  не human/production acceptance.
+
 - **PostgreSQL CAST сохраняет известное имя выхода при сортировке.**
   `CAST(expr AS type)` и `expr::type`, включая вложенные casts, сохраняют
   сильное имя колонки, `COUNT`/`SUM`/`AVG`/`MIN`/`MAX` или оконного `ROW_NUMBER`

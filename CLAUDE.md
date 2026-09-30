@@ -83,6 +83,18 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-30 — governance ClickHouse сообщает `it selects *` только для звезды,
+  читающей колонки в достижимой части SQL: непрочитанные named CTE и scalar
+  `WITH` больше не создают эту причину advisory. Общий с chart impact обход
+  гейтов CTE перенесён в SQL guard без изменения алгоритма; общий extractor
+  сохраняет whole-AST `ColumnReads.starred` и не добавляет обход в chart matcher.
+  Именованные чтения, неизвестные таблицы и поля, `COLUMNS`, `JOIN … USING` и
+  PostgreSQL сохраняют правила. Версии evidence: 52 → 53 / 32 → 33.
+  Red-green: 4 падения, затем 17 passed; расширенные регрессии: 23 passed,
+  связанный ClickHouse/chart gate: 498 passed. Полный offline pytest:
+  3037 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях,
+  Ruff и Black чистые. Синтетическое Astra xhigh review: 0 actionable P1/P2;
+  живой ClickHouse не запускался, human/production acceptance не заявляется.
 - 2026-09-30 — PostgreSQL `CAST(expr AS type)` и `expr::type` сохраняют
   известное сильное имя выхода колонки, пяти агрегатов или оконного
   `ROW_NUMBER` для целого `ORDER BY`/`DISTINCT ON` и левой ветки set operation.
@@ -284,7 +296,7 @@ GraceKelly (локальный сервис, должен быть запуще�
 - 2026-09-26 — chart impact учитывает ClickHouse `COLUMNS('regex')` только в исполняемой
   части операторского SQL: непрочитанные named CTE и scalar `WITH` больше не дают ложный
   `chart.sql_partial`, а открытая ссылка сохраняет гэп. Governance reviewed asset SQL
-  остаётся whole-AST; `VERIFIER_VERSION` 32 → 33, `CHECK_VERSION` остаётся 18. Полный
+  ищет этот селектор во всём AST; `VERIFIER_VERSION` 32 → 33, `CHECK_VERSION` остаётся 18. Полный
   offline pytest: 2618 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120
   модулях, Ruff и Black чистые. Синтетическое ревью `gpt-6-astra` xhigh:
   0 actionable findings, не human/production acceptance.
