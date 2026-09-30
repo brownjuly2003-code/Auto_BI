@@ -544,6 +544,13 @@ def clickhouse_has_reachable_star(sql: str) -> bool:
     ) or any(_node_runs(column, open_ids) for column in clickhouse_in_table_fields(root))
 
 
+def clickhouse_has_reachable_column_selector(sql: str) -> bool:
+    """Whether a ClickHouse ``COLUMNS(...)`` selector is in a reachable query part."""
+    root = _parse_one_select(sql, dialect="clickhouse")
+    open_ids = _open_cte_gates(root)
+    return any(_node_runs(columns, open_ids) for columns in root.find_all(exp.Columns))
+
+
 class ColumnReads(NamedTuple):
     """What a SELECT reads at column level, and what saying more would take a guess.
 

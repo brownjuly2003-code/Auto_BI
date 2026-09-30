@@ -10,9 +10,25 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=54`, `CHECK_VERSION=34`
+**Версии evidence:** `VERIFIER_VERSION=55`, `CHECK_VERSION=35`
 
-**Последний срез (2026-09-30):** общий обход достижимости ClickHouse сопоставляет
+**Последний срез (2026-09-30):** governance reviewed-запроса ClickHouse сообщает
+`it selects COLUMNS(...)` только для селектора в достижимой части SQL.
+Непрочитанные named CTE и scalar `WITH`, включая цепочки непрочитанных объявлений,
+больше не создают эту причину `asset.query_fields_unchecked`; живой селектор
+сохраняет advisory. Используется общий с chart impact обход гейтов CTE;
+`ColumnReads.column_selectors` остаётся whole-AST, regex не раскрывается по snapshot.
+Именованные чтения, неизвестные таблицы/поля, звёзды, `JOIN … USING`, PostgreSQL
+и chart matcher сохраняют прежние правила. `VERIFIER_VERSION` 54 → 55,
+`CHECK_VERSION` 34 → 35: прежний advisory может исчезнуть.
+Red-green исполнителя Luna xhigh: 2 падения до правки, затем 17 новых регрессий
+прошли; независимый ClickHouse/governance/chart gate: 242 passed. Полный offline
+pytest: 3082 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях,
+Ruff и Black чистые. Срез выбран синтетическим Astra xhigh review; итоговое
+синтетическое Astra xhigh review: 0 actionable P1/P2. Живой ClickHouse на этом срезе
+не запускался; human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-09-30):** общий обход достижимости ClickHouse сопоставляет
 named CTE и scalar `WITH` с точным регистром. Внутреннее `a` больше не скрывает
 настоящее чтение внешнего `A`, а чтение `a` не открывает непрочитанное соседнее
 `A`. Правило едино для звёзд, `COLUMNS`, `JOIN … USING`, dictionary- и
@@ -448,7 +464,9 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
   PostgreSQL-семейство без изменений. ClickHouse
   `COLUMNS('regex')` оставляет `asset.query_fields_unchecked`: выбранный набор физических
   колонок нельзя доказать по SQL или перечню snapshot-полей. Явные соседние чтения
-  грейдятся отдельно. `JOIN … USING` на обоих семействах движков тоже оставляет
+  грейдятся отдельно. Причина `COLUMNS(...)` следует достижимости по тем же гейтам CTE:
+  непрочитанный селектор её не создаёт; общий extractor сохраняет whole-AST остаток.
+  `JOIN … USING` на обоих семействах движков тоже оставляет
   advisory с именами ключей: общий ключ нельзя приписать одной таблице. Governance
   собирает этот остаток по всему AST. Неразрешимая без догадки часть запроса —
   `asset.query_fields_unchecked` (advisory).
@@ -845,7 +863,8 @@ findings, не human/production acceptance.
 Закрыт ложный `chart.sql_partial` от ClickHouse `COLUMNS('regex')` в непрочитанной
 named CTE или scalar `WITH` (verifier 33, check 18): в chart impact селектор следует
 достижимости исполняемой части statement, а открытый селектор сохраняет гэп. Governance
-reviewed asset SQL продолжает искать этот селектор во всём AST. Синтетическое ревью `gpt-6-astra`
+на этом срезе сохраняло whole-AST область; verifier 55 / check 35 уточняют достижимость
+селекторов также для reviewed asset SQL. Синтетическое ревью `gpt-6-astra`
 xhigh: 0 actionable findings, не human/production acceptance.
 
 Закрыт false-clean governance ClickHouse `COLUMNS('regex')` (verifier 32, check 18):

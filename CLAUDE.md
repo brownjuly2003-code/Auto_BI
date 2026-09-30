@@ -83,6 +83,18 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-30 — governance ClickHouse учитывает `COLUMNS(...)` только в достижимой
+  части SQL: непрочитанные named CTE и scalar `WITH` больше не оставляют ложную
+  причину partial-field advisory, живой селектор её сохраняет. Общий extractor
+  остаётся whole-AST; используется прежний общий с chart impact обход гейтов CTE.
+  Regex не раскрывается по snapshot-полям; именованные чтения, неизвестные
+  таблицы/поля, звёзды, `JOIN … USING`, PostgreSQL и chart matcher сохраняют правила.
+  Версии evidence: 54 → 55 / 34 → 35. Реализация Luna xhigh: red-green 2 падения,
+  затем 17 новых регрессий. Независимый целевой gate: 242 passed; полный offline
+  pytest: 3082 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях,
+  Ruff и Black чистые. Выбор среза — синтетическое Astra xhigh review; итоговое
+  синтетическое Astra xhigh review: 0 actionable P1/P2. Живой ClickHouse не запускался;
+  human/production acceptance не заявляется.
 - 2026-09-30 — общий обход достижимости ClickHouse связывает named CTE и scalar
   `WITH` с точным регистром: внутреннее `a` не скрывает внешнее `A`, а ссылка
   на `a` не открывает непрочитанное соседнее `A`. Звёзды, `COLUMNS`, `JOIN … USING`,

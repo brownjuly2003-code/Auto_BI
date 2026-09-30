@@ -34,6 +34,7 @@ from auto_bi.agent.sql_guard import (
     ColumnReads,
     SQLGuardError,
     TableRef,
+    clickhouse_has_reachable_column_selector,
     clickhouse_has_reachable_star,
     extract_column_refs,
     extract_table_refs,
@@ -368,8 +369,11 @@ def _query_findings(
         )
 
     reads = extract_column_refs(query.sql, dialect=dialect)
-    if dialect == "clickhouse" and reads.starred:
-        reads = reads._replace(starred=clickhouse_has_reachable_star(query.sql))
+    if dialect == "clickhouse":
+        if reads.starred:
+            reads = reads._replace(starred=clickhouse_has_reachable_star(query.sql))
+        if reads.column_selectors and not clickhouse_has_reachable_column_selector(query.sql):
+            reads = reads._replace(column_selectors=frozenset())
 
     def declares(table: str, name: str, *, quoted: bool) -> bool:
         declared = columns.get(table)

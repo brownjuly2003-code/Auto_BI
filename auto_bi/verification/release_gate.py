@@ -303,7 +303,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 54 — ClickHouse reachability binds named CTE and scalar WITH references case-sensitively.
 #: Differently cased declarations no longer hide an outer read or open an unread sibling;
 #: governance star reasons and chart stars, selectors, JOIN keys and getter reads can change.
-VERIFIER_VERSION = "54"
+#: 55 — ClickHouse governance applies CTE reachability to `COLUMNS(...)` selectors as it
+#: already does for column-reading stars. The shared extractor stays whole-AST; only the
+#: reviewed-query advisory narrows to selectors in query parts that actually run.
+VERIFIER_VERSION = "55"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -429,7 +432,10 @@ VERIFIER_VERSION = "54"
 #: 34 — `assets.invalidated` compares ClickHouse CTE and scalar WITH names case-sensitively
 #: when deciding which stars are reachable. A missing star advisory can return, or a false
 #: one disappear; explicit table/field findings and other advisory reasons keep their rules.
-CHECK_VERSION = "34"
+#: 35 — `assets.invalidated` applies the same ClickHouse CTE and scalar WITH reachability to
+#: `COLUMNS(...)` selectors. An unread selector no longer leaves a false partial-field
+#: advisory; reachable selectors and all other field reasons keep their contract.
+CHECK_VERSION = "35"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

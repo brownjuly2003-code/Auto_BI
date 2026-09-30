@@ -6,6 +6,14 @@
 
 ### Changed
 
+- **ClickHouse governance учитывает достижимость `COLUMNS(...)`.** Селектор в
+  непрочитанной named CTE или scalar `WITH` больше не создаёт причину
+  `it selects COLUMNS(...)` в `asset.query_fields_unchecked`. Живой селектор
+  сохраняет advisory; regex не раскрывается по snapshot-полям. Общий extractor
+  сохраняет whole-AST `column_selectors`, а governance использует общий с
+  chart impact обход гейтов CTE. `VERIFIER_VERSION` 54 → 55,
+  `CHECK_VERSION` 34 → 35.
+
 - **ClickHouse governance учитывает достижимость звезды.** Звезда в непрочитанной
   named CTE или scalar `WITH` больше не создаёт причину `it selects *` в
   `asset.query_fields_unchecked`. Живые звёзды и `IN <table>` сохраняют advisory;

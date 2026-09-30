@@ -420,8 +420,11 @@ CTE. Имена объявлений и ссылок сопоставляютс�
 ClickHouse `COLUMNS('regex')` тоже оставляет advisory: этот селектор выбирает физические колонки,
 полный набор которых reviewed SQL не перечисляет. Регулярное выражение не раскрывается
 по известным snapshot-полям, поэтому рядом с селектором обычные именованные чтения
-грейдятся самостоятельно. Governance ищет селектор во всём AST,
-включая непрочитанную CTE или scalar `WITH`. `JOIN … USING` на ClickHouse и
+грейдятся самостоятельно. Governance учитывает селектор только в достижимой части SQL,
+по общему с chart impact обходу гейтов CTE: непрочитанная named CTE или scalar `WITH`
+не создаёт причину `COLUMNS(...)`, а открытая ссылка сохраняет её. Общий extractor
+сохраняет whole-AST `ColumnReads.column_selectors`; регулярное выражение не раскрывается.
+`JOIN … USING` на ClickHouse и
 PostgreSQL-семействе также оставляет advisory
 с именами ключей: SQL не приписывает общий ключ одной таблице. Явные соседние
 колонки грейдятся отдельно; governance собирает эти ключи по всему AST, включая
@@ -563,7 +566,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=54`, `CHECK_VERSION=34`.
+`VERIFIER_VERSION=55`, `CHECK_VERSION=35`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -857,7 +860,8 @@ function / subquery, которую statement не именует), `chart.metri
 исполняемой части statement: селектор в непрочитанной CTE или scalar `WITH` не даёт
 `chart.sql_partial`, а открытая ссылка сохраняет гэп. Ключ `JOIN … USING` в chart impact
 следует тем же гейтам: непрочитанный JOIN не оставляет гэпа, достижимый оставляет.
-Governance reviewed asset SQL пока продолжает проверять селектор во всём AST.
+Governance reviewed asset SQL также уточняет достижимость `COLUMNS` через общий обход;
+его остаток `JOIN … USING` сохраняет whole-AST область.
 `WHERE region IN rev` /
 `WHERE region IN dm.rev` читается как `IN (SELECT * FROM <name>)`: плитка выбирает `*`
 из этой таблицы, поэтому изменение колонки той таблицы — `chart.sql_partial` (звезда),
