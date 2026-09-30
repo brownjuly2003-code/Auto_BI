@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-29
+**Обновлено:** 2026-09-30
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,9 +10,29 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=51`, `CHECK_VERSION=31`
+**Версии evidence:** `VERIFIER_VERSION=52`, `CHECK_VERSION=32`
 
-**Последний срез (2026-09-29):** PostgreSQL `ROW_NUMBER() OVER (…)` без явного
+**Последний срез (2026-09-30):** PostgreSQL `CAST(expr AS type)` и `expr::type`
+сохраняют уже известное сильное имя выхода колонки, пяти агрегатов или оконного
+`ROW_NUMBER` для целого `ORDER BY`/`DISTINCT ON` и выхода левой ветки set operation.
+Вложенные casts и скобки сохраняют имя; `AS` его заменяет, унарный `+` убирает.
+Чтения аргумента, `FILTER`, `PARTITION BY` и внутреннего `ORDER BY` остаются;
+имена типов, операторов и новых функций не выводятся, `GROUP BY` и ClickHouse
+не меняются. Вызовы функций, которые sqlglot нормализует в `Cast`, не наследуют
+имя аргумента. `VERIFIER_VERSION` 51 → 52, `CHECK_VERSION` 31 → 32:
+меняется governance reviewed-запроса. Red-green подтвердил три ложных чтения
+`dm.sales_daily.count` и шесть пропущенных чтений полей сортировки из первого
+модельного ревью; после исправления целевой gate: 539 passed, включая 40
+CAST-регрессий. Полный offline pytest: 3014 passed, 21 skipped, 38 deselected;
+strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые. Живой PostgreSQL
+16.15 на Mac подтвердил настоящие casts и унарный `+`; отдельная проба
+подтвердила собственное имя пользовательской функции и шесть ожидаемых
+SQLSTATE 42703 для сортировки по имени её аргумента. Временные кластеры удалены.
+Итоговое синтетическое Astra xhigh review: 0 actionable P1/P2; решение
+опирается на AST текущего sqlglot и защищено регрессиями обновления зависимости.
+Это не human/production acceptance.
+
+**Предыдущий срез (2026-09-29):** PostgreSQL `ROW_NUMBER() OVER (…)` без явного
 alias сохраняет выход `row_number` для целого `ORDER BY`/`DISTINCT ON` и
 сортировки set operation по левой ветке. Ложное чтение физического
 `row_number` уходит; `PARTITION BY` и внутренний `ORDER BY` сохраняют чтения.

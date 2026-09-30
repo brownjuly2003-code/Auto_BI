@@ -1006,8 +1006,19 @@ def _postgres_sort_token_info(
             continue
         has_plus = True
         following = index + 1
-        while following < len(tokens) and tokens[following].token_type == TokenType.L_PAREN:
-            following += 1
+        while following < len(tokens):
+            if tokens[following].token_type == TokenType.L_PAREN:
+                following += 1
+            elif (
+                tokens[following].token_type == TokenType.VAR
+                and tokens[following].text.upper() == "CAST"
+                and following + 1 < len(tokens)
+                and tokens[following + 1].token_type == TokenType.L_PAREN
+            ):
+                # CAST has no offset metadata; carry the erased plus to its argument.
+                following += 2
+            else:
+                break
         if following < len(tokens):
             offsets.add(tokens[following].start)
     return (frozenset(offsets) if has_plus else None), quoted_function_names
@@ -1046,12 +1057,15 @@ def _postgres_output_name(
     unary_plus_offsets: frozenset[int] | None,
     quoted_function_names: dict[int, str] | None = None,
 ) -> str | None:
-    """Name exposed by an aliased, plain-column, or plain aggregate SELECT item."""
+    """Known strong SELECT output name, preserved through parentheses, windows and casts."""
     if isinstance(projected, exp.Alias):
         alias = projected.args.get("alias")
         return _postgres_name(alias) if isinstance(alias, exp.Identifier) else None
     windowed = False
-    while isinstance(projected, (exp.Paren, exp.Window)):
+    while isinstance(projected, (exp.Paren, exp.Window, exp.Cast)):
+        if isinstance(projected, exp.Cast) and projected.meta:
+            # Normalized function calls carry positions of their own function name.
+            return None
         windowed = windowed or isinstance(projected, exp.Window)
         projected = projected.this
     if isinstance(projected, exp.Filter):

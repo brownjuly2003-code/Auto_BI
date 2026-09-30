@@ -83,6 +83,19 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-30 — PostgreSQL `CAST(expr AS type)` и `expr::type` сохраняют
+  известное сильное имя выхода колонки, пяти агрегатов или оконного
+  `ROW_NUMBER` для целого `ORDER BY`/`DISTINCT ON` и левой ветки set operation.
+  Аргументы и оконные поля остаются чтениями; `AS`, унарный `+`,
+  `GROUP BY` и ClickHouse сохраняют границы. Нормализованные sqlglot
+  функции `Cast` не наследуют имя аргумента. Версии evidence: 51 → 52 / 31 → 32.
+  Red-green подтвердил исходные ложные чтения и найденный Astra пропуск;
+  целевой gate: 539 passed, включая 40 CAST-регрессий. Полный offline pytest:
+  3014 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях,
+  Ruff и Black чистые. PostgreSQL 16.15 на Mac подтвердил контракт casts,
+  унарный `+` и границу пользовательских функций; временные кластеры удалены.
+  Итоговое синтетическое Astra xhigh review: 0 actionable P1/P2;
+  human/production acceptance не заявляется.
 - 2026-09-29 — PostgreSQL `ROW_NUMBER() OVER (…)` без явного alias даёт
   неявный выход `row_number` для целого `ORDER BY`/`DISTINCT ON` и
   сортировки set operation по левой ветке; поля `PARTITION BY` и внутреннего

@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **PostgreSQL CAST сохраняет известное имя выхода при сортировке.**
+  `CAST(expr AS type)` и `expr::type`, включая вложенные casts, сохраняют
+  сильное имя колонки, `COUNT`/`SUM`/`AVG`/`MIN`/`MAX` или оконного `ROW_NUMBER`
+  для целого `ORDER BY`/`DISTINCT ON` и выхода левой ветки set operation.
+  Чтения аргумента, `FILTER` и оконных выражений остаются; `AS`, унарный `+`,
+  `GROUP BY` и ClickHouse сохраняют границы. Функции, нормализованные sqlglot
+  в `Cast`, не наследуют имя аргумента и не прячут чтение сортировки.
+  `VERIFIER_VERSION` 51 → 52, `CHECK_VERSION` 31 → 32.
+
 - **PostgreSQL агрегаты с `FILTER` сохраняют неявное имя при сортировке.**
   `COUNT`, `SUM`, `AVG`, `MIN` и `MAX` с `FILTER (WHERE …)` разрешают целое
   имя в `ORDER BY`/`DISTINCT ON` и выход левой ветки set operation без ложного
