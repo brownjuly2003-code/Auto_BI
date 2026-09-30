@@ -309,7 +309,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 56 — ClickHouse governance applies CTE reachability to `JOIN ... USING` keys. The
 #: shared extractor stays whole-AST; only the reviewed-query advisory narrows to keys in
 #: query parts that actually run.
-VERIFIER_VERSION = "56"
+#: 57 — ClickHouse table extraction and SQL guard compare CTE exemptions case-sensitively.
+#: A differently cased declaration no longer hides a physical table from governance or
+#: schema-RBAC, or exempts a denylisted bare table. PostgreSQL keeps its existing comparison.
+VERIFIER_VERSION = "57"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -441,7 +444,10 @@ VERIFIER_VERSION = "56"
 #: 36 — `assets.invalidated` applies the same ClickHouse CTE and scalar WITH reachability to
 #: `JOIN ... USING` keys. An unread key no longer leaves a false partial-field advisory;
 #: reachable keys and all other field reasons keep their contract.
-CHECK_VERSION = "36"
+#: 37 — `assets.invalidated` no longer overlooks a physical ClickHouse table whose name
+#: differs in case from a CTE declaration. A missing ungoverned-table REVIEW can return;
+#: exact-case CTE references and PostgreSQL keep their existing rules.
+CHECK_VERSION = "37"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

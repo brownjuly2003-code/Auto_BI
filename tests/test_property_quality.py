@@ -186,10 +186,15 @@ def test_extract_table_names_ignores_cte_aliases() -> None:
     assert "cte" not in {n.lower() for n in names}
 
 
-def test_guard_and_extraction_match_cte_names_case_insensitively() -> None:
-    sql = "WITH MeRgE AS (SELECT 1 AS x) SELECT x FROM merge"
-    guard_sql(sql)
-    assert extract_table_names(sql) == frozenset()
+def test_guard_and_extraction_match_cte_names_case_sensitively_in_clickhouse() -> None:
+    exact_sql = "WITH MeRgE AS (SELECT 1 AS x) SELECT x FROM MeRgE"
+    guard_sql(exact_sql)
+    assert extract_table_names(exact_sql) == frozenset()
+
+    mismatch_sql = "WITH MeRgE AS (SELECT 1 AS x) SELECT x FROM merge"
+    with pytest.raises(SQLGuardError, match=r"^forbidden table function in SQL: merge\(\)$"):
+        guard_sql(mismatch_sql)
+    assert extract_table_names(mismatch_sql) == frozenset({"merge"})
 
 
 def test_extract_table_names_keeps_bare_physical_tables() -> None:

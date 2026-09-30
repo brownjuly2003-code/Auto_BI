@@ -525,6 +525,13 @@ PostgreSQL это таблица, которой `sales_daily` не являет
 (`FROM sales_daily` при governed `dm.sales_daily`) тоже попадает в находку: в какой схеме
 его разрешит сессия — настройка, которой у гейта нет.
 
+Исключение CTE из физического списка таблиц и из denylist SQL guard на ClickHouse
+также требует точного регистра: `WITH A AS (SELECT 1) SELECT count(*) FROM a`
+читает физическую `a` и оставляет `asset.query_ungoverned` (review), если её нет в
+snapshot. Точно совпадающее имя, квотированное или нет, сохраняет исключение CTE;
+таблица с database/catalog-префиксом остаётся физической. Whole-AST область
+извлечения и сравнение CTE PostgreSQL на этом срезе не меняются.
+
 Production interaction попадает только в redacted review queue. Benchmark или
 expected result никогда автоматически не добавляется в LLM context.
 
@@ -569,7 +576,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=56`, `CHECK_VERSION=36`.
+`VERIFIER_VERSION=57`, `CHECK_VERSION=37`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 

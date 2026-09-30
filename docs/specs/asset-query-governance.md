@@ -45,6 +45,29 @@ rule of the query's engine — ClickHouse compares as written, the PostgreSQL fa
 *unquoted* identifier to lower case — and SHALL compare a quoted reference exactly on every
 engine.
 
+For ClickHouse, excluding a bare table reference as a CTE alias SHALL require the same exact
+spelling, whether either identifier is quoted. A differently cased CTE SHALL NOT suppress that
+physical table from extraction, governance or schema-RBAC, or exempt it from the existing
+denylisted bare-table guard. PostgreSQL CTE comparison and the whole-AST extraction boundary
+SHALL retain their existing rules.
+
+### Scenario: a differently cased ClickHouse CTE does not hide a physical table
+
+- **GIVEN** a snapshot governing only `dm.sales_daily` and a ClickHouse reviewed query
+  `WITH A AS (SELECT 1) SELECT count(*) FROM a`
+- **WHEN** the gate grades the asset against that snapshot
+- **THEN** table extraction includes `a` and the findings carry `asset.query_ungoverned`
+  (severity review), naming `a`; the ordinary `COUNT(*)` does not add a field remainder
+- **AND** replacing the declaration with `WITH a AS (SELECT 1)` makes `FROM a` an exact-case
+  CTE reference and leaves no physical-table finding
+
+### Scenario: only an exact-case ClickHouse CTE exempts a denylisted bare name
+
+- **GIVEN** a ClickHouse query declaring `WITH MeRgE AS (SELECT 1 AS x)`
+- **WHEN** the SQL guard checks `SELECT x FROM merge`
+- **THEN** the existing denylisted bare-table rule rejects `merge`
+- **AND** `SELECT x FROM MeRgE` retains the CTE exemption
+
 ### Scenario: an unquoted PostgreSQL identifier folds, a quoted one does not
 
 - **GIVEN** a snapshot governing `dm.sales_daily` and two assets whose reviewed queries are on

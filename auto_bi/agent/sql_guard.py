@@ -140,7 +140,10 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
         exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create, exp.Alter,
         exp.TruncateTable, exp.Grant, exp.Command, exp.Set, exp.Into,
     )  # fmt: skip
-    cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
+    cte_names = {
+        cte.alias_or_name if dialect == "clickhouse" else cte.alias_or_name.lower()
+        for cte in root.find_all(exp.CTE)
+    }
     for node in root.walk():
         if isinstance(node, forbidden):
             raise SQLGuardError(f"forbidden construct in SQL: {type(node).__name__}")
@@ -158,9 +161,11 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
         # UNQUALIFIED table whose name is denylisted. A real table of that name is
         # still reachable schema-qualified (dm.dictionary); CTE alias refs are fine.
         if isinstance(node, exp.Table) and not node.args.get("db"):
-            name = node.name.lower()
-            if name in _FORBIDDEN_TABLE_FUNCS and name not in cte_names:
-                raise SQLGuardError(f"forbidden table function in SQL: {name}()")
+            name = node.name
+            folded_name = name.lower()
+            cte_name = name if dialect == "clickhouse" else folded_name
+            if folded_name in _FORBIDDEN_TABLE_FUNCS and cte_name not in cte_names:
+                raise SQLGuardError(f"forbidden table function in SQL: {folded_name}()")
 
 
 class TableRef(NamedTuple):
@@ -179,14 +184,18 @@ def extract_table_refs(sql: str, *, dialect: str = DIALECT) -> frozenset[TableRe
     root = _parse_one_select(sql, dialect=dialect)
     if dialect == "clickhouse":
         _rewrite_clickhouse_in_tables(root)
-    cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
+    cte_names = {
+        cte.alias_or_name if dialect == "clickhouse" else cte.alias_or_name.lower()
+        for cte in root.find_all(exp.CTE)
+    }
     tables: set[TableRef] = set()
     for table in root.find_all(exp.Table):
         name = table.name
         if not name:  # pragma: no mutate block - sqlglot never emits an unnamed Table
             continue
         # CTE self-reference: bare name matching a WITH alias, no db/catalog.
-        if name.lower() in cte_names and not table.db and not table.catalog:
+        cte_name = name if dialect == "clickhouse" else name.lower()
+        if cte_name in cte_names and not table.db and not table.catalog:
             continue
         tables.add(_table_ref(table))
     return frozenset(tables)

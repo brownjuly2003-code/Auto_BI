@@ -83,6 +83,17 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-09-30 — ClickHouse table extraction и SQL guard исключают bare-ссылку
+  на CTE только по точному регистру. `WITH A … FROM a` больше не скрывает
+  физическую таблицу от governance и raw-SQL RBAC; mismatch не обходит denylist.
+  Точное совпадение, whole-AST область, lexical resolution и PostgreSQL сохраняют
+  правила. Версии evidence: 56 → 57 / 36 → 37.
+  Luna xhigh: red-green 9 падений, затем 59 passed; 18 новых регрессий,
+  соседний ClickHouse/raw-SQL gate: 144 passed.
+  Независимый полный offline pytest: 3120 passed, 21 skipped, 38 deselected;
+  strict mypy — 0 ошибок в 120 модулях, Ruff и Black чистые.
+  Выбор среза и итоговое ревью — синтетические Astra xhigh: 0 actionable P1/P2.
+  Живая БД не запускалась; human/production acceptance не заявляется.
 - 2026-09-30 — governance ClickHouse учитывает точный набор достижимых ключей
   `JOIN … USING`: непрочитанные named CTE и scalar `WITH` больше не добавляют
   эту причину partial-field advisory; при соседнем живом JOIN остаются его ключи.
