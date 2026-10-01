@@ -34,6 +34,21 @@
   сохраняет порядок asset. `VERIFIER_VERSION` 58 → 59, `CHECK_VERSION` 38 → 39;
   исторические bundles не переписаны.
 
+- **CTE исключает физическую таблицу только внутри объявившего её запроса.**
+  Вложенная или соседняя CTE больше не скрывает внешнюю таблицу от governance
+  и raw-SQL RBAC и не освобождает bare-имя от denylist SQL guard: пропущенный
+  `asset.query_ungoverned` (review) возвращается. Внешний `WITH`, включая обе
+  ветки своего `UNION`, сохраняет исключение; whole-AST extraction, сравнение
+  имён и прежние same-WITH, recursive и scalar правила сохраняются.
+  `VERIFIER_VERSION` 57 → 58, `CHECK_VERSION` 37 → 38.
+
+- **ClickHouse исключает CTE из физических таблиц только по точному регистру.**
+  `WITH A … FROM a` больше не скрывает физическую таблицу от governance и
+  raw-SQL RBAC и не обходит denylist SQL guard: пропущенный
+  `asset.query_ungoverned` (review) возвращается. Точное совпадение имён,
+  whole-AST extraction, lexical resolution и PostgreSQL сохраняют правила.
+  `VERIFIER_VERSION` 56 → 57, `CHECK_VERSION` 36 → 37.
+
 - **ClickHouse governance учитывает достижимость ключей `JOIN … USING`.**
   Непрочитанная named CTE или scalar `WITH` больше не добавляет ключи в причину
   `asset.query_fields_unchecked`; при соседнем живом JOIN остаются только его
@@ -48,6 +63,15 @@
   сохраняет whole-AST `column_selectors`, а governance использует общий с
   chart impact обход гейтов CTE. `VERIFIER_VERSION` 54 → 55,
   `CHECK_VERSION` 34 → 35.
+
+- **ClickHouse связывает достижимые CTE и scalar `WITH` по точному регистру.**
+  Внутреннее `a` больше не скрывает внешнее `A`, а ссылка на `a` не открывает
+  непрочитанное соседнее `A`: пропущенный star advisory возвращается, ложный
+  исчезает. Chart impact применяет то же правило к звёздам, `COLUMNS`,
+  `JOIN … USING`, dictionary- и Join-table-вызовам, включая named CTE в `IN`.
+  Точное затенение, self-reference, дубликаты, квалификаторы и `SETTINGS`,
+  явные table/field findings и другие причины advisory сохраняют правила.
+  `VERIFIER_VERSION` 53 → 54, `CHECK_VERSION` 33 → 34.
 
 - **ClickHouse governance учитывает достижимость звезды.** Звезда в непрочитанной
   named CTE или scalar `WITH` больше не создаёт причину `it selects *` в
@@ -69,6 +93,28 @@
   `GROUP BY` и ClickHouse сохраняют границы. Функции, нормализованные sqlglot
   в `Cast`, не наследуют имя аргумента и не прячут чтение сортировки.
   `VERIFIER_VERSION` 51 → 52, `CHECK_VERSION` 31 → 32.
+
+- **PostgreSQL оконный `ROW_NUMBER` даёт неявное имя при сортировке.**
+  `ROW_NUMBER() OVER (…)` без alias разрешает целое имя `row_number` в
+  `ORDER BY`/`DISTINCT ON` и выход левой ветки set operation без ложного
+  field review или sourceless advisory. `PARTITION BY` и внутренний `ORDER BY`
+  остаются чтениями; bare `row_number()` и другие оконные функции сохраняют
+  прежние правила.
+  `VERIFIER_VERSION` 50 → 51, `CHECK_VERSION` 30 → 31.
+
+- **PostgreSQL оконные агрегаты сохраняют неявное имя при сортировке.**
+  `COUNT`, `SUM`, `AVG`, `MIN` и `MAX` с `OVER`, включая `FILTER (WHERE …)`
+  внутри оконного вызова, разрешают целое имя в `ORDER BY`/`DISTINCT ON`
+  и выход левой ветки set operation без ложного field review или sourceless
+  advisory. Аргументы, предикат `FILTER`, `PARTITION BY` и внутренний
+  `ORDER BY` остаются чтениями.
+  `VERIFIER_VERSION` 49 → 50, `CHECK_VERSION` 29 → 30.
+
+- **Пустой ClickHouse `map()` больше не считается шаблоном Superset.**
+  В operator SQL исчезает ложный `chart.sql_partial`; настоящий `{{ … }}`
+  остаётся частично прочитанным, в том числе рядом с `map()`. Явные чтения
+  колонок сохраняются. Меняется chart evidence, грейдинг проверок остаётся
+  прежним. `VERIFIER_VERSION` 48 → 49, `CHECK_VERSION` остаётся 29.
 
 - **PostgreSQL агрегаты с `FILTER` сохраняют неявное имя при сортировке.**
   `COUNT`, `SUM`, `AVG`, `MIN` и `MAX` с `FILTER (WHERE …)` разрешают целое
@@ -92,6 +138,14 @@
   2893 passed, 21 skipped, 38 deselected; strict mypy, Ruff и Black чистые.
   Синтетическое Astra xhigh review: 0 actionable P1/P2;
   live PostgreSQL не запускался, не human/production acceptance.
+
+- **PostgreSQL алиас таблицы со списком колонок сохраняет advisory.**
+  Ссылки на объявленные выходные имена таблицы или скобочного `JOIN` оставляют
+  `asset.query_fields_unchecked`: snapshot не доказывает физический ordinal
+  lineage. Ложный field review или чистый результат сменяется advisory;
+  соседние физические поля и имена колонок таблицы вне списка проверяются по прежним
+  правилам. `ORDER BY` сохраняет приоритет выхода SELECT, `GROUP BY` внутри
+  LATERAL — локального выхода. `VERIFIER_VERSION` 45 → 46, `CHECK_VERSION` 26 → 27.
 
 - **PostgreSQL `NATURAL JOIN` сообщает о неявных ключах.**
   Governance оставляет `asset.query_fields_unchecked`: ключи выбираются по
@@ -542,6 +596,15 @@
   его поставить, приписывается только когда его объявляет один локальный governed-источник —
   иначе остаётся `asset.query_fields_unchecked` со своей причиной, потому что проверка имя
   наружу не ведёт.
+
+- **Owner-summary объясняет границы reconciliation, attestation, cost и подписи.**
+  `result.equivalent` означает совпадение supplied rows, не semantic approval.
+  Attestation связывает reviewed query, snapshot и заявленное environment,
+  не доказывая исполнение SQL. `dwh.cost` относится к compiled reference SQL,
+  а не captured reviewed asset SQL. Подпись подтверждает producer и целостность,
+  не исполнение SQL или production sign-off; её проверяют отдельно с trusted key.
+  Отчёт sealed до проверки bundle и сам не заявляет, что bundle signed или verified.
+  `VERIFIER_VERSION` 14 → 15, `CHECK_VERSION` остаётся 9.
 
 - **Evidence manifest получает opt-in Ed25519 authentication** (`VERIFIER_VERSION` 13 →
   14, `CHECK_VERSION` остаётся 9). `decision verify --signing-key <private.pem>` подписывает
