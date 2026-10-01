@@ -36,6 +36,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from fractions import Fraction
+from math import isfinite
 from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
@@ -488,15 +489,20 @@ def _floats_equal(before: str, after: str, tolerance: ResultTolerance) -> bool:
         left, right = float(before), float(after)
     except ValueError:
         return before == after
-    difference = abs(left - right)
-    if tolerance.float_absolute is not None and difference <= float(tolerance.float_absolute):
+    if not isfinite(left) or not isfinite(right):
+        return False
+    left_exact, right_exact = Fraction(left), Fraction(right)
+    difference = abs(left_exact - right_exact)
+    if tolerance.float_absolute is not None and difference <= Fraction(
+        Decimal(tolerance.float_absolute)
+    ):
         return True
     if tolerance.float_relative is not None:
-        scale = max(abs(left), abs(right))
-        if scale == 0.0:
-            return difference == 0.0
-        return difference / scale <= float(tolerance.float_relative)
-    return difference == 0.0
+        scale = max(abs(left_exact), abs(right_exact))
+        if scale == 0:
+            return difference == 0
+        return difference <= Fraction(Decimal(tolerance.float_relative)) * scale
+    return difference == 0
 
 
 class _AggregateInputError(Exception):

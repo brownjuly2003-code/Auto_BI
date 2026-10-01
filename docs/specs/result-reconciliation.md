@@ -174,3 +174,62 @@ SHALL keep their written form. A detail SHALL name a key as its own result write
   candidate
 - **WHEN** the two results are compared
 - **THEN** `row.missing` names `0.4120` and `row.added` names `0.412`, as before
+
+## Requirement: a float value is within its tolerance only when its exact difference is
+
+A value of a `float` column denotes the binary64 number its written form rounds to, as the engine
+holds it. When a float tolerance is declared, the system SHALL compare the exact difference of the
+two binary64 values with the tolerance read exactly as the decimal it writes: the absolute bound
+holds when |a − b| ≤ `float_absolute`, the relative bound when |a − b| ≤ `float_relative` ×
+max(|a|, |b|), and two zeros hold the relative bound only when they are equal. A value within
+either declared bound is equal. No rounding of the difference, of the ratio or of the tolerance
+SHALL move a value across its bound. This requirement governs finite values, with one
+consequence for the others: a tolerance read exactly is finite, so no declared tolerance, even
+one beyond the binary64 range, makes an infinity equal to a finite value or to the opposite
+infinity. How a value that is not a finite number otherwise compares is not decided here.
+
+### Scenario: a difference just over the absolute tolerance is a change
+
+- **GIVEN** an expected result with columns `id` (string) and `m` (float) and row `east`, `0.1`,
+  a candidate with row `east`, `0.3`, business key `id` and `float_absolute` `0.19999999999999997`
+- **WHEN** the two results are compared
+- **THEN** the outcome is `different` with exactly one `value.changed`: `east.m: '0.1' -> '0.3'`,
+  because the exact binary64 difference 0.1999999999999999833… exceeds the tolerance
+
+### Scenario: a difference inside the absolute tolerance stays equivalent
+
+- **GIVEN** the same results and `float_absolute` `0.2`
+- **WHEN** the two results are compared
+- **THEN** the outcome is `equivalent` with one compared row
+
+### Scenario: a ratio just over the relative tolerance is a change
+
+- **GIVEN** an expected row `east`, `100`, a candidate row `east`, `110` and `float_relative`
+  `0.090909090909090906`
+- **WHEN** the two results are compared
+- **THEN** the outcome is `different` with `value.changed` `east.m: '100' -> '110'`; with
+  `float_relative` `0.0909090909090909091` the outcome is `equivalent`
+
+### Scenario: a ratio exactly inside the relative tolerance stays equivalent
+
+- **GIVEN** an expected row `east`, `0.0017108284528077355`, a candidate row `east`,
+  `0.009525102111858402` and `float_relative` `0.820387389792092933943225376839`, which the exact
+  ratio of the two binary64 values does not exceed
+- **WHEN** the two results are compared
+- **THEN** the outcome is `equivalent`; with `float_relative`
+  `0.820387389792092933943225376838` it is `different` with `value.changed` on `east.m`
+
+### Scenario: two written forms of one binary64 value are equal
+
+- **GIVEN** an expected row `east`, `0.1`, a candidate row `east`,
+  `0.1000000000000000055511151231257827` and `float_absolute` `0`
+- **WHEN** the two results are compared
+- **THEN** the outcome is `equivalent`: both forms denote the same binary64 value
+
+### Scenario: a tolerance beyond the binary64 range does not reach an infinity
+
+- **GIVEN** an expected row `east`, `1`, a candidate row `east`, `inf` and `float_absolute`
+  `3` followed by 308 zeros, a decimal that binary64 would hold as an infinity
+- **WHEN** the two results are compared
+- **THEN** the outcome is `different` with `value.changed` `east.m: '1' -> 'inf'`; an
+  expected `-inf` against a candidate `inf` under the same tolerance is `different` too

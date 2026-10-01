@@ -334,7 +334,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: BLOCK), or report a fresh clock stale (that finding is gone). Unattributable readings
 #: give access.reading_unattributed REVIEW; freshness.stale names its clock and evidence
 #: facts carry event_time_column. Historical bundles are not rewritten.
-VERIFIER_VERSION = "61"
+#: 62 — float tolerance compares the exact binary64 difference with the exact declared
+#: decimal. An absolute or relative excess smaller than binary64 rounding now gives
+#: value.changed where 61 saw equivalent; an exact relative difference within tolerance
+#: now stays equivalent where the rounded ratio rejected it. Grading moves both ways at
+#: the rounding boundary. An infinity against a finite value or the opposite infinity was
+#: equal under an absolute tolerance beyond the binary64 range, which rounded to infinity;
+#: it is now value.changed. Historical bundles are not rewritten.
+VERIFIER_VERSION = "62"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -490,7 +497,14 @@ VERIFIER_VERSION = "61"
 #: BLOCK), or report a fresh clock stale (that finding is gone). Unattributable readings
 #: give access.reading_unattributed REVIEW; freshness.stale names its clock and evidence
 #: facts carry event_time_column. Historical bundles are not rewritten.
-CHECK_VERSION = "41"
+#: 42 — results.reconcile compares the exact binary64 difference with the exact declared
+#: decimal tolerance. An absolute or relative excess hidden by rounding now gives
+#: value.changed where 41 saw equivalent; an exact relative difference within tolerance
+#: now stays equivalent where the rounded ratio rejected it. Grading moves both ways at
+#: the rounding boundary. An infinity against a finite value or the opposite infinity was
+#: equal under an absolute tolerance beyond the binary64 range, which rounded to infinity;
+#: it is now value.changed. Historical bundles are not rewritten.
+CHECK_VERSION = "42"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
