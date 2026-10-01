@@ -312,7 +312,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 57 — ClickHouse table extraction and SQL guard compare CTE exemptions case-sensitively.
 #: A differently cased declaration no longer hides a physical table from governance or
 #: schema-RBAC, or exempts a denylisted bare table. PostgreSQL keeps its existing comparison.
-VERIFIER_VERSION = "57"
+#: 58 — A CTE table exemption requires its declaring query to enclose that table reference.
+#: Nested or sibling declarations no longer hide physical tables from governance/schema-RBAC
+#: or exempt denylisted bare names. Whole-AST extraction and name comparison stay unchanged.
+VERIFIER_VERSION = "58"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -447,7 +450,10 @@ VERIFIER_VERSION = "57"
 #: 37 — `assets.invalidated` no longer overlooks a physical ClickHouse table whose name
 #: differs in case from a CTE declaration. A missing ungoverned-table REVIEW can return;
 #: exact-case CTE references and PostgreSQL keep their existing rules.
-CHECK_VERSION = "37"
+#: 38 — `assets.invalidated` no longer overlooks physical tables matching CTE declarations
+#: owned only by nested or sibling queries. A missing ungoverned-table REVIEW can return;
+#: enclosing declarations, whole-AST extraction and existing name comparison keep their rules.
+CHECK_VERSION = "38"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

@@ -83,6 +83,18 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-01 — table extraction и SQL guard исключают bare-ссылку на CTE,
+  только если query-владелец объявления входит в ancestors этой ссылки.
+  Вложенная или соседняя CTE больше не скрывает внешнюю физическую таблицу
+  от governance/raw-SQL RBAC и не даёт исключение для denylisted bare name.
+  Наследование внешнего WITH, root WITH над UNION, whole-AST extraction,
+  правила сравнения имён и консервативные same-WITH/recursive/scalar правила сохранены.
+  Версии evidence: 57 → 58 / 37 → 38. Red: 19 падений, 33 passed;
+  после Luna xhigh fix: 52 passed, включая 34 новые регрессии.
+  Независимый полный offline pytest: 3154 passed, 21 skipped, 38 deselected;
+  strict mypy — 0 ошибок в 120 модулях, Ruff и Black чистые.
+  Выбор среза и итоговое ревью — синтетические Astra xhigh: 0 actionable P1/P2.
+  Живая БД не запускалась; human/production acceptance не заявляется.
 - 2026-09-30 — ClickHouse table extraction и SQL guard исключают bare-ссылку
   на CTE только по точному регистру. `WITH A … FROM a` больше не скрывает
   физическую таблицу от governance и raw-SQL RBAC; mismatch не обходит denylist.

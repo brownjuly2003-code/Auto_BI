@@ -140,10 +140,7 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
         exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create, exp.Alter,
         exp.TruncateTable, exp.Grant, exp.Command, exp.Set, exp.Into,
     )  # fmt: skip
-    cte_names = {
-        cte.alias_or_name if dialect == "clickhouse" else cte.alias_or_name.lower()
-        for cte in root.find_all(exp.CTE)
-    }
+    cte_query_ids = _cte_declaring_query_ids(root, dialect=dialect)
     for node in root.walk():
         if isinstance(node, forbidden):
             raise SQLGuardError(f"forbidden construct in SQL: {type(node).__name__}")
@@ -163,8 +160,9 @@ def guard_sql(sql: str, *, dialect: str = DIALECT) -> None:
         if isinstance(node, exp.Table) and not node.args.get("db"):
             name = node.name
             folded_name = name.lower()
-            cte_name = name if dialect == "clickhouse" else folded_name
-            if folded_name in _FORBIDDEN_TABLE_FUNCS and cte_name not in cte_names:
+            if folded_name in _FORBIDDEN_TABLE_FUNCS and not _is_cte_ref(
+                node, cte_query_ids, dialect=dialect
+            ):
                 raise SQLGuardError(f"forbidden table function in SQL: {folded_name}()")
 
 
@@ -184,18 +182,14 @@ def extract_table_refs(sql: str, *, dialect: str = DIALECT) -> frozenset[TableRe
     root = _parse_one_select(sql, dialect=dialect)
     if dialect == "clickhouse":
         _rewrite_clickhouse_in_tables(root)
-    cte_names = {
-        cte.alias_or_name if dialect == "clickhouse" else cte.alias_or_name.lower()
-        for cte in root.find_all(exp.CTE)
-    }
+    cte_query_ids = _cte_declaring_query_ids(root, dialect=dialect)
     tables: set[TableRef] = set()
     for table in root.find_all(exp.Table):
         name = table.name
         if not name:  # pragma: no mutate block - sqlglot never emits an unnamed Table
             continue
-        # CTE self-reference: bare name matching a WITH alias, no db/catalog.
-        cte_name = name if dialect == "clickhouse" else name.lower()
-        if cte_name in cte_names and not table.db and not table.catalog:
+        # CTE self-reference: bare name matching a WITH alias in an ancestor query.
+        if _is_cte_ref(table, cte_query_ids, dialect=dialect):
             continue
         tables.add(_table_ref(table))
     return frozenset(tables)
@@ -310,6 +304,31 @@ def _declaring_query(cte: exp.CTE) -> exp.Expr | None:
     if parent is None:
         return None
     return parent.parent
+
+
+def _cte_declaring_query_ids(root: exp.Expr, *, dialect: str) -> dict[str, frozenset[int]]:
+    """Map each CTE name to the query ids that declare it."""
+    query_ids: defaultdict[str, set[int]] = defaultdict(set)
+    for cte in root.find_all(exp.CTE):
+        declaring_query = _declaring_query(cte)
+        if declaring_query is None:
+            continue
+        name = cte.alias_or_name if dialect == "clickhouse" else cte.alias_or_name.lower()
+        query_ids[name].add(id(declaring_query))
+    return {name: frozenset(ids) for name, ids in query_ids.items()}
+
+
+def _is_cte_ref(
+    table: exp.Table, cte_query_ids: dict[str, frozenset[int]], *, dialect: str
+) -> bool:
+    """Whether a bare table is a CTE declared by one of its ancestor queries."""
+    if table.db or table.catalog:
+        return False
+    name = table.name if dialect == "clickhouse" else table.name.lower()
+    declaring_ids = cte_query_ids.get(name)
+    if not declaring_ids:
+        return False
+    return any(id(ancestor) in declaring_ids for ancestor in _ancestors(table))
 
 
 @dataclass(frozen=True, slots=True)

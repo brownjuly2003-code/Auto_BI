@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-09-30
+**Обновлено:** 2026-10-01
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,19 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=57`, `CHECK_VERSION=37`
+**Версии evidence:** `VERIFIER_VERSION=58`, `CHECK_VERSION=38`
 
-**Последний срез (2026-09-30):** ClickHouse исключает bare-ссылку на CTE из
-физического списка таблиц и из denylist SQL guard только при точном совпадении
-регистра. `WITH A AS (SELECT 1) SELECT count(*) FROM a` больше не скрывает
-физическую `a`: governance сообщает `asset.query_ungoverned` (review), а raw-SQL
-RBAC видит таблицу. Точное совпадение, включая квотированное имя, сохраняет
-исключение CTE; denylist по-прежнему сравнивает имена без учёта регистра.
-Whole-AST область извлечения, lexical CTE resolution и PostgreSQL не менялись.
-`VERIFIER_VERSION` 56 → 57, `CHECK_VERSION` 36 → 37: пропущенный review может вернуться.
-Red-green Luna xhigh: 9 падений до production fix, затем 59 passed; 18 новых
-регрессий покрывают extractor, governance, guard и RBAC, соседний gate: 144 passed.
-Независимый полный offline pytest: 3120 passed, 21 skipped, 38 deselected;
+**Последний срез (2026-10-01):** исключение bare-ссылки на CTE из физического
+списка таблиц и из denylist SQL guard требует, чтобы query-владелец объявления
+был предком конкретной ссылки. Вложенная или соседняя CTE больше не скрывает
+внешнюю физическую таблицу. `SELECT count(*) FROM a WHERE EXISTS
+(WITH a AS (SELECT 1) SELECT 1 FROM a)` даёт `asset.query_ungoverned` (review),
+называющий `a`, на ClickHouse и PostgreSQL; raw-SQL RBAC также видит эту таблицу.
+Внешний bare `dictionary` с одноимённой вложенной CTE отвергается SQL guard.
+Внешний `WITH` сохраняет исключение во вложенных запросах и обеих ветках своего
+`UNION`. Whole-AST extraction, включая физические таблицы в непрочитанных CTE,
+точный регистр ClickHouse, прежнее сравнение имён PostgreSQL, qualified-ссылки,
+same-WITH порядок, self-reference, рекурсия и scalar `WITH` сохраняют правила.
+`VERIFIER_VERSION` 57 → 58, `CHECK_VERSION` 37 → 38: пропущенный review возвращается.
+Red до production fix: 19 падений, 33 passed; после Luna xhigh fix: 52 passed.
+34 новые регрессии покрывают extractor, guard, governance и RBAC, включая
+quoted-ссылки, UNION/derived siblings, наследование и ClickHouse `IN` normalization.
+Независимый полный offline pytest: 3154 passed, 21 skipped, 38 deselected;
 strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
 Выбор среза и итоговое ревью — синтетические Astra xhigh; итог: 0 actionable P1/P2.
 Живая БД на этом срезе не запускалась; human/production acceptance не заявляется.

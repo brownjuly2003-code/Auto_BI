@@ -48,7 +48,7 @@ engine.
 For ClickHouse, excluding a bare table reference as a CTE alias SHALL require the same exact
 spelling, whether either identifier is quoted. A differently cased CTE SHALL NOT suppress that
 physical table from extraction, governance or schema-RBAC, or exempt it from the existing
-denylisted bare-table guard. PostgreSQL CTE comparison and the whole-AST extraction boundary
+denylisted bare-table guard. PostgreSQL CTE name comparison and the whole-AST extraction boundary
 SHALL retain their existing rules.
 
 ### Scenario: a differently cased ClickHouse CTE does not hide a physical table
@@ -75,6 +75,36 @@ SHALL retain their existing rules.
 - **WHEN** the gate grades both
 - **THEN** the unquoted one produces no finding and the quoted one produces
   `asset.query_ungoverned`
+
+## Requirement: a CTE exemption stays within its declaring query
+
+After applying the existing CTE name-comparison rule, the system SHALL exclude a bare table
+reference as a CTE only when that CTE's declaring query is an ancestor of the reference.
+A declaration in a nested query or sibling branch SHALL NOT hide a physical table from
+extraction, governance or schema-RBAC, or exempt a denylisted bare name from the SQL guard.
+An enclosing WITH SHALL retain its exemption in nested queries and both branches of its
+set operation. Whole-AST extraction SHALL still include physical tables in unread CTE bodies;
+same-WITH ordering, self-reference, recursion and scalar-WITH classification retain their
+existing conservative rules.
+
+### Scenario: a nested CTE cannot hide an outer physical table
+
+- **GIVEN** a snapshot governing only `dm.sales_daily` and a ClickHouse or PostgreSQL query
+  `SELECT count(*) FROM a WHERE EXISTS (WITH a AS (SELECT 1) SELECT 1 FROM a)`
+- **WHEN** the gate grades the reviewed query
+- **THEN** extraction includes the outer physical `a`, and `asset.query_ungoverned`
+  (severity review) names `a`; raw-SQL schema-RBAC also sees that physical reference
+- **AND** an equivalent nested declaration named `dictionary` does not exempt an outer
+  `FROM dictionary` from the existing denylisted bare-table rule
+
+### Scenario: only an enclosing WITH exempts both set-operation branches
+
+- **GIVEN** a query `SELECT count(*) FROM a UNION ALL
+  (WITH a AS (SELECT 1) SELECT count(*) FROM a)`
+- **WHEN** the system extracts physical tables
+- **THEN** `a` from the first branch remains physical
+- **AND** `WITH a AS (SELECT 1) SELECT count(*) FROM a UNION ALL SELECT count(*) FROM a`
+  retains the CTE exemption in both branches
 
 ## Requirement: a column is attributed only where SQL or the model leaves no choice
 

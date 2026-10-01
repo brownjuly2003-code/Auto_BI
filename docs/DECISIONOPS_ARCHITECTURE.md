@@ -529,8 +529,16 @@ PostgreSQL это таблица, которой `sales_daily` не являет
 также требует точного регистра: `WITH A AS (SELECT 1) SELECT count(*) FROM a`
 читает физическую `a` и оставляет `asset.query_ungoverned` (review), если её нет в
 snapshot. Точно совпадающее имя, квотированное или нет, сохраняет исключение CTE;
-таблица с database/catalog-префиксом остаётся физической. Whole-AST область
-извлечения и сравнение CTE PostgreSQL на этом срезе не меняются.
+таблица с database/catalog-префиксом остаётся физической. На любом dialect исключение
+также требует, чтобы query-владелец объявления CTE был предком конкретной ссылки.
+Вложенная CTE в `SELECT count(*) FROM a WHERE EXISTS
+(WITH a AS (SELECT 1) SELECT 1 FROM a)` не скрывает физическую внешнюю `a`;
+объявление в соседней ветке `UNION` также не распространяет исключение.
+Внешний `WITH` сохраняет исключение во вложенных запросах и обеих ветках своей
+set operation. Whole-AST область извлечения, включая непрочитанные CTE, правила
+сравнения имён CTE PostgreSQL, порядок объявлений одного `WITH`, self-reference,
+рекурсия и классификация scalar `WITH` не меняются. Это проверка принадлежности
+объявления, а не полный CTE resolver.
 
 Production interaction попадает только в redacted review queue. Benchmark или
 expected result никогда автоматически не добавляется в LLM context.
@@ -576,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=57`, `CHECK_VERSION=37`.
+`VERIFIER_VERSION=58`, `CHECK_VERSION=38`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
