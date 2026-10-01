@@ -10,9 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=58`, `CHECK_VERSION=38`
+**Версии evidence:** `VERIFIER_VERSION=59`, `CHECK_VERSION=39`
 
-**Последний срез (2026-10-01):** исключение bare-ссылки на CTE из физического
+**Последний срез (2026-10-01):** `results.reconcile` после schema step читает
+колонки supplied result по имени: values, business key, контрактный порядок строк
+и ключ строки в failed aggregate check. Перестановка с ожидаемыми named values
+теперь даёт `equivalent`, включая перенос key; изменённые named values больше
+не получают ложный pass и sealed `result.equivalent` claim, а дают `different` / block.
+NULL и float tolerance остаются привязаны к своей колонке; входные ResultSet не меняются.
+Native capture сохраняет обязательный порядок колонок asset.
+`VERIFIER_VERSION` 58 → 59, `CHECK_VERSION` 38 → 39; исторические bundles не переписаны.
+Реализовано `gpt-6.1-sol` high через MyFlow `sol-high`. Red на comparator из HEAD:
+22 новых теста падали, включая два gate-level; после правки 29 новых регрессий прошли.
+Полный offline pytest: 3184 passed, 20 skipped, 38 deselected; strict mypy: 0 ошибок
+в 120 модулях, Ruff и Black чистые. Выбор среза и итоговое ревью — синтетические
+Astra xhigh; итог: 0 actionable P1/P2. Живая БД на этом срезе не запускалась;
+human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-01):** исключение bare-ссылки на CTE из физического
 списка таблиц и из denylist SQL guard требует, чтобы query-владелец объявления
 был предком конкретной ссылки. Вложенная или соседняя CTE больше не скрывает
 внешнюю физическую таблицу. `SELECT count(*) FROM a WHERE EXISTS
@@ -747,6 +762,8 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 `How to read this evidence` отделяет reconciliation от semantic approval, attestation
 от execution proof, cost compiled reference SQL от capture SQL и подпись от sign-off.
 Исторические bundles остаются на исходных версиях; grading проверок не менялся.
+Закрыто позиционное чтение supplied result в reconciliation: колонки и business key
+читаются по имени; native capture сохраняет порядок asset (T-27, verifier 59 / check 39).
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки

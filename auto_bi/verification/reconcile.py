@@ -9,11 +9,12 @@ calling any of them "equivalent" is how a false pass gets manufactured.
 
 The rules, in the order they run:
 
-1. schema before values — names, logical types, nullability and units. A schema difference
-   ends the comparison: comparing values across different shapes proves nothing.
-2. rows are matched by the declared business key, never by position. If the key is not
-   unique the comparison is insufficient — sorting by "something" would make the result
-   depend on the sort.
+1. schema before values — names, logical types, nullability and units. Columns are read
+   by name in each result. A schema difference ends the comparison: comparing values
+   across different shapes proves nothing.
+2. rows are matched by the declared business key, read by column name in each result,
+   never by position. If the key is not unique the comparison is insufficient — sorting
+   by "something" would make the result depend on the sort.
 3. integers, decimals, booleans, dates and strings compare exactly (a decimal compares as a
    decimal, so `0.4120` equals `0.412`); floats compare only inside a declared absolute or
    relative tolerance.
@@ -225,6 +226,11 @@ def compare_results(
         )
 
     key_indexes: list[int] = []
+    candidate_column_indexes = {
+        column.name: index for index, column in enumerate(candidate.columns)
+    }
+    candidate_indexes = [candidate_column_indexes[column.name] for column in base.columns]
+    candidate_key_indexes: list[int] = []
     for name in tolerance.business_key:
         index = base.column_index(name)
         if index is None:
@@ -232,6 +238,7 @@ def compare_results(
                 "key.unknown_column", f"business key column {name!r} is not in the result schema"
             )
         key_indexes.append(index)
+        candidate_key_indexes.append(candidate_column_indexes[name])
 
     float_columns = [c.name for c in base.columns if c.type is ColumnType.FLOAT]
     if float_columns and not tolerance.has_float_tolerance():
@@ -242,7 +249,7 @@ def compare_results(
 
     try:
         base_rows = _index_rows(base, key_indexes)
-        candidate_rows = _index_rows(candidate, key_indexes)
+        candidate_rows = _index_rows(candidate, candidate_key_indexes)
     except _DuplicateKey as exc:
         return _insufficient(
             "key.not_unique",
@@ -267,7 +274,9 @@ def compare_results(
         if other is None:
             continue
         compared += 1
-        differences.extend(_compare_row(base.columns, key, row, other, tolerance))
+        differences.extend(
+            _compare_row(base.columns, key, row, other, tolerance, candidate_indexes)
+        )
 
     if tolerance.ordered and not differences:
         base_order = list(base_rows)
@@ -281,7 +290,7 @@ def compare_results(
             )
 
     candidate_aggregate_issues, candidate_aggregate_failed = _evaluate_aggregate_checks(
-        candidate, tolerance.aggregate_checks, "candidate", key_indexes
+        candidate, tolerance.aggregate_checks, "candidate", candidate_key_indexes
     )
     proven_different = bool(differences) or candidate_aggregate_failed
     differences.extend(candidate_aggregate_issues)
@@ -388,11 +397,12 @@ def _compare_row(
     base_row: list[str | None],
     candidate_row: list[str | None],
     tolerance: ResultTolerance,
+    candidate_indexes: list[int],
 ) -> list[ResultDifference]:
     differences: list[ResultDifference] = []
     location = _render_key(key)
     for index, column in enumerate(columns):
-        before, after = base_row[index], candidate_row[index]
+        before, after = base_row[index], candidate_row[candidate_indexes[index]]
         if before is None and after is None:
             continue
         if before is None:

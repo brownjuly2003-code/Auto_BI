@@ -315,7 +315,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 58 — A CTE table exemption requires its declaring query to enclose that table reference.
 #: Nested or sibling declarations no longer hide physical tables from governance/schema-RBAC
 #: or exempt denylisted bare names. Whole-AST extraction and name comparison stay unchanged.
-VERIFIER_VERSION = "58"
+#: 59 — `results.reconcile` reads supplied columns by name after the schema step.
+#: Permuted columns with changed named values move from equivalent (PASS, sealed claim)
+#: to different (BLOCK); expected named values or a moved key move from BLOCK to equivalent.
+#: Failed candidate aggregate checks name the row by its own key. Historical bundles stay intact.
+VERIFIER_VERSION = "59"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -453,7 +457,12 @@ VERIFIER_VERSION = "58"
 #: 38 — `assets.invalidated` no longer overlooks physical tables matching CTE declarations
 #: owned only by nested or sibling queries. A missing ungoverned-table REVIEW can return;
 #: enclosing declarations, whole-AST extraction and existing name comparison keep their rules.
-CHECK_VERSION = "38"
+#: 39 — `results.reconcile` reads supplied columns by name after the schema step.
+#: The same permuted inputs move both ways: changed named values previously equivalent
+#: (PASS, sealed result.equivalent claim) now differ (BLOCK); expected named values or a
+#: moved key previously different (BLOCK) now agree. Failed aggregates name the candidate's
+#: own row key; historical bundles are not rewritten.
+CHECK_VERSION = "39"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

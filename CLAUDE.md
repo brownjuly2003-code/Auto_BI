@@ -83,6 +83,20 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-01 — `results.reconcile` после schema step читает supplied columns
+  по имени: values, business key, контрактный порядок строк и ключ строки
+  failed aggregate check. Permuted named values больше не дают ложный pass
+  или block; NULL и float tolerance следуют своей колонке, ResultSet не меняются.
+  Native capture сохраняет порядок колонок asset; исторические bundles не переписаны.
+  Версии evidence: `VERIFIER_VERSION` 58 → 59, `CHECK_VERSION` 38 → 39.
+  Реализовано `gpt-6.1-sol` high через MyFlow `sol-high`. Red-green: на comparator
+  из HEAD 22 новых теста падали, включая два gate-level; после правки 29 новых
+  регрессий прошли, связанный gate: 269 passed.
+  Полный offline pytest: 3184 passed, 20 skipped, 38 deselected; strict mypy —
+  0 ошибок в 120 модулях, Ruff и Black чистые.
+  Выбор среза и итоговое ревью — синтетические Astra xhigh: 0 actionable P1/P2.
+  Живая БД не запускалась; human/production acceptance не заявляется.
+
 - 2026-10-01 — table extraction и SQL guard исключают bare-ссылку на CTE,
   только если query-владелец объявления входит в ancestors этой ссылки.
   Вложенная или соседняя CTE больше не скрывает внешнюю физическую таблицу

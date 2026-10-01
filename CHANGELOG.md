@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **Reconciliation читает колонки supplied result по имени после schema step.**
+  Перестановка с ожидаемыми named values, включая перенос business key, больше
+  не блокирует эквивалентный результат; changed named values больше не получают
+  ложный pass и sealed `result.equivalent` claim. Контрактный порядок строк и
+  failed aggregate check используют собственный ключ каждого result; NULL и
+  float tolerance остаются у своей колонки. ResultSet не меняются, native capture
+  сохраняет порядок asset. `VERIFIER_VERSION` 58 → 59, `CHECK_VERSION` 38 → 39;
+  исторические bundles не переписаны.
+
 - **ClickHouse governance учитывает достижимость ключей `JOIN … USING`.**
   Непрочитанная named CTE или scalar `WITH` больше не добавляет ключи в причину
   `asset.query_fields_unchecked`; при соседнем живом JOIN остаются только его

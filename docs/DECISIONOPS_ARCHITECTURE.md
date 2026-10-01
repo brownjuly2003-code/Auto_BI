@@ -584,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=58`, `CHECK_VERSION=38`.
+`VERIFIER_VERSION=59`, `CHECK_VERSION=39`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -971,6 +971,10 @@ change при этом не исчезает: его по-прежнему на�
 ### 8.4 Result reconciliation
 
 - Schema сравнивается до values: names, logical types, nullability и units.
+- После schema step каждая колонка читается по имени отдельно в каждом result:
+  values, business key, контрактный порядок строк и строка, названная aggregate check.
+  Перестановка колонок сама по себе не является difference; native capture по-прежнему
+  требует порядок колонок asset.
 - Rows канонизируются по объявленному business key; если key не уникален,
   проверка завершается `needs_review` или `block`, а не случайной сортировкой.
 - Integer/decimal сравниваются точно; float допускается только с metric-specific
