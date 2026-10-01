@@ -6,6 +6,16 @@
 
 ### Changed
 
+- **Reconciliation отождествляет integer/decimal ключи и агрегатные группы по числу.**
+  Ключ на другом scale теперь находит свою строку вместо `row.missing` / `row.added`;
+  две записи одного числа в result дают `insufficient` / `key.not_unique` вместо
+  сопоставления по строке и возможного ложного pass. `share_sum` и
+  `partition_conservation` объединяют `group_by` на разных scales в одну группу.
+  NULL, non-finite, нечисловые значения и ключи другого типа сохраняют записанную форму;
+  детали называют ключ так, как его записал свой result; `conflicting totals`
+  перечисляет totals числами, без `Decimal(...)`. ResultSet не меняются.
+  `VERIFIER_VERSION` 59 → 60, `CHECK_VERSION` 39 → 40; исторические bundles не переписаны.
+
 - **Reconciliation читает колонки supplied result по имени после schema step.**
   Перестановка с ожидаемыми named values, включая перенос business key, больше
   не блокирует эквивалентный результат; changed named values больше не получают

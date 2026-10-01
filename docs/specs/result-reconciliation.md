@@ -109,3 +109,68 @@ check SHALL all use the key read this way.
 - **WHEN** the two results are compared
 - **THEN** the outcome is `different` and the `aggregate.<kind>.candidate_failed` detail names
   the row by its business-key value, not by the value of another column
+
+## Requirement: an integer or decimal key identifies its row by number
+
+When a declared business-key column, or a `group_by` column of a `partition_conservation` or
+`share_sum` check, has logical type `integer` or `decimal`, the system SHALL identify a value of
+that column by the number it writes, as the value comparison already does: two written forms of
+one number (`0.4120` and `0.412`) SHALL be one key, and different numbers SHALL stay different
+keys. A value that is not a finite number, NULL, and a key column of any other logical type
+SHALL keep their written form. A detail SHALL name a key as its own result writes it.
+
+### Scenario: a key written at another scale still identifies the row
+
+- **GIVEN** an expected result with columns `rate` (decimal) and `amount` (integer) and row
+  `0.4120`, `7`, and a candidate with row `0.412`, `7`
+- **WHEN** the two results are compared with business key `rate`
+- **THEN** the outcome is `equivalent` with one compared row; no `row.missing` or `row.added`
+  is reported
+
+### Scenario: a changed value under a rescaled key is named on its row
+
+- **GIVEN** the same expected result and a candidate row `0.412`, `8`
+- **WHEN** the two results are compared
+- **THEN** the outcome is `different` with exactly one `value.changed`:
+  `0.4120.amount: '7' -> '8'`
+
+### Scenario: two written forms of one key number are a duplicate key
+
+- **GIVEN** a result with decimal key `rate` and rows `0.4120`, `7` and `0.412`, `8`
+- **WHEN** it is compared, as the expected result or as the candidate
+- **THEN** the outcome is `insufficient` with `key.not_unique`
+
+### Scenario: different numbers stay different keys
+
+- **GIVEN** an expected row with decimal key `0.412` and a candidate row with key `0.4121`
+- **WHEN** the two results are compared
+- **THEN** `row.missing` names `0.412` and `row.added` names `0.4121`
+
+### Scenario: an ordered result reads its order through the numeric key
+
+- **GIVEN** `ordered: true`, decimal keys `0.4120`, `0.5` in the expected result and `0.412`,
+  `0.50` in the candidate
+- **WHEN** the candidate rows are in the expected order, and then in another order
+- **THEN** the first comparison is `equivalent`; the second reports `row.order_changed` with
+  each result's written keys
+
+### Scenario: a group written at two scales is one group
+
+- **GIVEN** a `share_sum` check grouped by decimal column `band` and rows `a`, `0.5`, `0.6` and
+  `b`, `0.50`, `0.4`
+- **WHEN** the check is evaluated
+- **THEN** the two rows form one group that sums to `1`, and the check holds
+
+### Scenario: a non-finite or unparsable key value keeps its written form
+
+- **GIVEN** a decimal key written `NaN` in both results, and then `NaN` in one and `nan` in the
+  other
+- **WHEN** the two results are compared
+- **THEN** the first pair is one key; the second is a `row.missing` / `row.added` pair
+
+### Scenario: a key of another type keeps its written form
+
+- **GIVEN** a string key `code` written `0.4120` in the expected result and `0.412` in the
+  candidate
+- **WHEN** the two results are compared
+- **THEN** `row.missing` names `0.4120` and `row.added` names `0.412`, as before

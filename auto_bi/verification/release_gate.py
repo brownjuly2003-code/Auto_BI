@@ -319,7 +319,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: Permuted columns with changed named values move from equivalent (PASS, sealed claim)
 #: to different (BLOCK); expected named values or a moved key move from BLOCK to equivalent.
 #: Failed candidate aggregate checks name the row by its own key. Historical bundles stay intact.
-VERIFIER_VERSION = "59"
+#: 60 — integer/decimal business keys and aggregate group_by values are identified by number.
+#: The same inputs move both ways: rescaled keys previously different (BLOCK, row.missing /
+#: row.added) now match; two written forms of one key previously paired by spelling (possibly
+#: equivalent, PASS) are now insufficient / key.not_unique (REVIEW). A share_sum or
+#: partition_conservation group split by scale (possibly insufficient or different) is now
+#: one group. The conflicting-totals detail lists totals as numbers, not `Decimal(...)` reprs.
+#: Historical bundles are not rewritten.
+VERIFIER_VERSION = "60"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -462,7 +469,13 @@ VERIFIER_VERSION = "59"
 #: (PASS, sealed result.equivalent claim) now differ (BLOCK); expected named values or a
 #: moved key previously different (BLOCK) now agree. Failed aggregates name the candidate's
 #: own row key; historical bundles are not rewritten.
-CHECK_VERSION = "39"
+#: 40 — integer/decimal business keys and aggregate group_by values are identified by number.
+#: A rescaled key moves from different (BLOCK, row.missing / row.added) to a matched row;
+#: duplicate numbers previously paired by written form (possibly equivalent, PASS) move to
+#: insufficient / key.not_unique (REVIEW). A share_sum or partition_conservation group split
+#: by scale (possibly insufficient or different) now forms one group. Both directions on
+#: the same inputs; historical bundles are not rewritten.
+CHECK_VERSION = "40"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

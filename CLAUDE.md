@@ -83,6 +83,22 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-01 — `results.reconcile` отождествляет integer/decimal business key
+  и `group_by` проверок `share_sum` / `partition_conservation` по числу.
+  Другой scale находит строку; две записи одного числа дают `insufficient` /
+  `key.not_unique`; группы на разных scales объединяются. Non-finite,
+  нечисловые значения, NULL и ключи других типов сохраняют записанную форму.
+  Детали используют ключ своего result; чтение по имени и неизменность входов сохранены.
+  Версии evidence: `VERIFIER_VERSION` 59 → 60, `CHECK_VERSION` 39 → 40.
+  Реализовано `gpt-6.1-sol` high через MyFlow `sol-high`.
+  Red: 24 новых случая падали, 11 контролей проходили.
+  После правки 35 новых случаев и связанный focused gate прошли: 242 passed.
+  Полный offline pytest: 3219 passed, 20 skipped, 38 deselected; strict mypy —
+  0 ошибок в 120 модулях, Ruff и Black чистые.
+  Срез — альтернатива №2 того же синтетического Astra xhigh выбора; итоговое
+  ревью Astra xhigh: 0 actionable P1/P2. Живая БД не запускалась;
+  human/production acceptance не заявляется.
+
 - 2026-10-01 — `results.reconcile` после schema step читает supplied columns
   по имени: values, business key, контрактный порядок строк и ключ строки
   failed aggregate check. Permuted named values больше не дают ложный pass

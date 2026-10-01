@@ -13,8 +13,9 @@ The rules, in the order they run:
    by name in each result. A schema difference ends the comparison: comparing values
    across different shapes proves nothing.
 2. rows are matched by the declared business key, read by column name in each result,
-   never by position. If the key is not unique the comparison is insufficient — sorting
-   by "something" would make the result depend on the sort.
+   never by position. An integer/decimal key or group value is identified by its number.
+   If the key is not unique the comparison is insufficient — sorting by "something"
+   would make the result depend on the sort.
 3. integers, decimals, booleans, dates and strings compare exactly (a decimal compares as a
    decimal, so `0.4120` equals `0.412`); floats compare only inside a declared absolute or
    relative tolerance.
@@ -267,7 +268,9 @@ def compare_results(
         )
 
     differences: list[ResultDifference] = []
-    differences.extend(_compare_membership(base_rows, candidate_rows))
+    differences.extend(
+        _compare_membership(base_rows, candidate_rows, key_indexes, candidate_key_indexes)
+    )
     compared = 0
     for key, row in base_rows.items():
         other = candidate_rows.get(key)
@@ -275,17 +278,32 @@ def compare_results(
             continue
         compared += 1
         differences.extend(
-            _compare_row(base.columns, key, row, other, tolerance, candidate_indexes)
+            _compare_row(
+                base.columns,
+                tuple(row[index] for index in key_indexes),
+                row,
+                other,
+                tolerance,
+                candidate_indexes,
+                key_indexes,
+            )
         )
 
     if tolerance.ordered and not differences:
         base_order = list(base_rows)
         candidate_order = list(candidate_rows)
         if base_order != candidate_order:
+            base_written_order = [
+                tuple(row[index] for index in key_indexes) for row in base_rows.values()
+            ]
+            candidate_written_order = [
+                tuple(row[index] for index in candidate_key_indexes)
+                for row in candidate_rows.values()
+            ]
             differences.append(
                 ResultDifference(
                     code="row.order_changed",
-                    detail=f"row order changed: {base_order} -> {candidate_order}",
+                    detail=f"row order changed: {base_written_order} -> {candidate_written_order}",
                 )
             )
 
@@ -361,32 +379,49 @@ def _compare_schema(base: ResultSet, candidate: ResultSet) -> list[ResultDiffere
     return differences
 
 
+def _key_component(value: str | None, logical_type: ColumnType) -> str | Decimal | None:
+    if value is not None and logical_type in (ColumnType.INTEGER, ColumnType.DECIMAL):
+        try:
+            parsed = Decimal(value)
+        except InvalidOperation:
+            return value
+        if parsed.is_finite():
+            return parsed
+    return value
+
+
 def _index_rows(
     result: ResultSet, key_indexes: list[int]
-) -> dict[tuple[str | None, ...], list[str | None]]:
-    indexed: dict[tuple[str | None, ...], list[str | None]] = {}
+) -> dict[tuple[str | Decimal | None, ...], list[str | None]]:
+    indexed: dict[tuple[str | Decimal | None, ...], list[str | None]] = {}
     for row in result.rows:
-        key = tuple(row[index] for index in key_indexes)
+        key = tuple(_key_component(row[index], result.columns[index].type) for index in key_indexes)
         if key in indexed:
-            raise _DuplicateKey(key)
+            raise _DuplicateKey(tuple(row[index] for index in key_indexes))
         indexed[key] = row
     return indexed
 
 
 def _compare_membership(
-    base_rows: dict[tuple[str | None, ...], list[str | None]],
-    candidate_rows: dict[tuple[str | None, ...], list[str | None]],
+    base_rows: dict[tuple[str | Decimal | None, ...], list[str | None]],
+    candidate_rows: dict[tuple[str | Decimal | None, ...], list[str | None]],
+    key_indexes: list[int],
+    candidate_key_indexes: list[int],
 ) -> list[ResultDifference]:
     differences: list[ResultDifference] = []
-    for key in base_rows:
+    for key, row in base_rows.items():
         if key not in candidate_rows:
+            written_key = tuple(row[index] for index in key_indexes)
             differences.append(
-                ResultDifference(code="row.missing", detail=f"row {_render_key(key)} is gone")
+                ResultDifference(
+                    code="row.missing", detail=f"row {_render_key(written_key)} is gone"
+                )
             )
-    for key in candidate_rows:
+    for key, row in candidate_rows.items():
         if key not in base_rows:
+            written_key = tuple(row[index] for index in candidate_key_indexes)
             differences.append(
-                ResultDifference(code="row.added", detail=f"new row {_render_key(key)}")
+                ResultDifference(code="row.added", detail=f"new row {_render_key(written_key)}")
             )
     return differences
 
@@ -398,10 +433,13 @@ def _compare_row(
     candidate_row: list[str | None],
     tolerance: ResultTolerance,
     candidate_indexes: list[int],
+    key_indexes: list[int],
 ) -> list[ResultDifference]:
     differences: list[ResultDifference] = []
     location = _render_key(key)
     for index, column in enumerate(columns):
+        if index in key_indexes and column.type in (ColumnType.INTEGER, ColumnType.DECIMAL):
+            continue
         before, after = base_row[index], candidate_row[candidate_indexes[index]]
         if before is None and after is None:
             continue
@@ -542,12 +580,15 @@ def _partition_conservation(result: ResultSet, check: PartitionConservationCheck
         raise _AggregateInputError("an empty result has no declared total to conserve")
     value_index = _required_index(result, check.value_column)
     total_index = _required_index(result, check.total_column)
+    group_indexes = [_required_index(result, name) for name in check.group_by]
     tolerance = Decimal(check.absolute_tolerance)
-    for group, rows in groups.items():
+    for rows in groups.values():
+        group = tuple(rows[0][index] for index in group_indexes) or ("all",)
         values = [_decimal_value(row[value_index], check.value_column) for row in rows]
         totals = {_decimal_value(row[total_index], check.total_column) for row in rows}
         if len(totals) != 1:
-            return f"group {_render_key(group)} declares conflicting totals {sorted(totals)}"
+            rendered_totals = ", ".join(str(total) for total in sorted(totals))
+            return f"group {_render_key(group)} declares conflicting totals [{rendered_totals}]"
         actual = sum((Fraction(value) for value in values), Fraction())
         expected = Fraction(next(iter(totals)))
         if abs(actual - expected) > Fraction(tolerance):
@@ -563,9 +604,11 @@ def _share_sum(result: ResultSet, check: ShareSumCheck) -> str | None:
     if not groups:
         raise _AggregateInputError("an empty result has no shares to sum")
     share_index = _required_index(result, check.share_column)
+    group_indexes = [_required_index(result, name) for name in check.group_by]
     expected = Decimal(check.expected_sum)
     tolerance = Decimal(check.absolute_tolerance)
-    for group, rows in groups.items():
+    for rows in groups.values():
+        group = tuple(rows[0][index] for index in group_indexes) or ("all",)
         actual = sum(
             (Fraction(_decimal_value(row[share_index], check.share_column)) for row in rows),
             Fraction(),
@@ -630,11 +673,13 @@ def _additive_decomposition(
 
 def _group_rows(
     result: ResultSet, group_by: list[str]
-) -> dict[tuple[str | None, ...], list[list[str | None]]]:
+) -> dict[tuple[str | Decimal | None, ...], list[list[str | None]]]:
     indexes = [_required_index(result, name) for name in group_by]
-    groups: dict[tuple[str | None, ...], list[list[str | None]]] = {}
+    groups: dict[tuple[str | Decimal | None, ...], list[list[str | None]]] = {}
     for row in result.rows:
-        key = tuple(row[index] for index in indexes) or ("all",)
+        key = tuple(
+            _key_component(row[index], result.columns[index].type) for index in indexes
+        ) or ("all",)
         groups.setdefault(key, []).append(row)
     return groups
 

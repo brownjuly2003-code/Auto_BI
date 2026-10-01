@@ -10,9 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=59`, `CHECK_VERSION=39`
+**Версии evidence:** `VERIFIER_VERSION=60`, `CHECK_VERSION=40`
 
-**Последний срез (2026-10-01):** `results.reconcile` после schema step читает
+**Последний срез (2026-10-01):** `results.reconcile` отождествляет integer/decimal
+business key и `group_by` проверок `share_sum` / `partition_conservation` по числу.
+`0.4120` и `0.412` теперь находят одну строку; две записи одного числа в result
+дают `insufficient` / `key.not_unique`, а группа на разных scales больше не делится.
+NULL, non-finite, нечисловые значения и ключи других типов сохраняют записанную форму.
+Детали используют написание ключа своего result, группа — своей первой строки;
+колонки читаются по имени, входные ResultSet не меняются.
+`VERIFIER_VERSION` 59 → 60, `CHECK_VERSION` 39 → 40; исторические bundles не переписаны.
+Реализовано `gpt-6.1-sol` high через MyFlow `sol-high`. До правки 24 новых случая
+падали, 11 контролей проходили; после правки 35 новых случаев и связанный focused gate
+прошли: 242 passed. Полный offline pytest: 3219 passed, 20 skipped, 38 deselected;
+strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые. Срез — альтернатива №2 того же
+синтетического Astra xhigh выбора; итоговое ревью Astra xhigh: 0 actionable P1/P2.
+Живая БД на этом срезе не запускалась; human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-01):** `results.reconcile` после schema step читает
 колонки supplied result по имени: values, business key, контрактный порядок строк
 и ключ строки в failed aggregate check. Перестановка с ожидаемыми named values
 теперь даёт `equivalent`, включая перенос key; изменённые named values больше
@@ -764,6 +779,8 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 Исторические bundles остаются на исходных версиях; grading проверок не менялся.
 Закрыто позиционное чтение supplied result в reconciliation: колонки и business key
 читаются по имени; native capture сохраняет порядок asset (T-27, verifier 59 / check 39).
+Закрыта числовая идентичность integer/decimal business key и aggregate `group_by`;
+детали сохраняют написание ключей своего result (T-28, verifier 60 / check 40).
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки
