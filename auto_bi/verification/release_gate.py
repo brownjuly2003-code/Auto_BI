@@ -341,7 +341,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: the rounding boundary. An infinity against a finite value or the opposite infinity was
 #: equal under an absolute tolerance beyond the binary64 range, which rounded to infinity;
 #: it is now value.changed. Historical bundles are not rewritten.
-VERIFIER_VERSION = "62"
+#: 63 — a non-finite value compares by kind. Same-sign infinities, including different
+#: spellings and float overflow, move from value.changed BLOCK to equal. Expected NaN
+#: moves from BLOCK to value.expected_nan REVIEW unless another finding proves a
+#: difference; decimal sNaN against itself moves from written-form equal to REVIEW.
+#: A float key written nan no longer reports its own cell. Candidate NaN against a
+#: number, opposite infinities and infinity against a finite value stay value.changed;
+#: decimal infinity against itself stays equal. Historical bundles are not rewritten.
+VERIFIER_VERSION = "63"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -504,7 +511,15 @@ VERIFIER_VERSION = "62"
 #: the rounding boundary. An infinity against a finite value or the opposite infinity was
 #: equal under an absolute tolerance beyond the binary64 range, which rounded to infinity;
 #: it is now value.changed. Historical bundles are not rewritten.
-CHECK_VERSION = "42"
+#: 43 — results.reconcile compares a non-finite value by kind. Same-sign infinities,
+#: including different spellings and float overflow, move from value.changed BLOCK to
+#: equal. Expected NaN moves from BLOCK to value.expected_nan REVIEW unless another
+#: finding proves a difference; decimal sNaN against itself moves from written-form
+#: equal to REVIEW. A float key written nan no longer reports its own cell. Candidate
+#: NaN against a number, opposite infinities and infinity against a finite value stay
+#: value.changed; decimal infinity against itself stays equal. Historical bundles are
+#: not rewritten.
+CHECK_VERSION = "43"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

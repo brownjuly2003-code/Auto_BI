@@ -10,9 +10,30 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=62`, `CHECK_VERSION=42`
+**Версии evidence:** `VERIFIER_VERSION=63`, `CHECK_VERSION=43`
 
-**Последний срез (2026-10-01):** `results.reconcile` сравнивает точную разность конечных
+**Последний срез (2026-10-01):** `results.reconcile` сравнивает нечисловые значения
+integer/decimal/float по виду: бесконечности одного знака равны при разных записях,
+включая float за пределом binary64; допуск к ним не применяется. NaN кандидата против
+числа или бесконечности — `value.changed`; ожидаемый NaN, включая decimal `sNaN`,
+не решает свою ячейку (`value.expected_nan`, `insufficient` / REVIEW), а доказанное
+различие в другом месте сохраняет `different`. Проверка порядка выполняется и при
+одних ожидаемых NaN; их ячейки перечисляются после value/order differences и перед
+candidate aggregate issues. NULL сохраняет свои коды, ячейка любого business key
+решается сопоставлением строки; ключи и агрегатные проверки сохраняют свои правила.
+`VERIFIER_VERSION` 62 → 63, `CHECK_VERSION` 42 → 43; исторические bundles не переписаны.
+Реализовано `gpt-6.1-sol` high через MyFlow `sol-high`. До правки 58 новых случаев
+падали, 77 контролей проходили; после правки все 135 и связанный focused gate прошли:
+403 passed. Gate-level тест проверяет REVIEW с `result.not_equivalent` и отсутствие
+sealed `result.equivalent` claim. Полный offline pytest: 3424 passed, 20 skipped, 38 deselected;
+strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые. Живые факты сняты на Mac
+одноразовыми стендами (удалены): ClickHouse 24.8.14.39 даёт `nan` на `0/0` во Float64,
+PostgreSQL 16.15 считает `'NaN' = 'NaN'` истиной; политика гейта не следует
+SQL-семантике ни одного движка. Срез — альтернатива №2 синтетического Astra xhigh
+выбора, давшего T-29; итоговое ревью Astra xhigh: 0 findings. Human/production
+acceptance не заявляется.
+
+**Предыдущий срез (2026-10-01):** `results.reconcile` сравнивает точную разность конечных
 binary64-значений с точным объявленным decimal-допуском. Absolute проверяет разность,
 relative — разность против допуска × max(|a|, |b|), без приближения или деления;
 попадание в любой объявленный допуск даёт `equivalent`. Превышение допуска, скрытое
@@ -820,6 +841,8 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 (T-29, verifier 61 / check 41).
 Закрыта погрешность сравнения float с объявленным допуском: точная binary64-разность
 сравнивается с точным decimal-допуском (T-31, verifier 62 / check 42).
+Закрыто сравнение нечисловых значений по виду и REVIEW для ожидаемого NaN
+(T-32, verifier 63 / check 43).
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки

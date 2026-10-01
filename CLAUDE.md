@@ -83,6 +83,29 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-01 — `results.reconcile` сравнивает нечисловое значение по виду:
+  бесконечности одного знака равны при разных записях, включая float за пределом
+  binary64, без float-допуска. NaN кандидата против числа или бесконечности —
+  `value.changed`; ожидаемый NaN, включая decimal `sNaN`, не решает ячейку:
+  `value.expected_nan`, `insufficient` / REVIEW, если больше ничего не доказано.
+  Доказанное различие в membership, другом value, порядке или candidate aggregate
+  сохраняет `different`; ожидаемые NaN перечисляются после value/order differences,
+  перед candidate aggregate issues. NULL сохраняет свои коды; ячейка любого business
+  key решается сопоставлением строки, float key `nan` больше не сравнивается сам с собой.
+  Версии evidence: `VERIFIER_VERSION` 62 → 63, `CHECK_VERSION` 42 → 43;
+  исторические bundles не переписаны.
+  Реализовано `gpt-6.1-sol` high через MyFlow `sol-high`.
+  Red на HEAD: 58 новых случаев падали, 77 контролей проходили; после правки все 135
+  и связанный focused gate прошли: 403 passed. Gate-level тест проверяет REVIEW
+  с `result.not_equivalent`, `insufficient` / `value.expected_nan` в payload и отсутствие
+  sealed `result.equivalent` claim. Полный offline pytest: 3424 passed, 20 skipped,
+  38 deselected; strict mypy — 0 ошибок в 120 модулях, Ruff и Black чистые.
+  Срез — альтернатива №2 синтетического Astra xhigh выбора, давшего T-29; политику
+  определил оркестратор по делегированию владельца. Итоговое ревью Astra xhigh:
+  0 findings. Живые факты сняты на Mac одноразовыми ClickHouse 24.8.14.39 и
+  PostgreSQL 16.15 (стенды удалены); гейт не следует SQL-семантике ни одного движка.
+  Human/production acceptance не заявляется.
+
 - 2026-10-01 — `results.reconcile` сравнивает точную разность конечных binary64-значений
   с точным объявленным decimal-допуском: absolute напрямую, relative через умножение
   на max(|a|, |b|), без приближения разности, отношения или допуска. Превышение,

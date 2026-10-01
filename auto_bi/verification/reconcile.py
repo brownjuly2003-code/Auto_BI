@@ -16,11 +16,12 @@ The rules, in the order they run:
    never by position. An integer/decimal key or group value is identified by its number.
    If the key is not unique the comparison is insufficient — sorting by "something"
    would make the result depend on the sort.
-3. integers, decimals, booleans, dates and strings compare exactly (a decimal compares as a
-   decimal, so `0.4120` equals `0.412`); floats compare only inside a declared absolute or
-   relative tolerance.
-4. `NULL`, zero, a missing row and an empty result are four distinct states with four
-   distinct codes.
+3. finite integers/decimals and other exact types compare exactly (`0.4120` equals
+   `0.412`); finite floats compare inside a declared tolerance, and non-finite numbers
+   compare by kind, with infinities equal only at the same sign.
+4. `NULL`, zero, a missing row and an empty result keep distinct codes. An expected NaN
+   cannot settle its cell: `value.expected_nan` is insufficient unless another finding
+   proves a difference.
 5. order is a difference only when the contract says the order is part of the answer
    (rank/top-N).
 6. aggregate invariants run only when explicitly declared: partition conservation, share
@@ -36,7 +37,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from fractions import Fraction
-from math import isfinite
+from math import isfinite, isnan
 from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
@@ -272,23 +273,26 @@ def compare_results(
     differences.extend(
         _compare_membership(base_rows, candidate_rows, key_indexes, candidate_key_indexes)
     )
+    expected_nan_issues: list[ResultDifference] = []
     compared = 0
     for key, row in base_rows.items():
         other = candidate_rows.get(key)
         if other is None:
             continue
         compared += 1
-        differences.extend(
-            _compare_row(
-                base.columns,
-                tuple(row[index] for index in key_indexes),
-                row,
-                other,
-                tolerance,
-                candidate_indexes,
-                key_indexes,
-            )
-        )
+        for difference in _compare_row(
+            base.columns,
+            tuple(row[index] for index in key_indexes),
+            row,
+            other,
+            tolerance,
+            candidate_indexes,
+            key_indexes,
+        ):
+            if difference.code == "value.expected_nan":
+                expected_nan_issues.append(difference)
+            else:
+                differences.append(difference)
 
     if tolerance.ordered and not differences:
         base_order = list(base_rows)
@@ -312,6 +316,7 @@ def compare_results(
         candidate, tolerance.aggregate_checks, "candidate", candidate_key_indexes
     )
     proven_different = bool(differences) or candidate_aggregate_failed
+    differences.extend(expected_nan_issues)
     differences.extend(candidate_aggregate_issues)
     if proven_different:
         outcome = ComparisonOutcome.DIFFERENT
@@ -439,7 +444,7 @@ def _compare_row(
     differences: list[ResultDifference] = []
     location = _render_key(key)
     for index, column in enumerate(columns):
-        if index in key_indexes and column.type in (ColumnType.INTEGER, ColumnType.DECIMAL):
+        if index in key_indexes:
             continue
         before, after = base_row[index], candidate_row[candidate_indexes[index]]
         if before is None and after is None:
@@ -460,7 +465,15 @@ def _compare_row(
                 )
             )
             continue
-        if not _values_equal(column, before, after, tolerance):
+        equal = _values_equal(column, before, after, tolerance)
+        if equal is None:
+            differences.append(
+                ResultDifference(
+                    code="value.expected_nan",
+                    detail=f"{location}.{column.name}: expected {before!r} is not a number",
+                )
+            )
+        elif not equal:
             differences.append(
                 ResultDifference(
                     code="value.changed",
@@ -472,25 +485,38 @@ def _compare_row(
 
 def _values_equal(
     column: ColumnSchema, before: str, after: str, tolerance: ResultTolerance
-) -> bool:
+) -> bool | None:
     if column.type is ColumnType.FLOAT:
         return _floats_equal(before, after, tolerance)
     if column.type in (ColumnType.DECIMAL, ColumnType.INTEGER):
         try:
-            # A decimal compares as a decimal: "0.4120" and "0.412" are one number.
-            return Decimal(before) == Decimal(after)
+            left = Decimal(before)
         except InvalidOperation:
             return before == after
+        if left.is_nan():
+            return None
+        try:
+            right = Decimal(after)
+        except InvalidOperation:
+            return before == after
+        # A decimal compares as a decimal: "0.4120" and "0.412" are one number.
+        return not right.is_nan() and left == right
     return before == after
 
 
-def _floats_equal(before: str, after: str, tolerance: ResultTolerance) -> bool:
+def _floats_equal(before: str, after: str, tolerance: ResultTolerance) -> bool | None:
     try:
-        left, right = float(before), float(after)
+        left = float(before)
+    except ValueError:
+        return before == after
+    if isnan(left):
+        return None
+    try:
+        right = float(after)
     except ValueError:
         return before == after
     if not isfinite(left) or not isfinite(right):
-        return False
+        return left == right
     left_exact, right_exact = Fraction(left), Fraction(right)
     difference = abs(left_exact - right_exact)
     if tolerance.float_absolute is not None and difference <= Fraction(

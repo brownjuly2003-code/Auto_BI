@@ -186,7 +186,7 @@ either declared bound is equal. No rounding of the difference, of the ratio or o
 SHALL move a value across its bound. This requirement governs finite values, with one
 consequence for the others: a tolerance read exactly is finite, so no declared tolerance, even
 one beyond the binary64 range, makes an infinity equal to a finite value or to the opposite
-infinity. How a value that is not a finite number otherwise compares is not decided here.
+infinity. How a value that is not a finite number otherwise compares is the next requirement.
 
 ### Scenario: a difference just over the absolute tolerance is a change
 
@@ -233,3 +233,80 @@ infinity. How a value that is not a finite number otherwise compares is not deci
 - **WHEN** the two results are compared
 - **THEN** the outcome is `different` with `value.changed` `east.m: '1' -> 'inf'`; an
   expected `-inf` against a candidate `inf` under the same tolerance is `different` too
+
+## Requirement: a value that is not a finite number compares by its kind
+
+A value of an integer, decimal or float column is not a finite number when it reads as a NaN or as
+an infinity; in a float column a written form that rounds past the largest binary64 value is the
+infinity the engine would hold. Every spelling the column's number syntax accepts for one kind is
+that one value: `nan` and `NaN`; `inf`, `+inf` and `Infinity`; `-inf` and `-Infinity`. The
+system SHALL compare such a value by its kind, never through a float tolerance:
+
+- an infinity SHALL equal the infinity of the same sign, and SHALL be `value.changed` against the
+  opposite infinity, a finite value or a NaN;
+- a NaN in the candidate SHALL be `value.changed` against an expected number or infinity;
+- a NaN in the expected result SHALL NOT settle its cell: the cell SHALL be named with
+  `value.expected_nan`, and the comparison SHALL be `insufficient` unless it proves a difference
+  elsewhere, in which case it is `different` and still names the cell.
+
+A reference that is not a number cannot show that the candidate kept a number — a value that is
+absent by design is written as NULL, which has its own codes — while a candidate that lost a
+reviewed number has changed it. A NULL on either side keeps its own codes, a business key keeps its
+written form and an aggregate check keeps refusing a non-finite input, as their own requirements
+say.
+
+### Scenario: equal infinities are equal whatever their spelling
+
+- **GIVEN** an expected result with columns `id` (string) and `m` (float), business key `id` and
+  `float_absolute` `0.01`
+- **WHEN** the expected row is `east`, `inf` and the candidate row `east`, `Infinity`; then
+  `-inf` and `-Infinity`; then `1e400` and `inf`
+- **THEN** each outcome is `equivalent` with one compared row and no differences
+
+### Scenario: an infinity against another value is a change
+
+- **GIVEN** the same columns, `float_absolute` `0.01`, `float_relative` `0.5` and the expected
+  row `east`, `inf`
+- **WHEN** the candidate row is `east`, `-inf`; then `east`, `1e308`; then `east`, `nan`
+- **THEN** each outcome is `different` with exactly one `value.changed` on `east.m`, for example
+  `east.m: 'inf' -> '-inf'`
+
+### Scenario: a decimal infinity keeps its sign
+
+- **GIVEN** columns `id` (string) and `m` (decimal), business key `id` and the expected row
+  `east`, `Infinity`
+- **WHEN** the candidate row is `east`, `Infinity`; then `east`, `-Infinity`
+- **THEN** the first outcome is `equivalent`; the second is `different` with
+  `east.m: 'Infinity' -> '-Infinity'`
+
+### Scenario: a candidate NaN where a number was expected is a change
+
+- **GIVEN** a float column `m` with `float_absolute` `0.01` and the expected row `east`, `1`, and
+  a decimal column `m` with the expected row `east`, `1`
+- **WHEN** the float candidate row is `east`, `nan` and the decimal candidate row `east`, `NaN`
+- **THEN** both outcomes are `different` with exactly one `value.changed`:
+  `east.m: '1' -> 'nan'` and `east.m: '1' -> 'NaN'`
+
+### Scenario: an expected NaN cannot settle its cell
+
+- **GIVEN** a float column `m` with `float_absolute` `0.01` and the expected row `east`, `nan`
+- **WHEN** the candidate row is `east`, `nan`; then `east`, `NaN`; then `east`, `1`
+- **THEN** each outcome is `insufficient` with one compared row and exactly one difference,
+  `value.expected_nan`: `east.m: expected 'nan' is not a number`; a decimal column with the
+  expected row `east`, `NaN` gives the same outcome with `east.m: expected 'NaN' is not a number`
+
+### Scenario: an expected NaN reaches the gate as review
+
+- **GIVEN** a verified asset whose expected float value is `nan` and a supplied candidate that
+  also answers `nan`
+- **WHEN** the gate runs
+- **THEN** `results.reconcile` is `review` with `result.not_equivalent`, the comparison is
+  `insufficient` with `value.expected_nan`, and the run seals no `result.equivalent` claim
+
+### Scenario: an expected NaN does not hide a change elsewhere
+
+- **GIVEN** a float column `m` with `float_absolute` `0.01`, expected rows `east`, `nan` and
+  `west`, `1`, and candidate rows `east`, `nan` and `west`, `2`
+- **WHEN** the two results are compared
+- **THEN** the outcome is `different` with two compared rows, `value.changed`
+  `west.m: '1' -> '2'` and `value.expected_nan` on `east.m`
