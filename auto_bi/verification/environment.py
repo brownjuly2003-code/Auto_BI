@@ -225,6 +225,9 @@ class TableFacts(StrictModel):
     """What the engine reports about one mart."""
 
     table: NonBlankText
+    #: The clock of the question this reading answers. `None` only in readings made before
+    #: readings recorded their event-time column.
+    event_time_column: NonBlankText | None = None
     exists: bool
     readable: bool
     #: Rows behind the event-time reading. Zero is why `max_event_time` may be meaningless.
@@ -317,6 +320,42 @@ class EnvironmentFinding(StrictModel):
     severity: Severity
     subject: NonBlankText
     detail: NonBlankText
+
+
+def reading_for(
+    question: TableQuestion | PlanQuestion,
+    questions: EnvironmentQuestions,
+    readings: list[TableFacts],
+) -> TableFacts | None:
+    """Resolve a question's reading by its mart and clock, never by collection order.
+
+    A plan belongs to the table question listing its metric. Legacy unlabelled readings
+    answer only a single-clock mart with exactly one reading; duplicate exact readings
+    answer nothing even when an unlabelled reading is also present.
+    """
+    if isinstance(question, PlanQuestion):
+        owners = [
+            item
+            for item in questions.tables
+            if item.table == question.table and question.metric_ref in item.metric_refs
+        ]
+        if len(owners) != 1:
+            return None
+        table_question = owners[0]
+    else:
+        table_question = question
+    candidates = [item for item in readings if item.table == table_question.table]
+    exact = [
+        item for item in candidates if item.event_time_column == table_question.event_time_column
+    ]
+    if exact:
+        return exact[0] if len(exact) == 1 else None
+    clocks = {
+        item.event_time_column for item in questions.tables if item.table == table_question.table
+    }
+    if len(clocks) == 1 and len(candidates) == 1 and candidates[0].event_time_column is None:
+        return candidates[0]
+    return None
 
 
 class _Age(NamedTuple):
@@ -512,8 +551,9 @@ def check_access(
         )
 
     for question in questions.tables:
-        table = facts.table(question.table)
-        if table is None:
+        table = reading_for(question, questions, facts.tables)
+        readings = [item for item in facts.tables if item.table == question.table]
+        if not readings:
             findings.append(
                 EnvironmentFinding(
                     code="access.table_not_probed",
@@ -523,6 +563,27 @@ def check_access(
                         f"{question.table} is in scope but the probe of {facts.target} "
                         "carries no answer about it"
                     ),
+                )
+            )
+            continue
+        if table is None:
+            count = sum(item.event_time_column == question.event_time_column for item in readings)
+            if count:
+                reason = f"{count} readings recorded for it"
+            elif any(item.event_time_column is None for item in readings):
+                reason = (
+                    "a reading that records no column cannot be attributed while the mart "
+                    "is dated by several columns or has several readings"
+                )
+            else:
+                reason = "no reading recorded for that column"
+            findings.append(
+                EnvironmentFinding(
+                    code="access.reading_unattributed",
+                    severity=Severity.REVIEW,
+                    subject=question.table,
+                    detail=f"{question.table} has no attributable reading for "
+                    f"{question.event_time_column} on {facts.target}: {reason}",
                 )
             )
             continue
@@ -567,7 +628,7 @@ def check_freshness(
     findings: list[EnvironmentFinding] = []
 
     for question in questions.tables:
-        table = facts.table(question.table)
+        table = reading_for(question, questions, facts.tables)
         if table is None or not table.exists or not table.readable:
             continue  # already a finding of its own in `check_access`
         if denies_all_rows(table, facts.role):
@@ -622,7 +683,8 @@ def check_freshness(
                     severity=Severity.REVIEW,
                     subject=question.table,
                     detail=(
-                        f"{question.table} is dated {table.max_event_time} "
+                        f"{question.table} is dated {table.max_event_time} by "
+                        f"{question.event_time_column} "
                         f"({_hours(age.seconds)} before {created_at}"
                         f"{_assumption(age, question)}), older than the {max_age} this "
                         "product declares"
@@ -640,7 +702,7 @@ def check_physical(
     findings: list[EnvironmentFinding] = []
 
     for question in questions.tables:
-        table = facts.table(question.table)
+        table = reading_for(question, questions, facts.tables)
         if table is None or not table.exists or not table.readable:
             continue  # `check_access` already said so; saying it twice weighs it twice
         findings.extend(_column_findings(question, table, facts))
@@ -751,7 +813,7 @@ def check_security(
     findings: list[EnvironmentFinding] = []
 
     for question in questions.tables:
-        table = facts.table(question.table)
+        table = reading_for(question, questions, facts.tables)
         if table is None or not table.exists or not table.readable:
             continue  # `check_access` already said so; saying it twice weighs it twice
         findings.extend(_unobserved_findings(question, table, facts))
@@ -941,7 +1003,7 @@ def check_cost(
     findings: list[EnvironmentFinding] = []
 
     for question in questions.plans:
-        table = facts.table(question.table)
+        table = reading_for(question, questions, facts.tables)
         if table is None or not table.exists or not table.readable:
             continue  # `check_access` already blocked on the mart; the plan is downstream
         if denies_all_rows(table, facts.role):

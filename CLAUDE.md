@@ -83,6 +83,23 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-01 — environment-чтения записывают `event_time_column` своего вопроса
+  (витрина, колонка времени). Общий resolver атрибутирует чтение для access,
+  freshness, physical, security, cost и допуска runtime probe; порядок не скрывает
+  протухшие часы / denied column и не сообщает свежие часы протухшими.
+  Неоднозначное чтение — `access.reading_unattributed` (review); legacy без колонки
+  сохраняет grading только для единственных часов и единственного чтения витрины.
+  `freshness.stale` называет часы; evidence facts несут `event_time_column`.
+  Версии evidence: `VERIFIER_VERSION` 60 → 61, `CHECK_VERSION` 40 → 41.
+  Реализовано `gpt-6.1-sol` high через MyFlow `sol-high`.
+  Red на HEAD: 37 новых случаев падали, 7 контролей проходили; после правки
+  44 новых случая и связанный focused gate прошли: 365 passed. Новые offline-тесты
+  покрывают обе семьи движков, неизменность SELECT replay, gate-level REVIEW/BLOCK
+  и bundle facts. Полный offline pytest: 3263 passed, 20 skipped, 38 deselected;
+  strict mypy — 0 ошибок в 120 модулях, Ruff и Black чистые.
+  Выбор среза и итоговое ревью — синтетические Astra xhigh: 0 actionable P1/P2.
+  Живая БД не запускалась; human/production acceptance не заявляется.
+
 - 2026-10-01 — `results.reconcile` отождествляет integer/decimal business key
   и `group_by` проверок `share_sum` / `partition_conservation` по числу.
   Другой scale находит строку; две записи одного числа дают `insufficient` /

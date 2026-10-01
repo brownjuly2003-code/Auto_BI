@@ -76,6 +76,7 @@ from auto_bi.verification.environment import (
     check_security,
     denies_all_rows,
     questions_for,
+    reading_for,
 )
 from auto_bi.verification.model import Verdict, verdict_for
 from auto_bi.verification.provenance import (
@@ -326,7 +327,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: partition_conservation group split by scale (possibly insufficient or different) is now
 #: one group. The conflicting-totals detail lists totals as numbers, not `Decimal(...)` reprs.
 #: Historical bundles are not rewritten.
-VERIFIER_VERSION = "60"
+#: 61 — Environment readings record their event-time column; every check grades each
+#: (mart, event-time column) question from its own reading. A multi-clock mart previously
+#: graded from its first reading could pass with a stale clock or a denied column (now
+#: freshness.stale REVIEW / security.column_unreadable BLOCK / access.table_unreadable
+#: BLOCK), or report a fresh clock stale (that finding is gone). Unattributable readings
+#: give access.reading_unattributed REVIEW; freshness.stale names its clock and evidence
+#: facts carry event_time_column. Historical bundles are not rewritten.
+VERIFIER_VERSION = "61"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -475,7 +483,14 @@ VERIFIER_VERSION = "60"
 #: insufficient / key.not_unique (REVIEW). A share_sum or partition_conservation group split
 #: by scale (possibly insufficient or different) now forms one group. Both directions on
 #: the same inputs; historical bundles are not rewritten.
-CHECK_VERSION = "40"
+#: 41 — Environment readings record their event-time column; every check grades each
+#: (mart, event-time column) question from its own reading. A multi-clock mart previously
+#: graded from its first reading could pass with a stale clock or a denied column (now
+#: freshness.stale REVIEW / security.column_unreadable BLOCK / access.table_unreadable
+#: BLOCK), or report a fresh clock stale (that finding is gone). Unattributable readings
+#: give access.reading_unattributed REVIEW; freshness.stale names its clock and evidence
+#: facts carry event_time_column. Historical bundles are not rewritten.
+CHECK_VERSION = "41"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1486,7 +1501,9 @@ def _cost_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str
 def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
     """Say what was actually compared: an engine that reports no layout was not agreed with."""
     compared = [
-        table for item in questions.tables if (table := facts.table(item.table)) is not None
+        table
+        for item in questions.tables
+        if (table := reading_for(item, questions, facts.tables)) is not None
     ]
     columns = f"every column the in-scope metrics read is on {facts.target} with the declared type"
     if any(table.layout is not None for table in compared):
@@ -1497,7 +1514,7 @@ def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) ->
 def _readable(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
     """Whether the probe could actually read any mart the product asks about."""
     return any(
-        (table := facts.table(item.table)) is not None and table.readable
+        (table := reading_for(item, questions, facts.tables)) is not None and table.readable
         for item in questions.tables
     )
 
@@ -1511,7 +1528,7 @@ def _dated(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
     marts nothing was read from, which is the one sentence this report must never contain.
     """
     return any(
-        (table := facts.table(item.table)) is not None
+        (table := reading_for(item, questions, facts.tables)) is not None
         and table.readable
         and not denies_all_rows(table, facts.role)
         for item in questions.tables

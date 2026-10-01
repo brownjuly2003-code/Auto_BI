@@ -107,6 +107,7 @@ from auto_bi.verification.environment import (
     TableFacts,
     TableQuestion,
     denies_all_rows,
+    reading_for,
 )
 
 #: Privileges that make a session capable of changing a mart. `TRUNCATE` is Postgres-only;
@@ -172,7 +173,11 @@ def collect(
         if item.sql
     ]
     executions = (
-        [run_cost(item) for item in questions.plans if _may_execute(item, dialect, role, tables)]
+        [
+            run_cost(item)
+            for item in questions.plans
+            if _may_execute(item, questions, dialect, role, tables)
+        ]
         if run_cost is not None
         else []
     )
@@ -187,13 +192,17 @@ def collect(
 
 
 def _may_execute(
-    question: PlanQuestion, dialect: str, role: RoleFacts, tables: list[TableFacts]
+    question: PlanQuestion,
+    questions: EnvironmentQuestions,
+    dialect: str,
+    role: RoleFacts,
+    tables: list[TableFacts],
 ) -> bool:
     """Whether an exact runtime probe is both useful and safe for this question."""
     runtime_bound = (
         question.budgets.max_scanned_bytes is not None or question.budgets.timeout_ms is not None
     )
-    table = next((item for item in tables if item.table == question.table), None)
+    table = reading_for(question, questions, tables)
     return bool(
         runtime_bound
         and question.sql
@@ -409,7 +418,9 @@ def _clickhouse_table(
         # A mart this role holds no grant on is hidden from `system.tables` too, so "absent"
         # and "out of reach" are one silence here. Both are block; the grants in the bundle
         # are what tells them apart afterwards.
-        return TableFacts(table=table, exists=False, readable=False)
+        return TableFacts(
+            table=table, event_time_column=question.event_time_column, exists=False, readable=False
+        )
     reading = _ask(
         run_query,
         f"SELECT count() AS rows_seen, max({_ident(question.event_time_column)}) AS "
@@ -420,6 +431,7 @@ def _clickhouse_table(
     if not reading:  # the table is there but the role cannot read it
         return TableFacts(
             table=table,
+            event_time_column=question.event_time_column,
             exists=True,
             readable=False,
             column_reads=reads,
@@ -445,6 +457,7 @@ def _clickhouse_table(
     return _reading(
         table,
         reading[0],
+        event_time_column=question.event_time_column,
         columns=columns,
         layout=layout,
         column_reads=reads,
@@ -577,7 +590,9 @@ def _postgres_table(run_query: RunQuery, question: TableQuestion) -> TableFacts:
         f"{_literal(schema)} AND viewname = {_literal(name)}",
     )
     if not present:
-        return TableFacts(table=table, exists=False, readable=False)
+        return TableFacts(
+            table=table, event_time_column=question.event_time_column, exists=False, readable=False
+        )
     reads = _pg_column_reads(run_query, table, question.columns)
     policies = _pg_policies(run_query, table)
     security = _pg_row_security(run_query, table)
@@ -590,6 +605,7 @@ def _postgres_table(run_query: RunQuery, question: TableQuestion) -> TableFacts:
     if not readable or not _truthy(readable[0].get("ok")):
         return TableFacts(
             table=table,
+            event_time_column=question.event_time_column,
             exists=True,
             readable=False,
             column_reads=reads,
@@ -604,6 +620,7 @@ def _postgres_table(run_query: RunQuery, question: TableQuestion) -> TableFacts:
     if not reading:
         return TableFacts(
             table=table,
+            event_time_column=question.event_time_column,
             exists=True,
             readable=False,
             column_reads=reads,
@@ -625,6 +642,7 @@ def _postgres_table(run_query: RunQuery, question: TableQuestion) -> TableFacts:
     return _reading(
         table,
         reading[0],
+        event_time_column=question.event_time_column,
         columns=columns,
         layout=None,
         column_reads=reads,
@@ -702,6 +720,7 @@ def _reading(
     table: str,
     row: dict[str, Any],
     *,
+    event_time_column: str,
     columns: dict[str, str] | None = None,
     layout: LayoutFacts | None = None,
     column_reads: dict[str, bool] | None = None,
@@ -711,6 +730,7 @@ def _reading(
     rows_seen = int(row.get("rows_seen") or 0)
     return TableFacts(
         table=table,
+        event_time_column=event_time_column,
         exists=True,
         readable=True,
         rows_seen=rows_seen,

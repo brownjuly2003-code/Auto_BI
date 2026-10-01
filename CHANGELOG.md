@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **Environment-чтение отвечает своему вопросу (витрина, event-time колонка).**
+  Коллекторы записывают `event_time_column` на всех ветках; access, freshness,
+  physical, security и cost, включая runtime probe, используют своё чтение.
+  Порядок больше не скрывает stale clock или denied column и не делает свежие часы
+  протухшими. Без однозначной атрибуции — `access.reading_unattributed` (review);
+  старое чтение без колонки подходит только единственным часам с единственным чтением.
+  `freshness.stale` называет часы, evidence facts сохраняют их колонку.
+  `VERIFIER_VERSION` 60 → 61, `CHECK_VERSION` 40 → 41; исторические bundles не переписаны.
+
 - **Reconciliation отождествляет integer/decimal ключи и агрегатные группы по числу.**
   Ключ на другом scale теперь находит свою строку вместо `row.missing` / `row.added`;
   две записи одного числа в result дают `insufficient` / `key.not_unique` вместо

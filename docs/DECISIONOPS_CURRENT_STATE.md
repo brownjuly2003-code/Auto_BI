@@ -10,9 +10,25 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=60`, `CHECK_VERSION=40`
+**Версии evidence:** `VERIFIER_VERSION=61`, `CHECK_VERSION=41`
 
-**Последний срез (2026-10-01):** `results.reconcile` отождествляет integer/decimal
+**Последний срез (2026-10-01):** каждое environment-чтение записывает event-time колонку
+своего вопроса (витрина, колонка времени). Access, freshness, physical, security и cost,
+включая допуск runtime probe, используют только однозначно атрибутированное чтение;
+порядок чтений не скрывает протухшие часы или недоступную колонку и не объявляет свежие
+часы протухшими. Неоднозначность — `access.reading_unattributed` (review); старое чтение
+без колонки применяется только к единственным часам витрины с единственным чтением.
+`freshness.stale` называет колонку времени; bundle сохраняет `event_time_column`.
+`VERIFIER_VERSION` 60 → 61, `CHECK_VERSION` 40 → 41; исторические bundles не переписаны.
+Реализовано `gpt-6.1-sol` high через MyFlow `sol-high`; новые offline-тесты проверяют
+обе семьи движков без изменения SELECT-запросов и gate-level REVIEW/BLOCK. До правки
+37 новых случаев падали, 7 контролей проходили; после правки 44 новых случая и
+связанный focused gate прошли: 365 passed. Полный offline pytest: 3263 passed, 20 skipped, 38 deselected;
+strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые. Выбор среза и итоговое
+ревью — синтетические Astra xhigh: 0 actionable P1/P2. Живая БД на этом срезе не
+запускалась; human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-01):** `results.reconcile` отождествляет integer/decimal
 business key и `group_by` проверок `share_sum` / `partition_conservation` по числу.
 `0.4120` и `0.412` теперь находят одну строку; две записи одного числа в result
 дают `insufficient` / `key.not_unique`, а группа на разных scales больше не делится.
@@ -781,6 +797,8 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 читаются по имени; native capture сохраняет порядок asset (T-27, verifier 59 / check 39).
 Закрыта числовая идентичность integer/decimal business key и aggregate `group_by`;
 детали сохраняют написание ключей своего result (T-28, verifier 60 / check 40).
+Закрыта атрибуция environment-чтений к паре (витрина, event-time колонка)
+(T-29, verifier 61 / check 41).
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки
