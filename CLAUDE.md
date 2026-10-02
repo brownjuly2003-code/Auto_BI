@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — неполный/неотвеченный список ClickHouse enabled roles не подтверждает
+  grant-based read-only и effective column/policy reach. Профиль `readonly=1/2`
+  и доказанные write grants сохраняют приоритет; иначе доступ и runtime блокируются.
+  Unknown reach даёт security REVIEW, без ложных physical absence/classification claims.
+  Версии evidence 68 → 69 / 48 → 49. Выбор — synthetic Astra xhigh, реализация Codex.
+  Red: 23 failed / 11 passed. Human/production acceptance не заявляется.
+  Полный offline pytest с duckdb: 3679 passed, 5 skipped, 38 deselected, exit 0;
+  Ruff, Black и strict mypy чистые. Итоговое synthetic Astra review: 0 substantive findings.
+  [Проверки и границы](docs/DECISIONOPS_ENABLED_ROLES_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — missing/NULL поля PostgreSQL-family write-privilege ответов не
   подтверждают read-only. `dwh.access` — BLOCK, exact runtime SQL не выполняется;
   evidence называет права и витрину, доказанные grants сохраняют приоритет.

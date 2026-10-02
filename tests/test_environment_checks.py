@@ -431,7 +431,14 @@ def test_a_column_the_metric_reads_and_the_mart_lacks_blocks(tmp_path: Path) -> 
     questions = questions_for(product(), snapshot_of(tmp_path))
     without = {name: type_ for name, type_ in STAND_COLUMNS.items() if name != "gross_margin"}
 
-    findings = check_physical(questions, facts(physical_fact(columns=without)))
+    findings = check_physical(
+        questions,
+        facts(
+            physical_fact(columns=without).model_copy(
+                update={"column_reads": dict.fromkeys(STAND_COLUMNS, True)}
+            )
+        ),
+    )
 
     assert [item.code for item in findings] == ["physical.column_absent"]
     assert findings[0].severity is Severity.BLOCK
@@ -497,7 +504,17 @@ def test_what_the_model_does_not_claim_is_not_compared(tmp_path: Path) -> None:
 def test_columns_the_probe_did_not_ask_about_are_not_findings(tmp_path: Path) -> None:
     questions = questions_for(product(), snapshot_of(tmp_path))
 
-    assert check_physical(questions, facts(physical_fact(columns={}, layout=None))) != []
+    assert (
+        check_physical(
+            questions,
+            facts(
+                physical_fact(columns={}, layout=None).model_copy(
+                    update={"column_reads": dict.fromkeys(STAND_COLUMNS, True)}
+                )
+            ),
+        )
+        != []
+    )
     assert (
         check_physical(
             questions,

@@ -373,7 +373,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: read-only access. Evidence names unreported privileges and their mart; exact runtime
 #: SQL is withheld and dwh.access blocks. Proven grants retain their positive evidence.
 #: SQL questions and historical bundles are unchanged.
-VERIFIER_VERSION = "68"
+#: 69 — incomplete ClickHouse enabled roles no longer establish grant-based read-only
+#: access or effective column/policy reach. Profiles 1/2 and proven write grants retain
+#: their rules. Unknown reach cannot prove classification unenforced or a hidden CH column
+#: physically absent. SQL questions, public schemas and historical bundles are unchanged.
+VERIFIER_VERSION = "69"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -564,7 +568,9 @@ VERIFIER_VERSION = "68"
 #: withheld; complete identities and proven superusers keep their rules.
 #: 48 — dwh.access blocks for partial or NULL table/column write-privilege answers.
 #: Missing fields are unknown rather than negative; complete answers retain their rules.
-CHECK_VERSION = "48"
+#: 49 — unknown ClickHouse roles block grant-based access and leave security unobserved;
+#: physical absence requires known ClickHouse reach, classification requires known reach.
+CHECK_VERSION = "49"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

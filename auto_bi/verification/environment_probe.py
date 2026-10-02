@@ -151,6 +151,7 @@ class _ChSession(NamedTuple):
     user: str
     #: The user and its enabled roles — a policy or a grant naming any of them names it.
     principals: frozenset[str]
+    roles_known: bool
     #: The `readonly` setting of the session, as the engine reports it (`None` if unset).
     readonly: str | None
     grants: list[dict[str, Any]] | None
@@ -358,8 +359,9 @@ def _clickhouse_session(run_query: RunQuery) -> _ChSession:
     """Identity, enabled roles and grants — everything the access questions are answered from."""
     user = _scalar(run_query, "SELECT currentUser() AS value") or "unknown"
     readonly = _scalar(run_query, "SELECT value FROM system.settings WHERE name = 'readonly'")
-    answered = _ask(run_query, "SELECT role_name FROM system.enabled_roles") or []
-    roles = sorted({str(row.get("role_name")) for row in answered if row.get("role_name")})
+    answered = _ask(run_query, "SELECT role_name FROM system.enabled_roles")
+    roles_known = answered is not None and all(row.get("role_name") for row in answered)
+    roles = sorted({str(row.get("role_name")) for row in answered or [] if row.get("role_name")})
     # The roles are named in the grants query rather than sub-selected: a privilege can reach
     # this session through a role as easily as through its user name, and one flat condition
     # is the same question on an engine whose access catalog does not join.
@@ -371,7 +373,13 @@ def _clickhouse_session(run_query: RunQuery) -> _ChSession:
         f"WHERE user_name = currentUser(){named}",
     )
     principals = {user, *roles}
-    return _ChSession(user=user, principals=frozenset(principals), readonly=readonly, grants=grants)
+    return _ChSession(
+        user=user,
+        principals=frozenset(principals),
+        roles_known=roles_known,
+        readonly=readonly,
+        grants=grants,
+    )
 
 
 def _clickhouse_role(session: _ChSession) -> RoleFacts:
@@ -400,6 +408,15 @@ def _clickhouse_role(session: _ChSession) -> RoleFacts:
         if not _truthy(row.get("is_partial_revoke"))
     }
     writable = sorted(granted & _CH_WRITE_GRANTS)
+    if not writable and not session.roles_known:
+        return RoleFacts(
+            name=session.user,
+            read_only=False,
+            evidence=(
+                f"readonly={setting or 'unset'} and system.enabled_roles is unreported or "
+                "incomplete, so read-only access is not established"
+            ),
+        )
     return RoleFacts(
         name=session.user,
         read_only=not writable,
@@ -481,7 +498,7 @@ def _ch_column_reads(
     column withheld and a column absent look the same in the catalog, and they are not the
     same finding.
     """
-    if session.grants is None:
+    if session.grants is None or not session.roles_known:
         return None
     selects = [row for row in session.grants if str(row.get("access_type")) == "SELECT"]
     reads: dict[str, bool] = {}
@@ -517,7 +534,7 @@ def _ch_policies(
         f"apply_to_except FROM system.row_policies WHERE database = {_literal(database)} "
         f"AND table = {_literal(name)}",
     )
-    if rows is None:
+    if rows is None or (rows and not session.roles_known):
         return None
     policies: list[RowPolicyFacts] = []
     for row in rows:

@@ -209,11 +209,30 @@ columns the in-scope metrics read. The collector SHALL NOT attempt a write to fi
   write grant retains its existing positive evidence and table/column deduplication
 - **AND** complete negative answers retain read-only access and eligible runtime execution
 
-### Scenario: ClickHouse is unchanged
+### Scenario: PostgreSQL privilege handling leaves ClickHouse unchanged
 
 - **GIVEN** a ClickHouse environment, read-only by its profile or by its grants
 - **WHEN** the environment is collected
 - **THEN** the role facts and the questions asked are the same as before this requirement
+
+## Requirement: unknown ClickHouse enabled roles are not an empty role set
+
+Refused `system.enabled_roles` or any row with missing, NULL or empty `role_name`
+SHALL leave the effective principal set incomplete. Successful `[]` SHALL remain
+known-empty. Valid names SHALL be retained exactly in the grants question.
+`readonly=1/2` SHALL still establish read-only; otherwise a proven write grant
+SHALL retain its positive evidence, and incomplete roles without such a grant
+SHALL block access and withhold exact runtime SQL with evidence naming the gap.
+
+Incomplete roles SHALL yield `column_reads=None`. A successful empty policy catalog
+SHALL remain `[]`; a nonempty or refused catalog SHALL leave `row_policies=None`.
+Unknown reach SHALL produce `security.not_observed`, not invented unreadable columns,
+policy applicability or unenforced classification. Classification requires known
+column reach. A column absent from the filtered ClickHouse catalog with unknown
+reach SHALL NOT be called physically absent; PostgreSQL absence and observed type
+drift retain their rules. Known reach still allows a true absent-column finding.
+The existing eligible runtime probe under `readonly=1/2` SHALL remain allowed.
+Connection failures SHALL propagate. SQL shapes and public schemas SHALL NOT change.
 
 ## Requirement: the read-only evidence names everything it checked
 

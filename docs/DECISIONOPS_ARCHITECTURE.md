@@ -584,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=68`, `CHECK_VERSION=48`.
+`VERIFIER_VERSION=69`, `CHECK_VERSION=49`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -717,7 +717,16 @@ Gate выполняет шаги в фиксированном порядке:
   из шага 6 выведена из объявленного типа), разъехавшаяся раскладка **review**; сравнивается
   только то, что модель утверждает, и только там, где движок ответил (PG-семейство не отдаёт
   distribution/partition без Greenplum-каталогов, и молчание не читается как несовпадение). **Проверка записи никогда не делается записью**: на ClickHouse решает
-  профиль (`readonly=1` отказывает даже при `GRANT INSERT ON *.*` из `users.xml`), на
+  профиль (`readonly=1` отказывает даже при `GRANT INSERT ON *.*` из `users.xml`).
+  Отказ или частичный ответ `system.enabled_roles` не равен пустому списку ролей:
+  missing/NULL/пустое имя оставляет principals неполными; известные имена сохраняются
+  точно в grants query. `readonly=1/2` сохраняет read-only, известный write grant —
+  writable evidence; иначе неполные роли блокируют доступ и exact runtime SQL.
+  Column reach неизвестен; пустой policy catalog остаётся `[]`, непустой — unknown.
+  Security сообщает `security.not_observed`, не выдумывая unreadable/filtered.
+  Unknown reach не доказывает физическое отсутствие скрытой ClickHouse-колонки
+  или unenforced classification; известные типы и PostgreSQL absence проверяются.
+  При `readonly=1/2` eligible runtime probe сохраняется с security REVIEW. На
   PostgreSQL — `has_table_privilege` плюс проверка на суперпользователя, плюс
   `has_any_column_privilege` для колоночных INSERT/UPDATE по всей витрине: табличный
   вопрос отвечает false роли с грантом `UPDATE (revenue)`, хотя она пишет

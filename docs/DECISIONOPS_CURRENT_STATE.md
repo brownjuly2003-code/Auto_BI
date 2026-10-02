@@ -10,9 +10,21 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=68`, `CHECK_VERSION=48`
+**Версии evidence:** `VERIFIER_VERSION=69`, `CHECK_VERSION=49`
 
-**Последний срез (2026-10-02):** частичные/NULL ответы PostgreSQL-family write-privilege
+**Последний срез (2026-10-02):** неизвестный или неполный список ClickHouse enabled
+roles не подтверждает grant-based read-only. Без профиля `readonly=1/2` доступ
+блокируется и exact runtime SQL не выполняется; доказанные write grants сохраняют
+evidence. Column reach и применимость непустого policy catalog остаются неизвестными:
+`security.not_observed` — REVIEW. Успешный пустой policy catalog сохраняет `[]`.
+Неизвестный reach не доказывает отсутствие скрытой ClickHouse-колонки или отсутствие
+защиты классификации. SQL и публичные схемы прежние. Выбор — synthetic Astra xhigh,
+реализация Codex; human/production acceptance не заявляется.
+Полный offline pytest с duckdb: 3679 passed, 5 skipped, 38 deselected, exit 0;
+Ruff, Black и strict mypy чистые. Итоговое synthetic Astra review: 0 substantive findings.
+[Проверки и границы](DECISIONOPS_ENABLED_ROLES_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** частичные/NULL ответы PostgreSQL-family write-privilege
 вопросов не подтверждают read-only. Evidence называет неотвеченные табличные
 INSERT/UPDATE/DELETE/TRUNCATE или колоночные INSERT/UPDATE и витрину; `dwh.access`
 блокирует доступ, exact runtime SQL не выполняется. Доказанные grants сохраняют

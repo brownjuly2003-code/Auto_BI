@@ -6,6 +6,14 @@
 
 ### Changed
 
+- **Неполный ClickHouse enabled-roles ответ не подтверждает эффективный доступ.**
+  Отказ, missing/NULL/пустое имя роли без профиля `readonly=1/2` блокируют grant-based
+  read-only и runtime SQL. Известные grants сохраняются; column/policy reach остаётся
+  неизвестным с `security.not_observed`, без ложного отсутствия скрытой колонки
+  или утверждения об отсутствии защиты классификации. Известный пустой список ролей
+  и пустой policy catalog различаются с неизвестными. Версии evidence 68 → 69 / 48 → 49;
+  исторические bundles не переписаны.
+
 - **Частичные write-privilege ответы PostgreSQL блокируют доступ.**
   Отсутствующее/NULL поле табличных INSERT/UPDATE/DELETE/TRUNCATE или колоночных
   INSERT/UPDATE не подтверждает read-only: `dwh.access` — BLOCK, exact runtime SQL

@@ -725,10 +725,13 @@ def _column_findings(
     reads = table.column_reads or {}
     for column, declared in sorted(question.columns.items()):
         actual = table.columns.get(column)
-        if actual is None and reads.get(column) is False:
+        if actual is None and (
+            reads.get(column) is False
+            or (facts.engine == "clickhouse" and table.column_reads is None)
+        ):
             # ClickHouse hides columns the role holds no `SELECT(col)` grant on, so absent
-            # from the catalog and out of reach look identical here. `check_security` blocks
-            # on the reach and knows which one it is; calling it missing would be a guess.
+            # from the catalog does not prove absence with denied or unknown reach.
+            # `check_security` reports the denied reach or the unobserved boundary.
             continue
         if actual is None:
             findings.append(
@@ -965,7 +968,11 @@ def _classification_findings(
     question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
 ) -> list[EnvironmentFinding]:
     """The model calls this restricted; does the engine restrict it for this role?"""
-    if not question.declares_sensitive() or table.row_policies is None:
+    if (
+        not question.declares_sensitive()
+        or table.row_policies is None
+        or table.column_reads is None
+    ):
         return []
     reads = table.column_reads or {}
     if table.applying_policies() or any(
