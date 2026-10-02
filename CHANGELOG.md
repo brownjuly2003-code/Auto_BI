@@ -6,6 +6,14 @@
 
 ### Changed
 
+- **Неотвеченный табличный write-privilege вопрос PostgreSQL блокирует доступ.**
+  Отказ или пустой ответ о INSERT/UPDATE/DELETE/TRUNCATE не подтверждает read-only,
+  даже если колоночные INSERT/UPDATE отрицательны. `dwh.access` — BLOCK,
+  exact runtime SELECT не выполняется; evidence называет неотвеченные права
+  и витрину. Колоночный вопрос продолжается, доказанный grant сохраняет evidence.
+  Набор SQL, superuser и ClickHouse сохраняются. `VERIFIER_VERSION` 64 → 65,
+  `CHECK_VERSION` 44 → 45; исторические bundles не переписаны.
+
 - **Колоночный write-grant PostgreSQL-роли делает `dwh.access` BLOCK.**
   Probe спрашивает `has_any_column_privilege` для INSERT/UPDATE по всей витрине
   скоупа, включая колонки вне metric-чтений; evidence называет привилегию, колонки

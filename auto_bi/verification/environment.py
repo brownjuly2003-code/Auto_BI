@@ -17,7 +17,7 @@ versions (ClickHouse 24.8.14.39, PostgreSQL 14.24):
   PostgreSQL it is the other way round: `transaction_read_only` reads `off` for a
   SELECT-only role, and `has_table_privilege` is the answer. Column-level INSERT/UPDATE
   grants are asked through `has_any_column_privilege` because the table-level question
-  answers false for them while the role can write. An unanswered column-write question
+  answers false for them while the role can write. An unanswered write-privilege question
   cannot establish read-only access. Each engine is therefore asked
   its own question, and the fact carries the evidence it came from — never an attempted
   write. A gate that probed by trying to insert would be a gate that writes to a DWH.

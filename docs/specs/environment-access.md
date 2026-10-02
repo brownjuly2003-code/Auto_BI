@@ -115,6 +115,17 @@ columns the in-scope metrics read. The collector SHALL NOT attempt a write to fi
 - **AND** a table-level write grant still keeps its existing positive evidence when the
   column question is unanswered
 
+### Scenario: an unanswered table-write question cannot establish read-only access
+
+- **GIVEN** a nonsuperuser whose table-level INSERT/UPDATE/DELETE/TRUNCATE question
+  is refused or returns no rows, while the column-level INSERT/UPDATE answers are false
+- **WHEN** the environment is collected
+- **THEN** `read_only` is false, evidence names the unreported table write privileges
+  and the mart without claiming they are absent, the exact runtime query is not executed,
+  and `dwh.access` reports `access.role_writable` with severity block
+- **AND** the column question is still asked; if it proves a column write grant,
+  the role keeps its positive column-grant evidence and block outcome
+
 ### Scenario: ClickHouse is unchanged
 
 - **GIVEN** a ClickHouse environment, read-only by its profile or by its grants

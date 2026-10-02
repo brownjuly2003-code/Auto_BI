@@ -10,9 +10,21 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=64`, `CHECK_VERSION=44`
+**Версии evidence:** `VERIFIER_VERSION=65`, `CHECK_VERSION=45`
 
-**Последний срез (2026-10-02):** PostgreSQL-family probe проверяет колоночные
+**Последний срез (2026-10-02):** отказ или пустой ответ табличного PostgreSQL-family
+write-privilege вопроса не подтверждает read-only, даже если колоночные INSERT/UPDATE
+отрицательны. `dwh.access` — BLOCK, exact runtime SQL не исполняется; evidence
+называет неотвеченные табличные INSERT/UPDATE/DELETE/TRUNCATE и витрину. Колоночный
+вопрос продолжается; положительный grant сохраняет evidence. API, набор SQL,
+superuser и ClickHouse без изменений. `VERIFIER_VERSION` 64 → 65, `CHECK_VERSION`
+44 → 45; исторические bundles не переписаны. Срез выбран Astra xhigh по ADR 0006.
+Red: 2 failed / 4 passed; связанная группа — 188 passed. Полный offline pytest
+с duckdb — 3467 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
+[Synthetic Astra xhigh review](DECISIONOPS_TABLE_PRIVILEGES_REVIEW_2026-10-02.md):
+0 substantive findings; не human/production acceptance.
+
+**Предыдущий срез (2026-10-02):** PostgreSQL-family probe проверяет колоночные
 INSERT/UPDATE через `has_any_column_privilege` по всей витрине скоупа, включая
 колонки вне metric-чтений. Только колоночный write-grant делает роль writable:
 `dwh.access` — BLOCK с `access.role_writable`, exact runtime SQL не исполняется.
@@ -859,6 +871,8 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 Закрыто сравнение нечисловых значений по виду и REVIEW для ожидаемого NaN
 (T-32, verifier 63 / check 43).
 Закрыто обнаружение колоночных INSERT/UPDATE у PostgreSQL-роли (T-33, verifier 64 / check 44).
+Закрыт fail-open неотвеченного табличного write-privilege вопроса
+(verifier 65 / check 45): read-only не подтверждён, доступ и runtime SELECT блокируются.
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки

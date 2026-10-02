@@ -570,6 +570,8 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
             for privilege in _PG_WRITE_PRIVILEGES
         )
         granted = _ask(run_query, f"SELECT {privileges}")
+        if not granted:
+            unreported.append(f"table INSERT/UPDATE/DELETE/TRUNCATE privileges on {question.table}")
         table_grants = granted[0] if granted else {}
         for privilege in _PG_WRITE_PRIVILEGES:
             if _truthy(table_grants.get(privilege.lower())):

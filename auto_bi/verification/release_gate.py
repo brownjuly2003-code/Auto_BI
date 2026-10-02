@@ -354,7 +354,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: access.role_writable. Read-only role evidence names the column privileges it checked;
 #: an unanswered column-write question also blocks and withholds exact runtime SQL.
 #: ClickHouse is unchanged. Historical bundles are not rewritten.
-VERIFIER_VERSION = "64"
+#: 65 — an unanswered PostgreSQL-family table-write privilege question no longer
+#: establishes read-only access when column-write answers are negative. It blocks
+#: dwh.access with access.role_writable and withholds exact runtime SQL; evidence names
+#: unreported table privileges. Positive column grants keep their evidence, and the
+#: questions sent are unchanged. Historical bundles are not rewritten.
+VERIFIER_VERSION = "65"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -531,7 +536,11 @@ VERIFIER_VERSION = "64"
 #: read-only role evidence names the column privileges it checked. ClickHouse is unchanged.
 #: An unanswered column-write question also blocks and withholds exact runtime SQL.
 #: Historical bundles are not rewritten.
-CHECK_VERSION = "44"
+#: 45 — dwh.access blocks when the PostgreSQL-family table-write privilege question is
+#: unanswered even if column-write answers are negative. Read-only access is unestablished,
+#: exact runtime SQL is withheld and evidence names the unreported table privileges.
+#: Positive grants and ClickHouse are unchanged. Historical bundles are not rewritten.
+CHECK_VERSION = "45"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

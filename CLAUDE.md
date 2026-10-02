@@ -83,6 +83,18 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — отказ или пустой ответ PostgreSQL-family табличного write-privilege
+  вопроса не подтверждает read-only при отрицательных колоночных ответах.
+  `dwh.access` — BLOCK, exact runtime SQL не выполняется; evidence называет
+  неотвеченные табличные INSERT/UPDATE/DELETE/TRUNCATE и витрину. Колоночный вопрос
+  продолжается, доказанные grants сохраняют своё evidence. API, набор SQL,
+  superuser и ClickHouse без изменений. Версии evidence 64 → 65 / 44 → 45.
+  Выбор среза — synthetic Astra xhigh по ADR 0006, реализация Codex.
+  Red: 2 failed / 4 passed; связанная группа — 188 passed. Полный offline pytest
+  с duckdb — 3467 passed, 5 skipped, 38 deselected; Ruff, Black и package-wide
+  strict mypy чистые. [Synthetic Astra xhigh review](docs/DECISIONOPS_TABLE_PRIVILEGES_REVIEW_2026-10-02.md):
+  0 substantive findings; не human/production acceptance.
+
 - 2026-10-02 — PostgreSQL-family role probe спрашивает колоночные INSERT/UPDATE
   через `has_any_column_privilege` по всей витрине скоупа. Только колоночный
   write-grant теперь делает роль writable: `dwh.access` — BLOCK с

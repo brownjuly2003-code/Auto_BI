@@ -584,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=64`, `CHECK_VERSION=44`.
+`VERIFIER_VERSION=65`, `CHECK_VERSION=45`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -721,7 +721,7 @@ Gate выполняет шаги в фиксированном порядке:
   PostgreSQL — `has_table_privilege` плюс проверка на суперпользователя, плюс
   `has_any_column_privilege` для колоночных INSERT/UPDATE по всей витрине: табличный
   вопрос отвечает false роли с грантом `UPDATE (revenue)`, хотя она пишет
-  (PostgreSQL 16.15, вживую). Отказ или пустой ответ колоночного privilege-вопроса
+  (PostgreSQL 16.15, вживую). Отказ или пустой ответ табличного или колоночного privilege-вопроса
   не подтверждает read-only: `dwh.access` — block с evidence о неотвеченных правах,
   exact runtime SQL не исполняется. Граница — роль `NOINHERIT`, способная `SET ROLE` в
   пишущую группу, не видна ни одной из функций. Пустая витрина —

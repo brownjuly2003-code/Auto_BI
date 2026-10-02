@@ -228,6 +228,16 @@ class RefusedColumnEngine(FakeEngine):
         return super().__call__(sql)
 
 
+class RefusedTableEngine(FakeEngine):
+    def __call__(self, sql: str) -> list[dict[str, object]]:
+        if sql == table_sql(MART):
+            self.asked.append(sql)
+            error = PermissionError("table privilege question refused")
+            error.sqlstate = "42501"
+            raise error
+        return super().__call__(sql)
+
+
 @pytest.mark.parametrize("table_writable", [False, True])
 def test_refused_column_write_question_never_establishes_read_only(
     table_writable: bool,
@@ -289,6 +299,70 @@ def test_unanswered_column_write_question_blocks_runtime_and_public_gate(
 
     assert status_of(report, "dwh.access") is CheckStatus.BLOCK
     assert summary_of(report, "dwh.access") == "access.role_writable"
+
+
+@pytest.mark.parametrize("answer", ["refused", "empty"])
+def test_unanswered_table_write_question_blocks_runtime_and_public_gate(
+    tmp_path: Path, answer: str
+) -> None:
+    engine = RefusedTableEngine(role_engine().answers) if answer == "refused" else role_engine()
+    if answer == "empty":
+        engine.answers[table_sql(MART)] = []
+    scope = pg_questions()
+    sql = "SELECT sum(revenue) FROM dm.sales_daily"
+    scope.plans.append(
+        PlanQuestion(
+            metric_ref=scope.tables[0].metric_refs[0],
+            table=MART,
+            sql=sql,
+            dialect="postgres",
+            budgets=MetricBudget(timeout_ms=100),
+        )
+    )
+
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        engine(question.sql)
+        return ExecutionFacts(
+            metric_ref=question.metric_ref, elapsed_ms=1, evidence="exact SELECT completed"
+        )
+
+    facts = collect(engine, scope, engine="greengage", target="stand", run_cost=run_cost)
+
+    assert sql not in engine.asked
+    assert facts.executions == []
+    assert facts.role.read_only is False
+    assert "unreported table INSERT/UPDATE/DELETE/TRUNCATE privileges on dm.sales_daily" in (
+        facts.role.evidence
+    )
+    assert "no INSERT" not in facts.role.evidence
+    assert_access(scope, facts, True)
+    assert_questions(engine)
+
+    model = semantic_model()
+    for table in model.tables:
+        table.physical.engine = "greengage"
+    report = Case(tmp_path).with_candidate(model).run(probe=probing(facts))
+
+    assert status_of(report, "dwh.access") is CheckStatus.BLOCK
+    assert summary_of(report, "dwh.access") == "access.role_writable"
+
+
+@pytest.mark.parametrize("answer", ["refused", "empty"])
+@pytest.mark.parametrize("privilege", ["INSERT", "UPDATE"])
+def test_unanswered_table_write_question_does_not_hide_column_grant(
+    answer: str, privilege: str
+) -> None:
+    granted = role_engine(insert=privilege == "INSERT", update=privilege == "UPDATE")
+    engine = RefusedTableEngine(granted.answers) if answer == "refused" else granted
+    if answer == "empty":
+        engine.answers[table_sql(MART)] = []
+    scope = pg_questions()
+    facts = collect(engine, scope, engine="greengage", target="stand")
+
+    assert facts.role.read_only is False
+    assert facts.role.evidence == f"granted {privilege} on columns of {MART}"
+    assert_access(scope, facts, True)
+    assert_questions(engine)
 
 
 @pytest.mark.parametrize("profile", [True, False])
