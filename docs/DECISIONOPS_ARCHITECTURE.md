@@ -584,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=78`, `CHECK_VERSION=54`.
+`VERIFIER_VERSION=79`, `CHECK_VERSION=55`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -772,8 +772,16 @@ Gate выполняет шаги в фиксированном порядке:
   флагах, иначе null. Доказанный superuser сохраняет прежнее writable evidence и true
   bypass даже без остальных identity-полей. `RoleFacts.name` и `EnvironmentFinding.subject`
   сохраняют точные непустые identifiers, включая значимые пробелы quoted-имён; общий
-  `NonBlankText` не меняется. Граница — роль `NOINHERIT`, способная `SET ROLE` в
-  пишущую группу, не видна ни одной из функций. Пустая витрина —
+  `NonBlankText` не меняется. Privilege-функции отвечают только за `current_user`,
+  поэтому один вопрос находит роли, в которые session user может переключиться через
+  `SET ROLE` (PostgreSQL 16 — опция `SET`, раньше и в Greenplum/Greengage — членство),
+  включая самого session user за role default; superuser-роли остаются в вопросе
+  и тогда, когда текущая роль их наследует, — членство не передаёт атрибут `SUPERUSER`.
+  Их табличные и колоночные write-права спрашиваются по каждой витрине одним вопросом,
+  а достижимый superuser, пишущая роль или неотвеченный вопрос — `access.role_writable`.
+  Границы — `SECURITY DEFINER`-функции, ClickHouse-роли, выданные, но не включённые,
+  BYPASSRLS достижимой роли, `CREATEROLE`/`ADMIN OPTION` и NOLOGIN
+  current role (NULL `usesuper` даёт ложный block). Пустая витрина —
   `freshness.unknown`, потому что `max(Date)` по нулю строк в ClickHouse равен `1970-01-01`,
   а не NULL. `dwh.security`: досягаемость роли, через которую собрано evidence, — колонка
   метрики, которую роль не может выбрать, **block** (метрику там не посчитать); row-политика,

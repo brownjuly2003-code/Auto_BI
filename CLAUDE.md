@@ -83,6 +83,27 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — PostgreSQL-family role probe одним вопросом находит роли, в которые
+  session user может переключиться через `SET ROLE` (PostgreSQL 16 — опция `SET`,
+  раньше и в Greenplum/Greengage — членство), включая самого session user за role
+  default; superuser-роли остаются в вопросе и тогда, когда текущая роль их
+  наследует, — членство не передаёт атрибут `SUPERUSER`. Одним вопросом на витрину
+  спрашиваются их табличные и колоночные write-права. Достижимая пишущая роль,
+  достижимый superuser, имя без значения или неотвеченный вопрос не подтверждают
+  read-only: `dwh.access` — block с `access.role_writable`, exact runtime SQL
+  не исполняется; доказанные grants сохраняют приоритет. Чистое read-only evidence
+  называет проверенные достижимые роли или сообщает, что `SET ROLE` других ролей
+  не достигает. Identity-вопрос с его короткими путями, `RoleFacts`
+  и ClickHouse-коллекция без изменений.
+  Версии evidence 78 → 79 / 54 → 55; исторические bundles не переписаны.
+  Выбор — оркестратор по границе `SET ROLE` из review T-33. Реализация — GLM-5.3
+  xhigh через MyFlow `glm-5.3`; ремонт после лимита z.ai закончил `gpt-6.1-sol`
+  medium через `sol-high`. Synthetic Astra xhigh review: F-T-34-1 (наследуемая
+  superuser-группа выпадала из вопроса) воспроизведена на PostgreSQL 16.15
+  и исправлена, второй проход — 0 новых findings. Полный offline gate
+  с duckdb: 3955 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict
+  mypy чистые. [Проверки и границы](docs/DECISIONOPS_SET_ROLE_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — отсутствующая readable-витрина не считается допустимой для
   датировки: без допустимых вопросов чистый код `dwh.freshness` —
   `freshness.not_run`, проверка появляется в `What was not done`.

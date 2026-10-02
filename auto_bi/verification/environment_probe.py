@@ -26,7 +26,9 @@ stands of the pinned versions:
   NULL here, which the fact model already allows for.
   `has_table_privilege` alone misses a column-level write grant, which
   `has_any_column_privilege` reports for effective privileges (inherited groups and PUBLIC
-  included).
+  included). The privilege functions answer for `current_user` only, so the roles the
+  session user can `SET ROLE` to (including itself behind a role default) are asked the
+  same write questions, and a reachable superuser is writable.
 
 Column types come from each engine's own catalog in the spelling the model was written in —
 `system.columns.type` on ClickHouse, `format_type(atttypid, atttypmod)` on the Postgres
@@ -120,6 +122,27 @@ _PG_WRITE_PRIVILEGES = ("INSERT", "UPDATE", "DELETE", "TRUNCATE")
 #: Column privileges exist only for SELECT, INSERT, UPDATE and REFERENCES; of those,
 #: INSERT and UPDATE write (PostgreSQL 16.15, live).
 _PG_COLUMN_WRITE_PRIVILEGES = ("INSERT", "UPDATE")
+
+#: Which roles the session user can switch into with `SET ROLE` and so could write as,
+#: although the current role's own write answers say nothing about them. `SET ROLE` is
+#: judged by the session user, not by the current role (PostgreSQL 16.15, live): a
+#: session parked on a select-only role default could `SET ROLE writer` although
+#: `pg_has_role(current_user, 'writer', 'SET')` was false, and `SET ROLE NONE` returned
+#: it to a session user that wrote on its own. The `SET` option of a membership exists
+#: from 16; before it — and on Greenplum/Greengage — plain membership is the word, and
+#: the server picks it inside the question, so one question serves every version. A
+#: membership granted `WITH SET FALSE` answers neither. Roles `current_user` already
+#: holds `'USAGE'` on are excluded, because their grants are already in the current
+#: role's own answers — except superusers: membership passes privileges on, but not
+#: `SUPERUSER`, so an inheriting member answers every own write question false while
+#: `SET ROLE` into the group writes (PostgreSQL 16.15, live).
+_PG_REACHABLE_ROLES = (
+    "SELECT r.rolname AS name, r.rolsuper AS superuser FROM pg_roles r "
+    "WHERE (r.rolsuper OR NOT pg_has_role(current_user, r.oid, 'USAGE')) AND "
+    "(r.rolname = session_user OR pg_has_role(session_user, r.oid, "
+    "CASE WHEN current_setting('server_version_num')::int >= 160000 "
+    "THEN 'SET' ELSE 'MEMBER' END)) ORDER BY r.rolname"
+)
 
 #: ClickHouse access types that can change data or schema, as `system.grants` spells them.
 _CH_WRITE_GRANTS = frozenset(
@@ -651,6 +674,7 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
                 column_grants.get(f"column_{privilege.lower()}")
             ):
                 writable.append(f"{privilege} on columns of {question.table}")
+    reach_clause = _pg_set_role_write_privileges(run_query, questions, writable, unreported)
     return RoleFacts(
         name=name,
         read_only=not writable and not unreported,
@@ -662,11 +686,129 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
                 if unreported
                 else (
                     "no INSERT, UPDATE, DELETE or TRUNCATE privilege on any in-scope mart "
-                    "and no INSERT or UPDATE privilege on any of their columns"
+                    "and no INSERT or UPDATE privilege on any of their columns" + reach_clause
                 )
             )
         ),
         bypasses_row_security=bypasses,
+    )
+
+
+def _pg_set_role_write_privileges(
+    run_query: RunQuery, questions: EnvironmentQuestions, writable: list[str], unreported: list[str]
+) -> str:
+    """Ask the roles `SET ROLE` reaches the same write questions, and report them.
+
+    The privilege functions above answer for `current_user` and what it inherits, so a
+    role granted to a `NOINHERIT` member — or the session user parked behind a role
+    default — holds write privileges none of those questions can see, while the session
+    can switch into it and write (PostgreSQL 16.15, live). The collector never switches;
+    it only asks. Returns the reachability clause of the read-only evidence.
+    """
+    reach = _ask(run_query, _PG_REACHABLE_ROLES)
+    if reach is None:
+        unreported.append("roles reachable through SET ROLE")
+        return ""
+    if not reach:
+        return "; SET ROLE reaches no other role"
+    names: list[str] = []
+    unnamed = 0
+    superuser_reached = False
+    for row in reach:
+        value = row.get("name")
+        # No strip: a quoted role name may carry spaces that are part of it.
+        role = None if value is None or str(value) == "" else str(value)
+        if role is None:
+            unnamed += 1
+        elif role not in names:
+            names.append(role)
+        flag = row.get("superuser")
+        if flag is None:
+            unreported.append(f"superuser status of {role or 'unknown'}")
+        elif _truthy(flag):
+            writable.append(f"SET ROLE to superuser {role or 'unknown'}")
+            superuser_reached = True
+    if unnamed:
+        unreported.append(
+            "name of a role reachable through SET ROLE"
+            if unnamed == 1
+            else f"names of {unnamed} roles reachable through SET ROLE"
+        )
+    if names and not superuser_reached:
+        # One question per distinct mart, however many questions read that mart.
+        for mart in dict.fromkeys(question.table for question in questions.tables):
+            answer = _ask(run_query, _pg_reachable_privilege_sql(mart, names))
+            if answer is None:
+                unreported.append(f"write privileges of {', '.join(names)} on {mart}")
+                continue
+            rows: dict[str, dict[str, Any]] = {}
+            for row in answer:
+                value = row.get("name")
+                # A missing, NULL or empty name stands for no requested role; indexing
+                # it by `str(None)` would let the literal role name "None" take such a
+                # row's answers.
+                if value is None or str(value) == "":
+                    continue
+                rows.setdefault(str(value), row)
+            for role in names:
+                answer_row = rows.get(role)
+                if answer_row is None:
+                    unreported.append(f"write privileges of {role} on {mart}")
+                    continue
+                missing_table = [
+                    privilege
+                    for privilege in _PG_WRITE_PRIVILEGES
+                    if answer_row.get(privilege.lower()) is None
+                ]
+                if missing_table:
+                    unreported.append(
+                        f"table {'/'.join(missing_table)} privileges of {role} on {mart}"
+                    )
+                granted_table = [
+                    privilege
+                    for privilege in _PG_WRITE_PRIVILEGES
+                    if _truthy(answer_row.get(privilege.lower()))
+                ]
+                writable.extend(
+                    f"{privilege} on {mart} through SET ROLE {role}" for privilege in granted_table
+                )
+                missing_column = [
+                    privilege
+                    for privilege in _PG_COLUMN_WRITE_PRIVILEGES
+                    if answer_row.get(f"column_{privilege.lower()}") is None
+                ]
+                if missing_column:
+                    unreported.append(
+                        f"column {'/'.join(missing_column)} privileges of {role} on {mart}"
+                    )
+                # A table-level grant already covers the whole mart, so the column
+                # question's true answer for it adds nothing — the same deduplication
+                # the current role's own answers get.
+                writable.extend(
+                    f"{privilege} on columns of {mart} through SET ROLE {role}"
+                    for privilege in _PG_COLUMN_WRITE_PRIVILEGES
+                    if privilege not in granted_table
+                    and _truthy(answer_row.get(f"column_{privilege.lower()}"))
+                )
+    return f", for this role or any role SET ROLE reaches ({', '.join(names)})"
+
+
+def _pg_reachable_privilege_sql(mart: str, roles: list[str]) -> str:
+    """The current role's write questions, asked of other roles by oid in one question."""
+    privileges = ", ".join(
+        f"has_table_privilege(r.oid, {_literal(mart)}, {_literal(privilege)}) AS "
+        f"{privilege.lower()}"
+        for privilege in _PG_WRITE_PRIVILEGES
+    )
+    columns = ", ".join(
+        f"has_any_column_privilege(r.oid, {_literal(mart)}, {_literal(privilege)}) AS "
+        f"column_{privilege.lower()}"
+        for privilege in _PG_COLUMN_WRITE_PRIVILEGES
+    )
+    listed = ", ".join(_literal(role) for role in roles)
+    return (
+        f"SELECT r.rolname AS name, {privileges}, {columns} "
+        f"FROM pg_roles r WHERE r.rolname IN ({listed}) ORDER BY r.rolname"
     )
 
 

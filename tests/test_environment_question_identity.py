@@ -343,7 +343,8 @@ def test_clean_wording_uses_only_attributed_layout_readings(reverse: bool) -> No
     assert "0 of 2 declared layout fields" in _physical_clean(scope, observed)
 
 
-# Digests pin the complete SELECT replay, including T-33 column-write questions.
+# Digests pin the complete SELECT replay, including T-33 column-write questions and
+# the T-34 reachability question (one per PostgreSQL-family collection).
 REPLAYS = [
     (
         "clickhouse",
@@ -370,29 +371,29 @@ REPLAYS = [
         "greengage",
         "made",
         {},
-        19,
-        "bf86553f5041cd97f05f3e7b7f3cc654d7aaaa336d79ed39de0d8c9a9c754d44",
+        20,
+        "0d52d5f0cd9d125a5e7b9e837a65f31f0d447c7f2b16a5732408633cc98a838c",
     ),
     (
         "greengage",
         "absent",
         {"pg_tables": []},
-        7,
-        "6f94e04172c61e9b372c353210f0fbceb6ae62dc5b6ad8f681e790158404402a",
+        8,
+        "a111b0bcc02d32a97658d519cbc4480df247a327ee8699ffb4023338508f6895",
     ),
     (
         "greengage",
         "no_privilege",
         {"has_any_column_privilege": [{"ok": False}]},
-        15,
-        "5483a35885ac5f50b3e5fd3d4a4748e7a85c30501be711c75e0bd4056464089c",
+        16,
+        "7345b411f1831a42812f5b85424acc3476a59b6cb2f0dd2c4cc1d9bad9d71598",
     ),
     (
         "greengage",
         "refused",
         {"count(*)": []},
-        17,
-        "1a2f6a38a0658230b7a32f18fe0e8ba0b26cf65d2f1554d5c6893c3eaca63c37",
+        18,
+        "c9a8ad2368a7934daa54d2cba1a1cbb9c6b1316e48caef52228f90c46cbff19a",
     ),
 ]
 

@@ -398,7 +398,16 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 76 — physical.not_run exposes zero actual column/layout comparisons in the owner summary.
 #: 77 — security.not_run exposes zero actual column/policy observations in the owner summary.
 #: 78 — absent readable marts no longer produce a fresh outcome without an age comparison.
-VERIFIER_VERSION = "78"
+#: 79 — the PostgreSQL-family role probe also asks which roles the session user can
+#: `SET ROLE` to and their table-level and column-level write privileges per in-scope
+#: mart; a superuser group stays in that question even when the current role inherits
+#: it, because membership does not pass `SUPERUSER` on. A role verifier 78 recorded
+#: read-only although a reachable role could write (or a reachable superuser, an
+#: inheriting member of a superuser group, or an unanswered reachability question) is
+#: now not read-only, and `dwh.access` blocks with `access.role_writable`; the
+#: read-only evidence names the reachable roles it checked. ClickHouse is unchanged;
+#: historical bundles are not rewritten.
+VERIFIER_VERSION = "79"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -598,7 +607,13 @@ VERIFIER_VERSION = "78"
 #: 52 — the clean physical outcome requires an actual declared column/layout comparison.
 #: 53 — the clean security outcome requires an actual requested column/policy observation.
 #: 54 — the clean freshness outcome requires an existing mart eligible for dating.
-CHECK_VERSION = "54"
+#: 55 — the PostgreSQL-family role probe grades a role writable when a role the session
+#: user can `SET ROLE` to holds a write privilege on an in-scope mart (or is a superuser,
+#: including a superuser group the current role inherits without gaining the attribute,
+#: or its reachability or write privileges went unanswered), so `dwh.access` blocks with
+#: `access.role_writable` where check 54 recorded read-only; the read-only evidence names
+#: the reachable roles it checked. ClickHouse is unchanged.
+CHECK_VERSION = "55"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
