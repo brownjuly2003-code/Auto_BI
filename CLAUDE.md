@@ -83,6 +83,15 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — чистая сводка `dwh.cost` сообщает фактическое покрытие объявленных
+  потолков: строки из планов, байты/время из exact-query runtime evidence.
+  Неполное и нулевое покрытие названы явно; findings/codes/verdict прежние.
+  Verifier 74, check 50. Выбор — synthetic Astra xhigh, реализация Codex.
+  Полный offline gate: 3821 passed, 5 skipped, 38 deselected, exit 0;
+  docs-as-code: 24 passed. Black/Ruff/strict mypy чистые. Итоговое synthetic
+  Astra xhigh review: 0 substantive findings.
+  [Проверки и границы](docs/DECISIONOPS_COST_COVERAGE_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — чистая сводка `dwh.security` считает подтверждённые права чтения
   запрошенных колонок и ответы о row policies по вопросам (витрина, колонка времени).
   Частичное и нулевое покрытие названы явно, findings/codes/verdict прежние.

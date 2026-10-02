@@ -390,7 +390,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 73 — security clean evidence counts confirmed requested column reads and observed
 #: row-policy reports per mart/event-time question, without extending a partial observation
 #: to the whole scope. Grading and CHECK_VERSION are unchanged.
-VERIFIER_VERSION = "73"
+#: 74 — clean cost evidence counts checked plan-row and exact-runtime byte/time ceilings
+#: against all declared bounds, without extending partial observations to all queries.
+#: Grading and CHECK_VERSION are unchanged.
+VERIFIER_VERSION = "74"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -1585,9 +1588,47 @@ def _priced(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
 def _cost_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
     if not questions.plans:
         return "no in-scope metric declares a cost ceiling, so no query was priced"
-    if not _priced(questions, facts):
-        return f"no cost bound could be checked on {facts.target}, so no ceiling was compared"
-    return f"every governed query stays inside the ceiling its metric declares on {facts.target}"
+    totals = {"max_scanned_rows": 0, "max_scanned_bytes": 0, "timeout_ms": 0}
+    checked = dict.fromkeys(totals, 0)
+    for question in questions.plans:
+        for name in totals:
+            totals[name] += getattr(question.budgets, name) is not None
+        table = reading_for(question, questions, facts.tables)
+        if (
+            table is None
+            or not table.exists
+            or not table.readable
+            or denies_all_rows(table, facts.role)
+            or not question.sql
+        ):
+            continue
+        plan = facts.plan(question.metric_ref)
+        if question.budgets.max_scanned_rows is not None and plan is not None:
+            checked["max_scanned_rows"] += plan.scanned_rows is not None
+        execution = facts.execution(question.metric_ref)
+        if execution is None:
+            continue
+        for bound, measured in (
+            (CostBound.SCANNED_BYTES, execution.scanned_bytes),
+            (CostBound.TIMEOUT, execution.elapsed_ms),
+        ):
+            if getattr(question.budgets, bound.value) is not None:
+                checked[bound.value] += (
+                    measured is not None
+                    or bound in execution.checked_bounds
+                    or execution.exceeded_bound is bound
+                )
+    coverage = "complete" if checked == totals else "incomplete"
+    result = (
+        f"cost comparison on {facts.target}: {checked['max_scanned_rows']} of "
+        f"{totals['max_scanned_rows']} declared scanned-row ceilings checked from plans; "
+        f"{checked['max_scanned_bytes']} of {totals['max_scanned_bytes']} declared scanned-byte "
+        f"ceilings and {checked['timeout_ms']} of {totals['timeout_ms']} declared timeout "
+        f"ceilings checked from exact-query runtime evidence; coverage is {coverage}"
+    )
+    if not any(checked.values()):
+        return f"{result}; no cost comparison was made"
+    return f"{result}; checked bounds are within their declared ceilings"
 
 
 def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
