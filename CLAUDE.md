@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — отсутствующая readable-витрина не считается допустимой для
+  датировки: без допустимых вопросов чистый код `dwh.freshness` —
+  `freshness.not_run`, проверка появляется в `What was not done`.
+  Частичное ненулевое покрытие, findings, status и verdict прежние.
+  Verifier 78, check 54. Выбор — synthetic Astra xhigh, реализация Codex.
+  Профильный набор: 218 passed; Black/Ruff/strict mypy чистые.
+  Итоговое synthetic Astra xhigh review: 0 substantive findings.
+  Полный offline gate: 3911 passed, 5 skipped, 38 deselected, exit 0.
+  [Проверки и границы](docs/DECISIONOPS_FRESHNESS_OUTCOME_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — при нуле фактических security-наблюдений чистый код —
   `security.not_run`, поэтому проверка появляется в `What was not done`.
   Частичное ненулевое покрытие сохраняет `security.unfiltered`; findings,

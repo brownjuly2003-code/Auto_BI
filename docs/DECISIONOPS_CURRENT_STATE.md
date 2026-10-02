@@ -10,9 +10,20 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=77`, `CHECK_VERSION=53`
+**Версии evidence:** `VERIFIER_VERSION=78`, `CHECK_VERSION=54`
 
-**Последний срез (2026-10-02):** при нуле фактических security-наблюдений чистый
+**Последний срез (2026-10-02):** отсутствующая readable-витрина не считается
+доступной для датировки. Без допустимых вопросов чистый код `dwh.freshness` —
+`freshness.not_run`, detail сообщает, что возраст не сравнивался, а проверка
+появляется в `What was not done`. Частичное ненулевое покрытие, findings,
+status и verdict прежние. Выбор — synthetic Astra xhigh, реализация Codex;
+human/production acceptance не заявляется. Профильный набор: 218 passed;
+Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh review:
+0 substantive findings. Полный offline gate: 3911 passed, 5 skipped,
+38 deselected, exit 0.
+[Проверки и границы](DECISIONOPS_FRESHNESS_OUTCOME_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** при нуле фактических security-наблюдений чистый
 код `dwh.security` — `security.not_run`, поэтому проверка появляется в
 `What was not done`. Частичное ненулевое покрытие сохраняет `security.unfiltered`;
 пустой список политик считается ответом. Findings, status, verdict и detail прежние.

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from auto_bi.evidence.store import FilesystemArtifactStore
 from auto_bi.semantic.model import Column, ColumnRole
 from auto_bi.verification.environment import EnvironmentFacts, EnvironmentQuestions
 from auto_bi.verification.release_gate import CheckStatus
@@ -89,14 +90,60 @@ def test_absent_mart_has_no_freshness_comparison(tmp_path: Path, readable: bool)
     report = Case(tmp_path).run(probe=lambda scope: observed)
     check = next(item for item in report.checks if item.check_id == "dwh.freshness")
     assert check.status is CheckStatus.PASS
-    assert check.summary_code == ("freshness.fresh" if readable else "freshness.not_run")
+    assert check.summary_code == "freshness.not_run"
     assert _check_payload(tmp_path, report, "dwh.freshness")["findings"] == []
     assert "every in-scope mart" not in check.detail
-    if readable:
-        assert "0 of 1 in-scope mart/event-time questions compared" in check.detail
-        assert "no freshness comparison was made" in check.detail
-    else:
-        assert "nothing was aged" in check.detail
+    assert "nothing was aged" in check.detail
+
+
+@pytest.mark.parametrize(
+    "unusable", ["absent", "unreadable", "missing", "unattributed", "duplicate", "deny_all"]
+)
+@pytest.mark.parametrize("reverse", [False, True])
+def test_public_freshness_without_eligible_questions_is_not_run(
+    tmp_path: Path, unusable: str, reverse: bool
+) -> None:
+    def probe(scope: EnvironmentQuestions) -> EnvironmentFacts:
+        observed = environment()
+        template = observed.tables[0]
+        observed.tables = []
+        for question in scope.tables:
+            table = template.model_copy(deep=True)
+            table.event_time_column = question.event_time_column
+            if unusable == "absent":
+                table.exists = False
+            elif unusable == "unreadable":
+                table.readable = False
+            elif unusable == "missing":
+                continue
+            elif unusable == "unattributed":
+                table.event_time_column = None
+            elif unusable == "duplicate":
+                observed.tables.append(table.model_copy(deep=True))
+            else:
+                table.row_security_enabled = True
+                table.row_policies = []
+                table.rows_seen = 0
+            observed.tables.append(table)
+        observed.tables.append(template.model_copy(update={"table": "dm.unasked"}))
+        if reverse:
+            observed.tables.reverse()
+        return observed
+
+    report = two_clock_case(tmp_path).run(probe=probe)
+    check = next(item for item in report.checks if item.check_id == "dwh.freshness")
+    assert check.status is CheckStatus.PASS
+    assert check.summary_code == "freshness.not_run"
+    assert "nothing was aged" in check.detail
+    assert _check_payload(tmp_path, report, "dwh.freshness")["findings"] == []
+    summary = (
+        FilesystemArtifactStore(tmp_path / "evidence")
+        .get(report.run_id, "reports/summary.md")
+        .decode("utf-8")
+    )
+    undone = summary.split("## What was not done")[1].split("\n## ")[0]
+    assert "**dwh.freshness**" in undone
+    assert "| `dwh.freshness` | pass | `freshness.not_run` |" in summary
 
 
 @pytest.mark.parametrize(

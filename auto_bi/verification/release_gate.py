@@ -397,7 +397,8 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: cost.not_run exposes zero eligible comparisons in the owner's What was not done section.
 #: 76 — physical.not_run exposes zero actual column/layout comparisons in the owner summary.
 #: 77 — security.not_run exposes zero actual column/policy observations in the owner summary.
-VERIFIER_VERSION = "77"
+#: 78 — absent readable marts no longer produce a fresh outcome without an age comparison.
+VERIFIER_VERSION = "78"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -596,7 +597,8 @@ VERIFIER_VERSION = "77"
 #: Findings, statuses and verdicts are unchanged.
 #: 52 — the clean physical outcome requires an actual declared column/layout comparison.
 #: 53 — the clean security outcome requires an actual requested column/policy observation.
-CHECK_VERSION = "53"
+#: 54 — the clean freshness outcome requires an existing mart eligible for dating.
+CHECK_VERSION = "54"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1780,6 +1782,7 @@ def _dated(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
     """
     return any(
         (table := reading_for(item, questions, facts.tables)) is not None
+        and table.exists
         and table.readable
         and not denies_all_rows(table, facts.role)
         for item in questions.tables
