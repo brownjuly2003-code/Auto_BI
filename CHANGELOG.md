@@ -6,6 +6,14 @@
 
 ### Changed
 
+- **Частичные write-privilege ответы PostgreSQL блокируют доступ.**
+  Отсутствующее/NULL поле табличных INSERT/UPDATE/DELETE/TRUNCATE или колоночных
+  INSERT/UPDATE не подтверждает read-only: `dwh.access` — BLOCK, exact runtime SQL
+  не выполняется. Evidence называет неизвестные права и витрину; известные grants
+  сохраняют приоритет и не дублируются. SQL-вопросы, identity и ClickHouse прежние.
+  `VERIFIER_VERSION` 67 → 68, `CHECK_VERSION` 47 → 48;
+  исторические bundles не переписаны.
+
 - **Частичный identity-ответ PostgreSQL блокирует доступ.**
   Отсутствующее/NULL identity-поле или пустое имя не подтверждают read-only:
   `dwh.access` — BLOCK; write-privilege вопросы и exact runtime SELECT не выполняются.

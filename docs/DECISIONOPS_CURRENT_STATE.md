@@ -10,9 +10,19 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=67`, `CHECK_VERSION=47`
+**Версии evidence:** `VERIFIER_VERSION=68`, `CHECK_VERSION=48`
 
-**Последний срез (2026-10-02):** частичный PostgreSQL-family identity-ответ,
+**Последний срез (2026-10-02):** частичные/NULL ответы PostgreSQL-family write-privilege
+вопросов не подтверждают read-only. Evidence называет неотвеченные табличные
+INSERT/UPDATE/DELETE/TRUNCATE или колоночные INSERT/UPDATE и витрину; `dwh.access`
+блокирует доступ, exact runtime SQL не выполняется. Доказанные grants сохраняют
+приоритет и не дублируются. SQL, identity и ClickHouse прежние. Выбор и итоговое
+synthetic review — Astra xhigh, реализация Codex; human/production acceptance
+не заявляется. Полный offline pytest с duckdb: 3645 passed, 5 skipped,
+38 deselected; Ruff, Black и strict mypy чистые. Итоговое review: 0 substantive findings.
+[Проверки и границы](DECISIONOPS_PARTIAL_PRIVILEGES_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** частичный PostgreSQL-family identity-ответ,
 NULL в identity-поле или пустое имя не подтверждают read-only. Известное имя и
 доказанный superuser/BYPASSRLS сохраняются; обход RLS — false только при двух
 известных отрицательных флагах, иначе null. Неполный identity блокирует доступ

@@ -369,7 +369,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: retained; unknown bypass stays null. Write-privilege questions and exact runtime SQL
 #: are withheld, and dwh.access blocks. Proven superusers keep their existing evidence
 #: even with partial identity rows. Historical bundles are not rewritten.
-VERIFIER_VERSION = "67"
+#: 68 — missing or NULL PostgreSQL-family write-privilege fields no longer establish
+#: read-only access. Evidence names unreported privileges and their mart; exact runtime
+#: SQL is withheld and dwh.access blocks. Proven grants retain their positive evidence.
+#: SQL questions and historical bundles are unchanged.
+VERIFIER_VERSION = "68"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -558,7 +562,9 @@ VERIFIER_VERSION = "67"
 #: in-scope grants would be negative. Unknown bypass is not false; proven positive flags
 #: and known names are retained. Exact runtime SQL and write-privilege questions are
 #: withheld; complete identities and proven superusers keep their rules.
-CHECK_VERSION = "47"
+#: 48 — dwh.access blocks for partial or NULL table/column write-privilege answers.
+#: Missing fields are unknown rather than negative; complete answers retain their rules.
+CHECK_VERSION = "48"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

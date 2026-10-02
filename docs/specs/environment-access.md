@@ -198,6 +198,17 @@ columns the in-scope metrics read. The collector SHALL NOT attempt a write to fi
 - **AND** the column question is still asked; if it proves a column write grant,
   the role keeps its positive column-grant evidence and block outcome
 
+### Scenario: partial or NULL write-privilege answers cannot establish read-only access
+
+- **GIVEN** a nonsuperuser with a missing or NULL table INSERT/UPDATE/DELETE/TRUNCATE
+  field or column INSERT/UPDATE field, including an empty returned row
+- **WHEN** the environment is collected
+- **THEN** read-only access is unestablished, evidence names the unreported privileges
+  and mart, exact runtime SQL is withheld, and `dwh.access` blocks
+- **AND** all in-scope marts and both privilege questions are still examined; a proven
+  write grant retains its existing positive evidence and table/column deduplication
+- **AND** complete negative answers retain read-only access and eligible runtime execution
+
 ### Scenario: ClickHouse is unchanged
 
 - **GIVEN** a ClickHouse environment, read-only by its profile or by its grants

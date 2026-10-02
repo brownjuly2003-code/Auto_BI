@@ -365,6 +365,113 @@ def test_unanswered_table_write_question_does_not_hide_column_grant(
     assert_questions(engine)
 
 
+@pytest.mark.parametrize("engine_name", ["postgres", "postgresql", "greenplum", "greengage"])
+@pytest.mark.parametrize("answer", ["missing", "null", "empty_row"])
+@pytest.mark.parametrize(
+    ("level", "privilege"),
+    [("table", p) for p in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")]
+    + [("column", p) for p in ("INSERT", "UPDATE")],
+)
+def test_partial_write_privileges_block_runtime_and_public_gate(
+    tmp_path: Path, engine_name: str, answer: str, level: str, privilege: str
+) -> None:
+    engine = role_engine()
+    query = table_sql(MART) if level == "table" else column_sql(MART)
+    key = privilege.lower() if level == "table" else f"column_{privilege.lower()}"
+    row = engine.answers[query][0]
+    if answer == "missing":
+        del row[key]
+    elif answer == "null":
+        row[key] = None
+    else:
+        row.clear()
+    scope = pg_questions().model_copy(update={"engines": [engine_name]})
+    sql = "SELECT sum(revenue) FROM dm.sales_daily"
+    scope.plans.append(
+        PlanQuestion(
+            metric_ref=scope.tables[0].metric_refs[0],
+            table=MART,
+            sql=sql,
+            dialect="postgres",
+            budgets=MetricBudget(timeout_ms=100),
+        )
+    )
+    calls: list[str] = []
+
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        calls.append(question.sql)
+        return ExecutionFacts(
+            metric_ref=question.metric_ref, elapsed_ms=1, evidence="exact SELECT completed"
+        )
+
+    facts = collect(engine, scope, engine=engine_name, target="stand", run_cost=run_cost)
+
+    assert facts.role.read_only is False
+    assert calls == []
+    assert facts.executions == []
+    assert "unreported" in facts.role.evidence
+    assert level in facts.role.evidence
+    assert privilege in facts.role.evidence
+    assert MART in facts.role.evidence
+    assert "no INSERT" not in facts.role.evidence
+    assert_access(scope, facts, True)
+    assert_questions(engine)
+    model = semantic_model()
+    for table in model.tables:
+        table.physical.engine = engine_name
+    report = Case(tmp_path).with_candidate(model).run(probe=probing(facts))
+    assert status_of(report, "dwh.access") is CheckStatus.BLOCK
+    assert summary_of(report, "dwh.access") == "access.role_writable"
+
+
+@pytest.mark.parametrize("level", ["table", "column"])
+def test_partial_write_privileges_on_second_mart_name_each_unknown(level: str) -> None:
+    engine = role_engine()
+    second = "dm.sales_monthly"
+    engine.answers[table_sql(second)] = [
+        dict.fromkeys(("insert", "update", "delete", "truncate"), False)
+    ]
+    engine.answers[column_sql(second)] = [{"column_insert": False, "column_update": False}]
+    query = table_sql(second) if level == "table" else column_sql(second)
+    engine.answers[query] = [{"truncate": False}] if level == "table" else [{}]
+    scope = pg_questions()
+    scope.tables.append(TableQuestion(table=second, event_time_column="date"))
+    facts = collect(engine, scope, engine="greengage", target="stand")
+    assert facts.role.read_only is False
+    assert "unreported" in facts.role.evidence
+    assert second in facts.role.evidence
+    assert MART not in facts.role.evidence
+    assert (
+        "INSERT/UPDATE/DELETE" in facts.role.evidence
+        if level == "table"
+        else ("INSERT/UPDATE" in facts.role.evidence)
+    )
+    assert "TRUNCATE" not in facts.role.evidence
+    assert_access(scope, facts, True)
+    assert_questions(engine, (MART, second))
+
+
+@pytest.mark.parametrize("level", ["table", "column"])
+@pytest.mark.parametrize("answer", ["missing", "null"])
+def test_partial_write_privileges_preserve_positive_grants(level: str, answer: str) -> None:
+    engine = role_engine(update=True)
+    query = table_sql(MART) if level == "table" else column_sql(MART)
+    key = "insert" if level == "table" else "column_insert"
+    if answer == "missing":
+        del engine.answers[query][0][key]
+    else:
+        engine.answers[query][0][key] = None
+    if level == "table":
+        engine.answers[query][0]["update"] = True
+    scope = pg_questions()
+    facts = collect(engine, scope, engine="greengage", target="stand")
+    expected = f"UPDATE on {MART}" if level == "table" else f"UPDATE on columns of {MART}"
+    assert facts.role.read_only is False
+    assert facts.role.evidence == f"granted {expected}"
+    assert_access(scope, facts, True)
+    assert_questions(engine)
+
+
 @pytest.mark.parametrize("profile", [True, False])
 def test_clickhouse_role_facts_and_questions_are_unchanged(profile: bool) -> None:
     engine = (

@@ -109,7 +109,7 @@ def postgres_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
             {"name": "revenue", "type": "numeric(18,2)"},
         ],
         "'SELECT') AS ok": [{"ok": True}],
-        "has_any_column_privilege": [{"ok": True}],
+        "has_any_column_privilege": [{"ok": True, "column_insert": False, "column_update": False}],
         "has_column_privilege(a.attrelid": [{"name": "date", "ok": True}],
         "pg_policy": [],
         "relrowsecurity": [{"enabled": False}],

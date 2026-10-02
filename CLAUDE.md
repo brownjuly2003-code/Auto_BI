@@ -83,6 +83,15 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — missing/NULL поля PostgreSQL-family write-privilege ответов не
+  подтверждают read-only. `dwh.access` — BLOCK, exact runtime SQL не выполняется;
+  evidence называет права и витрину, доказанные grants сохраняют приоритет.
+  Версии evidence 67 → 68 / 47 → 48. Выбор и synthetic review — Astra xhigh,
+  реализация Codex. Red: 74 failed / 4 passed; связанная группа — 451 passed.
+  Ruff, Black и strict mypy чистые; итоговое review — 0 substantive findings.
+  Полный offline pytest с duckdb: 3645 passed, 5 skipped, 38 deselected, exit 0.
+  [Проверки и границы](docs/DECISIONOPS_PARTIAL_PRIVILEGES_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — частичный PostgreSQL-family identity-ответ, NULL в поле или пустое имя
   не подтверждают read-only. Известные имя и положительные superuser/BYPASSRLS
   сохраняются; false bypass требует двух известных отрицательных флагов, иначе null.

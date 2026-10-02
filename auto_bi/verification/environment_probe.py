@@ -604,9 +604,10 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
             for privilege in _PG_WRITE_PRIVILEGES
         )
         granted = _ask(run_query, f"SELECT {privileges}")
-        if not granted:
-            unreported.append(f"table INSERT/UPDATE/DELETE/TRUNCATE privileges on {question.table}")
         table_grants = granted[0] if granted else {}
+        missing_table = [p for p in _PG_WRITE_PRIVILEGES if table_grants.get(p.lower()) is None]
+        if missing_table:
+            unreported.append(f"table {'/'.join(missing_table)} privileges on {question.table}")
         for privilege in _PG_WRITE_PRIVILEGES:
             if _truthy(table_grants.get(privilege.lower())):
                 writable.append(f"{privilege} on {question.table}")
@@ -616,12 +617,17 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
             for privilege in _PG_COLUMN_WRITE_PRIVILEGES
         )
         column_granted = _ask(run_query, f"SELECT {column_privileges}")
-        if not column_granted:
-            unreported.append(f"column INSERT/UPDATE privileges on {question.table}")
-            continue
+        column_grants = column_granted[0] if column_granted else {}
+        missing_column = [
+            p
+            for p in _PG_COLUMN_WRITE_PRIVILEGES
+            if column_grants.get(f"column_{p.lower()}") is None
+        ]
+        if missing_column:
+            unreported.append(f"column {'/'.join(missing_column)} privileges on {question.table}")
         for privilege in _PG_COLUMN_WRITE_PRIVILEGES:
             if not _truthy(table_grants.get(privilege.lower())) and _truthy(
-                column_granted[0].get(f"column_{privilege.lower()}")
+                column_grants.get(f"column_{privilege.lower()}")
             ):
                 writable.append(f"{privilege} on columns of {question.table}")
     return RoleFacts(

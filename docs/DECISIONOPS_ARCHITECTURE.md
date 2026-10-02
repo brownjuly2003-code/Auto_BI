@@ -584,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=67`, `CHECK_VERSION=47`.
+`VERIFIER_VERSION=68`, `CHECK_VERSION=48`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -723,7 +723,11 @@ Gate выполняет шаги в фиксированном порядке:
   вопрос отвечает false роли с грантом `UPDATE (revenue)`, хотя она пишет
   (PostgreSQL 16.15, вживую). Отказ или пустой ответ табличного или колоночного privilege-вопроса
   не подтверждает read-only: `dwh.access` — block с evidence о неотвеченных правах,
-  exact runtime SQL не исполняется. Отказ или пустой ответ identity-вопроса также
+  exact runtime SQL не исполняется. Отсутствующее или NULL поле в непустом privilege-ответе
+  также не подтверждает read-only; evidence называет конкретные неотвеченные права
+  и витрину. Обе группы вопросов продолжают задаваться по всем витринам скоупа,
+  доказанные grants сохраняют приоритет в evidence и table/column deduplication.
+  Отказ или пустой ответ identity-вопроса также
   блокирует доступ: роль — `unknown`, superuser и `BYPASSRLS` не установлены,
   `bypasses_row_security=null`; write-privilege вопросы и exact runtime SQL не
   выполняются. Finding описывает неподтверждённый read-only, не приписывая неизвестной
