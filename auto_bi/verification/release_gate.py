@@ -359,7 +359,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: dwh.access with access.role_writable and withholds exact runtime SQL; evidence names
 #: unreported table privileges. Positive column grants keep their evidence, and the
 #: questions sent are unchanged. Historical bundles are not rewritten.
-VERIFIER_VERSION = "65"
+#: 66 — a refused or empty PostgreSQL-family role-identity answer no longer establishes
+#: read-only access. The role and row-security bypass remain unknown; write-privilege
+#: questions and exact runtime SQL are withheld, and dwh.access blocks with
+#: access.role_writable. Its detail describes unestablished read-only access rather than
+#: asserting that an unknown role can write. Historical bundles are not rewritten.
+VERIFIER_VERSION = "66"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -540,7 +545,11 @@ VERIFIER_VERSION = "65"
 #: unanswered even if column-write answers are negative. Read-only access is unestablished,
 #: exact runtime SQL is withheld and evidence names the unreported table privileges.
 #: Positive grants and ClickHouse are unchanged. Historical bundles are not rewritten.
-CHECK_VERSION = "45"
+#: 46 — dwh.access blocks when the PostgreSQL-family role-identity question is unanswered.
+#: An unknown superuser or BYPASSRLS answer is not false, and exact runtime SQL is withheld.
+#: The finding describes unestablished read-only access for both unanswered and writable
+#: roles. Answered identities and ClickHouse grading are unchanged.
+CHECK_VERSION = "46"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

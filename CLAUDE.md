@@ -83,6 +83,18 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — отказ и пустой ответ PostgreSQL-family identity-вопроса:
+  роль `unknown`, `read_only=false`, `bypasses_row_security=null`; write-privilege
+  вопросы и exact runtime SQL не выполняются. `dwh.access` — BLOCK через прежний
+  `access.role_writable`, detail описывает неподтверждённый read-only без утверждения
+  о способности неизвестной роли писать. Ответившие роли и ClickHouse сохраняют
+  правила; ошибки соединения пробрасываются. Версии evidence 65 → 66 / 45 → 46.
+  Выбор — synthetic Astra xhigh по ADR 0006, реализация Codex. Red:
+  16 failed / 16 passed; связанная группа — 305 passed. Полный offline pytest
+  с duckdb: 3499 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
+  [Итоговое synthetic Astra review](docs/DECISIONOPS_ROLE_IDENTITY_REVIEW_2026-10-02.md):
+  0 substantive findings; human/production acceptance не заявляется.
+
 - 2026-10-02 — отказ или пустой ответ PostgreSQL-family табличного write-privilege
   вопроса не подтверждает read-only при отрицательных колоночных ответах.
   `dwh.access` — BLOCK, exact runtime SQL не выполняется; evidence называет

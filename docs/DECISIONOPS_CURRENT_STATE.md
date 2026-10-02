@@ -10,9 +10,22 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=65`, `CHECK_VERSION=45`
+**Версии evidence:** `VERIFIER_VERSION=66`, `CHECK_VERSION=46`
 
-**Последний срез (2026-10-02):** отказ или пустой ответ табличного PostgreSQL-family
+**Последний срез (2026-10-02):** отказ или пустой ответ PostgreSQL-family
+identity-вопроса блокирует доступ: роль — `unknown`, superuser и `BYPASSRLS` не
+установлены, `bypasses_row_security=null`. Write-privilege вопросы и exact runtime
+SQL не выполняются. `dwh.access` сохраняет код `access.role_writable`, но detail
+описывает неподтверждённый read-only без утверждения, что неизвестная роль пишет.
+Ответившие роли и ClickHouse сохраняют правила; ошибки соединения пробрасываются.
+Версии 65 → 66 / 45 → 46; исторические bundles не переписаны. Выбор — Astra xhigh
+по ADR 0006; реализация Codex. Red: 16 failed / 16 passed; связанная группа:
+305 passed. Полный offline pytest с duckdb: 3499 passed, 5 skipped, 38 deselected;
+Ruff, Black и strict mypy чистые.
+[Итоговое synthetic Astra review](DECISIONOPS_ROLE_IDENTITY_REVIEW_2026-10-02.md):
+0 substantive findings; human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-02):** отказ или пустой ответ табличного PostgreSQL-family
 write-privilege вопроса не подтверждает read-only, даже если колоночные INSERT/UPDATE
 отрицательны. `dwh.access` — BLOCK, exact runtime SQL не исполняется; evidence
 называет неотвеченные табличные INSERT/UPDATE/DELETE/TRUNCATE и витрину. Колоночный
@@ -873,6 +886,8 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 Закрыто обнаружение колоночных INSERT/UPDATE у PostgreSQL-роли (T-33, verifier 64 / check 44).
 Закрыт fail-open неотвеченного табличного write-privilege вопроса
 (verifier 65 / check 45): read-only не подтверждён, доступ и runtime SELECT блокируются.
+Закрыт fail-open неотвеченного identity-вопроса (verifier 66 / check 46):
+роль и row-security bypass остаются неизвестными; доступ и runtime SQL блокируются.
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки

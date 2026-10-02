@@ -26,6 +26,42 @@ Known boundary, not covered here: a role created `NOINHERIT` and granted a writa
 `has_any_column_privilege` answer false for the role itself (live, PostgreSQL 16.15). The same
 holds for table-level grants today.
 
+## Requirement: an unanswered role identity cannot establish read-only access
+
+If the PostgreSQL-family identity question is refused or returns no rows, the collector SHALL
+NOT treat the absent superuser and row-security-bypass answers as false. `RoleFacts` SHALL
+name the role `unknown`, set `read_only` false and `bypasses_row_security` null, and explain
+that role identity, superuser status and `BYPASSRLS` were unreported, so read-only access is
+not established. The collector SHALL skip the table-level and column-level write-privilege
+questions after this unanswered identity query: their grants have not been observed.
+The exact runtime query SHALL NOT execute, and `dwh.access` SHALL block through the existing
+`access.role_writable` finding, whose detail SHALL describe unestablished read-only access
+without asserting that an unknown role can write. Connection failures SHALL still propagate
+as runtime faults.
+The collector SHALL NOT attempt a write to establish identity or read-only access.
+
+### Scenario: a refused identity question blocks
+
+- **GIVEN** the identity query is refused with SQLSTATE `42501`, while mart questions would
+  answer readable and every table-level and column-level write privilege would answer false
+- **WHEN** the environment is collected with an exact runtime budget and access is graded
+- **THEN** the role is `unknown`, read-only access is unestablished, row-security bypass is
+  unknown, the runtime callable is not invoked, and `dwh.access` is block
+
+### Scenario: an empty identity answer blocks
+
+- **GIVEN** the same environment, with no rows returned by the identity query
+- **WHEN** the environment is collected and access is graded
+- **THEN** it has the same unknown role facts and block outcome as a refused identity query
+
+### Scenario: an answered identity keeps the existing privilege rules
+
+- **GIVEN** the identity query reports a nonsuperuser and every table-level and column-level
+  write privilege is false
+- **WHEN** the environment is collected
+- **THEN** the role remains read-only and an eligible exact runtime query is executed
+- **AND** an answered superuser, positive write grants and ClickHouse keep their existing rules
+
 ## Requirement: a column-level write privilege on an in-scope mart makes the role writable
 
 For every in-scope mart, the PostgreSQL-family collector SHALL ask, besides the table-level

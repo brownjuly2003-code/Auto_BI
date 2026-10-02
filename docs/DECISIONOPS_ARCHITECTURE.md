@@ -584,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=65`, `CHECK_VERSION=45`.
+`VERIFIER_VERSION=66`, `CHECK_VERSION=46`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -723,7 +723,12 @@ Gate выполняет шаги в фиксированном порядке:
   вопрос отвечает false роли с грантом `UPDATE (revenue)`, хотя она пишет
   (PostgreSQL 16.15, вживую). Отказ или пустой ответ табличного или колоночного privilege-вопроса
   не подтверждает read-only: `dwh.access` — block с evidence о неотвеченных правах,
-  exact runtime SQL не исполняется. Граница — роль `NOINHERIT`, способная `SET ROLE` в
+  exact runtime SQL не исполняется. Отказ или пустой ответ identity-вопроса также
+  блокирует доступ: роль — `unknown`, superuser и `BYPASSRLS` не установлены,
+  `bypasses_row_security=null`; write-privilege вопросы и exact runtime SQL не
+  выполняются. Finding описывает неподтверждённый read-only, не приписывая неизвестной
+  роли способность писать. Частичные строки или NULL внутри успешного identity-ответа
+  остаются вне этого среза. Граница — роль `NOINHERIT`, способная `SET ROLE` в
   пишущую группу, не видна ни одной из функций. Пустая витрина —
   `freshness.unknown`, потому что `max(Date)` по нулю строк в ClickHouse равен `1970-01-01`,
   а не NULL. `dwh.security`: досягаемость роли, через которую собрано evidence, — колонка

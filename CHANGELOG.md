@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **Неотвеченный identity-вопрос PostgreSQL блокирует доступ.**
+  Отказ или пустой ответ о роли не подтверждает read-only: роль — `unknown`,
+  superuser и `BYPASSRLS` не установлены, `bypasses_row_security=null`.
+  `dwh.access` — BLOCK; write-privilege вопросы и exact runtime SELECT не выполняются.
+  Finding сообщает о неподтверждённом read-only, без утверждения, что неизвестная
+  роль умеет писать. Ответившие роли и ClickHouse сохраняют свои правила;
+  ошибки соединения продолжают пробрасываться. `VERIFIER_VERSION` 65 → 66,
+  `CHECK_VERSION` 45 → 46; исторические bundles не переписаны.
+
 - **Неотвеченный табличный write-privilege вопрос PostgreSQL блокирует доступ.**
   Отказ или пустой ответ о INSERT/UPDATE/DELETE/TRUNCATE не подтверждает read-only,
   даже если колоночные INSERT/UPDATE отрицательны. `dwh.access` — BLOCK,

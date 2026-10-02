@@ -548,7 +548,17 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
         "(SELECT usesuper FROM pg_user WHERE usename = current_user) AS superuser, "
         "(SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypassrls",
     )
-    first = rows[0] if rows else {}
+    if not rows:
+        return RoleFacts(
+            name="unknown",
+            read_only=False,
+            evidence=(
+                "unreported role identity, superuser status and BYPASSRLS, "
+                "so read-only access is not established"
+            ),
+            bypasses_row_security=None,
+        )
+    first = rows[0]
     name = str(first.get("name") or "unknown")
     superuser = _truthy(first.get("superuser"))
     # A superuser is not subject to row security either, so the two facts share one answer.

@@ -18,7 +18,7 @@ versions (ClickHouse 24.8.14.39, PostgreSQL 14.24):
   SELECT-only role, and `has_table_privilege` is the answer. Column-level INSERT/UPDATE
   grants are asked through `has_any_column_privilege` because the table-level question
   answers false for them while the role can write. An unanswered write-privilege question
-  cannot establish read-only access. Each engine is therefore asked
+  or role identity question cannot establish read-only access. Each engine is therefore asked
   its own question, and the fact carries the evidence it came from — never an attempted
   write. A gate that probed by trying to insert would be a gate that writes to a DWH.
 * *an empty ClickHouse table still has a max event time.* `max(Date)` over no rows returns
@@ -204,8 +204,8 @@ class RoleFacts(StrictModel):
     #: What the engine said, in its own terms (`readonly=1`, `no write privilege on …`).
     evidence: NonBlankText
     #: Whether row-level security does not apply to this session at all (a PostgreSQL
-    #: superuser or `BYPASSRLS`). `None` where the engine has no such notion: ClickHouse
-    #: policies simply do not name a user rather than being bypassed by one.
+    #: superuser or `BYPASSRLS`). `None` when identity was not reported or where the engine
+    #: has no such notion: ClickHouse policies do not name a user rather than being bypassed.
     bypasses_row_security: bool | None = None
 
 
@@ -545,7 +545,8 @@ def check_access(
                 severity=Severity.BLOCK,
                 subject=facts.role.name,
                 detail=(
-                    f"the gate reached {facts.target} as {facts.role.name}, which can write "
+                    f"the gate reached {facts.target} as {facts.role.name}, "
+                    "whose read-only access is not established "
                     f"({facts.role.evidence}); evidence collected through a role that could "
                     "have changed the mart is not the evidence this bundle claims to hold "
                     "(invariant 3)"
