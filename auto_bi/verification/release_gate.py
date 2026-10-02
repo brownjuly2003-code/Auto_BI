@@ -393,7 +393,9 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 74 — clean cost evidence counts checked plan-row and exact-runtime byte/time ceilings
 #: against all declared bounds, without extending partial observations to all queries.
 #: Grading and CHECK_VERSION are unchanged.
-VERIFIER_VERSION = "74"
+#: 75 — cost facts for ineligible questions no longer produce cost.within_budget;
+#: cost.not_run exposes zero eligible comparisons in the owner's What was not done section.
+VERIFIER_VERSION = "75"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -588,7 +590,9 @@ VERIFIER_VERSION = "74"
 #: physical absence requires known ClickHouse reach, classification requires known reach.
 #: 50 — dwh.access recognizes ClickHouse ALTER/CREATE/DROP leaf write privileges;
 #: SQL questions and historical bundles are unchanged.
-CHECK_VERSION = "50"
+#: 51 — the clean cost outcome requires an eligible comparison, not just supplied facts.
+#: Findings, statuses and verdicts are unchanged.
+CHECK_VERSION = "51"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1560,6 +1564,15 @@ def _priced(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
     and the second is the sentence this report must never contain.
     """
     for question in questions.plans:
+        table = reading_for(question, questions, facts.tables)
+        if (
+            table is None
+            or not table.exists
+            or not table.readable
+            or denies_all_rows(table, facts.role)
+            or not question.sql
+        ):
+            continue
         plan = facts.plan(question.metric_ref)
         if (
             question.budgets.max_scanned_rows is not None

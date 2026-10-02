@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from auto_bi.evidence.store import FilesystemArtifactStore
 from auto_bi.verification.environment import (
     CostBound,
     EnvironmentFacts,
@@ -12,6 +13,7 @@ from auto_bi.verification.environment import (
     ExecutionFacts,
     PlanFacts,
 )
+from auto_bi.verification.model import Verdict
 from auto_bi.verification.release_gate import CheckStatus
 from tests.test_decision_verify import (
     Case,
@@ -129,7 +131,7 @@ def test_unreadable_mart_has_no_cost_comparisons(tmp_path: Path, observed: bool)
     report = case.run(probe=lambda scope: facts)
     check = next(item for item in report.checks if item.check_id == "dwh.cost")
     assert check.status is CheckStatus.PASS
-    assert check.summary_code == ("cost.within_budget" if observed else "cost.not_run")
+    assert check.summary_code == "cost.not_run"
     assert "0 of 1 declared scanned-row ceilings checked from plans" in check.detail
     assert "0 of 1 declared scanned-byte ceilings" in check.detail
     assert "0 of 1 declared timeout ceilings" in check.detail
@@ -214,3 +216,89 @@ def test_duplicate_cost_facts_keep_first_match_semantics(tmp_path: Path) -> None
     for label in ("scanned-row", "scanned-byte", "timeout"):
         assert f"1 of 1 declared {label} ceilings" in check.detail
     assert "coverage is complete" in check.detail
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["absent", "absent_readable", "unreadable", "missing", "unattributed", "duplicate", "deny_all"],
+)
+@pytest.mark.parametrize(
+    "source",
+    ["rows", "bytes", "time", "bytes_enforced", "time_enforced", "bytes_exceeded", "time_exceeded"],
+)
+def test_ineligible_cost_facts_are_reported_as_not_done(
+    tmp_path: Path, scenario: str, source: str
+) -> None:
+    case = Case(tmp_path).with_candidate(
+        contract=budgeted_contract(max_scanned_rows=1000, max_scanned_bytes=2000, timeout_ms=3000)
+    )
+    facts = environment()
+    table = facts.tables[0]
+    if scenario in {"absent", "absent_readable"}:
+        table.exists = False
+        table.readable = scenario == "absent_readable"
+    elif scenario == "unreadable":
+        table.readable = False
+    elif scenario == "missing":
+        facts.tables = []
+    elif scenario == "unattributed":
+        table.event_time_column = "unasked_clock"
+    elif scenario == "duplicate":
+        facts.tables.append(table.model_copy(deep=True))
+    else:
+        table.row_security_enabled = True
+    if source == "rows":
+        facts.plans = [estimate(0)]
+    else:
+        runtime = executed()
+        bound = CostBound.SCANNED_BYTES if source.startswith("bytes") else CostBound.TIMEOUT
+        if source.endswith("enforced"):
+            runtime.checked_bounds = [bound]
+        elif source.endswith("exceeded"):
+            runtime.exceeded_bound = bound
+        elif source == "bytes":
+            runtime.scanned_bytes = 0
+        else:
+            runtime.elapsed_ms = 0
+        facts.executions = [runtime]
+
+    report = case.run(probe=lambda scope: facts)
+    check = next(item for item in report.checks if item.check_id == "dwh.cost")
+    assert check.status is CheckStatus.PASS
+    assert check.summary_code == "cost.not_run"
+    assert "no cost comparison was made" in check.detail
+    assert _check_payload(tmp_path, report, "dwh.cost")["findings"] == []
+    assert report.verdict is (
+        Verdict.NEEDS_REVIEW
+        if scenario in {"missing", "unattributed", "duplicate"}
+        else Verdict.BLOCK
+    )
+    text = (
+        FilesystemArtifactStore(tmp_path / "evidence")
+        .get(report.run_id, "reports/summary.md")
+        .decode("utf-8")
+    )
+    undone = text.split("## What was not done")[1].split("\n## ")[0]
+    assert "**dwh.cost**" in undone
+    assert "no cost comparison was made" in undone
+    assert "| `dwh.cost` | pass | `cost.not_run` |" in text
+
+
+def test_uncompiled_query_keeps_its_finding_despite_supplied_cost_facts(tmp_path: Path) -> None:
+    contract = budgeted_contract(max_scanned_rows=1000)
+    contract["formula"] = {
+        "kind": "external_ref",
+        "external": {
+            "source": "dbt",
+            "ref": "metric.sales.gross_margin_pct",
+            "source_revision": "9f1c0c2e4b7a5d3f8e6c1a0b2d4f6e8c0a2b4d6f",
+        },
+    }
+    case = Case(tmp_path).with_candidate(contract=contract)
+    report = case.run(probe=lambda scope: environment(plans=[estimate(0)]))
+    check = next(item for item in report.checks if item.check_id == "dwh.cost")
+    assert check.status is CheckStatus.ADVISORY
+    assert check.summary_code == "cost.plan_unavailable"
+    findings = _check_payload(tmp_path, report, "dwh.cost")["findings"]
+    assert [item["code"] for item in findings] == ["cost.plan_unavailable"]
+    assert check.detail == findings[0]["detail"]

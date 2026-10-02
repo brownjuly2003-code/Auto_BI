@@ -10,9 +10,19 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=74`, `CHECK_VERSION=50`
+**Версии evidence:** `VERIFIER_VERSION=75`, `CHECK_VERSION=51`
 
-**Последний срез (2026-10-02):** чистая сводка `dwh.cost` считает проверенные
+**Последний срез (2026-10-02):** чистый код `dwh.cost` учитывает только вопросы,
+которые проверка действительно могла оценить. При нуле допустимых сравнений
+код — `cost.not_run`, даже если supplied facts содержат counters или enforced
+bounds. Проверка попадает в `What was not done`; частичное ненулевое покрытие
+сохраняет `cost.within_budget`. Findings, status, verdict и detail прежние.
+Выбор — synthetic Astra xhigh, реализация Codex; human/production acceptance
+не заявляется. Полный offline gate: 3871 passed, 5 skipped, 38 deselected,
+exit 0; Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh review:
+0 substantive findings. [Проверки и границы](DECISIONOPS_COST_OUTCOME_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** чистая сводка `dwh.cost` считает проверенные
 потолки строк из планов и байтов/времени из exact-query runtime evidence.
 Покрытие соотносится со всеми объявлениями; недоступные, неатрибутированные
 и закрытые deny-all вопросы не засчитываются. Неполное и нулевое покрытие

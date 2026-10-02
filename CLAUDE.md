@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — при нулевом числе допустимых cost-сравнений clean code —
+  `cost.not_run`, поэтому проверка появляется в `What was not done`.
+  Частичное ненулевое покрытие сохраняет `cost.within_budget`; findings,
+  status, verdict и detail прежние. Verifier 75, check 51.
+  Выбор — synthetic Astra xhigh, реализация Codex.
+  Полный offline gate: 3871 passed, 5 skipped, 38 deselected, exit 0;
+  Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh review:
+  0 substantive findings.
+  [Проверки и границы](docs/DECISIONOPS_COST_OUTCOME_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — чистая сводка `dwh.cost` сообщает фактическое покрытие объявленных
   потолков: строки из планов, байты/время из exact-query runtime evidence.
   Неполное и нулевое покрытие названы явно; findings/codes/verdict прежние.
