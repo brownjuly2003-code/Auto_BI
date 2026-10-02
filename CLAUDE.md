@@ -83,6 +83,15 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — чистая сводка `dwh.security` считает подтверждённые права чтения
+  запрошенных колонок и ответы о row policies по вопросам (витрина, колонка времени).
+  Частичное и нулевое покрытие названы явно, findings/codes/verdict прежние.
+  Verifier 73, check 50. Выбор — synthetic Astra xhigh, реализация Codex.
+  Профильный набор: 306 passed; полный offline gate: 3790 passed, 5 skipped,
+  38 deselected, exit 0; docs-as-code: 24 passed. Black/Ruff/strict mypy чистые.
+  Итоговое synthetic Astra xhigh review: 0 substantive findings.
+  [Проверки и границы](docs/DECISIONOPS_SECURITY_COVERAGE_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — чистая сводка `dwh.freshness` считает сравнения по вопросам
   (витрина, колонка времени) и явно называет неполное покрытие. Положительный вывод
   ограничен сравнёнными возрастами; findings, codes и verdict прежние. Verifier 72,

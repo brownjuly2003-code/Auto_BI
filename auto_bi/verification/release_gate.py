@@ -387,7 +387,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 72 — freshness clean evidence names the number of compared mart/event-time questions,
 #: so a fresh readable subset no longer claims that every in-scope mart was dated.
 #: Grading and CHECK_VERSION are unchanged.
-VERIFIER_VERSION = "72"
+#: 73 — security clean evidence counts confirmed requested column reads and observed
+#: row-policy reports per mart/event-time question, without extending a partial observation
+#: to the whole scope. Grading and CHECK_VERSION are unchanged.
+VERIFIER_VERSION = "73"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -1516,9 +1519,7 @@ def _check_environment(
             check_security(questions, facts),
             product_ref,
             clean=(
-                f"nothing narrows what {facts.role.name} reads on {facts.target}: no row "
-                "policy applies to it and it may read every column the in-scope metrics are "
-                "made of"
+                _security_clean(questions, facts)
                 if _readable(questions, facts)
                 else f"no in-scope mart could be read on {facts.target}, so nothing was asked "
                 "about what narrows it"
@@ -1629,6 +1630,36 @@ def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) ->
     if not columns_compared and not layout_compared:
         return f"{result}; no physical comparison was made"
     return f"{result}; no differences found in the compared facts"
+
+
+def _security_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
+    """Limit clean evidence to the permissions and policy reports actually observed."""
+    columns_total = columns_confirmed = policies_observed = 0
+    for question in questions.tables:
+        columns_total += len(question.columns)
+        table = reading_for(question, questions, facts.tables)
+        if table is None or not table.exists or not table.readable:
+            continue
+        if table.column_reads is not None:
+            columns_confirmed += sum(
+                table.column_reads.get(column) is True for column in question.columns
+            )
+        policies_observed += table.row_policies is not None
+    policies_total = len(questions.tables)
+    coverage = (
+        "complete"
+        if columns_confirmed == columns_total and policies_observed == policies_total
+        else "incomplete"
+    )
+    result = (
+        f"security observation on {facts.target}: {columns_confirmed} of {columns_total} "
+        f"requested column reads confirmed and {policies_observed} of {policies_total} "
+        "row-policy questions answered per in-scope mart/event-time question; "
+        f"coverage is {coverage}"
+    )
+    if not columns_confirmed and not policies_observed:
+        return f"{result}; no security observation was made"
+    return f"{result}; no restrictions found in the observed facts for {facts.role.name}"
 
 
 def _readable(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:

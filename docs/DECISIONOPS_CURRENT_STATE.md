@@ -10,9 +10,20 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=72`, `CHECK_VERSION=50`
+**Версии evidence:** `VERIFIER_VERSION=73`, `CHECK_VERSION=50`
 
-**Последний срез (2026-10-02):** чистая сводка `dwh.freshness` сообщает число
+**Последний срез (2026-10-02):** чистая сводка `dwh.security` сообщает число
+подтверждённых прав чтения запрошенных колонок и ответов о row policies.
+Частично наблюдённый скоуп больше не описывается как доступ ко всем колонкам;
+покрытие считается по вопросам (витрина, колонка времени). Findings, summary
+codes, severity и verdict прежние. Выбор среза — synthetic Astra xhigh,
+реализация Codex; human/production acceptance не заявляется.
+Профильный набор: 306 passed; docs-as-code: 24 passed; Black/Ruff/strict mypy чистые.
+Итоговое synthetic Astra xhigh review: 0 substantive findings. Полный offline gate:
+3790 passed, 5 skipped, 38 deselected, exit 0.
+[Проверки и границы](DECISIONOPS_SECURITY_COVERAGE_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** чистая сводка `dwh.freshness` сообщает число
 сравнённых вопросов (витрина, колонка времени) и полноту покрытия. Свежая часть
 скоупа больше не описывается как проверка всех витрин. Findings, summary codes,
 severity и verdict прежние. Выбор среза и ревью — synthetic Astra xhigh;
