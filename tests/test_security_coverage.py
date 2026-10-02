@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from auto_bi.evidence.store import FilesystemArtifactStore
 from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
@@ -119,13 +120,81 @@ def test_absent_mart_has_no_security_observations(tmp_path: Path, readable: bool
     report = Case(tmp_path).run(probe=lambda scope: observed)
     check = next(item for item in report.checks if item.check_id == "dwh.security")
     assert check.status is CheckStatus.PASS
-    assert check.summary_code == ("security.unfiltered" if readable else "security.not_run")
+    assert check.summary_code == "security.not_run"
     if readable:
         assert "0 of 4 requested column reads confirmed" in check.detail
         assert "0 of 1 row-policy questions answered" in check.detail
         assert "no security observation was made" in check.detail
     else:
         assert "nothing was asked" in check.detail
+
+
+@pytest.mark.parametrize(
+    "unusable", ["unreadable", "absent", "missing", "unattributed", "duplicate"]
+)
+@pytest.mark.parametrize("reverse", [False, True])
+def test_public_security_with_no_eligible_observations_is_not_run(
+    tmp_path: Path, unusable: str, reverse: bool
+) -> None:
+    def probe(scope: EnvironmentQuestions) -> EnvironmentFacts:
+        observed = environment()
+        template = observed.tables[0]
+        observed.tables = []
+        for question in scope.tables:
+            table = template.model_copy(deep=True)
+            table.event_time_column = question.event_time_column
+            table.column_reads = dict.fromkeys(question.columns, True)
+            if unusable == "unreadable":
+                table.readable = False
+            elif unusable == "absent":
+                table.exists = False
+            elif unusable == "missing":
+                continue
+            elif unusable == "unattributed":
+                table.event_time_column = None
+            else:
+                observed.tables.append(table.model_copy(deep=True))
+            observed.tables.append(table)
+        observed.tables.append(template.model_copy(update={"table": "dm.unasked"}))
+        if reverse:
+            observed.tables.reverse()
+        return observed
+
+    report = two_clock_case(tmp_path).run(probe=probe)
+    check = next(item for item in report.checks if item.check_id == "dwh.security")
+    assert check.status is CheckStatus.PASS
+    assert check.summary_code == "security.not_run"
+    assert _check_payload(tmp_path, report, "dwh.security")["findings"] == []
+    summary = (
+        FilesystemArtifactStore(tmp_path / "evidence")
+        .get(report.run_id, "reports/summary.md")
+        .decode("utf-8")
+    )
+    undone = summary.split("## What was not done")[1].split("\n## ")[0]
+    assert "**dwh.security**" in undone
+    assert "| `dwh.security` | pass | `security.not_run` |" in summary
+
+
+@pytest.mark.parametrize("columns", [{}, {"unasked": True}])
+def test_empty_policy_catalog_is_a_security_observation(tmp_path: Path, columns: dict) -> None:
+    observed = environment()
+    observed.tables[0].column_reads = columns
+    observed.tables[0].row_policies = []
+    report = Case(tmp_path).run(probe=lambda scope: observed)
+    check = next(item for item in report.checks if item.check_id == "dwh.security")
+    assert check.status is CheckStatus.PASS
+    assert check.summary_code == "security.unfiltered"
+    assert _check_payload(tmp_path, report, "dwh.security")["findings"] == []
+    assert "0 of 4 requested column reads confirmed" in check.detail
+    assert "1 of 1 row-policy questions answered" in check.detail
+    assert "coverage is incomplete" in check.detail
+    summary = (
+        FilesystemArtifactStore(tmp_path / "evidence")
+        .get(report.run_id, "reports/summary.md")
+        .decode("utf-8")
+    )
+    undone = summary.split("## What was not done")[1].split("\n## ")[0]
+    assert "**dwh.security**" not in undone
 
 
 @pytest.mark.parametrize(

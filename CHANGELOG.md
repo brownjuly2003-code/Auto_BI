@@ -6,6 +6,13 @@
 
 ### Changed
 
+- **Отсутствие security-наблюдений больше не даёт `security.unfiltered`.**
+  При нуле подтверждений чтения запрошенных колонок и ответов о политиках чистый
+  код — `security.not_run`, и проверка появляется в `What was not done`.
+  Частичное ненулевое покрытие сохраняет `security.unfiltered`; пустой список
+  политик считается ответом. Findings, status, verdict и detail прежние.
+  Verifier 76 → 77, check 52 → 53; historical bundles прежние.
+
 - **Отсутствие физических сравнений больше не даёт `physical.as_declared`.**
   При нуле сравнённых объявленных типов и свойств layout чистый результат —
   `physical.not_run`, и проверка появляется в `What was not done`.

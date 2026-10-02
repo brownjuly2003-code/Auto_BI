@@ -396,7 +396,8 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 75 — cost facts for ineligible questions no longer produce cost.within_budget;
 #: cost.not_run exposes zero eligible comparisons in the owner's What was not done section.
 #: 76 — physical.not_run exposes zero actual column/layout comparisons in the owner summary.
-VERIFIER_VERSION = "76"
+#: 77 — security.not_run exposes zero actual column/policy observations in the owner summary.
+VERIFIER_VERSION = "77"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -594,7 +595,8 @@ VERIFIER_VERSION = "76"
 #: 51 — the clean cost outcome requires an eligible comparison, not just supplied facts.
 #: Findings, statuses and verdicts are unchanged.
 #: 52 — the clean physical outcome requires an actual declared column/layout comparison.
-CHECK_VERSION = "52"
+#: 53 — the clean security outcome requires an actual requested column/policy observation.
+CHECK_VERSION = "53"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1536,7 +1538,9 @@ def _check_environment(
                 "about what narrows it"
             ),
             summary_clean=(
-                "security.unfiltered" if _readable(questions, facts) else "security.not_run"
+                "security.unfiltered"
+                if any(_security_coverage(questions, facts)[:2])
+                else "security.not_run"
             ),
         ),
         _environment_check(
@@ -1699,8 +1703,10 @@ def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) ->
     return f"{result}; no differences found in the compared facts"
 
 
-def _security_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
-    """Limit clean evidence to the permissions and policy reports actually observed."""
+def _security_coverage(
+    questions: EnvironmentQuestions, facts: EnvironmentFacts
+) -> tuple[int, int, int, int]:
+    """Return confirmed column/policy counts, then their requested totals, per question."""
     columns_total = columns_confirmed = policies_observed = 0
     for question in questions.tables:
         columns_total += len(question.columns)
@@ -1712,7 +1718,14 @@ def _security_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) ->
                 table.column_reads.get(column) is True for column in question.columns
             )
         policies_observed += table.row_policies is not None
-    policies_total = len(questions.tables)
+    return columns_confirmed, policies_observed, columns_total, len(questions.tables)
+
+
+def _security_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
+    """Limit clean evidence to the permissions and policy reports actually observed."""
+    columns_confirmed, policies_observed, columns_total, policies_total = _security_coverage(
+        questions, facts
+    )
     coverage = (
         "complete"
         if columns_confirmed == columns_total and policies_observed == policies_total
