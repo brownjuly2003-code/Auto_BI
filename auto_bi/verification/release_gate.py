@@ -377,7 +377,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: access or effective column/policy reach. Profiles 1/2 and proven write grants retain
 #: their rules. Unknown reach cannot prove classification unenforced or a hidden CH column
 #: physically absent. SQL questions, public schemas and historical bundles are unchanged.
-VERIFIER_VERSION = "69"
+#: 70 — ClickHouse ALTER/CREATE/DROP families include canonical space-delimited leaf
+#: access types, and canonical ALL includes write capabilities. Positive grants block
+#: grant-based read-only and exact runtime SQL,
+#: retaining their reported names in evidence. Profiles and partial revokes keep their rules.
+VERIFIER_VERSION = "70"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -570,7 +574,9 @@ VERIFIER_VERSION = "69"
 #: Missing fields are unknown rather than negative; complete answers retain their rules.
 #: 49 — unknown ClickHouse roles block grant-based access and leave security unobserved;
 #: physical absence requires known ClickHouse reach, classification requires known reach.
-CHECK_VERSION = "49"
+#: 50 — dwh.access recognizes ClickHouse ALTER/CREATE/DROP leaf write privileges;
+#: SQL questions and historical bundles are unchanged.
+CHECK_VERSION = "50"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

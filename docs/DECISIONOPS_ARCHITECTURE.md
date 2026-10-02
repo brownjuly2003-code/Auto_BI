@@ -584,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=69`, `CHECK_VERSION=49`.
+`VERIFIER_VERSION=70`, `CHECK_VERSION=50`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -722,6 +722,11 @@ Gate выполняет шаги в фиксированном порядке:
   missing/NULL/пустое имя оставляет principals неполными; известные имена сохраняются
   точно в grants query. `readonly=1/2` сохраняет read-only, известный write grant —
   writable evidence; иначе неполные роли блокируют доступ и exact runtime SQL.
+  Canonical `ALTER`/`CREATE`/`DROP` совпадают также по продолжению через пробел,
+  включая `ALTER UPDATE`, `ALTER DELETE`, `CREATE TABLE`, `DROP TABLE`; exact `ALL`
+  включает права записи. Evidence сохраняет названия grants; профиль readonly=1/2
+  и partial-revoke правила прежние. Это классификация verb families, не копия всей
+  privilege hierarchy; `SHOW CREATE`, `ALTERED`, `SYSTEM DROP ...` не совпадают.
   Column reach неизвестен; пустой policy catalog остаётся `[]`, непустой — unknown.
   Security сообщает `security.not_observed`, не выдумывая unreadable/filtered.
   Unknown reach не доказывает физическое отсутствие скрытой ClickHouse-колонки

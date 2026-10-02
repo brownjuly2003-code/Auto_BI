@@ -123,7 +123,7 @@ _PG_COLUMN_WRITE_PRIVILEGES = ("INSERT", "UPDATE")
 
 #: ClickHouse access types that can change data or schema, as `system.grants` spells them.
 _CH_WRITE_GRANTS = frozenset(
-    {"INSERT", "ALTER", "CREATE", "DROP", "TRUNCATE", "OPTIMIZE", "UNDROP TABLE"}
+    {"ALL", "INSERT", "ALTER", "CREATE", "DROP", "TRUNCATE", "OPTIMIZE", "UNDROP TABLE"}
 )
 
 #: SQLSTATEs of a Postgres refusal: no privilege, no such table, no such schema. Everything
@@ -407,7 +407,11 @@ def _clickhouse_role(session: _ChSession) -> RoleFacts:
         for row in session.grants
         if not _truthy(row.get("is_partial_revoke"))
     }
-    writable = sorted(granted & _CH_WRITE_GRANTS)
+    writable = sorted(
+        access_type
+        for access_type in granted
+        if access_type in _CH_WRITE_GRANTS or access_type.startswith(("ALTER ", "CREATE ", "DROP "))
+    )
     if not writable and not session.roles_known:
         return RoleFacts(
             name=session.user,

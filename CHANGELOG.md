@@ -6,6 +6,13 @@
 
 ### Changed
 
+- **ClickHouse распознаёт составные write grants и `ALL`.**
+  Canonical `ALTER UPDATE`, `ALTER DELETE`, `CREATE TABLE`, `DROP TABLE` и прочие
+  `ALTER`/`CREATE`/`DROP` с границей-пробелом теперь блокируют grant-based read-only
+  и runtime SQL; `ALL` также включает права записи. Evidence сохраняет точные
+  названия. Профили readonly=1/2 и partial revokes прежние. Версии evidence
+  69 → 70 / 49 → 50; исторические bundles не переписаны.
+
 - **Неполный ClickHouse enabled-roles ответ не подтверждает эффективный доступ.**
   Отказ, missing/NULL/пустое имя роли без профиля `readonly=1/2` блокируют grant-based
   read-only и runtime SQL. Известные grants сохраняются; column/policy reach остаётся

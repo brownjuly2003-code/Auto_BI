@@ -234,6 +234,22 @@ drift retain their rules. Known reach still allows a true absent-column finding.
 The existing eligible runtime probe under `readonly=1/2` SHALL remain allowed.
 Connection failures SHALL propagate. SQL shapes and public schemas SHALL NOT change.
 
+## Requirement: ClickHouse write families include canonical leaf access types
+
+The existing `ALTER`, `CREATE` and `DROP` write families SHALL match both the exact
+group name and a canonical access type beginning with that name followed by a space.
+Canonical `ALL` SHALL also be writable because it includes those write capabilities.
+ClickHouse 24.8.14.39 reports `ALTER UPDATE`, `ALTER DELETE`, `CREATE TABLE` and
+`DROP TABLE` from `system.grants`; these SHALL block grant-based read-only and exact
+runtime execution, including grants reached through enabled roles. Evidence SHALL
+retain the exact reported access type. Existing exact write grants retain their rules.
+`readonly=1/2` retain priority; partial revoke rows are not positive grants. A known
+positive leaf grant retains evidence even when enabled roles are unknown.
+`SHOW CREATE`, `SHOW TABLES`, `ALTERED` and `SYSTEM DROP ...` do not match these families.
+This is a lexical verb-family rule, including CREATE/ALTER/DROP engine objects;
+it does not reproduce the entire upstream privilege hierarchy. Other privilege families,
+SQL queries and PostgreSQL rules remain outside this change.
+
 ## Requirement: the read-only evidence names everything it checked
 
 When the PostgreSQL-family role is found read-only, its evidence SHALL say that no in-scope mart

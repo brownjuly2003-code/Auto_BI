@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — составные canonical ClickHouse write grants (`ALTER ...`,
+  `CREATE ...`, `DROP ...`) и `ALL` блокируют grant-based read-only и runtime SQL.
+  Evidence сохраняет точные имена; профили readonly=1/2 и partial revokes прежние.
+  Источник canonical имён — pinned ClickHouse 24.8.14.39. Версии evidence 69 → 70 /
+  49 → 50. Выбор — synthetic Astra xhigh, реализация Codex.
+  Red: 26 failed / 15 passed, отдельно ALL — 2 failed. Полный offline pytest:
+  3723 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
+  Итоговое synthetic Astra review: 0 substantive findings.
+  [Проверки и границы](docs/DECISIONOPS_WRITE_GRANTS_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — неполный/неотвеченный список ClickHouse enabled roles не подтверждает
   grant-based read-only и effective column/policy reach. Профиль `readonly=1/2`
   и доказанные write grants сохраняют приоритет; иначе доступ и runtime блокируются.
