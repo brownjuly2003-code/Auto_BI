@@ -83,6 +83,15 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — чистая сводка `dwh.freshness` считает сравнения по вопросам
+  (витрина, колонка времени) и явно называет неполное покрытие. Положительный вывод
+  ограничен сравнёнными возрастами; findings, codes и verdict прежние. Verifier 72,
+  check 50. Red: 15 failed / 6 passed; связанный набор: 225 passed.
+  Полный offline gate: 3763 passed, 5 skipped, 38 deselected, exit 0;
+  docs-as-code: 24 passed; Black/Ruff/strict mypy чистые. Выбор и итоговое review —
+  synthetic Astra xhigh (0 substantive findings), реализация Codex.
+  [Проверки и границы](docs/DECISIONOPS_FRESHNESS_COVERAGE_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — `dwh.physical` считает фактически сравненные типы колонок и заявленные
   свойства layout по каждому вопросу (витрина, колонка времени). Неполное и нулевое
   покрытие названы явно; недоступные и неизвестные факты не подтверждают соответствие.

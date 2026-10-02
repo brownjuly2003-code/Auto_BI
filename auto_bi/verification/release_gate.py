@@ -384,7 +384,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 71 — physical clean evidence counts only answered column types and declared layout
 #: fields on attributable, existing, readable marts. Unobserved facts no longer appear
 #: verified. Grading and CHECK_VERSION are unchanged.
-VERIFIER_VERSION = "71"
+#: 72 — freshness clean evidence names the number of compared mart/event-time questions,
+#: so a fresh readable subset no longer claims that every in-scope mart was dated.
+#: Grading and CHECK_VERSION are unchanged.
+VERIFIER_VERSION = "72"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -1483,8 +1486,7 @@ def _check_environment(
             # Nothing readable to date is not a fresh source: `check_access` already blocked
             # on the mart itself, and calling this half clean would read as a second pass.
             clean=(
-                f"every in-scope mart on {facts.target} is inside the "
-                f"{inputs.product.verification.freshness_max_age} this product declares"
+                _freshness_clean(questions, facts, inputs.product.verification.freshness_max_age)
                 if _dated(questions, facts)
                 else f"no in-scope mart could be dated on {facts.target}, so nothing was aged"
             ),
@@ -1635,6 +1637,26 @@ def _readable(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
         (table := reading_for(item, questions, facts.tables)) is not None and table.readable
         for item in questions.tables
     )
+
+
+def _freshness_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts, max_age: str) -> str:
+    """Used only without freshness findings, so each eligible question's age was compared."""
+    compared = sum(
+        (table := reading_for(item, questions, facts.tables)) is not None
+        and table.exists
+        and table.readable
+        and not denies_all_rows(table, facts.role)
+        for item in questions.tables
+    )
+    total = len(questions.tables)
+    coverage = "complete" if compared == total else "incomplete"
+    result = (
+        f"freshness comparison on {facts.target}: {compared} of {total} in-scope "
+        f"mart/event-time questions compared; coverage is {coverage}"
+    )
+    if not compared:
+        return f"{result}; no freshness comparison was made"
+    return f"{result}; compared ages are inside the {max_age} this product declares"
 
 
 def _dated(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
