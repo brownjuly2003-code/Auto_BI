@@ -6,6 +6,12 @@
 
 ### Changed
 
+- **Отсутствие физических сравнений больше не даёт `physical.as_declared`.**
+  При нуле сравнённых объявленных типов и свойств layout чистый результат —
+  `physical.not_run`, и проверка появляется в `What was not done`.
+  Частичное ненулевое покрытие сохраняет `physical.as_declared`; findings,
+  status, verdict и detail прежние. Verifier 75 → 76, check 51 → 52.
+
 - **Непроверенные cost-факты больше не дают `cost.within_budget`.**
   Если все cost-вопросы пропущены, чистый результат — `cost.not_run`,
   и проверка появляется в `What was not done`. Для положительного кода

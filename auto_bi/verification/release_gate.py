@@ -395,7 +395,8 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: Grading and CHECK_VERSION are unchanged.
 #: 75 — cost facts for ineligible questions no longer produce cost.within_budget;
 #: cost.not_run exposes zero eligible comparisons in the owner's What was not done section.
-VERIFIER_VERSION = "75"
+#: 76 — physical.not_run exposes zero actual column/layout comparisons in the owner summary.
+VERIFIER_VERSION = "76"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -592,7 +593,8 @@ VERIFIER_VERSION = "75"
 #: SQL questions and historical bundles are unchanged.
 #: 51 — the clean cost outcome requires an eligible comparison, not just supplied facts.
 #: Findings, statuses and verdicts are unchanged.
-CHECK_VERSION = "51"
+#: 52 — the clean physical outcome requires an actual declared column/layout comparison.
+CHECK_VERSION = "52"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1515,7 +1517,9 @@ def _check_environment(
                 else f"no in-scope mart could be read on {facts.target}, so nothing was compared"
             ),
             summary_clean=(
-                "physical.as_declared" if _readable(questions, facts) else "physical.not_run"
+                "physical.as_declared"
+                if any(_physical_coverage(questions, facts)[:2])
+                else "physical.not_run"
             ),
         ),
         _environment_check(
@@ -1644,8 +1648,10 @@ def _cost_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str
     return f"{result}; checked bounds are within their declared ceilings"
 
 
-def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
-    """Count the declared facts actually compared by the physical check, per question."""
+def _physical_coverage(
+    questions: EnvironmentQuestions, facts: EnvironmentFacts
+) -> tuple[int, int, int, int]:
+    """Return compared column/layout counts, then their declared totals, per question."""
     columns_total = columns_compared = layout_total = layout_compared = 0
     for question in questions.tables:
         columns_total += len(question.columns)
@@ -1671,6 +1677,13 @@ def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) ->
             layout_compared += sum(
                 getattr(table.layout, name) is not None for name in declared_layout
             )
+    return columns_compared, layout_compared, columns_total, layout_total
+
+
+def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
+    columns_compared, layout_compared, columns_total, layout_total = _physical_coverage(
+        questions, facts
+    )
     coverage = (
         "complete"
         if columns_compared == columns_total and layout_compared == layout_total

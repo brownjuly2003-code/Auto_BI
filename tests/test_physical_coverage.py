@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from auto_bi.evidence.store import FilesystemArtifactStore
 from auto_bi.semantic.model import Column, ColumnRole
 from auto_bi.verification.environment import (
     EnvironmentFacts,
@@ -23,6 +24,7 @@ from tests.test_decision_verify import (
     semantic_model,
 )
 from tests.test_environment_question_identity import facts, questions, reading
+from tests.test_freshness_coverage import two_clock_case
 
 
 @pytest.mark.parametrize(
@@ -56,7 +58,8 @@ def test_public_physical_detail_reports_only_observed_comparisons(
     report = Case(tmp_path).run(probe=probe)
     check = next(check for check in report.checks if check.check_id == "dwh.physical")
     assert check.status is CheckStatus.PASS
-    assert check.summary_code == "physical.as_declared"
+    expected = "physical.not_run" if coverage == "none" else "physical.as_declared"
+    assert check.summary_code == expected
     assert _check_payload(tmp_path, report, "dwh.physical")["findings"] == []
     assert f"{columns} of 4 declared column types" in check.detail
     assert f"{layouts} of 3 declared layout fields" in check.detail
@@ -66,8 +69,131 @@ def test_public_physical_detail_reports_only_observed_comparisons(
         assert "coverage is incomplete" in check.detail
     if coverage == "none":
         assert "no physical comparison was made" in check.detail
+        summary = (
+            FilesystemArtifactStore(tmp_path / "evidence")
+            .get(report.run_id, "reports/summary.md")
+            .decode("utf-8")
+        )
+        undone = summary.split("## What was not done")[1].split("\n## ")[0]
+        assert "**dwh.physical**" in undone
+        assert "| `dwh.physical` | pass | `physical.not_run` |" in summary
     assert "every column" not in check.detail
     assert "the layout matches" not in check.detail
+
+
+@pytest.mark.parametrize("coverage", ["unknown", "unasked", "type", "layout", "deny_all"])
+def test_public_physical_code_requires_a_declared_comparison(tmp_path: Path, coverage: str) -> None:
+    def probe(scope: EnvironmentQuestions) -> EnvironmentFacts:
+        observed = environment()
+        table = observed.tables[0]
+        question = scope.tables[0]
+        table.columns = None
+        table.layout = None
+        if coverage == "unasked":
+            table.columns = {"unasked": "String"}
+            table.column_reads = None
+            table.layout = LayoutFacts(distribution_key=["unasked"])
+            assert not question.layout.distribution_key
+        elif coverage in {"type", "deny_all"}:
+            column = next(iter(question.columns))
+            table.columns = {column: question.columns[column]}
+            table.column_reads = None
+            if coverage == "deny_all":
+                table.row_security_enabled = True
+                table.row_policies = []
+                table.rows_seen = 0
+        elif coverage == "layout":
+            table.layout = LayoutFacts(table_engine=question.layout.table_engine)
+        return observed
+
+    report = Case(tmp_path).run(probe=probe)
+    check = next(item for item in report.checks if item.check_id == "dwh.physical")
+    compared = coverage in {"type", "layout", "deny_all"}
+    expected = "physical.as_declared" if compared else "physical.not_run"
+    assert check.status is CheckStatus.PASS
+    assert check.summary_code == expected
+    payload = _check_payload(tmp_path, report, "dwh.physical")
+    assert payload["findings"] == []
+    assert f"{int(coverage in {'type', 'deny_all'})} of 4 declared column types" in check.detail
+    assert f"{int(coverage == 'layout')} of 3 declared layout fields" in check.detail
+    summary = (
+        FilesystemArtifactStore(tmp_path / "evidence")
+        .get(report.run_id, "reports/summary.md")
+        .decode("utf-8")
+    )
+    undone = summary.split("## What was not done")[1].split("\n## ")[0]
+    assert ("**dwh.physical**" in undone) is not compared
+    assert f"| `dwh.physical` | pass | `{expected}` |" in summary
+
+
+@pytest.mark.parametrize("unusable", ["unreadable", "absent", "unattributed", "duplicate"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_public_physical_supplied_facts_do_not_cover_unusable_readings(
+    tmp_path: Path, unusable: str, reverse: bool
+) -> None:
+    def probe(scope: EnvironmentQuestions) -> EnvironmentFacts:
+        observed = environment()
+        template = observed.tables[0]
+        observed.tables = []
+        for question in scope.tables:
+            table = template.model_copy(deep=True)
+            table.event_time_column = question.event_time_column
+            table.columns = dict(question.columns)
+            table.layout = LayoutFacts(table_engine=question.layout.table_engine)
+            if unusable == "unreadable":
+                table.readable = False
+            elif unusable == "absent":
+                table.exists = False
+            elif unusable == "unattributed":
+                table.event_time_column = None
+            else:
+                observed.tables.append(table.model_copy(deep=True))
+            observed.tables.append(table)
+        if reverse:
+            observed.tables.reverse()
+        return observed
+
+    report = two_clock_case(tmp_path).run(probe=probe)
+    check = next(item for item in report.checks if item.check_id == "dwh.physical")
+    assert check.status is CheckStatus.PASS
+    assert check.summary_code == "physical.not_run"
+    assert _check_payload(tmp_path, report, "dwh.physical")["findings"] == []
+
+
+@pytest.mark.parametrize(
+    "finding,status",
+    [
+        ("column_absent", CheckStatus.BLOCK),
+        ("type_drift", CheckStatus.REVIEW),
+        ("layout_drift", CheckStatus.REVIEW),
+    ],
+)
+def test_public_physical_findings_keep_precedence(
+    tmp_path: Path, finding: str, status: CheckStatus
+) -> None:
+    def probe(scope: EnvironmentQuestions) -> EnvironmentFacts:
+        observed = environment()
+        table = observed.tables[0]
+        question = scope.tables[0]
+        table.columns = None
+        table.layout = None
+        if finding == "column_absent":
+            table.columns = {}
+        elif finding == "type_drift":
+            table.columns = dict(question.columns)
+            table.columns["revenue"] = "String"
+        else:
+            assert question.layout.sorting_key
+            table.layout = LayoutFacts(sorting_key=[])
+        return observed
+
+    report = Case(tmp_path).run(probe=probe)
+    check = next(item for item in report.checks if item.check_id == "dwh.physical")
+    assert check.status is status
+    assert check.summary_code == f"physical.{finding}"
+    assert {
+        item["code"] for item in _check_payload(tmp_path, report, "dwh.physical")["findings"]
+    } == {f"physical.{finding}"}
 
 
 @pytest.mark.parametrize("unusable", ["unreadable", "absent", "unattributed", "duplicate"])

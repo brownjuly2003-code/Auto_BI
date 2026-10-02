@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — при нуле фактических физических сравнений clean code —
+  `physical.not_run`, поэтому проверка появляется в `What was not done`.
+  Частичное ненулевое покрытие сохраняет `physical.as_declared`; findings,
+  status, verdict и detail прежние. Verifier 76, check 52.
+  Выбор — synthetic Astra xhigh, реализация Codex. Профильный набор: 247 passed;
+  Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh review:
+  0 substantive findings. Полный offline gate: 3887 passed, 5 skipped,
+  38 deselected, exit 0.
+  [Проверки и границы](docs/DECISIONOPS_PHYSICAL_OUTCOME_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — при нулевом числе допустимых cost-сравнений clean code —
   `cost.not_run`, поэтому проверка появляется в `What was not done`.
   Частичное ненулевое покрытие сохраняет `cost.within_budget`; findings,
