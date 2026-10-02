@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **Поставляемый дашборд валидируется против candidate-модели до компиляции BI contract.**
+  `bi.contract` использует тот же `validate_spec`, что и build path перед вызовом
+  BI, с разрешённым операторским `raw_sql`. Spec с ошибками не компилируется
+  и payload'ов не получает; проверка — block с `bi.spec_invalid`, evidence
+  называет дашборд и ошибки валидатора в порядке поставки. Валидные дашборды
+  сохраняют findings и payload digests, отсутствующий spec — `bi.spec_missing`;
+  `impact.products` читает specs как прежде. Verifier 79 → 80, check 55 → 56;
+  historical bundles прежние.
+
 - **Роль, достижимая через `SET ROLE`, больше не может скрыть право записи.**
   PostgreSQL-family role probe одним вопросом находит роли, в которые session user
   может переключиться (PostgreSQL 16 — опция `SET`, раньше и в Greenplum/Greengage —

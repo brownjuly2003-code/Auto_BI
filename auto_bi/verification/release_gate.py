@@ -52,6 +52,7 @@ from auto_bi.evidence.model import ArtifactKind, ClaimType, EvidenceClassificati
 from auto_bi.evidence.signing import EvidenceSigner
 from auto_bi.evidence.store import ArtifactStore
 from auto_bi.ir.spec import DashboardSpec, TargetBI
+from auto_bi.ir.validate import validate_spec
 from auto_bi.scalars import NonBlankText, Sha256Digest, Slug, Timestamp
 from auto_bi.semantic.diff import SemanticDiff, diff_snapshots
 from auto_bi.semantic.gateway import SemanticGap, SemanticSnapshot
@@ -407,7 +408,9 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: now not read-only, and `dwh.access` blocks with `access.role_writable`; the
 #: read-only evidence names the reachable roles it checked. ClickHouse is unchanged;
 #: historical bundles are not rewritten.
-VERIFIER_VERSION = "79"
+#: 80 — the same inputs now give bi.contract evidence with an invalid list and no BI
+#: payloads for delivered specs that do not validate against the candidate model.
+VERIFIER_VERSION = "80"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -613,7 +616,9 @@ VERIFIER_VERSION = "79"
 #: or its reachability or write privileges went unanswered), so `dwh.access` blocks with
 #: `access.role_writable` where check 54 recorded read-only; the read-only evidence names
 #: the reachable roles it checked. ClickHouse is unchanged.
-CHECK_VERSION = "55"
+#: 56 — bi.contract blocks with bi.spec_invalid when a delivered spec does not validate
+#: against the candidate model, where it passed or only gave bi.filter_unwired before.
+CHECK_VERSION = "56"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1405,9 +1410,14 @@ def _check_sql(writer: BundleWriter, inputs: GateInputs, product_ref: str) -> Ch
 
 
 def _check_bi_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: str) -> CheckResult:
-    """Compile every delivered dashboard for its target — payloads only (§8.5)."""
+    """Validate every delivered spec against the candidate model before compiling (§8.5).
+
+    As the build path does before any BI call (invariant 2), an invalid spec is named,
+    not compiled. Valid specs produce payloads only.
+    """
     severities: list[Severity] = []
     compiled: list[dict[str, Any]] = []
+    invalid: list[dict[str, Any]] = []
     missing: list[str] = []
 
     for delivery in inputs.product.delivery.dashboards:
@@ -1416,6 +1426,11 @@ def _check_bi_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: s
             missing.append(delivery.ref)
             severities.append(Severity.REVIEW)
             continue
+        errors = validate_spec(spec, inputs.candidate_model)
+        if errors:
+            invalid.append({"dashboard": delivery.ref, "errors": errors})
+            severities.append(Severity.BLOCK)
+            continue
         contract = _compile(spec, inputs.candidate_model)
         severities.extend(finding.severity for finding in contract.findings)
         compiled.append({"dashboard": delivery.ref, **contract.model_dump(mode="json")})
@@ -1423,7 +1438,7 @@ def _check_bi_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: s
 
     ref = writer.add_check(
         "bi.contract",
-        {"compiled": compiled, "missing": missing},
+        {"compiled": compiled, "invalid": invalid, "missing": missing},
     )
     return CheckResult(
         check_id="bi.contract",
@@ -1431,9 +1446,17 @@ def _check_bi_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: s
         category=CheckCategory.DELIVERY,
         subject_refs=[product_ref, *(item.ref for item in inputs.product.delivery.dashboards)],
         status=status_for(severities),
-        summary_code="bi.compiled" if not missing else "bi.spec_missing",
+        summary_code=(
+            "bi.spec_invalid" if invalid else "bi.spec_missing" if missing else "bi.compiled"
+        ),
         detail=(
             f"{len(compiled)} dashboard(s) compiled without touching the BI"
+            + (
+                "; not compiled, the spec does not validate against the candidate semantic model: "
+                + ", ".join(item["dashboard"] for item in invalid)
+                if invalid
+                else ""
+            )
             + (f"; no spec supplied for {', '.join(missing)}" if missing else "")
         ),
         evidence_refs=[ref],

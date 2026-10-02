@@ -10,9 +10,23 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=79`, `CHECK_VERSION=55`
+**Версии evidence:** `VERIFIER_VERSION=80`, `CHECK_VERSION=56`
 
-**Последний срез (2026-10-02):** PostgreSQL-family role probe одним вопросом находит
+**Последний срез (2026-10-02):** перед компиляцией поставляемого дашборда
+`bi.contract` валидирует spec против candidate-модели тем же `validate_spec`,
+что и build path перед вызовом BI; операторский `raw_sql` разрешён.
+Spec с ошибками не компилируется и payload'ов не получает: проверка — block
+с `bi.spec_invalid`, evidence называет дашборд и ошибки валидатора в порядке
+поставки. Валидные дашборды сохраняют findings и payload digests, отсутствие
+spec — review с `bi.spec_missing`; `impact.products` читает specs как прежде.
+Версии evidence 79 → 80 / 55 → 56; исторические bundles не переписаны.
+Выбор — synthetic Astra xhigh, реализация `gpt-6.1-sol` medium через MyFlow
+`sol-high`. Synthetic Astra xhigh review: 0 findings. Полный offline gate
+с duckdb: 3975 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict
+mypy чистые. Human/production acceptance не заявляется.
+[Проверки и границы](DECISIONOPS_BI_SPEC_VALIDATION_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** PostgreSQL-family role probe одним вопросом находит
 роли, в которые session user может переключиться через `SET ROLE` (PostgreSQL 16 —
 опция `SET`, раньше и в Greenplum/Greengage — членство), включая самого session user
 за role default; superuser-роли остаются в вопросе и тогда, когда текущая роль их
@@ -1048,6 +1062,7 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 известные имя и bypass сохраняются, доступ и runtime SQL блокируются до полного
 identity-ответа; доказанный superuser сохраняет прежнее правило.
 Закрыто скрытие write-привилегий за `SET ROLE`-достижимой ролью (T-34, verifier 79 / check 55).
+Закрыто прохождение невалидного поставляемого spec через `bi.contract` (T-35, verifier 80 / check 56).
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки

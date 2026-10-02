@@ -584,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=79`, `CHECK_VERSION=55`.
+`VERIFIER_VERSION=80`, `CHECK_VERSION=56`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -660,7 +660,7 @@ Gate выполняет шаги в фиксированном порядке:
 6. compile base/candidate SQL;
 7. выполнить security, access, freshness, physical и cost checks;
 8. reconcile полные typed results;
-9. compile Superset/DataLens contracts без remote mutation;
+9. валидировать поставляемые specs против candidate-модели и compile Superset/DataLens contracts без remote mutation;
 10. собрать и повторно провалидировать evidence bundle.
 
 Реализовано в `verification/release_gate.py`. Что важно в реализации:
@@ -1182,6 +1182,12 @@ class BIContractCompiler(Protocol):
 и DataLens chart/dataset config. Production `BIAdapter.build()` и новый compiler
 должны вызывать одни и те же pure functions; дублирование payload logic запрещено.
 Release gate не создаёт datasets/charts/dashboards и не запускает cleanup.
+
+Перед компиляцией gate валидирует каждый поставляемый spec против candidate-модели
+тем же `validate_spec`, что и build path перед вызовом BI (инвариант 2,
+операторский `raw_sql` разрешён). Spec с ошибками не компилируется и payload'ов
+не получает: `bi.contract` — block с `bi.spec_invalid`, evidence называет дашборд
+и ошибки валидатора. Валидные дашборды компилируются как прежде.
 
 `TargetCapabilities` **возвращает** compiler, а не принимает (первоначальный
 sketch принимал их аргументом): карта viz читается из тех же пиннутых таблиц

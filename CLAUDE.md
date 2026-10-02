@@ -83,6 +83,20 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — `bi.contract` перед компиляцией валидирует поставляемый spec
+  против candidate-модели тем же `validate_spec`, что и build path перед
+  вызовом BI; операторский `raw_sql` разрешён. Spec с ошибками не компилируется
+  и payload'ов не получает: block с `bi.spec_invalid`, evidence называет
+  дашборд и ошибки валидатора в порядке поставки. Валидные дашборды сохраняют
+  findings и payload digests, отсутствующий spec — review с `bi.spec_missing`;
+  `impact.products` читает specs как прежде. Версии evidence 79 → 80 / 55 → 56;
+  исторические bundles не переписаны. Выбор — synthetic Astra xhigh. Реализовано
+  `gpt-6.1-sol` medium через MyFlow `sol-high`, тексты ошибок в тестах закрепил
+  оркестратор. Red на HEAD: 20 failed; профильный набор: 310 passed.
+  Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb:
+  3975 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_BI_SPEC_VALIDATION_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — PostgreSQL-family role probe одним вопросом находит роли, в которые
   session user может переключиться через `SET ROLE` (PostgreSQL 16 — опция `SET`,
   раньше и в Greenplum/Greengage — членство), включая самого session user за role
