@@ -560,15 +560,39 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
         )
     first = rows[0]
     name = str(first.get("name") or "unknown")
-    superuser = _truthy(first.get("superuser"))
+    superuser_answer = first.get("superuser")
+    bypass_answer = first.get("bypassrls")
+    superuser = _truthy(superuser_answer)
     # A superuser is not subject to row security either, so the two facts share one answer.
-    bypasses = superuser or _truthy(first.get("bypassrls"))
+    bypasses: bool | None = None
+    if superuser or _truthy(bypass_answer):
+        bypasses = True
+    elif superuser_answer is not None and bypass_answer is not None:
+        bypasses = False
     if superuser:
         return RoleFacts(
             name=name,
             read_only=False,
             evidence="a superuser, whose writes no privilege check can stop",
             bypasses_row_security=True,
+        )
+
+    unreported_identity: list[str] = []
+    if not first.get("name"):
+        unreported_identity.append("role name")
+    if superuser_answer is None:
+        unreported_identity.append("superuser status")
+    if bypass_answer is None:
+        unreported_identity.append("BYPASSRLS")
+    if unreported_identity:
+        return RoleFacts(
+            name=name,
+            read_only=False,
+            evidence=(
+                f"unreported {', '.join(unreported_identity)} in role identity, "
+                "so read-only access is not established"
+            ),
+            bypasses_row_security=bypasses,
         )
 
     writable: list[str] = []

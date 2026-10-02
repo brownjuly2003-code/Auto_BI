@@ -10,9 +10,26 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=66`, `CHECK_VERSION=46`
+**Версии evidence:** `VERIFIER_VERSION=67`, `CHECK_VERSION=47`
 
-**Последний срез (2026-10-02):** отказ или пустой ответ PostgreSQL-family
+**Последний срез (2026-10-02):** частичный PostgreSQL-family identity-ответ,
+NULL в identity-поле или пустое имя не подтверждают read-only. Известное имя и
+доказанный superuser/BYPASSRLS сохраняются; обход RLS — false только при двух
+известных отрицательных флагах, иначе null. Неполный identity блокирует доступ
+и exact runtime SQL, write-privilege вопросы не выполняются; evidence называет
+неотвеченные поля. Доказанный superuser сохраняет прежнее writable evidence
+даже при неполной строке. Точные непустые имя и subject refs сохраняют значимые
+пробелы quoted-идентификаторов; общий `NonBlankText` не меняется.
+SQL-вопросы и общий normalizer не менялись.
+Версии 66 → 67 / 46 → 47; исторические bundles не переписаны. Срез выбран
+Astra xhigh по ADR 0006; тесты — Luna xhigh, реализация и независимая проверка — Codex.
+Red identity: 40 failed / 40 passed; связанная группа до проверки quoted-имён: 353 passed.
+Red quoted-name controls: 20 failed / 130 deselected. Итоговый полный offline pytest
+с duckdb: 3567 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
+Итоговое synthetic Astra xhigh review: 0 substantive findings; не human/production acceptance.
+[Synthetic review и границы](DECISIONOPS_PARTIAL_IDENTITY_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** отказ или пустой ответ PostgreSQL-family
 identity-вопроса блокирует доступ: роль — `unknown`, superuser и `BYPASSRLS` не
 установлены, `bypasses_row_security=null`. Write-privilege вопросы и exact runtime
 SQL не выполняются. `dwh.access` сохраняет код `access.role_writable`, но detail
@@ -888,6 +905,9 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 (verifier 65 / check 45): read-only не подтверждён, доступ и runtime SELECT блокируются.
 Закрыт fail-open неотвеченного identity-вопроса (verifier 66 / check 46):
 роль и row-security bypass остаются неизвестными; доступ и runtime SQL блокируются.
+Реализован fail-closed для частичных/NULL identity-строк (verifier 67 / check 47):
+известные имя и bypass сохраняются, доступ и runtime SQL блокируются до полного
+identity-ответа; доказанный superuser сохраняет прежнее правило.
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки

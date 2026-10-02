@@ -199,7 +199,7 @@ class EnvironmentQuestions(StrictModel):
 class RoleFacts(StrictModel):
     """Who the gate connected as, and whether that session could write."""
 
-    name: NonBlankText
+    name: str = Field(min_length=1)
     read_only: bool
     #: What the engine said, in its own terms (`readonly=1`, `no write privilege on …`).
     evidence: NonBlankText
@@ -321,7 +321,7 @@ class EnvironmentFinding(StrictModel):
         min_length=1, pattern=r"^(access|freshness|physical|security|cost)\.[a-z0-9_]+$"
     )
     severity: Severity
-    subject: NonBlankText
+    subject: str = Field(min_length=1)
     detail: NonBlankText
 
 

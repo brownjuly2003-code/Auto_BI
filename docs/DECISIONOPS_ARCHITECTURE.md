@@ -584,7 +584,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=66`, `CHECK_VERSION=46`.
+`VERIFIER_VERSION=67`, `CHECK_VERSION=47`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -727,8 +727,14 @@ Gate выполняет шаги в фиксированном порядке:
   блокирует доступ: роль — `unknown`, superuser и `BYPASSRLS` не установлены,
   `bypasses_row_security=null`; write-privilege вопросы и exact runtime SQL не
   выполняются. Finding описывает неподтверждённый read-only, не приписывая неизвестной
-  роли способность писать. Частичные строки или NULL внутри успешного identity-ответа
-  остаются вне этого среза. Граница — роль `NOINHERIT`, способная `SET ROLE` в
+  роли способность писать. Частичная строка, NULL в identity-поле или пустое имя также
+  не подтверждают read-only: известное имя сохраняется, evidence называет неотвеченные
+  поля, write-privilege вопросы и exact runtime SQL не выполняются. Обход RLS — true при
+  доказанном superuser или `BYPASSRLS`, false только при двух известных отрицательных
+  флагах, иначе null. Доказанный superuser сохраняет прежнее writable evidence и true
+  bypass даже без остальных identity-полей. `RoleFacts.name` и `EnvironmentFinding.subject`
+  сохраняют точные непустые identifiers, включая значимые пробелы quoted-имён; общий
+  `NonBlankText` не меняется. Граница — роль `NOINHERIT`, способная `SET ROLE` в
   пишущую группу, не видна ни одной из функций. Пустая витрина —
   `freshness.unknown`, потому что `max(Date)` по нулю строк в ClickHouse равен `1970-01-01`,
   а не NULL. `dwh.security`: досягаемость роли, через которую собрано evidence, — колонка

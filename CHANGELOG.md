@@ -6,6 +6,17 @@
 
 ### Changed
 
+- **Частичный identity-ответ PostgreSQL блокирует доступ.**
+  Отсутствующее/NULL identity-поле или пустое имя не подтверждают read-only:
+  `dwh.access` — BLOCK; write-privilege вопросы и exact runtime SELECT не выполняются.
+  Известное имя и доказанный superuser/BYPASSRLS сохраняются; обход RLS — false
+  только при двух известных отрицательных флагах, иначе null. Evidence называет
+  неотвеченные поля. Доказанный superuser сохраняет прежнее writable evidence даже
+  при неполной строке. Имя роли и subject refs сохраняют значимые пробелы quoted-имён.
+  SQL-вопросы и общий boolean-normalizer не менялись.
+  `VERIFIER_VERSION` 66 → 67, `CHECK_VERSION` 46 → 47;
+  исторические bundles не переписаны.
+
 - **Неотвеченный identity-вопрос PostgreSQL блокирует доступ.**
   Отказ или пустой ответ о роли не подтверждает read-only: роль — `unknown`,
   superuser и `BYPASSRLS` не установлены, `bypasses_row_security=null`.

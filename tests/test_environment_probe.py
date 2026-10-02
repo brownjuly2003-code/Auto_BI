@@ -28,6 +28,7 @@ from auto_bi.verification.environment import (
     ExecutionFacts,
     PlanQuestion,
     TableQuestion,
+    check_access,
 )
 from auto_bi.verification.environment_probe import collect
 
@@ -152,6 +153,27 @@ def test_a_clickhouse_session_that_is_not_readonly_is_graded_by_its_grants() -> 
 
     assert facts.role.read_only is False
     assert "INSERT" in facts.role.evidence
+
+
+@pytest.mark.parametrize("quoted_name", [" gate_ro ", "   "])
+@pytest.mark.parametrize("readonly", ["1", "0"])
+def test_clickhouse_preserves_exact_role_name_and_access_grading(
+    quoted_name: str, readonly: str
+) -> None:
+    engine = clickhouse_engine(
+        **{
+            "currentUser() AS value": [{"value": quoted_name}],
+            "system.settings": [{"value": readonly}],
+        }
+    )
+    scope = questions()
+
+    facts = collect(engine, scope, engine="clickhouse", target="stand")
+
+    assert facts.role.name == quoted_name
+    assert facts.role.read_only is (readonly == "1")
+    findings = check_access(scope, facts)
+    assert [item.subject for item in findings] == ([] if readonly == "1" else [quoted_name])
 
 
 def test_a_clickhouse_session_with_no_write_grant_is_read_only_without_the_profile() -> None:

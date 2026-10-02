@@ -40,6 +40,17 @@ without asserting that an unknown role can write. Connection failures SHALL stil
 as runtime faults.
 The collector SHALL NOT attempt a write to establish identity or read-only access.
 
+The same fail-closed rule SHALL apply to a returned identity row with an absent or NULL
+`name`, `superuser` or `bypassrls`, or an empty name. A nonempty reported name SHALL be
+retained exactly, including whitespace significant in quoted identifiers; otherwise it
+SHALL be `unknown`. Role subject references SHALL preserve the same exact identity.
+Evidence SHALL name the unreported identity fields,
+and table/column write-privilege questions and exact runtime execution SHALL be withheld.
+`bypasses_row_security` SHALL be true when either superuser or BYPASSRLS is positively
+reported, false only when both flags are reported false, and null otherwise.
+A positively reported superuser SHALL retain its existing writable evidence and true
+row-security bypass even when another identity field is absent.
+
 ### Scenario: a refused identity question blocks
 
 - **GIVEN** the identity query is refused with SQLSTATE `42501`, while mart questions would
@@ -56,11 +67,36 @@ The collector SHALL NOT attempt a write to establish identity or read-only acces
 
 ### Scenario: an answered identity keeps the existing privilege rules
 
-- **GIVEN** the identity query reports a nonsuperuser and every table-level and column-level
-  write privilege is false
+- **GIVEN** the identity query reports a name, nonsuperuser status and BYPASSRLS status,
+  and every table-level and column-level write privilege is false
 - **WHEN** the environment is collected
 - **THEN** the role remains read-only and an eligible exact runtime query is executed
 - **AND** an answered superuser, positive write grants and ClickHouse keep their existing rules
+
+### Scenario: a partial or NULL identity answer blocks
+
+- **GIVEN** the identity query returns a row with an absent or NULL identity field or an
+  empty name, without positively reporting a superuser
+- **WHEN** the environment is collected with an exact runtime budget and access is graded
+- **THEN** the reported name and proven bypass facts are retained, unknown bypass is null,
+  the role is not established read-only, evidence names the missing fields, no write-privilege
+  question or exact runtime query is sent, and `dwh.access` is block
+
+### Scenario: a proven superuser does not require a separate BYPASSRLS answer
+
+- **GIVEN** the identity query reports `superuser=true` without a BYPASSRLS answer
+- **WHEN** the environment is collected
+- **THEN** the existing writable superuser evidence is retained, row-security bypass is true,
+  and no write-privilege question or exact runtime query is sent
+
+### Scenario: a quoted role name retains significant whitespace
+
+- **GIVEN** the identity query reports a nonempty role name with leading/trailing whitespace
+  or consisting entirely of whitespace
+- **WHEN** the environment is collected and access is graded
+- **THEN** the exact name is retained; a complete negative identity keeps the existing
+  read-only rule, and a partial identity blocks with that exact role subject reference
+- **AND** a whitespace-only identifier does not cause a validation error
 
 ## Requirement: a column-level write privilege on an in-scope mart makes the role writable
 

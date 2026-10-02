@@ -83,6 +83,21 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — частичный PostgreSQL-family identity-ответ, NULL в поле или пустое имя
+  не подтверждают read-only. Известные имя и положительные superuser/BYPASSRLS
+  сохраняются; false bypass требует двух известных отрицательных флагов, иначе null.
+  Неполный identity блокирует `dwh.access` и runtime SQL; write-privilege вопросы
+  не выполняются, evidence называет неотвеченные поля. Доказанный superuser сохраняет
+  прежнее writable evidence даже при неполной строке. SQL-вопросы и normalizer прежние.
+  Точные непустые имя и subject refs сохраняют пробелы quoted-идентификаторов;
+  исправлены только два локальных поля, общий `NonBlankText` прежний.
+  Версии evidence 66 → 67 / 46 → 47. Выбор — Astra xhigh, тесты — Luna xhigh,
+  реализация и независимая проверка — Codex. Red: 40 failed / 40 passed;
+  связанная группа до quoted-name поправки — 353 passed; quoted-name red — 20 failed.
+  Итоговый полный offline pytest с duckdb: 3567 passed, 5 skipped, 38 deselected;
+  Ruff, Black и strict mypy чистые. Synthetic Astra xhigh review — 0 substantive findings:
+  [review и границы](docs/DECISIONOPS_PARTIAL_IDENTITY_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — отказ и пустой ответ PostgreSQL-family identity-вопроса:
   роль `unknown`, `read_only=false`, `bypasses_row_security=null`; write-privilege
   вопросы и exact runtime SQL не выполняются. `dwh.access` — BLOCK через прежний
