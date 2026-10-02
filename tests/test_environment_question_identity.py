@@ -18,6 +18,7 @@ from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
     ExecutionFacts,
+    LayoutClaim,
     LayoutFacts,
     PlanQuestion,
     RoleFacts,
@@ -336,7 +337,10 @@ def test_clean_wording_uses_only_attributed_layout_readings(reverse: bool) -> No
     observed = facts(*(tables[::-1] if reverse else tables))
     assert _readable(questions(), observed)
     assert _dated(questions(), observed)
-    assert "this engine reports no layout to compare" in _physical_clean(questions(), observed)
+    scope = questions()
+    for question in scope.tables:
+        question.layout = LayoutClaim(table_engine="MergeTree")
+    assert "0 of 2 declared layout fields" in _physical_clean(scope, observed)
 
 
 # Digests pin the complete SELECT replay, including T-33 column-write questions.

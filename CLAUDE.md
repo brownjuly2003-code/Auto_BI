@@ -83,6 +83,16 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — `dwh.physical` считает фактически сравненные типы колонок и заявленные
+  свойства layout по каждому вопросу (витрина, колонка времени). Неполное и нулевое
+  покрытие названы явно; недоступные и неизвестные факты не подтверждают соответствие.
+  Findings, summary codes и verdict прежние; verifier 71, check 50.
+  Выбор — synthetic Astra xhigh; реализация Codex, не human/production acceptance.
+  Профильный набор 204 passed, docs-as-code 24 passed; Black/Ruff/strict mypy чистые.
+  Итог Astra: 0 незакрытых substantive findings. Полный offline gate: 3741 passed,
+  1 failed (SQLite timing budget); изолированная диагностика: 1 passed за 1,25 с.
+  [Проверки и границы](docs/DECISIONOPS_PHYSICAL_COVERAGE_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — составные canonical ClickHouse write grants (`ALTER ...`,
   `CREATE ...`, `DROP ...`) и `ALL` блокируют grant-based read-only и runtime SQL.
   Evidence сохраняет точные имена; профили readonly=1/2 и partial revokes прежние.

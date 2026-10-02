@@ -10,9 +10,21 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=70`, `CHECK_VERSION=50`
+**Версии evidence:** `VERIFIER_VERSION=71`, `CHECK_VERSION=50`
 
-**Последний срез (2026-10-02):** canonical ClickHouse grants `ALTER ...`, `CREATE ...`,
+**Последний срез (2026-10-02):** `dwh.physical` описывает только выполненные сравнения:
+число отвеченных типов колонок и заявленных свойств layout по каждому вопросу
+(витрина, колонка времени). Неизвестные и недоступные факты больше не объявляются
+совпадающими; неполное и нулевое покрытие названы явно. Findings, summary codes,
+severity и verdict сохраняются. Срез выбран synthetic Astra xhigh, реализация Codex;
+human/production acceptance не заявляется.
+Профильный набор: 204 passed; docs-as-code: 24 passed; Black/Ruff/strict mypy чистые.
+Итоговое synthetic Astra review: 0 незакрытых substantive findings.
+Полный offline gate: 3741 passed, 1 failed — SQLite timing benchmark (9401,3 мс
+при лимите 5000 мс); отдельно он прошёл за 1,25 с. Полный gate не объявляется зелёным.
+[Проверки и границы](DECISIONOPS_PHYSICAL_COVERAGE_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** canonical ClickHouse grants `ALTER ...`, `CREATE ...`,
 `DROP ...` и `ALL` блокируют grant-based read-only и exact runtime SQL. Конкретные
 названия вроде `ALTER UPDATE` и `DROP TABLE` подтверждены исходником закреплённой
 версии 24.8.14.39; evidence сохраняет точные имена. Профили readonly=1/2, partial

@@ -381,7 +381,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: access types, and canonical ALL includes write capabilities. Positive grants block
 #: grant-based read-only and exact runtime SQL,
 #: retaining their reported names in evidence. Profiles and partial revokes keep their rules.
-VERIFIER_VERSION = "70"
+#: 71 — physical clean evidence counts only answered column types and declared layout
+#: fields on attributable, existing, readable marts. Unobserved facts no longer appear
+#: verified. Grading and CHECK_VERSION are unchanged.
+VERIFIER_VERSION = "71"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -1585,16 +1588,45 @@ def _cost_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str
 
 
 def _physical_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> str:
-    """Say what was actually compared: an engine that reports no layout was not agreed with."""
-    compared = [
-        table
-        for item in questions.tables
-        if (table := reading_for(item, questions, facts.tables)) is not None
-    ]
-    columns = f"every column the in-scope metrics read is on {facts.target} with the declared type"
-    if any(table.layout is not None for table in compared):
-        return f"{columns}, and the layout matches what the model claims"
-    return f"{columns}; this engine reports no layout to compare"
+    """Count the declared facts actually compared by the physical check, per question."""
+    columns_total = columns_compared = layout_total = layout_compared = 0
+    for question in questions.tables:
+        columns_total += len(question.columns)
+        declared_layout = [
+            name
+            for name, declared in (
+                ("table_engine", question.layout.table_engine),
+                ("sorting_key", ", ".join(question.layout.sorting_key)),
+                ("partition_key", question.layout.partition_key),
+                ("distribution_key", ", ".join(question.layout.distribution_key)),
+            )
+            if declared
+        ]
+        layout_total += len(declared_layout)
+        table = reading_for(question, questions, facts.tables)
+        if table is None or not table.exists or not table.readable:
+            continue
+        if table.columns is not None:
+            columns_compared += sum(
+                table.columns.get(column) is not None for column in question.columns
+            )
+        if table.layout is not None:
+            layout_compared += sum(
+                getattr(table.layout, name) is not None for name in declared_layout
+            )
+    coverage = (
+        "complete"
+        if columns_compared == columns_total and layout_compared == layout_total
+        else "incomplete"
+    )
+    result = (
+        f"physical comparison on {facts.target}: {columns_compared} of {columns_total} "
+        f"declared column types and {layout_compared} of {layout_total} declared layout "
+        f"fields compared; coverage is {coverage}"
+    )
+    if not columns_compared and not layout_compared:
+        return f"{result}; no physical comparison was made"
+    return f"{result}; no differences found in the compared facts"
 
 
 def _readable(questions: EnvironmentQuestions, facts: EnvironmentFacts) -> bool:
