@@ -339,7 +339,7 @@ def test_clean_wording_uses_only_attributed_layout_readings(reverse: bool) -> No
     assert "this engine reports no layout to compare" in _physical_clean(questions(), observed)
 
 
-# Digests pin the complete SELECT replay measured before the production fix.
+# Digests pin the complete SELECT replay, including T-33 column-write questions.
 REPLAYS = [
     (
         "clickhouse",
@@ -366,29 +366,29 @@ REPLAYS = [
         "greengage",
         "made",
         {},
-        17,
-        "bca7181c70741c90daa070300f0b577f6cea072340be53f85eca366df98b9b90",
+        19,
+        "bf86553f5041cd97f05f3e7b7f3cc654d7aaaa336d79ed39de0d8c9a9c754d44",
     ),
     (
         "greengage",
         "absent",
         {"pg_tables": []},
-        5,
-        "dc5d18a2371a8d01f5d9fb7469bf4662f8a106767a23dd0989200f1df807e422",
+        7,
+        "6f94e04172c61e9b372c353210f0fbceb6ae62dc5b6ad8f681e790158404402a",
     ),
     (
         "greengage",
         "no_privilege",
         {"has_any_column_privilege": [{"ok": False}]},
-        13,
-        "c6b4470fb85d4ab31c703f221d6ab808c7336c8baf55d0517118657af6b64382",
+        15,
+        "5483a35885ac5f50b3e5fd3d4a4748e7a85c30501be711c75e0bd4056464089c",
     ),
     (
         "greengage",
         "refused",
         {"count(*)": []},
-        15,
-        "bc21b5a1804e399f142cdb320de722285cfbb940a4a5846e196a895bc603ae32",
+        17,
+        "1a2f6a38a0658230b7a32f18fe0e8ba0b26cf65d2f1554d5c6893c3eaca63c37",
     ),
 ]
 

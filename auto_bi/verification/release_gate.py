@@ -348,7 +348,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: A float key written nan no longer reports its own cell. Candidate NaN against a
 #: number, opposite infinities and infinity against a finite value stay value.changed;
 #: decimal infinity against itself stays equal. Historical bundles are not rewritten.
-VERIFIER_VERSION = "63"
+#: 64 — the PostgreSQL-family role probe also asks column-level INSERT/UPDATE privileges
+#: (has_any_column_privilege) per in-scope mart. A role verifier 63 recorded read-only with
+#: only a column-level write grant is now writable: dwh.access blocks with
+#: access.role_writable. Read-only role evidence names the column privileges it checked;
+#: an unanswered column-write question also blocks and withholds exact runtime SQL.
+#: ClickHouse is unchanged. Historical bundles are not rewritten.
+VERIFIER_VERSION = "64"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -519,7 +525,13 @@ VERIFIER_VERSION = "63"
 #: NaN against a number, opposite infinities and infinity against a finite value stay
 #: value.changed; decimal infinity against itself stays equal. Historical bundles are
 #: not rewritten.
-CHECK_VERSION = "43"
+#: 44 — dwh.access blocks with access.role_writable for a PostgreSQL-family role verifier
+#: 63 recorded read-only with only a column-level write grant. The role probe also asks
+#: column-level INSERT/UPDATE privileges (has_any_column_privilege) per in-scope mart;
+#: read-only role evidence names the column privileges it checked. ClickHouse is unchanged.
+#: An unanswered column-write question also blocks and withholds exact runtime SQL.
+#: Historical bundles are not rewritten.
+CHECK_VERSION = "44"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

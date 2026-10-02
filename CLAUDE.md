@@ -83,6 +83,22 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — PostgreSQL-family role probe спрашивает колоночные INSERT/UPDATE
+  через `has_any_column_privilege` по всей витрине скоупа. Только колоночный
+  write-grant теперь делает роль writable: `dwh.access` — BLOCK с
+  `access.role_writable`, exact runtime SQL не исполняется. Табличный grant
+  сохраняет одно evidence; read-only evidence называет табличные и колоночные
+  права. Отказ или пустой ответ колоночного privilege-вопроса не подтверждает
+  read-only и также блокирует доступ и exact runtime SQL. Superuser и ClickHouse
+  сохраняют свои правила.
+  Версии evidence: `VERIFIER_VERSION` 63 → 64, `CHECK_VERSION` 43 → 44;
+  исторические bundles не переписаны. Реализовано `gpt-6.1-sol` high через
+  MyFlow `sol-high` (T-33), завершено и независимо проверено Codex.
+  Новые refused/empty регрессии: red 3 failed / 1 passed; полный offline pytest
+  с duckdb — 3461 passed, 5 skipped, 38 deselected. Ruff, Black и package-wide
+  strict mypy чистые. [Synthetic Astra xhigh review](docs/DECISIONOPS_COLUMN_PRIVILEGES_REVIEW_2026-10-02.md):
+  P1 исправлен, итог 0 substantive findings; не human/production acceptance.
+
 - 2026-10-01 — `results.reconcile` сравнивает нечисловое значение по виду:
   бесконечности одного знака равны при разных записях, включая float за пределом
   binary64, без float-допуска. NaN кандидата против числа или бесконечности —

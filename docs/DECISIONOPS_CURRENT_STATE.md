@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-01
+**Обновлено:** 2026-10-02
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,9 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=63`, `CHECK_VERSION=43`
+**Версии evidence:** `VERIFIER_VERSION=64`, `CHECK_VERSION=44`
 
-**Последний срез (2026-10-01):** `results.reconcile` сравнивает нечисловые значения
+**Последний срез (2026-10-02):** PostgreSQL-family probe проверяет колоночные
+INSERT/UPDATE через `has_any_column_privilege` по всей витрине скоупа, включая
+колонки вне metric-чтений. Только колоночный write-grant делает роль writable:
+`dwh.access` — BLOCK с `access.role_writable`, exact runtime SQL не исполняется.
+Табличный grant сохраняет одно evidence без второй колоночной записи; read-only
+evidence называет отсутствие табличных INSERT/UPDATE/DELETE/TRUNCATE и колоночных
+INSERT/UPDATE. Отказ или пустой ответ колоночного privilege-вопроса также блокирует
+доступ: read-only не подтверждён, exact runtime SQL не исполняется. Superuser и
+ClickHouse без изменений. `VERIFIER_VERSION` 63 → 64, `CHECK_VERSION` 43 → 44;
+исторические bundles не переписаны. Граница `NOINHERIT` / `SET ROLE` в пишущую
+группу остаётся вне этого среза (T-33). Полный offline pytest с duckdb:
+3461 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
+[Synthetic Astra xhigh review](DECISIONOPS_COLUMN_PRIVILEGES_REVIEW_2026-10-02.md):
+P1 исправлен, итог 0 substantive findings; не human/production acceptance.
+
+**Предыдущий срез (2026-10-01):** `results.reconcile` сравнивает нечисловые значения
 integer/decimal/float по виду: бесконечности одного знака равны при разных записях,
 включая float за пределом binary64; допуск к ним не применяется. NaN кандидата против
 числа или бесконечности — `value.changed`; ожидаемый NaN, включая decimal `sNaN`,
@@ -843,6 +858,7 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 сравнивается с точным decimal-допуском (T-31, verifier 62 / check 42).
 Закрыто сравнение нечисловых значений по виду и REVIEW для ожидаемого NaN
 (T-32, verifier 63 / check 43).
+Закрыто обнаружение колоночных INSERT/UPDATE у PostgreSQL-роли (T-33, verifier 64 / check 44).
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки

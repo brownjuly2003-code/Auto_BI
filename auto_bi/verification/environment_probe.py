@@ -24,6 +24,9 @@ stands of the pinned versions:
   `has_table_privilege` per in-scope mart is the answer, and a superuser is writable
   whatever the grants say, because privileges do not apply to it. `max()` over no rows is
   NULL here, which the fact model already allows for.
+  `has_table_privilege` alone misses a column-level write grant, which
+  `has_any_column_privilege` reports for effective privileges (inherited groups and PUBLIC
+  included).
 
 Column types come from each engine's own catalog in the spelling the model was written in —
 `system.columns.type` on ClickHouse, `format_type(atttypid, atttypmod)` on the Postgres
@@ -113,6 +116,10 @@ from auto_bi.verification.environment import (
 #: Privileges that make a session capable of changing a mart. `TRUNCATE` is Postgres-only;
 #: the ClickHouse path reads its own access types.
 _PG_WRITE_PRIVILEGES = ("INSERT", "UPDATE", "DELETE", "TRUNCATE")
+
+#: Column privileges exist only for SELECT, INSERT, UPDATE and REFERENCES; of those,
+#: INSERT and UPDATE write (PostgreSQL 16.15, live).
+_PG_COLUMN_WRITE_PRIVILEGES = ("INSERT", "UPDATE")
 
 #: ClickHouse access types that can change data or schema, as `system.grants` spells them.
 _CH_WRITE_GRANTS = frozenset(
@@ -555,6 +562,7 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
         )
 
     writable: list[str] = []
+    unreported: list[str] = []
     for question in questions.tables:
         privileges = ", ".join(
             f"has_table_privilege({_literal(question.table)}, {_literal(privilege)}) AS "
@@ -562,18 +570,38 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
             for privilege in _PG_WRITE_PRIVILEGES
         )
         granted = _ask(run_query, f"SELECT {privileges}")
-        if not granted:
-            continue
+        table_grants = granted[0] if granted else {}
         for privilege in _PG_WRITE_PRIVILEGES:
-            if _truthy(granted[0].get(privilege.lower())):
+            if _truthy(table_grants.get(privilege.lower())):
                 writable.append(f"{privilege} on {question.table}")
+        column_privileges = ", ".join(
+            f"has_any_column_privilege({_literal(question.table)}, {_literal(privilege)}) AS "
+            f"column_{privilege.lower()}"
+            for privilege in _PG_COLUMN_WRITE_PRIVILEGES
+        )
+        column_granted = _ask(run_query, f"SELECT {column_privileges}")
+        if not column_granted:
+            unreported.append(f"column INSERT/UPDATE privileges on {question.table}")
+            continue
+        for privilege in _PG_COLUMN_WRITE_PRIVILEGES:
+            if not _truthy(table_grants.get(privilege.lower())) and _truthy(
+                column_granted[0].get(f"column_{privilege.lower()}")
+            ):
+                writable.append(f"{privilege} on columns of {question.table}")
     return RoleFacts(
         name=name,
-        read_only=not writable,
+        read_only=not writable and not unreported,
         evidence=(
             f"granted {'; '.join(writable)}"
             if writable
-            else "no INSERT, UPDATE, DELETE or TRUNCATE privilege on any in-scope mart"
+            else (
+                f"unreported {'; '.join(unreported)}, so read-only access is not established"
+                if unreported
+                else (
+                    "no INSERT, UPDATE, DELETE or TRUNCATE privilege on any in-scope mart "
+                    "and no INSERT or UPDATE privilege on any of their columns"
+                )
+            )
         ),
         bypasses_row_security=bypasses,
     )

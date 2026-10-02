@@ -6,6 +6,16 @@
 
 ### Changed
 
+- **Колоночный write-grant PostgreSQL-роли делает `dwh.access` BLOCK.**
+  Probe спрашивает `has_any_column_privilege` для INSERT/UPDATE по всей витрине
+  скоупа, включая колонки вне metric-чтений; evidence называет привилегию, колонки
+  и витрину. Табличный grant сохраняет одну запись, read-only evidence называет
+  обе группы проверенных прав. Exact runtime SQL через такую роль не исполняется;
+  неотвеченный колоночный privilege-вопрос также блокирует доступ с evidence о
+  неподтверждённом read-only. Superuser и ClickHouse сохраняют свои правила.
+  `VERIFIER_VERSION` 63 → 64, `CHECK_VERSION` 43 → 44;
+  исторические bundles не переписаны.
+
 - **Нечисловое значение в reconciliation сравнивается по виду.**
   Бесконечности одного знака равны при разных записях и float за пределом binary64;
   float-допуск к ним не применяется. NaN кандидата против числа или бесконечности —
