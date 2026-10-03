@@ -10,9 +10,26 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=81`, `CHECK_VERSION=57`
+**Версии evidence:** `VERIFIER_VERSION=82`, `CHECK_VERSION=58`
 
-**Последний срез (2026-10-02):** canonical metric node несёт объявленную
+**Последний срез (2026-10-02):** canonical metric node несёт объявленные `join_paths`:
+отсортированы, одинаковые объявления один раз; висячий endpoint —
+`gap.metric_join_dangling`, путь с несколькими cardinality — `gap.metric_join_conflict`,
+оба block. Удалённый путь — `metric.join_path_removed` (block), изменённая cardinality —
+`metric.join_path_changed` (review), добавленный путь — `metric.join_path_added` (advisory).
+Удаление или смена cardinality достигает verified assets метрики как `asset.metric_changed`;
+модельные `joins` сохраняют собственные правила `join.*`, field-level impact прежний.
+Native projection version 2 → 3 перемещает canonical digest каждого native snapshot с
+метриками; snapshot без метрик сохраняет digest. Прежние digest-привязки получают
+`asset.stale_snapshot` / `provenance.other_snapshot` (review) до повторной верификации.
+Версии evidence 81 → 82 / 57 → 58; исторические bundles не переписаны.
+Выбор — synthetic Astra xhigh; реализация `gpt-6.1-sol` medium через MyFlow `sol-high`.
+Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb: 4052 passed,
+4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+Human/production acceptance не заявляется.
+[Проверки и границы](DECISIONOPS_METRIC_JOIN_PATHS_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** canonical metric node несёт объявленную
 `freshness`: `max_age` как записан в контракте, quality preconditions отсортированы
 без повторов. Native projection version 1 → 2 перемещает canonical digest каждого
 native snapshot с метриками; snapshot без метрик сохраняет digest.
@@ -1085,6 +1102,7 @@ identity-ответа; доказанный superuser сохраняет пре�
 Закрыто скрытие write-привилегий за `SET ROLE`-достижимой ролью (T-34, verifier 79 / check 55).
 Закрыто прохождение невалидного поставляемого spec через `bi.contract` (T-35, verifier 80 / check 56).
 Закрыто выпадение объявленной freshness метрики из canonical snapshot и semantic diff (T-36, verifier 81 / check 57).
+Закрыто выпадение объявленных join paths метрики из canonical snapshot и semantic diff (T-37, verifier 82 / check 58).
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки

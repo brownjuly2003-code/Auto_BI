@@ -6,6 +6,18 @@
 
 ### Changed
 
+- **Объявленные join paths метрики сохраняются в canonical snapshot и именуются в semantic diff.**
+  Пути отсортированы, одинаковые объявления сохраняются один раз; висячий endpoint —
+  `gap.metric_join_dangling`, несколько cardinality одного пути — `gap.metric_join_conflict`,
+  оба block. Удаление пути — `metric.join_path_removed` (block), смена cardinality —
+  `metric.join_path_changed` (review), добавление — `metric.join_path_added` (advisory).
+  Canonical digest каждого native snapshot с метриками перемещается (native projection
+  version 2 → 3), поэтому verified assets и result attestations, привязанные к прежнему
+  digest, получают `asset.stale_snapshot` / `provenance.other_snapshot` (review) до повторной
+  верификации; snapshot без метрик сохраняет digest. Удалённый путь или смена его cardinality
+  достигает verified assets метрики как `asset.metric_changed`; модельные joins сохраняют
+  свои правила. Verifier 81 → 82, check 57 → 58; historical bundles прежние.
+
 - **Объявленная freshness метрики сохраняется в canonical snapshot и именуется в semantic diff.**
   `max_age` сохраняется как объявлен, quality preconditions отсортированы без повторов.
   Ослабление окна или снятие precondition — `metric.freshness_relaxed` (review),

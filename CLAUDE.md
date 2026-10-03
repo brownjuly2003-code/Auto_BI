@@ -83,6 +83,22 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — canonical metric node несёт объявленные `join_paths`, отсортированные
+  без одинаковых объявлений; висячий endpoint — `gap.metric_join_dangling`, несколько
+  cardinality одного пути — `gap.metric_join_conflict`, оба block. `semantic.diff` именует
+  удаление как `metric.join_path_removed` (block), смену cardinality как
+  `metric.join_path_changed` (review), добавление как `metric.join_path_added` (advisory).
+  Удаление или смена cardinality достигает verified assets как `asset.metric_changed`;
+  модельные joins и field-level impact сохраняют правила. Native projection version 2 → 3
+  перемещает canonical digest каждого native snapshot с метриками; snapshot без метрик
+  сохраняет digest. Прежние digest-привязки требуют повторной верификации.
+  `VERIFIER_VERSION` 81 → 82, `CHECK_VERSION` 57 → 58; исторические bundles не переписаны.
+  Выбор — synthetic Astra xhigh. Реализовано `gpt-6.1-sol` medium через MyFlow `sol-high`.
+  Red на HEAD: 21 failed / 8 passed; профильный набор: 392 passed. Synthetic Astra
+  xhigh review: 0 findings. Полный offline gate с duckdb: 4052 passed, 4 skipped,
+  38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_METRIC_JOIN_PATHS_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — metric node canonical snapshot несёт объявленную `freshness`:
   `max_age` как объявлен, quality preconditions отсортированы без повторов.
   `semantic.diff` именует ослабление как `metric.freshness_relaxed` (review),

@@ -417,7 +417,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: compared in exact integer seconds however many digits a component has: windows too long
 #: for timedelta or for one int() conversion now grade instead of raising in semantic.diff,
 #: dwh.freshness and the provenance stale-capture rule.
-VERIFIER_VERSION = "81"
+#: 82 — snapshots carry each metric's declared join paths (native projection version 3),
+#: moving the canonical digest of every native snapshot with metrics; a snapshot without
+#: metrics keeps its digest. semantic.diff names a removed metric join path as block and
+#: a changed cardinality as review where it was semantic.unchanged, an added path as advisory.
+#: semantic.gaps blocks on a metric join path with an endpoint the model does not declare
+#: or declared with more than one cardinality.
+VERIFIER_VERSION = "82"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -632,7 +638,13 @@ VERIFIER_VERSION = "81"
 #: compared in exact integer seconds however many digits a component has: windows too long
 #: for timedelta or for one int() conversion now grade instead of raising in semantic.diff,
 #: dwh.freshness and the provenance stale-capture rule.
-CHECK_VERSION = "57"
+#: 58 — snapshots carry each metric's declared join paths (native projection version 3),
+#: moving the canonical digest of every native snapshot with metrics; a snapshot without
+#: metrics keeps its digest. semantic.diff names a removed metric join path as block and
+#: a changed cardinality as review where it was semantic.unchanged, an added path as advisory.
+#: semantic.gaps blocks on a metric join path with an endpoint the model does not declare
+#: or declared with more than one cardinality.
+CHECK_VERSION = "58"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

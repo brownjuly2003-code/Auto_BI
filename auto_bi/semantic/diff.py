@@ -397,6 +397,8 @@ def _diff_metric_attrs(
             )
         )
 
+    changes.extend(_join_paths_change(old, new, impact))
+
     dropped_policies = sorted(set(old.policy_refs) - set(new.policy_refs))
     if dropped_policies:
         changes.append(
@@ -471,6 +473,55 @@ def _diff_metric_attrs(
         )
     changes.extend(_budget_change(old, new, impact))
     changes.extend(_freshness_change(old, new, impact))
+    return changes
+
+
+def _join_paths_change(
+    old: MetricNode, new: MetricNode, impact: SemanticImpact
+) -> list[SemanticChange]:
+    """A metric's declared join paths, graded by which way they moved.
+
+    A path that is gone blocks (§8.3 "Удалён field/metric/join path"): what was joined
+    through it cannot be re-derived. A changed cardinality changes how rows fan out
+    across the join and therefore a number's meaning — review, until impact says whether
+    anything depends on it. A new path only widens what the metric may be joined to,
+    so it is advisory. A path written in the opposite direction is a different path.
+    The model's joins are compared by `_diff_joins`, apart from these metric paths.
+    """
+    before: dict[tuple[str, str], set[str]] = {}
+    after: dict[tuple[str, str], set[str]] = {}
+    for node, grouped in ((old, before), (new, after)):
+        for join in node.join_paths:
+            grouped.setdefault((join.left, join.right), set()).add(join.type)
+
+    removed: list[str] = []
+    changed: list[str] = []
+    added: list[str] = []
+    for left, right in sorted(
+        before.keys() | after.keys(), key=lambda path: (f"{path[0]}->{path[1]}", *path)
+    ):
+        path = (left, right)
+        old_types = ", ".join(sorted(before.get(path, set())))
+        new_types = ", ".join(sorted(after.get(path, set())))
+        if path not in after:
+            removed.append(f"{left}->{right} ({old_types})")
+        elif path not in before:
+            added.append(f"{left}->{right} ({new_types})")
+        elif before[path] != after[path]:
+            changed.append(f"{left}->{right} ({old_types}) -> ({new_types})")
+
+    changes: list[SemanticChange] = []
+    for code, severity, prefix, items in (
+        ("metric.join_path_removed", Severity.BLOCK, "join paths no longer declared: ", removed),
+        ("metric.join_path_changed", Severity.REVIEW, "join path cardinality changed: ", changed),
+        ("metric.join_path_added", Severity.ADVISORY, "join paths now declared: ", added),
+    ):
+        if items:
+            changes.append(
+                _change(
+                    code, ChangeKind.MODIFIED, severity, new.id, prefix + "; ".join(items), impact
+                )
+            )
     return changes
 
 

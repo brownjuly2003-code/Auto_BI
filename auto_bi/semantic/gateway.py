@@ -56,7 +56,9 @@ from auto_bi.strict import StrictModel
 #: because that changes every canonical digest and therefore every snapshot identity.
 #: 2 — metric nodes now carry freshness, moving the canonical digest of every native
 #: snapshot with metrics; a snapshot without metrics keeps its digest.
-NATIVE_SOURCE_VERSION = "2"
+#: 3 — metric nodes now carry their declared join paths, moving the canonical digest of
+#: every native snapshot with metrics; a snapshot without metrics keeps its digest.
+NATIVE_SOURCE_VERSION = "3"
 
 NATIVE_CAPABILITIES = ["fields", "joins", "metric_contracts", "physical_keys"]
 
@@ -122,6 +124,11 @@ class MetricNode(StrictModel):
     additivity: Additivity
     non_additive_axes: list[str] = Field(default_factory=list)
     dimensions: list[str] = Field(default_factory=list)
+    #: The contract's declared join paths are part of the metric's meaning (§7.3 "grain,
+    #: allowed dimensions и join paths"), so they live in the graph: a removed, re-typed
+    #: or added path moves the canonical digest and is named in the diff. They are the
+    #: metric's own paths, compared apart from the model's joins.
+    join_paths: list[JoinNode] = Field(default_factory=list)
     classification: DataClassification
     policy_refs: list[str] = Field(default_factory=list)
     #: Fields the metric's value depends on: formula terms, grain keys, event time.
@@ -386,6 +393,43 @@ def _metric_node(contract: MetricContract, known: set[str], gaps: list[SemanticG
                 )
             )
 
+    join_paths = sorted(
+        [
+            JoinNode(id=f"{left}->{right}", left=left, right=right, type=cardinality)
+            for left, right, cardinality in {
+                (join.left, join.right, join.type) for join in contract.join_paths
+            }
+        ],
+        key=lambda node: (node.id, node.left, node.right, node.type),
+    )
+    path_types: dict[tuple[str, str], set[str]] = {}
+    for join in join_paths:
+        path_types.setdefault((join.left, join.right), set()).add(join.type)
+    for (left, right), types in path_types.items():
+        path = f"metrics.{identifier}.join_paths.{left}->{right}"
+        missing = list(dict.fromkeys(side for side in (left, right) if side not in known))
+        if missing:
+            gaps.append(
+                SemanticGap(
+                    code="gap.metric_join_dangling",
+                    severity=Severity.BLOCK,
+                    path=path,
+                    reason=f"join path endpoint is not a declared field: {', '.join(missing)}",
+                )
+            )
+        if len(types) > 1:
+            gaps.append(
+                SemanticGap(
+                    code="gap.metric_join_conflict",
+                    severity=Severity.BLOCK,
+                    path=path,
+                    reason=(
+                        "join path declared with more than one cardinality: "
+                        + ", ".join(sorted(types))
+                    ),
+                )
+            )
+
     return MetricNode(
         id=identifier,
         version=contract.metadata.version,
@@ -399,6 +443,7 @@ def _metric_node(contract: MetricContract, known: set[str], gaps: list[SemanticG
         additivity=contract.additivity,
         non_additive_axes=list(contract.non_additive_axes),
         dimensions=list(contract.dimensions),
+        join_paths=join_paths,
         classification=contract.classification,
         policy_refs=list(contract.policy_refs),
         fields=sorted(dependencies),

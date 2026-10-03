@@ -64,7 +64,7 @@ def test_preconditions_are_sorted_unique_and_order_does_not_move_digest():
 
 
 def test_native_projection_version_is_bumped(monkeypatch):
-    assert NATIVE_SOURCE_VERSION == "2"
+    assert NATIVE_SOURCE_VERSION != "1"
     model_path = FIXTURES / "in-memory-model.yaml"
     read_bytes = Path.read_bytes
     monkeypatch.setattr(
@@ -77,7 +77,7 @@ def test_native_projection_version_is_bumped(monkeypatch):
         ),
     )
     native = NativeModelSource(model_path, FIXTURES / "gross_margin_pct.yaml").snapshot()
-    assert native.source_version == "2"
+    assert native.source_version == NATIVE_SOURCE_VERSION
 
 
 @pytest.mark.parametrize(

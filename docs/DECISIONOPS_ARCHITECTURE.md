@@ -314,6 +314,9 @@ actions:
 
 Metric node canonical graph несёт `freshness`: `max_age` как объявлен,
 preconditions отсортированы без повторов; это переместило native projection на version 2.
+Metric node также несёт объявленные `join_paths` (отсортированы, одинаковые объявления
+один раз; висячий endpoint — `gap.metric_join_dangling`, путь с несколькими cardinality —
+`gap.metric_join_conflict`, оба block), что переместило native projection на version 3.
 
 Порядок разрешения формулы: external governed reference → typed Auto_BI
 expression → reviewed parameterized SQL. Raw SQL не становится дефолтом.
@@ -587,7 +590,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=81`, `CHECK_VERSION=57`.
+`VERIFIER_VERSION=82`, `CHECK_VERSION=58`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -900,6 +903,7 @@ Gate выполняет шаги в фиксированном порядке:
 | Formula, numerator/denominator, grain или additivity | review/block по impact |
 | Timezone/calendar/null policy | block для affected verified assets |
 | Freshness/data-quality preconditions метрики | ослаблены (длиннее окно, неупорядочиваемое окно, снят precondition) — review; ужесточены или то же окно записано иначе — advisory |
+| Join path метрики | удалён — block; изменена cardinality — review; добавлен — advisory |
 | Удалён field/metric/join path | block |
 | Policy/classification ослаблена | block + security finding |
 | Physical key/partition изменены | re-run physical gate |
@@ -908,6 +912,8 @@ Gate выполняет шаги в фиксированном порядке:
 Изменения названы `metric.freshness_relaxed`, `metric.freshness_tightened` и
 `metric.freshness_restated`; одна правка может назвать несколько направлений.
 `dwh.freshness` по-прежнему грейдит витрины против `freshness_max_age` продукта.
+Изменения join paths метрики названы `metric.join_path_removed` / `metric.join_path_changed` /
+`metric.join_path_added`; модельные `joins` сохраняют собственные правила `join.*`.
 
 Impact graph строится по stable refs:
 
