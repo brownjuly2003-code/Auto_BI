@@ -83,6 +83,24 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-03 — PostgreSQL-family identity-вопрос читает superuser-флаг текущей
+  роли из `pg_roles.rolsuper`: у current role без LOGIN нет строки в `pg_user`,
+  поэтому прежний вопрос отвечал NULL и блокировал select-only роль как
+  unreported. NOLOGIN роль грейдится по своим флагам и write-привилегиям,
+  включая роли, которые session user достигает через `SET ROLE`: select-only
+  роль сохраняет read-only и eligible exact runtime SQL, NOLOGIN superuser —
+  прежнее superuser evidence и block без privilege-вопросов и runtime SQL.
+  BYPASSRLS, login-роли и правила отказа, пустого, частичного и NULL
+  identity-ответа прежние. `VERIFIER_VERSION` 83 → 84, `CHECK_VERSION` 59 → 60;
+  исторические bundles не переписаны. Выбор — альтернатива №2 synthetic Astra
+  xhigh выбора, давшего T-37. Живые факты сняты на PostgreSQL 16.15 на Mac
+  (одноразовый кластер, удалён). Реализовано `gpt-6.1-sol` medium через MyFlow
+  `sol-high`: GLM-5.3 был в недельном лимите z.ai. Red на HEAD: 24 failed /
+  20 passed; новый модуль: 44 passed. Synthetic Astra xhigh review: 0 findings.
+  Полный offline gate с duckdb: 4131 passed, 4 skipped, 38 deselected, exit 0;
+  Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_NOLOGIN_IDENTITY_REVIEW_2026-10-03.md).
+
 - 2026-10-03 — ClickHouse role probe спрашивает роли, которые сессия может включить:
   выданная, но не включённая роль (`SET DEFAULT ROLE NONE`) отсутствует в
   `system.enabled_roles`, её write grant невидим собственному grants-вопросу, а

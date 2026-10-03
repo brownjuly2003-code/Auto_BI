@@ -724,11 +724,16 @@ def _ch_policies(
 
 
 def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> RoleFacts:
-    """A superuser bypasses privileges, so it is writable however the grants read."""
+    """A superuser bypasses privileges, so it is writable however the grants read.
+
+    The superuser flag is read from `pg_roles`, which lists every role: a current role
+    that cannot log in has no `pg_user` row, so that view answers NULL for it and a
+    select-only role would block as unreported (PostgreSQL 16.15, live).
+    """
     rows = _ask(
         run_query,
         "SELECT current_user AS name, "
-        "(SELECT usesuper FROM pg_user WHERE usename = current_user) AS superuser, "
+        "(SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser, "
         "(SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypassrls",
     )
     if not rows:

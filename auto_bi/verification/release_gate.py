@@ -427,7 +427,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: through system.role_grants and system.grants of the reached roles, so a write grant
 #: verifier 82 left unseen on a role `SET ROLE` reaches blocks dwh.access where it passed,
 #: and role names are written in those questions with every backslash and quote doubled.
-VERIFIER_VERSION = "83"
+#: 84 — the superuser flag of the current PostgreSQL-family role is read from pg_roles,
+#: so a current role without LOGIN is graded by its privileges where verifier 83 blocked
+#: as unreported, and a NOLOGIN superuser gets the existing superuser evidence.
+VERIFIER_VERSION = "84"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -652,7 +655,10 @@ VERIFIER_VERSION = "83"
 #: and the grants of the roles SET ROLE reaches, so dwh.access blocks with
 #: access.role_writable where check 58 recorded read-only over a hidden write grant;
 #: role names are written with backslashes doubled.
-CHECK_VERSION = "59"
+#: 60 — the current PostgreSQL-family role's superuser flag is read from pg_roles:
+#: a role without LOGIN is graded by its privileges where check 59 blocked as unreported,
+#: and a NOLOGIN superuser gets the existing superuser evidence in dwh.access.
+CHECK_VERSION = "60"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

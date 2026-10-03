@@ -6,6 +6,16 @@
 
 ### Changed
 
+- **Текущая PostgreSQL-family роль без LOGIN больше не блокируется из-за отсутствующей строки в `pg_user`.**
+  Identity-вопрос читает superuser-флаг из `pg_roles.rolsuper`, где есть каждая
+  роль: прежний view отвечал NULL для NOLOGIN current role (PostgreSQL 16.15,
+  вживую). Select-only роль грейдится по своим привилегиям и правам ролей,
+  которые session user достигает через `SET ROLE`, и сохраняет eligible exact
+  runtime SQL; NOLOGIN superuser получает прежнее superuser evidence и block
+  без write-privilege вопросов и runtime SQL. BYPASSRLS, login-роли и правила
+  отказа, пустого, частичного и NULL identity-ответа сохраняются.
+  Verifier 83 → 84, check 59 → 60; historical bundles прежние.
+
 - **Выданная, но не включённая ClickHouse-роль больше не может скрыть право записи.**
   Роль, выданная пользователю с `SET DEFAULT ROLE NONE`, отсутствует в
   `system.enabled_roles`, поэтому grants-вопрос её не видел, хотя `SET ROLE`

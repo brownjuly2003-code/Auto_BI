@@ -590,7 +590,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=83`, `CHECK_VERSION=59`.
+`VERIFIER_VERSION=84`, `CHECK_VERSION=60`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -775,7 +775,10 @@ Gate выполняет шаги в фиксированном порядке:
   PostgreSQL — `has_table_privilege` плюс проверка на суперпользователя, плюс
   `has_any_column_privilege` для колоночных INSERT/UPDATE по всей витрине: табличный
   вопрос отвечает false роли с грантом `UPDATE (revenue)`, хотя она пишет
-  (PostgreSQL 16.15, вживую). Отказ или пустой ответ табличного или колоночного privilege-вопроса
+  (PostgreSQL 16.15, вживую). Superuser-флаг текущей роли читается из
+  `pg_roles.rolsuper`: у current role без LOGIN нет строки в `pg_user`, поэтому
+  этот view отвечает NULL (PostgreSQL 16.15, вживую). Отказ или пустой ответ
+  табличного или колоночного privilege-вопроса
   не подтверждает read-only: `dwh.access` — block с evidence о неотвеченных правах,
   exact runtime SQL не исполняется. Отсутствующее или NULL поле в непустом privilege-ответе
   также не подтверждает read-only; evidence называет конкретные неотвеченные права
@@ -800,8 +803,7 @@ Gate выполняет шаги в фиксированном порядке:
   Их табличные и колоночные write-права спрашиваются по каждой витрине одним вопросом,
   а достижимый superuser, пишущая роль или неотвеченный вопрос — `access.role_writable`.
   Границы — `SECURITY DEFINER`-функции, BYPASSRLS достижимой роли,
-  `CREATEROLE`/`ADMIN OPTION`/`ROLE ADMIN` и NOLOGIN
-  current role (NULL `usesuper` даёт ложный block). Пустая витрина —
+  `CREATEROLE`/`ADMIN OPTION`/`ROLE ADMIN`. Пустая витрина —
   `freshness.unknown`, потому что `max(Date)` по нулю строк в ClickHouse равен `1970-01-01`,
   а не NULL. `dwh.security`: досягаемость роли, через которую собрано evidence, — колонка
   метрики, которую роль не может выбрать, **block** (метрику там не посчитать); row-политика,

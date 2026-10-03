@@ -44,6 +44,17 @@ true. The `SET` option exists from PostgreSQL 16; before it, and in the Greenplu
 families built on older PostgreSQL, every direct or indirect member may `SET ROLE`, which is
 what `pg_has_role(…, 'MEMBER')` answers — documented behaviour, not run live here.
 
+The current role need not be able to log in. PostgreSQL 16.15 (live, throwaway cluster,
+2026-10-03): a session whose role default (`ALTER ROLE … SET role`) parks it on a `NOLOGIN`
+role has no row in `pg_user`, a view of the roles that can log in, and one row in `pg_roles`,
+which lists every role. For a select-only `NOLOGIN` current role
+`(SELECT usesuper FROM pg_user WHERE usename = current_user)` answered NULL and
+`(SELECT rolsuper FROM pg_roles WHERE rolname = current_user)` answered false, and its
+`INSERT` was refused; for a `NOLOGIN SUPERUSER` current role the first answered NULL, the
+second true, and its `INSERT` succeeded; for a `NOLOGIN BYPASSRLS` current role
+`rolbypassrls` answered true. For a current role that can log in the two catalogs answered
+alike: false for a plain role, true for a superuser.
+
 On ClickHouse a session holds the privileges of its user and of its enabled roles, and which
 roles are enabled is the session's own choice. ClickHouse 24.8.14.39 (live, throwaway server,
 2026-10-03): a user granted `SELECT` on `dm.sales_daily` and the role `writer`, which holds
@@ -76,12 +87,9 @@ Known boundaries, not covered here: a `SECURITY DEFINER` function the role may e
 with its owner's privileges; whether a role reachable through `SET ROLE` bypasses row security,
 reads further columns or meets other row policies is not asked; role-administration powers
 (`CREATEROLE`, `ADMIN OPTION`, on ClickHouse `ROLE ADMIN`), with which a role can change
-memberships, are not asked about; the ClickHouse `readonly=1/2` rule rests on the pinned
+memberships, are not asked about; and the ClickHouse `readonly=1/2` rule rests on the pinned
 24.8.14.39 behaviour above, and a version that applies a role's settings on a role switch was
-not checked; and a session whose current role cannot log in has no
-`pg_user` row, so the
-identity question answers a NULL superuser flag for it and access blocks as unestablished
-(live, PostgreSQL 16.15).
+not checked.
 
 ## Requirement: an unanswered role identity cannot establish read-only access
 
@@ -154,6 +162,76 @@ row-security bypass even when another identity field is absent.
 - **THEN** the exact name is retained; a complete negative identity keeps the existing
   read-only rule, and a partial identity blocks with that exact role subject reference
 - **AND** a whitespace-only identifier does not cause a validation error
+
+## Requirement: the superuser status of the current role is read from the catalog that lists every role
+
+The PostgreSQL-family identity question SHALL read the superuser flag of the current role
+from `pg_roles.rolsuper`, in the same question that reads its name and `rolbypassrls`:
+`pg_user` lists only the roles that can log in and answers NULL for a current role that
+cannot. The question SHALL be
+
+`SELECT current_user AS name, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
+AS superuser, (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypassrls`
+
+written on one line, and no question SHALL read `pg_user`. A current role that cannot log in
+SHALL be graded as any other role: by its reported superuser and `BYPASSRLS` flags, by its
+own write privileges, and by those of the roles `SET ROLE` reaches. Everything read from the
+answer, and the refused, empty, partial and NULL rules of the requirement above, SHALL stay
+as they are: a superuser flag the engine reports as NULL does not establish read-only access.
+
+### Scenario: a select-only current role that cannot log in stays read-only (false-reject control)
+
+- **GIVEN** a session parked by its role default on a `NOLOGIN` role holding only `SELECT` on
+  the in-scope mart, whose session user holds only `SELECT` as well; the engine answers the
+  superuser flag NULL when it is read from `pg_user` and false when it is read from `pg_roles`
+- **WHEN** the environment is collected with an exact runtime budget and access is graded
+- **THEN** the role is read-only and does not bypass row security, the read-only evidence
+  names the session user as the role `SET ROLE` reaches, the exact runtime query is executed,
+  and `dwh.access` is pass
+
+### Scenario: a superuser current role that cannot log in gets the superuser evidence
+
+- **GIVEN** the session is parked on a `NOLOGIN SUPERUSER` role
+- **WHEN** the environment is collected with an exact runtime budget and access is graded
+- **THEN** the role is writable with the existing superuser evidence and bypasses row
+  security, no write-privilege or reachability question is sent, the exact runtime query is
+  not executed, and `dwh.access` is block
+
+### Scenario: a BYPASSRLS current role that cannot log in reports the bypass
+
+- **GIVEN** the session is parked on a `NOLOGIN BYPASSRLS` role with no write privilege,
+  whose session user holds none either
+- **WHEN** the environment is collected
+- **THEN** the role is read-only and `bypasses_row_security` is true
+
+### Scenario: a writable session user behind a parked role still blocks
+
+- **GIVEN** the session is parked on a select-only `NOLOGIN` role and its session user holds
+  `INSERT` on the in-scope mart
+- **WHEN** the environment is collected and access is graded
+- **THEN** the role is not read-only, the evidence names the `INSERT` through `SET ROLE` to
+  the session user, the exact runtime query is not executed, and `dwh.access` is block
+
+### Scenario: a current role that can log in keeps its facts
+
+- **GIVEN** a current role that can log in, for which both catalogs answer alike
+- **WHEN** the environment is collected
+- **THEN** a nonsuperuser with no write privilege stays read-only with the same evidence as
+  before, and a superuser keeps the superuser evidence
+
+### Scenario: a NULL superuser flag still blocks
+
+- **GIVEN** the engine answers the superuser flag NULL although it is read from `pg_roles`
+- **WHEN** the environment is collected
+- **THEN** the role is not read-only, the evidence names the unreported superuser status,
+  and no write-privilege question is sent
+
+### Scenario: the identity question reads one catalog
+
+- **GIVEN** any PostgreSQL-family collection
+- **WHEN** the questions are recorded
+- **THEN** exactly one identity question is asked, it is the text above, and no question
+  reads `pg_user`
 
 ## Requirement: a column-level write privilege on an in-scope mart makes the role writable
 
@@ -303,9 +381,10 @@ unreported without claiming it absent, and the remaining questions are still ask
 reported role name SHALL be retained exactly. Positive evidence keeps priority, as for the
 current role.
 
-The collector SHALL NOT switch roles, reset them or write to find out. The identity question,
-the superuser and unanswered-identity short-cuts (which ask no reachability question), the
-current role's questions and `RoleFacts` fields SHALL stay as they are. This requirement adds
+The collector SHALL NOT switch roles, reset them or write to find out. This requirement
+changes neither the identity question, whose text its own requirement above fixes, nor the
+superuser and unanswered-identity short-cuts (which ask no reachability question), nor the
+current role's questions and `RoleFacts` fields. It adds
 nothing to ClickHouse collection, which has its own reachability requirement below.
 A role made writable here withholds the exact runtime SQL, and `dwh.access` blocks through
 `access.role_writable`.

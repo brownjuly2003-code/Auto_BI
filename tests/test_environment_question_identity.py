@@ -344,7 +344,8 @@ def test_clean_wording_uses_only_attributed_layout_readings(reverse: bool) -> No
 
 
 # Digests pin the complete SELECT replay, including T-33 column-write questions and
-# the T-34 reachability question (one per PostgreSQL-family collection).
+# the T-34 reachability question (one per PostgreSQL-family collection), and the
+# T-39 identity question reading the current role's superuser flag from pg_roles.
 REPLAYS = [
     (
         "clickhouse",
@@ -372,28 +373,28 @@ REPLAYS = [
         "made",
         {},
         20,
-        "0d52d5f0cd9d125a5e7b9e837a65f31f0d447c7f2b16a5732408633cc98a838c",
+        "02111db96176068fc61713f53d863927815c9c1a75e90c7889093732c6b543bd",
     ),
     (
         "greengage",
         "absent",
         {"pg_tables": []},
         8,
-        "a111b0bcc02d32a97658d519cbc4480df247a327ee8699ffb4023338508f6895",
+        "73242c23e85155c00a0a8611b7a07d8617b3ea14d074d5854af52277b496cecc",
     ),
     (
         "greengage",
         "no_privilege",
         {"has_any_column_privilege": [{"ok": False}]},
         16,
-        "7345b411f1831a42812f5b85424acc3476a59b6cb2f0dd2c4cc1d9bad9d71598",
+        "6d386c42a59eb5c87b9ff1f0fa2d09233c20714a8be9e799d8536846f7f07783",
     ),
     (
         "greengage",
         "refused",
         {"count(*)": []},
         18,
-        "c9a8ad2368a7934daa54d2cba1a1cbb9c6b1316e48caef52228f90c46cbff19a",
+        "14dce274564634ddebc1fdd86d5a5cca0a4e405cae3c67bdce7e1794ba7b98d5",
     ),
 ]
 
