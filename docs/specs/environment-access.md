@@ -44,11 +44,41 @@ true. The `SET` option exists from PostgreSQL 16; before it, and in the Greenplu
 families built on older PostgreSQL, every direct or indirect member may `SET ROLE`, which is
 what `pg_has_role(…, 'MEMBER')` answers — documented behaviour, not run live here.
 
+On ClickHouse a session holds the privileges of its user and of its enabled roles, and which
+roles are enabled is the session's own choice. ClickHouse 24.8.14.39 (live, throwaway server,
+2026-10-03): a user granted `SELECT` on `dm.sales_daily` and the role `writer`, which holds
+`INSERT` on that mart, with `SET DEFAULT ROLE NONE`, starts with an empty
+`system.enabled_roles`; `system.grants` names only `SELECT` for its user name, and its `INSERT`
+is refused (`ACCESS_DENIED`). After `SET ROLE writer` the same `INSERT` succeeds, and over HTTP
+the request parameter `role=writer` does the same without a session. `SET ROLE` accepts only a
+role granted directly to the user — a role granted only to another role is refused
+(`SET_NON_GRANTED_ROLE`) — and enables with it every role granted to that role: a user granted
+`mid`, itself granted `deepwriter` with `ALTER UPDATE`, ran the mutation after `SET ROLE mid`.
+`system.role_grants` answers both halves: a row with `user_name` is a role granted to a user, a
+row with `role_name` a role granted to a role, and `WHERE user_name = currentUser() OR
+role_name IS NOT NULL` returns the session user's own rows together with every role-to-role
+row, including those of roles the user cannot reach. `system.grants WHERE role_name IN (…)`
+then names what the reached roles hold. Each catalog needs its own `SELECT` grant: a user
+granted `SELECT ON system.grants` but not `SELECT ON system.role_grants` is refused the second
+(`ACCESS_DENIED`) and can still switch the role on and write. A role switch does not move
+`readonly` there: with `readonly=1` or `2` set on the user, on its settings profile (also
+`CONST`) or by the settings of its default role, `SET ROLE` to a writable role — even one
+created with `SETTINGS readonly = 0` — and `SET ROLE NONE` left `readonly` as it was, and the
+`INSERT` was refused (`READONLY`); neither `SET ROLE` nor the HTTP `role` parameter applied a
+role's settings. A role name is an arbitrary string: roles named `odd'name`, `wri\ter`, `tail\`
+and ` writer` (with a leading space) were created, granted, and reported unchanged by
+`system.role_grants`. A string literal names such a role only with the backslash and the quote
+escaped: `role_name IN ('wri\ter')` returned no row although that role held `ALTER UPDATE` and
+the mutation ran after `SET ROLE` to it, `'tail\'` was a syntax error, and `'wri\\ter'`,
+`'tail\\'` and `'odd''name'` named their roles.
+
 Known boundaries, not covered here: a `SECURITY DEFINER` function the role may execute writes
-with its owner's privileges; ClickHouse roles granted to the user but not enabled can be
-switched on with `SET ROLE`; whether a role reachable through `SET ROLE` bypasses row security
-is not asked; role-administration powers (`CREATEROLE`, `ADMIN OPTION`), with which a role can
-change memberships, are not asked about; and a session whose current role cannot log in has no
+with its owner's privileges; whether a role reachable through `SET ROLE` bypasses row security,
+reads further columns or meets other row policies is not asked; role-administration powers
+(`CREATEROLE`, `ADMIN OPTION`, on ClickHouse `ROLE ADMIN`), with which a role can change
+memberships, are not asked about; the ClickHouse `readonly=1/2` rule rests on the pinned
+24.8.14.39 behaviour above, and a version that applies a role's settings on a role switch was
+not checked; and a session whose current role cannot log in has no
 `pg_user` row, so the
 identity question answers a NULL superuser flag for it and access blocks as unestablished
 (live, PostgreSQL 16.15).
@@ -240,7 +270,8 @@ columns the in-scope metrics read. The collector SHALL NOT attempt a write to fi
 
 - **GIVEN** a ClickHouse environment, read-only by its profile or by its grants
 - **WHEN** the environment is collected
-- **THEN** the role facts and the questions asked are the same as before this requirement
+- **THEN** no PostgreSQL-family privilege question is sent, and the role facts and the
+  questions asked are those of the ClickHouse requirements below
 
 ## Requirement: a role reachable through SET ROLE cannot hide a write privilege
 
@@ -274,7 +305,8 @@ current role.
 
 The collector SHALL NOT switch roles, reset them or write to find out. The identity question,
 the superuser and unanswered-identity short-cuts (which ask no reachability question), the
-current role's questions, `RoleFacts` fields and ClickHouse collection SHALL stay as they are.
+current role's questions and `RoleFacts` fields SHALL stay as they are. This requirement adds
+nothing to ClickHouse collection, which has its own reachability requirement below.
 A role made writable here withholds the exact runtime SQL, and `dwh.access` blocks through
 `access.role_writable`.
 
@@ -374,11 +406,12 @@ A role made writable here withholds the exact runtime SQL, and `dwh.access` bloc
 - **THEN** every statement the collector sent is a `SELECT`; none is `SET`, `RESET`, `INSERT`,
   `UPDATE`, `DELETE`, `TRUNCATE` or DDL
 
-### Scenario: ClickHouse collection ignores SET ROLE reachability
+### Scenario: ClickHouse collection asks none of the PostgreSQL reachability questions
 
 - **GIVEN** a ClickHouse environment, read-only by its profile or by its grants
 - **WHEN** the environment is collected
-- **THEN** the role facts and the questions asked are the same as before this requirement
+- **THEN** no question names `session_user` or `pg_roles`, and the role facts and the
+  questions asked are those of the ClickHouse requirements below
 
 ## Requirement: unknown ClickHouse enabled roles are not an empty role set
 
@@ -397,7 +430,8 @@ column reach. A column absent from the filtered ClickHouse catalog with unknown
 reach SHALL NOT be called physically absent; PostgreSQL absence and observed type
 drift retain their rules. Known reach still allows a true absent-column finding.
 The existing eligible runtime probe under `readonly=1/2` SHALL remain allowed.
-Connection failures SHALL propagate. SQL shapes and public schemas SHALL NOT change.
+Connection failures SHALL propagate. The identity, `readonly`, enabled-roles and grants
+questions SHALL keep their SQL shapes, and public schemas SHALL NOT change.
 
 ## Requirement: ClickHouse write families include canonical leaf access types
 
@@ -414,6 +448,150 @@ positive leaf grant retains evidence even when enabled roles are unknown.
 This is a lexical verb-family rule, including CREATE/ALTER/DROP engine objects;
 it does not reproduce the entire upstream privilege hierarchy. Other privilege families,
 SQL queries and PostgreSQL rules remain outside this change.
+
+## Requirement: a ClickHouse role the session can switch on cannot hide a write grant
+
+When `readonly` is not `1` or `2`, `system.grants` answered, the enabled roles are known and
+neither the user nor an enabled role holds a write access type, the ClickHouse collector SHALL
+ask once which roles the session could still enable: `SELECT user_name, role_name,
+granted_role_name FROM system.role_grants WHERE user_name = currentUser() OR role_name IS NOT
+NULL`. A row with a `user_name` names a role granted directly to the user, which `SET ROLE`
+accepts; a row with a `role_name` names a role granted to that role, which is enabled together
+with it. The reach SHALL be every directly granted role and every role granted to a reached
+role, however deep, each role once. A role-to-role row whose `role_name` is not reached SHALL
+add nothing. Roles already in `system.enabled_roles` are excluded from the reach, because the
+grants question already named them.
+
+When that leaves roles, the collector SHALL ask in one question naming them what they are
+granted: `SELECT role_name, access_type, is_partial_revoke FROM system.grants WHERE role_name
+IN (…)`. An access type the write-family rule above calls writable, on a row that is not a
+partial revoke, SHALL make `RoleFacts.read_only` false, with evidence naming the access type,
+the role that holds it and `SET ROLE`.
+
+An empty `system.role_grants` answer SHALL mean that the session can enable no further role. A
+refused `system.role_grants`, a row in it with a missing, NULL or empty `granted_role_name` or
+with neither a `user_name` nor a `role_name`, a refused grants question for the reached roles,
+and a row in its answer with a missing, NULL or empty `role_name` or `access_type` SHALL NOT
+establish read-only access: the evidence names what went unreported without claiming it
+absent, complete rows are still used, and a proven write grant keeps its positive evidence.
+
+A reported role name SHALL be retained exactly, in the question and in the evidence. In a
+ClickHouse question a role name SHALL be written as a single-quoted literal with every
+backslash and every single quote doubled, in the grants question that names the enabled roles
+as well as in the one that names the reached roles: a literal that leaves a backslash alone
+names a different role or none, and the grants of the real one go unseen.
+
+When the role is found read-only by its grants, its evidence SHALL say that `SET ROLE` reaches
+no other role, or name the reached roles it checked.
+
+The collector SHALL NOT switch roles or write to find out. `readonly=1/2`, an unanswered
+`system.grants`, incomplete enabled roles and a write grant of the user or of an enabled role
+SHALL keep their facts, their evidence and their questions: none of them sends either question
+of this requirement. Column reach and row-policy applicability SHALL stay those of the session
+as it is — its user and its enabled roles. A role made writable here withholds the exact
+runtime SQL, and `dwh.access` blocks through `access.role_writable`. Connection failures SHALL
+propagate.
+
+### Scenario: a granted role that is not enabled blocks
+
+- **GIVEN** `readonly=0`, no enabled role, own grants naming only `SELECT`, a
+  `system.role_grants` answer naming `writer` as granted to the user, and `writer` holding
+  `INSERT`
+- **WHEN** the environment is collected and access is graded
+- **THEN** `read_only` is false, the evidence names `INSERT`, `writer` and `SET ROLE`, and
+  `check_access` reports `access.role_writable` with severity block
+
+### Scenario: a write grant one role deeper blocks
+
+- **GIVEN** the same session, granted `mid`, with `deepwriter` granted to `mid` and holding
+  `ALTER UPDATE`, while `mid` itself holds nothing
+- **WHEN** the environment is collected
+- **THEN** one grants question names `deepwriter` and `mid`, `read_only` is false, and the
+  evidence names `ALTER UPDATE` and `deepwriter`
+
+### Scenario: a role no granted role leads to is not reached (false-reject control)
+
+- **GIVEN** a session granted the select-only role `reader2`, and a `system.role_grants` answer
+  that also carries the role-to-role row `mid` → `deepwriter`, where nothing granted to the
+  session leads to `mid`
+- **WHEN** the environment is collected and access is graded
+- **THEN** the grants question names `reader2` only, `read_only` is true, the evidence names
+  `reader2` as checked, there is no `access.role_writable`, and an eligible exact runtime probe
+  runs as before
+
+### Scenario: nothing further to enable stays read-only (false-reject control)
+
+- **GIVEN** an empty `system.role_grants` answer, or one naming only roles that are already
+  enabled
+- **WHEN** the environment is collected
+- **THEN** `read_only` is true, no grants question for reached roles is sent, and the evidence
+  says that `SET ROLE` reaches no other role
+
+### Scenario: a partial revoke on a reached role is not a write grant
+
+- **GIVEN** a reached role whose only write row is an `INSERT` partial revoke
+- **WHEN** the environment is collected
+- **THEN** `read_only` is true; with a positive `INSERT` row beside it, `read_only` is false
+
+### Scenario: roles granted to each other are read once
+
+- **GIVEN** a session granted `a`, with `b` granted to `a` and `a` granted to `b`
+- **WHEN** the environment is collected
+- **THEN** the collection ends, and one grants question names `a` and `b` once each
+
+### Scenario: an unanswered reach question blocks
+
+- **GIVEN** a refused `system.role_grants`, or a row in its answer with a NULL
+  `granted_role_name` or with neither a `user_name` nor a `role_name`
+- **WHEN** the environment is collected with an exact runtime budget and access is graded
+- **THEN** `read_only` is false, the evidence names `system.role_grants` as unreported or
+  incomplete without claiming a write grant, the exact runtime query is not executed, and
+  `dwh.access` reports `access.role_writable` with severity block
+- **AND** a write grant found through the complete rows keeps its positive evidence
+
+### Scenario: unanswered grants of a reached role block
+
+- **GIVEN** a reached role `writer` whose grants question is refused, or answered with a row
+  that has a NULL `access_type` or a NULL `role_name`
+- **WHEN** the environment is collected and access is graded
+- **THEN** `read_only` is false, the evidence names the grants of `writer` as unreported or
+  incomplete, and `access.role_writable` is a block
+
+### Scenario: the decided cases ask neither question
+
+- **GIVEN** `readonly=1` or `2`, or a refused `system.grants`, or incomplete enabled roles, or
+  a write grant of the user or of an enabled role
+- **WHEN** the environment is collected
+- **THEN** neither `system.role_grants` nor the grants of reached roles are asked about, and
+  the role facts are the same as before this requirement
+
+### Scenario: a role name is retained exactly
+
+- **GIVEN** reached roles named `odd'name`, `wri\ter` and ` writer` (with a leading space)
+- **WHEN** the environment is collected
+- **THEN** the grants question names them as `' writer', 'odd''name', 'wri\\ter'`, and the
+  evidence shows the names unchanged
+
+### Scenario: an enabled role with a backslash in its name keeps its grants in view
+
+- **GIVEN** `readonly=0` and an enabled role named `wri\ter` that holds `ALTER UPDATE`
+- **WHEN** the environment is collected
+- **THEN** the grants question names the role as `'wri\\ter'`, `read_only` is false, and the
+  evidence names `ALTER UPDATE`
+
+### Scenario: the reach changes neither column reach nor policy applicability
+
+- **GIVEN** a reached role that holds `SELECT` on a column the session's user and enabled
+  roles do not, and a row policy that names that role
+- **WHEN** the environment is collected
+- **THEN** `column_reads` reports the column as not readable and the policy as not applying
+  to the session
+
+### Scenario: no ClickHouse question switches or writes
+
+- **GIVEN** any of the sessions above
+- **WHEN** the environment is collected
+- **THEN** every statement the collector sent is a `SELECT`
 
 ## Requirement: the read-only evidence names everything it checked
 

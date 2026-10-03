@@ -83,6 +83,33 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-03 — ClickHouse role probe спрашивает роли, которые сессия может включить:
+  выданная, но не включённая роль (`SET DEFAULT ROLE NONE`) отсутствует в
+  `system.enabled_roles`, её write grant невидим собственному grants-вопросу, а
+  `SET ROLE` (или HTTP-параметр `role`) пишет. Один вопрос к `system.role_grants`
+  называет выданные пользователю роли (строка с `user_name`) и роли, выданные
+  ролям (строка с `role_name`), включаемые вместе с ними на любую глубину; уже
+  включённые роли из охвата исключены. Достижимые роли опрашиваются одним
+  вопросом к `system.grants`: write access type — `read_only=false` с evidence
+  `SET ROLE reaches …`, `dwh.access` — block, exact runtime SQL не исполняется;
+  отказ или неполный ответ — block без утверждения о чужих правах, доказанный
+  write grant сохраняет приоритет. `readonly=1/2`, отказ `system.grants`,
+  неполные enabled roles и собственный write grant прежние и новых вопросов не
+  шлют; `readonly` переключением роли не снимается, имя роли в литерале — с
+  удвоенными обратной косой чертой и кавычкой. Достижимые роли не становятся
+  principals: column reach и policy applicability остаются сессионными.
+  Пользователю гейта, read-only по grants, нужен `SELECT` на `system.role_grants`
+  помимо `system.grants` — иначе `dwh.access` блокируется.
+  `VERIFIER_VERSION` 82 → 83, `CHECK_VERSION` 58 → 59; исторические bundles
+  не переписаны. Выбор — альтернатива №1 synthetic Astra xhigh выбора, давшего
+  T-37. Живые факты сняты на ClickHouse 24.8.14.39 на Mac (одноразовый стенд,
+  удалён). Реализация — GLM-5.3 xhigh через MyFlow `glm-5.3`; после лимита z.ai
+  закончил `gpt-6.1-sol` medium через `sol-high`. Red на HEAD: 25 failed /
+  10 passed; новый модуль: 35 passed. Synthetic Astra xhigh review: 0 findings.
+  Полный offline gate с duckdb: 4087 passed, 4 skipped, 38 deselected, exit 0;
+  Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_CLICKHOUSE_SET_ROLE_REVIEW_2026-10-03.md).
+
 - 2026-10-02 — canonical metric node несёт объявленные `join_paths`, отсортированные
   без одинаковых объявлений; висячий endpoint — `gap.metric_join_dangling`, несколько
   cardinality одного пути — `gap.metric_join_conflict`, оба block. `semantic.diff` именует

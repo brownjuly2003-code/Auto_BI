@@ -19,6 +19,13 @@ stands of the pinned versions:
   to catch the other case: `readonly=0` with no write privilege granted is read-only too.
   `max(Date)` over an empty table answers `1970-01-01` rather than NULL, so the row count
   travels with the reading — otherwise an empty mart reads as fifty years stale.
+  A role granted to the user but not enabled is absent from `system.enabled_roles`, so
+  its grants are asked about through `system.role_grants` after the own grants come back
+  clean: `SET ROLE` to such a role (or the HTTP `role` parameter) writes, and a switch
+  does not move `readonly` on 24.8.14.39 — neither `SET ROLE` nor the `role` parameter
+  applies a role's settings. A role name is an arbitrary string, so in a ClickHouse
+  question it is written with every backslash and every single quote doubled: a literal
+  that leaves a backslash alone names another role or none.
 * **PostgreSQL 14.24** (the `numeric`/privilege behaviour Greenplum and Greengage inherit) —
   `transaction_read_only` is `off` for a SELECT-only role, so the session GUC says nothing;
   `has_table_privilege` per in-scope mart is the answer, and a superuser is writable
@@ -149,6 +156,17 @@ _CH_WRITE_GRANTS = frozenset(
     {"ALL", "INSERT", "ALTER", "CREATE", "DROP", "TRUNCATE", "OPTIMIZE", "UNDROP TABLE"}
 )
 
+#: Which roles the session could still enable. A row with `user_name` is a role granted
+#: directly to the user — what `SET ROLE` accepts — and a row with `role_name` is granted
+#: to that role, enabled together with it however deep (ClickHouse 24.8.14.39, live).
+#: The WHERE keeps the session's own rows beside every role-to-role row, including those
+#: of roles this session cannot reach: which half a row is, is decided here, not by the
+#: engine — whose access catalog does not join.
+_CH_ROLE_GRANTS = (
+    "SELECT user_name, role_name, granted_role_name FROM system.role_grants "
+    "WHERE user_name = currentUser() OR role_name IS NOT NULL"
+)
+
 #: SQLSTATEs of a Postgres refusal: no privilege, no such table, no such schema. Everything
 #: else — a dropped connection above all — is not an access fact and is re-raised.
 _PG_REFUSALS = frozenset({"42501", "42P01", "3F000"})
@@ -175,6 +193,9 @@ class _ChSession(NamedTuple):
     #: The user and its enabled roles — a policy or a grant naming any of them names it.
     principals: frozenset[str]
     roles_known: bool
+    #: The enabled role names alone (`principals` also holds the user name), kept for the
+    #: reach question: a role already enabled was named by the grants question.
+    enabled_roles: frozenset[str]
     #: The `readonly` setting of the session, as the engine reports it (`None` if unset).
     readonly: str | None
     grants: list[dict[str, Any]] | None
@@ -196,7 +217,7 @@ def collect(
         tables = [_postgres_table(run_query, item) for item in questions.tables]
     else:
         session = _clickhouse_session(run_query)
-        role = _clickhouse_role(session)
+        role = _clickhouse_role(run_query, session)
         tables = [_clickhouse_table(run_query, item, session) for item in questions.tables]
     plans = [
         _estimate(run_query, item, dialect, postgres=postgres)
@@ -388,7 +409,7 @@ def _clickhouse_session(run_query: RunQuery) -> _ChSession:
     # The roles are named in the grants query rather than sub-selected: a privilege can reach
     # this session through a role as easily as through its user name, and one flat condition
     # is the same question on an engine whose access catalog does not join.
-    listed = ", ".join(_literal(role) for role in roles)
+    listed = ", ".join(_ch_literal(role) for role in roles)
     named = f" OR role_name IN ({listed})" if roles else ""
     grants = _ask(
         run_query,
@@ -400,12 +421,13 @@ def _clickhouse_session(run_query: RunQuery) -> _ChSession:
         user=user,
         principals=frozenset(principals),
         roles_known=roles_known,
+        enabled_roles=frozenset(roles),
         readonly=readonly,
         grants=grants,
     )
 
 
-def _clickhouse_role(session: _ChSession) -> RoleFacts:
+def _clickhouse_role(run_query: RunQuery, session: _ChSession) -> RoleFacts:
     """`readonly` decides; grants are the second chance to be read-only, not the first."""
     setting = session.readonly
     if setting in {"1", "2"}:
@@ -430,12 +452,14 @@ def _clickhouse_role(session: _ChSession) -> RoleFacts:
         for row in session.grants
         if not _truthy(row.get("is_partial_revoke"))
     }
-    writable = sorted(
-        access_type
-        for access_type in granted
-        if access_type in _CH_WRITE_GRANTS or access_type.startswith(("ALTER ", "CREATE ", "DROP "))
-    )
-    if not writable and not session.roles_known:
+    writable = sorted(access_type for access_type in granted if _ch_write_access(access_type))
+    if writable:
+        return RoleFacts(
+            name=session.user,
+            read_only=False,
+            evidence=f"readonly={setting or 'unset'}, granted {', '.join(writable)}",
+        )
+    if not session.roles_known:
         return RoleFacts(
             name=session.user,
             read_only=False,
@@ -444,15 +468,130 @@ def _clickhouse_role(session: _ChSession) -> RoleFacts:
                 "incomplete, so read-only access is not established"
             ),
         )
+    # Which roles the session could still enable. `system.enabled_roles` is the session's
+    # own choice, so a granted-but-not-enabled role is absent from it while `SET ROLE` to
+    # it writes (ClickHouse 24.8.14.39, live); the collector never switches, it only asks.
+    gaps: list[str] = []
+    pairs: list[tuple[str, str]] = []
+    others = _ch_reached_roles(run_query, session, gaps)
+    if others:
+        _ch_reached_role_grants(run_query, others, gaps, pairs)
+    ro = f"readonly={setting or 'unset'}"
+    if pairs:
+        return RoleFacts(
+            name=session.user,
+            read_only=False,
+            evidence=(
+                f"{ro}, SET ROLE reaches "
+                + ", ".join(f"{access} granted to {role}" for access, role in sorted(set(pairs)))
+            ),
+        )
+    if gaps:
+        return RoleFacts(
+            name=session.user,
+            read_only=False,
+            evidence=(
+                f"{ro}, unreported or incomplete: "
+                + "; ".join(gaps)
+                + ", so read-only access is not established"
+            ),
+        )
+    if others:
+        return RoleFacts(
+            name=session.user,
+            read_only=True,
+            evidence=(
+                f"{ro}, no write access type granted, also not to the roles SET ROLE "
+                f"reaches ({', '.join(others)})"
+            ),
+        )
     return RoleFacts(
         name=session.user,
-        read_only=not writable,
-        evidence=(
-            f"readonly={setting or 'unset'}, granted {', '.join(writable)}"
-            if writable
-            else f"readonly={setting or 'unset'}, no write access type granted"
-        ),
+        read_only=True,
+        evidence=f"{ro}, no write access type granted, and SET ROLE reaches no other role",
     )
+
+
+def _ch_reached_roles(run_query: RunQuery, session: _ChSession, gaps: list[str]) -> list[str]:
+    """The roles `SET ROLE` could still enable, minus the ones already enabled.
+
+    The transitive closure ends on its own: roles granted to each other are read once,
+    and a role-to-role row whose holder is not reached adds nothing — the answer also
+    carries the rows of roles this session cannot switch to.
+    """
+    rows = _ask(run_query, _CH_ROLE_GRANTS)
+    if rows is None:
+        _note_gap(gaps, "system.role_grants")
+        return []
+    direct: list[str] = []
+    to_roles: dict[str, list[str]] = {}
+    for row in rows:
+        granted = row.get("granted_role_name")
+        if granted is None or str(granted) == "":
+            _note_gap(gaps, "system.role_grants")
+            continue
+        user = row.get("user_name")
+        holder = row.get("role_name")
+        if user is not None and str(user) != "":
+            direct.append(str(granted))
+        elif holder is not None and str(holder) != "":
+            to_roles.setdefault(str(holder), []).append(str(granted))
+        else:
+            _note_gap(gaps, "system.role_grants")
+    reach: set[str] = set()
+    pending = list(direct)
+    while pending:
+        role = pending.pop()
+        if role in reach:
+            continue
+        reach.add(role)
+        pending.extend(to_roles.get(role, ()))
+    return sorted(reach - session.enabled_roles)
+
+
+def _ch_reached_role_grants(
+    run_query: RunQuery, roles: list[str], gaps: list[str], pairs: list[tuple[str, str]]
+) -> None:
+    """What the reached roles hold, in one question naming them all.
+
+    A role with no grants has no row, so absence from the answer is an answer; a refused
+    question or an unnamed, untyped row is not (invariant 3). A partial revoke is not a
+    grant — the same rule the own grants read with — and a row naming a role the probe
+    did not ask about says nothing about this session.
+    """
+    listed = ", ".join(_ch_literal(role) for role in roles)
+    rows = _ask(
+        run_query,
+        "SELECT role_name, access_type, is_partial_revoke FROM system.grants "
+        f"WHERE role_name IN ({listed})",
+    )
+    gap = f"grants of the roles SET ROLE reaches ({', '.join(roles)})"
+    if rows is None:
+        _note_gap(gaps, gap)
+        return
+    wanted = set(roles)
+    for row in rows:
+        role = row.get("role_name")
+        access = row.get("access_type")
+        if role is None or str(role) == "" or access is None or str(access) == "":
+            _note_gap(gaps, gap)
+            continue
+        name = str(role)
+        if name not in wanted or _truthy(row.get("is_partial_revoke")):
+            continue
+        if _ch_write_access(str(access)):
+            pairs.append((str(access), name))
+
+
+def _ch_write_access(access_type: str) -> bool:
+    """The one write-family rule: exact names and canonical `VERB …` leaf access types."""
+    return access_type in _CH_WRITE_GRANTS or access_type.startswith(("ALTER ", "CREATE ", "DROP "))
+
+
+def _note_gap(gaps: list[str], gap: str) -> None:
+    """Record an unanswered half once: the evidence names each gap a single time."""
+    if gap not in gaps:
+        gaps.append(gap)
 
 
 def _clickhouse_table(
@@ -1048,6 +1187,17 @@ def _refused(error: Exception) -> bool:
 def _literal(value: str) -> str:
     """A single-quoted literal with quotes doubled — these are catalog lookups, not user SQL."""
     escaped = value.replace("'", "''")
+    return f"'{escaped}'"
+
+
+def _ch_literal(value: str) -> str:
+    """A ClickHouse string literal: every backslash doubled first, then every quote.
+
+    A role name is an arbitrary string, and a backslash left alone escapes the next
+    character: `role_name IN ('wri\\ter')` named no role although `wri\\ter` held
+    `ALTER UPDATE`, and `'tail\\'` was a syntax error (ClickHouse 24.8.14.39, live).
+    """
+    escaped = value.replace("\\", "\\\\").replace("'", "''")
     return f"'{escaped}'"
 
 

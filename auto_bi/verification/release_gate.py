@@ -423,7 +423,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: a changed cardinality as review where it was semantic.unchanged, an added path as advisory.
 #: semantic.gaps blocks on a metric join path with an endpoint the model does not declare
 #: or declared with more than one cardinality.
-VERIFIER_VERSION = "82"
+#: 83 — a ClickHouse role granted to the session user but not enabled is now asked about
+#: through system.role_grants and system.grants of the reached roles, so a write grant
+#: verifier 82 left unseen on a role `SET ROLE` reaches blocks dwh.access where it passed,
+#: and role names are written in those questions with every backslash and quote doubled.
+VERIFIER_VERSION = "83"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -644,7 +648,11 @@ VERIFIER_VERSION = "82"
 #: a changed cardinality as review where it was semantic.unchanged, an added path as advisory.
 #: semantic.gaps blocks on a metric join path with an endpoint the model does not declare
 #: or declared with more than one cardinality.
-CHECK_VERSION = "58"
+#: 59 — a ClickHouse role granted but not enabled is asked about through system.role_grants
+#: and the grants of the roles SET ROLE reaches, so dwh.access blocks with
+#: access.role_writable where check 58 recorded read-only over a hidden write grant;
+#: role names are written with backslashes doubled.
+CHECK_VERSION = "59"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

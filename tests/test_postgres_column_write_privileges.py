@@ -490,23 +490,36 @@ def test_clickhouse_role_facts_and_questions_are_unchanged(profile: bool) -> Non
         evidence=(
             "readonly=1, so the session refuses writes whatever it is granted"
             if profile
-            else "readonly=0, no write access type granted"
+            else "readonly=0, no write access type granted, and SET ROLE reaches no other role"
         ),
     )
     assert_access(scope, facts, False)
-    assert engine.asked == [
+    asked = [
         "SELECT currentUser() AS value",
         "SELECT value FROM system.settings WHERE name = 'readonly'",
         "SELECT role_name FROM system.enabled_roles",
         "SELECT access_type, database, table, column, is_partial_revoke FROM system.grants "
         "WHERE user_name = currentUser()",
-        "SELECT engine, sorting_key, partition_key FROM system.tables "
-        "WHERE database = 'dm' AND name = 'sales_daily'",
-        'SELECT count() AS rows_seen, max("date") AS max_event_time FROM "dm"."sales_daily"',
-        "SELECT short_name, select_filter, is_restrictive, apply_to_all, apply_to_list, "
-        "apply_to_except FROM system.row_policies WHERE database = 'dm' AND table = 'sales_daily'",
-        "SELECT name, type FROM system.columns WHERE database = 'dm' AND table = 'sales_daily'",
     ]
+    if not profile:
+        # clean grants by a session that is not readonly: which roles `SET ROLE` could
+        # still enable is asked once, right after the own grants and before any mart
+        asked.append(
+            "SELECT user_name, role_name, granted_role_name FROM system.role_grants "
+            "WHERE user_name = currentUser() OR role_name IS NOT NULL"
+        )
+    asked.extend(
+        [
+            "SELECT engine, sorting_key, partition_key FROM system.tables "
+            "WHERE database = 'dm' AND name = 'sales_daily'",
+            'SELECT count() AS rows_seen, max("date") AS max_event_time FROM "dm"."sales_daily"',
+            "SELECT short_name, select_filter, is_restrictive, apply_to_all, apply_to_list, "
+            "apply_to_except FROM system.row_policies WHERE database = 'dm' "
+            "AND table = 'sales_daily'",
+            "SELECT name, type FROM system.columns WHERE database = 'dm' AND table = 'sales_daily'",
+        ]
+    )
+    assert engine.asked == asked
     assert not any("has_any_column_privilege" in sql for sql in engine.asked)
     assert not any(WRITE_STATEMENT.match(sql) for sql in engine.asked)
 

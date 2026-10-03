@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-02
+**Обновлено:** 2026-10-03
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,9 +10,37 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=82`, `CHECK_VERSION=58`
+**Версии evidence:** `VERIFIER_VERSION=83`, `CHECK_VERSION=59`
 
-**Последний срез (2026-10-02):** canonical metric node несёт объявленные `join_paths`:
+**Последний срез (2026-10-03):** ClickHouse role probe спрашивает роли, которые
+сессия может включить: выданная, но не включённая роль (`SET DEFAULT ROLE NONE`)
+отсутствует в `system.enabled_roles`, её write grant невидим собственному
+grants-вопросу, а `SET ROLE` (или HTTP-параметр `role`) пишет. Один вопрос к
+`system.role_grants` называет выданные пользователю роли (строка с `user_name`)
+и роли, выданные ролям (строка с `role_name`), включаемые вместе с ними на любую
+глубину; уже включённые роли из охвата исключены. Достижимые роли опрашиваются
+одним вопросом к `system.grants`: write access type — `read_only=false` с
+evidence `SET ROLE reaches …`, `dwh.access` — block, exact runtime SQL
+не исполняется. Отказ или неполный ответ любого из двух вопросов не подтверждает
+read-only; доказанный write grant сохраняет приоритет, а полная строка
+неполного ответа используется. `readonly=1/2`, отказ `system.grants`, неполные
+enabled roles и собственный write grant сохраняют факты, evidence и вопросы,
+новых вопросов не шлют; `readonly` переключением роли не снимается (24.8.14.39).
+Имя роли в литерале вопроса пишется с удвоенными обратной косой чертой и
+кавычкой: одиночная черта называет другую роль или никакую. Достижимые роли
+не становятся principals: column reach и policy applicability остаются
+сессионными. Пользователю гейта, read-only по grants, нужен `SELECT` на
+`system.role_grants` помимо `system.grants` — иначе `dwh.access` блокируется.
+Версии evidence 82 → 83 / 58 → 59; исторические bundles
+не переписаны. Выбор — альтернатива №1 synthetic Astra xhigh выбора, давшего
+T-37. Живые факты сняты на ClickHouse 24.8.14.39 на Mac (одноразовый стенд,
+удалён). Реализация — GLM-5.3 xhigh через MyFlow `glm-5.3`; после лимита z.ai
+закончил `gpt-6.1-sol` medium через `sol-high`. Synthetic Astra xhigh review:
+0 findings. Полный offline gate с duckdb: 4087 passed, 4 skipped, 38 deselected,
+exit 0; Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
+[Проверки и границы](DECISIONOPS_CLICKHOUSE_SET_ROLE_REVIEW_2026-10-03.md).
+
+**Предыдущий срез (2026-10-02):** canonical metric node несёт объявленные `join_paths`:
 отсортированы, одинаковые объявления один раз; висячий endpoint —
 `gap.metric_join_dangling`, путь с несколькими cardinality — `gap.metric_join_conflict`,
 оба block. Удалённый путь — `metric.join_path_removed` (block), изменённая cardinality —

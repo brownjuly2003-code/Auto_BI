@@ -590,7 +590,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=82`, `CHECK_VERSION=58`.
+`VERIFIER_VERSION=83`, `CHECK_VERSION=59`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -753,6 +753,20 @@ Gate выполняет шаги в фиксированном порядке:
   включает права записи. Evidence сохраняет названия grants; профиль readonly=1/2
   и partial-revoke правила прежние. Это классификация verb families, не копия всей
   privilege hierarchy; `SHOW CREATE`, `ALTERED`, `SYSTEM DROP ...` не совпадают.
+  Роль, выданная пользователю, но не включённая, отсутствует в
+  `system.enabled_roles`, поэтому после чистых собственных grants идут ещё два
+  вопроса: `system.role_grants` — какие роли сессия может включить (строка с
+  `user_name` — роль, выданная пользователю напрямую и принимаемая `SET ROLE`;
+  строка с `role_name` — роль, выданная роли и включаемая вместе с ней, на любую
+  глубину; уже включённые роли из охвата исключены), и затем один вопрос к
+  `system.grants` о grants достижимых ролей. Write access type среди них —
+  `access.role_writable`; отказ или неполный ответ любого из двух вопросов —
+  block, без утверждения о ненаблюдаемых правах. `readonly=1/2` переключением
+  роли не снимается (24.8.14.39: ни `SET ROLE`, ни HTTP-параметр `role` не
+  применяют настроек роли), а имя роли в литерале вопроса пишется с удвоенными
+  обратной косой чертой и кавычкой: одиночная черта называет другую роль или
+  никакую. ClickHouse-гейт-пользователь, read-only по grants, нуждается в `SELECT`
+  на `system.role_grants` помимо `system.grants`, иначе `dwh.access` блокируется.
   Column reach неизвестен; пустой policy catalog остаётся `[]`, непустой — unknown.
   Security сообщает `security.not_observed`, не выдумывая unreadable/filtered.
   Unknown reach не доказывает физическое отсутствие скрытой ClickHouse-колонки
@@ -785,8 +799,8 @@ Gate выполняет шаги в фиксированном порядке:
   и тогда, когда текущая роль их наследует, — членство не передаёт атрибут `SUPERUSER`.
   Их табличные и колоночные write-права спрашиваются по каждой витрине одним вопросом,
   а достижимый superuser, пишущая роль или неотвеченный вопрос — `access.role_writable`.
-  Границы — `SECURITY DEFINER`-функции, ClickHouse-роли, выданные, но не включённые,
-  BYPASSRLS достижимой роли, `CREATEROLE`/`ADMIN OPTION` и NOLOGIN
+  Границы — `SECURITY DEFINER`-функции, BYPASSRLS достижимой роли,
+  `CREATEROLE`/`ADMIN OPTION`/`ROLE ADMIN` и NOLOGIN
   current role (NULL `usesuper` даёт ложный block). Пустая витрина —
   `freshness.unknown`, потому что `max(Date)` по нулю строк в ClickHouse равен `1970-01-01`,
   а не NULL. `dwh.security`: досягаемость роли, через которую собрано evidence, — колонка

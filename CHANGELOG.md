@@ -6,6 +6,25 @@
 
 ### Changed
 
+- **Выданная, но не включённая ClickHouse-роль больше не может скрыть право записи.**
+  Роль, выданная пользователю с `SET DEFAULT ROLE NONE`, отсутствует в
+  `system.enabled_roles`, поэтому grants-вопрос её не видел, хотя `SET ROLE`
+  (или HTTP-параметр `role`) пишет. После чистых собственных grants зонд задаёт
+  один вопрос к `system.role_grants` — строка с `user_name` означает роль,
+  выданную пользователю напрямую, строка с `role_name` — роль, выданную роли
+  и включаемую вместе с ней на любую глубину; уже включённые роли исключены.
+  Достижимые роли опрашиваются одним вопросом к `system.grants`: write access
+  type даёт `read_only=false` с evidence `SET ROLE reaches …`, `dwh.access` —
+  block, exact runtime SQL не исполняется. Отказ или неполный ответ любого из
+  двух вопросов не подтверждает read-only; доказанный write grant сохраняет
+  приоритет. `readonly=1/2`, отказ `system.grants`, неполные enabled roles и
+  собственный write grant сохраняют факты, evidence и вопросы. Имя роли в
+  литерале пишется с удвоенными обратной косой чертой и кавычкой: одиночная
+  черта называет другую роль или никакую. Пользователю гейта, read-only по
+  grants, нужен `SELECT` на `system.role_grants` помимо `system.grants`: без
+  него `dwh.access` блокируется. Verifier 82 → 83, check 58 → 59;
+  historical bundles прежние.
+
 - **Объявленные join paths метрики сохраняются в canonical snapshot и именуются в semantic diff.**
   Пути отсортированы, одинаковые объявления сохраняются один раз; висячий endpoint —
   `gap.metric_join_dangling`, несколько cardinality одного пути — `gap.metric_join_conflict`,

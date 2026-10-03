@@ -745,7 +745,7 @@ def test_clickhouse_collection_ignores_set_role_reachability(profile: bool) -> N
         evidence=(
             "readonly=1, so the session refuses writes whatever it is granted"
             if profile
-            else "readonly=0, no write access type granted"
+            else "readonly=0, no write access type granted, and SET ROLE reaches no other role"
         ),
     )
     assert not any("session_user" in sql for sql in engine.asked)
