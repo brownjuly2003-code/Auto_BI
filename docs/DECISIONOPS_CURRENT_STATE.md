@@ -10,9 +10,30 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=80`, `CHECK_VERSION=56`
+**Версии evidence:** `VERIFIER_VERSION=81`, `CHECK_VERSION=57`
 
-**Последний срез (2026-10-02):** перед компиляцией поставляемого дашборда
+**Последний срез (2026-10-02):** canonical metric node несёт объявленную
+`freshness`: `max_age` как записан в контракте, quality preconditions отсортированы
+без повторов. Native projection version 1 → 2 перемещает canonical digest каждого
+native snapshot с метриками; snapshot без метрик сохраняет digest.
+`semantic.diff` именует ослабление как `metric.freshness_relaxed` (review),
+ужесточение как `metric.freshness_tightened` и равное окно в другой записи как
+`metric.freshness_restated` (advisory); смешанная правка именует оба направления.
+Ослабление достигает verified assets метрики как `asset.metric_changed`.
+Прежние digest-привязки получают `asset.stale_snapshot` / `provenance.other_snapshot`
+(review) до повторной верификации. `dwh.freshness` по-прежнему сравнивает витрины
+с `freshness_max_age` продукта. Окна сравниваются в точных целых секундах: очень
+длинное или записанное тысячами цифр объявленное окно больше не роняет gate в diff,
+freshness витрин и provenance stale-capture. Версии evidence 80 → 81 / 56 → 57;
+исторические bundles не переписаны. Выбор — альтернатива №2 synthetic Astra xhigh
+выбора, давшего T-35; реализация `gpt-6.1-sol` medium через MyFlow `sol-high`.
+Synthetic Astra xhigh review: F-T-36-1 и F-T-36-3 воспроизведены и исправлены,
+третий проход — 0 новых findings. Полный offline gate с duckdb: 4023 passed,
+4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+Human/production acceptance не заявляется.
+[Проверки и границы](DECISIONOPS_METRIC_FRESHNESS_REVIEW_2026-10-02.md).
+
+**Предыдущий срез (2026-10-02):** перед компиляцией поставляемого дашборда
 `bi.contract` валидирует spec против candidate-модели тем же `validate_spec`,
 что и build path перед вызовом BI; операторский `raw_sql` разрешён.
 Spec с ошибками не компилируется и payload'ов не получает: проверка — block
@@ -1063,6 +1084,7 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 identity-ответа; доказанный superuser сохраняет прежнее правило.
 Закрыто скрытие write-привилегий за `SET ROLE`-достижимой ролью (T-34, verifier 79 / check 55).
 Закрыто прохождение невалидного поставляемого spec через `bi.contract` (T-35, verifier 80 / check 56).
+Закрыто выпадение объявленной freshness метрики из canonical snapshot и semantic diff (T-36, verifier 81 / check 57).
 Следующий выявленный Astra-срез закрыт:
 [`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки

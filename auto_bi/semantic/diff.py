@@ -20,7 +20,7 @@ from enum import StrEnum
 
 from pydantic import Field
 
-from auto_bi.scalars import Sha256Digest
+from auto_bi.scalars import Sha256Digest, duration_seconds
 from auto_bi.semantic.gateway import (
     FieldNode,
     MetricNode,
@@ -470,6 +470,7 @@ def _diff_metric_attrs(
             )
         )
     changes.extend(_budget_change(old, new, impact))
+    changes.extend(_freshness_change(old, new, impact))
     return changes
 
 
@@ -532,6 +533,59 @@ def _budget_change(
                 impact,
             )
         )
+    return changes
+
+
+def _freshness_change(
+    old: MetricNode, new: MetricNode, impact: SemanticImpact
+) -> list[SemanticChange]:
+    """A moved freshness promise, split by which way it moved.
+
+    A longer or unorderable window, or a dropped quality precondition, can serve older
+    or less checked numbers to consumers: only a person can say that was intended.
+    Tightening the promise is advisory, as is restating the same fixed window: neither
+    weakens it, but every digest move must still have a name (§8.3).
+    """
+    if old.freshness == new.freshness:
+        return []
+    relaxed_items: list[str] = []
+    tightened_items: list[str] = []
+    restated_items: list[str] = []
+    if old.freshness.max_age != new.freshness.max_age:
+        before = duration_seconds(old.freshness.max_age)
+        after = duration_seconds(new.freshness.max_age)
+        item = f"max_age {old.freshness.max_age} -> {new.freshness.max_age}"
+        if before is None or after is None:
+            relaxed_items.append(f"{item}, which cannot be ordered")
+        elif after > before:
+            relaxed_items.append(item)
+        elif after < before:
+            tightened_items.append(item)
+        else:
+            restated_items.append(f"{item}, the same length")
+    before_preconditions = set(old.freshness.quality_preconditions)
+    after_preconditions = set(new.freshness.quality_preconditions)
+    for name in sorted(before_preconditions - after_preconditions):
+        relaxed_items.append(f"quality precondition dropped: {name}")
+    for name in sorted(after_preconditions - before_preconditions):
+        tightened_items.append(f"quality precondition added: {name}")
+    changes: list[SemanticChange] = []
+    for direction, severity, items in (
+        ("relaxed", Severity.REVIEW, relaxed_items),
+        ("tightened", Severity.ADVISORY, tightened_items),
+        ("restated", Severity.ADVISORY, restated_items),
+    ):
+        if items:
+            changes.append(
+                _change(
+                    f"metric.freshness_{direction}",
+                    ChangeKind.MODIFIED,
+                    severity,
+                    new.id,
+                    f"freshness {direction}: {'; '.join(items)}",
+                    impact,
+                )
+            )
     return changes
 
 

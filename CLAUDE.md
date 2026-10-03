@@ -83,6 +83,26 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-02 — metric node canonical snapshot несёт объявленную `freshness`:
+  `max_age` как объявлен, quality preconditions отсортированы без повторов.
+  `semantic.diff` именует ослабление как `metric.freshness_relaxed` (review),
+  ужесточение как `metric.freshness_tightened`, равное окно в другой записи как
+  `metric.freshness_restated` (advisory). Native projection version 1 → 2 перемещает
+  canonical digest каждого native snapshot с метриками; snapshot без метрик сохраняет
+  digest. Прежние digest-привязки требуют повторной верификации.
+  Ослабление достигает verified assets как `asset.metric_changed`; `dwh.freshness`
+  сохраняет окно продукта. Окна сравниваются в точных целых секундах: очень длинное
+  или записанное тысячами цифр объявленное окно больше не роняет gate в diff,
+  freshness витрин и provenance stale-capture. `VERIFIER_VERSION` 80 → 81,
+  `CHECK_VERSION` 56 → 57; исторические bundles не переписаны. Выбор — альтернатива
+  №2 synthetic Astra xhigh выбора, давшего T-35. Реализовано `gpt-6.1-sol` medium
+  через MyFlow `sol-high`. Red на HEAD: 13 failed / 2 passed. Synthetic Astra xhigh
+  review: F-T-36-1 (окно длиннее предела `timedelta`) и F-T-36-3 (компонент длиннее
+  предела одного `int()`) воспроизведены и исправлены, третий проход — 0 новых
+  findings. Полный offline gate с duckdb: 4023 passed, 4 skipped, 38 deselected,
+  exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_METRIC_FRESHNESS_REVIEW_2026-10-02.md).
+
 - 2026-10-02 — `bi.contract` перед компиляцией валидирует поставляемый spec
   против candidate-модели тем же `validate_spec`, что и build path перед
   вызовом BI; операторский `raw_sql` разрешён. Spec с ошибками не компилируется

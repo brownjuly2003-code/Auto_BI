@@ -36,6 +36,7 @@ from auto_bi.semantic.metric_contract import (
     MetricBudget,
     MetricContract,
     MetricFormula,
+    MetricFreshness,
     MetricGrain,
     MetricLifecycle,
     MetricTime,
@@ -53,7 +54,9 @@ from auto_bi.strict import StrictModel
 
 #: Generation of the native canonical projection. Bumped when the graph shape changes,
 #: because that changes every canonical digest and therefore every snapshot identity.
-NATIVE_SOURCE_VERSION = "1"
+#: 2 — metric nodes now carry freshness, moving the canonical digest of every native
+#: snapshot with metrics; a snapshot without metrics keeps its digest.
+NATIVE_SOURCE_VERSION = "2"
 
 NATIVE_CAPABILITIES = ["fields", "joins", "metric_contracts", "physical_keys"]
 
@@ -130,6 +133,9 @@ class MetricNode(StrictModel):
     #: belongs to a different version of the metric. `None` is "declares no bound", which
     #: `MetricContract` already normalises `budgets: {}` into.
     budgets: MetricBudget | None = None
+    #: The contract's declared freshness is part of the metric's meaning (§7.3), so it
+    #: lives in the graph: changing it moves the canonical digest and is named in the diff.
+    freshness: MetricFreshness
 
 
 class SemanticGraph(StrictModel):
@@ -397,4 +403,8 @@ def _metric_node(contract: MetricContract, known: set[str], gaps: list[SemanticG
         policy_refs=list(contract.policy_refs),
         fields=sorted(dependencies),
         budgets=contract.budgets,
+        freshness=MetricFreshness(
+            max_age=contract.freshness.max_age,
+            quality_preconditions=sorted(set(contract.freshness.quality_preconditions)),
+        ),
     )

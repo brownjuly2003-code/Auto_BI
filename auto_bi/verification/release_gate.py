@@ -410,7 +410,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: historical bundles are not rewritten.
 #: 80 — the same inputs now give bi.contract evidence with an invalid list and no BI
 #: payloads for delivered specs that do not validate against the candidate model.
-VERIFIER_VERSION = "80"
+#: 81 — snapshots carry metric freshness (native projection version 2), moving the
+#: canonical digest of every native snapshot with metrics; a snapshot without metrics keeps
+#: its digest. semantic.diff names relaxed freshness as review where it was
+#: semantic.unchanged, and tightened or restated freshness as advisory. Fixed windows are
+#: compared in exact integer seconds however many digits a component has: windows too long
+#: for timedelta or for one int() conversion now grade instead of raising in semantic.diff,
+#: dwh.freshness and the provenance stale-capture rule.
+VERIFIER_VERSION = "81"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -618,7 +625,14 @@ VERIFIER_VERSION = "80"
 #: the reachable roles it checked. ClickHouse is unchanged.
 #: 56 — bi.contract blocks with bi.spec_invalid when a delivered spec does not validate
 #: against the candidate model, where it passed or only gave bi.filter_unwired before.
-CHECK_VERSION = "56"
+#: 57 — semantic.diff grades relaxed metric freshness as review where it was
+#: semantic.unchanged, tightened or restated freshness as advisory; snapshots now carry
+#: freshness, moving the canonical digest of every native snapshot with metrics (native
+#: projection version 2); a snapshot without metrics keeps its digest. Fixed windows are
+#: compared in exact integer seconds however many digits a component has: windows too long
+#: for timedelta or for one int() conversion now grade instead of raising in semantic.diff,
+#: dwh.freshness and the provenance stale-capture rule.
+CHECK_VERSION = "57"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

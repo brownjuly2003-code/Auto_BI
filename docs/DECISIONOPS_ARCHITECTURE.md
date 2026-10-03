@@ -312,6 +312,9 @@ actions:
 - physical budgets;
 - lineage refs и verified asset refs.
 
+Metric node canonical graph несёт `freshness`: `max_age` как объявлен,
+preconditions отсортированы без повторов; это переместило native projection на version 2.
+
 Порядок разрешения формулы: external governed reference → typed Auto_BI
 expression → reviewed parameterized SQL. Raw SQL не становится дефолтом.
 
@@ -584,7 +587,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=80`, `CHECK_VERSION=56`.
+`VERIFIER_VERSION=81`, `CHECK_VERSION=57`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -896,10 +899,15 @@ Gate выполняет шаги в фиксированном порядке:
 | Добавлена необязательная dimension | pass/advisory |
 | Formula, numerator/denominator, grain или additivity | review/block по impact |
 | Timezone/calendar/null policy | block для affected verified assets |
+| Freshness/data-quality preconditions метрики | ослаблены (длиннее окно, неупорядочиваемое окно, снят precondition) — review; ужесточены или то же окно записано иначе — advisory |
 | Удалён field/metric/join path | block |
 | Policy/classification ослаблена | block + security finding |
 | Physical key/partition изменены | re-run physical gate |
 | External field не отобразился в canonical graph | explicit gap, не silent pass |
+
+Изменения названы `metric.freshness_relaxed`, `metric.freshness_tightened` и
+`metric.freshness_restated`; одна правка может назвать несколько направлений.
+`dwh.freshness` по-прежнему грейдит витрины против `freshness_max_age` продукта.
 
 Impact graph строится по stable refs:
 

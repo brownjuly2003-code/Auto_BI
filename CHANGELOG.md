@@ -6,6 +6,22 @@
 
 ### Changed
 
+- **Объявленная freshness метрики сохраняется в canonical snapshot и именуется в semantic diff.**
+  `max_age` сохраняется как объявлен, quality preconditions отсортированы без повторов.
+  Ослабление окна или снятие precondition — `metric.freshness_relaxed` (review),
+  ужесточение — `metric.freshness_tightened`, равное окно в другой записи —
+  `metric.freshness_restated` (advisory). Canonical digest каждого native snapshot
+  с метриками перемещается (native projection version 1 → 2), поэтому verified assets
+  и result attestations, привязанные к его прежнему digest, получают
+  `asset.stale_snapshot` / `provenance.other_snapshot` (review) до повторной
+  верификации; snapshot без метрик сохраняет digest. Ослабленная freshness
+  достигает verified assets метрики как `asset.metric_changed`, как и ослабленный
+  потолок стоимости. `dwh.freshness` по-прежнему грейдит витрины против окна продукта.
+  Окна сравниваются в точных целых секундах: очень длинное или записанное
+  тысячами цифр объявленное окно больше не роняет gate в diff, freshness витрин
+  и provenance stale-capture. Verifier 80 → 81, check 56 → 57; historical
+  bundles прежние.
+
 - **Поставляемый дашборд валидируется против candidate-модели до компиляции BI contract.**
   `bi.contract` использует тот же `validate_spec`, что и build path перед вызовом
   BI, с разрешённым операторским `raw_sql`. Spec с ошибками не компилируется
