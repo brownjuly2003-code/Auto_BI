@@ -188,6 +188,10 @@ key можно повторить во время ротации. Без signing
 dashboard spec — файл `<segment>@<version>.yaml` (версия в имени, чтобы продукт, запинненный
 на `@7`, не подхватил вёрстку `@8`); assets — YAML `VerifiedAsset`; results — `{asset id:
 ResultSet}` с кандидатными ответами, снятыми вне гейта.
+Candidate ref должен держать каждую запинненную продуктом метрику ровно одним
+контрактом на запинненной версии, иначе `contracts.validate` блокирует выпуск:
+`metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,
+`metric_ref.candidate_absent`.
 
 Для агрегатного результата asset может объявить проверки в `tolerance.aggregate_checks`.
 Они типизированы по `kind`: `partition_conservation` (сумма частей равна total), `share_sum`

@@ -590,7 +590,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=84`, `CHECK_VERSION=60`.
+`VERIFIER_VERSION=85`, `CHECK_VERSION=61`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -671,6 +671,19 @@ Gate выполняет шаги в фиксированном порядке:
 
 Реализовано в `verification/release_gate.py`. Что важно в реализации:
 
+- Шаг 1: validation резолвит pins по контрактам validated paths; гейт также
+  резолвит каждый metric pin продукта в candidate snapshot — ровно один контракт
+  метрики на запинненной версии. Другая версия, несколько контрактов или отсутствие
+  блокируют `contracts.validate`: `metric_ref.candidate_version_mismatch`,
+  `metric_ref.candidate_ambiguous`, `metric_ref.candidate_absent`. Base не сравнивается.
+  Если метрики нет в snapshot с `gap.contract_invalid`, pin назван не сравнившимся,
+  а не отсутствующим: контракт мог не загрузиться, и `semantic.gaps` уже блокирует
+  прогон. Payload сохраняет issues validation report и добавляет `candidate_pins`
+  в объявленном продуктом порядке. Содержимое validated-контракта и candidate-метрики
+  на одной версии не сравнивается: dimensions, status и policy грейдят копию из
+  validated paths. Pins verified assets (`metric_refs`) не сравниваются с candidate.
+  Два контракта одного metric id сами по себе не snapshot gap: для метрики вне pins
+  продукта diff и reference-SQL compiler по-прежнему могут читать разные контракты.
 - Шаг 6 реализован в `verification/sql_contract.py` — reference query метрики: её
   определение на её же grain, без окна, фильтра и top-N (это принадлежит продукту и
   прогону, не метрике). Граница узкая намеренно: typed aggregate компилируется

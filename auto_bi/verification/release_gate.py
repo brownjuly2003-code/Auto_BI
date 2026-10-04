@@ -45,7 +45,7 @@ from pydantic import Field, model_validator
 
 from auto_bi.decision.impact import ImpactReport, ProductImpact, resolve_impact
 from auto_bi.decision.spec import DecisionProductSpec
-from auto_bi.decision.validate import ValidationReport
+from auto_bi.decision.validate import ValidationIssue, ValidationReport
 from auto_bi.evidence.canonical import canonical_bytes, sha256_digest
 from auto_bi.evidence.manifest import BundleWriter, verify_bundle
 from auto_bi.evidence.model import ArtifactKind, ClaimType, EvidenceClassification
@@ -53,6 +53,7 @@ from auto_bi.evidence.signing import EvidenceSigner
 from auto_bi.evidence.store import ArtifactStore
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
+from auto_bi.refs import ContractRef
 from auto_bi.scalars import NonBlankText, Sha256Digest, Slug, Timestamp
 from auto_bi.semantic.diff import SemanticDiff, diff_snapshots
 from auto_bi.semantic.gateway import SemanticGap, SemanticSnapshot
@@ -430,7 +431,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 84 — the superuser flag of the current PostgreSQL-family role is read from pg_roles,
 #: so a current role without LOGIN is graded by its privileges where verifier 83 blocked
 #: as unreported, and a NOLOGIN superuser gets the existing superuser evidence.
-VERIFIER_VERSION = "84"
+#: 85 — contracts.validate resolves every product metric pin in the candidate snapshot,
+#: so another version of a pinned metric, several contracts of it or none blocks where
+#: verifier 84 passed.
+VERIFIER_VERSION = "85"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -658,7 +662,9 @@ VERIFIER_VERSION = "84"
 #: 60 — the current PostgreSQL-family role's superuser flag is read from pg_roles:
 #: a role without LOGIN is graded by its privileges where check 59 blocked as unreported,
 #: and a NOLOGIN superuser gets the existing superuser evidence in dwh.access.
-CHECK_VERSION = "60"
+#: 61 — contracts.validate also grades product metric pins against the candidate snapshot:
+#: a pass under rule 60 did not ask that question, and the detail now counts matching pins.
+CHECK_VERSION = "61"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1018,20 +1024,101 @@ def run_gate(
 
 
 def _check_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: str) -> CheckResult:
+    """Validate the paths and resolve the product's pins in the candidate snapshot.
+
+    Validation reads only the validated paths, not the snapshot. Snapshot lookups used
+    elsewhere drop the version and select the first node, so pins must be graded here.
+    """
     report = inputs.validation
-    ref = writer.add_check("contracts.validate", report.model_dump(mode="json"))
+    candidate_pins, pin_issues, clauses = _candidate_metric_pins(inputs, product_ref)
+    issues = [*report.issues, *pin_issues]
+    severities = [issue.severity for issue in issues]
+    payload = report.model_dump(mode="json")
+    payload["issues"] = [issue.model_dump(mode="json") for issue in issues]
+    payload["verdict"] = verdict_for(severities).value
+    payload["candidate_pins"] = candidate_pins
+    ref = writer.add_check("contracts.validate", payload)
+    matches = sum(pin["outcome"] == "match" for pin in candidate_pins)
+    detail = (
+        f"{len(report.metrics)} metric contract(s) resolved, {len(issues)} issue(s); "
+        f"{matches} of {len(candidate_pins)} metric pin(s) match the candidate snapshot"
+    )
+    if clauses:
+        detail += ": " + "; ".join(clauses)
     return CheckResult(
         check_id="contracts.validate",
         check_version=CHECK_VERSION,
         category=CheckCategory.CONTRACT,
         subject_refs=[product_ref, *inputs.product.scope.metrics],
-        status=status_for([issue.severity for issue in report.issues]),
-        summary_code="contracts.clean" if not report.issues else "contracts.issues",
-        detail=(
-            f"{len(report.metrics)} metric contract(s) resolved, {len(report.issues)} issue(s)"
-        ),
+        status=status_for(severities),
+        summary_code="contracts.clean" if not issues else "contracts.issues",
+        detail=detail,
         evidence_refs=[ref],
     )
+
+
+def _candidate_metric_pins(
+    inputs: GateInputs, product_ref: str
+) -> tuple[list[dict[str, Any]], list[ValidationIssue], list[str]]:
+    pins: list[dict[str, Any]] = []
+    issues: list[ValidationIssue] = []
+    clauses: list[str] = []
+    untrustworthy = any(gap.code in UNTRUSTWORTHY_GAPS for gap in inputs.candidate.gaps)
+    for ref in inputs.product.scope.metrics:
+        parsed = ContractRef.parse(ref)
+        metric_id = str(parsed.without_version())
+        pinned = parsed.version
+        versions = sorted(
+            node.version for node in inputs.candidate.graph.metrics if node.id == metric_id
+        )
+        message = ""
+        if len(versions) > 1:
+            outcome = "ambiguous"
+            held = ", ".join(str(version) for version in versions)
+            message = (
+                f"the candidate snapshot holds {len(versions)} contracts of {metric_id} "
+                f"(versions {held}); the pin to version {pinned} does not resolve to one of them"
+            )
+            clauses.append(
+                f"it holds {len(versions)} contracts of {metric_id} "
+                f"(versions {held}), pinned at version {pinned}"
+            )
+        elif versions:
+            if versions[0] == pinned:
+                outcome = "match"
+            else:
+                outcome = "version_mismatch"
+                message = (
+                    f"the candidate snapshot holds version {versions[0]} of {metric_id}; "
+                    f"the product pins version {pinned}"
+                )
+                clauses.append(
+                    f"it holds version {versions[0]} of {metric_id}, pinned at version {pinned}"
+                )
+        elif untrustworthy:
+            outcome = "not_compared"
+            clauses.append(
+                f"{ref} was not compared, because a metric contract of the candidate did not load"
+            )
+        else:
+            outcome = "absent"
+            message = (
+                f"the candidate snapshot holds no metric {metric_id}; "
+                f"the product pins version {pinned}"
+            )
+            clauses.append(f"it holds no {metric_id}, pinned at version {pinned}")
+        pins.append({"ref": ref, "candidate_versions": versions, "outcome": outcome})
+        if message:
+            issues.append(
+                ValidationIssue(
+                    code=f"metric_ref.candidate_{outcome}",
+                    severity=Severity.BLOCK,
+                    subject=ref,
+                    source=product_ref,
+                    message=message,
+                )
+            )
+    return pins, issues, clauses
 
 
 def _check_gaps(

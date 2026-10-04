@@ -362,7 +362,7 @@ def _load_assets(
     evidence nor its finding: graded here, its invalidation would put that product's review
     on this one's verdict, and its comparison would seal a claim about a number this product
     never delivers. Versions are ignored on both sides, as `resolve_impact` ignores them —
-    whether a pin still resolves is `decision validate`'s question.
+    whether the product's pin still resolves is graded by the gate's `contracts.validate` step.
     """
     if directory is None:
         return VerifiedAssetRepository([])

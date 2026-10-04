@@ -579,8 +579,8 @@ def _scoped_metric_ids(product: DecisionProductSpec) -> set[str]:
     """The metric ids a product scopes, version-stripped.
 
     Products pin a version; a change to the metric reaches them whatever the new version
-    is. Whether the pin still resolves is `decision validate`'s question. Both halves of
-    the chain strip the same way: which products a change reaches, and which changed
+    is. Whether the pin still resolves is graded by the gate's `contracts.validate` step.
+    Both halves of the chain strip the same way: which products a change reaches, and which changed
     metrics each delivered dashboard was asked about.
     """
     return {str(ContractRef.parse(ref).without_version()) for ref in product.scope.metrics}

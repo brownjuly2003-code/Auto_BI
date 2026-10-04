@@ -83,6 +83,25 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-03 — `contracts.validate` резолвит каждый metric pin продукта в
+  candidate snapshot: ровно один контракт на запинненной версии. Другая версия,
+  несколько контрактов или отсутствие блокируют шаг с
+  `metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,
+  `metric_ref.candidate_absent`. Base и метрики вне pins продукта не сравниваются;
+  отсутствующий узел при `gap.contract_invalid` назван `not_compared`, найденный
+  грейдится как обычно. Validation issues сохранены, payload добавляет
+  `candidate_pins`, detail считает совпавшие pins; validation report не меняется.
+  Содержимое контрактов одной версии и pins verified assets не сравниваются;
+  `decision validate` прежний. `VERIFIER_VERSION` 84 → 85, `CHECK_VERSION` 60 → 61;
+  исторические bundles не переписаны. Выбор — synthetic Astra xhigh; правило
+  «ровно один контракт» добавил оркестратор по воспроизведённому расхождению
+  diff и компилятора reference SQL при двух контрактах одного id. Реализовано
+  `gpt-6.1-sol` medium через MyFlow `sol-high`: GLM-5.3 был в недельном лимите
+  z.ai. Red на HEAD: 19 failed / 0 passed; новый модуль: 19 passed. Synthetic
+  Astra xhigh review: 0 findings. Полный offline gate с duckdb: 4150 passed,
+  4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_METRIC_PINS_REVIEW_2026-10-03.md).
+
 - 2026-10-03 — PostgreSQL-family identity-вопрос читает superuser-флаг текущей
   роли из `pg_roles.rolsuper`: у current role без LOGIN нет строки в `pg_user`,
   поэтому прежний вопрос отвечал NULL и блокировал select-only роль как

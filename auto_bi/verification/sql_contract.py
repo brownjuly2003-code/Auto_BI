@@ -165,8 +165,9 @@ def compile_metric_queries(
     findings: list[SQLFinding] = []
 
     for ref in metric_refs:
-        # A product pins a version; the snapshot holds whatever version is current. Which
-        # pin still resolves is `decision validate`'s question, not this one.
+        # A product pins a version; the snapshot holds whatever version is current.
+        # Whether the pin resolves — in the validated paths and in the candidate snapshot —
+        # is graded by the gate's `contracts.validate` step, not here.
         node = snapshot.metric(str(ContractRef.parse(ref).without_version()))
         if node is None:
             findings.append(

@@ -6,6 +6,17 @@
 
 ### Changed
 
+- **`contracts.validate` резолвит metric pins продукта в candidate snapshot.**
+  Ровно один контракт метрики на запинненной версии сохраняет clean; другая версия,
+  несколько контрактов или отсутствие блокируют шаг с
+  `metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,
+  `metric_ref.candidate_absent`. Base и метрики вне pins продукта не сравниваются;
+  отсутствующий узел при `gap.contract_invalid` назван `not_compared`, найденный
+  грейдится как обычно. Payload сохраняет validation issues и добавляет
+  `candidate_pins`; detail считает совпавшие pins. `decision validate` прежний,
+  содержимое контрактов одной версии и pins verified assets не сравниваются.
+  Verifier 84 → 85, check 60 → 61; historical bundles прежние.
+
 - **Текущая PostgreSQL-family роль без LOGIN больше не блокируется из-за отсутствующей строки в `pg_user`.**
   Identity-вопрос читает superuser-флаг из `pg_roles.rolsuper`, где есть каждая
   роль: прежний view отвечал NULL для NOLOGIN current role (PostgreSQL 16.15,
