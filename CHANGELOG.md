@@ -6,6 +6,18 @@
 
 ### Changed
 
+- **ClickHouse own-grant строка без access type больше не считается отсутствием grant.**
+  Missing key, NULL или пустой `access_type` означает неполный ответ: `readonly=1/2`,
+  доказанный write grant и неполные enabled roles сохраняют evidence; иначе read-only
+  не установлен, `dwh.access` блокируется, reach-вопросы и exact runtime SQL не
+  отправляются. Column reach неизвестен при любом `readonly`: `column_reads=null`,
+  `security.not_observed`, без ложных unreadable, physical absence и unenforced
+  classification. Row-policy facts, typed answers, отказ grants-вопроса, вопросы
+  и их порядок, PostgreSQL прежние. Колонка движка — не-nullable `Enum16`
+  (ClickHouse 24.8.14.39, вживую): такая строка означает, что ответ доставлен
+  не целиком.
+  Verifier 86 → 87, check 62 → 63; historical bundles прежние.
+
 - **PostgreSQL-family ядро без row-level security грейдится вместо ошибки на identity-вопросе.**
   Только после undefined column (`42703`) collector спрашивает `server_version_num`;
   ниже `90500` повторяет identity без `BYPASSRLS`, сохраняет правила роли и runtime

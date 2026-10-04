@@ -196,7 +196,8 @@ class _ChSession(NamedTuple):
 
     Grants are collected once per run rather than per mart: they answer both halves of the
     role question (writable, and which columns are in reach), and asking twice would let the
-    two halves disagree. `None` means the role may not read `system.grants` at all.
+    two halves disagree. `None` means the role may not read `system.grants` at all;
+    an untyped row means its answer was not delivered whole.
     """
 
     user: str
@@ -208,6 +209,8 @@ class _ChSession(NamedTuple):
     enabled_roles: frozenset[str]
     #: The `readonly` setting of the session, as the engine reports it (`None` if unset).
     readonly: str | None
+    #: An untyped row is a gap: access_type is non-nullable Enum16 on ClickHouse
+    #: 24.8.14.39 (live), so the engine cannot return one, even for a partial revoke.
     grants: list[dict[str, Any]] | None
 
 
@@ -444,7 +447,7 @@ def _clickhouse_session(run_query: RunQuery) -> _ChSession:
 
 
 def _clickhouse_role(run_query: RunQuery, session: _ChSession) -> RoleFacts:
-    """`readonly` decides; grants are the second chance to be read-only, not the first."""
+    """`readonly` decides first; grants establish read-only only with a complete answer."""
     setting = session.readonly
     if setting in {"1", "2"}:
         return RoleFacts(
@@ -482,6 +485,15 @@ def _clickhouse_role(run_query: RunQuery, session: _ChSession) -> RoleFacts:
             evidence=(
                 f"readonly={setting or 'unset'} and system.enabled_roles is unreported or "
                 "incomplete, so read-only access is not established"
+            ),
+        )
+    if _ch_untyped_own_grants(session.grants):
+        return RoleFacts(
+            name=session.user,
+            read_only=False,
+            evidence=(
+                f"readonly={setting or 'unset'} and system.grants returned a row with no "
+                "access type, so read-only access is not established"
             ),
         )
     # Which roles the session could still enable. `system.enabled_roles` is the session's
@@ -671,6 +683,16 @@ def _clickhouse_table(
     )
 
 
+def _ch_untyped_own_grants(grants: list[dict[str, Any]]) -> bool:
+    """An untyped own-grant row means the answer was not delivered whole.
+
+    ClickHouse 24.8.14.39 (live) types access_type as non-nullable Enum16, so the
+    engine cannot return one, whatever is_partial_revoke says. Use the same missing,
+    NULL or empty rule as the grants of the roles SET ROLE reaches.
+    """
+    return any(row.get("access_type") is None or str(row["access_type"]) == "" for row in grants)
+
+
 def _ch_column_reads(
     session: _ChSession, database: str, name: str, columns: dict[str, str]
 ) -> dict[str, bool] | None:
@@ -678,9 +700,10 @@ def _ch_column_reads(
 
     Read from grants rather than from `system.columns`, which shows only what it grants: a
     column withheld and a column absent look the same in the catalog, and they are not the
-    same finding.
+    same finding. An untyped grant leaves reach unknown even under readonly=1/2:
+    it may grant or revoke SELECT, and its answer was not delivered whole.
     """
-    if session.grants is None or not session.roles_known:
+    if session.grants is None or not session.roles_known or _ch_untyped_own_grants(session.grants):
         return None
     selects = [row for row in session.grants if str(row.get("access_type")) == "SELECT"]
     reads: dict[str, bool] = {}

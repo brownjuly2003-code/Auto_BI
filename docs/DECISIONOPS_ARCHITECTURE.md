@@ -590,7 +590,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=86`, `CHECK_VERSION=62`.
+`VERIFIER_VERSION=87`, `CHECK_VERSION=63`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -761,6 +761,13 @@ Gate выполняет шаги в фиксированном порядке:
   missing/NULL/пустое имя оставляет principals неполными; известные имена сохраняются
   точно в grants query. `readonly=1/2` сохраняет read-only, известный write grant —
   writable evidence; иначе неполные роли блокируют доступ и exact runtime SQL.
+  Строка собственных grants сессии без `access_type` (missing key, NULL или пустое
+  значение) тоже не ответ: ClickHouse 24.8.14.39 типизирует колонку как не-nullable
+  `Enum16` (вживую), поэтому такая строка означает, что ответ доставлен не целиком.
+  `readonly=1/2`, доказанный write grant и неполные enabled roles сохраняют evidence;
+  иначе доступ и exact runtime SQL блокируются, reach-вопросы не отправляются.
+  Column reach неизвестен при любом `readonly`: `column_reads=null`,
+  `security.not_observed`.
   Canonical `ALTER`/`CREATE`/`DROP` совпадают также по продолжению через пробел,
   включая `ALTER UPDATE`, `ALTER DELETE`, `CREATE TABLE`, `DROP TABLE`; exact `ALL`
   включает права записи. Evidence сохраняет названия grants; профиль readonly=1/2

@@ -679,6 +679,135 @@ propagate.
 - **WHEN** the environment is collected
 - **THEN** every statement the collector sent is a `SELECT`
 
+## Requirement: a ClickHouse own-grant row without an access type is not an answer
+
+ClickHouse 24.8.14.39 (live, throwaway server, 2026-10-03) types `system.grants.access_type`
+as a non-nullable `Enum16` and `is_partial_revoke` as `UInt8`, while `user_name`, `role_name`,
+`database`, `table` and `column` are `Nullable(String)`: the engine cannot return a grant row
+without an access type. A row that reaches the collector without one was not delivered whole by
+whatever stands between the engine and the collector, so the grants answer is incomplete. The
+grants of the roles `SET ROLE` reaches are already read this way (the requirement above); the
+session's own grants were not: a row with no access type was read as "not a write grant" and as
+"not a `SELECT`", so the role came out read-only by its grants, the exact runtime SQL ran, and
+the columns the row might grant were called unreadable.
+
+A row of the session's own grants answer (`SELECT access_type, database, table, column,
+is_partial_revoke FROM system.grants WHERE user_name = currentUser() …`) is untyped when its
+`access_type` is missing, NULL or an empty string, whatever its `is_partial_revoke` says. With
+an untyped row in the answer the collector SHALL decide in this order:
+
+- `readonly=1` or `readonly=2` SHALL still establish read-only, with its existing evidence;
+- a write access type on a typed row that is not a partial revoke SHALL keep its positive
+  evidence, `readonly=<x>, granted …`;
+- incomplete enabled roles SHALL keep their evidence;
+- otherwise `RoleFacts.read_only` SHALL be false with the evidence
+  `readonly=<x> and system.grants returned a row with no access type, so read-only access is
+  not established`, written on one line, where `<x>` is the reported setting or `unset`.
+  Neither question of the `SET ROLE` reach requirement is sent, the exact runtime SQL is not
+  executed, and `dwh.access` blocks through `access.role_writable`.
+
+With an untyped row in the answer every present mart SHALL carry `column_reads` null, whatever
+`readonly` is: the row may be a `SELECT` grant or a partial revoke of one, so neither a
+readable nor an unreadable column is established. `security.not_observed` then follows by its
+existing rule, a column missing from the filtered catalog is not called physically absent, and
+a classified column is not called unenforced. Row-policy facts SHALL keep their rules: they are
+read from the principals, not from the grants.
+
+An answer whose every row carries an access type SHALL be read exactly as before, a missing or
+NULL `is_partial_revoke` SHALL still read as "not a partial revoke", an empty answer SHALL still
+mean that nothing is granted, and a refused grants question SHALL keep its evidence. The
+questions, their text and their order SHALL NOT change. `VERIFIER_VERSION` and `CHECK_VERSION`
+SHALL increase: an answer the previous version graded as read-only access now blocks.
+Historical bundles are not rewritten.
+
+### Scenario: an untyped own-grant row never establishes read-only
+
+- **GIVEN** `readonly=0`, no enabled role, an eligible runtime budget and, in turn, an own grants
+  answer of one row with no `access_type` key, one row with a NULL `access_type`, one row with
+  an empty `access_type`, and each of them beside a typed `SELECT` row
+- **WHEN** the environment is collected and graded
+- **THEN** the role is not read-only with the evidence `readonly=0 and system.grants returned a
+  row with no access type, so read-only access is not established`, no `system.role_grants`
+  question is sent, the exact runtime SQL is not executed, the mart carries `column_reads` null,
+  `dwh.access` is block with `access.role_writable`, and `dwh.security` is review with
+  `security.not_observed`
+
+### Scenario: an unset readonly is named unset
+
+- **GIVEN** no `readonly` row in `system.settings` and an own grants answer of one untyped row
+- **WHEN** the environment is collected
+- **THEN** the evidence is `readonly=unset and system.grants returned a row with no access type,
+  so read-only access is not established`
+
+### Scenario: readonly=1/2 stays read-only while column reach is unknown
+
+- **GIVEN** `readonly=1` and, in turn, `readonly=2`, an eligible runtime budget and an own grants
+  answer of a typed `SELECT` row beside an untyped row
+- **WHEN** the environment is collected and graded
+- **THEN** the role is read-only with the existing `readonly` evidence, the exact runtime SQL is
+  executed, the mart carries `column_reads` null, `dwh.access` is pass, and `dwh.security` is
+  review with `security.not_observed`
+
+### Scenario: a proven write grant beside an untyped row keeps its evidence
+
+- **GIVEN** `readonly=0` and an own grants answer of a typed `INSERT` row and an untyped row, in
+  either order
+- **WHEN** the environment is collected
+- **THEN** the evidence is `readonly=0, granted INSERT`
+
+### Scenario: incomplete enabled roles keep their evidence
+
+- **GIVEN** `readonly=0`, a refused `system.enabled_roles` and an own grants answer of one untyped
+  row
+- **WHEN** the environment is collected
+- **THEN** the evidence names `system.enabled_roles` as unreported or incomplete, as it does
+  with a typed answer
+
+### Scenario: an untyped partial revoke is not an answer either
+
+- **GIVEN** `readonly=0` and an own grants answer of a typed `SELECT` row and a row with a NULL
+  `access_type` whose `is_partial_revoke` is `1`
+- **WHEN** the environment is collected
+- **THEN** the facts are those of the first scenario
+
+### Scenario: a typed answer is read as before (false-reject control)
+
+- **GIVEN** `readonly=0`, no enabled role and, in turn, an own grants answer of `[]`, of one
+  `SELECT` row, of one `SELECT` row with a NULL `is_partial_revoke`, of one `SELECT` row with no
+  `is_partial_revoke` key, and of a `SELECT` row on the mart beside a partial revoke of one of
+  its columns
+- **WHEN** the environment is collected
+- **THEN** the role is read-only with the existing evidence, the questions asked are those the
+  previous verifier asked in the same order, `column_reads` holds a boolean for every requested
+  column — false for every column with `[]`, false for the revoked column — and the exact
+  runtime SQL of an eligible budget is executed
+
+### Scenario: a refused grants question keeps its evidence
+
+- **GIVEN** `readonly=0` and a refused `system.grants`
+- **WHEN** the environment is collected
+- **THEN** the evidence is `readonly=0 and system.grants is out of reach, so nothing establishes
+  that this session cannot write`, and `column_reads` is null
+
+### Scenario: unknown reach invents neither an unreadable nor an absent column
+
+- **GIVEN** a mart whose filtered catalog lists only `date`, a model that requests `date` and
+  `revenue` and classifies `revenue`, and, in turn, an own grants answer of a `SELECT` row on
+  the column `date` beside an untyped row, and of a `SELECT` row on the whole mart beside an
+  untyped row
+- **WHEN** `dwh.security` and `dwh.physical` are graded
+- **THEN** `dwh.security` reports only `security.not_observed` and `dwh.physical` reports
+  nothing, where the same answers without the untyped row report `security.column_unreadable`
+  for the first, and `security.unenforced_classification` with `physical.column_absent` for the
+  second
+
+### Scenario: row-policy facts are those of a typed answer
+
+- **GIVEN** a policy catalog naming a policy that applies to the session user and, in turn, a
+  typed own grants answer and the same answer with an untyped row beside it
+- **WHEN** the environment is collected
+- **THEN** `row_policies` is the same in both
+
 ## Requirement: the read-only evidence names everything it checked
 
 When the PostgreSQL-family role is found read-only, its evidence SHALL say that no in-scope mart

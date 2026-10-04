@@ -83,6 +83,27 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-04 — ClickHouse own-grant строка без `access_type` больше не читается
+  как «не write grant» и «не SELECT»: прежде роль становилась read-only по grants,
+  exact runtime SQL исполнялся, колонка называлась unreadable. Missing key, NULL
+  или пустое значение теперь означает неполный ответ, независимо от partial revoke.
+  Сначала `readonly=1/2`, затем отказ grants-вопроса, доказанный write grant и
+  неполные enabled roles сохраняют evidence; иначе read-only не установлен,
+  `dwh.access` блокируется, reach-вопросы и exact runtime SQL не отправляются.
+  Column reach неизвестен при любом `readonly`: `column_reads=null`,
+  `security.not_observed`, без ложных physical absence и unenforced classification.
+  Typed answers, `readonly=1/2`, отказ grants-вопроса, неполные enabled roles,
+  row-policy facts, вопросы и их порядок, PostgreSQL прежние.
+  Версии evidence 86 → 87 / 62 → 63; historical bundles прежние.
+  Выбор — альтернатива №1 synthetic Astra xhigh выбора, давшего T-40. Движок такую
+  строку вернуть не может (колонка — не-nullable `Enum16`, ClickHouse 24.8.14.39,
+  вживую): срез закрывает неполный ответ слоя между движком и коллектором.
+  Реализовано `gpt-6.1-sol` medium через MyFlow `sol-high`: GLM-5.3 был в недельном
+  лимите z.ai. Red на HEAD: 15 failed / 8 passed; новый модуль: 23 passed.
+  Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb:
+  4336 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_UNTYPED_GRANTS_REVIEW_2026-10-04.md).
+
 - 2026-10-03 — гейт больше не падает на identity-вопросе ядра 9.4 из-за
   отсутствующего `pg_roles.rolbypassrls`. Только после undefined column (`42703`)
   collector спрашивает `server_version_num`; целое неотрицательное значение ниже

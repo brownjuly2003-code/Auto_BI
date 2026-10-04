@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-03
+**Обновлено:** 2026-10-04
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,9 +10,28 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=86`, `CHECK_VERSION=62`
+**Версии evidence:** `VERIFIER_VERSION=87`, `CHECK_VERSION=63`
 
-**Последний срез (2026-10-03):** PostgreSQL-family ядро без row-level security
+**Последний срез (2026-10-04):** ClickHouse own-grant строка без `access_type`
+(missing key, NULL или пустое значение) больше не читается как отсутствие grant.
+Это неполный ответ: `readonly=1/2`, доказанный write grant и неполные enabled roles
+сохраняют прежнее evidence; иначе read-only не установлен, `dwh.access` блокируется,
+reach-вопросы и exact runtime SQL не отправляются. Column reach неизвестен при любом
+`readonly`: `column_reads=null`, `dwh.security` — review с `security.not_observed`,
+без ложных unreadable, physical absence и unenforced classification. Row-policy
+facts, typed answers, отказ grants-вопроса, вопросы и их порядок, PostgreSQL прежние.
+Версии evidence 86 → 87 / 62 → 63; исторические bundles не переписаны.
+Выбор — альтернатива №1 synthetic Astra xhigh выбора, давшего T-40.
+Движок такую строку вернуть не может (не-nullable `Enum16`, ClickHouse 24.8.14.39,
+вживую): срез закрывает неполный ответ слоя между движком и коллектором.
+Реализовано `gpt-6.1-sol` medium через MyFlow `sol-high`: GLM-5.3 был в недельном
+лимите z.ai. Red на HEAD: 15 failed / 8 passed; новый модуль: 23 passed.
+Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb:
+4336 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+[Проверки и границы](DECISIONOPS_UNTYPED_GRANTS_REVIEW_2026-10-04.md).
+Human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-03):** PostgreSQL-family ядро без row-level security
 грейдится по каталогам, которые у него есть. Прежний identity-вопрос падал на
 отсутствующем `rolbypassrls` (ядро PostgreSQL 9.4.26, вживую). Только после
 undefined column collector спрашивает `server_version_num`; ниже `90500` повторяет

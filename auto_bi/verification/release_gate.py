@@ -438,7 +438,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: Greenplum 6 and Greengage 6) is graded where verifier 85 raised on the identity
 #: question; the sealed environment facts gain server_version_num, so every environment
 #: payload differs from verifier 85.
-VERIFIER_VERSION = "86"
+#: 87 — a ClickHouse own-grant row with no access type leaves the grants answer incomplete:
+#: the role is not read-only by its grants and column reach is unknown, where verifier 86
+#: read the row as no grant.
+VERIFIER_VERSION = "87"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -671,7 +674,10 @@ VERIFIER_VERSION = "86"
 #: 62 — the role and the marts of a PostgreSQL-family kernel that predates row-level
 #: security are graded where rule 61 produced no result, and the clean dwh.security detail
 #: names that kernel: no row-policy catalog was read there.
-CHECK_VERSION = "62"
+#: 63 — dwh.access blocks and dwh.security reports security.not_observed for a ClickHouse
+#: own-grants answer carrying an untyped row, where rule 62 passed access and could call
+#: a column unreadable.
+CHECK_VERSION = "63"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
