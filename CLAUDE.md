@@ -83,6 +83,32 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-04 — `contracts.validate` прежде грейдил каждый issue validation report, а
+  отчёт — один на все validated paths: `decision verify` валидирует каждый продукт этих
+  путей и верифицирует один. Pin другого продукта на ушедшую версию или на метрику без
+  контракта, dimension, которую его метрика не объявляет, и его retired-метрика
+  блокировали релиз продукта, о котором правила ничего не сказали; чужие
+  `policy.mismatch` и draft-метрика отправляли его в review. Теперь issue, чей `source`
+  — другой продукт из `products` отчёта, не грейдится и запечатан отдельно в
+  `other_product_issues` (ключ есть всегда); detail считает отложенные issues и
+  продукты. Issues загрузки файла (`contract.unreadable`, `contract.unknown_kind`,
+  `contract.invalid`, `contract.duplicate_id`) грейдятся на прогоне каждого продукта,
+  как прежде; отчёт, не называющий верифицируемый продукт, грейдится целиком, issue с
+  `source` вне `products` — тоже. Validation report, `decision validate` (отвечает за
+  пути целиком), pin и rule issues, остальные checks и состав run id прежние: чужой
+  issue по-прежнему двигает `run_id`. `VERIFIER_VERSION` 91 → 92, `CHECK_VERSION`
+  66 → 67; historical bundles не переписаны.
+  Выбор — оркестратор: срез закрывает границу спеки T-47, Astra-выбора по ADR 0006 для
+  него нет. По решению владельца срез выполнен напрямую Claude Opus 5.5, без
+  MyFlow-исполнителей; модельное ревью по ADR 0006 (Astra xhigh) не проводилось —
+  проверки сделал сам автор, это не независимое ревью. Тесты прогонялись на Mac.
+  Red на HEAD: 30 failed / 0 passed (payload HEAD не несёт нового ключа); на копии HEAD
+  с одним этим ключом, всегда пустым: 19 failed / 11 passed; новый модуль: 30 passed.
+  19 ручных мутантов правила убиты. Контроль на tracked pilot-пакетах: 10 прогонов,
+  вердикт и каждая проверка как на HEAD, отложенных issues нет. Полный offline gate с
+  duckdb: 4665 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_VALIDATION_ISSUE_SCOPE_CHECKS_2026-10-04.md).
+
 - 2026-10-04 — `run_id` прежде не различал прогоны, отличавшиеся статическим входом
   гейта вне продукта и canonical digests двух snapshots: validated-контракт `active`
   против `draft` давал один `run_id` при вердиктах `pass_with_advisory` и `block`, и так

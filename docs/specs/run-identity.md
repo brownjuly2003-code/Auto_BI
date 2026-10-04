@@ -300,8 +300,10 @@ verifiers derived.
   run with the same checks.
 - The validation report names every product and metric contract of the validated paths and
   carries their issues, so a contract of another product in those paths moves this product's
-  run id — and, as before this capability, its `contracts.validate`: an issue of another
-  product in the validated paths is graded on this product's run.
+  run id. Under verifier 91 it moved this product's `contracts.validate` as well: an issue of
+  another product was graded on this product's run. Since verifier 92 the check seals such an
+  issue apart and does not grade it
+  ([the validation issues a run grades](validation-issue-scope.md)); the run id still moves.
 - A file-level issue of the validation report names its file by the path it was read from. The
   same contracts read from another directory are then another report, another
   `contracts.validate` artifact — as before — and another run id.

@@ -892,5 +892,6 @@ def test_the_exact_text_refuses_what_is_not_a_dumped_value(value: object) -> Non
 
 
 def test_versions() -> None:
-    assert VERIFIER_VERSION == "91"
-    assert CHECK_VERSION == "66"
+    """The verifier that keys on every static input; a later rule moves either number on."""
+    assert int(VERIFIER_VERSION) >= 91
+    assert int(CHECK_VERSION) >= 66

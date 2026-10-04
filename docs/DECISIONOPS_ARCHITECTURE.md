@@ -620,7 +620,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=91`, `CHECK_VERSION=66`.
+`VERIFIER_VERSION=92`, `CHECK_VERSION=67`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -729,6 +729,18 @@ Gate выполняет шаги в фиксированном порядке:
   определение, на которое опирается продукт. Rule issues стоят после pin issues,
   detail называет их коды по каждому pin; `candidate_pins` и число совпавших pins
   не меняются. Validation report по-прежнему описывает копию из validated paths.
+  Report один на все validated paths и отвечает за каждый найденный там продукт, а
+  прогон верифицирует один. Validation rules отвечают по одному продукту и пишут его
+  ref в `source` каждого своего issue, поэтому issue, чей `source` — другой продукт из
+  `products` report, о верифицируемом продукте ничего не говорит: шаг его не грейдит и
+  запечатывает отдельно, в `other_product_issues`, а detail считает такие issues и их
+  продукты (`, <x> issue(s) of <y> other product(s) not graded`). Issues загрузки
+  файла — `contract.unreadable`, `contract.unknown_kind`, `contract.invalid`,
+  `contract.duplicate_id` — несут путь файла и грейдятся на прогоне каждого продукта:
+  что держал бы непрочитанный файл, неизвестно. Report, который не называет
+  верифицируемый продукт, составлен не для него и грейдится целиком. За пути целиком
+  по-прежнему отвечает `decision validate`: его verdict и exit code следуют issues
+  всех продуктов ([the validation issues a run grades](specs/validation-issue-scope.md)).
   Pins verified assets (`metric_refs`) резолвит шаг 5 (`assets.invalidated`), а не
   этот шаг.
   Два контракта одного metric id сами по себе не snapshot gap: для метрики вне pins

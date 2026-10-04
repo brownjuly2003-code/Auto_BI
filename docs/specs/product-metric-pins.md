@@ -108,7 +108,10 @@ own ref as its `source`, and this `message`, where `<id>` is the metric id witho
 The sealed payload of the check SHALL keep every key of the validation report it was given. Its
 `issues` SHALL hold the validation report's own issues, unchanged and in their order, followed by
 the pin issues in the product's declared order; its `verdict` SHALL be the verdict of all those
-issues. It SHALL also carry `candidate_pins`: one entry per pin in the product's declared order
+issues. Of a report that answers for several products, the issues the rules gave for another
+product than the one under verification are not among them: they are sealed apart and not graded
+([the validation issues a run grades](validation-issue-scope.md)). It SHALL also carry
+`candidate_pins`: one entry per pin in the product's declared order
 with `ref` (the pin as written), `candidate_versions` (the version of every such node, ascending,
 a version held twice written twice, empty when there is none) and `outcome` (one of the five
 names above, or the second requirement's `content_mismatch`).
@@ -787,6 +790,11 @@ ref holds it.
 - The validation report's own issues describe the validated copy and stay as they are: a
   candidate that satisfies a rule the validated contract fails does not remove the report's
   issue, and the remedy is to validate the contract the release holds.
+- The scenarios of this capability keep one product in the validated paths. Beside other
+  products the check grades the report's issues of the product under verification and of loading
+  the paths, and seals what the rules found for another product apart
+  ([the validation issues a run grades](validation-issue-scope.md)); the pin issues and the rule
+  issues are this product's in either case.
 - A rule issue is the rule's answer for one pinned metric. `dimension.candidate_not_allowed`
   names that one pin, where the report's `dimension.not_allowed` names every metric of the
   validated set that lacks the dimension.

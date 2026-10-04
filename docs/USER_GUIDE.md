@@ -206,6 +206,13 @@ governing policy, под которой продукт не верифициру
 (`metric.candidate_draft`, `policy.candidate_mismatch`); status `deprecated` —
 advisory (`metric.candidate_deprecated`). Ответ, который validation уже даёт на
 validated-контракте, второй раз не сообщается.
+Когда validated paths держат несколько продуктов, `--product` называет верифицируемый,
+и `contracts.validate` грейдит issues этого продукта и issues загрузки файлов. Issue,
+который validation rules дали другому продукту тех же путей, выпуск не останавливает:
+он записан в payload шага как `other_product_issues`, а detail их считает. Файл,
+который не прочитан, не прошёл схему или повторяет id, блокирует прогон каждого
+продукта, чей бы контракт он ни держал. За пути целиком отвечает `decision validate`:
+его exit code следует issues всех продуктов.
 Каждая запись `metric_refs` verified asset, переданного прогону, тоже должна пинить
 версию, которую держит candidate ref, ровно одним контрактом этой метрики. Иначе
 `assets.invalidated` блокирует выпуск с `asset.metric_ref_version_mismatch`,

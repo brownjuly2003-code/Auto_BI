@@ -6,6 +6,19 @@
 
 ### Changed
 
+- **`contracts.validate` грейдит validation issues продукта, который верифицирует
+  прогон, а не каждого продукта validated paths.** Прежде шаг грейдил каждый issue
+  validation report, и issue, который validation rules дали другому продукту тех же
+  путей — неразрешённый pin, необъявленная dimension, retired или draft метрика,
+  чужая governing policy, — блокировал или отправлял на review выпуск продукта,
+  о котором ничего не говорит. Теперь такой issue запечатывается отдельно, в
+  `other_product_issues`, и не грейдится; detail считает такие issues и их продукты.
+  Issues самого продукта и issues загрузки файла (`contract.unreadable`,
+  `contract.unknown_kind`, `contract.invalid`, `contract.duplicate_id`) грейдятся
+  как прежде. `decision validate`, validation report, остальные checks и состав
+  run id прежние.
+  Verifier 91 → 92, check 66 → 67; historical bundles прежние.
+
 - **`run_id` различает прогоны по каждому статическому входу гейта.** Прежде
   idempotency key строился из продукта и canonical digests двух snapshots, и два
   прогона с разными validated-контрактами, verified assets, dashboard specs, gaps

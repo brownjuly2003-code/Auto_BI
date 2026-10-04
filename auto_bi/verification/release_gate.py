@@ -456,7 +456,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: report, the validated contracts, both snapshots whole, the candidate model, the dashboard
 #: specs and the verified assets. Verifier 90 keyed on the product and the two canonical
 #: digests, so two runs that differed in any of those shared a run id, whatever each found.
-VERIFIER_VERSION = "91"
+#: 92 — contracts.validate grades the validation issues of the product it verifies and of
+#: loading the validated paths, and seals what the rules found for another product of those
+#: paths apart, as other_product_issues. Verifier 91 graded every issue of the report, so
+#: another product's unresolved pin, undeclared dimension, retired or draft metric or foreign
+#: governing policy blocked a release it says nothing of, or sent it to review.
+VERIFIER_VERSION = "92"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -701,7 +706,9 @@ VERIFIER_VERSION = "91"
 #: a block, a review or an advisory of contracts.validate by the rule's own severity, where
 #: rule 65 weighed it by the diff's classification alone and a draft or a foreign governing
 #: policy passed with an advisory.
-CHECK_VERSION = "66"
+#: 67 — an issue the validation rules give for another product of the validated paths is not
+#: graded by contracts.validate, where rule 66 blocked, reviewed or advised by it.
+CHECK_VERSION = "67"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1139,22 +1146,27 @@ def _check_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: str)
     The product's rules that read a metric contract are answered on the candidate's
     definition of every compared pin as well: the validation report answers them on the
     validated copy alone.
+    The report answers for every product of the validated paths, and the run verifies one:
+    what the rules found for another product is sealed apart and not graded.
     """
     report = inputs.validation
+    own_issues, other_issues = _issues_by_product(report, product_ref)
     candidate_pins, pin_issues, clauses = _candidate_metric_pins(inputs, product_ref)
     rule_issues, rule_clauses = _candidate_rule_issues(inputs)
-    issues = [*report.issues, *pin_issues, *rule_issues]
+    issues = [*own_issues, *pin_issues, *rule_issues]
     severities = [issue.severity for issue in issues]
     payload = report.model_dump(mode="json")
     payload["issues"] = [issue.model_dump(mode="json") for issue in issues]
+    payload["other_product_issues"] = [issue.model_dump(mode="json") for issue in other_issues]
     payload["verdict"] = verdict_for(severities).value
     payload["candidate_pins"] = candidate_pins
     ref = writer.add_check("contracts.validate", payload)
     matches = sum(pin["outcome"] == "match" for pin in candidate_pins)
-    detail = (
-        f"{len(report.metrics)} metric contract(s) resolved, {len(issues)} issue(s); "
-        f"{matches} of {len(candidate_pins)} metric pin(s) match the candidate snapshot"
-    )
+    detail = f"{len(report.metrics)} metric contract(s) resolved, {len(issues)} issue(s)"
+    if other_issues:
+        products = len({issue.source for issue in other_issues})
+        detail += f", {len(other_issues)} issue(s) of {products} other product(s) not graded"
+    detail += f"; {matches} of {len(candidate_pins)} metric pin(s) match the candidate snapshot"
     if clauses:
         detail += ": " + "; ".join(clauses)
     for clause in rule_clauses:
@@ -1169,6 +1181,25 @@ def _check_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: str)
         detail=detail,
         evidence_refs=[ref],
     )
+
+
+def _issues_by_product(
+    report: ValidationReport, product_ref: str
+) -> tuple[list[ValidationIssue], list[ValidationIssue]]:
+    """The report's issues this run grades, and those the rules gave for another product.
+
+    The validation rules answer for one product at a time and write its ref as the source of
+    what they find, so an issue whose source is another product the report lists says
+    nothing of this one. An issue of loading a file carries the file's path and is graded
+    on every run: what an unread file would have held is not known. A report that does not
+    list this product was not made for it, and all of it is graded.
+    """
+    others: set[str] = set()
+    if product_ref in report.products:
+        others = set(report.products) - {product_ref}
+    graded = [issue for issue in report.issues if issue.source not in others]
+    set_aside = [issue for issue in report.issues if issue.source in others]
+    return graded, set_aside
 
 
 def _candidate_metric_pins(

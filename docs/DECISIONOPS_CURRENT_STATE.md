@@ -10,9 +10,40 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=91`, `CHECK_VERSION=66`
+**Версии evidence:** `VERIFIER_VERSION=92`, `CHECK_VERSION=67`
 
-**Последний срез (2026-10-04):** `run_id` различает прогоны по каждому статическому входу
+**Последний срез (2026-10-04):** `contracts.validate` грейдит validation issues продукта,
+который верифицирует прогон. Validation report — один на все validated paths: `decision verify`
+валидирует каждый продукт этих путей, а верифицирует один (`--product`), и шаг 1 прежде
+грейдил каждый issue отчёта. Pin другого продукта на версию, которой пути не держат, или на
+метрику без контракта, dimension, которую его метрика не объявляет, и его retired-метрика
+блокировали релиз продукта, о котором правила ничего не сказали; чужие `policy.mismatch` и
+draft-метрика отправляли его в review, deprecated-метрика давала advisory. Subject refs шага
+называли при этом только верифицируемый продукт и его pin, и снять finding изменением этого
+продукта, его метрики или любого из двух refs было нельзя. Теперь issue, чей `source` —
+другой продукт из `products` отчёта, не грейдится и запечатан отдельно в
+`other_product_issues` (ключ есть всегда, без таких issues — `[]`); detail называет число
+отложенных issues и продуктов. Issues загрузки файла (`contract.unreadable`,
+`contract.unknown_kind`, `contract.invalid`, `contract.duplicate_id`) грейдятся на прогоне
+каждого продукта, как прежде; отчёт, не называющий верифицируемый продукт, грейдится целиком,
+issue с `source` вне `products` — тоже. Validation report, `decision validate` (он отвечает
+за пути целиком), pin и rule issues, остальные checks и состав run id прежние: чужой issue
+по-прежнему двигает `run_id`. Версии evidence 91 → 92 / 66 → 67; исторические bundles не
+переписаны.
+Выбор — оркестратор: срез закрывает границу, записанную в спеке и проверках T-47 (issue
+чужого продукта грейдится на прогоне этого), Astra-выбора по ADR 0006 для него нет. По
+решению владельца срез выполнен напрямую Claude Opus 5.5, без MyFlow-исполнителей; модельное
+ревью по ADR 0006 (Astra xhigh) не проводилось — проверки сделал сам автор, это не
+независимое ревью. Тесты прогонялись на Mac. Red на HEAD: 30 failed / 0 passed (payload HEAD
+не несёт ключ `other_product_issues`); на копии HEAD с одним этим ключом, всегда пустым:
+19 failed / 11 passed; новый модуль: 30 passed. 19 ручных мутантов правила убиты. Контроль
+на tracked pilot-пакетах: 10 прогонов, вердикт и каждая проверка как на HEAD, отложенных
+issues нет. Полный offline gate с duckdb: 4665 passed, 4 skipped, 38 deselected, exit 0;
+Black/Ruff/strict mypy чистые.
+[Проверки и границы](DECISIONOPS_VALIDATION_ISSUE_SCOPE_CHECKS_2026-10-04.md).
+Human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-04):** `run_id` различает прогоны по каждому статическому входу
 гейта. Idempotency key §7.6, из которого выводится `run_id`, прежде строился из продукта,
 canonical digests двух snapshots, policy, environment ref, signing identity и версии
 verifier. Остальное, что получает гейт, — validation report, validated-контракты, gaps и
