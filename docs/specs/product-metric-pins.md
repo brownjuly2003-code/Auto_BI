@@ -230,8 +230,9 @@ version and the check version SHALL be bumped; historical bundles are not rewrit
 - The contents of the validated contract and of the candidate's metric at the same version are
   not compared: the validation rules that read a contract — dimensions, status, policy — grade the
   copy found in the validated paths.
-- The metric pins of verified assets (`metric_refs`) are not compared with the candidate
-  snapshot.
-- A semantic ref holding two contracts of one metric id is not a snapshot gap: for a metric no
-  product in the run pins, the diff and the reference-SQL compiler may still read different
-  contracts of it.
+- The metric pins of verified assets (`metric_refs`) are not resolved by this check:
+  `assets.invalidated` resolves them in the candidate snapshot
+  ([verified asset metric pins](verified-asset-metric-pins.md)).
+- A semantic ref holding two contracts of one metric id is not a snapshot gap: for a metric that
+  neither the product nor a verified asset given to the run pins, the diff and the reference-SQL
+  compiler may still read different contracts of it.

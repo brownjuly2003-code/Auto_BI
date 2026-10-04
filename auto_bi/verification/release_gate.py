@@ -441,7 +441,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 87 — a ClickHouse own-grant row with no access type leaves the grants answer incomplete:
 #: the role is not read-only by its grants and column reach is unknown, where verifier 86
 #: read the row as no grant.
-VERIFIER_VERSION = "87"
+#: 88 — assets.invalidated resolves every metric pin of every verified asset in the
+#: candidate snapshot and seals the graded pins, where verifier 87 read an asset's
+#: metrics by id only.
+VERIFIER_VERSION = "88"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -677,7 +680,9 @@ VERIFIER_VERSION = "87"
 #: 63 — dwh.access blocks and dwh.security reports security.not_observed for a ClickHouse
 #: own-grants answer carrying an untyped row, where rule 62 passed access and could call
 #: a column unreadable.
-CHECK_VERSION = "63"
+#: 64 — a pin that names another version, several contracts or no contract of its metric
+#: blocks assets.invalidated, where rule 63 passed it as assets.valid.
+CHECK_VERSION = "64"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1258,11 +1263,14 @@ def _check_impact(writer: BundleWriter, impact: ImpactReport, product_ref: str) 
 def _check_assets(
     writer: BundleWriter, inputs: GateInputs, diff: SemanticDiff, product_ref: str
 ) -> CheckResult:
-    # Two ways an asset stops being evidence, one question: a semantic change that moved
-    # the number under it, and a reviewed query that reads a mart the model does not govern
+    # Three ways an asset stops being evidence: a semantic change that moved the number
+    # under it, a metric pin that does not resolve in the candidate, and a reviewed query
+    # that reads a mart the model does not govern
     # (§8.4.1 anchors provenance on that query, so its attachment is worth checking).
+    metric_pins, pin_findings = inputs.assets.resolve_metric_pins(inputs.candidate)
     invalidations = [
         *inputs.assets.invalidate(diff),
+        *pin_findings,
         *inputs.assets.ungoverned(inputs.candidate),
     ]
     ref = writer.add_check(
@@ -1270,6 +1278,7 @@ def _check_assets(
         {
             "assets": [item.self_ref() for item in inputs.assets.assets],
             "invalidations": [item.model_dump(mode="json") for item in invalidations],
+            "metric_pins": metric_pins,
         },
     )
     worst = max(invalidations, key=lambda item: _FINDING_RANK[item.severity], default=None)
@@ -1286,6 +1295,12 @@ def _check_assets(
         summary_code="assets.valid" if worst is None else worst.code,
         detail=(
             f"{len(inputs.assets.assets)} verified asset(s) still stand as evidence"
+            + (
+                f"; {len(metric_pins)} of {len(metric_pins)} metric pin(s) "
+                "match the candidate snapshot"
+                if metric_pins
+                else ""
+            )
             if worst is None
             else "; ".join(f"{item.asset}: {item.detail}" for item in invalidations)
         ),

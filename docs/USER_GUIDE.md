@@ -192,6 +192,11 @@ Candidate ref должен держать каждую запинненную п
 контрактом на запинненной версии, иначе `contracts.validate` блокирует выпуск:
 `metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,
 `metric_ref.candidate_absent`.
+Каждая запись `metric_refs` verified asset, переданного прогону, тоже должна пинить
+версию, которую держит candidate ref, ровно одним контрактом этой метрики. Иначе
+`assets.invalidated` блокирует выпуск с `asset.metric_ref_version_mismatch`,
+`asset.metric_ref_ambiguous` или `asset.metric_ref_absent`. После сдвига версии
+перепиньте asset вместе с candidate.
 
 Для агрегатного результата asset может объявить проверки в `tolerance.aggregate_checks`.
 Они типизированы по `kind`: `partition_conservation` (сумма частей равна total), `share_sum`

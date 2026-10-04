@@ -6,6 +6,16 @@
 
 ### Changed
 
+- **`assets.invalidated` резолвит metric pins каждого выбранного verified asset в candidate snapshot.**
+  Другая версия, несколько контрактов или отсутствие метрики блокируют шаг с
+  `asset.metric_ref_version_mismatch`, `asset.metric_ref_ambiguous`,
+  `asset.metric_ref_absent`, где прежде asset сохранял clean. Findings pins стоят
+  после семантического изменения и перед reviewed-запросом; base не сравнивается.
+  Payload несёт `metric_pins`, clean detail считает совпавшие pins. Выбор assets,
+  `contracts.validate`, `results.reconcile`, `results.provenance`, `decision validate`
+  и not-run при непрочитанном контракте прежние.
+  Verifier 87 → 88, check 63 → 64; historical bundles прежние.
+
 - **ClickHouse own-grant строка без access type больше не считается отсутствием grant.**
   Missing key, NULL или пустой `access_type` означает неполный ответ: `readonly=1/2`,
   доказанный write grant и неполные enabled roles сохраняют evidence; иначе read-only

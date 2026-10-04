@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import Field, model_validator
@@ -231,6 +232,61 @@ class VerifiedAssetRepository:
 
     def get(self, asset_id: str) -> VerifiedAsset | None:
         return next((item for item in self.assets if item.metadata.id == asset_id), None)
+
+    def resolve_metric_pins(
+        self, snapshot: SemanticSnapshot
+    ) -> tuple[list[dict[str, Any]], list[AssetInvalidation]]:
+        """Every asset's metric pins resolved against the candidate snapshot.
+
+        A ref pins the version the asset was reviewed for, so exactly one contract at
+        that version must stand behind it. The base is not read: a historical base may
+        hold an older version, several contracts of the metric or none, and none of
+        those answers what the candidate holds now.
+        """
+        pins: list[dict[str, Any]] = []
+        findings: list[AssetInvalidation] = []
+        for item in self.assets:
+            for ref in dict.fromkeys(item.metric_refs):
+                parsed = ContractRef.parse(ref)
+                metric_id = str(parsed.without_version())
+                pinned = parsed.version
+                versions = sorted(
+                    node.version for node in snapshot.graph.metrics if node.id == metric_id
+                )
+                detail = ""
+                if len(versions) > 1:
+                    outcome = "ambiguous"
+                    held = ", ".join(str(version) for version in versions)
+                    detail = (
+                        f"the candidate snapshot holds {len(versions)} contracts of {metric_id} "
+                        f"(versions {held}), pinned at version {pinned}"
+                    )
+                elif not versions:
+                    outcome = "absent"
+                    detail = (
+                        f"the candidate snapshot holds no {metric_id}, pinned at version {pinned}"
+                    )
+                elif versions[0] != pinned:
+                    outcome = "version_mismatch"
+                    detail = (
+                        f"the candidate snapshot holds version {versions[0]} of {metric_id}, "
+                        f"pinned at version {pinned}"
+                    )
+                else:
+                    outcome = "match"
+                pins.append(
+                    {
+                        "asset": item.self_ref(),
+                        "ref": ref,
+                        "candidate_versions": versions,
+                        "outcome": outcome,
+                    }
+                )
+                if detail:
+                    findings.append(
+                        _asset_finding(item, f"asset.metric_ref_{outcome}", Severity.BLOCK, detail)
+                    )
+        return pins, findings
 
     def ungoverned(self, snapshot: SemanticSnapshot) -> list[AssetInvalidation]:
         """Assets whose reviewed query reads outside the model this snapshot governs.

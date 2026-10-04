@@ -376,6 +376,20 @@ Reviewed-запрос — якорь provenance-цепочки (§8.4.1), и с�
 | колонка governed-витрины | поле не объявлено | `asset.query_ungoverned_field` (review) |
 | — | часть колонок не разрешается | `asset.query_fields_unchecked` (advisory) |
 
+Ref пинит версию, для которой asset был reviewed (§7.1). Гейт резолвит каждую
+запись `metric_refs` каждого выбранного asset в candidate snapshot; повтор ref
+грейдится один раз на первом месте.
+
+| Что держит candidate для метрики | Код |
+|---|---|
+| ровно один контракт на другой версии | `asset.metric_ref_version_mismatch` (block) |
+| несколько контрактов, независимо от версий | `asset.metric_ref_ambiguous` (block) |
+| ни одного контракта | `asset.metric_ref_absent` (block) |
+
+Версия, сдвинувшаяся без изменения определения (`metric.version_changed`, advisory
+в diff), поэтому блокирует выпуск, пока asset не перепинят. Asset, перепиненный
+вместе с candidate, проходит: ровно один контракт на запинненной версии сохраняет clean.
+
 Оба уровня нужны: governance на уровне витрины говорит, что число «про эти витрины», а
 метрика определена над **полями**, и запрос по governed-витрине, читающий необъявленную
 колонку, считает число частично из данных, о которых модель ничего не говорит. Колонка
@@ -590,7 +604,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=87`, `CHECK_VERSION=63`.
+`VERIFIER_VERSION=88`, `CHECK_VERSION=64`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -681,9 +695,11 @@ Gate выполняет шаги в фиксированном порядке:
   прогон. Payload сохраняет issues validation report и добавляет `candidate_pins`
   в объявленном продуктом порядке. Содержимое validated-контракта и candidate-метрики
   на одной версии не сравнивается: dimensions, status и policy грейдят копию из
-  validated paths. Pins verified assets (`metric_refs`) не сравниваются с candidate.
+  validated paths. Pins verified assets (`metric_refs`) резолвит шаг 5
+  (`assets.invalidated`), а не этот шаг.
   Два контракта одного metric id сами по себе не snapshot gap: для метрики вне pins
-  продукта diff и reference-SQL compiler по-прежнему могут читать разные контракты.
+  продукта и выбранных verified assets diff и reference-SQL compiler по-прежнему
+  могут читать разные контракты.
 - Шаг 6 реализован в `verification/sql_contract.py` — reference query метрики: её
   определение на её же grain, без окна, фильтра и top-N (это принадлежит продукту и
   прогону, не метрике). Граница узкая намеренно: typed aggregate компилируется
@@ -919,16 +935,26 @@ Gate выполняет шаги в фиксированном порядке:
   поле метрики) описывают правдивый граф с названной дырой — diff и impact по нему
   по-прежнему стоит читать, а сам гэп уже блокирует релиз. Пропущенные шаги выходят
   как `check.not_run` (review), не как pass.
-- Шаг 5 инвалидирует asset по двум разным причинам, но одной проверкой
+- Шаг 5 инвалидирует asset по трём разным причинам, но одной проверкой
   (`assets.invalidated`): семантическое изменение сдвинуло число под ним
-  (`asset.stale_snapshot` и коды из diff'а) или его reviewed `reference_query` читает
+  (`asset.stale_snapshot` и коды из diff'а), metric pin asset'а не резолвится в candidate
+  snapshot ровно в один контракт на запинненной версии
+  (`asset.metric_ref_version_mismatch`, `asset.metric_ref_ambiguous`,
+  `asset.metric_ref_absent`, block), или его reviewed `reference_query` читает
   витрину или колонку, которой этот snapshot не управляет (`asset.query_ungoverned`,
   `asset.query_ungoverned_field`, §7.5). Вопрос один — перестал ли asset быть
   доказательством, — поэтому и проверка одна, но summary code
   называет решившую причину, а detail — сам повод (та же конвенция, что у
   `results.provenance` и environment-проверок): счёт «1 из 1» одинаков для сдвинувшейся
   формулы и для запроса по чужой витрине, а чинить их надо по-разному, и в owner-отчёт
-  (§15.2) попадает именно detail.
+  (§15.2) попадает именно detail. Pin findings стоят между findings семантического
+  изменения и reviewed-запроса и независимы от обоих: stale asset сохраняет
+  `asset.stale_snapshot` и всё равно получает grading pins; удалённая метрика даёт
+  `asset.metric_removed` и `asset.metric_ref_absent`. Base не сравнивается: исторический
+  snapshot может держать старую версию, несколько контрактов или ни одного. Payload
+  несёт `metric_pins` с ref asset'а, pin как записан, candidate versions по возрастанию
+  с повторами и outcome. Без findings detail продолжен счётом
+  `; <t> of <t> metric pin(s) match the candidate snapshot`, если pins есть.
 - Шаг 8 берёт кандидатные результаты из порта `ResultSource`. Отсутствие ответа —
   `insufficient` (review), никогда pass: сравнение, которого не было, не
   доказывает, что число не поехало. Продукт, у которого вообще нет verified asset

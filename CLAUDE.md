@@ -83,6 +83,24 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-04 — `assets.invalidated` прежде пропускал metric pin verified asset
+  на другой версии, несколько контрактов или отсутствие метрики как `assets.valid`.
+  Теперь каждый pin каждого выбранного asset резолвится в candidate snapshot:
+  `asset.metric_ref_version_mismatch`, `asset.metric_ref_ambiguous`,
+  `asset.metric_ref_absent` — block. Findings семантического изменения, pins и
+  reviewed-запроса идут в этом порядке, независимо друг от друга; base не сравнивается.
+  Payload несёт `metric_pins`; clean detail продолжен
+  `; <t> of <t> metric pin(s) match the candidate snapshot`, если pins есть.
+  Выбор assets, `contracts.validate`, `results.reconcile`, `results.provenance`,
+  `decision validate` и not-run при непрочитанном контракте прежние.
+  Verifier 87 → 88, check 63 → 64; historical bundles прежние.
+  Выбор — synthetic Astra xhigh. Реализовано `gpt-6.1-sol` medium через MyFlow
+  `sol-high`: GLM-5.3 был в недельном лимите z.ai. Red на HEAD: 23 failed / 1 passed;
+  новый модуль: 24 passed. Synthetic Astra xhigh review: 0 findings.
+  Полный offline gate с duckdb: 4360 passed, 4 skipped, 38 deselected, exit 0;
+  Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_ASSET_METRIC_PINS_REVIEW_2026-10-04.md).
+
 - 2026-10-04 — ClickHouse own-grant строка без `access_type` больше не читается
   как «не write grant» и «не SELECT»: прежде роль становилась read-only по grants,
   exact runtime SQL исполнялся, колонка называлась unreadable. Missing key, NULL

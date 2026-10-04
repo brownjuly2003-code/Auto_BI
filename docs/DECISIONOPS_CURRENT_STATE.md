@@ -10,9 +10,25 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=87`, `CHECK_VERSION=63`
+**Версии evidence:** `VERIFIER_VERSION=88`, `CHECK_VERSION=64`
 
-**Последний срез (2026-10-04):** ClickHouse own-grant строка без `access_type`
+**Последний срез (2026-10-04):** `assets.invalidated` резолвит каждый metric pin
+каждого выбранного verified asset в candidate snapshot. Другая версия, несколько
+контрактов или отсутствие метрики блокируют выпуск: `asset.metric_ref_version_mismatch`,
+`asset.metric_ref_ambiguous`, `asset.metric_ref_absent`. Findings семантического
+изменения, pins и reviewed-запроса сохраняются в этом порядке; base не сравнивается.
+Payload несёт `metric_pins`, clean detail считает совпавшие pins. Выбор assets,
+`contracts.validate`, `results.reconcile`, `results.provenance`, `decision validate`
+и not-run при непрочитанном контракте прежние. Версии evidence 87 → 88 / 63 → 64;
+исторические bundles не переписаны. Выбор — synthetic Astra xhigh.
+Реализовано `gpt-6.1-sol` medium через MyFlow `sol-high`: GLM-5.3 был в недельном
+лимите z.ai. Red на HEAD: 23 failed / 1 passed; новый модуль: 24 passed.
+Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb:
+4360 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+[Проверки и границы](DECISIONOPS_ASSET_METRIC_PINS_REVIEW_2026-10-04.md).
+Human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-04):** ClickHouse own-grant строка без `access_type`
 (missing key, NULL или пустое значение) больше не читается как отсутствие grant.
 Это неполный ответ: `readonly=1/2`, доказанный write grant и неполные enabled roles
 сохраняют прежнее evidence; иначе read-only не установлен, `dwh.access` блокируется,
