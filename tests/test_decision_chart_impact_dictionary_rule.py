@@ -15,8 +15,10 @@ a `dict…` call exists to place, or when a star must be placed.
 from __future__ import annotations
 
 import logging
-import time
+import sys
+from collections.abc import Callable
 from pathlib import Path
+from types import FrameType
 
 import pytest
 import sqlglot
@@ -1398,32 +1400,115 @@ def _cte_chain_sql(named: int, scalars: int) -> str:
     return f"WITH {', '.join(parts)} SELECT r0, t0, {cols} FROM c{named}"
 
 
+#: The package's own sources. Taken as the import system spells it, since that is the
+#: spelling a frame's code carries.
+_PACKAGE_ROOT = str(Path(impact_mod.__file__).parents[1])
+
+#: Ceiling of the walk over the small chain, in lines of the package's code. The walk takes
+#: about 0.4 million; a walk that scanned every reference for every gate would take three
+#: times that on this chain alone.
+_SMALL_CHAIN_LINES = 1_000_000
+
+
+def _lines_run[T](run: Callable[[], T], *, under: str, budget: int, what: str) -> tuple[int, T]:
+    """Lines of the code under *under* that *run* executes, and what it returns.
+
+    A measure of work the scheduler cannot move: the count is the same on a loaded machine
+    and on an idle one, and a loop that calls nothing still adds to it. Past *budget* the
+    run is stopped, so a superlinear walk fails without being waited for. What one builtin
+    call does is one line whatever its size: a cost that grows inside `sorted` is not seen.
+    """
+    lines = 0
+
+    class BudgetExceeded(BaseException):
+        pass
+
+    def count_line(_frame: FrameType, event: str, _arg: object) -> Callable[..., object]:
+        nonlocal lines
+        if event == "line":
+            lines += 1
+            if lines > budget:
+                raise BudgetExceeded
+        return count_line
+
+    def enter(frame: FrameType, event: str, _arg: object) -> Callable[..., object] | None:
+        if event == "call" and frame.f_code.co_filename.startswith(under):
+            return count_line
+        return None
+
+    previous = sys.gettrace()
+    try:
+        sys.settrace(enter)
+        result = run()
+    except BudgetExceeded:
+        raise AssertionError(f"work budget: {what} ran more than {budget} lines") from None
+    finally:
+        sys.settrace(previous)
+    return lines, result
+
+
+def _row(n: int) -> int:
+    total = 0
+    for _ in range(n):
+        total += 1
+    return total
+
+
+def _triangle(n: int) -> int:
+    total = 0
+    for i in range(n):
+        for _ in range(i):
+            total += 1
+    return total
+
+
+def test_the_line_count_sees_a_loop_that_calls_nothing() -> None:
+    def lines(run: Callable[[], int]) -> int:
+        return _lines_run(run, under=__file__, budget=10**6, what="a loop")[0]
+
+    assert 3 < lines(lambda: _row(400)) / lines(lambda: _row(100)) < 5
+    assert lines(lambda: _triangle(400)) > 8 * lines(lambda: _triangle(100))
+
+
+def test_the_line_count_leaves_out_code_outside_the_measured_tree() -> None:
+    assert _lines_run(lambda: _row(100), under=_PACKAGE_ROOT, budget=0, what="a loop") == (0, 100)
+
+
+def test_a_line_budget_stops_the_run_and_restores_the_tracer() -> None:
+    previous = sys.gettrace()
+    with pytest.raises(AssertionError, match="work budget: a loop ran more than 10 lines"):
+        _lines_run(lambda: _row(1000), under=__file__, budget=10, what="a loop")
+    assert sys.gettrace() is previous
+
+
 def test_cte_gate_walk_on_a_long_chain_stays_linear() -> None:
     """A 120-CTE chain plus 30 scalar WITHs must not re-scan every gate per pass.
 
-    A 4× sibling (480 named CTEs, 120 scalar WITHs) must stay under 8× the small
-    size, so a return to HEAD-like superlinear cost fails even under the 2 s ceiling.
+    Work is counted in lines of the package's own code, not in seconds: a loaded machine
+    cannot fail the test and a fast one cannot hide a regression. A 4× sibling (480 named
+    CTEs, 120 scalar WITHs) must stay under 8× the small size, so a walk that is superlinear
+    again fails whatever the ceiling of the small one is.
     """
     small_root = sqlglot.parse_one(_cte_chain_sql(120, 30), read="clickhouse")
     large_root = sqlglot.parse_one(_cte_chain_sql(480, 120), read="clickhouse")
 
-    def once(root: sqlglot.Expression) -> tuple[float, _DictionaryReads, bool]:
-        started = time.perf_counter()
-        reads = _dictionary_reads_in(root)
-        starred = _projection_star_in_reachable(root)
-        return time.perf_counter() - started, reads, starred
+    def walk(root: sqlglot.Expression) -> tuple[_DictionaryReads, bool]:
+        return _dictionary_reads_in(root), _projection_star_in_reachable(root)
 
-    def best_of_two(root: sqlglot.Expression) -> tuple[float, _DictionaryReads, bool]:
-        first = once(root)
-        second = once(root)
-        return first if first[0] <= second[0] else second
-
-    small_t, small_reads, small_starred = best_of_two(small_root)
-    large_t, large_reads, large_starred = best_of_two(large_root)
-    assert small_t < 2.0, f"gate walk took {small_t:.3f}s on a 120-CTE chain"
-    assert (
-        large_t / small_t < 8
-    ), f"4x chain took {large_t:.3f}s vs {small_t:.3f}s ({large_t / small_t:.2f}x)"
+    small_lines, (small_reads, small_starred) = _lines_run(
+        lambda: walk(small_root),
+        under=_PACKAGE_ROOT,
+        budget=_SMALL_CHAIN_LINES,
+        what="the gate walk on a 120-CTE chain",
+    )
+    assert small_lines > 0, "nothing was counted: the walk ran outside the measured tree"
+    large_lines, (large_reads, large_starred) = _lines_run(
+        lambda: walk(large_root),
+        under=_PACKAGE_ROOT,
+        budget=8 * small_lines,
+        what=f"the gate walk on a 4x chain ({small_lines} lines on the small one, 8x allowed)",
+    )
+    assert large_lines > small_lines
     expected = _DictionaryReads(reads=(("dm.rev", "revenue"),))
     assert small_reads == expected
     assert small_starred is True
