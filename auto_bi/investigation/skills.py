@@ -1,13 +1,24 @@
-"""Four deterministic v1 investigation skills over canonical metric results."""
+"""Four deterministic investigation skills over canonical metric results."""
 
 from __future__ import annotations
 
-import re
 from collections import Counter
 from datetime import datetime
-from decimal import ROUND_HALF_EVEN, Decimal, localcontext
+from decimal import (
+    MAX_EMAX,
+    MAX_PREC,
+    MIN_EMIN,
+    ROUND_HALF_EVEN,
+    Context,
+    Decimal,
+    DivisionByZero,
+    Inexact,
+    InvalidOperation,
+    Overflow,
+)
 from enum import StrEnum
 from fractions import Fraction
+from functools import reduce
 from typing import Literal
 
 from pydantic import Field
@@ -24,16 +35,23 @@ from auto_bi.investigation.model import (
     InvestigationStep,
 )
 from auto_bi.refs import MetricRef
-from auto_bi.scalars import DecimalString, NonBlankText, Slug
+from auto_bi.scalars import DecimalString, NonBlankText, Slug, duration_seconds
 from auto_bi.semantic.model import Additivity
 from auto_bi.strict import StrictModel
 
 RATIO_SCALE: Literal[6] = 6
-_RATIO_QUANTUM = Decimal(1).scaleb(-RATIO_SCALE)
-_FIXED_DURATION_RE = re.compile(
-    r"^P(?:(?P<weeks>\d+)W)?(?:(?P<days>\d+)D)?"
-    r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
-)
+
+
+def _arithmetic_context() -> Context:
+    # Decimal operators read the calling thread's context; canonical values may exceed its digits.
+    return Context(
+        prec=MAX_PREC,
+        Emin=MIN_EMIN,
+        Emax=MAX_EMAX,
+        rounding=ROUND_HALF_EVEN,
+        traps=[InvalidOperation, DivisionByZero, Overflow, Inexact],
+        flags=[],
+    )
 
 
 class GapCode(StrEnum):
@@ -71,7 +89,7 @@ class InvestigationGap(_CanonicalSkillOutput):
     kind: Literal["gap"] = "gap"
     step_id: Slug
     skill: InvestigationSkill
-    skill_version: Literal[1] = 1
+    skill_version: Literal[1, 2]
     metric_ref: MetricRef
     code: GapCode
     detail: NonBlankText
@@ -96,7 +114,7 @@ class PeriodVarianceResult(_CanonicalSkillOutput):
     kind: Literal["period_variance_result"] = "period_variance_result"
     step_id: Slug
     skill: Literal[InvestigationSkill.PERIOD_VARIANCE] = InvestigationSkill.PERIOD_VARIANCE
-    skill_version: Literal[1] = 1
+    skill_version: Literal[2] = 2
     metric_ref: MetricRef
     unit: str = ""
     comparison_value: DecimalString
@@ -120,7 +138,7 @@ class ContributionResult(_CanonicalSkillOutput):
     skill: Literal[InvestigationSkill.CONTRIBUTION_DECOMPOSITION] = (
         InvestigationSkill.CONTRIBUTION_DECOMPOSITION
     )
-    skill_version: Literal[1] = 1
+    skill_version: Literal[2] = 2
     metric_ref: MetricRef
     unit: str = ""
     dimension: NonBlankText
@@ -149,7 +167,7 @@ class ConcentrationResult(_CanonicalSkillOutput):
     kind: Literal["concentration_result"] = "concentration_result"
     step_id: Slug
     skill: Literal[InvestigationSkill.CONCENTRATION_SHIFT] = InvestigationSkill.CONCENTRATION_SHIFT
-    skill_version: Literal[1] = 1
+    skill_version: Literal[2] = 2
     metric_ref: MetricRef
     unit: str = ""
     dimension: NonBlankText
@@ -213,9 +231,10 @@ def period_variance(
             "period_variance cannot sum multiple rows of a non-additive metric",
         )
 
-    comparison = sum(by_period[InvestigationPeriod.COMPARISON], Decimal())
-    current = sum(by_period[InvestigationPeriod.CURRENT], Decimal())
-    delta = current - comparison
+    context = _arithmetic_context()
+    comparison = reduce(context.add, by_period[InvestigationPeriod.COMPARISON], Decimal())
+    current = reduce(context.add, by_period[InvestigationPeriod.CURRENT], Decimal())
+    delta = context.subtract(current, comparison)
     relative = None if comparison == 0 else _fraction_text(Fraction(delta) / Fraction(comparison))
     return PeriodVarianceResult(
         step_id=step.step_id,
@@ -245,23 +264,24 @@ def contribution_decomposition(
         )
 
     dimension = step.dimensions[0]
-    grouped, group_gap = _grouped_values(step, data, budget, dimension)
+    context = _arithmetic_context()
+    grouped, group_gap = _grouped_values(step, data, budget, dimension, context)
     if group_gap is not None:
         return group_gap
 
     comparison_groups = grouped[InvestigationPeriod.COMPARISON]
     current_groups = grouped[InvestigationPeriod.CURRENT]
     names = sorted(set(comparison_groups) | set(current_groups))
-    total_comparison = sum(comparison_groups.values(), Decimal())
-    total_current = sum(current_groups.values(), Decimal())
-    total_delta = total_current - total_comparison
+    total_comparison = reduce(context.add, comparison_groups.values(), Decimal())
+    total_current = reduce(context.add, current_groups.values(), Decimal())
+    total_delta = context.subtract(total_current, total_comparison)
 
     entries: list[tuple[str, Decimal, Decimal, Decimal]] = []
     for name in names:
         comparison = comparison_groups.get(name, Decimal())
         current = current_groups.get(name, Decimal())
-        entries.append((name, comparison, current, current - comparison))
-    entries.sort(key=lambda item: (-abs(item[3]), item[0]))
+        entries.append((name, comparison, current, context.subtract(current, comparison)))
+    entries.sort(key=lambda item: (-abs(Fraction(item[3])), item[0]))
 
     contributions = [
         Contribution(
@@ -277,7 +297,7 @@ def contribution_decomposition(
         )
         for name, comparison, current, delta in entries
     ]
-    reconstructed = sum((Decimal(item.delta) for item in contributions), Decimal())
+    reconstructed = reduce(context.add, (Decimal(item.delta) for item in contributions), Decimal())
     return ContributionResult(
         step_id=step.step_id,
         metric_ref=data.metric_ref,
@@ -308,7 +328,8 @@ def concentration_shift(
         )
 
     dimension = step.dimensions[0]
-    grouped, group_gap = _grouped_values(step, data, budget, dimension)
+    context = _arithmetic_context()
+    grouped, group_gap = _grouped_values(step, data, budget, dimension, context)
     if group_gap is not None:
         return group_gap
     if any(value < 0 for values in grouped.values() for value in values.values()):
@@ -329,7 +350,7 @@ def concentration_shift(
         )
 
     comparison, comparison_hhi, comparison_top = _concentration_snapshot(
-        grouped[InvestigationPeriod.COMPARISON], top_n
+        grouped[InvestigationPeriod.COMPARISON], top_n, context
     )
     if comparison is None:
         return _gap(
@@ -339,7 +360,7 @@ def concentration_shift(
             "comparison period has no positive total for concentration",
         )
     current, current_hhi, current_top = _concentration_snapshot(
-        grouped[InvestigationPeriod.CURRENT], top_n
+        grouped[InvestigationPeriod.CURRENT], top_n, context
     )
     if current is None:
         return _gap(
@@ -466,6 +487,7 @@ def _gap(
     return InvestigationGap(
         step_id=step.step_id,
         skill=step.skill,
+        skill_version=step.skill_version,
         metric_ref=data.metric_ref,
         code=code,
         detail=detail,
@@ -502,6 +524,7 @@ def _grouped_values(
     data: CanonicalMetricResult,
     budget: InvestigationBudget,
     dimension: str,
+    context: Context,
 ) -> tuple[
     dict[InvestigationPeriod, dict[str, Decimal]],
     InvestigationGap | None,
@@ -521,8 +544,8 @@ def _grouped_values(
         if row.value is None:  # rejected by _analytic_gap; keeps this helper total
             continue
         period_groups = grouped[row.period]
-        period_groups[dimension_value] = period_groups.get(dimension_value, Decimal()) + Decimal(
-            row.value
+        period_groups[dimension_value] = context.add(
+            period_groups.get(dimension_value, Decimal()), Decimal(row.value)
         )
 
     groups = set().union(*(set(values) for values in grouped.values()))
@@ -537,13 +560,13 @@ def _grouped_values(
 
 
 def _concentration_snapshot(
-    values: dict[str, Decimal], top_n: int
+    values: dict[str, Decimal], top_n: int, context: Context
 ) -> tuple[ConcentrationSnapshot | None, Fraction, Fraction]:
-    total = sum(values.values(), Decimal())
+    total = reduce(context.add, values.values(), Decimal())
     if total <= 0:
         return None, Fraction(), Fraction()
 
-    ranked = sorted(values.items(), key=lambda item: (-item[1], item[0]))
+    ranked = sorted(values.items(), key=lambda item: (-Fraction(item[1]), item[0]))
     total_fraction = Fraction(total)
     shares = [(name, value, Fraction(value) / total_fraction) for name, value in ranked]
     hhi = sum((share * share for _, _, share in shares), Fraction())
@@ -567,7 +590,7 @@ def _concentration_snapshot(
 def _freshness(data: CanonicalMetricResult) -> tuple[FreshnessStatus, str | None]:
     if data.source_max_event_time is None or data.freshness_max_age is None:
         return FreshnessStatus.UNKNOWN, None
-    max_age_seconds = _fixed_duration_seconds(data.freshness_max_age)
+    max_age_seconds = duration_seconds(data.freshness_max_age)
     if max_age_seconds is None:
         return FreshnessStatus.UNKNOWN, None
 
@@ -575,25 +598,15 @@ def _freshness(data: CanonicalMetricResult) -> tuple[FreshnessStatus, str | None
     source = _timestamp(data.source_max_event_time)
     delta = observed - source
     microseconds = delta.days * 86_400_000_000 + delta.seconds * 1_000_000 + delta.microseconds
-    age = Decimal(microseconds) / Decimal(1_000_000)
-    if age < 0:
+    age = _arithmetic_context().scaleb(Decimal(microseconds), -6)
+    if microseconds < 0:
         return FreshnessStatus.FUTURE, _decimal_text(age)
-    status = FreshnessStatus.PASS if age <= max_age_seconds else FreshnessStatus.STALE
-    return status, _decimal_text(age)
-
-
-def _fixed_duration_seconds(value: str) -> Decimal | None:
-    match = _FIXED_DURATION_RE.match(value)
-    if match is None or not any(match.groupdict().values()):
-        return None
-    parts = {name: int(raw or 0) for name, raw in match.groupdict().items()}
-    return Decimal(
-        parts["weeks"] * 7 * 86_400
-        + parts["days"] * 86_400
-        + parts["hours"] * 3_600
-        + parts["minutes"] * 60
-        + parts["seconds"]
+    status = (
+        FreshnessStatus.PASS
+        if microseconds <= max_age_seconds * 1_000_000
+        else FreshnessStatus.STALE
     )
+    return status, _decimal_text(age)
 
 
 def _timestamp(value: str) -> datetime:
@@ -601,14 +614,13 @@ def _timestamp(value: str) -> datetime:
 
 
 def _fraction_text(value: Fraction) -> str:
-    digits = max(len(str(abs(value.numerator))), len(str(abs(value.denominator))))
-    with localcontext() as context:
-        context.prec = max(32, digits * 2 + RATIO_SCALE + 2)
-        decimal = (Decimal(value.numerator) / Decimal(value.denominator)).quantize(
-            _RATIO_QUANTUM,
-            rounding=ROUND_HALF_EVEN,
-        )
-    return _decimal_text(decimal)
+    quotient, remainder = divmod(value.numerator * 10**RATIO_SCALE, value.denominator)
+    twice_remainder = remainder * 2
+    if twice_remainder > value.denominator or (
+        twice_remainder == value.denominator and quotient % 2
+    ):
+        quotient += 1
+    return _decimal_text(_arithmetic_context().scaleb(Decimal(quotient), -RATIO_SCALE))
 
 
 def _decimal_text(value: Decimal) -> str:

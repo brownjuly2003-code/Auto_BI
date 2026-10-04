@@ -225,7 +225,7 @@ auto_bi/
   investigation/
     model.py             strict InvestigationPlan, scope, budgets and policy
     data.py              CanonicalMetricResult supplied by a trusted read-only step
-    skills.py            four deterministic v1 skills; observations or typed gaps
+    skills.py            four deterministic version-pinned skills, exact decimals; observations or typed gaps
     claims.py            evidence-backed claims and deterministic Markdown blocks
     application.py       offline orchestration and local plan/results/brief artifacts
   jobs/                  starts only after recurring use is proven
@@ -1508,7 +1508,15 @@ bundle, и команда выходит с `0`. `restricted`-payload не пе�
 `investigate` — внутренний offline alpha. Команда принимает один strict plan и ровно
 по одному `CanonicalMetricResult` для каждой метрики declared steps. Порядок входных
 файлов не влияет на bytes. Application исполняет только четыре version-pinned pure skill,
-а causal claim запрещают и тип `Claim`, и brief validator. Output-каталог должен быть
+а causal claim запрещают и тип `Claim`, и brief validator. `data_health` — версия 1,
+`period_variance`, `contribution_decomposition`, `concentration_shift` — 2. План объявляет
+версию каждого шага; другая версия делает план невалидным (exit `2`), brief отказывается
+от output другой версии. Суммы и разности supplied decimal strings вычисляются
+точно при любой длине, без потери цифр; отношения сохраняют шесть знаков, rounding —
+`HALF_EVEN`. Output и его digest зависят только от шага и canonical result, а не от
+decimal context вызывающего потока, порядка строк или длины значения. `data_health`
+сравнивает возраст с объявленным окном в точных целых числах и читает окно тем же
+`duration_seconds`, что release gate. Output-каталог должен быть
 новым и содержать ровно canonical `plan.json`, canonical `results.json`, typed
 `brief.json` и deterministic `brief.md`; trust brief всегда `exploratory`, а human
 acceptance — `not measured`.

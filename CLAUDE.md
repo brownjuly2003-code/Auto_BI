@@ -83,6 +83,32 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-04 — числовые investigation skills (`period_variance`,
+  `contribution_decomposition`, `concentration_shift`) прежде теряли цифры после
+  28-го знака: группа `10000000000000000000000000000` →
+  `10000000000000000000000000001` отвечала дельтой `0`, и brief нёс этот `0` как
+  claim. Ответ зависел от порядка строк и decimal context вызывающего потока;
+  значение или окно freshness длиннее лимита преобразования integer/text обрывало
+  `decision investigate` с unhandled error, короткая caller precision давала ложный
+  `pass` freshness. Теперь суммы и разности supplied values вычисляются точно при
+  любой длине, ranking идёт по точным значениям, отношения сохраняют шесть знаков,
+  rounding — `HALF_EVEN`. Output и digest зависят только от шага и canonical result:
+  не от caller decimal context (skill его не читает и не меняет, флаги тоже), порядка
+  строк или длины значения. `data_health` берёт возраст точно до микросекунды,
+  сравнивает его с окном в целых и читает окно общим `duration_seconds`.
+  Числовые skills: `skill_version` 1 → 2; план объявляет версию каждого skill, другая
+  версия делает его невалидным, brief отказывается от output другой версии.
+  `data_health` остаётся 1, его digest при default context прежний.
+  `VERIFIER_VERSION` 88 и `CHECK_VERSION` 64 не изменены; сохранённые артефакты
+  не переписаны. Выбор — synthetic Astra xhigh; точный возраст и общий парсер окна
+  в `data_health` добавил оркестратор по воспроизведённым отказам.
+  Реализовано `gpt-6.1-sol` medium через MyFlow `sol-high`: GLM-5.3 был в недельном
+  лимите z.ai. Red на HEAD: 89 failed / 0 passed (HEAD не принимает шаг версии 2);
+  на копии HEAD с одними поднятыми версиями skill: 45 failed / 44 passed; новый
+  модуль: 89 passed. Synthetic Astra xhigh review: 0 findings. Полный offline gate
+  с duckdb: 4449 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_EXACT_ARITHMETIC_REVIEW_2026-10-04.md).
+
 - 2026-10-04 — `assets.invalidated` прежде пропускал metric pin verified asset
   на другой версии, несколько контрактов или отсутствие метрики как `assets.valid`.
   Теперь каждый pin каждого выбранного asset резолвится в candidate snapshot:

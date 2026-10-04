@@ -192,6 +192,11 @@ def compile_brief(plan: InvestigationPlan, outputs: list[SkillResult]) -> Invest
                 f"output for step {step.step_id} uses {output.skill.value}, "
                 f"expected {step.skill.value}"
             )
+        if output.skill_version != step.skill_version:
+            raise BriefCompilationError(
+                f"output for step {step.step_id} has skill_version {output.skill_version}, "
+                f"expected {step.skill_version}"
+            )
         if not isinstance(output, InvestigationGap) and output.kind != step.expected_evidence.value:
             raise BriefCompilationError(
                 f"output for step {step.step_id} has kind {output.kind}, "

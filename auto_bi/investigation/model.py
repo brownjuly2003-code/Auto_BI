@@ -54,6 +54,13 @@ _EXPECTED_EVIDENCE = {
     InvestigationSkill.CONCENTRATION_SHIFT: InvestigationEvidence.CONCENTRATION_RESULT,
 }
 
+_SKILL_VERSIONS = {
+    InvestigationSkill.DATA_HEALTH: 1,
+    InvestigationSkill.PERIOD_VARIANCE: 2,
+    InvestigationSkill.CONTRIBUTION_DECOMPOSITION: 2,
+    InvestigationSkill.CONCENTRATION_SHIFT: 2,
+}
+
 _ALLOWED_CLAIMS = {
     InvestigationSkill.DATA_HEALTH: (ClaimType.OBSERVATION,),
     InvestigationSkill.PERIOD_VARIANCE: (ClaimType.OBSERVATION,),
@@ -83,7 +90,7 @@ class InvestigationScope(StrictModel):
 class InvestigationStep(StrictModel):
     step_id: Slug
     skill: InvestigationSkill
-    skill_version: Literal[1]
+    skill_version: Literal[1, 2]
     metrics: list[MetricRef] = Field(min_length=1)
     dimensions: list[NonBlankText] = Field(default_factory=list)
     preconditions: list[InvestigationPrecondition] = Field(default_factory=list)
@@ -100,6 +107,10 @@ class InvestigationStep(StrictModel):
             ("step.allowed_claim_types", self.allowed_claim_types),
         ):
             _reject_duplicates(name, entries)
+
+        expected_version = _SKILL_VERSIONS[self.skill]
+        if self.skill_version != expected_version:
+            raise ValueError(f"skill_version for {self.skill.value} must be {expected_version}")
 
         if ClaimType.CAUSAL in self.allowed_claim_types:
             raise ValueError("causal claims are forbidden in the offline investigation alpha")
@@ -127,7 +138,7 @@ class InvestigationStep(StrictModel):
         if needs_dimension and len(self.dimensions) != 1:
             raise ValueError(f"{self.skill.value} requires exactly one dimension")
         if self.skill is InvestigationSkill.PERIOD_VARIANCE and self.dimensions:
-            raise ValueError("period_variance does not accept dimensions in v1")
+            raise ValueError("period_variance does not accept dimensions")
 
         needs_top_n = self.skill is InvestigationSkill.CONCENTRATION_SHIFT
         if needs_top_n and self.top_n is None:

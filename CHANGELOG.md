@@ -6,6 +6,21 @@
 
 ### Changed
 
+- **Investigation skills отвечают точно по supplied values при любой длине.**
+  Прежде цифры после 28-го знака терялись (группа, идущая от
+  `10000000000000000000000000000` к `10000000000000000000000000001`, отвечала
+  дельтой `0`), ответ зависел от порядка строк и decimal context вызывающего потока;
+  значение или окно freshness длиннее лимита преобразования integer/text обрывало
+  `decision investigate` с unhandled error. При короткой caller precision freshness
+  могла получить ложный `pass`. Теперь суммы и разности вычисляются точно, ranking
+  идёт по точным значениям, отношения сохраняют шесть знаков, rounding —
+  `HALF_EVEN`; outputs и digests не зависят от caller context, порядка строк или
+  длины значения. `data_health` сравнивает точный возраст в целых микросекундах
+  с окном и читает окно общим `duration_seconds`. План объявляет версию каждого
+  skill, другая версия делает план невалидным, brief отказывается от output другой
+  версии. Числовые skills — `skill_version` 2, `data_health` — 1; release-версии
+  evidence прежние (verifier 88, check 64).
+
 - **`assets.invalidated` резолвит metric pins каждого выбранного verified asset в candidate snapshot.**
   Другая версия, несколько контрактов или отсутствие метрики блокируют шаг с
   `asset.metric_ref_version_mismatch`, `asset.metric_ref_ambiguous`,

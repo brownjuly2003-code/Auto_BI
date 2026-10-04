@@ -12,7 +12,27 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=88`, `CHECK_VERSION=64`
 
-**Последний срез (2026-10-04):** `assets.invalidated` резолвит каждый metric pin
+**Последний срез (2026-10-04):** investigation skills считают supplied decimal strings
+точно при любой длине: точная сумма, разность и ranking не теряют цифры после 28-го
+знака и не зависят от decimal context вызывающего потока или порядка строк.
+Отношения сохраняют шесть знаков, rounding — `HALF_EVEN`; потеря цифр в сумме
+больше не становится ложной наблюдаемой дельтой. Длинное значение и длинное окно
+freshness не обрывают команду на лимите преобразования integer/text. `data_health`
+сравнивает точный возраст в микросекундах с окном из общего `duration_seconds`,
+без ложного `pass` при короткой precision. План объявляет версии skills, brief
+отказывается от output другой версии. Числовые skills — `skill_version` 2,
+`data_health` — 1 с прежним digest при default context. Версии evidence 88 / 64
+и исторические bundles прежние. Выбор — synthetic Astra xhigh; точный возраст и
+общий парсер окна в `data_health` добавил оркестратор по воспроизведённым отказам.
+Реализовано `gpt-6.1-sol` medium через MyFlow `sol-high`: GLM-5.3 был в недельном
+лимите z.ai. Red на HEAD: 89 failed / 0 passed (HEAD не принимает шаг версии 2);
+на копии HEAD с одними поднятыми версиями skill: 45 failed / 44 passed; новый
+модуль: 89 passed. Synthetic Astra xhigh review: 0 findings. Полный offline gate
+с duckdb: 4449 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+[Проверки и границы](DECISIONOPS_INVESTIGATION_EXACT_ARITHMETIC_REVIEW_2026-10-04.md).
+Human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-04):** `assets.invalidated` резолвит каждый metric pin
 каждого выбранного verified asset в candidate snapshot. Другая версия, несколько
 контрактов или отсутствие метрики блокируют выпуск: `asset.metric_ref_version_mismatch`,
 `asset.metric_ref_ambiguous`, `asset.metric_ref_absent`. Findings семантического
@@ -886,7 +906,7 @@ reviewed asset SQL -> read-only capture -> canonical ResultSet + attestation -> 
 Offline investigation alpha работает отдельным контуром:
 
 ```text
-InvestigationPlan + CanonicalMetricResult -> четыре pure v1 skill
+InvestigationPlan + CanonicalMetricResult -> четыре pure version-pinned skill
        -> evidence-backed observations/gaps -> deterministic brief artifacts
 ```
 
@@ -1189,7 +1209,11 @@ mode `0600`. Trust root — один или несколько SPKI public PEM. 
 deterministic `brief.md`. План фиксирует `max_queries=0`; application layer не получает
 DWH/BI executor и не импортирует remote adapters. Missing/duplicate metric, budget или
 scope stop завершаются кодом `2` до записи output-каталога. Unsupported или ambiguous
-аналитический вход остаётся evidence-backed gap без factual claim.
+аналитический вход остаётся evidence-backed gap без factual claim. План объявляет
+версию каждого skill: `data_health` — 1, `period_variance`, `contribution_decomposition`,
+`concentration_shift` — 2; другая версия завершает команду кодом `2`. Числовые outputs
+точны для значений любой длины и не зависят от decimal context вызывающего потока
+или порядка строк.
 
 Флаг `--dwh clickhouse|greenplum` включает пять read-only engine checks. На этой
 Windows-машине запрещено поднимать WSL/Docker и аналогичные среды; стенды — только Mac.
