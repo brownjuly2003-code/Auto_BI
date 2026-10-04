@@ -241,6 +241,14 @@ reviewed-SQL формулы получают названный гэп вмес�
 явно, когда прогон должен быть байт-в-байт воспроизводимым. См.
 [DECISIONOPS_ARCHITECTURE §8.2 и §12.1](DECISIONOPS_ARCHITECTURE.md).
 
+`run_id` выводится из статических входов прогона: продукта, контрактов в validated paths,
+обоих semantic refs целиком, candidate `model.yaml`, dashboard specs и verified assets
+продукта, а также `--environment`, signing key и версии verifier. Изменился любой из них —
+это другой прогон с другим `run_id`, и в том же каталоге `--evidence` он пишется рядом с
+прежним bundle. Записанные результаты, показания движка и `--created-at` в `run_id` не
+входят: повтор с другими наблюдениями или в другое время в тот же каталог отклоняется
+(usage-ошибка, exit `2`) — такому прогону нужен свой каталог evidence.
+
 С `--dwh greengage` на ядре до PostgreSQL 9.5 (Greenplum 6 и Greengage 6 работают
 на 9.4) нет row-level security: гейт не читает row-policy каталог, clean summary
 `dwh.security` с покрытием называет версию ядра, остальные проверки среды грейдятся

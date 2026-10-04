@@ -6,6 +6,18 @@
 
 ### Changed
 
+- **`run_id` различает прогоны по каждому статическому входу гейта.** Прежде
+  idempotency key строился из продукта и canonical digests двух snapshots, и два
+  прогона с разными validated-контрактами, verified assets, dashboard specs, gaps
+  или прочитанными байтами snapshot делили `run_id` при разных вердиктах; повтор
+  `decision verify` в тот же каталог evidence после исправления такого входа
+  отклонялся с exit 2. Теперь ключ несёт content address validation report,
+  validated-контрактов, обоих snapshots целиком, candidate model, dashboard specs
+  и verified assets: изменённый вход — другой `run_id`, и повтор пишется рядом с
+  первым bundle. Записанные результаты, показания движка и `created_at` остаются
+  вне ключа; проверки, findings и вердикты прежние.
+  Verifier 90 → 91, check остаётся 66; historical bundles прежние.
+
 - **`contracts.validate` отвечает на правила продукта — dimensions, status, governing
   policies — и на определении метрики в candidate.** Прежде запинненная метрика,
   которую candidate вернул в `draft` или отдал под governing policy, под которой

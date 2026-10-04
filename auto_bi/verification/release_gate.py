@@ -46,7 +46,7 @@ from pydantic import Field, model_validator
 from auto_bi.decision.impact import ImpactReport, ProductImpact, resolve_impact
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import ValidationIssue, ValidationReport, product_rule_issues
-from auto_bi.evidence.canonical import canonical_bytes, sha256_digest
+from auto_bi.evidence.canonical import canonical_bytes, digest_bytes, sha256_digest
 from auto_bi.evidence.manifest import BundleWriter, verify_bundle
 from auto_bi.evidence.model import ArtifactKind, ClaimType, EvidenceClassification
 from auto_bi.evidence.signing import EvidenceSigner
@@ -452,7 +452,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: (dimensions, status, governing policies) on the candidate's definition of every compared
 #: pin and seals the rule issues, where verifier 89 sealed the answers on the validated
 #: copy alone.
-VERIFIER_VERSION = "90"
+#: 91 — the run identity covers every static input the gate is handed: the validation
+#: report, the validated contracts, both snapshots whole, the candidate model, the dashboard
+#: specs and the verified assets. Verifier 90 keyed on the product and the two canonical
+#: digests, so two runs that differed in any of those shared a run id, whatever each found.
+VERIFIER_VERSION = "91"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -875,7 +879,11 @@ class NoResults:
 
 @dataclass(frozen=True)
 class GateInputs:
-    """Everything §8.1 lists as gate input, already loaded and parsed."""
+    """Everything §8.1 lists as gate input, already loaded and parsed.
+
+    Every field is part of the run identity (`idempotency_key`) except the two that hold
+    what was observed when the run was made: `results` and `environment`.
+    """
 
     product: DecisionProductSpec
     validation: ValidationReport
@@ -900,8 +908,70 @@ class GateInputs:
     validated_metrics: Mapping[str, MetricContract] = field(default_factory=dict)
 
 
+def identity_text(value: object) -> str:
+    """Exact text of a dumped gate input, written for the run identity alone.
+
+    Evidence is stored as RFC 8785, and that form cannot serve here. The contract layer
+    refuses a float, an integer past the safe range and a lone surrogate; the foreign layer
+    writes two integers past the safe range as one double. The gate grades inputs that hold
+    such values — a dashboard filter, a mart's row count, a synonym — so its key must
+    neither stop a run on one nor give two different inputs one text. Integers and floats
+    are written in hexadecimal, which has a text for every one of them and none in common;
+    strings as ASCII literals, one per sequence of code points — a JSON text would spell a
+    character outside the BMP as the two surrogates a string can also hold on their own;
+    objects by sorted key.
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, bool):  # before int: bool is an int subclass
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return hex(value)
+    if isinstance(value, float):
+        return value.hex()
+    if isinstance(value, str):
+        return ascii(value)
+    if isinstance(value, list):
+        return "[" + ",".join(identity_text(item) for item in value) + "]"
+    if isinstance(value, dict):
+        if not all(isinstance(key, str) for key in value):
+            raise TypeError("a dumped object has string keys")
+        members = (f"{key!a}:{identity_text(value[key])}" for key in sorted(value))
+        return "{" + ",".join(members) + "}"
+    raise TypeError(f"not a dumped JSON value: {type(value).__name__}")
+
+
+def _static_inputs(inputs: GateInputs) -> dict[str, str]:
+    """Content address of every input a run is handed whole, apart from the product.
+
+    Whole, not the part a check reads: the validation report, both snapshots and every
+    payload graded from the rest are sealed, so an input that differs is another bundle.
+    """
+    dumped: dict[str, object] = {
+        "validation": inputs.validation.model_dump(mode="json"),
+        "validated_metrics": {
+            metric_id: contract.model_dump(mode="json")
+            for metric_id, contract in inputs.validated_metrics.items()
+        },
+        "base": inputs.base.model_dump(mode="json"),
+        "candidate": inputs.candidate.model_dump(mode="json"),
+        "candidate_model": inputs.candidate_model.model_dump(mode="json"),
+        "dashboards": {
+            ref: spec.model_dump(mode="json") for ref, spec in inputs.dashboards.items()
+        },
+        "assets": [asset.model_dump(mode="json") for asset in inputs.assets.assets],
+    }
+    return {
+        name: digest_bytes(identity_text(value).encode("ascii")) for name, value in dumped.items()
+    }
+
+
 def idempotency_key(inputs: GateInputs, *, signer: EvidenceSigner | None = None) -> str:
-    """§7.6: verification inputs, evidence-signing identity and verifier version."""
+    """§7.6: every static verification input, evidence-signing identity and verifier version.
+
+    What was observed when the run was made — the recorded results, the engine's readings,
+    `created_at` — is left out: keying on it would make every run a new one.
+    """
     signing_identity = (
         None if signer is None else {"algorithm": signer.algorithm, "key_id": signer.key_id}
     )
@@ -914,6 +984,7 @@ def idempotency_key(inputs: GateInputs, *, signer: EvidenceSigner | None = None)
             "environment_ref": inputs.environment_ref,
             "evidence_signing": signing_identity,
             "verifier_version": VERIFIER_VERSION,
+            "inputs": _static_inputs(inputs),
         }
     )
 

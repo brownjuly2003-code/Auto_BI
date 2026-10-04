@@ -755,7 +755,8 @@ ref holds it.
 - **WHEN** the gate runs
 - **THEN** `contracts.validate` is pass with `contracts.clean`, as before this requirement; the
   same inputs with the validated contracts are review with `metric.candidate_draft`; and the two
-  runs share one run id
+  runs have different run ids, the validated contracts being part of the
+  [run identity](run-identity.md)
 
 ### Scenario: several pins are answered one by one in declared order
 
@@ -797,10 +798,11 @@ ref holds it.
 - What the semantic diff names as a change is a difference here too, and nothing else is: the
   grain keys written in another order are `metric.grain_changed`, while a contract's
   `lineage_refs` and `verified_asset_refs`, which a snapshot does not carry, are not compared.
-- The validated contract set is not part of the run's idempotency key (DECISIONOPS_ARCHITECTURE
-  §7.6). A run repeated into the same evidence directory after the validated copy alone was
-  corrected shares the run id of the first and is refused as a conflict with the sealed bundle,
-  as it already was for a validated contract whose status alone changed.
+- The validated contract set is part of the run's idempotency key since verifier 91
+  ([run identity](run-identity.md)): a run repeated into the same evidence directory after the
+  validated copy alone was corrected has its own run id and is written beside the first.
+  Verifier 90 keyed on the product and the two snapshots, so that run shared the run id of the
+  first and was refused as a conflict with the sealed bundle.
 - The metric pins of verified assets (`metric_refs`) are not resolved by this check:
   `assets.invalidated` resolves them in the candidate snapshot
   ([verified asset metric pins](verified-asset-metric-pins.md)), by version; their contents are

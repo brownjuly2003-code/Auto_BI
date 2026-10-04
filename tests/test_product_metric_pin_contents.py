@@ -486,7 +486,7 @@ def test_gate_inputs_without_validated_contracts_are_not_compared(tmp_path: Path
             _assert_content(case, report, [code])
         else:
             _assert_check(case, report)
-    assert run_ids[0] == run_ids[1]
+    assert run_ids[0] != run_ids[1]
     assert loaded.report.model_dump() == before == validate_paths([case.contracts]).model_dump()
 
 

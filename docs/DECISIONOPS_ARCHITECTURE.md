@@ -583,19 +583,35 @@ pass | pass_with_advisory | needs_review | block
 
 `failed` означает, что gate не смог вынести полный verdict из-за runtime fault.
 
-Идемпотency key для one-shot verify (`release_gate.idempotency_key`) строится из
-digest product spec, base и candidate snapshots, policy version, execution
-environment, evidence-signing identity (`unsigned` либо algorithm + `key_id`) и verifier
-version. Повтор может переиспользовать только полный terminal bundle с тем же ключом;
-ротация signing key создаёт другой `run_id`.
+Idempotency key для one-shot verify (`release_gate.idempotency_key`) строится из
+digest product spec, canonical digests base и candidate snapshots, policy version, execution
+environment, evidence-signing identity (`unsigned` либо algorithm + `key_id`), verifier
+version и content address каждого статического входа, который гейт получает целиком:
+validation report, validated-контракты метрик, оба snapshot (граф, gaps, digest и описание
+прочитанного источника), candidate model, dashboard specs и verified assets
+([run identity](specs/run-identity.md)). Два прогона, различающиеся любым из этих входов,
+получают разные `run_id`, дошло отличие до какой-либо проверки или нет; порядок, в котором
+переданы контракты, specs и assets, ключ не двигает. Повтор может переиспользовать только
+полный terminal bundle с тем же ключом; ротация signing key создаёт другой `run_id`.
 
-Того, что снималось **в момент** прогона — показаний движка (§8.2 шаг 7) и записанных
-результатов кандидата (§8.4), — в ключе нет: это наблюдения момента, и ключ по ним сделал
-бы новым каждый прогон. Следствие принято сознательно: два прогона, различающиеся только
-записанным результатом, делят `run_id` при разных вердиктах. Поэтому `BundleWriter.write`
-отказывается писать **другой** bundle под уже запечатанным `run_id`
-(`EvidenceConflictError`; наружу — usage-ошибка, exit 2) — и отказывается до записи первого
-байта; идентичная перезапись остаётся no-op. Каждому прогону — свой каталог evidence.
+Content address статического входа — digest его точного текста, который пишется только
+для ключа: объект по отсортированным ключам, целое и float в шестнадцатеричной записи,
+строка как ASCII-литерал, читаемый обратно в ту же последовательность code points.
+Каноническая форма evidence (RFC 8785) отказывает float, целому за пределом ±(2^53−1) и
+одиночному суррогату, а гейт завершает прогоны с такими значениями (например, блокирует
+невалидный dashboard spec с фильтром `.nan`), поэтому вывод ключа не добавляет прогону
+новой точки отказа и не сливает целое с равным ему float, а символ вне BMP — с парой
+суррогатов, которой его записал бы JSON. В bundle этот текст и его digests не попадают.
+
+Того, что снималось **в момент** прогона — показаний движка (§8.2 шаг 7), записанных
+результатов кандидата (§8.4) и времени прогона `created_at`, — в ключе нет: это наблюдения
+момента, и ключ по ним сделал бы новым каждый прогон. Следствие принято сознательно: два
+прогона, различающиеся только записанным результатом, делят `run_id` при разных вердиктах.
+Поэтому `BundleWriter.write` отказывается писать **другой** bundle под уже запечатанным
+`run_id` (`EvidenceConflictError`; наружу — usage-ошибка, exit 2) — и отказывается до записи
+первого байта; идентичная перезапись остаётся no-op. Прогону с другими наблюдениями — свой
+каталог evidence; прогон с другим статическим входом пишется в тот же каталог под своим
+`run_id`.
 
 `VERIFIER_VERSION` поднимается, когда сегодняшний гейт способен вынести из тех же входов
 другой вердикт или сформировать другой evidence artifact (тогда его bundle нельзя
@@ -604,7 +620,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=90`, `CHECK_VERSION=66`.
+`VERIFIER_VERSION=91`, `CHECK_VERSION=66`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 

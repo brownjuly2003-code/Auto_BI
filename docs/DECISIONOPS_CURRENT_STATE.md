@@ -10,9 +10,38 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=90`, `CHECK_VERSION=66`
+**Версии evidence:** `VERIFIER_VERSION=91`, `CHECK_VERSION=66`
 
-**Последний срез (2026-10-04):** `contracts.validate` отвечает на три validation rules,
+**Последний срез (2026-10-04):** `run_id` различает прогоны по каждому статическому входу
+гейта. Idempotency key §7.6, из которого выводится `run_id`, прежде строился из продукта,
+canonical digests двух snapshots, policy, environment ref, signing identity и версии
+verifier. Остальное, что получает гейт, — validation report, validated-контракты, gaps и
+прочитанные байты snapshots, candidate model, dashboard specs, verified assets — доходило
+до evidence, но не до ключа: два прогона, различающиеся одним таким входом, делили `run_id`
+при разных вердиктах (validated-контракт `active` против `draft` — `pass_with_advisory` и
+`block`), а повтор `decision verify` в тот же каталог evidence после исправления входа
+отклонялся с exit 2 как конфликт с запечатанным bundle. Теперь ключ несёт content address
+каждого статического входа целиком, и порядок их передачи его не двигает; изменённый вход —
+другой `run_id`, и повтор пишется рядом с первым bundle. Наблюдения момента — записанные
+результаты, показания движка, `created_at` — остаются вне ключа по решению §7.6: такой
+повтор делит `run_id` и в одном каталоге отклоняется, как прежде. Вывод ключа не добавляет
+прогону точки отказа: точный текст входа принимает float, non-finite, целое любой длины и
+одиночный суррогат и различает `1` и `1.0`, 2^53 и 2^53+1, символ вне BMP и пару
+суррогатов. Проверки, findings, вердикты и артефакты меняются только через `run_id`,
+который несут. Версии evidence 90 → 91, check остаётся 66; исторические bundles не
+переписаны.
+Выбор — оркестратор: срез закрывает границу, записанную в спеках T-45 и T-46 (validated
+contract set вне idempotency key), Astra-выбора по ADR 0006 для него нет. По решению
+владельца срез выполнен напрямую Claude Opus 5.5, без MyFlow-исполнителей; модельное ревью
+по ADR 0006 (Astra xhigh) не проводилось — проверки сделал сам автор, это не независимое
+ревью. Тесты прогонялись на Mac. Red на HEAD: 74 failed / 17 passed; новый модуль:
+91 passed. Контроль на tracked pilot-пакетах: 10 прогонов, исходы всех проверок как на
+HEAD, повторы детерминированы, `run_id` на Mac и Windows совпадают. Полный offline gate
+с duckdb: 4635 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+[Проверки и границы](DECISIONOPS_RUN_IDENTITY_CHECKS_2026-10-04.md).
+Human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-04):** `contracts.validate` отвечает на три validation rules,
 читающие контракт метрики, — dimensions, status и governing policies — ещё и на
 определении candidate каждого сравниваемого pin: ровно один узел candidate на
 запинненной версии и validated-контракт этой версии. Ответ, которого правила не дают
@@ -925,8 +954,11 @@ statement прочитан целиком, связь с изменённой м
 chart(s) named (0 read only in part); of the tiles not named: 0 whose SQL could not be
 read, 0 read only in part, 1 read in whole but not settled against a changed metric».
 У исторического pilot-числа нет attestation, поэтому свежий прогон показывает
-`provenance.unattested` (review). Dashboard-only overlay с теми же semantic snapshots и
-продуктом сохраняет `run_id`; конкретный bundle различается evidence digest и каталогом. Отдельный
+`provenance.unattested` (review). Исторический dashboard-only overlay с теми же semantic
+snapshots и продуктом сохранил `run_id` affected-прогона — ключ verifier 14 dashboard spec
+не покрывал, — и конкретный bundle различается evidence digest и каталогом; с verifier 91
+dashboard spec входит в run identity, и свежий overlay-прогон получает собственный
+`run_id`. Отдельный
 [live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md) связывает эти возможности
 в одном Mac-прогоне: candidate capture аттестован, ClickHouse runtime checks исполнены,
 manifest подписан и проверен по сохранённому public trust root.

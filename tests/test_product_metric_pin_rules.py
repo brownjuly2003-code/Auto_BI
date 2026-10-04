@@ -12,8 +12,6 @@ from auto_bi.evidence.store import FilesystemArtifactStore
 from auto_bi.semantic.gateway import NativeModelSource
 from auto_bi.verification.model import Verdict
 from auto_bi.verification.release_gate import (
-    CHECK_VERSION,
-    VERIFIER_VERSION,
     CheckStatus,
     GateInputs,
     GateReport,
@@ -741,7 +739,7 @@ def test_gate_inputs_without_validated_contracts_have_no_rule_issue(tmp_path: Pa
             _assert_check(
                 case, report, issues=[], detail=_head(0), status=CheckStatus.PASS, verdict="pass"
             )
-    assert run_ids[0] == run_ids[1]
+    assert run_ids[0] != run_ids[1]
 
 
 def test_several_pins_are_answered_one_by_one_in_declared_order(tmp_path: Path) -> None:
@@ -872,8 +870,3 @@ def test_a_validated_contract_that_is_the_candidates_own_gives_no_rule_issue(
             "deprecated": "pass_with_advisory",
         }[status],
     )
-
-
-def test_verifier_and_check_versions() -> None:
-    assert VERIFIER_VERSION == "90"
-    assert CHECK_VERSION == "66"

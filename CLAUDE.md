@@ -83,6 +83,34 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-04 — `run_id` прежде не различал прогоны, отличавшиеся статическим входом
+  гейта вне продукта и canonical digests двух snapshots: validated-контракт `active`
+  против `draft` давал один `run_id` при вердиктах `pass_with_advisory` и `block`, и так
+  же — другие expected rows verified asset, другой dashboard spec, непрочитанный
+  контракт в candidate ref, комментарий в `model.yaml`. Повтор `decision verify` в тот
+  же каталог evidence после исправления такого входа отклонялся с exit 2 как конфликт
+  с запечатанным bundle. Теперь idempotency key несёт content address каждого
+  статического входа целиком: validation report, validated-контракты, оба snapshot с
+  gaps и digest источника, candidate model, dashboard specs, verified assets; порядок
+  передачи ключ не двигает. Изменённый вход — другой `run_id`, и повтор пишется рядом
+  с первым bundle. Наблюдения момента — записанные результаты, показания движка,
+  `created_at` — остаются вне ключа по решению §7.6: такой повтор делит `run_id` и в
+  одном каталоге отклоняется, как прежде. Вывод ключа не добавляет точки отказа:
+  точный текст входа принимает float, non-finite, целое любой длины и одиночный
+  суррогат и различает `1` и `1.0`, 2^53 и 2^53+1, символ вне BMP и пару суррогатов.
+  Проверки, findings, вердикты и артефакты меняются только через `run_id`, который
+  несут. `VERIFIER_VERSION` 90 → 91, `CHECK_VERSION` остаётся 66; historical bundles
+  не переписаны.
+  Выбор — оркестратор: срез закрывает границу спек T-45 и T-46, Astra-выбора по
+  ADR 0006 для него нет. По решению владельца срез выполнен напрямую Claude Opus 5.5,
+  без MyFlow-исполнителей; модельное ревью по ADR 0006 (Astra xhigh) не проводилось —
+  проверки сделал сам автор, это не независимое ревью. Тесты прогонялись на Mac.
+  Red на HEAD: 74 failed / 17 passed; новый модуль: 91 passed. Контроль на tracked
+  pilot-пакетах: 10 прогонов, исходы всех проверок как на HEAD, повторы
+  детерминированы, `run_id` на Mac и Windows совпадают. Полный offline gate с duckdb:
+  4635 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_RUN_IDENTITY_CHECKS_2026-10-04.md).
+
 - 2026-10-04 — `contracts.validate` прежде пропускал с advisory запинненную метрику,
   которую candidate вернул в `draft` или отдал под governing policy, под которой
   продукт не верифицируется: diff классифицирует оба изменения как advisory, verdict
