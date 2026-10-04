@@ -284,10 +284,24 @@ def _validate_product(
             continue
         resolved.append(contract)
 
-    issues.extend(_check_dimensions(product, resolved, source))
-    issues.extend(_check_lifecycle(resolved, source))
-    issues.extend(_check_policy(product, resolved, source))
+    issues.extend(product_rule_issues(product, resolved))
     return issues
+
+
+def product_rule_issues(
+    product: DecisionProductSpec, metrics: Sequence[MetricContract]
+) -> list[ValidationIssue]:
+    """What the rules that read a metric contract say of *product* over *metrics*.
+
+    Dimensions, status and governing policies, in that order. The release gate asks them a
+    second time, about the candidate's definition of a pinned metric.
+    """
+    source = product.self_ref()
+    return [
+        *_check_dimensions(product, metrics, source),
+        *_check_lifecycle(metrics, source),
+        *_check_policy(product, metrics, source),
+    ]
 
 
 def _check_dimensions(

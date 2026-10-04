@@ -6,6 +6,19 @@
 
 ### Changed
 
+- **`contracts.validate` отвечает на правила продукта — dimensions, status, governing
+  policies — и на определении метрики в candidate.** Прежде запинненная метрика,
+  которую candidate вернул в `draft` или отдал под governing policy, под которой
+  продукт не верифицируется, проходила с advisory, хотя `decision validate` по
+  контракту candidate отвечает review. Теперь ответ правила, которого нет на
+  validated definition, — rule issue: `dimension.candidate_not_allowed` и
+  `metric.candidate_retired` — block, `metric.candidate_draft` и
+  `policy.candidate_mismatch` — review, `metric.candidate_deprecated` — advisory,
+  независимо от того, держит ли base validated definition. Rule issues стоят после
+  pin issues, detail называет их коды по каждому pin. `candidate_pins`, validation
+  report, `decision validate`, остальные checks и состав run id прежние.
+  Verifier 89 → 90, check 65 → 66; historical bundles прежние.
+
 - **`contracts.validate` прежде пропускал другую definition метрики на запинненной
   версии как `contracts.clean`; теперь сравнивает её с validated-контрактом по
   изменениям semantic diff.** Когда base держит validated definition, изменение

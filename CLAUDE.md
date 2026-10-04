@@ -83,6 +83,30 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-04 — `contracts.validate` прежде пропускал с advisory запинненную метрику,
+  которую candidate вернул в `draft` или отдал под governing policy, под которой
+  продукт не верифицируется: diff классифицирует оба изменения как advisory, verdict
+  был `pass_with_advisory`, хотя `decision validate` по контракту candidate отвечает
+  review. Теперь на три validation rules, читающие контракт метрики, — dimensions,
+  status, governing policies — гейт отвечает и на определении candidate каждого
+  сравниваемого pin (ровно один узел на запинненной версии и validated-контракт этой
+  версии). Ответ, которого правила не дают на validated definition, — rule issue:
+  `dimension.candidate_not_allowed` и `metric.candidate_retired` — block,
+  `metric.candidate_draft` и `policy.candidate_mismatch` — review,
+  `metric.candidate_deprecated` — advisory; держит ли base validated definition,
+  неважно. Rule issues стоят после pin issues, detail называет их коды по каждому
+  pin. `candidate_pins`, число совпавших pins, validation report, `decision validate`,
+  остальные checks и состав run id прежние. `VERIFIER_VERSION` 89 → 90,
+  `CHECK_VERSION` 65 → 66; historical bundles не переписаны.
+  Выбор — оркестратор: срез закрывает первую границу T-45, Astra-выбора по ADR 0006
+  для него нет. По решению владельца срез выполнен напрямую Claude Opus 5.5, без
+  MyFlow-исполнителей; модельное ревью по ADR 0006 (Astra xhigh) не проводилось —
+  проверки сделал сам автор, это не независимое ревью. Red на HEAD: 17 failed /
+  29 passed; новый модуль: 46 passed. Контроль ложных отказов: пять pilot-пакетов,
+  9 продуктов, 0 rule issues. Полный offline gate с duckdb: 4545 passed, 4 skipped,
+  38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_PIN_RULES_CHECKS_2026-10-04.md).
+
 - 2026-10-04 — `contracts.validate` прежде пропускал как `contracts.clean`
   validated-контракт active с dimensions `region`, `category` и numerator
   `gross_margin`, когда оба refs держали ту же версию со status `deprecated`,

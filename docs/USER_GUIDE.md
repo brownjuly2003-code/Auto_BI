@@ -198,6 +198,14 @@ candidate — изменение под review. Иначе `contracts.validate` 
 `metric_ref.candidate_content_mismatch` и называет отличия кодами semantic diff:
 block, когда отличие меняет смысл или ослабляет обещание, advisory при одних
 отличиях labels. Валидируйте контракт, который держит выпуск.
+На правила продукта, читающие контракт метрики, — dimensions, status и governing
+policies — гейт отвечает и на определении, которое держит candidate ref. Dimension
+продукта, которую метрика там не объявляет, и status `retired` блокируют выпуск
+(`dimension.candidate_not_allowed`, `metric.candidate_retired`); status `draft` и
+governing policy, под которой продукт не верифицируется, требуют review
+(`metric.candidate_draft`, `policy.candidate_mismatch`); status `deprecated` —
+advisory (`metric.candidate_deprecated`). Ответ, который validation уже даёт на
+validated-контракте, второй раз не сообщается.
 Каждая запись `metric_refs` verified asset, переданного прогону, тоже должна пинить
 версию, которую держит candidate ref, ровно одним контрактом этой метрики. Иначе
 `assets.invalidated` блокирует выпуск с `asset.metric_ref_version_mismatch`,

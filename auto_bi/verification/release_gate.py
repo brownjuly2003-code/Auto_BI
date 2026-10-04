@@ -45,7 +45,7 @@ from pydantic import Field, model_validator
 
 from auto_bi.decision.impact import ImpactReport, ProductImpact, resolve_impact
 from auto_bi.decision.spec import DecisionProductSpec
-from auto_bi.decision.validate import ValidationIssue, ValidationReport
+from auto_bi.decision.validate import ValidationIssue, ValidationReport, product_rule_issues
 from auto_bi.evidence.canonical import canonical_bytes, sha256_digest
 from auto_bi.evidence.manifest import BundleWriter, verify_bundle
 from auto_bi.evidence.model import ArtifactKind, ClaimType, EvidenceClassification
@@ -56,7 +56,7 @@ from auto_bi.ir.validate import validate_spec
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import NonBlankText, Sha256Digest, Slug, Timestamp
 from auto_bi.semantic.diff import SemanticChange, SemanticDiff, diff_snapshots, metric_changes
-from auto_bi.semantic.gateway import SemanticGap, SemanticSnapshot, metric_node
+from auto_bi.semantic.gateway import MetricNode, SemanticGap, SemanticSnapshot, metric_node
 from auto_bi.semantic.metric_contract import MetricContract
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.severity import Severity
@@ -448,7 +448,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 89 — contracts.validate compares the validated contract of every pinned metric with
 #: the candidate's definition at the pinned version and seals the difference codes,
 #: where verifier 88 compared the version alone.
-VERIFIER_VERSION = "89"
+#: 90 — contracts.validate answers the three validation rules that read a metric contract
+#: (dimensions, status, governing policies) on the candidate's definition of every compared
+#: pin and seals the rule issues, where verifier 89 sealed the answers on the validated
+#: copy alone.
+VERIFIER_VERSION = "90"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -689,7 +693,11 @@ VERIFIER_VERSION = "89"
 #: 65 — a candidate definition that differs from the validated contract while the base
 #: does not hold the validated definition is a block or an advisory of contracts.validate,
 #: by the diff's classification of the differences, where rule 64 passed it as contracts.clean.
-CHECK_VERSION = "65"
+#: 66 — a candidate definition that fails a product rule the validated contract satisfies is
+#: a block, a review or an advisory of contracts.validate by the rule's own severity, where
+#: rule 65 weighed it by the diff's classification alone and a draft or a foreign governing
+#: policy passed with an advisory.
+CHECK_VERSION = "66"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1057,10 +1065,14 @@ def _check_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: str)
     Validation reads only the validated paths, not the snapshot. Snapshot lookups used
     elsewhere drop the version and select the first node, so pins must be graded here.
     The base is read only to ask whether it holds the validated definition; it is not graded.
+    The product's rules that read a metric contract are answered on the candidate's
+    definition of every compared pin as well: the validation report answers them on the
+    validated copy alone.
     """
     report = inputs.validation
     candidate_pins, pin_issues, clauses = _candidate_metric_pins(inputs, product_ref)
-    issues = [*report.issues, *pin_issues]
+    rule_issues, rule_clauses = _candidate_rule_issues(inputs)
+    issues = [*report.issues, *pin_issues, *rule_issues]
     severities = [issue.severity for issue in issues]
     payload = report.model_dump(mode="json")
     payload["issues"] = [issue.model_dump(mode="json") for issue in issues]
@@ -1074,6 +1086,8 @@ def _check_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: str)
     )
     if clauses:
         detail += ": " + "; ".join(clauses)
+    for clause in rule_clauses:
+        detail += "; " + clause
     return CheckResult(
         check_id="contracts.validate",
         check_version=CHECK_VERSION,
@@ -1170,6 +1184,59 @@ def _candidate_metric_pins(
                 )
             )
     return pins, issues, clauses
+
+
+def _candidate_rule_issues(inputs: GateInputs) -> tuple[list[ValidationIssue], list[str]]:
+    """The product's rules on the candidate's definition of each pinned metric.
+
+    Answered for a pin whose contents are compared: one candidate node at the pinned version
+    and a validated contract at that version. An issue the rules give on the validated
+    definition as well is the validation report's own and is not repeated.
+    """
+    issues: list[ValidationIssue] = []
+    clauses: list[str] = []
+    for ref in inputs.product.scope.metrics:
+        parsed = ContractRef.parse(ref)
+        metric_id = str(parsed.without_version())
+        contract = inputs.validated_metrics.get(metric_id)
+        nodes = [node for node in inputs.candidate.graph.metrics if node.id == metric_id]
+        if contract is None or contract.metadata.version != parsed.version:
+            continue
+        if len(nodes) != 1 or nodes[0].version != parsed.version:
+            continue
+        own = product_rule_issues(inputs.product, [_defined_as(contract, metric_node(contract))])
+        found = [
+            issue.model_copy(
+                update={
+                    "code": issue.code.replace(".", ".candidate_", 1),
+                    "message": f"in the candidate snapshot, {issue.message}",
+                }
+            )
+            for issue in product_rule_issues(inputs.product, [_defined_as(contract, nodes[0])])
+            if issue not in own
+        ]
+        if found:
+            codes = ", ".join(dict.fromkeys(issue.code for issue in found))
+            clauses.append(
+                f"the product's rules give {codes} on the candidate's definition of {ref}"
+            )
+            issues.extend(found)
+    return issues, clauses
+
+
+def _defined_as(contract: MetricContract, node: MetricNode) -> MetricContract:
+    """*contract* with what the product's rules read taken from *node*.
+
+    Governing policies are a set: one set written in another order or with a repeat reads
+    the same, so the two definitions of a pin are compared in one form.
+    """
+    return contract.model_copy(
+        update={
+            "metadata": contract.metadata.model_copy(update={"status": node.status}),
+            "dimensions": list(node.dimensions),
+            "policy_refs": sorted(set(node.policy_refs)),
+        }
+    )
 
 
 def _content_differences(

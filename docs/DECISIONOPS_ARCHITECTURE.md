@@ -604,7 +604,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=89`, `CHECK_VERSION=65`.
+`VERIFIER_VERSION=90`, `CHECK_VERSION=66`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -701,9 +701,20 @@ Gate выполняет шаги в фиксированном порядке:
   Иначе pin получает `content_mismatch` с `metric_ref.candidate_content_mismatch`:
   block, если diff классифицирует хотя бы одно отличие как review или block,
   advisory, если все отличия advisory. Его запись `candidate_pins` несёт
-  `differences`. Сами validation rules (dimensions, status и policy) по-прежнему
-  грейдят копию из validated paths. Pins verified assets (`metric_refs`) резолвит шаг 5
-  (`assets.invalidated`), а не этот шаг.
+  `differences`. На три validation rules, читающие контракт метрики, — dimensions,
+  status и governing policies — гейт отвечает второй раз: на определении candidate
+  каждого pin, содержимое которого сравнивается. Ответ, которого правила не дают
+  на validated definition, — rule issue с кодом правила и `candidate_` после точки:
+  `dimension.candidate_not_allowed` и `metric.candidate_retired` — block,
+  `metric.candidate_draft` и `policy.candidate_mismatch` — review,
+  `metric.candidate_deprecated` — advisory. Severity, subject и source — как у
+  правила, message начинается с `in the candidate snapshot, `. Rule issue не зависит
+  от того, держит ли base validated definition: diff взвешивает изменение, правила —
+  определение, на которое опирается продукт. Rule issues стоят после pin issues,
+  detail называет их коды по каждому pin; `candidate_pins` и число совпавших pins
+  не меняются. Validation report по-прежнему описывает копию из validated paths.
+  Pins verified assets (`metric_refs`) резолвит шаг 5 (`assets.invalidated`), а не
+  этот шаг.
   Два контракта одного metric id сами по себе не snapshot gap: для метрики вне pins
   продукта и выбранных verified assets diff и reference-SQL compiler по-прежнему
   могут читать разные контракты.

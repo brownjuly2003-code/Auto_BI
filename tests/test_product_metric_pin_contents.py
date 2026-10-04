@@ -12,8 +12,6 @@ from auto_bi.evidence.store import FilesystemArtifactStore
 from auto_bi.semantic.gateway import NativeModelSource
 from auto_bi.verification.model import Verdict
 from auto_bi.verification.release_gate import (
-    CHECK_VERSION,
-    VERIFIER_VERSION,
     CheckStatus,
     GateInputs,
     GateReport,
@@ -46,6 +44,29 @@ DRAFT = {
     "subject": PIN,
     "source": PRODUCT,
     "message": "metric contract is still a draft: its definition is not agreed yet",
+}
+# What the product's rules add on the candidate's definition (tests/test_product_metric_pin_rules).
+NOT_ALLOWED = {
+    "code": "dimension.candidate_not_allowed",
+    "severity": "block",
+    "subject": "category",
+    "source": PRODUCT,
+    "message": f"in the candidate snapshot, dimension 'category' is not declared by {PIN}",
+}
+DEPRECATED = {
+    "code": "metric.candidate_deprecated",
+    "severity": "advisory",
+    "subject": PIN,
+    "source": PRODUCT,
+    "message": (
+        "in the candidate snapshot, metric contract is deprecated: "
+        "plan a replacement before it is retired"
+    ),
+}
+GRADES = {
+    "block": (CheckStatus.BLOCK, "block"),
+    "review": (CheckStatus.REVIEW, "needs_review"),
+    "advisory": (CheckStatus.ADVISORY, "pass_with_advisory"),
 }
 
 
@@ -106,8 +127,18 @@ def _assert_content(
     codes: list[str],
     severity: str = "block",
     own: list[dict[str, Any]] | None = None,
+    rules: list[dict[str, Any]] | None = None,
 ) -> None:
-    issues = [*(own or []), _issue(codes, severity)]
+    issues = [*(own or []), _issue(codes, severity), *(rules or [])]
+    detail = (
+        f"1 metric contract(s) resolved, {len(issues)} issue(s); "
+        "0 of 1 metric pin(s) match the candidate snapshot: "
+    ) + _clause(codes)
+    if rules:
+        named = ", ".join(dict.fromkeys(rule["code"] for rule in rules))
+        detail += f"; the product's rules give {named} on the candidate's definition of {PIN}"
+    severities = {issue["severity"] for issue in issues}
+    status, verdict = next(grade for name, grade in GRADES.items() if name in severities)
     _assert_check(
         case,
         report,
@@ -120,13 +151,9 @@ def _assert_content(
                 "differences": codes,
             }
         ],
-        detail=(
-            f"1 metric contract(s) resolved, {len(issues)} issue(s); "
-            "0 of 1 metric pin(s) match the candidate snapshot: "
-        )
-        + _clause(codes),
-        status=CheckStatus.BLOCK if severity == "block" else CheckStatus.ADVISORY,
-        verdict="block" if severity == "block" else "pass_with_advisory",
+        detail=detail,
+        status=status,
+        verdict=verdict,
     )
 
 
@@ -157,10 +184,9 @@ def _variant(name: str) -> tuple[dict[str, Any], dict[str, Any], str]:
         refs["policy_refs"] = []
     elif name == "policy_added":
         validated["policy_refs"] = []
-        refs["policy_refs"] = ["policy://finance/close@2"]
     elif name.startswith("classification_"):
         refs["classification"] = "public" if name.endswith("weakened") else "confidential"
-    elif name in {"deprecated", "draft", "retired"}:
+    elif name == "deprecated":
         refs["metadata"]["status"] = name
         code = "status_changed"
     elif name.startswith("budget_"):
@@ -199,7 +225,7 @@ def test_a_validated_contract_that_neither_snapshot_holds_blocks_the_release(
     case = _copies(tmp_path, metric_contract(), refs)
     report = case.run()
     codes = ["metric.formula_changed", "metric.dimensions_removed", "metric.status_changed"]
-    _assert_content(case, report, codes)
+    _assert_content(case, report, codes, rules=[NOT_ALLOWED, DEPRECATED])
     assert report.verdict is Verdict.BLOCK
     assert summary_of(report, "semantic.diff") == "semantic.unchanged"
     assert summary_of(report, "sql.compile") == "sql.compiled"
@@ -238,7 +264,9 @@ def test_a_difference_that_changes_meaning_or_weakens_a_promise_blocks(
     validated, refs, code = _variant(name)
     case = _copies(tmp_path, validated, refs)
     report = case.run()
-    _assert_content(case, report, [code])
+    # the dimension is one the product splits by; a deprecated metric is the rules' advisory
+    rules = {"dimensions_removed": [NOT_ALLOWED], "deprecated": [DEPRECATED]}.get(name)
+    _assert_content(case, report, [code], rules=rules)
     assert report.verdict is Verdict.BLOCK
 
 
@@ -249,7 +277,6 @@ def test_a_difference_that_changes_meaning_or_weakens_a_promise_blocks(
         "owner_changed",
         "dimensions_added",
         "classification_tightened",
-        "draft",
         "freshness_restated",
         "freshness_tightened",
         "join_path_added",
@@ -275,7 +302,7 @@ def test_differences_of_both_kinds_block_and_are_all_named(tmp_path: Path) -> No
 
 @pytest.mark.parametrize(
     "name",
-    ["time_changed", "formula_changed", "description_changed", "retired", "dimensions_added"],
+    ["time_changed", "formula_changed", "description_changed", "dimensions_added"],
 )
 def test_the_change_under_review_is_not_reported_a_second_time(tmp_path: Path, name: str) -> None:
     validated, refs, code = _variant(name)
@@ -565,12 +592,8 @@ def test_the_validation_report_is_not_modified_and_decision_validate_is_unchange
         case,
         report,
         ["metric.formula_changed", "metric.dimensions_removed", "metric.status_changed"],
+        rules=[NOT_ALLOWED, DEPRECATED],
     )
     assert loaded.report.model_dump() == before == validate_paths([case.contracts]).model_dump()
     assert loaded.report.issues == []
     assert loaded.report.verdict is Verdict.PASS
-
-
-def test_verifier_and_check_versions() -> None:
-    assert VERIFIER_VERSION == "89"
-    assert CHECK_VERSION == "65"

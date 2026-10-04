@@ -49,6 +49,22 @@ changes the metric's timezone at the same version
 `semantic.diff` names it and `impact.products` grades it. The second requirement therefore
 reports a difference only when the base snapshot does not hold the validated definition either.
 
+The second requirement weighs a difference by the semantic diff's classification, and that
+classification is not the validation rules'. Reproduced through the inputs of `decision verify`
+at HEAD `7f35c65`, 2026-10-04:
+
+- the base ref holding the validated contract and the candidate ref holding version 3 with the
+  status `draft`: `contracts.validate` passed as `contracts.clean`, `semantic.diff` listed
+  `metric.status_changed` as an advisory, and the verdict was `pass_with_advisory`;
+- a validated contract declaring no governing policy, base and candidate refs both holding
+  version 3 governed by `policy://finance/close@2`: `contracts.validate` was an advisory
+  (`metric_ref.candidate_content_mismatch` naming `metric.policy_added`), and the verdict was
+  `pass_with_advisory`.
+
+`decision validate` over the product and the candidate's own contract answers `metric.draft` in
+the first case and `policy.mismatch` in the second, each a review. The third requirement
+therefore answers the rules that read a metric contract on the candidate's definition as well.
+
 `decision validate` has no snapshot and is not changed by this capability; its issue codes keep
 their meaning. Every other check of the gate runs as before and reports its own facts: a pin that
 does not resolve does not skip the diff, the impact, the reference SQL or the engine questions.
@@ -320,20 +336,21 @@ and `category`, the numerator `gross_margin` over the denominator `revenue`, the
 - **GIVEN** base and candidate refs both holding version 3 as a deprecated contract with the
   dimension `region` alone and the numerator `revenue`
 - **WHEN** the gate runs
-- **THEN** `contracts.validate` is block with `contracts.issues`; its payload lists one issue
-  `metric_ref.candidate_content_mismatch` (block) whose subject is the pin, whose source is the
-  product ref and whose message is `the candidate snapshot holds another definition of
+- **THEN** `contracts.validate` is block with `contracts.issues`; the first issue of its payload
+  is `metric_ref.candidate_content_mismatch` (block) whose subject is the pin, whose source is
+  the product ref and whose message is `the candidate snapshot holds another definition of
   metric://sales/gross_margin_pct at version 3 than the validated contract
   (metric.formula_changed, metric.dimensions_removed, metric.status_changed), and the base
-  snapshot does not hold the validated definition`; `candidate_pins` is one entry with
-  `candidate_versions` `[3]`, the outcome `content_mismatch` and `differences`
-  `[metric.formula_changed, metric.dimensions_removed, metric.status_changed]`; the payload's
-  `verdict` is `block`; the detail is `1 metric contract(s) resolved, 1 issue(s); 0 of 1 metric
-  pin(s) match the candidate snapshot: it holds another definition of
-  metric://sales/gross_margin_pct at version 3 than the validated contract
-  (metric.formula_changed, metric.dimensions_removed, metric.status_changed)`; the verdict of the
-  run is block and `reports/summary.md` names the check with that detail under "What stops the
-  release"; `semantic.diff` is `semantic.unchanged` and `sql.compile` is `sql.compiled` as before
+  snapshot does not hold the validated definition`, followed by the two rule issues of the third
+  requirement; `candidate_pins` is one entry with `candidate_versions` `[3]`, the outcome
+  `content_mismatch` and `differences` `[metric.formula_changed, metric.dimensions_removed,
+  metric.status_changed]`; the payload's `verdict` is `block`; the detail begins `1 metric
+  contract(s) resolved, 3 issue(s); 0 of 1 metric pin(s) match the candidate snapshot: it holds
+  another definition of metric://sales/gross_margin_pct at version 3 than the validated contract
+  (metric.formula_changed, metric.dimensions_removed, metric.status_changed)` and ends with the
+  rule clause of the third requirement; the verdict of the run is block and `reports/summary.md`
+  names the check with its detail under "What stops the release"; `semantic.diff` is
+  `semantic.unchanged` and `sql.compile` is `sql.compiled` as before
 
 ### Scenario: a difference that changes meaning or weakens a promise blocks
 
@@ -348,21 +365,23 @@ and `category`, the numerator `gross_margin` over the denominator `revenue`, the
   (`metric.status_changed`), a higher cost ceiling or none where the validated contract declares
   one (`metric.budget_relaxed`), or a longer freshness window (`metric.freshness_relaxed`)
 - **WHEN** the gate runs
-- **THEN** in each case `contracts.validate` is block with one issue
+- **THEN** in each case `contracts.validate` is block with one pin issue
   `metric_ref.candidate_content_mismatch` (block) naming that one code, `differences` is that one
-  code, and the verdict of the run is block
+  code, and the verdict of the run is block; it is the only issue, except that the missing
+  dimension, which the product splits by, and the status `deprecated` are followed by a rule
+  issue of the third requirement (`dimension.candidate_not_allowed`,
+  `metric.candidate_deprecated`)
 
 ### Scenario: a difference of labels alone is an advisory
 
 - **GIVEN** base and candidate refs both holding version 3 with one attribute other than in the
   validated contract: another description (`metric.description_changed`), another owner
   (`metric.owner_changed`), one dimension more (`metric.dimensions_added`), a higher
-  classification (`metric.classification_tightened`), the status `draft`
-  (`metric.status_changed`), the same window written as `PT360M` (`metric.freshness_restated`), a
-  shorter window (`metric.freshness_tightened`), one join path more (`metric.join_path_added`),
-  a lower cost ceiling, or one where the validated contract declares none
-  (`metric.budget_tightened`), or a governing policy where the validated contract declares none
-  (`metric.policy_added`)
+  classification (`metric.classification_tightened`), the same window written as `PT360M`
+  (`metric.freshness_restated`), a shorter window (`metric.freshness_tightened`), one join path
+  more (`metric.join_path_added`), a lower cost ceiling, or one where the validated contract
+  declares none (`metric.budget_tightened`), or the policy the product verifies under where the
+  validated contract declares no governing policy (`metric.policy_added`)
 - **WHEN** the gate runs
 - **THEN** in each case the payload lists one issue `metric_ref.candidate_content_mismatch` with
   the severity `advisory` and the message naming that one code; `contracts.validate` is advisory
@@ -370,6 +389,10 @@ and `category`, the numerator `gross_margin` over the denominator `revenue`, the
   outcome `content_mismatch` and `differences` with that one code; the detail says `0 of 1 metric
   pin(s) match the candidate snapshot` and carries the clause; the verdict of the run is
   `pass_with_advisory`, as it was
+
+The status `draft` and a governing policy the product does not verify under are differences of
+this kind as well — `metric.status_changed` and `metric.policy_added`, each an advisory content
+issue — and the third requirement adds the review the product's rules give them.
 
 ### Scenario: differences of both kinds block and are all named
 
@@ -382,8 +405,7 @@ and `category`, the numerator `gross_margin` over the denominator `revenue`, the
 ### Scenario: the change under review is not reported a second time
 
 - **GIVEN** a base ref holding the validated contract and a candidate ref holding version 3 with
-  another timezone, another numerator, another description, the status `retired` or one
-  dimension more
+  another timezone, another numerator, another description or one dimension more
 - **WHEN** the gate runs
 - **THEN** in each case `contracts.validate` is pass with `contracts.clean` and no issue,
   `candidate_pins` is one entry with exactly the keys `ref`, `candidate_versions` `[3]` and the
@@ -490,16 +512,286 @@ and `category`, the numerator `gross_margin` over the denominator `revenue`, the
   and `decision validate` reports the same: `metric_ref.candidate_content_mismatch` does not
   appear in it
 
+## Requirement: `contracts.validate` answers the product's rules on the candidate's definition of a pinned metric
+
+Three validation rules read a metric contract: the dimensions it declares
+(`dimension.not_allowed`, block), its status (`metric.retired`, block; `metric.draft`, review;
+`metric.deprecated`, advisory) and its governing policies (`policy.mismatch`, review). The
+validation report answers them on the contract the validated set holds. For every pin whose
+contents the second requirement compares — the candidate snapshot holds exactly one node of the
+metric, at the pinned version, and the validated set holds the contract at that version — the
+gate SHALL answer the three rules a second time, for that one metric, on the *candidate's
+definition*: the dimensions, the status and the governing policies of the candidate node.
+
+An answer SHALL be reported as a *rule issue* unless the rules give the same answer — the same
+code, subject and message — on the validated definition, the node of the second requirement:
+that answer is the validation report's own and is not repeated. For the comparison and in the
+message the governing policies of a definition are named once each, in sorted order, so one set
+of policies written in another order or with a repeat is one answer.
+
+A rule issue SHALL keep the severity, the subject and the source the rule gives it. Its code
+SHALL be the rule's code with `candidate_` after the dot, and its message SHALL be
+`in the candidate snapshot, ` followed by the rule's message for that one metric:
+
+| rule issue | severity | subject | the rule's message |
+|---|---|---|---|
+| `dimension.candidate_not_allowed` | block | the dimension | `dimension '<dimension>' is not declared by <pin>` |
+| `metric.candidate_retired` | block | the pin | `metric contract is retired and must not back a decision product` |
+| `metric.candidate_draft` | review | the pin | `metric contract is still a draft: its definition is not agreed yet` |
+| `metric.candidate_deprecated` | advisory | the pin | `metric contract is deprecated: plan a replacement before it is retired` |
+| `policy.candidate_mismatch` | review | the pin | `metric is governed by <policies>, the product verifies under <policy>` |
+
+where `<pin>` is the pin as the product writes it, `<policies>` are the candidate node's
+governing policies, once each in sorted order, joined by `, `, and `<policy>` is the policy the
+product verifies under.
+
+A rule issue SHALL be reported whether or not the base holds the validated definition. The
+semantic diff weighs a change by what it does to the definition, and the rules weigh the
+definition the release would hold by what the product may rely on: a metric moved back to
+`draft`, or given a governing policy the product does not verify under, is an advisory change
+to the diff and, to the rules, a product whose metric is not agreed or is governed elsewhere.
+`decision validate` over the product and the candidate's own contract gives the rule's answer;
+the gate, grading the candidate, SHALL NOT give a weaker one.
+
+The rule issues SHALL follow the pin issues of the first two requirements, in the product's
+declared order of pins and, within one pin, in the order of the rules: the dimensions in sorted
+order, the status, the policies. `candidate_pins` SHALL NOT change — an entry keeps the outcome
+and the keys of the first two requirements — and neither does the count of matching pins. The
+detail counts the rule issues among the issues and SHALL carry, after the pin clauses, one more
+clause for every pin with a rule issue, each preceded by `; `:
+
+`the product's rules give <codes> on the candidate's definition of <pin>`
+
+where `<codes>` are the codes of that pin's rule issues, each named once, in the order of the
+issues, joined by `, `.
+
+A pin the second requirement does not compare SHALL have no rule issue: a candidate that holds
+the metric at another version, holds several contracts of it or none, a pin the validated set
+does not resolve, and gate inputs without validated contracts. The validation report handed to
+the gate SHALL NOT be modified, `decision validate` SHALL NOT change, and every other check
+SHALL run as before. Because the same inputs can now yield `needs_review` or `block` where the
+verifier before it passed with an advisory, the verifier version and the check version SHALL be
+bumped; historical bundles are not rewritten.
+
+In the scenarios below the product pins `metric://sales/gross_margin_pct@3`, splits by `region`
+and `category` and verifies under `policy://release/default@1`; unless a scenario says
+otherwise, the validated contract is the one of the second requirement's scenarios, and the base
+ref holds it.
+
+### Scenario: a candidate that moves the pinned metric back to draft needs review
+
+- **GIVEN** a candidate ref holding version 3 with the status `draft`
+- **WHEN** the gate runs
+- **THEN** `contracts.validate` is review with `contracts.issues`; its payload lists one issue
+  `metric.candidate_draft` (review) whose subject is the pin, whose source is the product ref
+  and whose message is `in the candidate snapshot, metric contract is still a draft: its
+  definition is not agreed yet`; the payload's `verdict` is `needs_review`; `candidate_pins` is
+  one entry with exactly the keys `ref`, `candidate_versions` `[3]` and the outcome `match`; the
+  detail is `1 metric contract(s) resolved, 1 issue(s); 1 of 1 metric pin(s) match the candidate
+  snapshot; the product's rules give metric.candidate_draft on the candidate's definition of
+  metric://sales/gross_margin_pct@3`; `semantic.diff` lists `metric.status_changed` as before;
+  the verdict of the run is `needs_review`, where it was `pass_with_advisory`, and
+  `reports/summary.md` names the check with that detail under "What needs a human"
+
+### Scenario: a draft that the base holds too needs review
+
+- **GIVEN** base and candidate refs both holding version 3 with the status `draft`
+- **WHEN** the gate runs
+- **THEN** the payload's `issues` are `metric_ref.candidate_content_mismatch` (advisory) naming
+  `metric.status_changed`, then `metric.candidate_draft` (review); `contracts.validate` is
+  review; the entry has the outcome `content_mismatch` and `differences`
+  `[metric.status_changed]`; the detail is `1 metric contract(s) resolved, 2 issue(s); 0 of 1
+  metric pin(s) match the candidate snapshot: it holds another definition of
+  metric://sales/gross_margin_pct at version 3 than the validated contract
+  (metric.status_changed); the product's rules give metric.candidate_draft on the candidate's
+  definition of metric://sales/gross_margin_pct@3`; the verdict of the run is `needs_review`,
+  where it was `pass_with_advisory`
+
+### Scenario: a governing policy the product does not verify under needs review
+
+- **GIVEN** a validated contract that declares no governing policy, and a candidate ref holding
+  version 3 governed by `policy://finance/close@2`, with a base ref that holds the validated
+  contract, or holds the candidate's
+- **WHEN** the gate runs
+- **THEN** in both cases the payload lists `policy.candidate_mismatch` (review) whose subject is
+  the pin and whose message is `in the candidate snapshot, metric is governed by
+  policy://finance/close@2, the product verifies under policy://release/default@1`, and
+  `contracts.validate` is review; in the first case it is the only issue and the entry is
+  `match`; in the second it follows `metric_ref.candidate_content_mismatch` (advisory) naming
+  `metric.policy_added`; the verdict of the run is `needs_review`, where it was
+  `pass_with_advisory`
+
+### Scenario: a deprecated candidate is an advisory of the rules
+
+- **GIVEN** a candidate ref holding version 3 with the status `deprecated`
+- **WHEN** the gate runs
+- **THEN** the payload lists one issue `metric.candidate_deprecated` (advisory) with the message
+  `in the candidate snapshot, metric contract is deprecated: plan a replacement before it is
+  retired`; `contracts.validate` is advisory with `contracts.issues` and the payload's `verdict`
+  is `pass_with_advisory`; the entry is `match`; the verdict of the run is block through
+  `impact.products`, as before
+
+### Scenario: a retired candidate blocks
+
+- **GIVEN** a candidate ref holding version 3 with the status `retired`
+- **WHEN** the gate runs
+- **THEN** the payload lists one issue `metric.candidate_retired` (block) with the message `in
+  the candidate snapshot, metric contract is retired and must not back a decision product`;
+  `contracts.validate` is block; the entry is `match`; the detail is `1 metric contract(s)
+  resolved, 1 issue(s); 1 of 1 metric pin(s) match the candidate snapshot; the product's rules
+  give metric.candidate_retired on the candidate's definition of
+  metric://sales/gross_margin_pct@3`
+
+### Scenario: a dimension the product splits by is missing in the candidate
+
+- **GIVEN** a candidate ref holding version 3 with the dimension `region` alone, or with the
+  dimension `store_id` alone
+- **WHEN** the gate runs
+- **THEN** in the first case the payload lists one issue `dimension.candidate_not_allowed`
+  (block) whose subject is `category` and whose message is `in the candidate snapshot, dimension
+  'category' is not declared by metric://sales/gross_margin_pct@3`; in the second it lists two,
+  for `category` and then `region`, and the detail names the code once: `1 metric contract(s)
+  resolved, 2 issue(s); 1 of 1 metric pin(s) match the candidate snapshot; the product's rules
+  give dimension.candidate_not_allowed on the candidate's definition of
+  metric://sales/gross_margin_pct@3`; `contracts.validate` is block in both
+
+### Scenario: a dimension the product does not split by is not the rules' concern
+
+- **GIVEN** a validated contract and a base ref that declare `region`, `category` and
+  `store_id`, and a candidate ref holding version 3 without `store_id`
+- **WHEN** the gate runs
+- **THEN** `contracts.validate` is pass with `contracts.clean` and no issue; `semantic.diff`
+  lists `metric.dimensions_removed` as before
+
+### Scenario: the rules are answered in their order on one pin
+
+- **GIVEN** a candidate ref holding version 3 with the status `deprecated`, the dimension
+  `region` alone and the governing policy `policy://finance/close@2` alone
+- **WHEN** the gate runs
+- **THEN** the payload's `issues` are `dimension.candidate_not_allowed` (block, subject
+  `category`), `metric.candidate_deprecated` (advisory) and `policy.candidate_mismatch` (review),
+  in that order; the detail is `1 metric contract(s) resolved, 3 issue(s); 1 of 1 metric pin(s)
+  match the candidate snapshot; the product's rules give dimension.candidate_not_allowed,
+  metric.candidate_deprecated, policy.candidate_mismatch on the candidate's definition of
+  metric://sales/gross_margin_pct@3`; `contracts.validate` is block
+
+### Scenario: the rule issues follow the pin issues
+
+- **GIVEN** base and candidate refs both holding version 3 as a deprecated contract with the
+  dimension `region` alone and the numerator `revenue` — the first scenario of the second
+  requirement
+- **WHEN** the gate runs
+- **THEN** the payload's `issues` are `metric_ref.candidate_content_mismatch` (block), then
+  `dimension.candidate_not_allowed` (block, subject `category`), then
+  `metric.candidate_deprecated` (advisory); the detail is `1 metric contract(s) resolved, 3
+  issue(s); 0 of 1 metric pin(s) match the candidate snapshot: it holds another definition of
+  metric://sales/gross_margin_pct at version 3 than the validated contract
+  (metric.formula_changed, metric.dimensions_removed, metric.status_changed); the product's
+  rules give dimension.candidate_not_allowed, metric.candidate_deprecated on the candidate's
+  definition of metric://sales/gross_margin_pct@3`
+
+### Scenario: an answer the validated contract gives too is not repeated
+
+- **GIVEN** a validated contract, a base ref and a candidate ref that all hold version 3 with
+  the status `draft`; or all three with the dimension `region` alone; or all three governed by
+  `policy://finance/close@2` alone
+- **WHEN** the gate runs
+- **THEN** in each case the payload's `issues` are the validation report's own alone —
+  `metric.draft`, `dimension.not_allowed` for `category`, `policy.mismatch` — with their codes
+  and messages unchanged; the entry is `match` and the detail has no rule clause
+
+### Scenario: another answer of the same rule is reported beside the report's own
+
+- **GIVEN** a validated contract and a base ref with the status `draft` and a candidate ref with
+  the status `deprecated`; or the two with the dimension `region` alone and a candidate ref with
+  the dimension `store_id` alone; or the two governed by `policy://finance/close@2` and a
+  candidate ref governed by `policy://risk/limits@1` and `policy://finance/close@2`, written in
+  that order
+- **WHEN** the gate runs
+- **THEN** the payload's `issues` are, in the first case, the report's `metric.draft` and then
+  `metric.candidate_deprecated` (advisory); in the second, the report's `dimension.not_allowed`
+  for `category` and then `dimension.candidate_not_allowed` for `region` alone; in the third,
+  the report's `policy.mismatch` and then `policy.candidate_mismatch` (review) with the message
+  `in the candidate snapshot, metric is governed by policy://finance/close@2,
+  policy://risk/limits@1, the product verifies under policy://release/default@1`
+
+### Scenario: one set of governing policies written in another way is one answer
+
+- **GIVEN** a validated contract governed by `policy://risk/limits@1` and
+  `policy://finance/close@2`, written in that order, and base and candidate refs that write the
+  two in the other order; or a validated contract and a base ref governed by
+  `policy://finance/close@2` and a candidate ref that declares that policy twice
+- **WHEN** the gate runs
+- **THEN** in both cases the payload's `issues` are the report's `policy.mismatch` alone, with
+  the policies in the order the validated contract writes them, and the detail has no rule
+  clause
+
+### Scenario: a candidate that satisfies a rule the validated contract fails adds nothing
+
+- **GIVEN** a validated contract with the status `draft` and base and candidate refs both
+  holding the active contract; or a validated contract and a base ref governed by
+  `policy://finance/close@2` and a candidate ref governed by the policy the product verifies
+  under; or a candidate ref governed by that policy and `policy://finance/close@2` beside it
+- **WHEN** the gate runs
+- **THEN** no rule issue is reported in any case: the payload's `issues` are the report's
+  `metric.draft` and the content issue of the second requirement in the first case, the report's
+  `policy.mismatch` alone in the second, and none in the third
+
+### Scenario: a pin that is not compared has no rule issue
+
+- **GIVEN** a draft in the candidate ref at version 4; or beside a second contract of the metric
+  id at version 3; or a candidate ref without the metric; or a draft in the candidate ref at
+  version 3 with a validated set that holds no contract of the metric, or holds it at version 4
+- **WHEN** the gate runs
+- **THEN** in each case the payload's `issues` and the detail are those of the first two
+  requirements — `metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,
+  `metric_ref.candidate_absent`, the report's `metric_ref.unknown`, the report's
+  `metric_ref.version_mismatch` — and no code with `candidate_` after a rule's family appears
+
+### Scenario: gate inputs without validated contracts have no rule issue
+
+- **GIVEN** a candidate snapshot holding version 3 with the status `draft`, handed to the gate
+  with the validation report of the validated set but without its contracts
+- **WHEN** the gate runs
+- **THEN** `contracts.validate` is pass with `contracts.clean`, as before this requirement; the
+  same inputs with the validated contracts are review with `metric.candidate_draft`; and the two
+  runs share one run id
+
+### Scenario: several pins are answered one by one in declared order
+
+- **GIVEN** a product pinning `metric://sales/revenue@2`, `metric://sales/gross_margin_pct@3`
+  and `metric://sales/units@1` in that order, validated contracts and a base ref holding all
+  three as active, and a candidate ref holding the first as a draft, the second retired with the
+  dimension `region` alone, and the third unchanged
+- **WHEN** the gate runs
+- **THEN** the payload's `issues` are `metric.candidate_draft` (review) whose subject is
+  `metric://sales/revenue@2`, then `dimension.candidate_not_allowed` (block, subject `category`,
+  the message naming `metric://sales/gross_margin_pct@3` alone), then `metric.candidate_retired`
+  (block) whose subject is `metric://sales/gross_margin_pct@3`; `candidate_pins` has three
+  entries with the outcome `match`; the detail is `3 metric contract(s) resolved, 3 issue(s); 3
+  of 3 metric pin(s) match the candidate snapshot; the product's rules give
+  metric.candidate_draft on the candidate's definition of metric://sales/revenue@2; the
+  product's rules give dimension.candidate_not_allowed, metric.candidate_retired on the
+  candidate's definition of metric://sales/gross_margin_pct@3`
+
+### Scenario: the validation report is not modified and `decision validate` is unchanged
+
+- **GIVEN** the inputs of the first scenario of this requirement
+- **WHEN** the gate runs, and `decision validate` runs over the same contract paths
+- **THEN** the validation report handed to the gate still has no issue and the verdict `pass`,
+  and `decision validate` reports the same: `metric.candidate_draft` does not appear in it
+
 ## Known boundaries
 
-- The validation rules that read a contract — dimensions, status, policy — still grade the copy
-  found in the validated paths. A difference from the candidate's definition is weighed by the
-  semantic diff's classification — in `semantic.diff` when the base holds the validated
-  definition, in this check when it does not — and that classification is not the validation
-  rules': a pinned metric moved back to `draft`, or given a governing policy other than the
-  product's where it declared none, is an advisory either way, while `decision validate` over the
-  product and the candidate's own contract answers `metric.draft` and `policy.mismatch` as review
-  (reproduced at HEAD `d8f6761`: verdict `pass_with_advisory` in both cases).
+- The validation report's own issues describe the validated copy and stay as they are: a
+  candidate that satisfies a rule the validated contract fails does not remove the report's
+  issue, and the remedy is to validate the contract the release holds.
+- A rule issue is the rule's answer for one pinned metric. `dimension.candidate_not_allowed`
+  names that one pin, where the report's `dimension.not_allowed` names every metric of the
+  validated set that lacks the dimension.
+- The rules answered on the candidate's definition are the three that read a metric contract. A
+  rule that reads the product alone, or the presence and the version of a contract in the
+  validated set, has no second answer.
 - A content difference is named by the codes of the semantic diff; the differing values stay in
   the two contracts and are not copied into the evidence.
 - What the semantic diff names as a change is a difference here too, and nothing else is: the
