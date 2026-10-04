@@ -434,7 +434,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 85 — contracts.validate resolves every product metric pin in the candidate snapshot,
 #: so another version of a pinned metric, several contracts of it or none blocks where
 #: verifier 84 passed.
-VERIFIER_VERSION = "85"
+#: 86 — a PostgreSQL-family kernel that predates row-level security (9.4, the kernel of
+#: Greenplum 6 and Greengage 6) is graded where verifier 85 raised on the identity
+#: question; the sealed environment facts gain server_version_num, so every environment
+#: payload differs from verifier 85.
+VERIFIER_VERSION = "86"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -664,7 +668,10 @@ VERIFIER_VERSION = "85"
 #: and a NOLOGIN superuser gets the existing superuser evidence in dwh.access.
 #: 61 — contracts.validate also grades product metric pins against the candidate snapshot:
 #: a pass under rule 60 did not ask that question, and the detail now counts matching pins.
-CHECK_VERSION = "61"
+#: 62 — the role and the marts of a PostgreSQL-family kernel that predates row-level
+#: security are graded where rule 61 produced no result, and the clean dwh.security detail
+#: names that kernel: no row-policy catalog was read there.
+CHECK_VERSION = "62"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1904,6 +1911,11 @@ def _security_clean(questions: EnvironmentQuestions, facts: EnvironmentFacts) ->
         "row-policy questions answered per in-scope mart/event-time question; "
         f"coverage is {coverage}"
     )
+    if facts.predates_row_security():
+        result += (
+            f"; {facts.target} reports server_version_num {facts.server_version_num}, "
+            "a kernel without row-level security, so no row-policy catalog was read"
+        )
     if not columns_confirmed and not policies_observed:
         return f"{result}; no security observation was made"
     return f"{result}; no restrictions found in the observed facts for {facts.role.name}"

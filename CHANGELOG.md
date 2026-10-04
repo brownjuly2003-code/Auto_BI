@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **PostgreSQL-family ядро без row-level security грейдится вместо ошибки на identity-вопросе.**
+  Только после undefined column (`42703`) collector спрашивает `server_version_num`;
+  ниже `90500` повторяет identity без `BYPASSRLS`, сохраняет правила роли и runtime
+  SQL, не читает отсутствующие RLS-каталоги и записывает версию в facts. Clean
+  `dwh.security` с покрытием называет ядро; без читаемых витрин его текст прежний.
+  Живые факты — ядро PostgreSQL 9.4.26; ответившее на identity ядро, ClickHouse и
+  остальные undefined-column случаи прежние.
+  Verifier 85 → 86, check 61 → 62; historical bundles прежние.
+
 - **`contracts.validate` резолвит metric pins продукта в candidate snapshot.**
   Ровно один контракт метрики на запинненной версии сохраняет clean; другая версия,
   несколько контрактов или отсутствие блокируют шаг с

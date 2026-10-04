@@ -83,6 +83,24 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-03 — гейт больше не падает на identity-вопросе ядра 9.4 из-за
+  отсутствующего `pg_roles.rolbypassrls`. Только после undefined column (`42703`)
+  collector спрашивает `server_version_num`; целое неотрицательное значение ниже
+  `90500` разрешает identity без `BYPASSRLS` и грейд роли по прежним правилам.
+  RLS-каталоги витрин не читаются: `bypasses_row_security=null`, `row_policies=[]`,
+  `row_security_enabled=null`; версия записана в facts, clean `dwh.security`
+  с покрытием называет ядро, без читаемых витрин его текст прежний. Ядро с
+  row-level security, ClickHouse и каждый другой undefined-column случай
+  сохраняют прежние правила. Версии evidence 85 → 86 /
+  61 → 62; historical bundles прежние. Выбор — оркестратор по v2-скоупу
+  Greenplum/Greengage; живые факты сняты на ядре PostgreSQL 9.4.26 и PostgreSQL 16.15
+  на Mac (одноразовые кластеры, удалены). Реализовано `gpt-6.1-sol` medium через
+  MyFlow `sol-high`: GLM-5.3 был в недельном лимите z.ai. Red на HEAD: 151 failed /
+  12 passed; новый модуль: 163 passed. Synthetic Astra xhigh review: 0 findings.
+  Полный offline gate с duckdb: 4313 passed, 4 skipped, 38 deselected, exit 0;
+  Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_KERNEL_ROW_SECURITY_REVIEW_2026-10-03.md).
+
 - 2026-10-03 — `contracts.validate` резолвит каждый metric pin продукта в
   candidate snapshot: ровно один контракт на запинненной версии. Другая версия,
   несколько контрактов или отсутствие блокируют шаг с

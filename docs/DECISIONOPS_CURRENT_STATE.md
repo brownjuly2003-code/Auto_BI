@@ -10,9 +10,30 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=85`, `CHECK_VERSION=61`
+**Версии evidence:** `VERIFIER_VERSION=86`, `CHECK_VERSION=62`
 
-**Последний срез (2026-10-03):** `contracts.validate` резолвит каждый metric pin
+**Последний срез (2026-10-03):** PostgreSQL-family ядро без row-level security
+грейдится по каталогам, которые у него есть. Прежний identity-вопрос падал на
+отсутствующем `rolbypassrls` (ядро PostgreSQL 9.4.26, вживую). Только после
+undefined column collector спрашивает `server_version_num`; ниже `90500` повторяет
+identity без `BYPASSRLS`, сохраняет прежние правила роли и runtime SQL, не спрашивает
+RLS-каталоги витрин и записывает версию в facts. Clean `dwh.security` с покрытием
+называет ядро, без читаемых витрин его текст прежний; classification без ограничения
+сохраняет review. Ответившее на identity ядро,
+ClickHouse и остальные undefined-column случаи сохраняют прежние правила.
+Границы — собственные каталоги и EXPLAIN Greenplum/Greengage, PostgreSQL 9.5/9.6
+без `polpermissive` и ядра старше 9.4. Версии evidence 85 → 86 / 61 → 62;
+исторические bundles не переписаны. Выбор — оркестратор по v2-скоупу
+Greenplum/Greengage; живые факты сняты на ядре PostgreSQL 9.4.26 и PostgreSQL 16.15
+на Mac (одноразовые кластеры, удалены). Реализовано `gpt-6.1-sol` medium через
+MyFlow `sol-high`: GLM-5.3 был в недельном лимите z.ai. Red на HEAD: 151 failed /
+12 passed; новый модуль: 163 passed. Synthetic Astra xhigh review: 0 findings.
+Полный offline gate с duckdb: 4313 passed, 4 skipped, 38 deselected, exit 0;
+Black/Ruff/strict mypy чистые.
+[Проверки и границы](DECISIONOPS_KERNEL_ROW_SECURITY_REVIEW_2026-10-03.md).
+Human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-03):** `contracts.validate` резолвит каждый metric pin
 продукта в candidate snapshot: ровно один контракт на запинненной версии.
 Другая версия, несколько контрактов или отсутствие блокируют шаг с
 `metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,

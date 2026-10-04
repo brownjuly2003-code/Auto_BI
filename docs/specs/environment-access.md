@@ -42,7 +42,11 @@ membership granted `WITH SET FALSE` cannot be switched to (`permission denied to
 role`): `pg_has_role(…, 'SET')` answers false for it while `pg_has_role(…, 'MEMBER')` answers
 true. The `SET` option exists from PostgreSQL 16; before it, and in the Greenplum/Greengage
 families built on older PostgreSQL, every direct or indirect member may `SET ROLE`, which is
-what `pg_has_role(…, 'MEMBER')` answers — documented behaviour, not run live here.
+what `pg_has_role(…, 'MEMBER')` answers. The PostgreSQL 9.4.26 kernel, the kernel of Greenplum 6
+and Greengage 6 (live, vanilla build, throwaway cluster, 2026-10-03): a `NOINHERIT` member of a
+group holding `INSERT` was refused its own `INSERT`, `SET ROLE` to the group followed by the
+same `INSERT` raised no error, and the reachability question named the group. No Greenplum or
+Greengage stand was run.
 
 The current role need not be able to log in. PostgreSQL 16.15 (live, throwaway cluster,
 2026-10-03): a session whose role default (`ALTER ROLE … SET role`) parks it on a `NOLOGIN`
@@ -104,6 +108,9 @@ The exact runtime query SHALL NOT execute, and `dwh.access` SHALL block through 
 without asserting that an unknown role can write. Connection failures SHALL still propagate
 as runtime faults.
 The collector SHALL NOT attempt a write to establish identity or read-only access.
+An undefined-column answer of the identity question on a kernel without row-level security is
+not an unanswered identity: [that kernel](postgres-kernel-row-security.md) is asked its
+identity without `BYPASSRLS` and graded by that answer.
 
 The same fail-closed rule SHALL apply to a returned identity row with an absent or NULL
 `name`, `superuser` or `bypassrls`, or an empty name. A nonempty reported name SHALL be

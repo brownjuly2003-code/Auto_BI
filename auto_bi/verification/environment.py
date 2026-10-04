@@ -114,6 +114,10 @@ from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
 from auto_bi.verification.sql_contract import compile_metric_queries
 
+#: `server_version_num` of PostgreSQL 9.5, the first kernel with row-level security.
+POSTGRES_ROW_SECURITY_VERSION = 90500
+
+
 #: Classifications that §10.1 says a DWH role or a deterministic rewrite has to enforce —
 #: not the prompt boundary, and not a document. `internal` is the default of an unset field,
 #: so treating it as sensitive would make every mart a finding.
@@ -209,6 +213,7 @@ class RoleFacts(StrictModel):
     #: Whether row-level security does not apply to this session at all (a PostgreSQL
     #: superuser or `BYPASSRLS`). `None` when identity was not reported or where the engine
     #: has no such notion: ClickHouse policies do not name a user rather than being bypassed.
+    #: `None` also on a kernel that predates row-level security.
     bypasses_row_security: bool | None = None
 
 
@@ -252,9 +257,11 @@ class TableFacts(StrictModel):
     #: Whether the engine has row-level security switched on for this mart (PostgreSQL
     #: `relrowsecurity`). `None` on engines with no such switch — ClickHouse has policies
     #: and nothing else, so `row_policies` is the whole answer there.
+    #: `None` also on a kernel that predates row-level security.
     row_security_enabled: bool | None = None
     #: Policies the engine reports on this mart. `None` is "not reported" — a role that
     #: cannot read the access catalog has not established that there are none.
+    #: `[]` on a present mart on a kernel that predates row-level security.
     row_policies: list[RowPolicyFacts] | None = None
 
     def applying_policies(self) -> list[RowPolicyFacts]:
@@ -304,10 +311,21 @@ class EnvironmentFacts(StrictModel):
     engine: NonBlankText
     #: Where it looked, never how it got in: host, port and database, no credentials.
     target: NonBlankText
+    #: `server_version_num` of a PostgreSQL-family kernel, recorded only when the probe had
+    #: to ask it: a kernel before 9.5 has no row-level security. `None` on ClickHouse and
+    #: on every kernel that answered the identity question.
+    server_version_num: int | None = Field(default=None, ge=0)
     role: RoleFacts
     tables: list[TableFacts] = Field(default_factory=list)
     plans: list[PlanFacts] = Field(default_factory=list)
     executions: list[ExecutionFacts] = Field(default_factory=list)
+
+    def predates_row_security(self) -> bool:
+        """Whether a PostgreSQL-family kernel reported a version without row-level security."""
+        return (
+            self.server_version_num is not None
+            and self.server_version_num < POSTGRES_ROW_SECURITY_VERSION
+        )
 
     def table(self, name: str) -> TableFacts | None:
         return next((item for item in self.tables if item.table == name), None)

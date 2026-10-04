@@ -222,6 +222,11 @@ reviewed-SQL формулы получают названный гэп вмес�
 явно, когда прогон должен быть байт-в-байт воспроизводимым. См.
 [DECISIONOPS_ARCHITECTURE §8.2 и §12.1](DECISIONOPS_ARCHITECTURE.md).
 
+С `--dwh greengage` на ядре до PostgreSQL 9.5 (Greenplum 6 и Greengage 6 работают
+на 9.4) нет row-level security: гейт не читает row-policy каталог, clean summary
+`dwh.security` с покрытием называет версию ядра, остальные проверки среды грейдятся
+как на любом ядре.
+
 `evidence` — вторая половина: bundle, который написал `verify`, читается заново и каждый
 content address пересчитывается. Аргумент — каталог evidence или один run-каталог внутри
 него; если run'ов несколько, команда называет их и просит `--run`, а не выбирает сама.

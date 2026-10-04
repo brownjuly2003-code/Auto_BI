@@ -590,7 +590,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=85`, `CHECK_VERSION=61`.
+`VERIFIER_VERSION=86`, `CHECK_VERSION=62`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -790,7 +790,21 @@ Gate выполняет шаги в фиксированном порядке:
   вопрос отвечает false роли с грантом `UPDATE (revenue)`, хотя она пишет
   (PostgreSQL 16.15, вживую). Superuser-флаг текущей роли читается из
   `pg_roles.rolsuper`: у current role без LOGIN нет строки в `pg_user`, поэтому
-  этот view отвечает NULL (PostgreSQL 16.15, вживую). Отказ или пустой ответ
+  этот view отвечает NULL (PostgreSQL 16.15, вживую). PostgreSQL-family
+  ядро до 9.5 — 9.4 лежит в основе Greenplum 6 и Greengage 6 — не имеет row-level
+  security: `pg_roles.rolbypassrls`, `pg_policy` и `pg_class.relrowsecurity` не
+  существуют, identity-вопрос падает с undefined column (SQLSTATE `42703`;
+  ядро PostgreSQL 9.4.26, вживую). Только после этой ошибки collector спрашивает
+  `server_version_num`; при значении ниже `90500` повторяет identity без `BYPASSRLS`,
+  грейдит роль по прежним правилам и не спрашивает row-policy каталог ни для одной
+  витрины (`bypasses_row_security=null`, `row_policies=[]`, `row_security_enabled=null`).
+  Версия записана в facts; clean detail `dwh.security`, сообщающий покрытие, называет
+  ядро, а detail окружения без читаемых витрин сохраняет текст. Во всех остальных
+  случаях undefined-column ошибка поднимается как прежде; ядро, ответившее на identity,
+  получает прежние вопросы в прежнем порядке. Границы: собственные каталоги и EXPLAIN
+  Greenplum/Greengage не проверены, PostgreSQL 9.5/9.6 по-прежнему падают на
+  отсутствующем `pg_policy.polpermissive`, ядра старше 9.4 не покрыты из-за `to_regclass`,
+  версия ответившего на identity ядра не записывается. Отказ или пустой ответ
   табличного или колоночного privilege-вопроса
   не подтверждает read-only: `dwh.access` — block с evidence о неотвеченных правах,
   exact runtime SQL не исполняется. Отсутствующее или NULL поле в непустом privilege-ответе

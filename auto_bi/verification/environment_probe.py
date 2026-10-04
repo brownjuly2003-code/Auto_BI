@@ -95,6 +95,15 @@ privilege, and an exception there would turn a fact about the environment into a
 `_ask` returns `None` when the engine refuses a question or the object is not there, and
 raises everything else — a dead connection is not an access fact and must not be graded as
 one.
+
+**A kernel without row-level security is graded by the catalogs it has.** Greenplum 6 and
+Greengage 6 run on the PostgreSQL 9.4 kernel, and `pg_roles.rolbypassrls`, `pg_policy` and
+`pg_class.relrowsecurity` came with 9.5. The identity question fails there with an undefined
+column (SQLSTATE 42703; PostgreSQL 9.4.26, live), which is not a refusal, so the run crashed
+on its first question for every role. The version is asked only after that failure — asking
+it first would change what every kernel is asked — and a kernel below 9.5 is then asked its
+identity without `BYPASSRLS` and no row-policy catalog for any mart. On every other kernel
+the undefined column is still raised: there it is not an access fact.
 """
 
 from __future__ import annotations
@@ -108,6 +117,7 @@ from typing import Any, NamedTuple
 from auto_bi.engine import CLICKHOUSE, GREENPLUM, sqlglot_dialect
 from auto_bi.introspect.base import RunQuery
 from auto_bi.verification.environment import (
+    POSTGRES_ROW_SECURITY_VERSION,
     EnvironmentFacts,
     EnvironmentQuestions,
     ExecutionFacts,
@@ -212,9 +222,14 @@ def collect(
     """Ask one engine everything step 7 needs to know about one environment."""
     dialect = sqlglot_dialect(engine)
     postgres = dialect == sqlglot_dialect(GREENPLUM)
+    server_version_num: int | None = None
     if postgres:
-        role = _postgres_role(run_query, questions)
-        tables = [_postgres_table(run_query, item) for item in questions.tables]
+        identity, server_version_num = _pg_identity(run_query)
+        row_security = server_version_num is None
+        role = _postgres_role(run_query, questions, identity, row_security=row_security)
+        tables = [
+            _postgres_table(run_query, item, row_security=row_security) for item in questions.tables
+        ]
     else:
         session = _clickhouse_session(run_query)
         role = _clickhouse_role(run_query, session)
@@ -236,6 +251,7 @@ def collect(
     return EnvironmentFacts(
         engine=engine,
         target=target,
+        server_version_num=server_version_num,
         role=role,
         tables=tables,
         plans=plans,
@@ -722,26 +738,82 @@ def _ch_policies(
 
 # --- PostgreSQL family --------------------------------------------------------
 
+_PG_IDENTITY = (
+    "SELECT current_user AS name, "
+    "(SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser"
+)
+_PG_UNDEFINED_BYPASSRLS = re.compile(r'column "?rolbypassrls"? does not exist', re.IGNORECASE)
 
-def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> RoleFacts:
-    """A superuser bypasses privileges, so it is writable however the grants read.
+
+def _pg_identity(run_query: RunQuery) -> tuple[list[dict[str, Any]] | None, int | None]:
+    """The identity answer and, on a kernel that predates row-level security, its version.
 
     The superuser flag is read from `pg_roles`, which lists every role: a current role
     that cannot log in has no `pg_user` row, so that view answers NULL for it and a
     select-only role would block as unreported (PostgreSQL 16.15, live).
+
+    `rolbypassrls` came with row-level security in PostgreSQL 9.5, so the 9.4 kernel
+    answers this question with an undefined column, which `_ask` raises. Only then is the
+    version asked. A kernel that reports one below 9.5 is asked its identity without
+    `BYPASSRLS`; in every other case the error is raised as it came.
     """
-    rows = _ask(
-        run_query,
-        "SELECT current_user AS name, "
-        "(SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser, "
-        "(SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypassrls",
-    )
+    try:
+        return (
+            _ask(
+                run_query,
+                f"{_PG_IDENTITY}, "
+                "(SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypassrls",
+            ),
+            None,
+        )
+    except Exception as error:
+        if not _pg_undefined_bypassrls(error):
+            raise
+        version = _pg_kernel_version(run_query)
+        if version is None:
+            raise
+    return _ask(run_query, _PG_IDENTITY), version
+
+
+def _pg_undefined_bypassrls(error: Exception) -> bool:
+    """An undefined column by its state code, or by its wording from a driver with no code."""
+    state = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
+    if state is not None:
+        return str(state) == "42703"
+    return bool(_PG_UNDEFINED_BYPASSRLS.search(str(error)))
+
+
+def _pg_kernel_version(run_query: RunQuery) -> int | None:
+    """`server_version_num`, or `None` unless it is that of a kernel before 9.5."""
+    rows = _ask(run_query, "SELECT current_setting('server_version_num')::int AS version_num")
+    version = rows[0].get("version_num") if rows else None
+    if isinstance(version, bool) or not isinstance(version, int):
+        return None
+    return version if 0 <= version < POSTGRES_ROW_SECURITY_VERSION else None
+
+
+def _postgres_role(
+    run_query: RunQuery,
+    questions: EnvironmentQuestions,
+    rows: list[dict[str, Any]] | None,
+    *,
+    row_security: bool,
+) -> RoleFacts:
+    """A superuser bypasses privileges, so it is writable however the grants read.
+
+    `rows` is the identity answer. Without `row_security` the kernel has no `BYPASSRLS` to
+    report and nothing to bypass: the flag is not among the unreported fields and
+    `bypasses_row_security` stays unset for every role.
+    """
     if not rows:
         return RoleFacts(
             name="unknown",
             read_only=False,
             evidence=(
                 "unreported role identity, superuser status and BYPASSRLS, "
+                "so read-only access is not established"
+                if row_security
+                else "unreported role identity and superuser status, "
                 "so read-only access is not established"
             ),
             bypasses_row_security=None,
@@ -753,16 +825,16 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
     superuser = _truthy(superuser_answer)
     # A superuser is not subject to row security either, so the two facts share one answer.
     bypasses: bool | None = None
-    if superuser or _truthy(bypass_answer):
+    if row_security and (superuser or _truthy(bypass_answer)):
         bypasses = True
-    elif superuser_answer is not None and bypass_answer is not None:
+    elif row_security and superuser_answer is not None and bypass_answer is not None:
         bypasses = False
     if superuser:
         return RoleFacts(
             name=name,
             read_only=False,
             evidence="a superuser, whose writes no privilege check can stop",
-            bypasses_row_security=True,
+            bypasses_row_security=bypasses,
         )
 
     unreported_identity: list[str] = []
@@ -770,7 +842,7 @@ def _postgres_role(run_query: RunQuery, questions: EnvironmentQuestions) -> Role
         unreported_identity.append("role name")
     if superuser_answer is None:
         unreported_identity.append("superuser status")
-    if bypass_answer is None:
+    if row_security and bypass_answer is None:
         unreported_identity.append("BYPASSRLS")
     if unreported_identity:
         return RoleFacts(
@@ -956,7 +1028,9 @@ def _pg_reachable_privilege_sql(mart: str, roles: list[str]) -> str:
     )
 
 
-def _postgres_table(run_query: RunQuery, question: TableQuestion) -> TableFacts:
+def _postgres_table(
+    run_query: RunQuery, question: TableQuestion, *, row_security: bool
+) -> TableFacts:
     table = question.table
     schema, _, name = table.partition(".")
     present = _ask(
@@ -971,8 +1045,10 @@ def _postgres_table(run_query: RunQuery, question: TableQuestion) -> TableFacts:
             table=table, event_time_column=question.event_time_column, exists=False, readable=False
         )
     reads = _pg_column_reads(run_query, table, question.columns)
-    policies = _pg_policies(run_query, table)
-    security = _pg_row_security(run_query, table)
+    # A kernel that predates row-level security has neither `pg_policy` nor
+    # `pg_class.relrowsecurity`: no policy can exist on the mart and there is no switch.
+    policies = _pg_policies(run_query, table) if row_security else []
+    security = _pg_row_security(run_query, table) if row_security else None
     # Column grants alone make `has_table_privilege(…, 'SELECT')` false while the role reads
     # the mart perfectly well; the narrower question would block a release over a mart the
     # gate is about to read. Which columns are out of reach is `check_security`'s finding.
