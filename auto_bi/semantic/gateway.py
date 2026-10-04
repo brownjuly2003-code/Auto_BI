@@ -357,6 +357,15 @@ def _build_graph(
     )
 
 
+def metric_node(contract: MetricContract) -> MetricNode:
+    """The node a snapshot holds for this contract.
+
+    The node is the contract's definition alone. What the model does not declare is a gap
+    of a snapshot, and no snapshot is built here.
+    """
+    return _metric_node(contract, set(), [])
+
+
 def _metric_node(contract: MetricContract, known: set[str], gaps: list[SemanticGap]) -> MetricNode:
     identifier = contract.metadata.id
     grain_table = contract.grain.table

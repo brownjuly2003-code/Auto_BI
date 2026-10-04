@@ -144,6 +144,7 @@ def verify(request: VerifyRequest) -> GateReport:
     inputs = GateInputs(
         product=product,
         validation=loaded.report,
+        validated_metrics=loaded.metrics,
         base=base,
         candidate=candidate,
         candidate_model=candidate_model,

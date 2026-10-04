@@ -10,9 +10,28 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=88`, `CHECK_VERSION=64`
+**Версии evidence:** `VERIFIER_VERSION=89`, `CHECK_VERSION=65`
 
-**Последний срез (2026-10-04):** investigation skills считают supplied decimal strings
+**Последний срез (2026-10-04):** `contracts.validate` сравнивает validated-контракт
+каждой запинненной метрики с определением candidate на запинненной версии по
+изменениям semantic diff. Если base держит validated definition, изменение под
+review остаётся у `semantic.diff` и `impact.products`. Иначе pin получает
+`content_mismatch` с `metric_ref.candidate_content_mismatch`: block при review
+или block хотя бы одного отличия, advisory при одних advisory. Запись pin несёт
+`differences` в порядке diff. Правило версий, `decision validate`, validation
+report, остальные checks и состав run id прежние. Версии evidence 88 → 89 / 64 → 65;
+исторические bundles не переписаны.
+Выбор — оркестратор: пробел назван альтернативой synthetic Astra xhigh выбора, давшего
+T-43, и границей спеки T-40; консультацию после срыва Codex-попытки дал
+`claude-fable-5-1` xhigh — не Astra-выбор по ADR 0006, его правило «любая разница
+блокирует» отклонено по owner-пакетам. Реализовано `gpt-6.1-sol` medium через MyFlow
+`sol-high`: GLM-5.3 был в недельном лимите z.ai. Red на HEAD: 38 failed / 15 passed;
+новый модуль: 53 passed. Synthetic Astra xhigh review: 0 findings. Полный offline gate с
+duckdb: 4502 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+[Проверки и границы](DECISIONOPS_PIN_CONTENTS_REVIEW_2026-10-04.md).
+Human/production acceptance не заявляется.
+
+**Предыдущий срез (2026-10-04):** investigation skills считают supplied decimal strings
 точно при любой длине: точная сумма, разность и ranking не теряют цифры после 28-го
 знака и не зависят от decimal context вызывающего потока или порядка строк.
 Отношения сохраняют шесть знаков, rounding — `HALF_EVEN`; потеря цифр в сумме

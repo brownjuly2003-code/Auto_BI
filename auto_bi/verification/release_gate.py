@@ -55,8 +55,9 @@ from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import NonBlankText, Sha256Digest, Slug, Timestamp
-from auto_bi.semantic.diff import SemanticDiff, diff_snapshots
-from auto_bi.semantic.gateway import SemanticGap, SemanticSnapshot
+from auto_bi.semantic.diff import SemanticChange, SemanticDiff, diff_snapshots, metric_changes
+from auto_bi.semantic.gateway import SemanticGap, SemanticSnapshot, metric_node
+from auto_bi.semantic.metric_contract import MetricContract
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
@@ -444,7 +445,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 88 — assets.invalidated resolves every metric pin of every verified asset in the
 #: candidate snapshot and seals the graded pins, where verifier 87 read an asset's
 #: metrics by id only.
-VERIFIER_VERSION = "88"
+#: 89 — contracts.validate compares the validated contract of every pinned metric with
+#: the candidate's definition at the pinned version and seals the difference codes,
+#: where verifier 88 compared the version alone.
+VERIFIER_VERSION = "89"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -682,7 +686,10 @@ VERIFIER_VERSION = "88"
 #: a column unreadable.
 #: 64 — a pin that names another version, several contracts or no contract of its metric
 #: blocks assets.invalidated, where rule 63 passed it as assets.valid.
-CHECK_VERSION = "64"
+#: 65 — a candidate definition that differs from the validated contract while the base
+#: does not hold the validated definition is a block or an advisory of contracts.validate,
+#: by the diff's classification of the differences, where rule 64 passed it as contracts.clean.
+CHECK_VERSION = "65"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -880,6 +887,9 @@ class GateInputs:
     #: themselves stay out of the idempotency key: they are observations of a moment, and
     #: keying on them would make every run a new run.
     environment: EnvironmentFacts | None = None
+    #: Metric id (without the version) -> the contract the validation report was graded on;
+    #: empty means the gate was given nothing to compare a pin's contents with.
+    validated_metrics: Mapping[str, MetricContract] = field(default_factory=dict)
 
 
 def idempotency_key(inputs: GateInputs, *, signer: EvidenceSigner | None = None) -> str:
@@ -1042,10 +1052,11 @@ def run_gate(
 
 
 def _check_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: str) -> CheckResult:
-    """Validate the paths and resolve the product's pins in the candidate snapshot.
+    """Validate the paths and resolve pins by version, then compare their contents.
 
     Validation reads only the validated paths, not the snapshot. Snapshot lookups used
     elsewhere drop the version and select the first node, so pins must be graded here.
+    The base is read only to ask whether it holds the validated definition; it is not graded.
     """
     report = inputs.validation
     candidate_pins, pin_issues, clauses = _candidate_metric_pins(inputs, product_ref)
@@ -1090,6 +1101,8 @@ def _candidate_metric_pins(
             node.version for node in inputs.candidate.graph.metrics if node.id == metric_id
         )
         message = ""
+        severity = Severity.BLOCK
+        differences: list[SemanticChange] = []
         if len(versions) > 1:
             outcome = "ambiguous"
             held = ", ".join(str(version) for version in versions)
@@ -1104,6 +1117,24 @@ def _candidate_metric_pins(
         elif versions:
             if versions[0] == pinned:
                 outcome = "match"
+                differences = _content_differences(inputs, metric_id, pinned)
+                if differences:
+                    outcome = "content_mismatch"
+                    codes = ", ".join(change.code for change in differences)
+                    severity = (
+                        Severity.ADVISORY
+                        if all(change.severity is Severity.ADVISORY for change in differences)
+                        else Severity.BLOCK
+                    )
+                    message = (
+                        f"the candidate snapshot holds another definition of {metric_id} "
+                        f"at version {pinned} than the validated contract ({codes}), "
+                        "and the base snapshot does not hold the validated definition"
+                    )
+                    clauses.append(
+                        f"it holds another definition of {metric_id} at version {pinned} "
+                        f"than the validated contract ({codes})"
+                    )
             else:
                 outcome = "version_mismatch"
                 message = (
@@ -1126,17 +1157,43 @@ def _candidate_metric_pins(
             )
             clauses.append(f"it holds no {metric_id}, pinned at version {pinned}")
         pins.append({"ref": ref, "candidate_versions": versions, "outcome": outcome})
+        if differences:
+            pins[-1]["differences"] = [change.code for change in differences]
         if message:
             issues.append(
                 ValidationIssue(
                     code=f"metric_ref.candidate_{outcome}",
-                    severity=Severity.BLOCK,
+                    severity=severity,
                     subject=ref,
                     source=product_ref,
                     message=message,
                 )
             )
     return pins, issues, clauses
+
+
+def _content_differences(
+    inputs: GateInputs, metric_id: str, pinned: int | None
+) -> list[SemanticChange]:
+    """What the diff names between the validated contract and the candidate's definition.
+
+    Empty when there is nothing to compare (the validated set holds no contract of this id
+    at the pinned version), when the two are one definition, and when the base holds the
+    validated definition: the difference is then the change under review, which
+    `semantic.diff` names and `impact.products` grades.
+    """
+    contract = inputs.validated_metrics.get(metric_id)
+    if contract is None or contract.metadata.version != pinned:
+        return []
+    validated = metric_node(contract)
+    candidate = next(node for node in inputs.candidate.graph.metrics if node.id == metric_id)
+    changes = metric_changes(validated, candidate)
+    if not changes:
+        return []
+    base = [node for node in inputs.base.graph.metrics if node.id == metric_id]
+    if len(base) == 1 and not metric_changes(validated, base[0]):
+        return []
+    return changes
 
 
 def _check_gaps(

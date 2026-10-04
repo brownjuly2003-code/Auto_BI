@@ -1,6 +1,7 @@
 """Product metric pins resolved through the real offline release gate."""
 
 import shutil
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -319,9 +320,11 @@ def test_several_pins_are_graded_one_by_one_in_declared_order(tmp_path: Path) ->
 
 @pytest.mark.parametrize("version", [3, 4])
 def test_the_validation_reports_own_issues_are_kept(tmp_path: Path, version: int) -> None:
-    case = Case(tmp_path).with_candidate(contract=_version(version))
     draft = metric_contract()
     draft["metadata"]["status"] = "draft"
+    candidate = deepcopy(draft)
+    candidate["metadata"]["version"] = version
+    case = Case(tmp_path).with_candidate(contract=candidate)
     _write_yaml(case.contracts / "gross_margin_pct.yaml", draft)
     issue = {
         "code": "metric.draft",

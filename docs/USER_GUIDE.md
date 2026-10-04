@@ -192,6 +192,12 @@ Candidate ref должен держать каждую запинненную п
 контрактом на запинненной версии, иначе `contracts.validate` блокирует выпуск:
 `metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,
 `metric_ref.candidate_absent`.
+Контракт запинненной метрики в validated paths должен быть определением, которое
+держит candidate ref, или определением, которое держит base ref: тогда изменение
+candidate — изменение под review. Иначе `contracts.validate` сообщает
+`metric_ref.candidate_content_mismatch` и называет отличия кодами semantic diff:
+block, когда отличие меняет смысл или ослабляет обещание, advisory при одних
+отличиях labels. Валидируйте контракт, который держит выпуск.
 Каждая запись `metric_refs` verified asset, переданного прогону, тоже должна пинить
 версию, которую держит candidate ref, ровно одним контрактом этой метрики. Иначе
 `assets.invalidated` блокирует выпуск с `asset.metric_ref_version_mismatch`,

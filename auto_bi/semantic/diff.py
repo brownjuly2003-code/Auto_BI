@@ -329,6 +329,11 @@ def _diff_metrics(base: SemanticGraph, candidate: SemanticGraph) -> list[Semanti
     return changes
 
 
+def metric_changes(old: MetricNode, new: MetricNode) -> list[SemanticChange]:
+    """The changes `diff_snapshots` names between two definitions of one metric, in its order."""
+    return _diff_metric_attrs(old, new, SemanticImpact(metrics=[new.id]))
+
+
 def _diff_metric_attrs(
     old: MetricNode, new: MetricNode, impact: SemanticImpact
 ) -> list[SemanticChange]:

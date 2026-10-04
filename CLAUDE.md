@@ -83,6 +83,30 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-04 — `contracts.validate` прежде пропускал как `contracts.clean`
+  validated-контракт active с dimensions `region`, `category` и numerator
+  `gross_margin`, когда оба refs держали ту же версию со status `deprecated`,
+  dimensions `region` и numerator `revenue`: diff отвечал `semantic.unchanged`,
+  SQL компилировался по candidate, verdict был `pass_with_advisory`. Теперь
+  validated-контракт запинненной метрики сравнивается с candidate definition
+  по изменениям, которые называет semantic diff. Если base держит validated
+  definition, изменение под review остаётся у `semantic.diff` и `impact.products`.
+  Иначе `metric_ref.candidate_content_mismatch` — block при review или block
+  хотя бы одного отличия, advisory при одних advisory; запись pin несёт
+  `differences` в порядке diff. Четыре исхода правила версий (`version_mismatch`,
+  `ambiguous`, `absent`, `not_compared`), `decision validate`, validation report,
+  остальные checks и состав run id прежние. `VERIFIER_VERSION` 88 → 89,
+  `CHECK_VERSION` 64 → 65; historical bundles не переписаны.
+  Выбор — оркестратор: пробел назван альтернативой synthetic Astra xhigh выбора, давшего
+  T-43, и границей спеки T-40; консультацию после срыва Codex-попытки дал
+  `claude-fable-5-1` xhigh — не Astra-выбор по ADR 0006, его правило «любая разница
+  блокирует» отклонено по owner-пакетам. Реализовано `gpt-6.1-sol` medium через MyFlow
+  `sol-high`: GLM-5.3 был в недельном лимите z.ai. Red на HEAD: 38 failed / 15 passed;
+  новый модуль: 53 passed. Synthetic Astra xhigh review: 0 findings. Полный offline gate
+  с duckdb: 4502 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy
+  чистые.
+  [Проверки и границы](docs/DECISIONOPS_PIN_CONTENTS_REVIEW_2026-10-04.md).
+
 - 2026-10-04 — числовые investigation skills (`period_variance`,
   `contribution_decomposition`, `concentration_shift`) прежде теряли цифры после
   28-го знака: группа `10000000000000000000000000000` →

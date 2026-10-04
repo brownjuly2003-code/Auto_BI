@@ -6,6 +6,15 @@
 
 ### Changed
 
+- **`contracts.validate` прежде пропускал другую definition метрики на запинненной
+  версии как `contracts.clean`; теперь сравнивает её с validated-контрактом по
+  изменениям semantic diff.** Когда base держит validated definition, изменение
+  под review остаётся у `semantic.diff` и `impact.products`. Иначе
+  `metric_ref.candidate_content_mismatch` — block или advisory по классификации
+  diff; запись pin несёт `differences`. Правило версий, validation report,
+  `decision validate`, остальные checks и состав run id прежние.
+  Verifier 88 → 89, check 64 → 65; historical bundles прежние.
+
 - **Investigation skills отвечают точно по supplied values при любой длине.**
   Прежде цифры после 28-го знака терялись (группа, идущая от
   `10000000000000000000000000000` к `10000000000000000000000000001`, отвечала

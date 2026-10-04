@@ -14,8 +14,8 @@ snapshot by its id without the version — the reference-SQL compiler, product i
 narrowing of verified assets — and each leaves "which pin still resolves" to validation, which
 never reads a snapshot.
 
-Until now nothing compared the pin with the candidate snapshot (reproduced through the inputs of
-`decision verify` at HEAD `40e7a80`, 2026-10-03):
+Until the first requirement nothing compared the pin with the candidate snapshot (reproduced
+through the inputs of `decision verify` at HEAD `40e7a80`, 2026-10-03):
 
 - the product and the validated contract at `metric://sales/gross_margin_pct@3`, the candidate
   ref holding version 4 of that metric: `contracts.validate` passed as `contracts.clean`, the
@@ -26,6 +26,28 @@ Until now nothing compared the pin with the candidate snapshot (reproduced throu
 - the candidate ref holding two contracts of the metric id, versions 4 and 3: no gap,
   `semantic.diff` reporting `semantic.unchanged`, verdict `pass_with_advisory` — the diff reads
   the last contract of an id and the reference-SQL compiler the first.
+
+The first requirement compares the version a pin names. It left the contents of that version
+open: the validation rules that read a contract — dimensions, status, policy — grade the copy
+found in the validated paths, while the gate diffs, compiles and reconciles the copy the
+candidate ref holds. Reproduced through the inputs of `decision verify` at HEAD `d8f6761`,
+2026-10-04, with the validated contract `metric://sales/gross_margin_pct@3` active, declaring
+the dimensions `region` and `category` and the numerator `gross_margin`:
+
+- base and candidate refs both holding version 3 as a deprecated contract with the dimension
+  `region` alone and the numerator `revenue`: `contracts.validate` passed as `contracts.clean`,
+  `semantic.diff` reported `semantic.unchanged`, the reference SQL was compiled from the
+  candidate's formula under the product's pin, and the verdict was `pass_with_advisory` — while
+  `decision validate` over the product and the candidate's own contract blocks with
+  `dimension.not_allowed`;
+- both refs holding version 3 with another numerator alone, or with another description alone:
+  the same clean run.
+
+The owner-review packages keep the validated contract equal to the base ref while the candidate
+changes the metric's timezone at the same version
+(`docs/pilot/2026-09-12-owner-review-live-r3`). That difference is the change under review:
+`semantic.diff` names it and `impact.products` grades it. The second requirement therefore
+reports a difference only when the base snapshot does not hold the validated definition either.
 
 `decision validate` has no snapshot and is not changed by this capability; its issue codes keep
 their meaning. Every other check of the gate runs as before and reports its own facts: a pin that
@@ -47,6 +69,9 @@ grade the pin by them:
 | more than one such node, whatever their versions | `ambiguous` | `metric_ref.candidate_ambiguous`, block |
 | no such node, and the snapshot represents its source | `absent` | `metric_ref.candidate_absent`, block |
 | no such node, and the snapshot carries the gap `gap.contract_invalid` | `not_compared` | none |
+
+A pin of the first row is graded further by the second requirement, which reports a node that
+is another definition than the validated contract as `content_mismatch` in place of `match`.
 
 A candidate snapshot whose metric contract did not load does not represent its source: the
 missing node may be the contract that failed to parse, so the gate SHALL NOT report the metric as
@@ -70,7 +95,7 @@ the pin issues in the product's declared order; its `verdict` SHALL be the verdi
 issues. It SHALL also carry `candidate_pins`: one entry per pin in the product's declared order
 with `ref` (the pin as written), `candidate_versions` (the version of every such node, ascending,
 a version held twice written twice, empty when there is none) and `outcome` (one of the five
-names above).
+names above, or the second requirement's `content_mismatch`).
 
 The check's status SHALL be graded from all those issues, and its summary code SHALL be
 `contracts.clean` only when there is none and `contracts.issues` otherwise. Its detail SHALL be
@@ -85,11 +110,13 @@ by `; `:
 - `absent`: `it holds no <id>, pinned at version <p>`
 - `not_compared`: `<ref> was not compared, because a metric contract of the candidate did not load`
 
-The base snapshot SHALL NOT be compared: a historical base may hold an older version of the
-metric, several contracts of it, or none. Metric nodes whose id no pin of this product names
-SHALL NOT produce an issue. The validation report handed to the gate SHALL NOT be modified.
-Because the same inputs can now yield `block` where the verifier before it passed, the verifier
-version and the check version SHALL be bumped; historical bundles are not rewritten.
+The base snapshot SHALL NOT be graded: a historical base may hold an older version of the
+metric, several contracts of it, or none, and none of that is an issue (the second requirement
+reads the base for one question only — whether it holds the validated definition). Metric nodes
+whose id no pin of this product names SHALL NOT produce an issue. The validation report handed to
+the gate SHALL NOT be modified. Because the same inputs can now yield `block` where the verifier
+before it passed, the verifier version and the check version SHALL be bumped; historical bundles
+are not rewritten.
 
 ### Scenario: a candidate at another version blocks the release
 
@@ -195,8 +222,8 @@ version and the check version SHALL be bumped; historical bundles are not rewrit
 - **WHEN** the gate runs
 - **THEN** the payload's `issues` are `metric.draft` with its severity, subject, source and
   message unchanged, then `metric_ref.candidate_version_mismatch`; the detail counts `2 issue(s)`;
-  the status is block; and with a candidate at version 3 the payload's `issues` are `metric.draft`
-  alone and the status is review, as before this capability
+  the status is block; and with a candidate holding that same draft at version 3 the payload's
+  `issues` are `metric.draft` alone and the status is review, as before this capability
 
 ### Scenario: a candidate contract that did not load is not reported as an absent metric
 
@@ -225,14 +252,267 @@ version and the check version SHALL be bumped; historical bundles are not rewrit
   and `decision validate` reports the same: none of the three `metric_ref.candidate_*` codes
   appears in it
 
+## Requirement: `contracts.validate` compares the validated contract of a pinned metric with the candidate's definition
+
+For every pin whose candidate snapshot holds exactly one node of the metric, at the pinned
+version, the gate SHALL compare that node with the *validated definition*: the canonical metric
+node of the contract the validated set holds under the metric's id — the node a snapshot carries
+for that contract. Of two contracts of one id in the validated paths the set holds the one the
+validation rules graded, and the report blocks with `contract.duplicate_id`. There is nothing to
+compare, and the pin keeps the outcome `match`, when the validated set holds no contract of that
+id or holds it at another version than the pin (`decision validate` blocks both itself), or when
+the gate was given no validated contracts.
+
+The *differences* between two definitions of a metric SHALL be the changes the semantic diff
+names for one metric with the first definition on its base side and the second on its candidate
+side, each with the severity the diff classifies it with (DECISIONOPS_ARCHITECTURE §8.3), in the
+order the diff lists them. Two definitions with no such change are one definition: dimensions or
+governing policies written in another order, a join path or a quality precondition declared
+twice, or the keys of the file in another order do not separate them.
+
+| the candidate node, against the validated definition | the base snapshot | outcome | issue |
+|---|---|---|---|
+| no differences | not read | `match` | none |
+| differences | holds exactly one node of the metric id, without differences from the validated definition | `match` | none |
+| differences | anything else: no such node, several, or one with differences from the validated definition | `content_mismatch` | `metric_ref.candidate_content_mismatch` |
+
+A candidate that changes the validated definition the base holds is the change under review:
+`semantic.diff` names it and `impact.products` grades it, and this check SHALL NOT report it a
+second time. A difference that the base does not account for is not named by any other check,
+and the validation report describes a contract the release does not hold.
+
+The issue's severity SHALL be `block` when the diff classifies any of the differences from the
+validated definition to the candidate node as `review` or `block`, and `advisory` when it
+classifies every one of them as `advisory`. This is the weight `impact.products` gives the same
+change of a metric that a governed product depends on, and the pin is that dependency: a
+difference is graded the same whether the base holds the validated definition or not, and only
+the check that reports it differs. The issue's `subject` SHALL be the pin as the product writes
+it, its `source` the product's own ref, and its `message`:
+
+`the candidate snapshot holds another definition of <id> at version <p> than the validated contract (<codes>), and the base snapshot does not hold the validated definition`
+
+where `<id>` is the metric id without the version, `<p>` the pinned version and `<codes>` the
+codes of those differences, in the diff's order, joined by `, `.
+
+The pin's `candidate_pins` entry SHALL carry the outcome `content_mismatch` and one more key,
+`differences`: those codes in that order. An entry with any other outcome SHALL have exactly the
+three keys of the first requirement. A pin with the outcome `content_mismatch` does not count as
+matching in the detail, whatever its severity, and its clause, placed among the other clauses in
+the product's declared order, SHALL be:
+
+`it holds another definition of <id> at version <p> than the validated contract (<codes>)`
+
+The issue takes its place among the pin issues in the product's declared order, after the
+validation report's own issues. The rows of the first requirement for another version, several
+contracts, an absent metric and a contract that did not load SHALL be graded first and keep their
+issues, messages, clauses and entries. The validation report handed to the gate SHALL NOT be
+modified, `decision validate` SHALL NOT change, and every other check SHALL run as before.
+Because the same inputs can now yield `block` or an advisory where the verifier before it passed,
+the verifier version and the check version SHALL be bumped; historical bundles are not rewritten.
+
+In the scenarios below the product pins `metric://sales/gross_margin_pct@3` and, unless a
+scenario says otherwise, the validated contract is the active one with the dimensions `region`
+and `category`, the numerator `gross_margin` over the denominator `revenue`, the timezone
+`Europe/Moscow`, the freshness window `PT6H` and the governing policy the product verifies under.
+
+### Scenario: a validated contract that neither snapshot holds blocks the release
+
+- **GIVEN** base and candidate refs both holding version 3 as a deprecated contract with the
+  dimension `region` alone and the numerator `revenue`
+- **WHEN** the gate runs
+- **THEN** `contracts.validate` is block with `contracts.issues`; its payload lists one issue
+  `metric_ref.candidate_content_mismatch` (block) whose subject is the pin, whose source is the
+  product ref and whose message is `the candidate snapshot holds another definition of
+  metric://sales/gross_margin_pct at version 3 than the validated contract
+  (metric.formula_changed, metric.dimensions_removed, metric.status_changed), and the base
+  snapshot does not hold the validated definition`; `candidate_pins` is one entry with
+  `candidate_versions` `[3]`, the outcome `content_mismatch` and `differences`
+  `[metric.formula_changed, metric.dimensions_removed, metric.status_changed]`; the payload's
+  `verdict` is `block`; the detail is `1 metric contract(s) resolved, 1 issue(s); 0 of 1 metric
+  pin(s) match the candidate snapshot: it holds another definition of
+  metric://sales/gross_margin_pct at version 3 than the validated contract
+  (metric.formula_changed, metric.dimensions_removed, metric.status_changed)`; the verdict of the
+  run is block and `reports/summary.md` names the check with that detail under "What stops the
+  release"; `semantic.diff` is `semantic.unchanged` and `sql.compile` is `sql.compiled` as before
+
+### Scenario: a difference that changes meaning or weakens a promise blocks
+
+- **GIVEN** base and candidate refs both holding version 3 with one attribute other than in the
+  validated contract: another numerator (`metric.formula_changed`), other grain keys
+  (`metric.grain_changed`), another timezone (`metric.time_changed`), another unit precision
+  (`metric.unit_changed`), another additivity (`metric.additivity_changed`), a dimension of the
+  validated contract missing (`metric.dimensions_removed`), a join path of the validated
+  contract missing (`metric.join_path_removed`), that join path at another cardinality
+  (`metric.join_path_changed`), its governing policy missing (`metric.policy_weakened`), a lower
+  classification (`metric.classification_weakened`), a status further towards retirement
+  (`metric.status_changed`), a higher cost ceiling or none where the validated contract declares
+  one (`metric.budget_relaxed`), or a longer freshness window (`metric.freshness_relaxed`)
+- **WHEN** the gate runs
+- **THEN** in each case `contracts.validate` is block with one issue
+  `metric_ref.candidate_content_mismatch` (block) naming that one code, `differences` is that one
+  code, and the verdict of the run is block
+
+### Scenario: a difference of labels alone is an advisory
+
+- **GIVEN** base and candidate refs both holding version 3 with one attribute other than in the
+  validated contract: another description (`metric.description_changed`), another owner
+  (`metric.owner_changed`), one dimension more (`metric.dimensions_added`), a higher
+  classification (`metric.classification_tightened`), the status `draft`
+  (`metric.status_changed`), the same window written as `PT360M` (`metric.freshness_restated`), a
+  shorter window (`metric.freshness_tightened`), one join path more (`metric.join_path_added`),
+  a lower cost ceiling, or one where the validated contract declares none
+  (`metric.budget_tightened`), or a governing policy where the validated contract declares none
+  (`metric.policy_added`)
+- **WHEN** the gate runs
+- **THEN** in each case the payload lists one issue `metric_ref.candidate_content_mismatch` with
+  the severity `advisory` and the message naming that one code; `contracts.validate` is advisory
+  with `contracts.issues`; the payload's `verdict` is `pass_with_advisory`; the entry has the
+  outcome `content_mismatch` and `differences` with that one code; the detail says `0 of 1 metric
+  pin(s) match the candidate snapshot` and carries the clause; the verdict of the run is
+  `pass_with_advisory`, as it was
+
+### Scenario: differences of both kinds block and are all named
+
+- **GIVEN** base and candidate refs both holding version 3 with another numerator and another
+  description
+- **WHEN** the gate runs
+- **THEN** the issue is block and its message, the clause and `differences` name
+  `metric.formula_changed, metric.description_changed` in that order
+
+### Scenario: the change under review is not reported a second time
+
+- **GIVEN** a base ref holding the validated contract and a candidate ref holding version 3 with
+  another timezone, another numerator, another description, the status `retired` or one
+  dimension more
+- **WHEN** the gate runs
+- **THEN** in each case `contracts.validate` is pass with `contracts.clean` and no issue,
+  `candidate_pins` is one entry with exactly the keys `ref`, `candidate_versions` `[3]` and the
+  outcome `match`, the detail is `1 metric contract(s) resolved, 0 issue(s); 1 of 1 metric pin(s)
+  match the candidate snapshot`, and `semantic.diff` is `semantic.changed` and lists the change
+  as before
+
+### Scenario: a validated contract the candidate holds is a match
+
+- **GIVEN** a validated contract and a candidate ref holding one definition with another
+  timezone than the base ref holds
+- **WHEN** the gate runs
+- **THEN** `contracts.validate` has no pin issue and the entry is `match` with exactly the three
+  keys; `semantic.diff` lists `metric.time_changed` as before
+
+### Scenario: another writing of one definition is a match
+
+- **GIVEN** a validated contract that writes the definition the refs hold in another way: the
+  dimensions in another order, two governing policies in another order, a join path declared
+  twice, a quality precondition declared twice, or the keys of the file in another order
+- **WHEN** the gate runs
+- **THEN** in each case `contracts.validate` is pass with `contracts.clean`, no issue and the
+  entry `match` with exactly the three keys
+
+### Scenario: a base that does not hold the validated definition accounts for nothing
+
+- **GIVEN** a candidate ref holding version 3 with another timezone, and a base ref that holds
+  the metric with another numerator, holds it at version 2, holds two contracts of the metric
+  id, holds no contract of it, or holds one that did not load
+- **WHEN** the gate runs
+- **THEN** in each case `contracts.validate` is block with one issue
+  `metric_ref.candidate_content_mismatch` (block) naming `metric.time_changed`, and `differences`
+  is `[metric.time_changed]`
+
+### Scenario: the version and the number of contracts are graded before the contents
+
+- **GIVEN** base and candidate refs holding the metric with another numerator at version 4, or a
+  candidate ref holding two contracts of the metric id at version 3 of which one has another
+  numerator
+- **WHEN** the gate runs
+- **THEN** the only pin issue is `metric_ref.candidate_version_mismatch` in the first case and
+  `metric_ref.candidate_ambiguous` in the second, with the messages of the first requirement, and
+  the entry has exactly the three keys, without `differences`
+
+### Scenario: a pin the validated set does not resolve is not compared
+
+- **GIVEN** base and candidate refs both holding version 3 with another numerator, and a
+  validated set that holds no contract of the metric, or holds it at version 4
+- **WHEN** the gate runs
+- **THEN** the payload's `issues` are the validation report's own alone (`metric_ref.unknown` in
+  the first case, `metric_ref.version_mismatch` in the second), and the entry is `match` with
+  exactly the three keys
+
+### Scenario: gate inputs without validated contracts are not compared
+
+- **GIVEN** base and candidate snapshots both holding version 3 with another numerator, handed
+  to the gate with the validation report of the validated set but without its contracts
+- **WHEN** the gate runs
+- **THEN** `contracts.validate` is pass with `contracts.clean` and the entry is `match`, as before
+  this requirement; and the same inputs with the validated contracts are block with
+  `metric_ref.candidate_content_mismatch` naming `metric.formula_changed`
+
+### Scenario: the validation report's own issues come before the content issue
+
+- **GIVEN** a validated contract that is a draft, so the validation report carries
+  `metric.draft` (review), and base and candidate refs both holding the active contract at
+  version 3
+- **WHEN** the gate runs
+- **THEN** the payload's `issues` are `metric.draft` with its severity, subject, source and
+  message unchanged, then `metric_ref.candidate_content_mismatch` (block) naming
+  `metric.status_changed`; the detail is `1 metric contract(s) resolved, 2 issue(s); 0 of 1
+  metric pin(s) match the candidate snapshot: it holds another definition of
+  metric://sales/gross_margin_pct at version 3 than the validated contract
+  (metric.status_changed)`; the status is block
+
+### Scenario: several pins are graded one by one in declared order
+
+- **GIVEN** a product pinning `metric://sales/revenue@2`, `metric://sales/gross_margin_pct@3`
+  and `metric://sales/units@1` in that order, validated contracts for all three, and base and
+  candidate refs that hold the first as validated, the second with another numerator and no
+  contract of the third
+- **WHEN** the gate runs
+- **THEN** the payload's pin issues are `metric_ref.candidate_content_mismatch` for the second
+  pin and `metric_ref.candidate_absent` for the third, in that order; `candidate_pins` has three
+  entries in declared order with the outcomes `match`, `content_mismatch`, `absent`, of which
+  only the second has `differences`; the detail is `3 metric contract(s) resolved, 2 issue(s); 1
+  of 3 metric pin(s) match the candidate snapshot: it holds another definition of
+  metric://sales/gross_margin_pct at version 3 than the validated contract
+  (metric.formula_changed); it holds no metric://sales/units, pinned at version 1`
+
+### Scenario: a snapshot with an unloaded contract still has the metric it holds compared
+
+- **GIVEN** base and candidate refs both holding version 3 with another numerator, the candidate
+  beside another contract file that does not parse
+- **WHEN** the gate runs
+- **THEN** `contracts.validate` is block with `metric_ref.candidate_content_mismatch` naming
+  `metric.formula_changed`, and `semantic.gaps` is block as before
+
+### Scenario: the validation report is not modified and `decision validate` is unchanged
+
+- **GIVEN** the inputs of the first scenario of this requirement
+- **WHEN** the gate runs, and `decision validate` runs over the same contract paths
+- **THEN** the validation report handed to the gate still has no issue and the verdict `pass`,
+  and `decision validate` reports the same: `metric_ref.candidate_content_mismatch` does not
+  appear in it
+
 ## Known boundaries
 
-- The contents of the validated contract and of the candidate's metric at the same version are
-  not compared: the validation rules that read a contract — dimensions, status, policy — grade the
-  copy found in the validated paths.
+- The validation rules that read a contract — dimensions, status, policy — still grade the copy
+  found in the validated paths. A difference from the candidate's definition is weighed by the
+  semantic diff's classification — in `semantic.diff` when the base holds the validated
+  definition, in this check when it does not — and that classification is not the validation
+  rules': a pinned metric moved back to `draft`, or given a governing policy other than the
+  product's where it declared none, is an advisory either way, while `decision validate` over the
+  product and the candidate's own contract answers `metric.draft` and `policy.mismatch` as review
+  (reproduced at HEAD `d8f6761`: verdict `pass_with_advisory` in both cases).
+- A content difference is named by the codes of the semantic diff; the differing values stay in
+  the two contracts and are not copied into the evidence.
+- What the semantic diff names as a change is a difference here too, and nothing else is: the
+  grain keys written in another order are `metric.grain_changed`, while a contract's
+  `lineage_refs` and `verified_asset_refs`, which a snapshot does not carry, are not compared.
+- The validated contract set is not part of the run's idempotency key (DECISIONOPS_ARCHITECTURE
+  §7.6). A run repeated into the same evidence directory after the validated copy alone was
+  corrected shares the run id of the first and is refused as a conflict with the sealed bundle,
+  as it already was for a validated contract whose status alone changed.
 - The metric pins of verified assets (`metric_refs`) are not resolved by this check:
   `assets.invalidated` resolves them in the candidate snapshot
-  ([verified asset metric pins](verified-asset-metric-pins.md)).
+  ([verified asset metric pins](verified-asset-metric-pins.md)), by version; their contents are
+  not compared with the validated contract.
 - A semantic ref holding two contracts of one metric id is not a snapshot gap: for a metric that
   neither the product nor a verified asset given to the run pins, the diff and the reference-SQL
   compiler may still read different contracts of it.

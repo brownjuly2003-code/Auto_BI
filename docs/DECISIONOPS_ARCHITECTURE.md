@@ -604,7 +604,7 @@ version. Повтор может переиспользовать только �
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=88`, `CHECK_VERSION=64`.
+`VERIFIER_VERSION=89`, `CHECK_VERSION=65`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -689,13 +689,20 @@ Gate выполняет шаги в фиксированном порядке:
   резолвит каждый metric pin продукта в candidate snapshot — ровно один контракт
   метрики на запинненной версии. Другая версия, несколько контрактов или отсутствие
   блокируют `contracts.validate`: `metric_ref.candidate_version_mismatch`,
-  `metric_ref.candidate_ambiguous`, `metric_ref.candidate_absent`. Base не сравнивается.
+  `metric_ref.candidate_ambiguous`, `metric_ref.candidate_absent`. Base не грейдится
+  и читается для одного вопроса — держит ли он validated definition.
   Если метрики нет в snapshot с `gap.contract_invalid`, pin назван не сравнившимся,
   а не отсутствующим: контракт мог не загрузиться, и `semantic.gaps` уже блокирует
   прогон. Payload сохраняет issues validation report и добавляет `candidate_pins`
-  в объявленном продуктом порядке. Содержимое validated-контракта и candidate-метрики
-  на одной версии не сравнивается: dimensions, status и policy грейдят копию из
-  validated paths. Pins verified assets (`metric_refs`) резолвит шаг 5
+  в объявленном продуктом порядке. Для pin, который резолвится по версии, гейт
+  сравнивает validated-контракт с определением candidate по изменениям, которые
+  называет semantic diff (§8.3). Отличие от validated definition, которую держит
+  base, — изменение под review; оно остаётся у `semantic.diff` и `impact.products`.
+  Иначе pin получает `content_mismatch` с `metric_ref.candidate_content_mismatch`:
+  block, если diff классифицирует хотя бы одно отличие как review или block,
+  advisory, если все отличия advisory. Его запись `candidate_pins` несёт
+  `differences`. Сами validation rules (dimensions, status и policy) по-прежнему
+  грейдят копию из validated paths. Pins verified assets (`metric_refs`) резолвит шаг 5
   (`assets.invalidated`), а не этот шаг.
   Два контракта одного metric id сами по себе не snapshot gap: для метрики вне pins
   продукта и выбранных verified assets diff и reference-SQL compiler по-прежнему
