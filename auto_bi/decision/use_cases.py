@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from auto_bi import filesystem
 from auto_bi.decision.spec import DecisionProductSpec
@@ -41,6 +41,7 @@ from auto_bi.evidence.signing import EvidenceSignatureError, EvidenceSigner
 from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.refs import ContractRef
+from auto_bi.scalars import Timestamp
 from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.verification.environment import (
@@ -79,6 +80,12 @@ METRICS_DIR = "metrics"
 _SPEC_SUFFIXES = (".yaml", ".yml", ".json")
 #: How many unread paths a refusal that found no product names before it counts the rest.
 _MAX_UNREAD_NAMED = 3
+
+#: The moment a run or a capture is stated to be of, as a manifest and an attestation take it.
+_MOMENT: TypeAdapter[str] = TypeAdapter(Timestamp)
+#: Where the environment and the actor of a capture come from, for the refusal of either.
+_CAPTURE_ENVIRONMENT = "--environment, or the configured host:port/database it defaults to,"
+_CAPTURE_ACTOR = "the configured DWH user"
 
 
 class VerifyError(Exception):
@@ -143,6 +150,12 @@ class CaptureReport:
 
 def verify(request: VerifyRequest) -> GateReport:
     """Load everything §8.1 names and run the gate over it."""
+    # What the request states of the run itself is settled before anything is read. A moment
+    # the manifest does not take, or an environment evidence has no form for, would end the
+    # run after its inputs were loaded and its checks graded, with nothing to show for it.
+    _check_moment("--created-at", request.created_at)
+    _check_text("--environment", request.environment_ref)
+
     loaded = load_contracts(request.contract_paths)
     product = _select_product(loaded, request.product_id)
 
@@ -185,6 +198,12 @@ def verify(request: VerifyRequest) -> GateReport:
 
 def capture_result(request: CaptureRequest) -> CaptureReport:
     """Execute one selected asset and write a new gate-ready recorded-results YAML file."""
+    # What the capture is attested with is settled first: no file is read and no engine is
+    # asked for a result whose attestation could not be written, or could not be read back.
+    _check_moment("--captured-at", request.captured_at)
+    _check_text(_CAPTURE_ENVIRONMENT, request.environment_ref)
+    _check_text(_CAPTURE_ACTOR, request.executed_by)
+
     output = Path(request.output)
     try:
         taken = filesystem.exists(output)
@@ -557,6 +576,33 @@ def _looked_at(path: Path, look: Callable[[Path], bool]) -> bool:
         return look(path)
     except OSError as exc:
         raise VerifyError(f"cannot read {path}: {unread_reason(exc)}") from None
+
+
+def _check_moment(name: str, moment: str) -> None:
+    """Refuse a stated moment that is not the timestamp evidence carries.
+
+    The manifest and an attestation hold one form of a moment, and ages are counted between
+    two of them; any other text is refused by the name it was stated under. The moment is
+    not quoted: it may hold a line break or a lone surrogate, and a usage error is one line
+    that can be printed.
+    """
+    try:
+        _MOMENT.validate_python(moment)
+    except ValidationError:
+        raise VerifyError(f"{name} must be an RFC 3339 UTC timestamp ending in Z") from None
+
+
+def _check_text(name: str, text: str) -> None:
+    """Refuse stated text evidence has no form for: a lone surrogate.
+
+    A command line is decoded so that a byte which is no UTF-8 becomes one. Canonical JSON
+    has no form for it, and the YAML a capture writes spells it as an escape no command
+    reads back. The text is not quoted either.
+    """
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise VerifyError(f"{name} must be text without a lone surrogate") from None
 
 
 def _refusal(exc: ValueError) -> str:

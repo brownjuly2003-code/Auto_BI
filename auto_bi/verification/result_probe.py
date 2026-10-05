@@ -73,21 +73,21 @@ def capture(
     # ReferenceQuery validates this at load time; guarding again keeps the execution boundary
     # safe even when a future caller constructs an asset through a different path.
     guard_sql(query.sql, dialect=sqlglot_dialect(query.engine))
+    # Attested before anything is asked: nothing of an attestation waits for the answer, and
+    # a moment it does not take must not cost a query whose result could not be kept.
+    attestation = ResultAttestation(
+        origin=ResultOrigin.QUERY_RUN,
+        captured_at=captured_at,
+        environment_ref=environment_ref,
+        semantic_digest=candidate_digest,
+        query_digest=query.digest(),
+        executed_by=executed_by,
+    )
     raw = run_query(query.sql)
     columns = _checked_columns(query.engine, raw.columns, asset.expectation.result.columns)
     rows = [_canonical_row(row, columns, index) for index, row in enumerate(raw.rows)]
 
-    return RecordedResult(
-        result=ResultSet(columns=columns, rows=rows),
-        attestation=ResultAttestation(
-            origin=ResultOrigin.QUERY_RUN,
-            captured_at=captured_at,
-            environment_ref=environment_ref,
-            semantic_digest=candidate_digest,
-            query_digest=query.digest(),
-            executed_by=executed_by,
-        ),
-    )
+    return RecordedResult(result=ResultSet(columns=columns, rows=rows), attestation=attestation)
 
 
 def make_clickhouse_result_query(settings: Settings) -> ResultQuery:

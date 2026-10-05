@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-05 — T-59: момент (`--created-at`, `--captured-at`) и окружение, которые заявляет
+  командная строка, проверяются до чтения входов и до движка: usage error в одну строку
+  вместо исключения после грейда или отказа после запроса. Verifier 97, check 72 — без
+  изменений. Автор — Claude Opus 5.5 напрямую, модельного ревью нет.
+  [Проверки и границы](docs/DECISIONOPS_STATED_RUN_FACTS_CHECKS_2026-10-05.md).
 - 2026-10-05 — T-57: таблица, колонка или join, которые `model.yaml` объявляет больше одного
   раза, — один узел графа и advisory `gap.<kind>_repeated`, когда объявления одинаковы, и
   block `gap.<kind>_conflict` без узла, когда расходятся. Verifier 97, check 72. Автор —
@@ -98,10 +103,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   (`ValueError` builder'а), — отказ `bi.compile_refused` в evidence `bi.contract`, а не
   traceback. Verifier 96, check 71. Автор — Claude Opus 5.5 напрямую, модельного ревью нет.
   [Проверки и границы](docs/DECISIONOPS_BI_COMPILE_REFUSAL_CHECKS_2026-10-05.md).
-- 2026-10-05 — T-56: таблица модели с пустым именем — gap `gap.table_unnamed` (block), её и
-  её колонок в графе нет; прежде сравнение snapshots кончалось `ValidationError`.
-  Verifier 95, check 70. Автор — Claude Opus 5.5 напрямую, модельного ревью нет.
-  [Проверки и границы](docs/DECISIONOPS_UNNAMED_TABLE_CHECKS_2026-10-05.md).
 
 ## Definition of done (фаза/задача)
 

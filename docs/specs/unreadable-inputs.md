@@ -1687,13 +1687,14 @@ inputs* are those of the requirements above.
   are not changed: `SemanticModel.load`, which the v1 commands read a model with,
   `auto_bi/auth.py`, and the `load` of `MetricContract` and of `DecisionProductSpec`, which
   nothing in the package calls, still build a string of an escape that names a surrogate.
-- The sixth requirement covers the files a run is handed. What `decision capture` says after
-  `cannot capture <asset id>: ` is the text of whatever was raised, as it reads. Reproduced in
-  the process with a query that answers: a `--captured-at` that is no RFC 3339 UTC timestamp —
-  a word, an offset in place of `Z`, no zone at all, blanks, a line break after the timestamp —
-  exits 2 with four lines of pydantic's listing for a `ResultAttestation`, and only after the
-  query was run; an `--environment` of blanks, of two lines or with a lone surrogate is attested
-  as it is given, and the file is written.
+- The sixth requirement covers the files a run is handed. What a command line states of the
+  run itself — its moment and its environment — is settled before the run starts
+  (`stated-run-facts.md`): a `--captured-at` that is no timestamp, which was refused in four
+  lines of pydantic's listing and only after the query was run, and an `--environment` with a
+  lone surrogate, which was attested as it was given, are usage errors of one line that cost no
+  query. What `decision capture` says after `cannot capture <asset id>: ` is still the text of
+  whatever was raised, as it reads, and an `--environment` of blanks or of two lines is still
+  attested as it is given.
 - A lone surrogate reaches no reader from a YAML file (seventh requirement). What stands behind
   the loader — a schema, the graph and the digest of a ref, the identity of a run — is held to
   its own answer for one only by tests that hand the string on past the loader. It still comes
@@ -1702,11 +1703,10 @@ inputs* are those of the requirements above.
   `decision evidence` answers `evidence.manifest_invalid` and exits 4, in text and with `--json`
   — and into two of its artifacts — `evidence.digest_mismatch`; the plan of a query an engine
   hands back as text and the manifest of a dbt project the v1 import reads were not asked. And
-  an argument of the command line is taken as it is given: reproduced, `decision capture` with
-  an `--environment` that holds a lone surrogate runs the query, exits 0 and writes the escape
-  into the file, which `decision verify` then refuses with `cannot read <file>:
-  SurrogateEscapeError at line 19, column 22` — where at HEAD it ended in
-  `CanonicalizationError`.
+  an argument of the command line was taken as it was given: `decision capture` with an
+  `--environment` that holds a lone surrogate ran the query, exited 0 and wrote the escape
+  into a file `decision verify` refuses. The moment and the environment a command line states
+  are refused for one now (`stated-run-facts.md`); a path is still taken as it is given.
 - Two escapes that JSON reads as one character are refused, not combined: PyYAML builds two
   surrogates of them, and libyaml refuses each (`found invalid Unicode character escape code`,
   PyYAML 6.0.3). A file some writer exported that way is unreadable until the character is
