@@ -30,6 +30,7 @@ from typing import Any
 import yaml
 from pydantic import Field, ValidationError, model_validator
 
+from auto_bi import filesystem
 from auto_bi.agent.sql_guard import (
     AmbiguousRef,
     ColumnReads,
@@ -224,14 +225,22 @@ class VerifiedAssetRepository:
 
     @classmethod
     def load(cls, path: str | Path) -> VerifiedAssetRepository:
+        """Every verified asset under *path*: one file, or each YAML file of a directory.
+
+        A file that cannot be read or that holds no asset raises `VerifiedAssetFileError`.
+        A directory the filesystem refuses to list raises the `OSError` of the listing,
+        and a path it refuses to look at the `OSError` of the look: neither is a
+        directory without assets, and a repository loaded without what they hold would
+        pass for the whole of it.
+        """
         root = Path(path)
         files = (
             [root]
-            if root.is_file()
+            if filesystem.is_file(root)
             else sorted(
                 child
-                for child in root.rglob("*")
-                if child.suffix in _YAML_SUFFIXES and child.is_file()
+                for child in filesystem.paths_under(root)
+                if child.suffix in _YAML_SUFFIXES and filesystem.is_file(child)
             )
         )
         assets: list[VerifiedAsset] = []

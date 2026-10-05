@@ -25,6 +25,7 @@ from typing import Any
 import yaml
 from pydantic import Field, ValidationError, model_validator
 
+from auto_bi import filesystem
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.refs import ContractRef
 from auto_bi.semantic.metric_contract import MetricContract, MetricLifecycle
@@ -126,26 +127,54 @@ def validate_paths(paths: Iterable[str | Path]) -> ValidationReport:
 
 
 def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIssue]) -> list[Path]:
+    """The contract files under *paths*, and an issue for each path that was not gone through.
+
+    The report answers for every file under its paths. A directory the filesystem refuses
+    to list is therefore no directory without contracts, and a path it refuses to look at
+    — as one under a directory that may not be searched — is no path that does not exist:
+    each is an issue of its own, and everything that could be listed is still loaded.
+    """
     files: list[Path] = []
     for raw in paths:
         path = Path(raw)
-        if path.is_dir():
+        try:
+            is_dir = filesystem.is_dir(path)
+            is_file = not is_dir and filesystem.is_file(path)
+        except OSError as exc:
+            issues.append(_unread_path(path, f"cannot look at path: {type(exc).__name__}"))
+            continue
+        if is_dir:
+            refused: list[OSError] = []
             files.extend(
-                sorted(child for child in path.rglob("*") if child.suffix in _YAML_SUFFIXES)
-            )
-        elif path.is_file():
-            files.append(path)
-        else:
-            issues.append(
-                ValidationIssue(
-                    code="contract.unreadable",
-                    severity=Severity.BLOCK,
-                    subject=str(path),
-                    source=str(path),
-                    message="path does not exist",
+                sorted(
+                    child
+                    for child in filesystem.paths_under(path, refused)
+                    if child.suffix in _YAML_SUFFIXES
                 )
             )
+            unlisted = sorted(
+                (Path(error.filename) if error.filename else path, type(error).__name__)
+                for error in refused
+            )
+            issues.extend(
+                _unread_path(directory, f"cannot list directory: {refusal}")
+                for directory, refusal in unlisted
+            )
+        elif is_file:
+            files.append(path)
+        else:
+            issues.append(_unread_path(path, "path does not exist"))
     return files
+
+
+def _unread_path(path: Path, message: str) -> ValidationIssue:
+    return ValidationIssue(
+        code="contract.unreadable",
+        severity=Severity.BLOCK,
+        subject=str(path),
+        source=str(path),
+        message=message,
+    )
 
 
 def _load_contract(

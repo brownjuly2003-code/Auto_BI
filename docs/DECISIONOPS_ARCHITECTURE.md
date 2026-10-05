@@ -620,7 +620,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=92`, `CHECK_VERSION=67`.
+`VERIFIER_VERSION=93`, `CHECK_VERSION=68`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -1543,6 +1543,19 @@ contract-тестом `tests/test_decision_cli.py::test_exit_code_contract_is_st
 своей ошибкой на отказ файловой системы, команда — `error: cannot write the evidence
 bundle under <каталог>: …`. Manifest пишется последним, поэтому записанное до отказа
 bundle не является, и повтор после устранения причины даёт тот же bundle.
+
+То, что файловая система отказалась перечислить или показать, — не то, чего нет.
+`Path.rglob` читает каталог, который не может перечислить, как пустой, а с Python 3.14
+`Path.exists`, `Path.is_file` и `Path.is_dir` отвечают `False` на любой отказ, поэтому
+`decision validate`, `decision verify` и `decision capture` спрашивают операционную
+систему сами (`auto_bi/filesystem.py`): «нет» — только ответ системы о пути, которого нет.
+Каталог под validated paths, который не перечисляется, и validated-путь, на который
+нельзя посмотреть, — `contract.unreadable` (`cannot list directory: <класс>`, `cannot
+look at path: <класс>`), block: отчёт валидации отвечает за каждый файл под своими
+путями. Каталог metrics semantic ref или каталог под путём assets, который не
+перечисляется, и вход прогона, на который нельзя посмотреть, — usage error `error:
+cannot read <путь>: <класс>`. Когда среди прочитанного нет продукта, `decision verify`
+называет пути, которые прочитать не удалось.
 
 Реализовано:
 

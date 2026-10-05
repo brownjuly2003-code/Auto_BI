@@ -123,19 +123,22 @@ def _deny(monkeypatch: pytest.MonkeyPatch, denied: Path) -> None:
         monkeypatch.setattr(Path, name, refuse)
 
 
-def _deny_look(monkeypatch: pytest.MonkeyPatch, denied: Path) -> None:
-    """Make *denied* a path this process may not look at: its directory may not be searched."""
-    for name in ("is_file", "is_dir"):
-        original = getattr(Path, name)
+def _deny_look(monkeypatch: pytest.MonkeyPatch, *denied: Path) -> None:
+    """Make *denied* paths this process may not look at: their directory may not be searched.
 
-        def refuse(
-            self: Path, *args: Any, _original: Callable[..., bool] = original, **kwargs: Any
-        ) -> bool:
-            if self == denied:
-                raise PermissionError(errno.EACCES, "Permission denied", str(self))
-            return _original(self, *args, **kwargs)
+    The refusal is the operating system's — `os.stat` raises it — so it reaches whatever
+    looks, however the `pathlib` of the interpreter reads such an answer: up to Python 3.13
+    its looks raise it, from 3.14 on they answer "no".
+    """
+    original = os.stat
+    refused = {os.fspath(path) for path in denied}
 
-        monkeypatch.setattr(Path, name, refuse)
+    def stat(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+        if isinstance(path, (str, os.PathLike)) and os.fspath(path) in refused:
+            raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), os.fspath(path))
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", stat)
 
 
 def _plant_lone_surrogate(path: Path, *keys: str | int) -> None:

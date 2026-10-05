@@ -29,6 +29,7 @@ from typing import Protocol
 import yaml
 from pydantic import Field, ValidationError, model_validator
 
+from auto_bi import filesystem
 from auto_bi.evidence.canonical import digest_bytes, sha256_digest
 from auto_bi.scalars import Sha256Digest
 from auto_bi.semantic.metric_contract import (
@@ -219,14 +220,21 @@ class NativeModelSource:
         )
 
     def _contract_files(self) -> list[Path]:
+        """The contract files of the ref — or what kept one of them from being found.
+
+        A directory the filesystem refuses to list is not one without contracts, and a
+        path it refuses to look at is not one that is no file: read as that, the ref
+        would be frozen without the metrics they hold and the snapshot would say nothing
+        of it. The `OSError` of the listing or of the look is raised.
+        """
         if self._contracts_path is None:
             return []
-        if self._contracts_path.is_file():
+        if filesystem.is_file(self._contracts_path):
             return [self._contracts_path]
         return sorted(
             child
-            for child in self._contracts_path.rglob("*")
-            if child.suffix in _YAML_SUFFIXES and child.is_file()
+            for child in filesystem.paths_under(self._contracts_path)
+            if child.suffix in _YAML_SUFFIXES and filesystem.is_file(child)
         )
 
 

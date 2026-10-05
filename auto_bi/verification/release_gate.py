@@ -461,7 +461,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: paths apart, as other_product_issues. Verifier 91 graded every issue of the report, so
 #: another product's unresolved pin, undeclared dimension, retired or draft metric or foreign
 #: governing policy blocked a release it says nothing of, or sent it to review.
-VERIFIER_VERSION = "92"
+#: 93 — a directory under the validated paths that the filesystem refuses to list is a
+#: contract.unreadable issue of the validation report the gate grades and seals, where
+#: verifier 92 read it as an empty directory: the same working tree gave a report without
+#: the issue and a run that could pass. A directory of a semantic ref or of the verified
+#: assets that cannot be listed now ends the run before any bundle, where verifier 92
+#: froze the ref and loaded the assets without what the directory holds.
+VERIFIER_VERSION = "93"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -708,7 +714,9 @@ VERIFIER_VERSION = "92"
 #: policy passed with an advisory.
 #: 67 — an issue the validation rules give for another product of the validated paths is not
 #: graded by contracts.validate, where rule 66 blocked, reviewed or advised by it.
-CHECK_VERSION = "67"
+#: 68 — contracts.validate blocks on a directory under the validated paths that could not
+#: be listed, where rule 67 graded a report that read it as an empty directory.
+CHECK_VERSION = "68"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

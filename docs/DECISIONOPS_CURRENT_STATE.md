@@ -10,9 +10,61 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=92`, `CHECK_VERSION=67`
+**Версии evidence:** `VERIFIER_VERSION=93`, `CHECK_VERSION=68`
 
-**Последний срез (2026-10-04):** вход прогона, который команда не может прочитать, — usage
+**Последний срез (2026-10-05):** то, что файловая система отказалась перечислить или показать,
+— не то, чего нет. `decision validate`, `decision verify` и `decision capture` обходили
+каталоги и смотрели на пути через `pathlib`, а два его ответа теряют отказ: `Path.rglob`
+читает каталог, который не может перечислить, как пустой, и с Python 3.14 `Path.exists`,
+`Path.is_file` и `Path.is_dir` отвечают `False` на любой `OSError` (до 3.13 взгляд бросал, и
+вне ref и файлов под assets его никто не ловил). На HEAD, процессными прогонами на macOS с
+каталогом без части прав: каталог assets или каталог под ним с asset продукта — `decision
+verify` exit 0 и `pass_with_advisory`, asset не выбран, и ничто этого не говорит; каталог
+metrics base ref — exit 3, candidate ref — exit 4 на snapshot без метрик, `decision capture`
+идёт к движку; validated-каталог — exit 2 `no decision product contract found in the given
+paths`; путь под каталогом, в который нельзя войти, — 9 traceback на 3.13, а на 3.14 —
+`… not found` о пути, который на месте, `bi.spec_missing` и запрос к движку без взгляда на
+output. Теперь взгляд и обход спрашивают операционную систему сами (`auto_bi/filesystem.py`,
+`os.stat` и `os.scandir`), одинаково на 3.12, 3.13 и 3.14: «нет» — только ответ системы о
+пути, которого нет (`ENOENT`, `ENOTDIR`, `EBADF`, `ELOOP`, на Windows коды 21, 123, 1921,
+имя с NUL — набор `pathlib` до 3.13); обход даёт пути `rglob("*")` и не идёт по ссылке на
+каталог. Под validated paths каталог, который не перечисляется, — issue `contract.unreadable`,
+block, `cannot list directory: <класс>`; путь, на который нельзя посмотреть, — `cannot look
+at path: <класс>`; всё, что перечислилось, загружается и валидируется, гейт грейдит issue как
+любой `contract.unreadable`. Когда среди прочитанного нет продукта, `decision verify`
+продолжает usage error словами `; <n> path(s) could not be read: <путь> (<сообщение>), …` —
+первые три и ` (+<k> more)`. В semantic ref и под путём assets каталог, который не
+перечисляется, и вход прогона, на который нельзя посмотреть (путь assets, каталог
+dashboards, spec под любым из трёх имён, results, `model.yaml`, каталог metrics, контракт в
+нём), — `error: cannot read <путь>: <класс>`, exit 2, одна строка, до грейда, вопросов
+движку и записи; output capture — `cannot write captured result <output>: …` до вопроса
+движку. Пути, которых нет, вложенные контракты и assets, пустой каталог, отсутствующий spec
+читаются как прежде. `VERIFIER_VERSION` 92 → 93, `CHECK_VERSION` 67 → 68: прогон над
+validated paths с таким каталогом и раньше давал bundle и теперь даёт другой; historical
+bundles не переписаны.
+Границы: `decision evidence` и store по-прежнему смотрят через `pathlib` (проба над
+записанным bundle: 6 traceback из 7 на 3.13 и 3 на 3.14, где ещё три отвечают, что bundle
+нет); ответы Windows и каталог, чьи записи не различаются, подставлены тестами — на Windows
+ничего не запускалось; каталог, который не перечисляется, блокирует, даже если пуст; под
+validated-путём файл выбирается по имени, как прежде; output capture под каталогом без права
+записи обнаруживается после запроса к движку; запись manifest не атомарна; входы `decision
+investigate` не тронуты.
+Выбор — оркестратор (границы среза T-51, Astra-выбора по ADR 0006 нет). По решению владельца
+срез выполнен напрямую Claude Opus 5.5, без MyFlow-исполнителей; модельное ревью по ADR 0006
+(Astra xhigh) не проводилось — проверки сделал сам автор, это не независимое ревью. Тесты
+прогонялись на Mac. Red на копии HEAD с новым модулем, который никто не вызывает: 65 failed /
+239 passed на Python 3.13 и 77 failed / 227 passed на 3.14; на рабочем дереве оба модуля —
+304 passed на 3.12, 3.13 и 3.14. Ручные мутанты — 78: под 3.14 убиты все (один выжил на
+первом прогоне и не был эквивалентен — добавлен тест), под 3.13 — 66, остальные 12 возвращают
+взгляд в `pathlib` и на 3.13 эквивалентны.
+Контроль на tracked pilot-пакетах: 10 прогонов, вердикт и каждая проверка как на HEAD.
+Полный offline gate с duckdb: 5069 passed, 4 skipped, 38 deselected, exit 0 на 3.13,
+столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
+Human/production acceptance не заявляется.
+[Проверки и границы](DECISIONOPS_UNLISTED_PATHS_CHECKS_2026-10-05.md),
+[спека](specs/unreadable-inputs.md).
+
+**Предыдущий срез (2026-10-04):** вход прогона, который команда не может прочитать, — usage
 error, которая называет файл, а не traceback. `decision verify` получает `model.yaml` base и
 candidate refs, dashboard specs, verified assets и recorded results, `decision capture` —
 verified assets и `model.yaml` candidate ref. Контракт, который не читается, оставляет прогон

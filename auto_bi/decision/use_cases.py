@@ -32,8 +32,9 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from auto_bi import filesystem
 from auto_bi.decision.spec import DecisionProductSpec
-from auto_bi.decision.validate import load_contracts
+from auto_bi.decision.validate import LoadedContracts, ValidationReport, load_contracts
 from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.evidence.manifest import MANIFEST_PATH, EvidenceConflictError
 from auto_bi.evidence.signing import EvidenceSignatureError, EvidenceSigner
@@ -76,6 +77,8 @@ MODEL_FILE = "model.yaml"
 METRICS_DIR = "metrics"
 
 _SPEC_SUFFIXES = (".yaml", ".yml", ".json")
+#: How many unread paths a refusal that found no product names before it counts the rest.
+_MAX_UNREAD_NAMED = 3
 
 
 class VerifyError(Exception):
@@ -141,7 +144,7 @@ class CaptureReport:
 def verify(request: VerifyRequest) -> GateReport:
     """Load everything §8.1 names and run the gate over it."""
     loaded = load_contracts(request.contract_paths)
-    product = _select_product(loaded.products, request.product_id)
+    product = _select_product(loaded, request.product_id)
 
     base = _snapshot(Path(request.base))
     candidate_root = Path(request.candidate)
@@ -183,7 +186,14 @@ def verify(request: VerifyRequest) -> GateReport:
 def capture_result(request: CaptureRequest) -> CaptureReport:
     """Execute one selected asset and write a new gate-ready recorded-results YAML file."""
     output = Path(request.output)
-    if output.exists():
+    try:
+        taken = filesystem.exists(output)
+    except OSError as exc:
+        # Under a directory that may not be searched the look is refused, and the write
+        # would be: whether the file is there is not known, and no engine is asked for a
+        # result there is nowhere to put.
+        raise VerifyError(f"cannot write captured result {output}: {exc}") from None
+    if taken:
         raise VerifyError(f"output file already exists: {output}; refusing to overwrite it")
 
     repository = _asset_repository(Path(request.assets))
@@ -243,18 +253,27 @@ def _probe(
     return probe(questions_for(product, candidate))
 
 
-def _select_product(
-    products: dict[str, DecisionProductSpec], product_id: str
-) -> DecisionProductSpec:
-    """One run verifies one product: the idempotency key and the bundle both name one."""
+def _select_product(loaded: LoadedContracts, product_id: str) -> DecisionProductSpec:
+    """One run verifies one product: the idempotency key and the bundle both name one.
+
+    That the paths hold no such product is known only of what was read, so the refusal
+    names what was not: the product may be in a directory that could not be listed or in
+    a file that could not be read.
+    """
+    products = loaded.products
     if product_id:
         product = products.get(product_id)
         if product is None:
             known = ", ".join(sorted(products)) or "none"
-            raise VerifyError(f"no decision product {product_id!r} in the given paths ({known})")
+            raise VerifyError(
+                f"no decision product {product_id!r} in the given paths ({known})"
+                f"{_unread_paths(loaded.report)}"
+            )
         return product
     if not products:
-        raise VerifyError("no decision product contract found in the given paths")
+        raise VerifyError(
+            f"no decision product contract found in the given paths{_unread_paths(loaded.report)}"
+        )
     if len(products) > 1:
         known = ", ".join(sorted(products))
         raise VerifyError(
@@ -264,14 +283,26 @@ def _select_product(
     return next(iter(products.values()))
 
 
+def _unread_paths(report: ValidationReport) -> str:
+    """What the validated paths hold that the report could not read, if anything."""
+    unread = [issue for issue in report.issues if issue.code == "contract.unreadable"]
+    if not unread:
+        return ""
+    named = ", ".join(f"{issue.source} ({issue.message})" for issue in unread[:_MAX_UNREAD_NAMED])
+    rest = len(unread) - _MAX_UNREAD_NAMED
+    more = f" (+{rest} more)" if rest > 0 else ""
+    return f"; {len(unread)} path(s) could not be read: {named}{more}"
+
+
 def _asset_repository(path: Path) -> VerifiedAssetRepository:
     """Every verified asset under *path*, for `verify` and for `capture` alike.
 
-    A file that cannot be read or holds no asset is named as that file, and so is a path
-    under *path* that may not be looked at while its files are listed; only what is wrong
-    with the assets together — two of one id — is said of the path.
+    A file that cannot be read or holds no asset is named as that file, and so are a path
+    under *path* that may not be looked at while its files are listed and a directory
+    under it that cannot be listed — which is no directory without assets. Only what is
+    wrong with the assets together — two of one id — is said of the path.
     """
-    if not path.exists():
+    if not _looked_at(path, filesystem.exists):
         raise VerifyError(f"verified assets path not found: {path}")
     try:
         return VerifiedAssetRepository.load(path)
@@ -329,14 +360,15 @@ def _snapshot(root: Path) -> SemanticSnapshot:
     """
     model_path = root / MODEL_FILE
     try:
-        if not model_path.is_file():
+        if not filesystem.is_file(model_path):
             raise VerifyError(f"semantic ref {root} has no {MODEL_FILE}")
         metrics = root / METRICS_DIR
-        source = NativeModelSource(model_path, metrics if metrics.is_dir() else None)
+        source = NativeModelSource(model_path, metrics if filesystem.is_dir(metrics) else None)
         return source.snapshot()
     except OSError as exc:
-        # The model, its metrics directory or a contract in it, refused when looked at or
-        # when opened: the error knows which path it was.
+        # The model, its metrics directory, a directory under it or a contract in one,
+        # refused when looked at, when listed or when opened: the error knows which path
+        # it was.
         unread = exc.filename or model_path
         raise VerifyError(f"cannot read {unread}: {unread_reason(exc)}") from None
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
@@ -363,7 +395,7 @@ def _load_dashboards(
     if directory is None:
         return {}
     root = Path(directory)
-    if not root.is_dir():
+    if not _looked_at(root, filesystem.is_dir):
         raise VerifyError(f"dashboard specs directory not found: {root}")
     specs: dict[str, DashboardSpec] = {}
     for delivery in product.delivery.dashboards:
@@ -387,7 +419,7 @@ def _dashboard_file(root: Path, ref: str) -> Path | None:
     stem = f"{parsed.path[-1]}@{parsed.version}"
     for suffix in _SPEC_SUFFIXES:
         candidate = root / f"{stem}{suffix}"
-        if candidate.is_file():
+        if _looked_at(candidate, filesystem.is_file):
             return candidate
     return None
 
@@ -434,7 +466,7 @@ def _load_results(path: str | Path | None) -> ResultSource:
     if path is None:
         return NoResults()
     file = Path(path)
-    if not file.is_file():
+    if not _looked_at(file, filesystem.is_file):
         raise VerifyError(f"recorded results file not found: {file}")
     raw = _read_mapping(file)
     try:
@@ -493,6 +525,20 @@ def locate_evidence(path: str | Path, run_id: str = "") -> EvidenceLocation:
             f"{root} holds {len(runs)} runs ({', '.join(runs)}); " "name the one to read with --run"
         )
     return EvidenceLocation(store, runs[0])
+
+
+def _looked_at(path: Path, look: Callable[[Path], bool]) -> bool:
+    """What *look* says of *path* — or the usage error of a path that may not be looked at.
+
+    Under a directory that may not be searched the look itself is refused. That is not
+    "the path is not there": read as that, a run input that is where it was said to be
+    would be named as missing, and a dashboard spec that is there would become the gate's
+    finding of one that is absent.
+    """
+    try:
+        return look(path)
+    except OSError as exc:
+        raise VerifyError(f"cannot read {path}: {unread_reason(exc)}") from None
 
 
 def _read_mapping(path: Path) -> dict[str, Any]:

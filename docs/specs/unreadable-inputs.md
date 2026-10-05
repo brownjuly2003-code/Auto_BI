@@ -551,6 +551,358 @@ writes the bundle that a run without the refusal writes.
   evidence directory>: cannot ` and ends `: PermissionError`; the evidence directory does not
   exist
 
+## Requirement: what the filesystem refuses to list or to look at is not what is not there
+
+`decision validate`, `decision verify` and `decision capture` go through directories — the
+validated paths, the metrics directory of a semantic ref, the assets path — and ask of the paths
+they are given whether each is there. Both questions were put to `pathlib`, and two of its
+answers drop what the filesystem refuses. `Path.rglob` reads a directory it cannot list as an
+empty one: measured on Python 3.12.13, 3.13.13 and 3.14.6. And from Python 3.14 on `Path.exists`,
+`Path.is_file` and `Path.is_dir` answer `False` to every `OSError`, so that a path under a
+directory that may not be searched reads as a path that is not there; up to 3.13 the same look
+raised, and for the paths the second requirement left open nothing caught it.
+
+Reproduced at HEAD `35c18ec`, 2026-10-04, on macOS with the commands as processes over the run
+of the scenarios below: 32 runs of `decision verify`, 15 of `decision capture` and 8 of `decision
+validate`, each set under Python 3.13.13 and under Python 3.14.6. A directory of mode 000 can be
+neither listed nor searched; of mode 0o300 it is searched and not listed, and a file in it opens
+by its name; of mode 0o400 it is listed and not searched, so its names are seen and nothing in
+it may be looked at.
+
+- The assets directory, or a directory under it that holds the asset of the product, of mode 000
+  or 0o300: `decision verify` exits 0 with `pass_with_advisory` — no asset is selected and
+  nothing says that one could not be. A second copy of the asset in such a directory is not seen
+  either, where two assets of one id are a usage error. `decision capture` answers `no verified
+  asset under <path>`.
+- The metrics directory of the base ref: exit 3; of the candidate ref: exit 4 — each on a
+  snapshot without the metrics. `decision capture` goes on to open its query on that snapshot.
+- The validated directory: `no decision product contract found in the given paths` and exit 2
+  from both commands. A directory under it that holds the metric contract: the product blocks on
+  `metric_ref.unknown`, as if the contract had never been written; one that holds the product:
+  the same exit 2; one that holds nothing: exit 0. Nothing names the directory.
+- A path the command may not look at, under a directory that may not be searched — the assets
+  path, the dashboards directory, a dashboard spec, the recorded results, a validated file, the
+  output of a capture: under Python 3.13 a traceback and exit code 1, in 9 of the runs. Under
+  Python 3.14 the same paths are "not found" — `verified assets path not found: <path>`,
+  `dashboard specs directory not found: <path>`, `recorded results file not found: <path>` — the
+  dashboard spec is the finding `bi.spec_missing` and the run exits 3, the validated files give
+  `no decision product contract found in the given paths`, and `decision capture` opens its
+  query for an output it has not looked at.
+- Under Python 3.14 a directory that is listed and not searched reads as an empty one too, where
+  3.13 answered `cannot read <file>: PermissionError` as the second requirement has it: the look
+  at each file the listing names answers `False`, and the file is passed over. With the assets
+  directory `decision verify` exits 0 with `pass_with_advisory`.
+
+A look these three commands take at a path — whether it is there, is a file, is a directory —
+SHALL be answered by the operating system, on every supported interpreter. The answer is "no"
+for a path that is not there: what the operating system says with `ENOENT`, `ENOTDIR`, `EBADF`
+or `ELOOP`, on Windows also with the codes 21, 123 and 1921, and what a name that holds a NUL
+is. Any other refusal SHALL be a refusal and no answer.
+
+Going through a directory SHALL give every path below it, as `Path.rglob("*")` gives them where
+every directory can be listed: a link to a directory is given and is not followed, a path that
+is no directory holds nothing, and neither does a directory that is not there or went away while
+the others were listed. A directory the filesystem refuses to list SHALL be a refusal that names
+that directory. So SHALL a directory that is listed while the filesystem will not say which of
+its entries are directories — once, however many entries it has. The order of the paths is not
+promised; each reader sorts what it reads.
+
+Under the validated paths the report answers for every file, so what it could not go through is
+a finding of its own. A directory that cannot be listed — a validated path or any directory
+below one — SHALL give one issue: `contract.unreadable`, block, with the path of the directory
+as its subject and its source, named as the report names the files under that path, and the
+message `cannot list directory: <class of the refusal>`. A validated path that may not be looked
+at SHALL give one such issue with the message `cannot look at path: <class of the refusal>`. A
+path that is not there stays `path does not exist`. Every file that could be listed SHALL be
+loaded and every product validated as before. The issues of the paths come first, in the order
+the paths were given and, under one path, in the order of the directories' paths; the issues of
+the files follow, as before.
+
+The gate grades these issues as it grades every other `contract.unreadable`: `contracts.validate`
+blocks with `contracts.issues`, `decision validate` and `decision verify` exit 4, and `decision
+verify` writes the bundle. A run over such a directory gave a bundle before and gives another one
+now, so the verifier version SHALL be 93 and the check version 68.
+
+When no product is among what was read, `decision verify` SHALL say what was not read. Its usage
+errors `no decision product contract found in the given paths` and `no decision product '<id>'
+in the given paths (<the products read>)` SHALL go on with `; <n> path(s) could not be read: `
+and the first three `contract.unreadable` issues of the report, each as `<source> (<message>)`
+and separated by `, `, then ` (+<k> more)` when there are more than three. Where the report
+holds no such issue both SHALL read as before. `decision validate` prints its report above its
+own error and names them there.
+
+In a semantic ref and under the assets path a directory that cannot be listed SHALL end
+`decision verify`, and `decision capture` for what it reads, in the usage error of the second
+requirement — `cannot read <that directory>: <class of the refusal>`, exit code 2, one line —
+before anything is graded, asked of the engine or written. So SHALL a path of the run that may
+not be looked at: the assets path or a path under it, the dashboards directory, a dashboard spec
+under any of the three names it may have, the recorded results, the `model.yaml` of a ref, its
+metrics directory, a contract in it. A snapshot says what bytes it was read from, and a
+repository answers for every asset under its path; neither can say so of a directory nobody
+listed. The output of `decision capture` that may not be looked at SHALL end the command with
+`cannot write captured result <output>: ` and the text of the refusal, before the engine is
+asked.
+
+`NativeModelSource.snapshot` and `VerifiedAssetRepository.load` SHALL raise the `OSError` of a
+refused listing or look, with the refused path as its `filename`.
+
+What can be listed and looked at SHALL be read exactly as before: contracts and assets in
+directories below their path; an empty directory; a file that is not YAML by its name; in a ref
+and under the assets path, a directory named like a YAML file. A path that is not there keeps
+its message — `verified assets path not found: <path>`, `dashboard specs directory not found:
+<path>`, `recorded results file not found: <path>`, `semantic ref <ref> has no model.yaml` — and
+a dashboard spec that is not there stays the finding of `bi.contract`.
+
+In the scenarios below *a directory that cannot be listed* is one whose listing the filesystem
+refuses with `PermissionError`, and *a path that may not be looked at* is one every look at
+which it refuses with `PermissionError`. *The tree* is eight directories and nine files:
+directories in directories, names that begin with a dot, an empty directory and a directory
+named like a YAML file.
+
+### Scenario: a look answers what the path leads to
+
+- **GIVEN** the tree, with a link to a file and a link to a directory of it
+- **WHEN** a file, a directory, the directory named like a file and each link are asked whether
+  they are there, are a file, are a directory
+- **THEN** each answer is that of what the path leads to, links followed, whether the path is
+  given as a path or as a text
+- **AND** a path nothing is at, a path below a file, a link to nothing, a link to itself and a
+  name that holds a NUL are not there, no file and no directory
+
+### Scenario: a refused look is a refusal, and "not there" is told by what was answered
+
+- **GIVEN** a file and a directory of the tree that may not be looked at; and a file for which
+  the operating system answers `EIO`
+- **WHEN** each is asked whether it is there, is a file, is a directory
+- **THEN** every look raises what the filesystem refused with — its `errno`, the path as its
+  `filename` — and a path nothing refused is answered as it was
+- **AND** a file for which the operating system answers `ENOENT`, `ENOTDIR`, `EBADF` or `ELOOP`,
+  or an error that carries the Windows code 21, 123 or 1921, is not there, no file and no
+  directory; with the Windows code 5, access denied, every look raises
+
+### Scenario: the walk gives the paths `rglob("*")` gives
+
+- **GIVEN** the tree
+- **WHEN** the paths under it are walked
+- **THEN** they are the seventeen paths `Path.rglob("*")` gives, whether the tree is given as a
+  path or as a text, and no refusal is kept
+- **AND** a link to a directory outside the tree, a link to a file and a link to nothing are
+  given, as `rglob` gives them, and nothing under the linked directory is
+- **AND** a path nothing is at, and a file, hold nothing
+
+### Scenario: a directory the walk cannot list is raised, or kept while the rest is walked
+
+- **GIVEN** the tree, where the tree itself, a directory in it or a directory two levels down
+  cannot be listed
+- **WHEN** the paths under the tree are walked
+- **THEN** the walk raises `PermissionError` with that directory as its `filename`
+- **AND** with a list to keep refusals in and two directories that cannot be listed, the list
+  holds two errors, each naming its directory, and the walk gives every path that is not below
+  either — the two directories themselves among them
+- **AND** the tree itself, when it cannot be listed, gives no path and one kept error
+- **AND** a listing the filesystem answers with `EIO` is raised, or kept, as that `OSError`
+
+### Scenario: a directory that went away is not a refusal
+
+- **GIVEN** the tree, where the listing of one directory is answered with `ENOENT`, `ENOTDIR`,
+  `EBADF` or `ELOOP`
+- **WHEN** the paths under the tree are walked, with a list to keep refusals in and without one
+- **THEN** nothing is raised and nothing kept, and the paths are those that are not below that
+  directory
+
+### Scenario: a directory whose entries are not told apart is refused once
+
+- **GIVEN** the tree, with a directory of two entries that is listed while the filesystem
+  refuses, with `PermissionError`, to say of either whether it is a directory
+- **WHEN** the paths under the tree are walked
+- **THEN** both entries are given and nothing below them is; one `PermissionError` that names
+  the directory is kept, or raised when there is no list
+- **AND** when the same question is answered with "no such entry", nothing is kept
+- **AND** when it is answered so for one entry and refused for the other, the directory is
+  refused with the `PermissionError` — whichever of the two is asked first
+
+### Scenario: the walk over directories whose permissions are taken away
+
+- **GIVEN** the tree on a filesystem whose permission bits keep the process out, with one
+  directory of mode 000 or 0o300
+- **WHEN** the paths under the tree are walked
+- **THEN** the walk gives exactly the paths `rglob("*")` gives there and keeps one
+  `PermissionError` that names the directory, of which `rglob` says nothing; without a list it
+  raises
+- **AND** with the directory of mode 0o400 its entries are given, what is below the directory
+  among them is not, and one `PermissionError` is kept
+- **AND** every look at a path in a directory of mode 000 or 0o400 — a file, a directory, a name
+  nothing is at — raises `PermissionError` with that path as its `filename`, while the directory
+  itself is a directory
+
+### Scenario: a validated directory that cannot be listed is an unreadable path
+
+- **GIVEN** the fixture's contracts, and under them a directory `archive` that holds a second
+  file of the metric's id — which gives `contract.duplicate_id` — and that cannot be listed
+- **WHEN** the paths are validated
+- **THEN** the report holds one issue: `contract.unreadable`, block, with the path of `archive`
+  as its subject and its source and the message `cannot list directory: PermissionError`; the
+  product and the metric contract are in the report, and its verdict is `block`
+- **AND** when the validated directory itself cannot be listed, the one issue names it and the
+  report holds no product and no metric contract
+
+### Scenario: directories that cannot be listed are reported in the order of the paths
+
+- **GIVEN** two validated paths: a directory `other` that cannot be listed; and the fixture's
+  contracts with six directories that cannot be listed — `m`, `c`, `x`, `a`, `t`, `f` — and a
+  file `a_broken.yaml` holding a sequence that is never closed
+- **WHEN** the paths are validated in that order
+- **THEN** the issues are that of `other`, those of the six directories in the order of their
+  paths, and `contract.unreadable` of `a_broken.yaml` with `cannot read contract: ParserError`
+- **AND** given the path `.`, a directory `archive` under it that cannot be listed is named
+  `archive`, as a file under it is named
+- **AND** a listing the filesystem answers with `EIO` is `cannot list directory: OSError`
+- **AND** a directory that is listed while its entries are not told apart gives the one issue of
+  that directory
+
+### Scenario: a validated path that may not be looked at is an unreadable path
+
+- **GIVEN** the validated paths given as the metric contract and the product, where the metric
+  contract may not be looked at — or the directory it was moved to, given in its place
+- **WHEN** the paths are validated
+- **THEN** the first issue is `contract.unreadable`, block, with that path as its subject and
+  its source and the message `cannot look at path: PermissionError`; the product is loaded and
+  validated, its pin gives `metric_ref.unknown`, and the report holds no metric contract
+- **AND** a validated path nothing is at gives `path does not exist`, as before
+
+### Scenario: contracts in directories below a validated path are validated as before
+
+- **GIVEN** the fixture's contracts with the metric contract moved two directories down, beside
+  a directory `.notes` that holds a text file
+- **WHEN** the paths are validated
+- **THEN** the report is the report of the contracts side by side: no issue, the metric contract
+  in it
+
+### Scenario: `decision validate` prints the directory and exits by the verdict
+
+- **GIVEN** the fixture's contracts, and under them a directory `archive` that cannot be listed
+- **WHEN** `decision validate` runs
+- **THEN** it exits 4; its first two lines are the issue `block`, `contract.unreadable` and the
+  path of `archive`, and `cannot list directory: PermissionError [<that path>]`; its last line
+  is `verdict: block (1 product(s), 1 metric contract(s), 1 issue(s))`; with `--json` the issues
+  of the report are that one issue
+- **AND** when the validated directory itself cannot be listed, the command exits 2 and prints
+  the issue, `verdict: block (0 product(s), 0 metric contract(s), 1 issue(s))` and `error: no
+  decision product contract found in the given paths`
+- **AND** given the metric contract, which may not be looked at, and the product, the command
+  exits 4 and its first two lines name the contract and `cannot look at path: PermissionError`
+
+### Scenario: the gate blocks on a validated directory that cannot be listed
+
+- **GIVEN** the run, which does not block, and under its contracts a directory `archive` that
+  cannot be listed
+- **WHEN** `decision verify` runs
+- **THEN** the verdict is `block`; `contracts.validate` blocks with `contracts.issues` and its
+  payload holds the one issue of `archive`; the command exits 4 and the bundle is written with
+  its manifest
+- **AND** the verifier version is at least 93 and the check version at least 68
+
+### Scenario: no product among what was read names what was not read
+
+- **GIVEN** the run, where the validated directory cannot be listed; or where the product file
+  holds a sequence that is never closed; or where nothing is at the validated path
+- **WHEN** `decision verify` runs
+- **THEN** it is refused with `no decision product contract found in the given paths; 1 path(s)
+  could not be read: ` and `<the directory> (cannot list directory: PermissionError)`, `<the
+  product file> (cannot read contract: ParserError)` or `<the path> (path does not exist)`; no
+  evidence directory exists
+- **AND** asked for the product `decision://sales/other` with a directory `archive` under the
+  contracts that cannot be listed, it is refused with `no decision product
+  'decision://sales/other' in the given paths (<the product of the run>); 1 path(s) could not be
+  read: <archive> (cannot list directory: PermissionError)`
+- **AND** without the product file and with three of five directories under the contracts that
+  cannot be listed, the message ends `; 3 path(s) could not be read: ` and the three; with all
+  five it ends `; 5 path(s) could not be read: `, the first three and ` (+2 more)`
+- **AND** where every path was read — a product id the paths do not hold, a product file that
+  holds another kind, no product file — the message is the one it was
+- **AND** the command exits 2 with nothing on standard output and that one line after `error: `
+  on standard error
+
+### Scenario: a directory of a semantic ref that cannot be listed ends the run
+
+- **GIVEN** the run, where the metrics directory of the base ref or of the candidate ref, or a
+  directory `sales` in it, cannot be listed
+- **WHEN** `decision verify` runs, and — for the candidate ref — `decision capture`
+- **THEN** each is refused with `cannot read <that directory>: PermissionError`; no evidence
+  directory exists, no query is opened and no output is written
+- **AND** with the metric contract moved into `sales`, where it may not be looked at, each is
+  refused with `cannot read <that contract>: PermissionError`
+- **AND** `NativeModelSource.snapshot` raises the `PermissionError` whose `filename` is the
+  metrics directory that cannot be listed, or the contract or the metrics directory that may not
+  be looked at; with nothing refused it gives the snapshot it gave before
+- **AND** a metric contract two directories below the metrics, beside an empty directory, a text
+  file and a directory named like a contract, gives the snapshot of the contract in the metrics
+  directory itself
+
+### Scenario: a directory under the assets path that cannot be listed ends the run
+
+- **GIVEN** the run, where the assets directory, or a directory `archive` in it, cannot be listed
+- **WHEN** `decision verify` runs, and `decision capture` over the same assets
+- **THEN** each is refused with `cannot read <that directory>: PermissionError`; no evidence
+  directory exists, no query is opened and no output is written
+- **AND** `VerifiedAssetRepository.load` raises the `PermissionError` whose `filename` is the
+  assets directory that cannot be listed, or the asset or the assets directory that may not be
+  looked at; with nothing refused it loads the asset
+- **AND** an assets directory that holds nothing is an empty one: the run is graded as the run
+  without assets is — verdict, and status and summary code of every check — and `decision
+  capture` for the asset answers `no verified asset '<id of the asset>' under <assets path>
+  (none)`
+- **AND** the asset two directories below the assets path, beside an empty directory, a text
+  file and a directory named like an asset, is the one asset of the repository, with the digest
+  it has side by side
+
+### Scenario: a run input that may not be looked at ends the run
+
+- **GIVEN** the run, where one of these may not be looked at: the assets path; the dashboards
+  directory; the dashboard spec under its `.yaml` name, or — with no such file — under the
+  `.yml` or the `.json` name looked at next; the recorded results
+- **WHEN** `decision verify` runs, and — for the assets path — `decision capture`
+- **THEN** each is refused with `cannot read <that path>: PermissionError`; no evidence directory
+  exists
+- **AND** `decision capture` whose output may not be looked at is refused with `cannot write
+  captured result <output>: ` and the text of the refusal; no query is opened and no output is
+  written
+- **AND** where nothing is at the assets path, at the dashboards directory, at the results file
+  or at the candidate's `model.yaml`, the run is refused with the message it was refused with:
+  `verified assets path not found: <path>`, `dashboard specs directory not found: <path>`,
+  `recorded results file not found: <path>`, `semantic ref <ref> has no model.yaml`
+- **AND** with no dashboard spec there `bi.contract` is under review, as before
+
+### Scenario: the run over directories whose permissions are taken away
+
+- **GIVEN** the run on a filesystem whose permission bits keep the process out
+- **WHEN** `decision verify` runs with the assets directory, a directory in it, the metrics
+  directory of the base ref or of the candidate ref, or a directory in the candidate's metrics,
+  of mode 000 or 0o300
+- **THEN** it is refused with `cannot read <that directory>: PermissionError`, and so is
+  `decision capture` with the assets directory or the candidate's metrics directory
+- **AND** with the assets directory or the metrics directory of either ref of mode 0o400, it is
+  refused with `cannot read <the file in that directory>: PermissionError`
+- **AND** with the assets directory, the dashboards directory, the results file, the base ref or
+  the candidate ref under a directory of mode 000, it is refused with `cannot read <that
+  path>: PermissionError` — for a ref, with its `model.yaml` as the path
+- **AND** the validated directory, or a directory in it, of mode 000 or 0o300 gives the one issue
+  `cannot list directory: PermissionError`; of mode 0o400 it gives `cannot read contract:
+  PermissionError` for each of its two files, and no product; and its two files, given as the
+  validated paths while the directory has mode 000, give `cannot look at path: PermissionError`
+  each, and no product
+
+### Scenario: the commands exit 2 with one line
+
+- **GIVEN** the run, where the assets directory or the metrics directory of either ref cannot
+  be listed; or where the assets path, the dashboards directory or the results file may not be
+  looked at
+- **WHEN** `decision verify` runs
+- **THEN** it exits 2, prints nothing on standard output and `error: cannot read <that path>:
+  PermissionError` on standard error; no evidence directory exists
+- **AND** `decision capture` with the assets directory or the candidate's metrics directory that
+  cannot be listed exits 2 with the same one line and writes no output file
+
 ## Known boundaries
 
 - The finding names the file and the class, not the value or its line: PyYAML's own errors are
@@ -565,20 +917,30 @@ writes the bundle that a run without the refusal writes.
 - The first requirement covers the contract files, the second the run inputs of `decision
   verify` and `decision capture`. The inputs of `decision investigate` and the loaders of the v1
   runtime read YAML by themselves and are not changed.
-- The second requirement covers reading. Looking is covered inside a semantic ref, among the
-  files under the assets path and inside the evidence directory only. Under a directory that may
-  not be searched a validated contract file still ends `decision verify` and `decision validate`
-  in a traceback, the assets path itself `decision verify` and `decision capture`, a dashboard
-  spec or the recorded results `decision verify`, and the output path `decision capture`.
-  Reproduced with the command as a process and a directory of mode 000, on Python 3.12.13 and
-  3.13.13: both raise `PermissionError` from a look at such a path.
-- A directory that cannot be listed is read as an empty one. Reproduced the same way: with the
-  assets directory `decision verify` exits 0 with `pass_with_advisory` — no asset is selected and
-  nothing says that one could not be; with the metrics directory of the base ref it exits 3, of
-  the candidate ref 4, each on a snapshot without the metrics; with the validated directory it
-  exits 2 with `no decision product contract found in the given paths`, and so does `decision
-  validate`; `decision capture` with the assets directory exits 2 with `no verified asset under
-  <path>`.
+- The fourth requirement covers `decision validate`, `decision verify` and `decision capture`.
+  `decision evidence` and the filesystem store still look through `pathlib`. Reproduced with the
+  command as a process over a written bundle, 7 runs under each interpreter, with the evidence
+  directory, the run directory or a directory above them of mode 000, 0o300 or 0o400: `decision
+  evidence` ends in a traceback in 6 of them under Python 3.13.13 and in 3 under 3.14.6, where 3
+  more answer `no evidence bundle under <path>: no run directory holds manifest.json` or
+  `evidence path not found: <path>` for a bundle that is there. In the seventh a directory of
+  the bundle that cannot be read is reported as `evidence.artifact_missing`, `… is not in the
+  store`.
+- A refusal is told from "not there" by what the operating system answers. The answers of
+  Windows and a directory whose entries are not told apart are given to the code by the tests:
+  no run was made on Windows or on a filesystem that withholds the kind of an entry. Directories
+  whose permission bits are taken away were run on macOS, as a user the bits keep out; a process
+  they do not keep out — root — is refused nothing.
+- A directory that cannot be listed stops the report or the run whatever it holds: the command
+  cannot know that it holds no contract and no asset. A validated path with a directory in it
+  that its reader may not list blocks until the directory is listed or left out of the paths.
+- Under a validated path a file is chosen by its name alone, as before, so a directory named
+  like a YAML file is a contract that cannot be read. In a ref and under the assets path such a
+  directory is passed over, as before.
+- The order in which a walk gives paths is the filesystem's. Every reader sorts what it reads,
+  and the refusals under one validated path are sorted by their paths.
+- The dashboards directory is never listed: a spec is looked for by its name. A dashboards
+  directory that is searched and not listed therefore reads as any other.
 - A contract the filesystem refuses to open is a finding under the validated paths
   (`contract.unreadable`) and ends the run in a semantic ref: a validation report answers for
   its paths whether or not a run follows, and a snapshot says what bytes it was read from.
