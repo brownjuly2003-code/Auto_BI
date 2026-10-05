@@ -22,6 +22,8 @@ against.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
@@ -49,6 +51,7 @@ from auto_bi.semantic.model import (
     ColumnRole,
     DataClassification,
     SemanticModel,
+    Table,
 )
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
@@ -151,11 +154,30 @@ class MetricNode(StrictModel):
     freshness: MetricFreshness
 
 
+def _one_node_to_an_id(kind: str, ids: list[str]) -> None:
+    seen: set[str] = set()
+    for node_id in ids:
+        if node_id in seen:
+            raise ValueError(f"more than one {kind} node of the graph has the id {node_id!r}")
+        seen.add(node_id)
+
+
 class SemanticGraph(StrictModel):
     tables: list[TableNode] = Field(default_factory=list)
     fields: list[FieldNode] = Field(default_factory=list)
     joins: list[JoinNode] = Field(default_factory=list)
     metrics: list[MetricNode] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_ids(self) -> SemanticGraph:
+        # One node to an id. A diff reads a graph by id and keeps the last node of one, the
+        # gate reads a table or a field by the first: of a graph that held two nodes under
+        # one id the two would answer apart. Metrics are not held to it here: two contracts
+        # of one id are what the gate's own checks of a pin name.
+        _one_node_to_an_id("table", [node.id for node in self.tables])
+        _one_node_to_an_id("field", [node.id for node in self.fields])
+        _one_node_to_an_id("join", [node.id for node in self.joins])
+        return self
 
 
 class SemanticSnapshot(StrictModel):
@@ -286,7 +308,16 @@ def _build_graph(
     model: SemanticModel, contracts: list[MetricContract], gaps: list[SemanticGap]
 ) -> SemanticGraph:
     tables: list[TableNode] = []
-    fields: list[FieldNode] = []
+    declared: list[FieldNode] = []
+
+    # What a model declares more than once is one answer of the graph or none. The name of
+    # a table, the id of a field and the id of a join are what a diff and the gate read a
+    # graph by, so the graph holds one node to each: declarations that say the same are
+    # one declaration and a named repeat, declarations that do not are a named conflict and
+    # no node - there is no telling which of them the model means.
+    named: dict[str, list[Table]] = {}
+    for table in model.tables:
+        named.setdefault(table.name, []).append(table)
 
     for index, table in enumerate(model.tables):
         if not table.name:
@@ -305,9 +336,35 @@ def _build_graph(
                 )
             )
             continue
-        table_class = table.classification or DataClassification.INTERNAL
-        physical = table.physical
-        if physical is None:
+        declarations = named.pop(table.name, None)
+        if declarations is None:
+            continue  # answered where the name first stands
+        if len(declarations) > 1:
+            if len({_table_says(declaration) for declaration in declarations}) > 1:
+                gaps.append(
+                    SemanticGap(
+                        code="gap.table_conflict",
+                        severity=Severity.BLOCK,
+                        path=f"tables.{table.name}",
+                        reason=(
+                            f"table is declared {len(declarations)} times and not alike: "
+                            "it and its columns are not in the graph"
+                        ),
+                    )
+                )
+                continue
+            gaps.append(
+                SemanticGap(
+                    code="gap.table_repeated",
+                    severity=Severity.ADVISORY,
+                    path=f"tables.{table.name}",
+                    reason=(
+                        f"table is declared {len(declarations)} times, alike: "
+                        "the graph holds it once"
+                    ),
+                )
+            )
+        if table.physical is None:
             gaps.append(
                 SemanticGap(
                     code="gap.missing_physical",
@@ -316,54 +373,88 @@ def _build_graph(
                     reason="no engine or key facts declared; the physical gate cannot run",
                 )
             )
-        tables.append(
-            TableNode(
-                id=table.name,
-                grain=list(table.grain),
-                classification=table_class,
-                description=table.description,
-                engine=physical.engine if physical else "",
-                table_engine=physical.table_engine if physical else "",
-                sorting_key=list(physical.sorting_key) if physical else [],
-                distribution_key=list(physical.distribution_key) if physical else [],
-                partition_key=physical.partition_key if physical else "",
-            )
-        )
-        for column in table.columns:
-            fields.append(
-                FieldNode(
-                    id=f"{table.name}.{column.name}",
-                    table=table.name,
-                    column=column.name,
-                    type=column.type,
-                    role=column.role,
-                    classification=column.classification or table_class,
-                    agg=column.agg,
-                    additivity=column.additivity,
-                    fk=column.fk or "",
-                    description=column.description,
+        tables.append(_table_node(table))
+        declared.extend(_field_nodes(table))
+
+    fields: list[FieldNode] = []
+    fields_by_id: dict[str, list[FieldNode]] = {}
+    for field in declared:
+        fields_by_id.setdefault(field.id, []).append(field)
+    for field_id, same_field in fields_by_id.items():
+        if len(same_field) > 1:
+            if not _alike(same_field):
+                gaps.append(
+                    SemanticGap(
+                        code="gap.field_conflict",
+                        severity=Severity.BLOCK,
+                        path=f"fields.{field_id}",
+                        reason=(
+                            f"field is declared {len(same_field)} times and not alike: "
+                            "it is not in the graph"
+                        ),
+                    )
+                )
+                continue
+            gaps.append(
+                SemanticGap(
+                    code="gap.field_repeated",
+                    severity=Severity.ADVISORY,
+                    path=f"fields.{field_id}",
+                    reason=(
+                        f"field is declared {len(same_field)} times, alike: "
+                        "the graph holds it once"
+                    ),
                 )
             )
+        fields.append(same_field[0])
 
     known = {field.id for field in fields}
     joins: list[JoinNode] = []
+    joins_by_id: dict[str, list[JoinNode]] = {}
     for join in model.joins:
-        if join.left not in known or join.right not in known:
-            missing = [side for side in (join.left, join.right) if side not in known]
+        node = JoinNode(
+            id=f"{join.left}->{join.right}", left=join.left, right=join.right, type=join.type
+        )
+        joins_by_id.setdefault(node.id, []).append(node)
+    for join_id, same_join in joins_by_id.items():
+        if not _alike(same_join):
+            gaps.append(
+                SemanticGap(
+                    code="gap.join_conflict",
+                    severity=Severity.BLOCK,
+                    path=f"joins.{join_id}",
+                    reason=(
+                        f"join is declared {len(same_join)} times and not alike: "
+                        "it is not in the graph"
+                    ),
+                )
+            )
+            continue
+        first = same_join[0]
+        if first.left not in known or first.right not in known:
+            missing = [side for side in (first.left, first.right) if side not in known]
             gaps.append(
                 SemanticGap(
                     code="gap.dangling_join",
                     severity=Severity.BLOCK,
-                    path=f"joins.{join.left}->{join.right}",
+                    path=f"joins.{join_id}",
                     reason=f"join endpoint is not a declared field: {', '.join(missing)}",
                 )
             )
             continue
-        joins.append(
-            JoinNode(
-                id=f"{join.left}->{join.right}", left=join.left, right=join.right, type=join.type
+        if len(same_join) > 1:
+            gaps.append(
+                SemanticGap(
+                    code="gap.join_repeated",
+                    severity=Severity.ADVISORY,
+                    path=f"joins.{join_id}",
+                    reason=(
+                        f"join is declared {len(same_join)} times, alike: "
+                        "the graph holds it once"
+                    ),
+                )
             )
-        )
+        joins.append(first)
 
     for metric in model.metrics:
         gaps.append(
@@ -383,6 +474,61 @@ def _build_graph(
         fields=sorted(fields, key=lambda node: node.id),
         joins=sorted(joins, key=lambda node: node.id),
         metrics=sorted(metrics, key=lambda node: node.id),
+    )
+
+
+def _table_node(table: Table) -> TableNode:
+    physical = table.physical
+    return TableNode(
+        id=table.name,
+        grain=list(table.grain),
+        classification=table.classification or DataClassification.INTERNAL,
+        description=table.description,
+        engine=physical.engine if physical else "",
+        table_engine=physical.table_engine if physical else "",
+        sorting_key=list(physical.sorting_key) if physical else [],
+        distribution_key=list(physical.distribution_key) if physical else [],
+        partition_key=physical.partition_key if physical else "",
+    )
+
+
+def _field_nodes(table: Table) -> list[FieldNode]:
+    table_class = table.classification or DataClassification.INTERNAL
+    return [
+        FieldNode(
+            id=f"{table.name}.{column.name}",
+            table=table.name,
+            column=column.name,
+            type=column.type,
+            role=column.role,
+            classification=column.classification or table_class,
+            agg=column.agg,
+            additivity=column.additivity,
+            fk=column.fk or "",
+            description=column.description,
+        )
+        for column in table.columns
+    ]
+
+
+def _says(node: StrictModel) -> str:
+    """A node as text. Declarations are alike when the graph could not tell them apart."""
+    return json.dumps(node.model_dump(mode="json"), sort_keys=True)
+
+
+def _alike(nodes: Sequence[StrictModel]) -> bool:
+    return len({_says(node) for node in nodes}) == 1
+
+
+def _table_says(table: Table) -> tuple[str, bool, tuple[str, ...]]:
+    """What one declaration of a table gives the graph: its node, whether it declares
+    physical facts (a node cannot say: with none the facts are empty text, as facts declared
+    empty are), and the nodes of its columns, each as many times as it declares the column.
+    """
+    return (
+        _says(_table_node(table)),
+        table.physical is None,
+        tuple(sorted(_says(node) for node in _field_nodes(table))),
     )
 
 

@@ -480,7 +480,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 96 — a delivered dashboard whose spec validates and whose compile is refused is listed
 #: by bi.contract with what the compile said, and the check seals the list, empty or not.
 #: Verifier 95 let what the compile raised end the run: no report and no bundle.
-VERIFIER_VERSION = "96"
+#: 97 — a table, a column or a join a model declares more than once is one node of the graph
+#: and a named repeat when its declarations are alike, and a named conflict and no node when
+#: they are not. Verifier 96 kept a node for each declaration: two refs that differed in one
+#: of two declarations of a table were graded as unchanged, and a ref that repeated a
+#: declaration word for word had another canonical digest and no change to show for it.
+VERIFIER_VERSION = "97"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -736,7 +741,10 @@ VERIFIER_VERSION = "96"
 #: a snapshot that held it as a table.
 #: 71 — bi.contract blocks on a delivered dashboard the compile refuses and names it, where
 #: rule 70 gave no result for the run; its evidence always lists the refused dashboards.
-CHECK_VERSION = "71"
+#: 72 — semantic.gaps blocks on a table, a column or a join a model declares more than once
+#: and not alike, and names a repeat that is alike with an advisory, where rule 71 graded a
+#: snapshot that held a node for each declaration.
+CHECK_VERSION = "72"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
