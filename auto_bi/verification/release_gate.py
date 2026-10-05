@@ -472,7 +472,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: semantic ref is a gap.contract_invalid gap, and any other file of a run ends the run
 #: before any bundle. Verifier 93 read the string PyYAML builds of the escape: where a
 #: schema took it, the run was graded with it or ended in an exception.
-VERIFIER_VERSION = "94"
+#: 95 — a table a model declares with no name is a gap.table_unnamed gap of the snapshot,
+#: and neither it nor its columns are in the graph. Verifier 94 kept it as a table whose id
+#: is empty text: a run over two refs that held it alike was graded without the gap, and a
+#: run over refs that differed in it ended in an exception while they were compared.
+VERIFIER_VERSION = "95"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -724,7 +728,9 @@ VERIFIER_VERSION = "94"
 #: 69 — contracts.validate blocks on a validated file, and semantic.gaps on a metric contract
 #: of a ref, that spells a surrogate in an escape, where rule 68 graded the contract PyYAML
 #: built of the file.
-CHECK_VERSION = "69"
+#: 70 — semantic.gaps blocks on a table a model declares with no name, where rule 69 graded
+#: a snapshot that held it as a table.
+CHECK_VERSION = "70"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

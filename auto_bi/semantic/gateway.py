@@ -102,7 +102,11 @@ class JoinNode(StrictModel):
 
 
 class TableNode(StrictModel):
-    id: str
+    #: The name the model gives the table, and the one id of the graph that is a free text
+    #: alone: a field id holds a ".", a join id a "->", a metric id is a ref its contract's
+    #: schema has checked. A diff names a change by the id of what changed, and has no name
+    #: for a table whose id is empty text.
+    id: str = Field(min_length=1)
     grain: list[str] = Field(default_factory=list)
     classification: DataClassification
     description: str = ""
@@ -284,7 +288,23 @@ def _build_graph(
     tables: list[TableNode] = []
     fields: list[FieldNode] = []
 
-    for table in model.tables:
+    for index, table in enumerate(model.tables):
+        if not table.name:
+            # The name is the table's id, the first part of the id of each of its fields
+            # and what a diff calls a change of either. A table declared without one has
+            # no place in the graph, and is named by where it stands in the file.
+            gaps.append(
+                SemanticGap(
+                    code="gap.table_unnamed",
+                    severity=Severity.BLOCK,
+                    path=f"tables.{index}.name",
+                    reason=(
+                        "table is declared with no name: it and its "
+                        f"{len(table.columns)} column(s) are not in the graph"
+                    ),
+                )
+            )
+            continue
         table_class = table.classification or DataClassification.INTERNAL
         physical = table.physical
         if physical is None:
