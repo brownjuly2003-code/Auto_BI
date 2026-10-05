@@ -1519,6 +1519,15 @@ contract-тестом `tests/test_decision_cli.py::test_exit_code_contract_is_st
 должно выглядеть как вынесенный verdict (инвариант 8). Прогон, который не нашёл
 ни одного decision product, завершается `2`, а не «pass».
 
+Файл контракта, который команда не может прочитать, — finding об этом файле, а не
+падение: в validated paths это `contract.unreadable`, среди контрактов semantic ref —
+`gap.contract_invalid`, оба block, и exit code команды остаётся вердиктом. Так же
+читается документ, который PyYAML разбирает, но не может построить: дата, которой
+нет, целое длиннее предела интерпретатора, явный `!!bool` или `!!timestamp` с чужим
+значением, вложенность глубже стека. Контракт, чья `metadata` не mapping, —
+`contract.invalid` под именем файла
+([files a command cannot read](specs/unreadable-inputs.md)).
+
 Реализовано:
 
 ```text

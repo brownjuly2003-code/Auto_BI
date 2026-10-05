@@ -30,6 +30,7 @@ from auto_bi.refs import ContractRef
 from auto_bi.semantic.metric_contract import MetricContract, MetricLifecycle
 from auto_bi.strict import StrictModel
 from auto_bi.verification.model import Severity, Verdict, verdict_for
+from auto_bi.yaml_document import load_yaml_document
 
 API_VERSION = "auto-bi.io/v2alpha1"
 
@@ -155,7 +156,7 @@ def _load_contract(
 ) -> None:
     source = str(path)
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = load_yaml_document(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         issues.append(
             ValidationIssue(
@@ -211,7 +212,7 @@ def _store(
             ValidationIssue(
                 code="contract.invalid",
                 severity=Severity.BLOCK,
-                subject=str(raw.get("metadata", {}).get("id", path.name)),
+                subject=_declared_id(raw, path),
                 source=source,
                 message=_schema_errors(exc),
             )
@@ -230,6 +231,14 @@ def _store(
         )
         return
     into[identifier] = contract
+
+
+def _declared_id(raw: dict[str, Any], path: Path) -> str:
+    """What names a contract that fails its schema: the id it declares, or its file."""
+    metadata = raw.get("metadata")
+    if isinstance(metadata, dict) and "id" in metadata:
+        return str(metadata["id"])
+    return path.name
 
 
 def _schema_errors(exc: ValidationError) -> str:

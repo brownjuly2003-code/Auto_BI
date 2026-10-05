@@ -83,6 +83,31 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-04 — файл контракта, который PyYAML разбирает, но не может построить, прежде
+  обрывал `decision validate` и `decision verify` traceback с exit 1: `as_of: 2026-02-30`,
+  смещение зоны больше суток, целое в 5000 цифр, `!!int`/`!!float` с текстом
+  (`ValueError`), `!!bool perhaps` (`KeyError`), `!!timestamp lately` (`AttributeError`),
+  вложенность 3000 (`RecursionError`) — в validated paths и среди контрактов base и
+  candidate refs. Так же падал контракт, чья `metadata` не mapping. Отчёта и bundle не
+  было. Теперь всё, что брошено при загрузке YAML-документа контракта, — отказ прочитать
+  файл: `contract.unreadable` в validated paths, `gap.contract_invalid` в semantic ref, оба
+  block с классом `ConstructorError`; сообщение не цитирует файл, остальные файлы
+  загружаются, exit code — вердикт (4). Отказы самого PyYAML сохраняют свой класс,
+  `MemoryError` и прерывание не превращаются. Контракт с `metadata` не-mapping —
+  `contract.invalid` под именем файла. Общий загрузчик — `auto_bi/yaml_document.py`.
+  Версии evidence не менялись (92/67): ни один вход, дававший bundle, не даёт другого.
+  `model.yaml`, assets, dashboard specs, recorded results и входы `decision investigate`
+  читают другие загрузчики и не тронуты.
+  Выбор — оркестратор (кандидат из handoff, Astra-выбора по ADR 0006 нет). По решению
+  владельца срез выполнен напрямую Claude Opus 5.5, без MyFlow-исполнителей; модельное
+  ревью по ADR 0006 (Astra xhigh) не проводилось — проверки сделал сам автор, это не
+  независимое ревью. Тесты прогонялись на Mac. Red на копии HEAD с одним загрузчиком,
+  который никто не вызывает: 64 failed / 33 passed; новый модуль: 97 passed. 16 ручных
+  мутантов убиты. Контроль на tracked pilot-пакетах: 10 прогонов, каждый файл каждого
+  bundle байт в байт как на HEAD. Полный offline gate с duckdb: 4765 passed, 4 skipped,
+  38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_UNBUILT_CONTRACT_YAML_CHECKS_2026-10-04.md).
+
 - 2026-10-04 — `test_cte_gate_walk_on_a_long_chain_stays_linear` больше не меряет время:
   работа обхода CTE-гейтов считается в строках собственного кода пакета (`sys.settrace`,
   только кадры `auto_bi`). Потолок малой цепочки — 1 000 000 строк (обход берёт 391 748),

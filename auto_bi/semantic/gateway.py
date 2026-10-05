@@ -51,6 +51,7 @@ from auto_bi.semantic.model import (
 )
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
+from auto_bi.yaml_document import load_yaml_document
 
 #: Generation of the native canonical projection. Bumped when the graph shape changes,
 #: because that changes every canonical digest and therefore every snapshot identity.
@@ -231,7 +232,7 @@ class NativeModelSource:
 
 def _parse_contract(path: Path, raw: bytes, gaps: list[SemanticGap]) -> MetricContract | None:
     try:
-        data = yaml.safe_load(raw.decode("utf-8"))
+        data = load_yaml_document(raw.decode("utf-8"))
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
         gaps.append(
             SemanticGap(

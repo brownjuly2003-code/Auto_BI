@@ -12,7 +12,41 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=92`, `CHECK_VERSION=67`
 
-**Последний срез (2026-10-04):** тест линейности обхода CTE-гейтов не зависит от часов.
+**Последний срез (2026-10-04):** файл контракта, который PyYAML не может построить, — finding,
+а не traceback. Оба загрузчика контрактов ловили `yaml.YAMLError`, а значения скомпонованного
+документа строит обычный Python, и его исключения выходили из `yaml.safe_load` как есть:
+`as_of: 2026-02-30`, смещение зоны больше суток, целое в 5000 цифр, `!!int`/`!!float` с
+текстом — `ValueError`; `!!bool perhaps` — `KeyError`; `!!timestamp lately` —
+`AttributeError`; вложенность 3000 — `RecursionError`. С таким файлом в validated paths
+`decision validate` и `decision verify` кончались traceback и exit 1, с таким контрактом в
+base или candidate ref — `decision verify`; так же падал контракт, чья `metadata` не mapping.
+Exit 1 §12.1 оставляет необработанному исключению: отчёта и bundle не было. Теперь всё,
+что брошено при загрузке YAML-документа контракта, — отказ прочитать файл:
+`contract.unreadable` (`cannot read contract: ConstructorError`) в validated paths,
+`gap.contract_invalid` (`metric contract cannot be read: ConstructorError`) с digest байтов
+файла в semantic ref, оба block. Отказы самого PyYAML сохраняют свой класс; сообщение несёт
+имя класса и ничего из текста исключения, который может цитировать файл; `MemoryError`,
+прерывание и выход не превращаются. Остальные файлы загружаются, продукты валидируются,
+bundle записан, exit code — вердикт. Контракт с `metadata` не-mapping — `contract.invalid`
+под именем файла. Общий загрузчик — `auto_bi/yaml_document.py`. Версии evidence не менялись:
+ни один вход, дававший отчёт или bundle, не даёт другого.
+Границы: finding называет файл и класс, не значение и не строку; что не строится, решают
+PyYAML и интерпретатор (предел 4300 цифр и recursion limit настраиваются); `model.yaml`,
+verified assets, dashboard specs, recorded results и входы `decision investigate` читают
+другие загрузчики и по-прежнему могут кончиться traceback; issue с символом, который поток
+вывода не кодирует, обрывает печать отчёта `decision validate`.
+Выбор — оркестратор (кандидат из handoff, Astra-выбора по ADR 0006 нет). По решению
+владельца срез выполнен напрямую Claude Opus 5.5, без MyFlow-исполнителей; модельное ревью по
+ADR 0006 (Astra xhigh) не проводилось — проверки сделал сам автор, это не независимое
+ревью. Тесты прогонялись на Mac. Red на копии HEAD с одним загрузчиком, который никто не
+вызывает: 64 failed / 33 passed; новый модуль: 97 passed. 16 ручных мутантов убиты. Контроль
+на tracked pilot-пакетах: 10 прогонов, каждый файл каждого bundle байт в байт как на HEAD.
+Полный offline gate с duckdb: 4765 passed, 4 skipped, 38 deselected, exit 0;
+Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
+[Проверки и границы](DECISIONOPS_UNBUILT_CONTRACT_YAML_CHECKS_2026-10-04.md),
+[спека](specs/unreadable-inputs.md).
+
+**Предыдущий срез (2026-10-04):** тест линейности обхода CTE-гейтов не зависит от часов.
 `test_cte_gate_walk_on_a_long_chain_stays_linear` прежде мерил `time.perf_counter`: малая
 цепочка (120 named CTE и 30 scalar `WITH`) должна была уложиться в 2 с, цепочка в 4 раза
 длиннее — в 8× времени малой. Под нагрузкой машины оба порога двигал планировщик: тест упал в
