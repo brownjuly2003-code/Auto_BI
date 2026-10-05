@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Protocol
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
 
 from auto_bi.decision.impact import ImpactReport, ProductImpact, resolve_impact
 from auto_bi.decision.spec import DecisionProductSpec
@@ -100,6 +100,7 @@ from auto_bi.verification.repository import (
 )
 from auto_bi.verification.sql_contract import compile_metric_queries
 from auto_bi.verification.summary import SummaryFacts, render_summary
+from auto_bi.yaml_document import schema_reason
 
 API_VERSION = "auto-bi.io/v2alpha1"
 
@@ -476,7 +477,10 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: and neither it nor its columns are in the graph. Verifier 94 kept it as a table whose id
 #: is empty text: a run over two refs that held it alike was graded without the gap, and a
 #: run over refs that differed in it ended in an exception while they were compared.
-VERIFIER_VERSION = "95"
+#: 96 — a delivered dashboard whose spec validates and whose compile is refused is listed
+#: by bi.contract with what the compile said, and the check seals the list, empty or not.
+#: Verifier 95 let what the compile raised end the run: no report and no bundle.
+VERIFIER_VERSION = "96"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -730,7 +734,9 @@ VERIFIER_VERSION = "95"
 #: built of the file.
 #: 70 — semantic.gaps blocks on a table a model declares with no name, where rule 69 graded
 #: a snapshot that held it as a table.
-CHECK_VERSION = "70"
+#: 71 — bi.contract blocks on a delivered dashboard the compile refuses and names it, where
+#: rule 70 gave no result for the run; its evidence always lists the refused dashboards.
+CHECK_VERSION = "71"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
@@ -1816,11 +1822,15 @@ def _check_bi_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: s
     """Validate every delivered spec against the candidate model before compiling (§8.5).
 
     As the build path does before any BI call (invariant 2), an invalid spec is named,
-    not compiled. Valid specs produce payloads only.
+    not compiled. A spec that validates and that the compile then refuses is named too, with
+    what the compile said of it: the compile runs the build path's own builders, so the
+    build path would not build that dashboard either. Specs that compile produce payloads
+    only.
     """
     severities: list[Severity] = []
     compiled: list[dict[str, Any]] = []
     invalid: list[dict[str, Any]] = []
+    refused: list[dict[str, str]] = []
     missing: list[str] = []
 
     for delivery in inputs.product.delivery.dashboards:
@@ -1834,30 +1844,47 @@ def _check_bi_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: s
             invalid.append({"dashboard": delivery.ref, "errors": errors})
             severities.append(Severity.BLOCK)
             continue
-        contract = _compile(spec, inputs.candidate_model)
+        try:
+            contract = _compile(spec, inputs.candidate_model)
+        except ValueError as exc:
+            refused.append({"dashboard": delivery.ref, "refusal": _compile_refusal(exc)})
+            severities.append(Severity.BLOCK)
+            continue
         severities.extend(finding.severity for finding in contract.findings)
         compiled.append({"dashboard": delivery.ref, **contract.model_dump(mode="json")})
         _write_bi_payloads(writer, delivery.ref, contract)
 
     ref = writer.add_check(
         "bi.contract",
-        {"compiled": compiled, "invalid": invalid, "missing": missing},
+        {"compiled": compiled, "invalid": invalid, "refused": refused, "missing": missing},
     )
+    if invalid:
+        summary_code = "bi.spec_invalid"
+    elif refused:
+        summary_code = "bi.compile_refused"
+    elif missing:
+        summary_code = "bi.spec_missing"
+    else:
+        summary_code = "bi.compiled"
     return CheckResult(
         check_id="bi.contract",
         check_version=CHECK_VERSION,
         category=CheckCategory.DELIVERY,
         subject_refs=[product_ref, *(item.ref for item in inputs.product.delivery.dashboards)],
         status=status_for(severities),
-        summary_code=(
-            "bi.spec_invalid" if invalid else "bi.spec_missing" if missing else "bi.compiled"
-        ),
+        summary_code=summary_code,
         detail=(
             f"{len(compiled)} dashboard(s) compiled without touching the BI"
             + (
                 "; not compiled, the spec does not validate against the candidate semantic model: "
                 + ", ".join(item["dashboard"] for item in invalid)
                 if invalid
+                else ""
+            )
+            + (
+                "; not compiled, the compiler refuses the spec: "
+                + ", ".join(item["dashboard"] for item in refused)
+                if refused
                 else ""
             )
             + (f"; no spec supplied for {', '.join(missing)}" if missing else "")
@@ -1869,6 +1896,22 @@ def _check_bi_contracts(writer: BundleWriter, inputs: GateInputs, product_ref: s
 def _compile(spec: DashboardSpec, model: SemanticModel) -> CompiledBIContract:
     compiler = _COMPILERS[spec.target_bi]()
     return compiler.compile_contract(spec, model)
+
+
+def _compile_refusal(exc: ValueError) -> str:
+    """What the compile said of a spec it does not compile, in the one line the check keeps.
+
+    The class of what was raised, then its words with each run of whitespace as one space;
+    the class alone when it said nothing. Of a model of the contract that does not take what
+    the compile hands it, the words are the model and, for its first refusals, where and why
+    — the manner a schema's refusal of a run input is said in, without the value.
+    """
+    if isinstance(exc, ValidationError):
+        said = f"{exc.title}: {schema_reason(exc)}"
+    else:
+        said = " ".join(str(exc).split())
+    name = type(exc).__name__
+    return f"{name}: {said}" if said else name
 
 
 def _write_bi_payloads(

@@ -164,9 +164,10 @@ def assert_check(
         detail += "; no spec supplied for " + ", ".join(missing)
     assert check.detail == detail
     payload = json.loads(store.get(report.run_id, CHECK_PATH))
-    assert set(payload) == {"compiled", "invalid", "missing"}
+    assert set(payload) == {"compiled", "invalid", "missing", "refused"}
     assert payload["invalid"] == invalid
     assert payload["missing"] == missing
+    assert payload["refused"] == []
     assert [item["dashboard"] for item in payload["compiled"]] == compiled
     artifacts = read_bundle(store, report.run_id).artifacts
     for item in invalid:

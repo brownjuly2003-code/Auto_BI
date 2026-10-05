@@ -159,3 +159,140 @@ today. The evidence SHALL always carry the list of invalid dashboards, empty whe
 - **WHEN** the gate runs
 - **THEN** `bi.contract` gives the review `bi.spec_missing` with the same detail as before, and
   the evidence lists no invalid dashboard
+
+## Requirement: a delivered dashboard the compile refuses is named, not raised
+
+A spec that validates may still not compile. The compile runs the build path's own builders,
+and they refuse a spec they do not build by raising a `ValueError`: the planner of the shared
+source dataset when two of its columns would share an alias (`SourceAliasCollisionError`), the
+SQL generator when a filter holds a list where its operator takes one value, the contract when
+a value has no canonical form to address (`CanonicalizationError`) or a name it must carry is
+blank (a schema `ValidationError`), the DataLens dataset builder when the mart's engine has no
+source type. Until now whatever they raised ended `decision verify` with a traceback, no report
+and no bundle. The system SHALL NOT let such a refusal end the run.
+
+A delivered dashboard whose spec validates and whose compile raises a `ValueError` SHALL be
+listed by `bi.contract` as refused, in delivery order, with its ref and one line of what the
+compile said: the class of what was raised, then its words with each run of whitespace as one
+space — or the class alone when it said nothing. Where a model of the contract does not take
+what the compile hands it, the words SHALL be the model's name and, for its first three
+refusals, where and why, without the value, followed by the number of the rest. No BI payload
+SHALL be stored for a refused dashboard, and the compile SHALL be asked of it once.
+
+`bi.contract` SHALL block. Its summary code SHALL be `bi.spec_invalid` when a delivered spec is
+invalid, otherwise `bi.compile_refused` (a block outranks the review of a missing spec). Its
+detail SHALL name the refused refs after the invalid ones and before the missing ones, as
+`; not compiled, the compiler refuses the spec: <refs>`. The evidence SHALL always carry the
+list of refused dashboards, empty when there is none. Every other delivered dashboard SHALL be
+compiled and graded as before, the dashboards after a refused one included, and no other check
+SHALL move with the refusal.
+
+A spec that does not validate SHALL NOT be handed to the compile, as before. Anything the
+compile raises that is not a `ValueError` is not a refusal: it SHALL NOT be caught, and ends the
+run as before. The gate adds no rule of its own: a spec the compile takes is compiled, whatever
+it holds. Neither the validator's rules, nor the builders, nor the `DashboardSpec` schema change
+in this capability.
+
+### Scenario: a mart column named as the alias of a joined label blocks on Superset
+
+- **GIVEN** a candidate model whose mart `dm.sales_daily` declares a column `stores_id`, and a
+  delivered Superset dashboard whose `bar` chart sums `revenue` by the joined label
+  `dm.stores.id` — the shared source dataset would carry `stores_id` twice
+- **WHEN** the gate runs
+- **THEN** `bi.contract` blocks with `bi.compile_refused`; its evidence lists the dashboard ref
+  with `SourceAliasCollisionError: source dataset alias 'stores_id' collides between 'stores_id'
+  and joined ref 'dm.stores.id' on dm.sales_daily`; no `bi-…` payload blob is stored for the
+  dashboard; the detail is `0 dashboard(s) compiled without touching the BI; not compiled, the
+  compiler refuses the spec: <ref>`; and the verdict is block
+
+### Scenario: the same model and spec compile on DataLens
+
+- **GIVEN** the same model and chart with `target_bi` DataLens, which plans one dataset per
+  chart and no shared source dataset
+- **WHEN** the gate runs
+- **THEN** the dashboard is compiled as before and the evidence lists no refused dashboard
+
+### Scenario: a mart column the model declares twice blocks on Superset
+
+- **GIVEN** a candidate model whose mart declares the column `revenue` twice and a delivered
+  Superset dashboard with a chart that renders off the shared source dataset
+- **WHEN** the gate runs
+- **THEN** `bi.contract` blocks with `bi.compile_refused` and the evidence carries
+  `SourceAliasCollisionError: source dataset alias 'revenue' collides between 'revenue' and mart
+  column 'revenue' on dm.sales_daily`; a dashboard whose only chart keeps a dataset of its own
+  is compiled over the same model as before
+
+### Scenario: two joined labels of one alias block
+
+- **GIVEN** a candidate model that joins the mart to `dm.stores` and to `ref.stores`, and a
+  delivered Superset dashboard with one chart grouped by `dm.stores.id` and another grouped by
+  `ref.stores.id`
+- **WHEN** the gate runs
+- **THEN** `bi.contract` blocks with `bi.compile_refused`, naming the alias `stores_id` and both
+  joined refs
+
+### Scenario: a list where the SQL generator takes one value blocks
+
+- **GIVEN** a delivered chart whose query filter is `region = ['a', 'b']`, compiled to SQL — a
+  Superset chart that keeps a dataset of its own, or any DataLens chart
+- **WHEN** the gate runs
+- **THEN** `bi.contract` blocks with `bi.compile_refused` and the evidence carries
+  `ValueError: operator '=' expects a scalar, got list: ['a', 'b']`
+
+### Scenario: a filter value the contract cannot address blocks
+
+- **GIVEN** a delivered chart whose query filter value is infinite, is no number, or is an
+  integer no IEEE-754 double holds
+- **WHEN** the gate runs on either target
+- **THEN** `bi.contract` blocks with `bi.compile_refused`, and the evidence names the place of
+  the value in the spec and why it has no canonical form — `CanonicalizationError:
+  $.charts[0].query.filters[0].value: non-finite numbers have no canonical form`; an integer
+  past the safe range that a double still holds compiles as before
+
+### Scenario: a name the contract cannot hold blocks
+
+- **GIVEN** a delivered dashboard whose title is empty or blanks, or a chart whose id is
+- **WHEN** the gate runs on either target
+- **THEN** `bi.contract` blocks with `bi.compile_refused` and the evidence carries
+  `ValidationError: CompiledArtifact: subject: String should have at least 1 character`; a
+  chart with an id and no title compiles as before
+
+### Scenario: DataLens over an engine it has no source for blocks
+
+- **GIVEN** a candidate model whose mart declares the engine `duckdb` and a delivered DataLens
+  dashboard
+- **WHEN** the gate runs
+- **THEN** `bi.contract` blocks with `bi.compile_refused` and the evidence carries
+  `ValueError: no DataLens source_type for engine 'duckdb'`
+
+### Scenario: a refused dashboard next to a valid one
+
+- **GIVEN** a product delivering two dashboards, one valid and one the compile refuses, in
+  either order
+- **WHEN** the gate runs
+- **THEN** the valid dashboard is compiled and its payloads are stored exactly as when it is
+  delivered alone; the refused one is listed with what the compile said and has no payload;
+  `bi.contract` blocks with `bi.compile_refused`, and its detail counts one compiled dashboard
+  and names the refused ref
+
+### Scenario: a refused dashboard next to an invalid or a missing one
+
+- **GIVEN** a product delivering two dashboards, one the compile refuses and one whose spec is
+  invalid — or is not supplied
+- **WHEN** the gate runs
+- **THEN** with the invalid one the summary code is `bi.spec_invalid`, the evidence lists each
+  dashboard in its own list and the detail names the invalid ref and then the refused one;
+  with the missing one the summary code is `bi.compile_refused`, the check blocks, and the
+  detail names the refused ref and then the missing one
+
+### Scenario: identical inputs give identical evidence
+
+- **GIVEN** two refused dashboards and the same inputs
+- **WHEN** the gate runs twice
+- **THEN** the `bi.contract` evidence is byte-identical, refused dashboards in delivery order
+
+### Scenario: what is raised and is no refusal ends the run
+
+- **GIVEN** a compile that raises an error that is not a `ValueError`
+- **WHEN** the gate runs
+- **THEN** the error is not caught: the run ends in it, as before
