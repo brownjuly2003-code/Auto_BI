@@ -1539,6 +1539,14 @@ contract-тестом `tests/test_decision_cli.py::test_exit_code_contract_is_st
 файл. Ref, чьи файлы прочитаны и приняты схемами, но держат значение, с которым его граф
 не строится или не адресуется, — `error: cannot load semantic ref <ref>: …`: какой файл
 держал значение, отказ не знает, и `model.yaml` в нём не обвиняется.
+Вход прогона, который прочитан и не принят своей схемой, — тоже одна строка: `error:
+<файл> is not a valid semantic model: <место>: <причина>; …` (так же `DashboardSpec` и
+`verified asset`) — первые три отказа схемы без значений и ссылок, остальные сосчитаны,
+как у входов `investigate`. Recorded result назван ключом, под которым его держит файл:
+`<файл> holds an invalid recorded result for <ключ>: …`, и первый отвергнутый результат
+кончает чтение. Отказ схемы, под которую не написан ни один файл ref, сказан о ref вместе
+с её именем: `cannot load semantic ref <ref>: not a valid <схема>: …`
+([files a command cannot read](specs/unreadable-inputs.md), шестое требование).
 Так же кончается прогон, чей evidence-каталог не принимает bundle: store отвечает
 своей ошибкой на отказ файловой системы, команда — `error: cannot write the evidence
 bundle under <каталог>: …`. Manifest пишется последним, поэтому записанное до отказа

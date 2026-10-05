@@ -376,7 +376,7 @@ def test_a_model_that_is_read_and_is_no_model_is_named_as_that(
     message = _refusal(case)
 
     assert message.startswith(f"{path} is not a valid semantic model: ")
-    assert "SemanticModel" in message
+    assert "\n" not in message
     assert not (case.root / "evidence").exists()
 
 
@@ -424,8 +424,8 @@ def test_a_refusal_of_another_schema_is_said_of_the_ref(tmp_path: Path, ref: str
 
     message = _refused(case)
 
-    assert message.startswith(f"cannot load semantic ref {root}: ")
-    assert "SemanticGap" in message
+    assert message.startswith(f"cannot load semantic ref {root}: not a valid SemanticGap: reason: ")
+    assert "\n" not in message
     assert "is not a valid semantic model" not in message
     if ref == "candidate":
         assert _capture_refused(case) == message
@@ -473,7 +473,7 @@ def test_an_asset_file_that_is_no_asset_is_named_as_that_file(tmp_path: Path, te
 
     for message in (_refused(case), _capture_refused(case)):
         assert message.startswith(f"{path} is not a valid verified asset: ")
-        assert "VerifiedAsset" in message
+        assert "\n" not in message
 
 
 def test_two_assets_of_one_id_are_named_under_their_repository(tmp_path: Path) -> None:

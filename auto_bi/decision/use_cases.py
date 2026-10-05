@@ -71,7 +71,7 @@ from auto_bi.verification.result_probe import (
 from auto_bi.verification.result_probe import (
     capture as capture_live_result,
 )
-from auto_bi.yaml_document import load_yaml_document, unread_reason
+from auto_bi.yaml_document import load_yaml_document, schema_reason, unread_reason
 
 MODEL_FILE = "model.yaml"
 METRICS_DIR = "metrics"
@@ -311,7 +311,7 @@ def _asset_repository(path: Path) -> VerifiedAssetRepository:
     except OSError as exc:
         raise VerifyError(f"cannot read {exc.filename or path}: {unread_reason(exc)}") from None
     except ValueError as exc:
-        raise VerifyError(f"{path} holds an invalid verified asset: {exc}") from None
+        raise VerifyError(f"{path} holds an invalid verified asset: {_refusal(exc)}") from None
 
 
 def _select_asset(
@@ -357,6 +357,7 @@ def _snapshot(root: Path) -> SemanticSnapshot:
     to freeze, and neither does a file of the ref that cannot be opened at all: there are
     no bytes of it for the snapshot to say what it was read from. Nor can a ref be frozen
     whose files are read and accepted and hold a value its graph cannot be addressed with.
+    Each of these is said in one line.
     """
     model_path = root / MODEL_FILE
     try:
@@ -374,18 +375,27 @@ def _snapshot(root: Path) -> SemanticSnapshot:
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
         raise VerifyError(f"cannot read {model_path}: {unread_reason(exc)}") from None
     except ValueError as exc:
-        if isinstance(exc, ValidationError) and exc.title == SemanticModel.__name__:
-            raise VerifyError(f"{model_path} is not a valid semantic model: {exc}") from None
-        # Anything else is said of the ref: which of its files held the value, the error
-        # does not know, and the model is not to be blamed for a contract beside it.
-        raise VerifyError(f"cannot load semantic ref {root}: {exc}") from None
+        if not isinstance(exc, ValidationError):
+            # Said of the ref: which of its files held the value, the error does not know,
+            # and the model is not to be blamed for a contract beside it.
+            raise VerifyError(f"cannot load semantic ref {root}: {_refusal(exc)}") from None
+        if exc.title == SemanticModel.__name__:
+            raise VerifyError(
+                f"{model_path} is not a valid semantic model: {schema_reason(exc)}"
+            ) from None
+        # The refusal of another schema, raised while the graph of the ref was built: it
+        # is said of the ref as well, with the name of the schema that refused — the
+        # places of its refusals are places of what that schema describes, not of a file.
+        raise VerifyError(
+            f"cannot load semantic ref {root}: not a valid {exc.title}: {schema_reason(exc)}"
+        ) from None
 
 
 def _load_model(path: Path) -> SemanticModel:
     try:
         return SemanticModel.model_validate(_read_mapping(path))
     except ValueError as exc:
-        raise VerifyError(f"{path} is not a valid semantic model: {exc}") from None
+        raise VerifyError(f"{path} is not a valid semantic model: {_refusal(exc)}") from None
 
 
 def _load_dashboards(
@@ -405,7 +415,7 @@ def _load_dashboards(
         try:
             specs[delivery.ref] = DashboardSpec.model_validate(_read_mapping(path))
         except ValueError as exc:
-            raise VerifyError(f"{path} is not a valid DashboardSpec: {exc}") from None
+            raise VerifyError(f"{path} is not a valid DashboardSpec: {_refusal(exc)}") from None
     return specs
 
 
@@ -462,17 +472,25 @@ def _load_results(path: str | Path | None) -> ResultSource:
     usable input; the gate grades it as `provenance.unattested` rather than refusing to read
     it. The two shapes cannot be confused — a `ResultSet` has no `result` key — so the
     detection is a fact about the document, not a guess about intent.
+
+    A file holds a result for each asset it was recorded for, so a result that is not one
+    is named by the key it stands under — as the file gives the key, which nothing has yet
+    required to be an asset id — and the first such result ends the reading.
     """
     if path is None:
         return NoResults()
     file = Path(path)
     if not _looked_at(file, filesystem.is_file):
         raise VerifyError(f"recorded results file not found: {file}")
-    raw = _read_mapping(file)
-    try:
-        return RecordedResults({key: _recorded_result(value) for key, value in raw.items()})
-    except ValueError as exc:
-        raise VerifyError(f"{file} holds an invalid recorded result: {exc}") from None
+    results: dict[str, RecordedResult] = {}
+    for key, value in _read_mapping(file).items():
+        try:
+            results[key] = _recorded_result(value)
+        except ValueError as exc:
+            raise VerifyError(
+                f"{file} holds an invalid recorded result for {key!r}: {_refusal(exc)}"
+            ) from None
+    return RecordedResults(results)
 
 
 def _recorded_result(value: Any) -> RecordedResult:
@@ -539,6 +557,18 @@ def _looked_at(path: Path, look: Callable[[Path], bool]) -> bool:
         return look(path)
     except OSError as exc:
         raise VerifyError(f"cannot read {path}: {unread_reason(exc)}") from None
+
+
+def _refusal(exc: ValueError) -> str:
+    """Why a file that was read is not taken, in the one line a usage error is.
+
+    Of what a schema refuses: where and why for its first refusals, without the values and
+    the links its own listing spreads over lines. Of anything else that was raised: what it
+    says, each run of whitespace as one space — or its class, when it says nothing.
+    """
+    if isinstance(exc, ValidationError):
+        return schema_reason(exc)
+    return " ".join(str(exc).split()) or type(exc).__name__
 
 
 def _read_mapping(path: Path) -> dict[str, Any]:

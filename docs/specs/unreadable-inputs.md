@@ -260,11 +260,13 @@ A run input that is read and is not what the file must hold SHALL be a usage err
 the file:
 
 - a `model.yaml` whose document is a list, a text or a mapping the schema refuses — of either
-  ref, for both commands — `<file> is not a valid semantic model: ` and what the schema says;
+  ref, for both commands — `<file> is not a valid semantic model: ` and what the schema refuses,
+  in the one line of the sixth requirement;
 - a file under the assets path that holds no verified asset — a list, a text, nothing or a
-  mapping the schema refuses — `<file> is not a valid verified asset: ` and what the schema says,
-  for both commands. Two assets of one id are the fault of no one file and stay `<assets path>
-  holds an invalid verified asset: duplicate verified asset id: <id>`;
+  mapping the schema refuses — `<file> is not a valid verified asset: ` and what the schema
+  refuses, in that one line, for both commands. Two assets of one id are the fault of no one
+  file and stay `<assets path> holds an invalid verified asset: duplicate verified asset id:
+  <id>`;
 - a dashboard spec or a results file that holds no mapping, and an empty `model.yaml` of the
   candidate, `<file> must contain a mapping`, as before. An empty `model.yaml` of the base is a
   model of nothing and is graded, as before.
@@ -379,8 +381,8 @@ recorded results. *The six texts PyYAML refuses* and the reason of each:
 - **GIVEN** the run, and the `model.yaml` of the base ref or of the candidate ref holding a list,
   a text, or the mapping `unknown_key: 1`
 - **WHEN** `decision verify` runs
-- **THEN** it is refused with a message that begins `<that file> is not a valid semantic model:
-  ` and goes on with what the schema says of a `SemanticModel`; no evidence directory exists
+- **THEN** it is refused with one line that begins `<that file> is not a valid semantic model:
+  ` and goes on with what the schema refuses; no evidence directory exists
 
 ### Scenario: a value the graph of a ref has no digest for is said of the ref
 
@@ -398,9 +400,9 @@ recorded results. *The six texts PyYAML refuses* and the reason of each:
 - **GIVEN** the run, and a lone surrogate as the first dimension of the metric contract of the
   base ref or of the candidate ref
 - **WHEN** `decision verify` runs, and — for the candidate ref — `decision capture`
-- **THEN** each is refused with a message that begins `cannot load semantic ref <that ref>: `,
-  names the schema of a `SemanticGap` and does not say `is not a valid semantic model`; no
-  evidence directory exists
+- **THEN** each is refused with one line that begins `cannot load semantic ref <that ref>: not
+  a valid SemanticGap: reason: ` and does not say `is not a valid semantic model`; no evidence
+  directory exists
 
 ### Scenario: an empty model is read as it was
 
@@ -423,9 +425,9 @@ recorded results. *The six texts PyYAML refuses* and the reason of each:
 - **GIVEN** the run, and beside its asset a file `revenue_by_region.yaml` holding a list, a text,
   nothing, or the mapping `unknown_key: 1`
 - **WHEN** `decision verify` runs, and `decision capture` over the same assets
-- **THEN** each is refused with a message that begins `<that file> is not a valid verified
-  asset: ` and goes on with what the schema says of a `VerifiedAsset`; no evidence directory
-  exists, no query is opened and no output is written
+- **THEN** each is refused with one line that begins `<that file> is not a valid verified
+  asset: ` and goes on with what the schema refuses; no evidence directory exists, no query is
+  opened and no output is written
 
 ### Scenario: two assets of one id are named under their repository
 
@@ -1146,6 +1148,233 @@ In the scenarios below *the inputs* are the fixture plan `weekly_margin.yaml` an
 - **AND** an output directory that is there is refused with `output directory already exists:
   <path>` and stays empty
 
+## Requirement: what a schema refuses of a run input is said in one line
+
+The second requirement names a run input that was read and is not what the file must hold, and
+left the rest of the line to the schema: after `<file> is not a valid semantic model: ` came
+what pydantic raised, printed as pydantic lists it — a line that counts the errors, and for
+each of them a line for the place, a line for the reason with the value it is about, and a line
+for a link to its documentation. The fifth requirement gave `decision investigate` one line for
+the same refusal.
+
+Reproduced at HEAD `4720405`, 2026-10-05, PyYAML 6.0.3 and pydantic 2.13.4 on Python 3.13.13,
+with the commands as processes over the run of the second requirement and one damage to one
+file at a time: the file replaced by a list, by a text, by nothing or by the mapping
+`unknown_key: 1`; one more key appended, or four, or a key with a line break in it, a key that
+is a number, a key that holds a lone surrogate; a value of the wrong kind written deep inside
+the document. Each of the five run files was damaged so for `decision verify`, and the verified
+asset and the candidate's `model.yaml` for `decision capture` as well. Of the 70 runs 61 exited
+2 with 3 to 22 lines on standard error: 42 of the 50 of `decision verify` and 19 of the 20 of
+`decision capture`. A file that held `unknown_key: 1` where a verified asset was looked for
+took 22 lines, four keys too many in a file 13. The other nine runs are the ones in which no
+schema refuses anything: a dashboard spec or a results file that holds no mapping, and an
+empty `model.yaml`.
+
+A results file holds a result for each asset it was recorded for, and the refusal of one of
+them did not say which: `<file> holds an invalid recorded result: ` and the listing, the same
+under every key of the file.
+
+A run input that was read and that its schema refuses SHALL be a usage error of one line: the
+words of the second requirement that name the file — `<file> is not a valid semantic model: `,
+`<file> is not a valid DashboardSpec: `, `<file> is not a valid verified asset: ` — and after
+them the refusals of the schema as the fifth requirement gives them: `<place>: <reason>` for
+each of the first three errors, joined by `; `, then `; (+<n> more)`; no value and no link,
+every run of whitespace one space.
+
+A results file is a mapping from the id of an asset to the result recorded for it, bare or
+attested, and each result is given to the schema on its own. A result the schema refuses SHALL
+be named by the key the file holds it under: `<file> holds an invalid recorded result for
+<key>: <refusals>`. The key SHALL be written the way Python writes a literal of it — text in
+quotes, a line break or a lone surrogate inside it as an escape; a number, nothing or a truth
+value as PyYAML built it — so the line is one line whatever the key is: nothing has required
+the key to be the id of an asset by the time the file is read. The places of the refusals are
+places inside that result — `result.rows.1`, `attestation.origin`, `<root>` for a value that
+is no result at all. The results SHALL be read in the order of the file, and the first one
+that is refused ends the reading.
+
+What keeps a semantic ref from being frozen SHALL be said in one line as well. The refusal of
+the schema of the model is said of the `model.yaml`, as above. The refusal of any other schema
+— raised while the graph of the ref is built out of files their own schemas accepted — SHALL be
+said of the ref with the name of the schema that refused: `cannot load semantic ref <ref>: not
+a valid <schema>: <refusals>`. The places are then places of what that schema describes, which
+is no file of the ref. Anything else that is raised as a `ValueError` there SHALL follow
+`cannot load semantic ref <ref>: ` as the text it says, every run of whitespace one space — or
+as its class, when it says nothing.
+
+The same SHALL hold for a `ValueError` that is no refusal of a schema, raised while the
+candidate's model is read for the compile, while a dashboard spec is taken, while the assets
+are loaded or while a recorded result is taken: after the words that name the file — for the
+assets `<assets path> holds an invalid verified asset: ` — the text it says with every run of
+whitespace as one space, or its class when it says nothing.
+
+`VerifiedAssetRepository.load` SHALL raise its `VerifiedAssetFileError` with that one line as
+its text and the schema's `ValidationError` as its cause: whoever loads a repository in a
+program still has every refusal, each with its value.
+
+Each of these SHALL end the command as the second requirement says: exit code 2, the one line
+after `error: ` on the standard error stream and nothing on standard output; no evidence
+directory, no query opened and no output file.
+
+No input that gave a bundle or a captured result gives another one: the verifier version and
+the check version SHALL NOT be bumped. What changes is the text of usage errors that were usage
+errors already, each of them of several lines: the refusals of a schema are one line; a
+recorded result is named by its key, where `holds an invalid recorded result: ` named none;
+the refusal of another schema follows `not a valid <schema>: `, where the first line of
+pydantic's listing named the schema.
+
+In the scenarios below *the run* and *a run file* are those of the second requirement, and
+*the words that name a file* are `<file> is not a valid semantic model: ` for the `model.yaml`
+of either ref, `<file> is not a valid DashboardSpec: ` for the dashboard spec and `<file> is
+not a valid verified asset: ` for a file under the assets path.
+
+### Scenario: keys a schema does not know are refused in one line
+
+- **GIVEN** the run, and appended to the base's `model.yaml`, to the candidate's, to the
+  dashboard spec or to the verified asset: one key `unknown_key`; the four keys `key_a`,
+  `key_b`, `key_c` and `key_d`; a key that is the letter `a`, a line break, two spaces and the
+  letter `b`; or the key `1`, a number
+- **WHEN** `decision verify` runs, and — for the verified asset and the candidate's
+  `model.yaml` — `decision capture`
+- **THEN** each is refused with the words that name that file and then `unknown_key: Extra
+  inputs are not permitted`; `key_a: Extra inputs are not permitted; key_b: Extra inputs are
+  not permitted; key_c: Extra inputs are not permitted; (+1 more)`; `a b: Extra inputs are not
+  permitted`; `1: Keys should be strings`
+
+### Scenario: a model that is no mapping is refused at the root
+
+- **GIVEN** the run, and the `model.yaml` of the base ref or of the candidate ref holding a
+  list or a text
+- **WHEN** `decision verify` runs, and — for the candidate ref — `decision capture`
+- **THEN** each is refused with `<that file> is not a valid semantic model: <root>: Input
+  should be a valid dictionary or instance of SemanticModel`
+
+### Scenario: a value of a model is refused by its place and not shown
+
+- **GIVEN** the run, and the columns of the first table of the `model.yaml` of the base ref or
+  of the candidate ref replaced by a text
+- **WHEN** `decision verify` runs, and — for the candidate ref — `decision capture`
+- **THEN** each is refused with `<that file> is not a valid semantic model: tables.0.columns:
+  Input should be a valid list`
+
+### Scenario: a spec that holds none of its fields is told each of three
+
+- **GIVEN** the run, and the dashboard spec holding the mapping `unknown_key: 1` alone
+- **WHEN** `decision verify` runs
+- **THEN** it is refused with `<that file> is not a valid DashboardSpec: title: Field required;
+  charts: Field required; unknown_key: Extra inputs are not permitted`: three refusals are all
+  spelled out and nothing is counted
+
+### Scenario: values of a spec are refused by their places and not shown
+
+- **GIVEN** the run, and the measures of the first chart of the dashboard spec replaced by one
+  measure whose column is the number 5 and whose aggregate is `most`
+- **WHEN** `decision verify` runs
+- **THEN** it is refused with `<that file> is not a valid DashboardSpec:
+  charts.0.query.measures.0.column: Input should be a valid string;
+  charts.0.query.measures.0.agg: Input should be 'sum', 'avg', 'min', 'max', 'count' or
+  'count_distinct'`
+
+### Scenario: a file that holds no asset is told what it lacks in one line
+
+- **GIVEN** the run, and beside its asset a file `revenue_by_region.yaml` holding nothing, the
+  mapping `unknown_key: 1`, or a list
+- **WHEN** `decision verify` runs, and `decision capture` over the same assets
+- **THEN** each is refused with `<that file> is not a valid verified asset: ` and then
+  `metadata: Field required; question: Field required; intent: Field required; (+3 more)` for
+  the file that holds nothing, the same three and `(+4 more)` for the mapping, and `<root>:
+  Input should be a valid dictionary or instance of VerifiedAsset` for the list
+
+### Scenario: values of an asset are refused by their places and not shown
+
+- **GIVEN** the run, and its verified asset with the second row of the expected result a text
+  where a list is expected, and with a list as its `review.reviewed_at`
+- **WHEN** `decision verify` runs, and `decision capture` over the same assets
+- **THEN** each is refused with `<that file> is not a valid verified asset:
+  expectation.result.rows.1: Input should be a valid list; review.reviewed_at: Value error,
+  must be an RFC 3339 UTC timestamp ending in Z`
+
+### Scenario: the repository says it in one line and keeps what the schema raised
+
+- **GIVEN** beside an asset a file `revenue_by_region.yaml` holding the mapping `unknown_key: 1`
+- **WHEN** the repository is loaded from the directory
+- **THEN** it raises `VerifiedAssetFileError` whose text is `<that file> is not a valid verified
+  asset: metadata: Field required; question: Field required; intent: Field required; (+4
+  more)` and whose cause is the schema's `ValidationError` of seven errors
+
+### Scenario: a recorded result that is none is named by its key
+
+- **GIVEN** the run, and in its results file, under the id of the asset, the type of the first
+  column of the result changed to `colour` and the second row of the result to a text
+- **WHEN** `decision verify` runs
+- **THEN** it is refused with `<that file> holds an invalid recorded result for '<id of the
+  asset>': result.columns.0.type: Input should be 'string', 'integer', 'decimal', 'float',
+  'boolean', 'date' or 'timestamp'; result.rows.1: Input should be a valid list`
+- **AND** when the result is recorded bare, with no attestation, the same two refusals stand
+  at `columns.0.type` and `rows.1`
+- **AND** an attestation whose `origin` is `guesswork` is refused with `<that file> holds an
+  invalid recorded result for '<id of the asset>': attestation.origin: Input should be
+  'query_run', 'bi_export' or 'manual'`
+- **AND** a number in place of the result of an attested entry is refused with `<that file>
+  holds an invalid recorded result for '<id of the asset>': result: Input should be a valid
+  dictionary or instance of ResultSet`
+
+### Scenario: the first result that is none ends the reading
+
+- **GIVEN** the run, and after its result in the results file the lines `first: 1` and
+  `second: 2`
+- **WHEN** `decision verify` runs
+- **THEN** it is refused with `<that file> holds an invalid recorded result for 'first': <root>:
+  Input should be a valid dictionary or instance of ResultSet`
+
+### Scenario: the key of a result is named as the file gives it
+
+- **GIVEN** the run, and one more line in the results file that holds the number 1 under a key
+  that is the number `1`, empty text, nothing (`~`), `true`, the text `it's`, the letter `a`, a
+  line break, two spaces and the letter `b`, or a lone surrogate
+- **WHEN** `decision verify` runs
+- **THEN** it is refused with `<that file> holds an invalid recorded result for <key>: <root>:
+  Input should be a valid dictionary or instance of ResultSet`, the key being `1`, `''`, `None`,
+  `True`, `"it's"`, `'a\n  b'` with the line break as the two characters of its escape, and the
+  surrogate as the escape of its code in quotes
+- **AND** each refusal is one line
+
+### Scenario: the refusal of another schema is said of the ref with that schema
+
+- **GIVEN** the run, and freezing a ref raising the `ValidationError` of a schema `_Gap` that
+  requires a field `reason`
+- **WHEN** `decision verify` runs, and `decision capture`
+- **THEN** the first is refused with `cannot load semantic ref <the base ref>: not a valid
+  _Gap: reason: Field required` and the second with the same of the candidate ref
+- **AND** with a lone surrogate as the first dimension of the metric contract of a ref, as in
+  the second requirement, the refusal begins `cannot load semantic ref <that ref>: not a valid
+  SemanticGap: reason: ` and is one line
+
+### Scenario: what else is raised for a file that was read is said in one line
+
+- **GIVEN** the run, and one of three errors — a `ValueError` that says `two`, a line break,
+  two spaces, `lines`, a tab and `of it`; a `ValueError` that says nothing; a `UnicodeError`
+  that says two spaces — raised while a ref is frozen, while the candidate's model is read for
+  the compile, while the dashboard spec is taken, while the assets are loaded, or while a
+  recorded result, attested or bare, is taken
+- **WHEN** `decision verify` runs, and — for the ref and for the assets — `decision capture`
+- **THEN** the refusal ends `two lines of it`, `ValueError` and `UnicodeError`, after `cannot
+  load semantic ref <ref>: `, `<the candidate's model.yaml> is not a valid semantic model: `,
+  `<the spec> is not a valid DashboardSpec: `, `<assets path> holds an invalid verified asset:
+  ` and `<the results file> holds an invalid recorded result for '<id of the asset>': `
+- **AND** the refusal of another schema raised while the candidate's model is read for the
+  compile is `<the candidate's model.yaml> is not a valid semantic model: reason: Field
+  required`
+
+### Scenario: the commands exit 2 with one line and write nothing
+
+- **GIVEN** the run, and four more keys, or a key that holds a lone surrogate, appended to a
+  run file — for `decision capture`, to the verified asset or to the candidate's `model.yaml`
+- **WHEN** `decision verify` runs, or `decision capture`
+- **THEN** the command exits 2, prints nothing on standard output and one line on standard
+  error, which begins `error: <that file> ` and holds neither `input_value` nor a link;
+  `decision verify` leaves no evidence directory, `decision capture` opens no query and writes
+  no output file
+
 ## Known boundaries
 
 - The finding names the file and the class, not the value or its line: PyYAML's own errors are
@@ -1157,17 +1386,37 @@ In the scenarios below *the inputs* are the fixture plan `weekly_margin.yaml` an
   unreadable on another.
 - A document nested past the stack is reported as `ConstructorError` like a value that cannot be
   built, although it is the composer that runs out of stack.
-- The first requirement covers the contract files, the second the run inputs of `decision
-  verify` and `decision capture`, the fifth the inputs of `decision investigate`. The loaders of
-  the v1 runtime read YAML by themselves and are not changed.
-- The fifth requirement gives the refusal of a schema in one line for `decision investigate`
-  alone. `decision verify` and `decision capture` still print a model, a dashboard spec, a
-  verified asset or recorded results their schema refuses as pydantic lists it, with the values
-  and the links. Reproduced with the commands as processes, 42 runs over those five kinds of
-  file: 33 print 3 to 22 lines on standard error.
-- The reasons of the fifth requirement are pydantic's sentences, of the version installed —
-  2.13.4 where the scenarios were run; another version may word them differently. A place that
-  is a key holding a lone surrogate is given by pydantic in replacement characters.
+- The first requirement covers the contract files, the second and the sixth the run inputs of
+  `decision verify` and `decision capture`, the fifth the inputs of `decision investigate`. The
+  loaders of the v1 runtime read YAML by themselves and are not changed.
+- The sixth requirement covers the files a run is handed. What `decision capture` says after
+  `cannot capture <asset id>: ` is the text of whatever was raised, as it reads. Reproduced in
+  the process with a query that answers: a `--captured-at` that is no RFC 3339 UTC timestamp —
+  a word, an offset in place of `Z`, no zone at all, blanks, a line break after the timestamp —
+  exits 2 with four lines of pydantic's listing for a `ResultAttestation`, and only after the
+  query was run; an `--environment` of blanks, of two lines or with a lone surrogate is attested
+  as it is given, and the file is written.
+- A lone surrogate as a value of a run input is covered only where a schema refuses it. Asked in
+  the process at every string and every key of the fixture's files, alone and between two
+  letters — 800 documents, 1200 runs of the two commands: every refusal is one line, where 642
+  were of 3 to 7 lines at HEAD; and in 22 runs, as at HEAD, `decision verify` ends in an
+  exception nothing handles. A schema took the value, and the digest of the run has no form for
+  it — `CanonicalizationError`: the title of the dashboard, the id and the title of a chart,
+  the environment and the executor of an attestation — or the comparison of the results cannot
+  quote it — the `ValidationError` of a `ResultDifference`: the unit of a column and the text
+  of a cell, in the expected result of the asset and in the recorded result alike. In 368 more
+  the run is graded or the capture reaches the engine.
+- An empty `model.yaml` is read three ways, as before: of the base ref it is a model of nothing
+  and the run is graded; of the candidate ref `decision verify` refuses it with `<file> must
+  contain a mapping`, and `decision capture` goes on to the engine.
+- The key of a recorded result is not looked at when the file is read. Reproduced: a result that
+  is one, under a key that holds a lone surrogate where the id of the asset stood, is read and
+  the run is graded.
+- The reasons of the fifth and of the sixth requirement are pydantic's sentences, of the version
+  installed — 2.13.4 where the scenarios were run; another version may word them differently. A
+  place that is a key holding a lone surrogate is given by pydantic in replacement characters;
+  a key of a run file that holds one is refused at no place, `<root>: Input should be a valid
+  string, unable to parse raw data as a unicode string`.
 - One line means no line break: every run of whitespace in a refusal is one space. Any other
   character of a key, or of a value a validator quotes, is printed as it is — an escape
   character among them.
@@ -1208,18 +1457,20 @@ In the scenarios below *the inputs* are the fixture plan `weekly_margin.yaml` an
   its paths whether or not a run follows, and a snapshot says what bytes it was read from.
 - Every file under the assets path is loaded, the assets of other products among them: one file
   there that cannot be read ends the run of every product, as one the schema refuses always did.
-- `cannot load semantic ref <ref>: ` is followed by the text of whatever refused: the place of a
-  value in the graph, or the message of a schema no file is written against. The value is not
-  graded as a gap of the file that held it. The same value under the validated paths is not
-  covered at all: reproduced, a lone surrogate as a dimension of a validated metric contract
-  ends the use case of `decision verify` in the `ValidationError` of the schema of a gap.
+- `cannot load semantic ref <ref>: ` is followed by what refused, in one line: the place of a
+  value in the graph, or `not a valid <schema>: ` and the refusals of a schema no file is
+  written against. The value is not graded as a gap of the file that held it. The same value
+  under the validated paths is not covered at all: reproduced, a lone surrogate as a dimension
+  of a validated metric contract ends the use case of `decision verify` in the
+  `ValidationError` of the schema of a gap.
 - The manifest is one write and the last one, so a refused write leaves none; nothing makes that
   one write atomic. Reproduced with a manifest cut in half: the repeated run exits 2 with `run
   '<id>' already holds bundle <digest>; refusing to overwrite it with <digest>` and `decision
   evidence` exits 4 with `verdict: block (1 problem(s))`.
 - The line of a usage error may quote the file: the message of a value that could not be built,
-  the schema's own text for a model or an asset it refuses. It is printed to the standard error
-  stream and is never sealed.
+  a key of the document as the place of a refusal, the key of a recorded result, a value the
+  validator of a schema puts into its reason. It is printed to the standard error stream and is
+  never sealed.
 - A contract whose issue is printed with a character the output stream cannot encode still ends
   `decision validate` in a traceback while the report is printed: reproduced with a lone
   surrogate, written as an escape in a quoted `id`, on a UTF-8 stream.

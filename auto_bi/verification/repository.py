@@ -53,7 +53,7 @@ from auto_bi.semantic.gateway import FieldNode, SemanticSnapshot
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
 from auto_bi.verification.reconcile import ResultSet, ResultTolerance
-from auto_bi.yaml_document import load_yaml_document, unread_reason
+from auto_bi.yaml_document import load_yaml_document, schema_reason, unread_reason
 
 API_VERSION = "auto-bi.io/v2alpha1"
 
@@ -227,7 +227,9 @@ class VerifiedAssetRepository:
     def load(cls, path: str | Path) -> VerifiedAssetRepository:
         """Every verified asset under *path*: one file, or each YAML file of a directory.
 
-        A file that cannot be read or that holds no asset raises `VerifiedAssetFileError`.
+        A file that cannot be read or that holds no asset raises `VerifiedAssetFileError`,
+        in one line: of a file the schema refuses it says where and why, and the refusal
+        of the schema itself — with the values it is about — is the cause of the error.
         A directory the filesystem refuses to list raises the `OSError` of the listing,
         and a path it refuses to look at the `OSError` of the look: neither is a
         directory without assets, and a repository loaded without what they hold would
@@ -253,7 +255,7 @@ class VerifiedAssetRepository:
                 assets.append(VerifiedAsset.model_validate(document or {}))
             except ValidationError as exc:
                 raise VerifiedAssetFileError(
-                    f"{file} is not a valid verified asset: {exc}"
+                    f"{file} is not a valid verified asset: {schema_reason(exc)}"
                 ) from exc
         return cls(assets)
 
