@@ -1541,6 +1541,16 @@ contract-тестом `tests/test_decision_cli.py::test_exit_code_contract_is_st
 должно выглядеть как вынесенный verdict (инвариант 8). Прогон, который не нашёл
 ни одного decision product, завершается `2`, а не «pass».
 
+Ответ decision-команды печатается в любой поток. Символ, для которого у кодировки потока
+нет формы (вывод перенаправлен под cp1252, `PYTHONIOENCODING=ascii`, одиночный суррогат в
+пути под UTF-8), прежде кончал команду `UnicodeEncodeError` и кодом `1` — после вынесенного
+вердикта и записанного bundle. Теперь строка печатается с backslash-escape на месте такого
+символа, JSON-ответ `--json` — целиком в ASCII с escape самого JSON (читатель JSON получает
+тот же документ), а exit code остаётся вердиктом. Payload артефакта (`decision evidence
+--artifact`) печатается как есть или не печатается вовсе: payload — это evidence, и с
+escape внутри это другой текст; отказ — exit `2` и адрес файла в bundle
+([спека](specs/unencodable-output.md)).
+
 Файл контракта, который команда не может прочитать, — finding об этом файле, а не
 падение: в validated paths это `contract.unreadable`, среди контрактов semantic ref —
 `gap.contract_invalid`, оба block, и exit code команды остаётся вердиктом. Так же

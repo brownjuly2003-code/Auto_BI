@@ -932,7 +932,7 @@ at a time. Of 54 runs 22 ended in a traceback and exit code 1:
   the name, and pydantic cannot build a refusal that holds a lone surrogate: the schema raised
   `UnicodeEncodeError`;
 - an output path the standard output stream cannot encode, after the artifacts were written.
-  That one is not covered here (see the boundaries).
+  That one is not covered here: `unencodable-output.md` covers it.
 
 18 more runs exited 2 with a refusal of 3 to 25 lines that named no file: PyYAML's account of
 the place `in "<unicode string>"`, or pydantic's listing of each error with the value it refused
@@ -1747,10 +1747,11 @@ inputs* are those of the requirements above.
   write refused, `No space left on device`: the run answers `cannot write output directory
   <path>: ` and what the system said, the directory is left holding `plan.json` and
   `results.json`, and the run after it is refused with `output directory already exists: <path>`.
-- What `decision investigate` prints after it wrote goes to the standard output stream, which
-  refuses a character it cannot encode. Reproduced with an output path in Cyrillic and
-  `PYTHONIOENCODING=ascii`: the command ends in a traceback and exit code 1 after the four
-  artifacts are written.
+- What `decision investigate` prints after it wrote went to a standard output stream that
+  refuses a character it cannot encode: with an output path in Cyrillic and
+  `PYTHONIOENCODING=ascii` the command ended in a traceback and exit code 1 after the four
+  artifacts were written. A decision command now answers on such a stream
+  (`unencodable-output.md`).
 - The fourth requirement covers `decision validate`, `decision verify` and `decision capture`.
   `decision evidence` and the filesystem store still look through `pathlib`. Reproduced with the
   command as a process over a written bundle, 7 runs under each interpreter, with the evidence
@@ -1800,13 +1801,14 @@ inputs* are those of the requirements above.
   a key of the document as the place of a refusal, the key of a recorded result, a value the
   validator of a schema puts into its reason. It is printed to the standard error stream and is
   never sealed.
-- What a command prints goes to a stream that refuses a character it cannot encode. No file
-  puts a lone surrogate into a report any more, so a stream that encodes UTF-8 takes what the
-  seven requirements print. Reproduced with streams that encode ASCII and the fixture under a
-  directory named in Cyrillic: `decision validate` prints a clean report and ends in
-  `UnicodeEncodeError` once an issue names a file; `decision verify` ends in it while its checks
-  are printed, at a detail that holds a section sign — the use case has returned its report by
-  then — and before anything is written when the one line of its usage error names a file.
+- What a command prints went to a stream that refuses a character it cannot encode. With
+  streams that encode ASCII and the fixture under a directory named in Cyrillic, `decision
+  validate` printed a clean report and ended in `UnicodeEncodeError` once an issue named a file,
+  and `decision verify` ended in it while its checks were printed, at a detail that holds a
+  section sign — the use case had returned its report by then. The five decision commands now
+  answer on any stream: a character the stream has no form for is printed as its backslash
+  escape, a JSON answer in ASCII, and the exit code stays the verdict
+  (`unencodable-output.md`).
 - A value PyYAML builds and the schema refuses is `contract.invalid` (validated paths) or
   `gap.contract_invalid` with `metric contract does not validate` (semantic ref), as before; an
   unquoted date where the schema wants text is such a value.

@@ -4,7 +4,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TextIO
 
 from auto_bi import __version__
 
@@ -317,29 +317,58 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _say(text: str, file: TextIO | None = None) -> None:
+    """Print one line of a decision command's answer, whatever the stream encodes.
+
+    A stream refuses a character it has no form for, and a command prints what it found: a
+    path, an id, a detail. Left to itself that ends the command in a traceback — after the
+    bundle is sealed or the artifacts are written — with an exit code that is no verdict.
+    The character is spelled by its backslash escape instead, the way the interpreter prints
+    to its own error stream; what the stream does encode is printed as it is.
+    """
+    stream = sys.stdout if file is None else file
+    try:
+        print(text, file=stream)
+    except UnicodeEncodeError:
+        encoding = getattr(stream, "encoding", None) or "ascii"
+        print(text.encode(encoding, "backslashreplace").decode(encoding), file=stream)
+
+
+def _say_json(document: Any) -> None:
+    """Print a JSON answer; in ASCII, by the escapes of JSON, when the stream refuses it.
+
+    A backslash escape of `_say` is not one JSON reads, and JSON has its own for every
+    character outside ASCII, a lone surrogate too: the document printed is the same document.
+    """
+    import json
+
+    try:
+        print(json.dumps(document, ensure_ascii=False, indent=2))
+    except UnicodeEncodeError:
+        print(json.dumps(document, ensure_ascii=True, indent=2))
+
+
 def _decision_validate(paths: list[str], as_json: bool) -> int:
     """`auto_bi decision validate` — offline cross-contract check (ARCHITECTURE §12.1).
 
     Exit code carries the verdict (0 pass/advisory, 3 needs_review, 4 block); a run that
     validated no product at all exits 2 rather than pretending to pass.
     """
-    import json
-
     from auto_bi.decision.validate import validate_paths
     from auto_bi.verification.model import EXIT_ERROR, exit_code_for
 
     report = validate_paths(paths)
     if as_json:
-        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        _say_json(report.model_dump(mode="json"))
     else:
         for issue in report.issues:
-            print(f"{issue.severity.value:<8} {issue.code:<26} {issue.subject}")
-            print(f"{'':<8} {issue.message} [{issue.source}]")
+            _say(f"{issue.severity.value:<8} {issue.code:<26} {issue.subject}")
+            _say(f"{'':<8} {issue.message} [{issue.source}]")
         for ref in report.products:
-            print(f"product  {ref}")
+            _say(f"product  {ref}")
         for ref in report.metrics:
-            print(f"metric   {ref}")
-        print(
+            _say(f"metric   {ref}")
+        _say(
             f"verdict: {report.verdict.value} "
             f"({len(report.products)} product(s), {len(report.metrics)} metric contract(s), "
             f"{len(report.issues)} issue(s))"
@@ -347,7 +376,7 @@ def _decision_validate(paths: list[str], as_json: bool) -> int:
 
     if not report.products:
         message = "error: no decision product contract found in the given paths"
-        print(message, file=sys.stderr if as_json else sys.stdout)
+        _say(message, file=sys.stderr if as_json else sys.stdout)
         return EXIT_ERROR
     return exit_code_for(report.verdict)
 
@@ -363,12 +392,12 @@ def _decision_investigate(args: argparse.Namespace) -> int:
     try:
         artifacts = write_offline_investigation(args.plan, args.results, args.output)
     except OfflineInvestigationError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        _say(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
-    print(f"wrote    {args.output}")
-    print(f"plan     {artifacts.plan.digest()}")
-    print(f"brief    {artifacts.brief.digest()}")
-    print("trust    exploratory; human acceptance not measured")
+    _say(f"wrote    {args.output}")
+    _say(f"plan     {artifacts.plan.digest()}")
+    _say(f"brief    {artifacts.brief.digest()}")
+    _say("trust    exploratory; human acceptance not measured")
     return 0
 
 
@@ -419,13 +448,13 @@ def _decision_capture(args: argparse.Namespace) -> int:
             )
         )
     except VerifyError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        _say(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
-    print(f"wrote    {report.output}")
-    print(f"asset    {report.asset_id}")
-    print(f"rows     {report.row_count}")
-    print(f"snapshot {report.candidate_digest}")
+    _say(f"wrote    {report.output}")
+    _say(f"asset    {report.asset_id}")
+    _say(f"rows     {report.row_count}")
+    _say(f"snapshot {report.candidate_digest}")
     return 0
 
 
@@ -475,7 +504,6 @@ def _decision_verify(args: argparse.Namespace) -> int:
     The exit code carries the verdict, never the operational status: a completed run that
     blocks exits 4, while a run that could not start exits 2 (invariant 8).
     """
-    import json
     from datetime import UTC, datetime
 
     from auto_bi.decision.use_cases import VerifyError, VerifyRequest, verify
@@ -502,18 +530,18 @@ def _decision_verify(args: argparse.Namespace) -> int:
             )
         )
     except (VerifyError, EvidenceSignatureError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        _say(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
     if args.json:
-        print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        _say_json(report.model_dump(mode="json"))
     else:
         for check in report.checks:
-            print(f"{check.status.value:<8} {check.check_id:<22} {check.summary_code}")
-            print(f"{'':<8} {check.detail}")
-        print(f"run      {report.run_id}  evidence {report.evidence_digest}")
-        print(f"status   {report.operational_status.value}")
-        print(f"verdict: {report.verdict.value} ({len(report.blocking())} blocking check(s))")
+            _say(f"{check.status.value:<8} {check.check_id:<22} {check.summary_code}")
+            _say(f"{'':<8} {check.detail}")
+        _say(f"run      {report.run_id}  evidence {report.evidence_digest}")
+        _say(f"status   {report.operational_status.value}")
+        _say(f"verdict: {report.verdict.value} ({len(report.blocking())} blocking check(s))")
     return exit_code_for(report.verdict)
 
 
@@ -523,8 +551,6 @@ def _decision_evidence(args: argparse.Namespace) -> int:
     The verdict grades the evidence, not the release it recorded: an intact bundle exits 0
     whatever the run inside it decided, and a tampered one exits 4 whatever it says.
     """
-    import json
-
     from auto_bi.decision.use_cases import VerifyError, locate_evidence
     from auto_bi.evidence.inspect import (
         EvidenceDigestError,
@@ -550,11 +576,22 @@ def _decision_evidence(args: argparse.Namespace) -> int:
                 verifier=verifier,
             )
             try:
-                print(payload.decode("utf-8"))
+                text = payload.decode("utf-8")
             except UnicodeDecodeError:
-                print(
+                _say(
                     f"error: {artifact.artifact_id} is not text ({artifact.media_type}, "
                     f"{artifact.size_bytes} bytes); it is stored at {artifact.path}",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
+            try:
+                print(text)
+            except UnicodeEncodeError:
+                # The payload is the evidence: spelled with escapes it would be other text.
+                encoding = getattr(sys.stdout, "encoding", None) or "an unnamed encoding"
+                _say(
+                    f"error: {artifact.artifact_id} holds text the output stream cannot encode "
+                    f"({encoding}); it is stored at {artifact.path}",
                     file=sys.stderr,
                 )
                 return EXIT_ERROR
@@ -566,38 +603,38 @@ def _decision_evidence(args: argparse.Namespace) -> int:
             verifier=verifier,
         )
     except EvidenceDigestError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        _say(f"error: {exc}", file=sys.stderr)
         return exit_code_for(Verdict.BLOCK)
     except (VerifyError, EvidenceReadError, EvidenceSignatureError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        _say(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
     if args.json:
-        print(json.dumps(inspection.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        _say_json(inspection.model_dump(mode="json"))
     else:
-        print(f"run       {inspection.run_id}")
-        print(f"digest    {inspection.manifest_digest}")
+        _say(f"run       {inspection.run_id}")
+        _say(f"digest    {inspection.manifest_digest}")
         bundle = inspection.bundle
         if bundle is not None:
-            print(f"product   {bundle.product_ref}")
-            print(f"created   {bundle.created_at}   verifier {bundle.verifier_version}")
-            print(f"integrity {bundle.integrity.value}")
+            _say(f"product   {bundle.product_ref}")
+            _say(f"created   {bundle.created_at}   verifier {bundle.verifier_version}")
+            _say(f"integrity {bundle.integrity.value}")
             if bundle.signature is not None:
                 status = "verified" if inspection.signature_verified else "unverified"
-                print(f"signature {status}   key {bundle.signature.key_id}")
+                _say(f"signature {status}   key {bundle.signature.key_id}")
             for claim in bundle.claims:
-                print(f"claim     {claim.claim_type.value:<13} {claim.summary_code:<24} ")
-                print(f"{'':<10} {claim.claim_id} <- {', '.join(claim.evidence_refs)}")
+                _say(f"claim     {claim.claim_type.value:<13} {claim.summary_code:<24} ")
+                _say(f"{'':<10} {claim.claim_id} <- {', '.join(claim.evidence_refs)}")
                 for caveat in claim.caveats:
-                    print(f"{'':<10} caveat: {caveat}")
+                    _say(f"{'':<10} caveat: {caveat}")
             for artifact in bundle.artifacts:
-                print(
+                _say(
                     f"artifact  {artifact.classification.value:<13} {artifact.kind.value:<18} "
                     f"{artifact.size_bytes:>8} B  {artifact.artifact_id}"
                 )
         for problem in inspection.problems:
-            print(f"{problem.severity.value:<9} {problem.code:<28} {problem.detail}")
-        print(f"verdict: {inspection.verdict.value} ({len(inspection.problems)} problem(s))")
+            _say(f"{problem.severity.value:<9} {problem.code:<28} {problem.detail}")
+        _say(f"verdict: {inspection.verdict.value} ({len(inspection.problems)} problem(s))")
     return exit_code_for(inspection.verdict)
 
 

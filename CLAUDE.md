@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-05 — T-60: decision-команда отвечает в любой поток: символ, которого кодировка
+  потока не знает, печатается backslash-escape, `--json` — целиком в ASCII, payload артефакта
+  — как есть или отказ; прежде это был traceback и exit 1 после вердикта. Verifier 97, check
+  72 — без изменений. Автор — Claude Opus 5.5 напрямую, модельного ревью нет.
+  [Проверки и границы](docs/DECISIONOPS_UNENCODABLE_OUTPUT_CHECKS_2026-10-05.md).
 - 2026-10-05 — T-59: момент (`--created-at`, `--captured-at`) и окружение, которые заявляет
   командная строка, проверяются до чтения входов и до движка: usage error в одну строку
   вместо исключения после грейда или отказа после запроса. Verifier 97, check 72 — без
@@ -99,10 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   block `gap.<kind>_conflict` без узла, когда расходятся. Verifier 97, check 72. Автор —
   Claude Opus 5.5 напрямую, модельного ревью нет.
   [Проверки и границы](docs/DECISIONOPS_REPEATED_DECLARATIONS_CHECKS_2026-10-05.md).
-- 2026-10-05 — T-58: дашборд, чей spec прошёл валидатор, а BI-компиляция отвергла
-  (`ValueError` builder'а), — отказ `bi.compile_refused` в evidence `bi.contract`, а не
-  traceback. Verifier 96, check 71. Автор — Claude Opus 5.5 напрямую, модельного ревью нет.
-  [Проверки и границы](docs/DECISIONOPS_BI_COMPILE_REFUSAL_CHECKS_2026-10-05.md).
 
 ## Definition of done (фаза/задача)
 
