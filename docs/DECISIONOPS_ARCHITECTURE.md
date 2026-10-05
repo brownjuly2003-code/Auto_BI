@@ -1528,6 +1528,22 @@ contract-тестом `tests/test_decision_cli.py::test_exit_code_contract_is_st
 `contract.invalid` под именем файла
 ([files a command cannot read](specs/unreadable-inputs.md)).
 
+Вход прогона, без которого грейдить нечего, — не finding, а usage error. Это
+`model.yaml` base или candidate ref, dashboard spec, verified asset и recorded results
+у `decision verify`, verified assets и `model.yaml` candidate ref у `decision capture`.
+Файл, который не открывается, не является UTF-8, который PyYAML отвергает или не может
+построить, команда называет одной строкой — `error: cannot read <файл>: <класс>`, с
+позицией там, где PyYAML её даёт, и с тем, что сказал интерпретатор, там, где документ
+не построился, — и выходит с `2`, ничего не оценив, не спросив у движка и не записав.
+Строка печатается и не запечатывается, поэтому, в отличие от finding, может цитировать
+файл. Ref, чьи файлы прочитаны и приняты схемами, но держат значение, с которым его граф
+не строится или не адресуется, — `error: cannot load semantic ref <ref>: …`: какой файл
+держал значение, отказ не знает, и `model.yaml` в нём не обвиняется.
+Так же кончается прогон, чей evidence-каталог не принимает bundle: store отвечает
+своей ошибкой на отказ файловой системы, команда — `error: cannot write the evidence
+bundle under <каталог>: …`. Manifest пишется последним, поэтому записанное до отказа
+bundle не является, и повтор после устранения причины даёт тот же bundle.
+
 Реализовано:
 
 ```text

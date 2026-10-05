@@ -83,6 +83,40 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-04 — вход прогона, который команда не может прочитать, прежде обрывал
+  `decision verify` и `decision capture` traceback с exit 1: `model.yaml` base или candidate
+  ref, dashboard spec, verified asset или recorded results со строкой, которую PyYAML не
+  строит, с незакрытой последовательностью, не-UTF-8, не-mapping или без права чтения —
+  44 из 75 процессных прогонов `decision verify` и 6 из 30 `decision capture`; путь
+  `--evidence`, который оказался файлом или не принимает запись, — 3 из 3. Теперь такой вход
+  — usage error до грейда, до вопросов движку и до записи: `error: cannot read <файл>:
+  <причина>`, exit 2, одна строка в stderr. Причина — класс, позиция PyYAML (`at line <n>,
+  column <m>`) или брошенное при построении (`ConstructorError (ValueError: …)`); строка
+  печатается и не запечатывается, поэтому может цитировать файл. Прочитанный файл, который
+  не то, чем должен быть, назван сам: `<файл> is not a valid semantic model: …`, `<файл> is
+  not a valid verified asset: …`; ref со значением, с которым его граф не адресуется, —
+  `cannot load semantic ref <ref>: …`. Store отвечает на отказ файловой системы своей
+  `ArtifactStoreError`, `decision verify` — `cannot write the evidence bundle under
+  <каталог>: …` и exit 2; записанное до отказа — без manifest и не bundle, повтор пишет тот
+  же bundle. Версии evidence не менялись (92/67): ни один вход, дававший bundle или captured
+  result, не даёт другого. Четыре прежних usage error читаются иначе: позиция у
+  синтаксической ошибки, файл вместо пути assets, `ValueError`-строки в spec как `cannot
+  read`, слова `decision verify` у `decision capture`.
+  Не закрыто: взгляд на validated-файл, путь assets, dashboard spec, results и output capture
+  под каталогом, в который нельзя войти, — traceback; каталог assets, который нельзя
+  перечислить, читается как пустой (exit 0, `pass_with_advisory`); запись manifest не атомарна.
+  Выбор — оркестратор (граница среза T-50, Astra-выбора по ADR 0006 нет). По решению
+  владельца срез выполнен напрямую Claude Opus 5.5, без MyFlow-исполнителей; модельное
+  ревью по ADR 0006 (Astra xhigh) не проводилось — проверки сделал сам автор, это не
+  независимое ревью. Тесты прогонялись на Mac. Red на копии HEAD с двумя новыми именами,
+  которые никто не вызывает: 148 failed / 33 passed; новый модуль: 181 passed. 42 ручных
+  мутанта убиты. Контроль на tracked pilot-пакетах: 10 прогонов, каждый файл каждого
+  bundle байт в байт как на HEAD. Первый полный gate упал на одном существующем тесте
+  (2 failed): он ждал от репозитория assets `ValidationError` схемы, которая стала cause
+  `VerifiedAssetFileError`; тест обновлён. Полный offline gate с duckdb: 4946 passed,
+  4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_UNREADABLE_RUN_INPUTS_CHECKS_2026-10-04.md).
+
 - 2026-10-04 — файл контракта, который PyYAML разбирает, но не может построить, прежде
   обрывал `decision validate` и `decision verify` traceback с exit 1: `as_of: 2026-02-30`,
   смещение зоны больше суток, целое в 5000 цифр, `!!int`/`!!float` с текстом

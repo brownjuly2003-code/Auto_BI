@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
 
 from auto_bi.agent.sql_guard import (
     AmbiguousRef,
@@ -52,6 +52,7 @@ from auto_bi.semantic.gateway import FieldNode, SemanticSnapshot
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
 from auto_bi.verification.reconcile import ResultSet, ResultTolerance
+from auto_bi.yaml_document import load_yaml_document, unread_reason
 
 API_VERSION = "auto-bi.io/v2alpha1"
 
@@ -201,6 +202,15 @@ class AssetInvalidation(StrictModel):
     detail: NonBlankText
 
 
+class VerifiedAssetFileError(ValueError):
+    """A file of the repository that cannot be read, or that holds no verified asset.
+
+    A repository is loaded whole, and a directory that fails as one leaves its owner to find
+    the file: the error names it. It stays a `ValueError`, which is what an asset the schema
+    refuses has always been to whoever loads a repository.
+    """
+
+
 class VerifiedAssetRepository:
     """The reviewed corpus a release gate re-checks against."""
 
@@ -224,10 +234,18 @@ class VerifiedAssetRepository:
                 if child.suffix in _YAML_SUFFIXES and child.is_file()
             )
         )
-        assets = [
-            VerifiedAsset.model_validate(yaml.safe_load(file.read_text(encoding="utf-8")) or {})
-            for file in files
-        ]
+        assets: list[VerifiedAsset] = []
+        for file in files:
+            try:
+                document = load_yaml_document(file.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+                raise VerifiedAssetFileError(f"cannot read {file}: {unread_reason(exc)}") from exc
+            try:
+                assets.append(VerifiedAsset.model_validate(document or {}))
+            except ValidationError as exc:
+                raise VerifiedAssetFileError(
+                    f"{file} is not a valid verified asset: {exc}"
+                ) from exc
         return cls(assets)
 
     def get(self, asset_id: str) -> VerifiedAsset | None:

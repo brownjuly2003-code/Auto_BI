@@ -34,3 +34,27 @@ def load_yaml_document(text: str) -> Any:
     except Exception as exc:
         problem = f"{type(exc).__name__} while the document was built"
         raise ConstructorError(None, None, problem, None) from exc
+
+
+def unread_reason(exc: BaseException) -> str:
+    """Why a file could not be read, in the one line a usage error gives whoever ran the command.
+
+    The class of what was raised, and whatever else tells where to look: the position, for a
+    text PyYAML refuses itself; what the interpreter said, for a document that could not be
+    built — that error has no position, and the message is the only pointer to the value.
+
+    This is for a line that is printed and never kept. A finding that is sealed in a report
+    or a bundle names the class alone: the message of what was raised may quote the file.
+    """
+    name = type(exc).__name__
+    if not isinstance(exc, yaml.YAMLError):
+        return name
+    mark = getattr(exc, "problem_mark", None)
+    if mark is not None:
+        return f"{name} at line {mark.line + 1}, column {mark.column + 1}"
+    cause = exc.__cause__
+    if cause is None:
+        return name
+    said = " ".join(str(cause).split())
+    raised = f"{type(cause).__name__}: {said}" if said else type(cause).__name__
+    return f"{name} ({raised})"

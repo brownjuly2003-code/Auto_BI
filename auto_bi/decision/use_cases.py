@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import load_contracts
@@ -56,7 +57,12 @@ from auto_bi.verification.release_gate import (
     ResultSource,
     run_gate,
 )
-from auto_bi.verification.repository import ExpectationKind, VerifiedAsset, VerifiedAssetRepository
+from auto_bi.verification.repository import (
+    ExpectationKind,
+    VerifiedAsset,
+    VerifiedAssetFileError,
+    VerifiedAssetRepository,
+)
 from auto_bi.verification.result_probe import (
     ResultCaptureError,
     ResultQuery,
@@ -64,6 +70,7 @@ from auto_bi.verification.result_probe import (
 from auto_bi.verification.result_probe import (
     capture as capture_live_result,
 )
+from auto_bi.yaml_document import load_yaml_document, unread_reason
 
 MODEL_FILE = "model.yaml"
 METRICS_DIR = "metrics"
@@ -165,6 +172,12 @@ def verify(request: VerifyRequest) -> GateReport:
     except (EvidenceConflictError, EvidenceSignatureError) as exc:
         # A usage error, not a verdict: the verification did not get to record itself.
         raise VerifyError(str(exc)) from None
+    except ArtifactStoreError as exc:
+        # Nor did it here: the store refused a path, or the filesystem refused the store.
+        # What was written before the refusal has no manifest and is not a bundle.
+        raise VerifyError(
+            f"cannot write the evidence bundle under {request.evidence_dir}: {exc}"
+        ) from None
 
 
 def capture_result(request: CaptureRequest) -> CaptureReport:
@@ -173,10 +186,10 @@ def capture_result(request: CaptureRequest) -> CaptureReport:
     if output.exists():
         raise VerifyError(f"output file already exists: {output}; refusing to overwrite it")
 
-    repository = _capture_assets(Path(request.assets))
+    repository = _asset_repository(Path(request.assets))
     asset = _select_asset(repository, request.asset_id, Path(request.assets))
     _check_capture_contract(asset, request.engine)
-    candidate = _capture_snapshot(Path(request.candidate))
+    candidate = _snapshot(Path(request.candidate))
 
     try:
         recorded = capture_live_result(
@@ -251,12 +264,22 @@ def _select_product(
     return next(iter(products.values()))
 
 
-def _capture_assets(path: Path) -> VerifiedAssetRepository:
+def _asset_repository(path: Path) -> VerifiedAssetRepository:
+    """Every verified asset under *path*, for `verify` and for `capture` alike.
+
+    A file that cannot be read or holds no asset is named as that file, and so is a path
+    under *path* that may not be looked at while its files are listed; only what is wrong
+    with the assets together — two of one id — is said of the path.
+    """
     if not path.exists():
         raise VerifyError(f"verified assets path not found: {path}")
     try:
         return VerifiedAssetRepository.load(path)
-    except (OSError, UnicodeDecodeError, yaml.YAMLError, ValueError) as exc:
+    except VerifiedAssetFileError as exc:
+        raise VerifyError(str(exc)) from None
+    except OSError as exc:
+        raise VerifyError(f"cannot read {exc.filename or path}: {unread_reason(exc)}") from None
+    except ValueError as exc:
         raise VerifyError(f"{path} holds an invalid verified asset: {exc}") from None
 
 
@@ -295,20 +318,35 @@ def _check_capture_contract(asset: VerifiedAsset, engine: str) -> None:
         )
 
 
-def _capture_snapshot(path: Path) -> SemanticSnapshot:
-    try:
-        return _snapshot(path)
-    except (OSError, UnicodeDecodeError, yaml.YAMLError, ValueError) as exc:
-        raise VerifyError(f"cannot load candidate semantic ref {path}: {exc}") from None
-
-
 def _snapshot(root: Path) -> SemanticSnapshot:
+    """One semantic ref, frozen — or the file that kept it from being read.
+
+    A metric contract of the ref that is read and is no contract is a gap of the snapshot
+    and the gate grades it. A `model.yaml` that cannot be read or is no model leaves nothing
+    to freeze, and neither does a file of the ref that cannot be opened at all: there are
+    no bytes of it for the snapshot to say what it was read from. Nor can a ref be frozen
+    whose files are read and accepted and hold a value its graph cannot be addressed with.
+    """
     model_path = root / MODEL_FILE
-    if not model_path.is_file():
-        raise VerifyError(f"semantic ref {root} has no {MODEL_FILE}")
-    metrics = root / METRICS_DIR
-    source = NativeModelSource(model_path, metrics if metrics.is_dir() else None)
-    return source.snapshot()
+    try:
+        if not model_path.is_file():
+            raise VerifyError(f"semantic ref {root} has no {MODEL_FILE}")
+        metrics = root / METRICS_DIR
+        source = NativeModelSource(model_path, metrics if metrics.is_dir() else None)
+        return source.snapshot()
+    except OSError as exc:
+        # The model, its metrics directory or a contract in it, refused when looked at or
+        # when opened: the error knows which path it was.
+        unread = exc.filename or model_path
+        raise VerifyError(f"cannot read {unread}: {unread_reason(exc)}") from None
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise VerifyError(f"cannot read {model_path}: {unread_reason(exc)}") from None
+    except ValueError as exc:
+        if isinstance(exc, ValidationError) and exc.title == SemanticModel.__name__:
+            raise VerifyError(f"{model_path} is not a valid semantic model: {exc}") from None
+        # Anything else is said of the ref: which of its files held the value, the error
+        # does not know, and the model is not to be blamed for a contract beside it.
+        raise VerifyError(f"cannot load semantic ref {root}: {exc}") from None
 
 
 def _load_model(path: Path) -> SemanticModel:
@@ -367,13 +405,7 @@ def _load_assets(
     """
     if directory is None:
         return VerifiedAssetRepository([])
-    root = Path(directory)
-    if not root.exists():
-        raise VerifyError(f"verified assets path not found: {root}")
-    try:
-        repository = VerifiedAssetRepository.load(root)
-    except ValueError as exc:
-        raise VerifyError(f"{root} holds an invalid verified asset: {exc}") from None
+    repository = _asset_repository(Path(directory))
     in_scope = {str(ContractRef.parse(ref).without_version()) for ref in product.scope.metrics}
     return VerifiedAssetRepository(
         [asset for asset in repository.assets if in_scope.intersection(asset.metric_ids())]
@@ -465,9 +497,9 @@ def locate_evidence(path: str | Path, run_id: str = "") -> EvidenceLocation:
 
 def _read_mapping(path: Path) -> dict[str, Any]:
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = load_yaml_document(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
-        raise VerifyError(f"cannot read {path}: {type(exc).__name__}") from None
+        raise VerifyError(f"cannot read {path}: {unread_reason(exc)}") from None
     if not isinstance(raw, dict):
         raise VerifyError(f"{path} must contain a mapping")
     return raw

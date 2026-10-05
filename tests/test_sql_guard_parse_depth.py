@@ -13,7 +13,7 @@ from auto_bi.agent.sql_guard import (
     extract_table_refs,
     guard_sql,
 )
-from auto_bi.verification.repository import ReferenceQuery
+from auto_bi.verification.repository import ReferenceQuery, VerifiedAssetFileError
 from tests.test_decision_chart_impact import (
     DASHBOARD,
     _reformulated,
@@ -59,11 +59,15 @@ def test_reference_query_reports_parser_depth_as_validation_error(engine: str) -
 def test_verified_asset_registry_reports_parser_depth_as_validation_error(
     tmp_path: Path, engine: str
 ) -> None:
-    with pytest.raises(ValidationError, match="reference query is not a plain SELECT") as error:
+    # The repository names the file the schema refused; the schema's refusal is its cause.
+    with pytest.raises(
+        VerifiedAssetFileError, match="reference query is not a plain SELECT"
+    ) as error:
         repository(
             tmp_path / engine,
             asset(reference_query=query(nested_parentheses(120), engine=engine)),
         )
+    assert isinstance(error.value.__cause__, ValidationError)
     assert "nest" in str(error.value)
     assert "RecursionError" not in str(error.value)
 

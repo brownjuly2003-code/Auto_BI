@@ -52,15 +52,24 @@ class FilesystemArtifactStore:
             )
         return self._root / run_id
 
+    # What the filesystem refuses is this store's answer too: a caller that handles
+    # `ArtifactStoreError` is not left with an `OSError` from under it. Looking at a path can
+    # be refused as well as writing to it: under a directory that may not be searched the
+    # look itself raises `PermissionError`.
+
     def put(self, run_id: str, path: str, payload: bytes) -> None:
-        target = self._resolve(run_id, path, for_write=True)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(payload)
+        try:
+            target = self._resolve(run_id, path, for_write=True)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+        except OSError as exc:
+            raise ArtifactStoreError(
+                f"cannot write {path!r} of run {run_id!r}: {type(exc).__name__}"
+            ) from exc
 
     def get(self, run_id: str, path: str) -> bytes:
-        target = self._resolve(run_id, path, for_write=False)
         try:
-            return target.read_bytes()
+            return self._resolve(run_id, path, for_write=False).read_bytes()
         except OSError as exc:
             raise ArtifactStoreError(f"cannot read {path!r} of run {run_id!r}") from exc
 
@@ -69,6 +78,11 @@ class FilesystemArtifactStore:
             return self._resolve(run_id, path, for_write=False).is_file()
         except ArtifactStoreError:
             return False
+        except OSError as exc:
+            # Not "no": whether the artifact is there was not established.
+            raise ArtifactStoreError(
+                f"cannot look for {path!r} of run {run_id!r}: {type(exc).__name__}"
+            ) from exc
 
     def _resolve(self, run_id: str, path: str, *, for_write: bool) -> Path:
         if not path or path.startswith("/") or "\\" in path:

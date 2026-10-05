@@ -12,7 +12,53 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=92`, `CHECK_VERSION=67`
 
-**Последний срез (2026-10-04):** файл контракта, который PyYAML не может построить, — finding,
+**Последний срез (2026-10-04):** вход прогона, который команда не может прочитать, — usage
+error, которая называет файл, а не traceback. `decision verify` получает `model.yaml` base и
+candidate refs, dashboard specs, verified assets и recorded results, `decision capture` —
+verified assets и `model.yaml` candidate ref. Контракт, который не читается, оставляет прогон
+для грейда; без одного из этих файлов грейдить нечего. На HEAD одна порча одного файла —
+строка, которую PyYAML не строит, незакрытая последовательность, не-UTF-8, список, текст,
+mapping, которую схема отвергает, файл без права чтения — кончала traceback и exit 1 44 из
+75 процессных прогонов `decision verify` и 6 из 30 `decision capture`; путь `--evidence`,
+который оказался файлом или не принимает запись, — 3 из 3. Теперь: `error: cannot read
+<файл>: <причина>`, exit 2, одна строка в stderr, stdout пуст — до грейда, до вопросов движку
+и до записи. Причина — класс брошенного; ` at line <n>, column <m>` там, где PyYAML даёт
+позицию; ` (<класс>: <сообщение>)` там, где документ не построился. Строка печатается и не
+запечатывается, поэтому может цитировать файл; finding предыдущего среза по-прежнему несёт
+только класс. Контракт метрики в ref, который не открывается, и путь ref или файл под assets,
+на который нельзя посмотреть, называются так же. Прочитанный файл, который не то, чем должен
+быть: `<файл> is not a valid semantic model: …`, `<файл> is not a valid verified asset: …`
+(`VerifiedAssetRepository.load` бросает `VerifiedAssetFileError` — `ValueError`, чей cause —
+`ValidationError` схемы); два assets одного id остаются под путём assets. Ref, чьи файлы
+приняты схемами, но держат
+значение, с которым его граф не адресуется (одиночный суррогат), — `cannot load semantic ref
+<ref>: …`. Store отвечает на отказ файловой системы своей `ArtifactStoreError` («посмотреть
+не удалось» — не «нет»), `decision verify` — `cannot write the evidence bundle under
+<каталог>: …`, exit 2; manifest пишется последним, записанное до отказа — не bundle, повтор
+после устранения причины пишет тот же run id и evidence digest. Версии evidence не менялись:
+ни один вход, дававший bundle или captured result, не даёт другого.
+Границы: взгляд закрыт только внутри ref, среди файлов под assets и внутри каталога evidence
+— validated-файл, путь assets, dashboard spec, results и output capture под каталогом, в
+который нельзя войти, по-прежнему кончаются traceback; каталог, который нельзя перечислить,
+читается как пустой (каталог assets
+— exit 0 и `pass_with_advisory`); контракт, который не открывается, — finding под validated
+paths и usage error в ref; одиночный суррогат как dimension validated-контракта по-прежнему
+обрывает `decision verify`; запись manifest не атомарна; входы `decision investigate` не
+тронуты.
+Выбор — оркестратор (граница среза T-50, Astra-выбора по ADR 0006 нет). По решению
+владельца срез выполнен напрямую Claude Opus 5.5, без MyFlow-исполнителей; модельное ревью по
+ADR 0006 (Astra xhigh) не проводилось — проверки сделал сам автор, это не независимое
+ревью. Тесты прогонялись на Mac. Red на копии HEAD с двумя новыми именами, которые никто не
+вызывает: 148 failed / 33 passed; новый модуль: 181 passed. 42 ручных мутанта убиты. Контроль
+на tracked pilot-пакетах: 10 прогонов, каждый файл каждого bundle байт в байт как на HEAD.
+Первый полный gate упал на одном существующем тесте (2 failed): он ждал от репозитория
+assets `ValidationError` схемы, которая стала cause `VerifiedAssetFileError`; тест обновлён.
+Полный offline gate с duckdb: 4946 passed, 4 skipped, 38 deselected, exit 0;
+Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
+[Проверки и границы](DECISIONOPS_UNREADABLE_RUN_INPUTS_CHECKS_2026-10-04.md),
+[спека](specs/unreadable-inputs.md).
+
+**Предыдущий срез (2026-10-04):** файл контракта, который PyYAML не может построить, — finding,
 а не traceback. Оба загрузчика контрактов ловили `yaml.YAMLError`, а значения скомпонованного
 документа строит обычный Python, и его исключения выходили из `yaml.safe_load` как есть:
 `as_of: 2026-02-30`, смещение зоны больше суток, целое в 5000 цифр, `!!int`/`!!float` с
