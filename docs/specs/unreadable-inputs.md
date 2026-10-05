@@ -903,6 +903,249 @@ named like a YAML file.
 - **AND** `decision capture` with the assets directory or the candidate's metrics directory that
   cannot be listed exits 2 with the same one line and writes no output file
 
+## Requirement: an input `decision investigate` cannot read or take is named in one line
+
+`decision investigate` is handed a plan and one canonical result for each metric of the plan,
+and writes a directory of four artifacts. It read both kinds of file by itself — `yaml.safe_load`
+and then the schema — under one handler for `OSError`, `yaml.YAMLError` and the schema's
+`ValidationError`, which answered `input contract is unreadable: ` and the text of whatever was
+raised.
+
+Reproduced at HEAD `01d3c8f`, 2026-10-05, PyYAML 6.0.3 and pydantic 2.13.4 on Python 3.13.13,
+with the command as a process over the fixture plan and its result and one damage to one input
+at a time. Of 54 runs 22 ended in a traceback and exit code 1:
+
+- the plan — 9 of 15, the result — 9 of 15: each of the eight lines that cannot be built, and
+  bytes that are not UTF-8, which raise a `UnicodeDecodeError` and no `OSError`;
+- a row value written as an unquoted integer of 5000 digits: a document that cannot be built;
+- a result whose `unit` holds a lone surrogate. The field is plain text, the schema took it, and
+  the digest of the result has no form for it: `CanonicalizationError`;
+- a result one row of which names a dimension with a lone surrogate. The names of a row are the
+  keys of a mapping, which the schema took as they are; the refusal of the result then quoted
+  the name, and pydantic cannot build a refusal that holds a lone surrogate: the schema raised
+  `UnicodeEncodeError`;
+- an output path the standard output stream cannot encode, after the artifacts were written.
+  That one is not covered here (see the boundaries).
+
+18 more runs exited 2 with a refusal of 3 to 25 lines that named no file: PyYAML's account of
+the place `in "<unicode string>"`, or pydantic's listing of each error with the value it refused
+and a link to its documentation. With two results on the command line nothing said which was
+meant. Asked in the process at every string and every key of the two fixtures, alone and between
+two letters, a lone surrogate was refused by the schema at all 202 places of the plan and at 114
+of the 128 of the result; at 12 the schema raised `UnicodeEncodeError` and at 2 it took the
+value.
+
+Each input SHALL be answered for by its own path. The plan SHALL be read before the results and
+the results in the order they are given; the first input that is refused ends the command.
+
+- An input that cannot be opened, is not UTF-8 text, is a text PyYAML refuses or a document
+  that cannot be built SHALL be the usage error `cannot read <path>: <reason>`, with the reason
+  of the second requirement.
+- An input that was read and is not what its schema describes SHALL be the usage error `<path>
+  is not a valid <kind>: <refusals>`, the kind being `InvestigationPlan` or
+  `CanonicalMetricResult`.
+
+The refusals SHALL be one line: `<place>: <reason>` for each of the first three errors of the
+schema, joined by `; `, and after them `; (+<n> more)` when the schema has `n` more. The place
+is the steps to what is refused, joined by `.`: names of fields, indices of lists counted from 0
+and keys of mappings. A key that is empty text is `""`, and a place with no step is `<root>`.
+The reason is the schema's. The value an error is about SHALL NOT be given, nor a link. A key of
+the document is part of a place, and a validator of the schema may quote a value in its reason:
+every run of whitespace in a refusal SHALL be one space.
+
+Either way the command SHALL exit 2 with `error: ` and that one line on the standard error
+stream, print nothing on standard output and create no output directory.
+
+`InvestigationPlan.from_yaml` and `CanonicalMetricResult.from_yaml` SHALL build the document
+with the loader of the first requirement: a text that cannot be built is a `yaml.YAMLError` to
+whoever calls them, with what was raised as its cause.
+
+The schema of a canonical result SHALL refuse a lone surrogate where it took one: in the `unit`,
+`unit: Value error, must be text without a lone surrogate`, and in a name a row gives a
+dimension, `rows.<i>: Value error, row dimension names must be text without a lone surrogate`.
+Neither refusal quotes the value. Every other `unit` SHALL be taken as it is — empty, of spaces,
+of several lines, in any script, outside the BMP.
+
+Inputs that were read give the artifacts they gave: no byte of `plan.json`, `results.json`,
+`brief.json` or `brief.md` changes for inputs the command accepted, and no version of a skill,
+of the plan or of the evidence SHALL be bumped. What is read and cannot be used is said as
+before: a result no step asks for, two results of one metric, a metric without a result, a
+policy stop, an output directory that is there.
+
+In the scenarios below *the inputs* are the fixture plan `weekly_margin.yaml` and its result
+`revenue_results.yaml`, each in a file of its own, and *an input* is either of the two.
+
+### Scenario: an input whose YAML cannot be built is named
+
+- **GIVEN** the inputs, and one of the eight lines that cannot be built appended to an input
+- **WHEN** the investigation is written
+- **THEN** it is refused with `cannot read <that file>: ConstructorError (<class>: <message>)`,
+  the class and the message being what the interpreter raises for the line alone — for the line
+  nested past the stack, the class `RecursionError` and whatever it says there
+- **AND** the output directory does not exist
+
+### Scenario: an input PyYAML refuses is named with the position
+
+- **GIVEN** the inputs, and one of the six texts PyYAML refuses in place of an input
+- **WHEN** the investigation is written
+- **THEN** it is refused with `cannot read <that file>: ` and the reason of that text
+
+### Scenario: an input that is not text, not there or not to be opened is named by the class
+
+- **GIVEN** the inputs, and an input with a Latin-1 byte appended; removed; replaced by a
+  directory; or one the filesystem refuses to open
+- **WHEN** the investigation is written
+- **THEN** it is refused with `cannot read <that file>: ` and `UnicodeDecodeError`,
+  `FileNotFoundError`, what the platform refuses a directory with (`IsADirectoryError`, on
+  Windows `PermissionError`) or `PermissionError`
+
+### Scenario: the first input that is refused is the one named
+
+- **GIVEN** the inputs and two more results, the first holding a sequence that is never closed
+  and the second one byte that is not UTF-8
+- **WHEN** the investigation is written
+- **THEN** it is refused with `cannot read <the first of the two>: ParserError at line 2, column
+  1`
+- **AND** with a plan that is not UTF-8 and a result that holds the unclosed sequence, with
+  `cannot read <the plan>: UnicodeDecodeError`
+- **AND** with a plan that holds one more key `unknown: 1` and a result that is not UTF-8, with
+  `<the plan> is not a valid InvestigationPlan: unknown: Extra inputs are not permitted`
+- **AND** with two more results, the first with `complete: perhaps` and the second holding only
+  `result_id: 5`, with a message that begins `<the first of the two> is not a valid
+  CanonicalMetricResult: complete: `
+
+### Scenario: the models answer a text that cannot be built with a YAML error
+
+- **GIVEN** one of the eight lines that cannot be built
+- **WHEN** `InvestigationPlan.from_yaml` or `CanonicalMetricResult.from_yaml` is given it
+- **THEN** a `yaml.YAMLError` is raised whose cause is what the interpreter raised
+
+### Scenario: an input that is no mapping is named with its kind
+
+- **GIVEN** the inputs, and an input replaced by a list or by a text
+- **WHEN** the investigation is written
+- **THEN** it is refused with `<that file> is not a valid <kind>: <root>: Input should be a valid
+  dictionary or instance of <kind>`
+
+### Scenario: an input its schema refuses is named with where and why
+
+- **GIVEN** the inputs, and the first step of the plan, a `data_health`, with `skill_version: 2`
+- **WHEN** the investigation is written
+- **THEN** it is refused with `<the plan> is not a valid InvestigationPlan: steps.0: Value error,
+  skill_version for data_health must be 1`
+- **AND** the result without its `freshness_max_age` is refused with `<the result> is not a
+  valid CanonicalMetricResult: <root>: Value error, source_max_event_time and freshness_max_age
+  must be supplied together`
+
+### Scenario: three refusals are spelled out and the rest are counted
+
+- **GIVEN** the inputs, and an input that holds nothing
+- **WHEN** the investigation is written
+- **THEN** the refusal names three fields as `<field>: Field required` and ends `; (+4 more)`
+  for the plan, `; (+2 more)` for the result
+- **AND** a plan with one or three keys the schema does not know, `key_00`, `key_01` and so on,
+  names each as `<key>: Extra inputs are not permitted` and counts nothing; with four it names
+  the first three and ends `; (+1 more)`, with forty `; (+37 more)`
+
+### Scenario: a key of the document is the place of its refusal
+
+- **GIVEN** the inputs, and one more key in the plan holding `5`
+- **WHEN** the investigation is written
+- **THEN** the refusal is `<the plan> is not a valid InvestigationPlan: <place>: Extra inputs
+  are not permitted`, the place being the key for `unknown` and for a key in Cyrillic, `a b` for
+  a key of the letter `a`, a line break, two spaces and the letter `b`, and `""` for a key that
+  is empty text
+- **AND** such an empty key in the third step of the plan is refused at `steps.2.""`
+- **AND** a result with the line `1: 2` appended is refused with `<the result> is not a valid
+  CanonicalMetricResult: 1: Keys should be strings`
+
+### Scenario: a refusal is one line and gives no value of the document
+
+- **GIVEN** the inputs, and a plan whose scope names twice the dimension `by`, a line break,
+  two spaces, `week`
+- **WHEN** the investigation is written
+- **THEN** it is refused with `<the plan> is not a valid InvestigationPlan: scope: Value error,
+  duplicate entries in scope.dimensions: by week`
+- **AND** the reason of a plan whose `question` is a list of two texts and whose
+  `budget.max_steps` is a text begins `question: Input should be a valid string;
+  budget.max_steps: `, holds one `; `, none of the three texts and no link
+
+### Scenario: a unit that holds a lone surrogate is refused by the schema
+
+- **GIVEN** the inputs, and the result with a lone surrogate as its `unit`
+- **WHEN** the investigation is written
+- **THEN** it is refused with `<the result> is not a valid CanonicalMetricResult: unit: Value
+  error, must be text without a lone surrogate`
+
+### Scenario: a row that names a dimension with a lone surrogate is refused by the schema
+
+- **GIVEN** the inputs, and the first row of the result naming its dimension with a lone
+  surrogate
+- **WHEN** the investigation is written
+- **THEN** it is refused with `<the result> is not a valid CanonicalMetricResult: rows.0: Value
+  error, row dimension names must be text without a lone surrogate`
+- **AND** a result that declares no dimension, with one row that names such a dimension holding
+  nothing, is refused by its schema at that row with the same reason — whether the name is the
+  lone surrogate or holds it between two letters
+- **AND** so is a row that names three dimensions, the second of them such a name: every name
+  of a row is looked at, wherever it stands
+- **AND** when what such a name holds is refused first — a number — the refusal is one line
+  that begins `<the result> is not a valid CanonicalMetricResult: rows.0.dimensions.` and ends
+  `: Input should be a valid string`, and is text any stream can take
+
+### Scenario: no place of an input takes a lone surrogate
+
+- **GIVEN** a fixture document, and a lone surrogate — alone, or between two letters — as one of
+  its strings or as one of the keys of its mappings
+- **WHEN** the schema of the document validates it
+- **THEN** at every such place of the plan and of the result the schema refuses with its
+  `ValidationError`, and the reason is one line of text any stream can take
+
+### Scenario: text the artifacts have a form for is taken as it is
+
+- **GIVEN** the result with the `unit` empty, `RUB`, in Cyrillic, a currency sign, a character
+  outside the BMP, of spaces around a sign, or of two lines
+- **WHEN** the schema validates it
+- **THEN** the unit of the result is that text and the result has a digest
+- **AND** the inputs with the dimension renamed to a name that holds a character outside the BMP
+  are written as four artifacts
+
+### Scenario: the command exits 2 with one line and writes nothing
+
+- **GIVEN** the inputs, and an input with a date that does not exist appended, with a sequence
+  that is never closed appended, with bytes that are not UTF-8 appended, removed, holding
+  nothing, or with a key the schema does not know
+- **WHEN** `decision investigate` runs
+- **THEN** it exits 2, prints nothing on standard output and one line on standard error, which
+  begins `error: cannot read <that file>: ` for the first four and `error: <that file> is not a
+  valid <kind>: ` for the other two; the output directory does not exist
+- **AND** the same holds for a result with a lone surrogate as its `unit` or as a name of a
+  dimension of its first row: one line that begins `error: <the result> is not a valid
+  CanonicalMetricResult: ` and ends `without a lone surrogate`
+
+### Scenario: inputs that are read give the artifacts they gave
+
+- **GIVEN** the inputs
+- **WHEN** `decision investigate` runs
+- **THEN** it exits 0, prints nothing on standard error, and on standard output four lines: the
+  output path after `wrote`, the content address of the plan after `plan`,
+  `sha256:cfbedd5368d2edeba94f2a17c19a4eebc4079b5bd048c46c93825ff41b696fcb`, that of the brief
+  after `brief`, `sha256:e07680ef35e98144a7ca1ffcea738fdfb3552e911ddeaa166a1914e79908f4b4`, and
+  `trust    exploratory; human acceptance not measured`; the output directory holds the four
+  artifacts
+- **AND** the models load the fixtures to a plan and a brief of those two content addresses
+
+### Scenario: what is read and cannot be used is said as before
+
+- **GIVEN** the inputs, and one more result of a metric no step of the plan asks for
+- **WHEN** the investigation is written
+- **THEN** it is refused with `unexpected canonical result outside declared steps:
+  metric://sales/profit@1`
+- **AND** the result given twice is refused with `duplicate canonical result for metric
+  metric://sales/revenue@5`
+- **AND** an output directory that is there is refused with `output directory already exists:
+  <path>` and stays empty
+
 ## Known boundaries
 
 - The finding names the file and the class, not the value or its line: PyYAML's own errors are
@@ -915,8 +1158,27 @@ named like a YAML file.
 - A document nested past the stack is reported as `ConstructorError` like a value that cannot be
   built, although it is the composer that runs out of stack.
 - The first requirement covers the contract files, the second the run inputs of `decision
-  verify` and `decision capture`. The inputs of `decision investigate` and the loaders of the v1
-  runtime read YAML by themselves and are not changed.
+  verify` and `decision capture`, the fifth the inputs of `decision investigate`. The loaders of
+  the v1 runtime read YAML by themselves and are not changed.
+- The fifth requirement gives the refusal of a schema in one line for `decision investigate`
+  alone. `decision verify` and `decision capture` still print a model, a dashboard spec, a
+  verified asset or recorded results their schema refuses as pydantic lists it, with the values
+  and the links. Reproduced with the commands as processes, 42 runs over those five kinds of
+  file: 33 print 3 to 22 lines on standard error.
+- The reasons of the fifth requirement are pydantic's sentences, of the version installed —
+  2.13.4 where the scenarios were run; another version may word them differently. A place that
+  is a key holding a lone surrogate is given by pydantic in replacement characters.
+- One line means no line break: every run of whitespace in a refusal is one space. Any other
+  character of a key, or of a value a validator quotes, is printed as it is — an escape
+  character among them.
+- `decision investigate` writes its output directory file by file. Reproduced with the third
+  write refused, `No space left on device`: the run answers `cannot write output directory
+  <path>: ` and what the system said, the directory is left holding `plan.json` and
+  `results.json`, and the run after it is refused with `output directory already exists: <path>`.
+- What `decision investigate` prints after it wrote goes to the standard output stream, which
+  refuses a character it cannot encode. Reproduced with an output path in Cyrillic and
+  `PYTHONIOENCODING=ascii`: the command ends in a traceback and exit code 1 after the four
+  artifacts are written.
 - The fourth requirement covers `decision validate`, `decision verify` and `decision capture`.
   `decision evidence` and the filesystem store still look through `pathlib`. Reproduced with the
   command as a process over a written bundle, 7 runs under each interpreter, with the evidence

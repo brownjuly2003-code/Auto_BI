@@ -6,15 +6,30 @@ from enum import StrEnum
 from pathlib import Path
 
 import yaml
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from auto_bi.evidence.canonical import canonical_bytes, sha256_digest
 from auto_bi.refs import MetricRef
 from auto_bi.scalars import DecimalString, Duration, NonBlankText, Slug, Timestamp
 from auto_bi.semantic.model import Additivity
 from auto_bi.strict import StrictModel
+from auto_bi.yaml_document import load_yaml_document
 
 API_VERSION = "auto-bi.io/v2alpha1"
+
+
+def _is_text(value: str) -> bool:
+    """Whether *value* is text an artifact can hold: canonical JSON has no lone surrogate.
+
+    A plain ``str`` field and a key of a mapping are taken by the schema as they are, so a
+    lone surrogate — which YAML writes as an escape and PyYAML builds — has to be refused
+    here. Accepted, it reaches the digest of the result, which has no form for it.
+    """
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 class InvestigationPeriod(StrEnum):
@@ -29,6 +44,9 @@ class MetricResultRow(StrictModel):
 
     @model_validator(mode="after")
     def _check_dimension_names(self) -> MetricResultRow:
+        # Said without the name: a refusal that quotes a lone surrogate cannot be reported.
+        if not all(_is_text(name) for name in self.dimensions):
+            raise ValueError("row dimension names must be text without a lone surrogate")
         bad = sorted(name for name in self.dimensions if not name.strip())
         if bad:
             raise ValueError("row dimension names must carry content")
@@ -56,6 +74,13 @@ class CanonicalMetricResult(StrictModel):
     source_max_event_time: Timestamp | None = None
     freshness_max_age: Duration | None = None
     rows: list[MetricResultRow] = Field(default_factory=list)
+
+    @field_validator("unit")
+    @classmethod
+    def _check_unit(cls, value: str) -> str:
+        if not _is_text(value):
+            raise ValueError("must be text without a lone surrogate")
+        return value
 
     @model_validator(mode="after")
     def _check_shape(self) -> CanonicalMetricResult:
@@ -93,7 +118,7 @@ class CanonicalMetricResult(StrictModel):
 
     @classmethod
     def from_yaml(cls, raw: str) -> CanonicalMetricResult:
-        return cls.model_validate(yaml.safe_load(raw) or {})
+        return cls.model_validate(load_yaml_document(raw) or {})
 
     @classmethod
     def load(cls, path: str | Path) -> CanonicalMetricResult:

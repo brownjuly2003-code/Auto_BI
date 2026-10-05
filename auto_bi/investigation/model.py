@@ -21,6 +21,7 @@ from auto_bi.evidence.model import ClaimType
 from auto_bi.refs import DecisionRef, MetricRef
 from auto_bi.scalars import MAX_SAFE_INT, Duration, NonBlankText, Slug
 from auto_bi.strict import StrictModel
+from auto_bi.yaml_document import load_yaml_document
 
 API_VERSION = "auto-bi.io/v2alpha1"
 
@@ -222,7 +223,7 @@ class InvestigationPlan(StrictModel):
 
     @classmethod
     def from_yaml(cls, raw: str) -> InvestigationPlan:
-        return cls.model_validate(yaml.safe_load(raw) or {})
+        return cls.model_validate(load_yaml_document(raw) or {})
 
     @classmethod
     def load(cls, path: str | Path) -> InvestigationPlan:

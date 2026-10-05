@@ -23,6 +23,7 @@ from auto_bi.investigation.model import InvestigationPlan
 from auto_bi.investigation.skills import GapCode, InvestigationGap, SkillResult, run_skill
 from auto_bi.scalars import Sha256Digest, Slug
 from auto_bi.strict import StrictModel
+from auto_bi.yaml_document import schema_reason, unread_reason
 
 API_VERSION = "auto-bi.io/v2alpha1"
 ARTIFACT_NAMES = ("plan.json", "results.json", "brief.json", "brief.md")
@@ -124,11 +125,8 @@ def write_offline_investigation(
     output_dir: str | Path,
 ) -> OfflineInvestigationArtifacts:
     """Load strict YAML inputs and write a new deterministic local artifact directory."""
-    try:
-        plan = InvestigationPlan.load(plan_path)
-        inputs = [CanonicalMetricResult.load(path) for path in result_paths]
-    except (OSError, ValidationError, yaml.YAMLError) as exc:
-        raise OfflineInvestigationError(f"input contract is unreadable: {exc}") from exc
+    plan = _load_input(plan_path, InvestigationPlan)
+    inputs = [_load_input(path, CanonicalMetricResult) for path in result_paths]
 
     artifacts = build_offline_investigation(plan, inputs)
     payloads = artifacts.payloads()
@@ -145,6 +143,26 @@ def write_offline_investigation(
     except OSError as exc:
         raise OfflineInvestigationError(f"cannot write output directory {target}: {exc}") from exc
     return artifacts
+
+
+def _load_input[Input: (InvestigationPlan, CanonicalMetricResult)](
+    path: str | Path, kind: type[Input]
+) -> Input:
+    """The file at *path* as *kind* — or the one line that names the file and says why not.
+
+    Each input is answered for by its own path: a run is handed several results, and an
+    error that names none leaves whoever ran it to open each. A file that cannot be opened,
+    is not UTF-8 or holds no YAML document that can be built was not read. A file that was
+    read and is not what *kind* describes is named with what the schema refuses.
+    """
+    try:
+        return kind.load(path)
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise OfflineInvestigationError(f"cannot read {path}: {unread_reason(exc)}") from exc
+    except ValidationError as exc:
+        raise OfflineInvestigationError(
+            f"{path} is not a valid {kind.__name__}: {schema_reason(exc)}"
+        ) from exc
 
 
 def _index_results(

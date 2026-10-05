@@ -15,7 +15,11 @@ from __future__ import annotations
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 from yaml.constructor import ConstructorError
+
+#: How many refusals of a schema a usage error spells out before it counts the rest.
+_MAX_SCHEMA_ERRORS = 3
 
 
 def load_yaml_document(text: str) -> Any:
@@ -58,3 +62,25 @@ def unread_reason(exc: BaseException) -> str:
     said = " ".join(str(cause).split())
     raised = f"{type(cause).__name__}: {said}" if said else type(cause).__name__
     return f"{name} ({raised})"
+
+
+def schema_reason(exc: ValidationError) -> str:
+    """What a schema refuses of a document that was read, in the one line of a usage error.
+
+    Where and why for the first refusals, in the manner ``decision validate`` reports a
+    contract that fails its schema, and the number of the rest. The value a refusal is about
+    is left out. A place may still be a key of the document, and a validator of the schema
+    may quote a value in its reason; either may hold a line break, so each refusal is given
+    in one line. A key that is empty text is given as ``""``: a place with no step is the
+    root of the document.
+
+    Like ``unread_reason``, this is for a line that is printed and never kept.
+    """
+    errors = exc.errors(include_url=False, include_context=False, include_input=False)
+    said = []
+    for error in errors[:_MAX_SCHEMA_ERRORS]:
+        place = ".".join(str(step) or '""' for step in error["loc"]) or "<root>"
+        said.append(" ".join(f"{place}: {error['msg']}".split()))
+    if len(errors) > len(said):
+        said.append(f"(+{len(errors) - len(said)} more)")
+    return "; ".join(said)
