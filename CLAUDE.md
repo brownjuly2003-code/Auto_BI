@@ -83,6 +83,50 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 ## Статус
 
+- 2026-10-05 — YAML-файл, чей double-quoted scalar называет escape-последовательностью
+  суррогат (U+D800–U+DFFF), прежде читался: сканер PyYAML строит из такого escape строку, у
+  которой нет ни UTF-8-формы, ни формы в canonical JSON, и дальше всё решал следующий
+  читатель. Вызовом команд в процессе на HEAD, escape на месте каждой строки и каждого ключа
+  файлов фикстуры (666 мест, 1332 документа, 1934 прогона): 50 исключений, которые никто не
+  ловит (`decision validate` — 12 `UnicodeEncodeError` при печати отчёта; `decision verify`
+  — 18 `CanonicalizationError` и 20 `ValidationError`), 4 прогона `decision validate` с
+  exit 0 (metric contract с escape на месте ключа grain прошёл), 464 оценённых прогона,
+  124 прогона `decision capture` до движка, 1292 отказа с exit 2 без слова об escape. Теперь
+  общий загрузчик decision-команд (`auto_bi/yaml_document.py`) отвергает такой документ до
+  построения: `SurrogateEscapeError` (`yaml.MarkedYAMLError`) с позицией начала скаляра.
+  Отвергается каждый код суррогата, названный escape в 16 или 32 бита, в значении, ключе,
+  элементе и скаляре-документе; пара, которую JSON читает как один символ, — тоже (загрузчик
+  ничего не склеивает); назван первый по порядку документа; узел под alias просмотрен один
+  раз. Текст, который PyYAML отвергает сам, отвергается как прежде; буквы escape без замены
+  (одинарные кавычки, plain и block scalar, комментарий) и символ вне BMP читаются. Читатели
+  отвечают как на любой текст, отвергнутый PyYAML: `contract.unreadable` (`cannot read
+  contract: SurrogateEscapeError`) под validated paths, gap `gap.contract_invalid` в ref,
+  usage error `cannot read <файл>: SurrogateEscapeError at line <n>, column <m>` (exit 2, до
+  грейда, движка и записи) для `model.yaml`, spec, asset, results и входов `decision
+  investigate`. На рабочем дереве те же 1934 прогона: 1252 — exit 2 с одной строкой об
+  отказе, 82 — `decision validate` печатает отчёт с ним и не находит продукта, 480 — exit 4
+  с файлом, названным нечитаемым, 120 — `decision capture` идёт к движку с непрочитанным
+  metric contract candidate ref; исключений нет. `VERIFIER_VERSION` 93 → 94, `CHECK_VERSION`
+  68 → 69: прогон над таким файлом давал bundle и даёт другой или никакого; historical
+  bundles не переписаны.
+  Не закрыто: JSON-читатели и v1-загрузчики строят такую строку по-прежнему (`decision
+  evidence` над manifest с escape отвечает `evidence.manifest_invalid`, exit 4 — проба);
+  `decision capture` берёт `--environment` с суррогатом как передан и пишет файл, который
+  `decision verify` теперь отвергает одной строкой; таблица модели с пустым именем кончает
+  `decision verify` `ValidationError` при сравнении snapshots (4 прогона побочной пробы из
+  1904); recorded result под ключом, который не id ни одного asset, читается и не
+  спрашивается; печать в поток, который не кодирует символ, кончает команду traceback.
+  Выбор — оркестратор (граница срезов T-50, T-53 и T-54, Astra-выбора по ADR 0006 нет). По
+  решению владельца срез выполнен напрямую Claude Opus 5.5, без MyFlow-исполнителей;
+  модельное ревью по ADR 0006 (Astra xhigh) не проводилось — проверки сделал сам автор, это
+  не независимое ревью. Тесты прогонялись на Mac. Red на копии HEAD с шестью тестовыми
+  модулями рабочего дерева и `yaml_document.py`, где новые имена есть, а загрузчик прежний:
+  76 failed / 576 passed; шесть модулей: 652 passed на 3.12, 3.13 и 3.14. Ручные мутанты —
+  21, убиты все. Контроль на tracked pilot-пакетах: 10 прогонов, вердикт и каждая проверка
+  как на HEAD. Полный offline gate с duckdb: 5352 passed, 4 skipped, 38 deselected, exit 0
+  на 3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
+  [Проверки и границы](docs/DECISIONOPS_SURROGATE_ESCAPES_CHECKS_2026-10-05.md).
+
 - 2026-10-05 — вход `decision verify` и `decision capture`, который прочитан и не принят
   своей схемой, прежде назывался, а дальше печатался перечнем pydantic: строка счёта и на
   каждую ошибку — место, причина со значением и ссылка. Процессные прогоны на HEAD (прогон,

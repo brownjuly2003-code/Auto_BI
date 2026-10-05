@@ -55,7 +55,7 @@ ConstructorError`. Among the contracts of a semantic ref it SHALL give one gap:
 cannot be read: ConstructorError` and the digest of the file's bytes as `source_value_ref`. The
 file stays a part of what the snapshot was read from and is no part of the graph. Every other
 file SHALL be loaded and every product validated as before, and a file PyYAML builds SHALL be
-read exactly as before.
+read exactly as before — but for the file the seventh requirement refuses.
 
 A contract that is a YAML mapping of a known kind and fails its schema SHALL be named, in its
 `contract.invalid` issue, by the `id` its `metadata` declares when `metadata` is a mapping that
@@ -256,6 +256,10 @@ key of a metric contract — the `ValidationError` of the schema of a gap, which
 neither is caught by the command. `decision capture` answered `cannot load candidate semantic ref
 <ref>: ` and the same refusal.
 
+Since the seventh requirement no YAML file hands that string in: a file that spells it is not
+read. The rule stands for a value that reaches the graph another way, and its two scenarios
+below hand the string on past the loader.
+
 A run input that is read and is not what the file must hold SHALL be a usage error that names
 the file:
 
@@ -386,8 +390,9 @@ recorded results. *The six texts PyYAML refuses* and the reason of each:
 
 ### Scenario: a value the graph of a ref has no digest for is said of the ref
 
-- **GIVEN** the run, and a lone surrogate — the escape `"\ud800"` in a double-quoted scalar — as
-  the description of the first table of the `model.yaml`, or as the description of the metric
+- **GIVEN** the run, and a lone surrogate — the string PyYAML builds of the escape `"\ud800"`,
+  handed on past the loader, which refuses such a file by the seventh requirement — as the
+  description of the first table of the `model.yaml`, or as the description of the metric
   contract, of the base ref or of the candidate ref
 - **WHEN** `decision verify` runs, and — for the candidate ref — `decision capture`
 - **THEN** each is refused with `cannot load semantic ref <that ref>: $.tables[0].description:
@@ -397,8 +402,8 @@ recorded results. *The six texts PyYAML refuses* and the reason of each:
 
 ### Scenario: a refusal of another schema is said of the ref, not of its model
 
-- **GIVEN** the run, and a lone surrogate as the first dimension of the metric contract of the
-  base ref or of the candidate ref
+- **GIVEN** the run, and a lone surrogate, handed on past the loader, as the first dimension of
+  the metric contract of the base ref or of the candidate ref
 - **WHEN** `decision verify` runs, and — for the candidate ref — `decision capture`
 - **THEN** each is refused with one line that begins `cannot load semantic ref <that ref>: not
   a valid SemanticGap: reason: ` and does not say `is not a valid semantic model`; no evidence
@@ -1074,7 +1079,8 @@ In the scenarios below *the inputs* are the fixture plan `weekly_margin.yaml` an
 
 ### Scenario: a unit that holds a lone surrogate is refused by the schema
 
-- **GIVEN** the inputs, and the result with a lone surrogate as its `unit`
+- **GIVEN** the inputs, and the result with a lone surrogate as its `unit`, handed on past the
+  loader, which refuses such a file by the seventh requirement
 - **WHEN** the investigation is written
 - **THEN** it is refused with `<the result> is not a valid CanonicalMetricResult: unit: Value
   error, must be text without a lone surrogate`
@@ -1082,7 +1088,7 @@ In the scenarios below *the inputs* are the fixture plan `weekly_margin.yaml` an
 ### Scenario: a row that names a dimension with a lone surrogate is refused by the schema
 
 - **GIVEN** the inputs, and the first row of the result naming its dimension with a lone
-  surrogate
+  surrogate, handed on past the loader
 - **WHEN** the investigation is written
 - **THEN** it is refused with `<the result> is not a valid CanonicalMetricResult: rows.0: Value
   error, row dimension names must be text without a lone surrogate`
@@ -1121,9 +1127,9 @@ In the scenarios below *the inputs* are the fixture plan `weekly_margin.yaml` an
 - **THEN** it exits 2, prints nothing on standard output and one line on standard error, which
   begins `error: cannot read <that file>: ` for the first four and `error: <that file> is not a
   valid <kind>: ` for the other two; the output directory does not exist
-- **AND** the same holds for a result with a lone surrogate as its `unit` or as a name of a
-  dimension of its first row: one line that begins `error: <the result> is not a valid
-  CanonicalMetricResult: ` and ends `without a lone surrogate`
+- **AND** the same holds for a result with a lone surrogate, handed on past the loader, as its
+  `unit` or as a name of a dimension of its first row: one line that begins `error: <the
+  result> is not a valid CanonicalMetricResult: ` and ends `without a lone surrogate`
 
 ### Scenario: inputs that are read give the artifacts they gave
 
@@ -1330,7 +1336,7 @@ not a valid verified asset: ` for a file under the assets path.
 
 - **GIVEN** the run, and one more line in the results file that holds the number 1 under a key
   that is the number `1`, empty text, nothing (`~`), `true`, the text `it's`, the letter `a`, a
-  line break, two spaces and the letter `b`, or a lone surrogate
+  line break, two spaces and the letter `b`, or — handed on past the loader — a lone surrogate
 - **WHEN** `decision verify` runs
 - **THEN** it is refused with `<that file> holds an invalid recorded result for <key>: <root>:
   Input should be a valid dictionary or instance of ResultSet`, the key being `1`, `''`, `None`,
@@ -1367,13 +1373,302 @@ not a valid verified asset: ` for a file under the assets path.
 
 ### Scenario: the commands exit 2 with one line and write nothing
 
-- **GIVEN** the run, and four more keys, or a key that holds a lone surrogate, appended to a
-  run file — for `decision capture`, to the verified asset or to the candidate's `model.yaml`
+- **GIVEN** the run, and four more keys, or a key that holds a lone surrogate and is handed on
+  past the loader, appended to a run file — for `decision capture`, to the verified asset or to
+  the candidate's `model.yaml`
 - **WHEN** `decision verify` runs, or `decision capture`
 - **THEN** the command exits 2, prints nothing on standard output and one line on standard
   error, which begins `error: <that file> ` and holds neither `input_value` nor a link;
   `decision verify` leaves no evidence directory, `decision capture` opens no query and writes
   no output file
+
+## Requirement: an escape that names a surrogate makes a YAML file one that cannot be read
+
+A double-quoted scalar of YAML may name a character by its code, in an escape of sixteen bits
+or of thirty-two. The scanner `yaml.safe_load` runs builds a string from the code of a surrogate
+as well, U+D800 to U+DFFF — half of the UTF-16 form of a character, with no UTF-8 form and no
+form in canonical JSON — and builds two surrogates of the two escapes JSON reads as one
+character outside the basic plane. libyaml refuses each such escape. What became of the string
+was up to whoever read the document next, and the requirements above followed it there: a
+schema refused it in one field and took it in the next, the digest of a ref or of a run had no
+form for it, a report that named a contract by it could not be printed.
+
+Reproduced at HEAD `cbef9e2`, 2026-10-05, PyYAML 6.0.3 and pydantic 2.13.4 on Python 3.13.13,
+with the commands called in the process and the escape `"\ud800"` — alone, and between two
+letters — as each string and each key the fixture's files hold: the product and the metric
+contract under the validated paths, the `model.yaml` and the metric contract of each ref, the
+dashboard spec, the verified asset, the results file, the plan and a result of an
+investigation. 666 places, 1332 documents, 1934 runs:
+
+- 50 ended in an exception nothing handles. Of `decision validate`, 12: `UnicodeEncodeError`
+  while the report was printed to a stream that encodes UTF-8, with the escape as the `kind` or
+  the `id` of a contract or as a dimension of the scope of the product. Of `decision verify`,
+  38: `CanonicalizationError` in 18 — a dimension of the scope of the product, the `kind` or the
+  `id` of the validated metric contract, the title of the dashboard, the id or the title of a
+  chart, the environment or the executor of an attestation — and `ValidationError` in 20 — a
+  dimension or a key of the grain of the validated metric contract (`SemanticGap`), the unit of
+  a column or the text of a cell in the expected and in the recorded result
+  (`ResultDifference`);
+- 4 runs of `decision validate` exited 0: the metric contract passed with the escape as a key
+  of its grain;
+- 464 runs were graded, 4 with exit 3 and 460 with exit 4, by what a schema made of the string
+  or with the string taken, and in 124 `decision capture` went on to the engine;
+- 1292 were refused with exit 2 by whatever met the string first — a schema, the graph of a
+  ref, the lack of a product — in words that say nothing of an escape.
+
+The loader every decision command reads a YAML document with (`auto_bi/yaml_document.py`) SHALL
+refuse a document one of whose scalars holds a surrogate, before anything is built of the
+document. The refusal SHALL be a `SurrogateEscapeError`: a `yaml.MarkedYAMLError`, so that every
+reader answers it as it answers a text PyYAML refuses, with the problem `found an escape that
+names a surrogate`, no cause, and the mark of the place the scalar begins at — its opening
+quote, or the tag or the anchor that stands before it.
+
+Every code from U+D800 to U+DFFF SHALL be refused: named by the escape of sixteen bits or by
+the escape of thirty-two, in small or in capital digits, alone or among other characters, in a
+value, a key, an item of a sequence or a scalar that is the whole document. Two escapes that
+JSON reads as one character SHALL be refused as well; the loader combines nothing. Of several
+such scalars the one named SHALL be the first in the order of the document: a key before its
+value, an entry of a mapping before the next, an item before the next, and what an entry holds
+before the entry after it. A node that aliases repeat SHALL be looked at once and named where
+it is anchored, so that a document that holds itself is read, and one whose aliases multiply
+its nodes is looked at in as many steps as its text names nodes.
+
+What PyYAML refuses itself — a text it cannot scan, parse or compose — SHALL be refused as
+PyYAML refuses it, with its class and its position: a document is composed before it is looked
+at. Nothing SHALL be built of a document that is refused, so that a value beside the escape that
+could not be built — a date that does not exist, `!!binary` that is not base64, a tag the loader
+does not know, a key that cannot be one — does not change the answer.
+
+The letters of such an escape where the scanner replaces nothing SHALL be read as the text they
+are: in single quotes, in a plain scalar, in a block scalar, after an escaped backslash, in a
+comment. A character outside the basic plane SHALL be read as itself and by its own escape of
+thirty-two bits. Every other document SHALL be read exactly as before.
+
+Each reader SHALL answer as the requirements above have it answer a text PyYAML refuses:
+
+- a file under the validated paths is one issue `contract.unreadable`, block, with the message
+  `cannot read contract: SurrogateEscapeError` — whichever contract the file is and wherever the
+  escape stands in it; `decision validate` prints its report, and a product contract with such
+  an escape is no product: `decision verify` over paths that hold no other names the file among
+  the paths that could not be read;
+- a metric contract of a semantic ref is one gap `gap.contract_invalid`, block, with the reason
+  `metric contract cannot be read: SurrogateEscapeError` and the digest of the file's bytes;
+- the `model.yaml` of a ref, a dashboard spec, a verified asset and a results file are a usage
+  error of `decision verify` and of `decision capture`: `cannot read <file>: SurrogateEscapeError
+  at line <n>, column <m>`, exit 2, before any grading, any question to an engine and any
+  write;
+- the plan and a result of `decision investigate` are the same usage error, and the output
+  directory is not created.
+
+A finding that is sealed names the class alone. The line of a usage error names the place and
+quotes nothing of the file. The text of the refusal itself shows the line of the file, as the
+text of an error of PyYAML does, and SHALL be put into no finding and no line.
+
+With the requirement, in the same 1934 runs: 1252 are refused with exit 2 in one line that
+names the refusal; in 82 `decision validate` prints the report that names it and says that no
+product is left; in 480 — `decision validate` and `decision verify` over the validated metric
+contract, `decision verify` over the metric contract of a ref — the command exits 4 with the
+file named as one that cannot be read; in 120 `decision capture` goes on to the engine with the
+metric contract of the candidate ref unread. None ends in an exception.
+
+A run over such a file gave a bundle where a schema took the string or refused it, and gives
+another one now, or none: the verifier version SHALL be 94 and the check version 69. No bundle
+that was written is rewritten.
+
+What stood behind the loader keeps its own answer for such a string — the schemas of the fifth
+requirement, the graph and the digest of a ref, the key of a recorded result, the identity of a
+run. No YAML file hands it to them any more; a reader that is not this loader can, and the
+scenarios of those requirements that hold a lone surrogate are run with the string handed on
+past the loader.
+
+In the scenarios below *such an escape* is `"\ud800"` in a double-quoted scalar unless another
+code is named; *the loader* is `load_yaml_document`; *the run*, *the validated paths* and *the
+inputs* are those of the requirements above.
+
+### Scenario: PyYAML builds a string of such an escape
+
+- **GIVEN** the text `a: "\ud800"`, and the text `a: "\ud83d\ude00"`
+- **WHEN** `yaml.safe_load` reads each
+- **THEN** the first gives a string of one surrogate, which has no UTF-8 form, and the second a
+  string of two
+
+### Scenario: such an escape is refused where its scalar begins
+
+- **GIVEN** a text with one such escape: as a value; as a key; as an item, between two letters;
+  in a flow mapping inside a flow sequence; in the second line of a scalar of two lines; by the
+  escape of thirty-two bits; in capital digits; as the document itself; as the two escapes JSON
+  reads as one character; in a scalar with the tag `!!str`; in a scalar with an anchor
+- **WHEN** the loader reads it
+- **THEN** it is refused with a `SurrogateEscapeError`, which is a `yaml.YAMLError` and has no
+  cause, with the problem `found an escape that names a surrogate`
+- **AND** its mark is the place the scalar begins at — the opening quote, the tag or the anchor
+  — and the reason a reader is given is `SurrogateEscapeError at line <n>, column <m>` of that
+  place: line 1, column 8 for `title: "\ud800"`, line 3, column 5 for an item on the third
+  line, line 1, column 4 for the scalar after `a: ` whose second line holds the escape
+
+### Scenario: the surrogates are refused and what stands next to them is not
+
+- **GIVEN** the text `a: "x<escape>y"` with the escape of sixteen bits, or of thirty-two, of the
+  code D7FF, D800, DBFF, DC00, DFFF or E000
+- **WHEN** the loader reads it
+- **THEN** D800, DBFF, DC00 and DFFF are refused, and D7FF and E000 give the text of three
+  characters
+
+### Scenario: the letters of such an escape are text where nothing is escaped
+
+- **GIVEN** the six letters of the escape in single quotes, in a plain scalar, in a literal
+  block, in a folded block, after an escaped backslash in double quotes, or in a comment
+- **WHEN** the loader reads the text
+- **THEN** it gives what `yaml.safe_load` gives: the letters as text, and for the comment the
+  value that stands before it
+
+### Scenario: a character outside the basic plane is read
+
+- **GIVEN** the character U+1F600 written as itself in double quotes, as itself in a plain
+  scalar, or by its escape of thirty-two bits
+- **WHEN** the loader reads the text
+- **THEN** the value is that one character
+
+### Scenario: the first of several is the one refused
+
+- **GIVEN** a text with such an escape in a key and in its value; in two entries; inside the
+  first entry and in the entry after it; in the second item of a sequence and in the key after
+  the sequence; in two items
+- **WHEN** the loader reads it
+- **THEN** the place named is the key's, the first entry's, the one inside the first entry, the
+  item's, and the first item's
+
+### Scenario: a node that aliases repeat is looked at once
+
+- **GIVEN** the lines `a: ok`, `b: &held ["\ud800"]` and `c: *held`
+- **WHEN** the loader reads them
+- **THEN** the text is refused at line 2, column 11, where the scalar stands under its anchor
+- **AND** the document `&all [*all, "\ud800"]`, which holds itself, is refused at line 1,
+  column 13, and `&all [*all, b]` and `a: &held {b: *held, c: [*held]}` are read, each holding
+  itself — within a count of calls that a walk without an end would pass, and that ends such a
+  walk as a failed test
+- **AND** of sixteen sequences, each holding the one before it twice — two scalars repeated
+  65536 times — eighteen scalars are looked at: the two and the sixteen keys
+- **AND** a scalar under a hundred flow sequences is refused at line 1, column 101
+
+### Scenario: a text PyYAML refuses itself is refused as PyYAML refuses it
+
+- **GIVEN** the line `a: "\ud800"` followed by the line `b: [`
+- **WHEN** the loader reads the text
+- **THEN** it is refused with the `ParserError` `yaml.safe_load` raises for it, in the same
+  words
+
+### Scenario: composing a document and building it convert what they raise alike
+
+- **GIVEN** a text PyYAML reads, and composing its document, or building it, raising
+  `MemoryError`, `KeyboardInterrupt`, `SystemExit` or a `LookupError`
+- **WHEN** the loader reads the text
+- **THEN** the first three are raised as they are, and the fourth is a `ConstructorError` with
+  the `LookupError` as its cause and the text `LookupError while the document was built`
+
+### Scenario: nothing is built of a document that holds such an escape
+
+- **GIVEN** a text with such an escape and, beside it, something PyYAML refuses while it builds:
+  a date that does not exist on the line before; the tag `!!int` or `!!binary` on the scalar
+  itself; a tag the loader does not know on the line after; a sequence, which cannot be a key,
+  holding the scalar
+- **WHEN** the loader reads it
+- **THEN** it is refused with `SurrogateEscapeError` at the place of the scalar
+
+### Scenario: what the refusal says of itself is not what a finding keeps
+
+- **GIVEN** the text `owner: "held by the file \ud800"`
+- **WHEN** the loader refuses it
+- **THEN** the text of the refusal begins with the problem, names line 1, column 8 and shows the
+  line of the file; the reason a reader is given holds nothing of that line
+
+### Scenario: a validated file with such an escape is an unreadable contract
+
+- **GIVEN** the validated paths, and one more metric contract `revenue.yaml` whose description
+  is such an escape
+- **WHEN** the paths are validated
+- **THEN** the one issue is `contract.unreadable`, block, with the path of the file as its
+  subject and its source and the message `cannot read contract: SurrogateEscapeError`; the
+  product and the metric of the fixture are validated as before, and the verdict is block
+- **AND** with a lone surrogate — alone, or between two letters — as any one string or key of
+  the product contract or of the metric contract, written to the file as PyYAML writes it, the
+  first issue is that issue of that file and the file has no other
+
+### Scenario: decision validate prints the finding
+
+- **GIVEN** the validated paths, and one more metric contract whose `kind`, or whose `id`, is
+  such an escape
+- **WHEN** `decision validate` runs with a standard output that encodes UTF-8
+- **THEN** it exits 4 and prints the issue — `block`, `contract.unreadable` and the path, then
+  the message and the path in brackets — and, as its last line, `verdict: block (1 product(s),
+  1 metric contract(s), 1 issue(s))`
+- **AND** with `--json` the issues of the report are that one issue
+
+### Scenario: a product with such an escape leaves no product to verify
+
+- **GIVEN** the run, and such an escape as the first dimension of the scope of its product
+  contract
+- **WHEN** `decision verify` runs
+- **THEN** it is refused with one line that ends `; 1 path(s) could not be read: <that file>
+  (cannot read contract: SurrogateEscapeError)`
+
+### Scenario: a metric contract of a ref with such an escape is a gap
+
+- **GIVEN** the base ref, and a lone surrogate — alone, or between two letters — as any one
+  string or key of its metric contract, written to the file as PyYAML writes it
+- **WHEN** the ref is frozen
+- **THEN** the snapshot has one gap: `gap.contract_invalid`, block, with the path
+  `contracts.gross_margin_pct.yaml`, the reason `metric contract cannot be read:
+  SurrogateEscapeError` and the digest of the file's bytes as `source_value_ref`; its graph
+  holds no metric
+
+### Scenario: the gate blocks on a contract with such an escape
+
+- **GIVEN** the run, and such an escape as the `id`, the first dimension, the first key of the
+  grain or the description of the validated metric contract
+- **WHEN** the gate runs
+- **THEN** the verdict is block; `contracts.validate` blocks with `contracts.issues`, and its
+  issues are `contract.unreadable` of the file and `metric_ref.unknown` of the pin of the
+  product
+- **AND** the verifier version is at least 94 and the check version at least 69
+- **AND** with such an escape as the description or the first dimension of the metric contract
+  of the base ref, or of the candidate ref, `semantic.gaps` blocks with
+  `semantic.gaps_present`; the gaps of that ref are the one gap of the file, and the other ref
+  has none
+
+### Scenario: no place of a run file takes such an escape
+
+- **GIVEN** the run, and a lone surrogate — alone, or between two letters — as any one string
+  or key of the `model.yaml` of the base ref or of the candidate ref, of the dashboard spec, of
+  the verified asset or of the results file, written to the file as PyYAML writes it
+- **WHEN** `decision verify` runs, and — for the verified asset and the candidate's model —
+  `decision capture`
+- **THEN** each is refused with `cannot read <that file>: SurrogateEscapeError at line <n>,
+  column <m>`, the place the scalar begins at — where a schema took the string before, where a
+  schema refused it and where nothing read it
+
+### Scenario: the commands exit 2 with the file and the place
+
+- **GIVEN** the run, and such an escape as the description of the first table of the model of
+  the base ref or of the candidate ref, the title of the dashboard spec, the question of the
+  verified asset or the first cell of the recorded result
+- **WHEN** `decision verify` runs, and — for the verified asset and the candidate's model —
+  `decision capture`
+- **THEN** the command exits 2, prints nothing on standard output and the one line `error:
+  cannot read <that file>: SurrogateEscapeError at line <n>, column <m>` on standard error;
+  `decision verify` leaves no evidence directory, `decision capture` opens no query and writes
+  no output file
+
+### Scenario: no place of an input of an investigation takes such an escape
+
+- **GIVEN** the inputs, and a lone surrogate — alone, or between two letters — as any one
+  string or key of the plan or of the result, written to the file as PyYAML writes it
+- **WHEN** the investigation is written
+- **THEN** it is refused with `cannot read <that file>: SurrogateEscapeError at line <n>,
+  column <m>`
+- **AND** `decision investigate` over a result whose `unit` is such an escape, or over a plan
+  with such an escape as a key in place of its `kind`, exits 2 with that one line on standard
+  error, nothing on standard output and no output directory
 
 ## Known boundaries
 
@@ -1387,8 +1682,11 @@ not a valid verified asset: ` for a file under the assets path.
 - A document nested past the stack is reported as `ConstructorError` like a value that cannot be
   built, although it is the composer that runs out of stack.
 - The first requirement covers the contract files, the second and the sixth the run inputs of
-  `decision verify` and `decision capture`, the fifth the inputs of `decision investigate`. The
-  loaders of the v1 runtime read YAML by themselves and are not changed.
+  `decision verify` and `decision capture`, the fifth the inputs of `decision investigate`, the
+  seventh every YAML file those read. The loaders of the v1 runtime read YAML by themselves and
+  are not changed: `SemanticModel.load`, which the v1 commands read a model with,
+  `auto_bi/auth.py`, and the `load` of `MetricContract` and of `DecisionProductSpec`, which
+  nothing in the package calls, still build a string of an escape that names a surrogate.
 - The sixth requirement covers the files a run is handed. What `decision capture` says after
   `cannot capture <asset id>: ` is the text of whatever was raised, as it reads. Reproduced in
   the process with a query that answers: a `--captured-at` that is no RFC 3339 UTC timestamp —
@@ -1396,27 +1694,52 @@ not a valid verified asset: ` for a file under the assets path.
   exits 2 with four lines of pydantic's listing for a `ResultAttestation`, and only after the
   query was run; an `--environment` of blanks, of two lines or with a lone surrogate is attested
   as it is given, and the file is written.
-- A lone surrogate as a value of a run input is covered only where a schema refuses it. Asked in
-  the process at every string and every key of the fixture's files, alone and between two
-  letters — 800 documents, 1200 runs of the two commands: every refusal is one line, where 642
-  were of 3 to 7 lines at HEAD; and in 22 runs, as at HEAD, `decision verify` ends in an
-  exception nothing handles. A schema took the value, and the digest of the run has no form for
-  it — `CanonicalizationError`: the title of the dashboard, the id and the title of a chart,
-  the environment and the executor of an attestation — or the comparison of the results cannot
-  quote it — the `ValidationError` of a `ResultDifference`: the unit of a column and the text
-  of a cell, in the expected result of the asset and in the recorded result alike. In 368 more
-  the run is graded or the capture reaches the engine.
+- A lone surrogate reaches no reader from a YAML file (seventh requirement). What stands behind
+  the loader — a schema, the graph and the digest of a ref, the identity of a run — is held to
+  its own answer for one only by tests that hand the string on past the loader. It still comes
+  in other ways. JSON spells it by the same escape and `json.loads` builds it: reproduced over
+  a written bundle with the escape written into seven text fields of its manifest in turn —
+  `decision evidence` answers `evidence.manifest_invalid` and exits 4, in text and with `--json`
+  — and into two of its artifacts — `evidence.digest_mismatch`; the plan of a query an engine
+  hands back as text and the manifest of a dbt project the v1 import reads were not asked. And
+  an argument of the command line is taken as it is given: reproduced, `decision capture` with
+  an `--environment` that holds a lone surrogate runs the query, exits 0 and writes the escape
+  into the file, which `decision verify` then refuses with `cannot read <file>:
+  SurrogateEscapeError at line 19, column 22` — where at HEAD it ended in
+  `CanonicalizationError`.
+- Two escapes that JSON reads as one character are refused, not combined: PyYAML builds two
+  surrogates of them, and libyaml refuses each (`found invalid Unicode character escape code`,
+  PyYAML 6.0.3). A file some writer exported that way is unreadable until the character is
+  written as itself or by its escape of thirty-two bits.
+- The place named is where the scalar begins — its opening quote, or the tag or the anchor
+  before it — not where the escape stands: in a scalar of several lines the escape may be lines
+  below. Of several such scalars only the first is named.
+- A contract that spelled such an escape where its schema took the string was graded as the
+  contract PyYAML built. Asked at every string and key of the fixture's metric contract under
+  the validated paths, that was 4 runs of 120 of `decision validate`, which passed with the
+  escape as a key of the grain and block now.
+- `decision capture` goes on to the engine with a metric contract of the candidate ref that
+  spells such an escape — 120 runs of 120 — as it did at HEAD wherever the schema of the
+  contract refused the string, 112 of them: the gap is the snapshot's, and a capture grades
+  nothing.
+- Every document is composed, looked at and then built, where `yaml.safe_load` did it in one
+  call. Timed on the fixture's `model.yaml` and on a model of 4039 lines, the best of seven:
+  2.66 ms against 2.72 ms of `yaml.safe_load`, and 210.5 ms against 209.8 ms — no difference
+  the measure can tell.
 - An empty `model.yaml` is read three ways, as before: of the base ref it is a model of nothing
   and the run is graded; of the candidate ref `decision verify` refuses it with `<file> must
   contain a mapping`, and `decision capture` goes on to the engine.
 - The key of a recorded result is not looked at when the file is read. Reproduced: a result that
-  is one, under a key that holds a lone surrogate where the id of the asset stood, is read and
-  the run is graded.
+  is one, under a key that is the id of no asset — a word, a number — beside the result of the
+  run, is read and never asked for, and the run is graded as without it; the result of the run
+  under such a key alone leaves the asset with none — `results.reconcile` is review with
+  `result.not_equivalent`, `results.provenance` advisory with `provenance.no_results`.
 - The reasons of the fifth and of the sixth requirement are pydantic's sentences, of the version
   installed — 2.13.4 where the scenarios were run; another version may word them differently. A
   place that is a key holding a lone surrogate is given by pydantic in replacement characters;
   a key of a run file that holds one is refused at no place, `<root>: Input should be a valid
-  string, unable to parse raw data as a unicode string`.
+  string, unable to parse raw data as a unicode string`. No YAML file hands such a key in any
+  more (seventh requirement).
 - One line means no line break: every run of whitespace in a refusal is one space. Any other
   character of a key, or of a value a validator quotes, is printed as it is — an escape
   character among them.
@@ -1459,10 +1782,16 @@ not a valid verified asset: ` for a file under the assets path.
   there that cannot be read ends the run of every product, as one the schema refuses always did.
 - `cannot load semantic ref <ref>: ` is followed by what refused, in one line: the place of a
   value in the graph, or `not a valid <schema>: ` and the refusals of a schema no file is
-  written against. The value is not graded as a gap of the file that held it. The same value
-  under the validated paths is not covered at all: reproduced, a lone surrogate as a dimension
-  of a validated metric contract ends the use case of `decision verify` in the
-  `ValidationError` of the schema of a gap.
+  written against. The value is not graded as a gap of the file that held it. The one value
+  known to reach that answer was a lone surrogate, which no file hands in any more. Asked in
+  the process with 14 other values — an integer past the safe range and its negative, a float,
+  not-a-number, infinity, a truth value, nothing, a list, a mapping, empty text, a line break,
+  a control character, a character outside the basic plane, a text of 70000 characters — at
+  every scalar place of the `model.yaml` and of the metric contract of both refs, 1904 runs of
+  `decision verify`: none is answered so, and 4 end in an exception nothing handles. A table
+  of either model named with empty text is taken by the schema of the model and refused where
+  the two snapshots are compared — reproduced on the first table, the `ValidationError` of a
+  `SemanticChange`.
 - The manifest is one write and the last one, so a refused write leaves none; nothing makes that
   one write atomic. Reproduced with a manifest cut in half: the repeated run exits 2 with `run
   '<id>' already holds bundle <digest>; refusing to overwrite it with <digest>` and `decision
@@ -1471,9 +1800,13 @@ not a valid verified asset: ` for a file under the assets path.
   a key of the document as the place of a refusal, the key of a recorded result, a value the
   validator of a schema puts into its reason. It is printed to the standard error stream and is
   never sealed.
-- A contract whose issue is printed with a character the output stream cannot encode still ends
-  `decision validate` in a traceback while the report is printed: reproduced with a lone
-  surrogate, written as an escape in a quoted `id`, on a UTF-8 stream.
+- What a command prints goes to a stream that refuses a character it cannot encode. No file
+  puts a lone surrogate into a report any more, so a stream that encodes UTF-8 takes what the
+  seven requirements print. Reproduced with streams that encode ASCII and the fixture under a
+  directory named in Cyrillic: `decision validate` prints a clean report and ends in
+  `UnicodeEncodeError` once an issue names a file; `decision verify` ends in it while its checks
+  are printed, at a detail that holds a section sign — the use case has returned its report by
+  then — and before anything is written when the one line of its usage error names a file.
 - A value PyYAML builds and the schema refuses is `contract.invalid` (validated paths) or
   `gap.contract_invalid` with `metric contract does not validate` (semantic ref), as before; an
   unquoted date where the schema wants text is such a value.

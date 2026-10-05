@@ -65,6 +65,7 @@ from tests.test_decision_verify import (
     summary_of,
     verified_asset,
 )
+from tests.test_unreadable_run_inputs import _past_the_loader
 
 ROWS = [["Москва", "0.412"], ["Казань", "0.377"]]
 OTHER_ROWS = [["Москва", "0.500"], ["Казань", "0.377"]]
@@ -808,8 +809,10 @@ def _contract_description(root: Path, escape: str) -> GateReport:
 
 @pytest.mark.parametrize("run", [_model_synonym, _contract_description])
 def test_a_lone_surrogate_outside_the_sealed_evidence_does_not_stop_the_run(
-    tmp_path: Path, run: Callable[[Path, str], GateReport]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run: Callable[[Path, str], GateReport]
 ) -> None:
+    """The key has a form for it. No YAML file hands it in: the loader refuses the escape."""
+    _past_the_loader(monkeypatch)
     first = run(tmp_path / "d800", "\\ud800")
     second = run(tmp_path / "d801", "\\ud801")
 
@@ -819,8 +822,9 @@ def test_a_lone_surrogate_outside_the_sealed_evidence_does_not_stop_the_run(
 
 
 def test_a_character_and_the_surrogates_that_would_spell_it_are_two_runs(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _past_the_loader(monkeypatch)
     spelled = _model_synonym(tmp_path / "surrogates", "\\ud83d\\ude00", code_points=2)
     written = _model_synonym(tmp_path / "character", chr(0x1F600))
 

@@ -467,7 +467,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: the issue and a run that could pass. A directory of a semantic ref or of the verified
 #: assets that cannot be listed now ends the run before any bundle, where verifier 92
 #: froze the ref and loaded the assets without what the directory holds.
-VERIFIER_VERSION = "93"
+#: 94 — a YAML file that spells a surrogate in an escape is not read. Under the validated
+#: paths it is a contract.unreadable issue the gate grades and seals, a metric contract of a
+#: semantic ref is a gap.contract_invalid gap, and any other file of a run ends the run
+#: before any bundle. Verifier 93 read the string PyYAML builds of the escape: where a
+#: schema took it, the run was graded with it or ended in an exception.
+VERIFIER_VERSION = "94"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -716,7 +721,10 @@ VERIFIER_VERSION = "93"
 #: graded by contracts.validate, where rule 66 blocked, reviewed or advised by it.
 #: 68 — contracts.validate blocks on a directory under the validated paths that could not
 #: be listed, where rule 67 graded a report that read it as an empty directory.
-CHECK_VERSION = "68"
+#: 69 — contracts.validate blocks on a validated file, and semantic.gaps on a metric contract
+#: of a ref, that spells a surrogate in an escape, where rule 68 graded the contract PyYAML
+#: built of the file.
+CHECK_VERSION = "69"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the

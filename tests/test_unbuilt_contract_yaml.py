@@ -145,17 +145,37 @@ def test_a_document_pyyaml_builds_is_returned_as_it_builds_it(text: str) -> None
     assert repr(load_yaml_document(text)) == repr(yaml.safe_load(text))
 
 
+@pytest.mark.parametrize("step", ["get_single_node", "construct_document"])
 @pytest.mark.parametrize("raised", [MemoryError, KeyboardInterrupt, SystemExit])
 def test_what_says_nothing_about_the_document_is_not_converted(
-    monkeypatch: pytest.MonkeyPatch, raised: type[BaseException]
+    monkeypatch: pytest.MonkeyPatch, raised: type[BaseException], step: str
 ) -> None:
-    def refuse(_text: str) -> Any:
+    """Whether it is raised while the document is composed or while it is built."""
+
+    def refuse(*_args: Any) -> Any:
         raise raised
 
-    monkeypatch.setattr(yaml, "safe_load", refuse)
+    monkeypatch.setattr(yaml.SafeLoader, step, refuse)
 
     with pytest.raises(raised):
         load_yaml_document("kind: MetricContract\n")
+
+
+@pytest.mark.parametrize("step", ["get_single_node", "construct_document"])
+def test_what_else_is_raised_at_either_step_is_a_document_that_cannot_be_built(
+    monkeypatch: pytest.MonkeyPatch, step: str
+) -> None:
+    def refuse(*_args: Any) -> Any:
+        raise LookupError("what the file holds")
+
+    monkeypatch.setattr(yaml.SafeLoader, step, refuse)
+
+    with pytest.raises(yaml.YAMLError) as caught:
+        load_yaml_document("kind: MetricContract\n")
+
+    assert type(caught.value) is ConstructorError
+    assert type(caught.value.__cause__) is LookupError
+    assert str(caught.value) == "LookupError while the document was built"
 
 
 # --- the validated paths --------------------------------------------------------

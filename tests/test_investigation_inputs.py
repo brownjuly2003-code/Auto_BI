@@ -35,6 +35,7 @@ from tests.test_unreadable_run_inputs import (
     NOT_A_MAPPING,
     REFUSED_AT,
     _deny,
+    _past_the_loader,
     _said_of,
 )
 
@@ -409,9 +410,16 @@ def test_the_reason_of_a_schema_gives_no_value_of_the_document() -> None:
 
 
 # --- a value the artifacts have no form for -------------------------------------------
+#
+# The loader refuses a file that spells a surrogate, so no file hands one to the schema
+# (`tests/test_surrogate_escapes.py`). The schema refuses it by itself all the same: the
+# tests below that go through a file hand it in past the loader.
 
 
-def test_a_unit_that_holds_a_lone_surrogate_is_refused_by_the_schema(tmp_path: Path) -> None:
+def test_a_unit_that_holds_a_lone_surrogate_is_refused_by_the_schema(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _past_the_loader(monkeypatch)
     inputs = Inputs(tmp_path)
     _replace(inputs.result, "unit: RUB", f"unit: {LONE_SURROGATE}")
 
@@ -421,8 +429,9 @@ def test_a_unit_that_holds_a_lone_surrogate_is_refused_by_the_schema(tmp_path: P
 
 
 def test_a_row_dimension_named_with_a_lone_surrogate_is_refused_by_the_schema(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _past_the_loader(monkeypatch)
     inputs = Inputs(tmp_path)
     _replace(inputs.result, FIRST_ROW, ROW_WITH.format(dimension=f"{LONE_SURROGATE}: A"))
 
@@ -431,7 +440,10 @@ def test_a_row_dimension_named_with_a_lone_surrogate_is_refused_by_the_schema(
     )
 
 
-def test_such_a_name_is_refused_when_what_it_holds_is_refused_first(tmp_path: Path) -> None:
+def test_such_a_name_is_refused_when_what_it_holds_is_refused_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _past_the_loader(monkeypatch)
     inputs = Inputs(tmp_path)
     _replace(inputs.result, FIRST_ROW, ROW_WITH.format(dimension=f"{LONE_SURROGATE}: 5"))
 
@@ -590,8 +602,13 @@ def test_decision_investigate_exits_2_with_one_line_and_writes_nothing(
     ids=["the unit", "a dimension name"],
 )
 def test_decision_investigate_exits_2_for_a_value_the_artifacts_have_no_form_for(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], dimension: str, unit: str
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    dimension: str,
+    unit: str,
 ) -> None:
+    _past_the_loader(monkeypatch)
     inputs = Inputs(tmp_path)
     _replace(inputs.result, "unit: RUB", f"unit: {unit}")
     _replace(inputs.result, FIRST_ROW, ROW_WITH.format(dimension=dimension))

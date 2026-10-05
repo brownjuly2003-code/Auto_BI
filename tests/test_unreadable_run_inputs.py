@@ -19,7 +19,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from auto_bi import cli
+from auto_bi import cli, yaml_document
 from auto_bi.cli import main
 from auto_bi.decision.use_cases import (
     CaptureRequest,
@@ -85,7 +85,8 @@ NOT_A_MAPPING = [
 ]
 
 #: A lone surrogate as a YAML file holds one: an escape in a double-quoted scalar. PyYAML
-#: builds the string and the schemas accept it; no digest has a form for it.
+#: builds a string of it, and the loader of this program refuses the file
+#: (`tests/test_surrogate_escapes.py`).
 LONE_SURROGATE = '"' + chr(92) + 'ud800"'
 
 
@@ -151,6 +152,16 @@ def _plant_lone_surrogate(path: Path, *keys: str | int) -> None:
     text = yaml.safe_dump(document, allow_unicode=True, sort_keys=False)
     assert text.count("PLANTED") == 1
     path.write_text(text.replace("PLANTED", LONE_SURROGATE), encoding="utf-8")
+
+
+def _past_the_loader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hand what reads a YAML document the string PyYAML builds of an escaped surrogate.
+
+    No file does that any more: the loader refuses it. What stands behind the loader — a
+    schema, the graph of a ref, a digest, a line that is printed — is still held to its own
+    answer for such a string, which a reader that is not this loader can hand it.
+    """
+    monkeypatch.setattr(yaml_document, "_refuse_surrogates", lambda document: None)
 
 
 def _said_of(line: str, raised: type[BaseException]) -> str:
@@ -233,10 +244,10 @@ def test_the_reason_says_what_was_raised_while_a_document_was_built(
 def test_what_was_raised_is_given_in_one_line(
     monkeypatch: pytest.MonkeyPatch, raised: Exception, reason: str
 ) -> None:
-    def refuse(text: str) -> Any:
+    def refuse(*_args: Any) -> Any:
         raise raised
 
-    monkeypatch.setattr(yaml, "safe_load", refuse)
+    monkeypatch.setattr(yaml.SafeLoader, "construct_document", refuse)
     with pytest.raises(yaml.YAMLError) as caught:
         load_yaml_document("kind: MetricContract\n")
     assert unread_reason(caught.value) == f"ConstructorError ({reason})"
@@ -399,9 +410,15 @@ def test_a_model_that_is_read_and_is_no_model_is_named_as_that(
     ],
 )
 def test_a_value_the_graph_has_no_digest_for_is_said_of_the_ref(
-    tmp_path: Path, ref: str, file: str, keys: tuple[str | int, ...], refused: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ref: str,
+    file: str,
+    keys: tuple[str | int, ...],
+    refused: str,
 ) -> None:
     """Read, and accepted by the schema of its file: the digest's refusal names no file."""
+    _past_the_loader(monkeypatch)
     case = _case(tmp_path)
     root = case.root / ref
     _plant_lone_surrogate(root / file, *keys)
@@ -412,12 +429,15 @@ def test_a_value_the_graph_has_no_digest_for_is_said_of_the_ref(
 
 
 @pytest.mark.parametrize("ref", ["base", "candidate"])
-def test_a_refusal_of_another_schema_is_said_of_the_ref(tmp_path: Path, ref: str) -> None:
+def test_a_refusal_of_another_schema_is_said_of_the_ref(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ref: str
+) -> None:
     """Only what the schema of the model refuses is said of `model.yaml`.
 
     A dimension the schema of the contract accepts and no gap can quote: the refusal is the
     one of the gap's schema, raised while the graph of the ref is built.
     """
+    _past_the_loader(monkeypatch)
     case = _case(tmp_path)
     root = case.root / ref
     _plant_lone_surrogate(root / "metrics" / "gross_margin_pct.yaml", "dimensions", 0)

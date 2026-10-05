@@ -620,7 +620,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=93`, `CHECK_VERSION=68`.
+`VERIFIER_VERSION=94`, `CHECK_VERSION=69`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -1564,6 +1564,21 @@ look at path: <класс>`), block: отчёт валидации отвеча�
 перечисляется, и вход прогона, на который нельзя посмотреть, — usage error `error:
 cannot read <путь>: <класс>`. Когда среди прочитанного нет продукта, `decision verify`
 называет пути, которые прочитать не удалось.
+
+YAML-файл, чей double-quoted scalar называет escape-последовательностью суррогат
+(U+D800–U+DFFF), не читается. Сканер PyYAML строит из такого escape строку, у которой нет
+ни UTF-8-формы, ни формы в canonical JSON, и что с ней будет, прежде решал следующий
+читатель: схема её принимала или отвергала, digest не мог её записать, отчёт с ней не
+печатался. Общий загрузчик decision-команд (`auto_bi/yaml_document.py`) отвергает документ
+до того, как из него что-либо построено: `SurrogateEscapeError` с позицией начала скаляра.
+Каждый читатель отвечает как на текст, который отвергает сам PyYAML: `contract.unreadable`
+под validated paths, `gap.contract_invalid` для metric contract semantic ref, `error: cannot
+read <файл>: SurrogateEscapeError at line <n>, column <m>` для входа прогона и входа
+`investigate`. Пара escape, которую JSON читает как один символ вне BMP, отвергается так
+же: загрузчик ничего не склеивает, как не склеивает PyYAML, а libyaml такой escape не
+принимает вовсе. Слои за загрузчиком — схемы, граф ref, identity прогона — свой ответ на
+такую строку сохраняют: её по-прежнему может подать читатель, который не этот загрузчик
+([files a command cannot read](specs/unreadable-inputs.md), седьмое требование).
 
 Реализовано:
 

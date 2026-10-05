@@ -10,9 +10,79 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=93`, `CHECK_VERSION=68`
+**Версии evidence:** `VERIFIER_VERSION=94`, `CHECK_VERSION=69`
 
-**Последний срез (2026-10-05):** отказ схемы для входа прогона гейта говорится одной
+**Последний срез (2026-10-05):** escape, называющий суррогат, делает YAML-файл нечитаемым.
+Double-quoted scalar YAML может назвать символ кодом, и сканер, которым работает
+`yaml.safe_load`, строит строку и из кода суррогата (U+D800–U+DFFF) — половины UTF-16-записи
+символа, у которой нет ни UTF-8-формы, ни формы в canonical JSON; из пары escape, которую
+JSON читает как один символ, он строит два суррогата, а libyaml каждый такой escape
+отвергает. Что будет со строкой дальше, решал следующий читатель: схема в одном поле
+отвергала её, в соседнем принимала, у digest ref или прогона не было для неё формы, отчёт с
+ней не печатался. На HEAD вызовом команд в процессе, суррогат U+D800 — один и между двумя
+буквами — на месте каждой строки и каждого ключа файлов фикстуры, записанный escape (666
+мест, 1332 документа, 1934 прогона): 50 исключений, которые никто не ловит (`decision
+validate` — 12 `UnicodeEncodeError` при печати отчёта в поток UTF-8; `decision verify` — 18
+`CanonicalizationError` и 20 `ValidationError`), 4 прогона `decision validate` с exit 0
+(metric contract с escape на месте ключа grain прошёл), 464 оценённых прогона, 124 прогона
+`decision capture` до движка и 1292 отказа с exit 2, где об escape ни слова. Теперь общий
+загрузчик (`auto_bi/yaml_document.py`), которым YAML читает каждая decision-команда,
+отвергает документ, чей скаляр держит суррогат, до того как из документа что-либо построено:
+`SurrogateEscapeError` — `yaml.MarkedYAMLError` с problem `found an escape that names a
+surrogate` и позицией начала скаляра (открывающая кавычка либо тег или якорь перед ней).
+Отвергается каждый код U+D800–U+DFFF, названный escape в 16 или 32 бита, строчными или
+заглавными цифрами, в значении, ключе, элементе списка и скаляре-документе; пара, которую
+JSON читает как один символ, — тоже: загрузчик ничего не склеивает. Из нескольких назван
+первый по порядку документа; узел, который повторяют alias, просмотрен один раз, поэтому
+документ, держащий сам себя, читается. Текст, который PyYAML отвергает сам, отвергается как
+прежде — класс и позиция его; из отвергнутого документа ничего не строится. Буквы escape
+там, где сканер ничего не заменяет (одинарные кавычки, plain и block scalar, после
+экранированной обратной косой черты, комментарий), — текст; символ вне BMP читается сам и
+своим escape в 32 бита. Каждый читатель отвечает как на текст, отвергнутый PyYAML: файл под
+validated paths — `contract.unreadable` (`cannot read contract: SurrogateEscapeError`),
+block, и `decision validate` печатает отчёт; metric contract semantic ref — gap
+`gap.contract_invalid` (`metric contract cannot be read: SurrogateEscapeError`);
+`model.yaml` ref, dashboard spec, verified asset, results file и входы `decision
+investigate` — usage error `cannot read <файл>: SurrogateEscapeError at line <n>, column
+<m>`, exit 2, до грейда, движка и записи. Запечатанный finding называет только класс; строка
+usage error — место и ничего из файла. На рабочем дереве те же 1934 прогона: 1252 — exit 2
+с одной строкой, которая называет отказ; 82 — `decision validate` печатает отчёт с ним и
+сообщает, что продукта нет; 480 — exit 4, файл назван нечитаемым; 120 — `decision capture`
+идёт к движку с непрочитанным metric contract candidate ref; исключений нет.
+`VERIFIER_VERSION` 93 → 94, `CHECK_VERSION` 68 → 69: прогон над таким файлом давал bundle и
+даёт другой или никакого; historical bundles не переписаны.
+Границы: слои за загрузчиком (схемы, граф и digest ref, ключ recorded result, identity
+прогона) держат свой ответ на такую строку только тестами, которые подают её мимо
+загрузчика; JSON-читатели строят её по-прежнему (проба: `decision evidence` над manifest с
+escape в семи текстовых полях — `evidence.manifest_invalid`, exit 4; план запроса от движка
+и dbt manifest не спрашивались), как и v1-загрузчики (`SemanticModel.load`, `auth.py`);
+аргумент командной строки берётся как передан — `decision capture` с суррогатом в
+`--environment` исполняет запрос, выходит с 0 и пишет escape в файл, который `decision
+verify` теперь отвергает одной строкой (на HEAD — `CanonicalizationError`); пара escape не
+склеивается, и файл с ней нечитаем, пока символ не записан сам или escape в 32 бита; названо
+начало скаляра, а не место escape; `decision capture` идёт к движку с нечитаемым metric
+contract candidate ref, как и прежде при отказе схемы. Побочная проба (14 других значений на
+каждом скалярном месте `model.yaml` и metric contract обоих refs, 1904 прогона `decision
+verify`): ответа `cannot load semantic ref` не даёт ни одно, а 4 прогона кончаются
+`ValidationError` — таблица модели с пустым именем принята схемой модели и отвергнута при
+сравнении snapshots. Recorded result под ключом, который не id ни одного asset, читается и
+не спрашивается. Печать в поток, не кодирующий символ, по-прежнему кончает команду traceback
+(проба: ASCII-потоки, путь кириллицей — `decision verify` падает на детали проверки с
+символом параграфа).
+Выбор — оркестратор (граница срезов T-50, T-53 и T-54, Astra-выбора по ADR 0006 нет). По
+решению владельца срез выполнен напрямую Claude Opus 5.5, без MyFlow-исполнителей; модельное
+ревью по ADR 0006 (Astra xhigh) не проводилось — проверки сделал сам автор, это не
+независимое ревью. Тесты прогонялись на Mac. Red на копии HEAD с шестью тестовыми модулями
+рабочего дерева и `yaml_document.py`, где новые имена есть, а загрузчик прежний: 76 failed /
+576 passed — падают тесты нового модуля, которые требуют отказа; на рабочем дереве шесть
+модулей — 652 passed на 3.12, 3.13 и 3.14. Ручные мутанты — 21, убиты все. Контроль на
+tracked pilot-пакетах: 10 прогонов, вердикт и каждая проверка как на HEAD. Полный offline
+gate с duckdb: 5352 passed, 4 skipped, 38 deselected, exit 0 на 3.13, столько же passed на
+3.12 и 3.14; Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
+[Проверки и границы](DECISIONOPS_SURROGATE_ESCAPES_CHECKS_2026-10-05.md),
+[спека](specs/unreadable-inputs.md).
+
+**Предыдущий срез (2026-10-05):** отказ схемы для входа прогона гейта говорится одной
 строкой. `decision verify` и `decision capture` называли вход, который прочитан и не принят
 схемой (`model.yaml` base или candidate ref, dashboard spec, verified asset, recorded
 results), и дальше печатали брошенное pydantic так, как он это перечисляет: строка счёта и

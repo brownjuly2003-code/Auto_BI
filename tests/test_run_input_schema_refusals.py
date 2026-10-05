@@ -41,6 +41,7 @@ from tests.test_unreadable_run_inputs import (
     _capture_refused,
     _case,
     _never,
+    _past_the_loader,
     _refused,
     _results,
 )
@@ -331,9 +332,13 @@ def test_the_first_result_that_is_none_ends_the_reading(tmp_path: Path) -> None:
     ],
 )
 def test_the_key_of_a_result_is_named_as_the_file_gives_it(
-    tmp_path: Path, line: str, named: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, line: str, named: str
 ) -> None:
-    """Nothing has required the key to be an asset id yet: it is named as it reads, in one line."""
+    """Nothing has required the key to be an asset id yet: it is named as it reads, in one line.
+
+    The key that holds a lone surrogate reaches this past the loader, which refuses the file.
+    """
+    _past_the_loader(monkeypatch)
     case = _case(tmp_path)
     path = _results(case)
     _append(path, line)
@@ -474,8 +479,13 @@ def test_what_else_is_raised_for_a_result_is_said_under_its_key_in_one_line(
     ],
 )
 def test_decision_verify_exits_2_with_one_line_and_writes_nothing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], which: str, more: str
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    which: str,
+    more: str,
 ) -> None:
+    _past_the_loader(monkeypatch)  # for the key that holds a lone surrogate
     case = _case(tmp_path)
     path = RUN_FILES[which](case)
     _append(path, more)
@@ -507,6 +517,7 @@ def test_decision_capture_exits_2_with_one_line_and_opens_no_query(
     which: str,
     more: str,
 ) -> None:
+    _past_the_loader(monkeypatch)  # for the key that holds a lone surrogate
     case = _case(tmp_path)
     path = RUN_FILES[which](case)
     _append(path, more)
