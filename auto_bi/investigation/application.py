@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +14,7 @@ from typing import Literal
 import yaml
 from pydantic import Field, ValidationError, model_validator
 
+from auto_bi import filesystem
 from auto_bi.evidence.canonical import canonical_bytes
 from auto_bi.investigation.claims import (
     BriefCompilationError,
@@ -131,16 +135,33 @@ def write_offline_investigation(
     artifacts = build_offline_investigation(plan, inputs)
     payloads = artifacts.payloads()
     target = Path(output_dir)
+    staging: Path | None = None
     try:
-        if target.exists():
+        if filesystem.is_link(target) or filesystem.exists(target):
             raise OfflineInvestigationError(f"output directory already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.mkdir()
+        staging = Path(tempfile.mkdtemp(prefix=".investigation-", dir=target.parent))
         for name in ARTIFACT_NAMES:
-            (target / name).write_bytes(payloads[name])
-    except OfflineInvestigationError:
-        raise
-    except OSError as exc:
+            (staging / name).write_bytes(payloads[name])
+        if filesystem.is_link(target) or filesystem.exists(target):
+            raise OfflineInvestigationError(f"output directory already exists: {target}")
+        os.rename(staging, target)
+        staging = None
+    except (OfflineInvestigationError, OSError) as exc:
+        if staging is not None:
+            try:
+                shutil.rmtree(staging)
+            except OSError as cleanup_exc:
+                reason = (
+                    str(exc)
+                    if isinstance(exc, OfflineInvestigationError)
+                    else f"cannot write output directory {target}: {exc}"
+                )
+                raise OfflineInvestigationError(
+                    f"{reason}; cannot clean temporary output directory {staging}: {cleanup_exc}"
+                ) from cleanup_exc
+        if isinstance(exc, OfflineInvestigationError):
+            raise
         raise OfflineInvestigationError(f"cannot write output directory {target}: {exc}") from exc
     return artifacts
 

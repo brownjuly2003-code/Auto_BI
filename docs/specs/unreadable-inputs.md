@@ -2092,10 +2092,11 @@ for the check.
 - One line means no line break: every run of whitespace in a refusal is one space. Any other
   character of a key, or of a value a validator quotes, is printed as it is — an escape
   character among them.
-- `decision investigate` writes its output directory file by file. Reproduced with the third
-  write refused, `No space left on device`: the run answers `cannot write output directory
-  <path>: ` and what the system said, the directory is left holding `plan.json` and
-  `results.json`, and the run after it is refused with `output directory already exists: <path>`.
+- Before T-62, `decision investigate` wrote its output directory file by file. Reproduced with
+  the third write refused, `No space left on device`: the run answered `cannot write output
+  directory <path>: ` and what the system said, left `plan.json` and `results.json` under the
+  target, then refused a retry with `output directory already exists: <path>`. T-62 publishes
+  the complete directory after staging; the requirement below supersedes this observation.
 - What `decision investigate` prints after it wrote went to a standard output stream that
   refuses a character it cannot encode: with an output path in Cyrillic and
   `PYTHONIOENCODING=ascii` the command ended in a traceback and exit code 1 after the four
@@ -2103,8 +2104,8 @@ for the check.
   (`unencodable-output.md`).
 - The fourth requirement covers `decision validate`, `decision verify` and `decision capture`,
   the eighth `decision evidence`, the filesystem store and the gate's second reading of the
-  bundle it wrote. `decision investigate` still asks `pathlib` whether its output directory is
-  there, and the v1 runtime looks as it did.
+  bundle it wrote. Since T-62, `decision investigate` asks `auto_bi.filesystem` whether its
+  output path or a symlink is there; the v1 runtime looks as it did.
 - A refusal ends the reading of a bundle (eighth requirement): `decision evidence` gives no
   verdict over what it could read and names the first path it was refused, not every one.
   `--artifact` reads the manifest and one artifact and answers for those alone.
@@ -2175,3 +2176,40 @@ for the check.
 - A value PyYAML builds and the schema refuses is `contract.invalid` (validated paths) or
   `gap.contract_invalid` with `metric contract does not validate` (semantic ref), as before; an
   unquoted date where the schema wants text is such a value.
+
+## Requirement: an offline investigation publishes a complete output directory
+
+`decision investigate` SHALL build its four artifact payloads before writing to the output
+path. If that path exists, including a symbolic link whose destination does not exist, it
+SHALL answer `output directory already exists: <path>` and leave the path untouched. After
+writing `plan.json`, `results.json`, `brief.json` and `brief.md` into a unique directory beside
+the output, it SHALL check the output path again and publish the complete directory with one
+rename. The successful artifact bytes, digests and CLI answer SHALL stay the same.
+
+For an ordinary write or rename failure before publication, the command SHALL answer with
+exit 2 and no success output, create no output path, and remove its temporary directory. It
+SHALL never remove an existing output path. If removing its temporary directory also fails,
+the error SHALL name both the original failure and the cleanup failure; a temporary directory
+may remain. Parent directories created for the output may also remain.
+
+### Scenario: a write fails after leaving a partial artifact
+
+- **WHEN** any of the four artifact writes leaves a prefix and raises `OSError`
+- **THEN** the output path is absent and the owned temporary directory is removed
+- **AND** a subsequent invocation with the same inputs and output can publish all four files.
+
+### Scenario: publication fails or the output appears during staging
+
+- **WHEN** the final rename raises `OSError` without a concurrent output creator
+- **THEN** the output path is absent and the owned temporary directory is removed.
+- **WHEN** another directory appears at the output path during the final artifact write
+- **THEN** the command refuses publication, preserves that directory and removes its own
+  temporary directory.
+
+This is an atomic visibility guarantee for a completed ordinary run, not a durability or
+multi-writer coordination guarantee. On POSIX, an empty output directory created after the
+last existence check may be replaced by `os.rename`; changing a parent path concurrently is
+also outside the guarantee. Process interruption or termination may leave staging behind.
+No filesystem sync is performed for power-loss durability. On POSIX the published directory
+inherits `mkdtemp` permissions (`0700` subject to umask), rather than the previous `mkdir`
+permissions (`0777` subject to umask).

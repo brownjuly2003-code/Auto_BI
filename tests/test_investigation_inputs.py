@@ -10,6 +10,7 @@ ends in one line and exit 2, and writes nothing.
 from __future__ import annotations
 
 import copy
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -639,6 +640,132 @@ def test_inputs_that_are_read_give_the_artifacts_they_gave(
         "trust    exploratory; human acceptance not measured",
     ]
     assert {path.name for path in inputs.output.iterdir()} == ARTIFACT_NAMES
+
+
+@pytest.mark.parametrize("failed_write", range(1, len(ARTIFACT_NAMES) + 1))
+def test_a_failed_artifact_write_leaves_no_output_and_can_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failed_write: int
+) -> None:
+    inputs = Inputs(tmp_path)
+    before = set(inputs.output.parent.iterdir())
+    writes = 0
+    real_write_bytes = Path.write_bytes
+
+    def fail_on_write(path: Path, data: bytes) -> int:
+        nonlocal writes
+        writes += 1
+        if writes == failed_write:
+            real_write_bytes(path, data[:8])
+            raise OSError("artifact failed")
+        return real_write_bytes(path, data)
+
+    with monkeypatch.context() as failure:
+        failure.setattr(Path, "write_bytes", fail_on_write)
+        with pytest.raises(OfflineInvestigationError) as caught:
+            write_offline_investigation(inputs.plan, [inputs.result], inputs.output)
+
+    assert writes == failed_write
+    assert str(caught.value).endswith("artifact failed")
+    assert not inputs.output.exists()
+    assert set(inputs.output.parent.iterdir()) == before
+
+    write_offline_investigation(inputs.plan, [inputs.result], inputs.output)
+    assert {path.name for path in inputs.output.iterdir()} == ARTIFACT_NAMES
+
+
+def test_a_publish_failure_leaves_no_output_or_staging_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = Inputs(tmp_path)
+    before = set(inputs.output.parent.iterdir())
+
+    def fail_publish(source: str | os.PathLike[str], target: str | os.PathLike[str]) -> None:
+        assert Path(target) == inputs.output
+        raise OSError("publish failed")
+
+    monkeypatch.setattr(os, "rename", fail_publish)
+
+    with pytest.raises(OfflineInvestigationError) as caught:
+        write_offline_investigation(inputs.plan, [inputs.result], inputs.output)
+
+    assert str(caught.value).endswith("publish failed")
+    assert not inputs.output.exists()
+    assert set(inputs.output.parent.iterdir()) == before
+
+
+def test_a_failed_output_write_is_a_cli_error_without_success_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    inputs = Inputs(tmp_path)
+    before = set(inputs.output.parent.iterdir())
+    real_write_bytes = Path.write_bytes
+
+    def fail_brief(path: Path, data: bytes) -> int:
+        if path.name == "brief.md":
+            raise OSError("write refused")
+        return real_write_bytes(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_brief)
+
+    assert inputs.investigate() == EXIT_ERROR
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"error: cannot write output directory {inputs.output}: write refused\n"
+    assert set(inputs.output.parent.iterdir()) == before
+
+
+def test_public_output_is_hidden_until_all_four_artifacts_are_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = Inputs(tmp_path)
+    visible_during_write: list[bool] = []
+    real_write_bytes = Path.write_bytes
+
+    def observe_write(path: Path, data: bytes) -> int:
+        visible_during_write.append(inputs.output.exists())
+        return real_write_bytes(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", observe_write)
+
+    write_offline_investigation(inputs.plan, [inputs.result], inputs.output)
+
+    assert visible_during_write == [False] * len(ARTIFACT_NAMES)
+    assert inputs.output.exists()
+    assert {path.name for path in inputs.output.iterdir()} == ARTIFACT_NAMES
+
+
+def test_an_output_appearing_during_staging_is_preserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = Inputs(tmp_path)
+    before = set(inputs.output.parent.iterdir())
+    real_write_bytes = Path.write_bytes
+
+    def create_output_on_last_write(path: Path, data: bytes) -> int:
+        if path.name == "brief.md":
+            assert not inputs.output.exists()
+            inputs.output.mkdir()
+            (inputs.output / "sentinel").write_text("mine", encoding="utf-8")
+        return real_write_bytes(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", create_output_on_last_write)
+
+    with pytest.raises(OfflineInvestigationError) as caught:
+        write_offline_investigation(inputs.plan, [inputs.result], inputs.output)
+
+    assert str(caught.value) == f"output directory already exists: {inputs.output}"
+    assert (inputs.output / "sentinel").read_text(encoding="utf-8") == "mine"
+    assert set(inputs.output.parent.iterdir()) == before | {inputs.output}
+
+
+def test_the_longest_valid_output_name_can_be_published(tmp_path: Path) -> None:
+    inputs = Inputs(tmp_path)
+    target = tmp_path / ("x" * 255)
+
+    write_offline_investigation(inputs.plan, [inputs.result], target)
+
+    assert {path.name for path in target.iterdir()} == ARTIFACT_NAMES
 
 
 # --- what is read and cannot be used is said as before ------------------------------
