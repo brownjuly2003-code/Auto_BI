@@ -38,7 +38,7 @@ from auto_bi.evidence.signing import (
     EvidenceSigner,
     EvidenceVerifier,
 )
-from auto_bi.evidence.store import ArtifactStore, ArtifactStoreError
+from auto_bi.evidence.store import ArtifactRefusalError, ArtifactStore, ArtifactStoreError
 from auto_bi.scalars import NonBlankText
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
@@ -268,11 +268,18 @@ def verify_bundle(
     verifier: EvidenceVerifier | None = None,
     raw: bytes | None = None,
 ) -> list[BundleProblem]:
-    """Re-check a written bundle: manifest, presence, and every content address."""
+    """Re-check a written bundle: manifest, presence, and every content address.
+
+    A problem is a finding about the bundle. What the filesystem refuses the store is none:
+    a manifest or an artifact that may not be looked at or read is not one that is missing.
+    The store's `ArtifactRefusalError` is raised then, and nothing is graded.
+    """
     problems: list[BundleProblem] = []
     if raw is None:
         try:
             raw = store.get(run_id, MANIFEST_PATH)
+        except ArtifactRefusalError:
+            raise
         except ArtifactStoreError:
             return [
                 BundleProblem(
@@ -324,6 +331,8 @@ def verify_bundle(
     for artifact in bundle.artifacts:
         try:
             payload = store.get(run_id, artifact.path)
+        except ArtifactRefusalError:
+            raise
         except ArtifactStoreError:
             problems.append(
                 BundleProblem(

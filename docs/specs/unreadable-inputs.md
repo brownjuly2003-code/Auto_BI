@@ -495,10 +495,11 @@ directory that may not be written to each ended the command in a traceback and e
 
 The filesystem store SHALL answer what the filesystem refuses with its own error,
 `ArtifactStoreError`, which keeps the refusal as its cause: `cannot write '<path>' of run '<run
-id>': <class>` for a write, `cannot read '<path>' of run '<run id>'` for a read, and `cannot
-look for '<path>' of run '<run id>': <class>` when whether an artifact is there could not be
-established — which is not "no". A path the store refuses itself — a symlink, a path that
-leaves the run — is the error it was.
+id>': <class>` for a write, `cannot read '<path>' of run '<run id>': <class>` for a read, and
+`cannot look for '<path>' of run '<run id>': <class>` when whether an artifact is there could
+not be established — which is not "no". A path the store refuses itself — a symlink, a path
+that leaves the run — is the error it was. The eighth requirement gives what the filesystem
+refuses a class of its own, by which a reader tells it from what is not there.
 
 When the store refuses while a bundle is written, `decision verify` SHALL end with the usage
 error `cannot write the evidence bundle under <evidence directory>: ` followed by the store's
@@ -540,14 +541,15 @@ writes the bundle that a run without the refusal writes.
 ### Scenario: the store answers a refusal of the filesystem with its own error
 
 - **GIVEN** a store whose root is a file; and a store holding one artifact, where the filesystem
-  refuses every look at a path with `PermissionError`
+  refuses every look at a path under its root with `PermissionError`
 - **WHEN** an artifact is put into the first; and the artifact of the second is looked for, read,
   and another one put beside it
 - **THEN** the first raises `ArtifactStoreError`, `cannot write 'checks/one.json' of run
   'run-1': ` and the class of the refusal, with the refusal as its cause, and the file holds what
   it held; the second raises `cannot look for 'checks/one.json' of run 'run-1':
   PermissionError` with the refusal as its cause, `cannot read 'checks/one.json' of run
-  'run-1'`, and `cannot write 'checks/two.json' of run 'run-1': PermissionError`
+  'run-1': PermissionError`, and `cannot write 'checks/two.json' of run 'run-1':
+  PermissionError`
 
 ### Scenario: a refused look into the evidence directory is a usage error
 
@@ -1670,6 +1672,353 @@ inputs* are those of the requirements above.
   with such an escape as a key in place of its `kind`, exits 2 with that one line on standard
   error, nothing on standard output and no output directory
 
+## Requirement: evidence the filesystem refuses to show is not evidence that is not there
+
+`decision evidence` reads a bundle back: it finds the run under the path it is given, reads the
+manifest and reads every artifact the manifest names. What is not there has an answer of its
+own — an artifact that is missing is the finding `evidence.artifact_missing` and blocks, a run
+without a manifest is no bundle. What the filesystem refuses the reader was read as the same
+absence: the store raised one class of error for both, and its looks and those of the command
+went through `pathlib`, as the boundary of the fourth requirement said.
+
+Reproduced at HEAD `7f2d8ab`, 2026-10-05, on macOS as a user the permission bits keep out, with
+the commands as processes. One bundle of 15 artifacts, written by `decision verify`, in 19
+states: untouched; the evidence directory, the run directory, the directory above them and the
+directory of the checks, each of mode 000, 0o300 and 0o400; `manifest.json` and one check of
+mode 000; beside the run a directory that may not be searched, and a directory and a file that
+may; a directory where a check was; a check that is gone. Each state was read six ways — by the
+evidence path, by that path with `--run`, by the run directory, by the evidence path with
+`--json`, and by the evidence path and by the run directory with `--artifact` for that check:
+114 runs of `decision evidence` under each of Python 3.12.13, 3.13.13 and 3.14.6.
+
+- Under 3.12 and 3.13, 42 runs end in a traceback of `PermissionError` and exit code 1: every
+  run over an evidence directory, a run directory or a directory above them of mode 000 or
+  0o400, and, where the run is not named, the runs over an evidence directory that may not be
+  listed and over a directory beside the run that may not be searched.
+- Under 3.14, 8 runs end so, and 31 say of a bundle that is there that it is not: `evidence path
+  not found: <path>`, `no evidence bundle under <path>: no run directory holds manifest.json`,
+  `run '<run id>' under <path> has no manifest.json`. The directory beside the run that may not
+  be searched is passed over, and the run is read as the only one under the path.
+- Under each of the three, a directory of the checks of mode 000 or 0o400 is
+  `evidence.artifact_missing` for each of its nine checks, `<artifact id>: <path> is not in the
+  store`, with the verdict `block` and exit code 4; one check of mode 000 is that finding once,
+  and `--artifact` for it answers `<artifact id>: <path> is not in the store`. A `manifest.json`
+  of mode 000 is `run '<run id>' has no manifest.json: this is not an evidence bundle`.
+- `decision verify` reads back the bundle it wrote and reports what it found as the check
+  `evidence.bundle`. Run into a new evidence directory under a umask that takes the read of what
+  is written (0o400), and run again over a bundle one check of which may be written and not
+  read (mode 0o200), it reports `evidence.invalid`, the verdict `block` and exit code 4 — of a
+  bundle that is whole on disk.
+
+The filesystem store and `decision evidence` SHALL take their looks at a path as the fourth
+requirement has the other commands take theirs: answered by the operating system on every
+supported interpreter, "no" for a path that is not there by the same codes, and any other
+refusal a refusal. Whether a path is a symbolic link is such a look, and it follows no link.
+
+The store SHALL tell what the filesystem refuses it from what it says itself. A look, a read or
+a write the filesystem refuses SHALL raise `ArtifactRefusalError`, an `ArtifactStoreError` that
+keeps the `OSError` as its cause and as its `refusal`, which names the path refused: `cannot
+look for '<path>' of run '<run id>': <class>`, `cannot read '<path>' of run '<run id>':
+<class>`, `cannot write '<path>' of run '<run id>': <class>`. What the store says by its own
+rule SHALL stay an `ArtifactStoreError` that is no refusal: a run id or a path it does not
+take, a symbolic link where the artifact is or on the way to it, whatever the link leads to,
+and an artifact that is missing. An artifact is a regular file. Asked to read a path that holds
+nothing, a directory or anything else that is no regular file, the store SHALL answer `artifact
+'<path>' of run '<run id>' is missing` without opening it, and SHALL answer "no" when asked
+whether the artifact is there. An artifact that went away between the look and the read is
+missing too.
+
+`verify_bundle` grades a bundle by what the store answers. A manifest or an artifact the store
+says is missing SHALL be `evidence.manifest_missing` or `evidence.artifact_missing`, as before.
+A refusal SHALL NOT be graded: the `ArtifactRefusalError` of the store is raised as it is,
+whether the manifest was read by `verify_bundle` or handed to it.
+
+`inspect_bundle` and `read_artifact` SHALL answer such a refusal with `EvidenceReadError`,
+`cannot read <the path refused>: <class of the refusal>`, with the error of the store as its
+cause; a refusal that names no path is said as the store says it. `decision evidence` SHALL
+then exit 2 with that one line after `error: ` on the standard error stream and nothing on the
+standard output stream — as text, with `--json` and with `--artifact`. No verdict is given: a
+verdict over what could be read would grade a bundle nobody read. `--artifact` reads the
+manifest and the one artifact, as before, so an artifact is printed out of a bundle another
+artifact of which may not be read.
+
+While `decision evidence` finds the run, a look the filesystem refuses SHALL be the usage error
+`cannot read <path>: <class of the refusal>`: at `<evidence path>/manifest.json`, at the
+evidence path itself, at the manifest of the run that `--run` names. An evidence path that
+cannot be listed SHALL be `cannot read <evidence path>: <class>` where no run is named. A
+directory under the evidence path that may not be looked into SHALL be `cannot read <that
+directory>/manifest.json: <class>; name the run to read with --run` where no run is named: it
+may hold the run that was meant, or a second one, and which run is read would be a guess. Where
+the run is named, the evidence path is not listed and no other directory is looked into. What
+is not there SHALL be said as before: `evidence path not found: <path>`, `no evidence bundle
+under <path>: no run directory holds manifest.json`, `run '<run id>' under <path> has no
+manifest.json`, `<path> holds <n> runs (<their ids>); name the one to read with --run`; a file,
+and a directory that holds no manifest, beside the run is passed over.
+
+When the store is refused while `decision verify` reads back the bundle it wrote, the command
+SHALL end with the usage error `cannot read back the evidence bundle under <evidence
+directory>: ` followed by the message of the store, exit code 2 and that one line. The gate
+raises `EvidenceReadBackError`, which keeps the refusal of the store as its cause, and grades
+nothing: the bundle is reported neither as verified nor as invalid. It stays as it was written,
+and a reader the filesystem lets read it verifies it. A refusal before anything is written —
+the manifest of a bundle that is already under the run id may not be read — stays the usage
+error of the third requirement, `cannot write the evidence bundle under <evidence directory>:
+cannot read 'manifest.json' of run '<run id>': <class>`. An artifact that is not there when the
+bundle is read back SHALL be graded as before: `evidence.bundle` blocks with
+`evidence.invalid`.
+
+Nothing a run writes changes. A bundle that is read back is byte for byte the bundle it was,
+and a run that is refused the reading wrote the same bundle and reported `block` where it now
+reports nothing. The verifier version and the check version are therefore not raised.
+
+In the scenarios below *the bundle* is one written under an evidence path: a manifest, the
+check `checks/check-freshness.json`, a blob and the report `reports/summary.md`. *A look that
+is refused* is one the operating system answers with `PermissionError`, and *a read that is
+refused* is the read of a file that can be looked at, answered the same way. *The three
+addresses* of the run are its evidence path, that path with `--run`, and the run directory
+itself. *The three forms* are the report as text, the report with `--json`, and `--artifact`
+for the check.
+
+### Scenario: a look says whether a path is a link, and follows none
+
+- **GIVEN** a file, a directory, a link to each, a link to nothing and a link to itself
+- **WHEN** each is asked whether it is a symbolic link
+- **THEN** the four links are and the file and the directory are not, asked by a path or by the
+  text of one; what a link leads to is told by the looks that follow it
+- **AND** a path where nothing is, a path below a file and a name that holds a NUL are no link
+
+### Scenario: a refused look at a link is a refusal, and "not there" is told by what was answered
+
+- **GIVEN** a file the look at which that follows no link the operating system answers with
+  `EACCES` or with `EIO`; and a link the looks at which it answers with `ENOENT`, `ENOTDIR`,
+  `EBADF` or `ELOOP`, with the Windows code 21, 123 or 1921, and with the Windows code 5
+- **WHEN** each is asked whether it is a link
+- **THEN** `EACCES` and `EIO` are raised as they were answered, `PermissionError` and `OSError`
+  with that code and the path as the `filename`, while the look that follows a link, which was
+  not refused, answers; the Windows code 5 is raised as well; the others are "no"
+- **AND** where modes are kept, a path under a directory of mode 000 or 0o400 — one that is
+  there and one that is not — raises `PermissionError` that names it, and the directory itself
+  is looked at through the one above it
+
+### Scenario: the store raises what the filesystem refuses as a refusal
+
+- **GIVEN** the bundle, where the look at the check is refused — the one that follows no link,
+  or the one that follows a link
+- **WHEN** the check is looked for and read
+- **THEN** `ArtifactRefusalError` is raised, `cannot look for 'checks/check-freshness.json' of
+  run '<run id>': PermissionError` and `cannot read 'checks/check-freshness.json' of run '<run
+  id>': PermissionError`, each with the `PermissionError` as its cause and as its `refusal`,
+  which names the check; the manifest beside it is there and the report is read, as before
+- **AND** with the look at the directory of the checks refused, the refusal names that
+  directory, and writing another check into it is `cannot write 'checks/another.json' of run
+  '<run id>': PermissionError` and writes nothing
+
+### Scenario: a read or a write the filesystem refuses is named with its class
+
+- **GIVEN** the bundle, where the read of the check is answered with `EACCES` or with `EIO`;
+  and an artifact to be written below the check, a file where a directory would have to be
+- **WHEN** the check is looked for and read, and the artifact is written
+- **THEN** the check is there, and reading it raises `ArtifactRefusalError`, `cannot read
+  'checks/check-freshness.json' of run '<run id>': PermissionError` or `: OSError`, with a
+  refusal of that code that names the check; the write raises `ArtifactRefusalError`, `cannot
+  write '<path>' of run '<run id>': ` and the class of its refusal, and the check holds what it
+  held
+
+### Scenario: a path that holds no regular file holds no artifact
+
+- **GIVEN** the bundle with nothing, with a directory or with a named pipe where the check was;
+  and the bundle whose check goes away between the look and the read
+- **WHEN** the check is looked for and read
+- **THEN** it is not there, and reading it raises an `ArtifactStoreError` that is no refusal,
+  `artifact 'checks/check-freshness.json' of run '<run id>' is missing`; nothing is opened to
+  find that out. The check that went away is missing by the same message, with the
+  `FileNotFoundError` as its cause
+
+### Scenario: what the store refuses by its own rule is no refusal of the filesystem
+
+- **GIVEN** the bundle with a symbolic link where the check was, or where the directory of the
+  checks was, that leads to a copy of what was there or to nothing; and an empty store asked
+  with a run id or a path it does not take
+- **WHEN** the artifact is looked for, read and written
+- **THEN** it is not there, and reading and writing raise an `ArtifactStoreError` that is no
+  refusal — `artifact path is a symlink: <path>` and `artifact path crosses a symlink: <path>`
+  for the links; nothing is written through a link and nothing into the empty store
+
+### Scenario: the store keeps the refusal of a path whose permissions are taken away
+
+- **GIVEN** the bundle, where modes are kept, with the run directory or the directory of the
+  checks of mode 000 or 0o400; and with the check of mode 000
+- **WHEN** the check is looked for and read
+- **THEN** both raise `ArtifactRefusalError` with a `PermissionError` that names the directory
+  of the checks under a run directory that may not be searched, and the check under a directory
+  of the checks that may not be; a check of mode 000 is there, and reading it raises `cannot
+  read 'checks/check-freshness.json' of run '<run id>': PermissionError`
+
+### Scenario: a manifest or an artifact that may not be read is not graded as missing
+
+- **GIVEN** the bundle, where the look at the manifest or its read is refused; and where the
+  look at the check or its read is refused, the manifest read by `verify_bundle` or handed to it
+- **WHEN** the bundle is re-checked
+- **THEN** `ArtifactRefusalError` is raised and names the manifest, or the check; no problem is
+  given
+
+### Scenario: a manifest or an artifact that is not there is graded as before
+
+- **GIVEN** the bundle with nothing or a directory where the check was; then with nothing or a
+  directory where the manifest was as well
+- **WHEN** the bundle is re-checked
+- **THEN** the one problem `evidence.artifact_missing`, `check-freshness:
+  checks/check-freshness.json is not in the store`; then the one problem
+  `evidence.manifest_missing`
+- **AND** a store of another kind that raises an `ArtifactStoreError` for the check or for the
+  manifest is graded so, and one that raises `ArtifactRefusalError` has it raised as it is
+- **AND** the reader inspects the bundle without the check as `block` with that one problem and
+  answers the read of the check with `check-freshness: checks/check-freshness.json is not in the
+  store`; with the manifest gone as well it answers `run '<run id>' has no manifest.json: this
+  is not an evidence bundle`
+
+### Scenario: the reader names the path it may not read
+
+- **GIVEN** the bundle, where the look at the manifest or at the check, or its read, is refused
+- **WHEN** the bundle is inspected, and the check is read out of it
+- **THEN** each is refused with `EvidenceReadError`, `cannot read <that path>:
+  PermissionError`, with the refusal of the store as its cause
+- **AND** the report is read out of the bundle whose check may not be looked at or read
+- **AND** a refusal of a store that names no path is said as that store says it — by an
+  inspection and by the read of an artifact, for the manifest and for the check
+
+### Scenario: an evidence path the filesystem refuses to show is not one without a bundle
+
+- **GIVEN** the bundle, where the looks at `<evidence path>/manifest.json` and at the manifest
+  of the run are refused; where the look at the evidence path is refused; where the listing of
+  the evidence path is answered with `EACCES` or with `EIO`
+- **WHEN** the run is looked for by its three addresses
+- **THEN** in the first it is refused with `cannot read <evidence path>/manifest.json:
+  PermissionError` by the evidence path, with and without the run, and with `cannot read <the
+  manifest of the run>: PermissionError` by the run directory
+- **AND** in the second with `cannot read <evidence path>: PermissionError` by the evidence
+  path, with and without the run, while the run directory finds the run
+- **AND** in the third with `cannot read <evidence path>: PermissionError` or `: OSError` by
+  the evidence path, while the run is found where it is named and by its directory
+
+### Scenario: a directory that may not be looked into is not passed over
+
+- **GIVEN** the bundle and beside the run a directory, listed before the run or after it, the
+  look into which is refused; and the bundle where the look at the manifest of the run is
+  refused
+- **WHEN** the run is looked for by its three addresses
+- **THEN** in the first, by the evidence path: `cannot read <that directory>/manifest.json:
+  PermissionError; name the run to read with --run`; with the run named, and by the run
+  directory, the run is found
+- **AND** in the second, by the evidence path: `cannot read <the manifest of the run>:
+  PermissionError; name the run to read with --run`, and the same line without what follows
+  the class where the run is named or its directory given
+
+### Scenario: what is not there is said of an evidence path as before
+
+- **GIVEN** a path where nothing is; the manifest of the bundle given as the evidence path; an
+  empty directory; the bundle asked for the run `run-other`, by the evidence path and by the
+  run directory; beside the run a file, an empty directory, and a directory the look at whose
+  manifest is answered with `ENOENT`, `ENOTDIR`, `EBADF` or `ELOOP`; then a copy of the run as
+  `run-other` beside it
+- **WHEN** the run is looked for
+- **THEN** `evidence path not found: <path>` for the first two; `no evidence bundle under
+  <path>: no run directory holds manifest.json`; `run 'run-other' under <evidence path> has no
+  manifest.json`; `<run directory> is run '<run id>', not 'run-other'`; the run is found beside
+  what holds no manifest
+- **AND** with the copy: `<evidence path> holds 2 runs (<run id>, run-other); name the one to
+  read with --run`, and `run-other` is found where it is named
+
+### Scenario: `decision evidence` exits 2 with one line
+
+- **GIVEN** the bundle, where the look at the manifest or at the check, or its read, is refused
+- **WHEN** `decision evidence` runs by each of the three addresses in each of the three forms
+- **THEN** it exits 2, prints nothing on standard output and the one line `error: cannot read
+  <that path>: PermissionError` on standard error — followed by `; name the run to read with
+  --run` where the manifest may not be looked at and the run is asked for by the evidence path
+  alone
+- **AND** with the listing of the evidence path refused it exits 2 by the evidence path, with
+  the one line `error: cannot read <evidence path>: PermissionError`, and where the run is
+  named, and by the run directory, the bundle is read: exit 0, nothing on standard error, and
+  `verdict: pass (0 problem(s))` as text, the verdict `pass` in the JSON, or the text of the
+  check
+- **AND** with a directory beside the run that may not be looked into it exits 2 by the
+  evidence path, with the line that ends `; name the run to read with --run`, and reads the
+  bundle by the two other addresses
+- **AND** `--artifact` for the report prints the report and exits 0 by each address, where the
+  check may not be looked at or read
+
+### Scenario: `decision evidence` grades an artifact that is not there as before
+
+- **GIVEN** the bundle with nothing or a directory where the check was
+- **WHEN** `decision evidence` runs by each of the three addresses
+- **THEN** as text it exits 4 with the problem `evidence.artifact_missing`, `check-freshness:
+  checks/check-freshness.json is not in the store`, and `verdict: block (1 problem(s))`; with
+  `--json` it exits 4 with that one problem; with `--artifact` for the check it exits 2 with
+  `error: check-freshness: checks/check-freshness.json is not in the store`
+
+### Scenario: `decision evidence` over a bundle whose permissions are taken away
+
+- **GIVEN** the bundle, where modes are kept, with the permissions of one path taken away: the
+  directory above the evidence path, the evidence path, the run directory or the directory of
+  the checks, each of mode 000, 0o400 or 0o300; the manifest of mode 000; the check of mode 000
+- **WHEN** `decision evidence` runs by each of the three addresses in each of the three forms
+- **THEN** a refusal is exit 2 with the one line `error: cannot read <path>: PermissionError`,
+  and what is not refused is the bundle read
+- **AND** the directory above, or the evidence path, of mode 000 or 0o400: the path named is
+  `<evidence path>/manifest.json` by the evidence path, with and without the run, and the
+  manifest of the run by the run directory
+- **AND** the evidence path of mode 0o300: the path named is the evidence path, where the run
+  is not named; the bundle is read where it is, and by the run directory
+- **AND** the run directory of mode 000 or 0o400: the manifest of the run, followed by `; name
+  the run to read with --run` where the run is not named
+- **AND** the directory of the checks of mode 000 or 0o400, and the check of mode 000: the
+  check; the manifest of mode 000: the manifest
+- **AND** the directory above, the run directory or the directory of the checks of mode 0o300:
+  the bundle is read by every address
+
+### Scenario: a bundle the gate may not read back ends the run
+
+- **GIVEN** the run, where the read of the manifest, or of every check, that it writes under
+  its evidence directory is refused
+- **WHEN** `decision verify` runs
+- **THEN** it exits 2, prints nothing on standard output and the one line `error: cannot read
+  back the evidence bundle under <evidence directory>: cannot read 'manifest.json' of run '<run
+  id>': PermissionError` on standard error — or `cannot read 'checks/<a check>.json' of run
+  '<run id>': PermissionError` after the colon; the bundle under that directory, inspected by a
+  reader that may read it, passes
+- **AND** the gate raises `EvidenceReadBackError`, which is no `ArtifactStoreError`, with the
+  message of the store and the refusal of the store as its cause, which names the manifest
+- **AND** where modes are kept, the command run as a process under a umask of 0o400 answers
+  the line of the manifest and exit code 2, and the bundle, once it may be read, passes
+
+### Scenario: a bundle that is read back is reported as before
+
+- **GIVEN** the run; and the run one check of whose bundle is gone once the manifest is written
+- **WHEN** the gate runs
+- **THEN** in the first `evidence.bundle` passes with `evidence.verified` and a detail that
+  ends ` artifact(s), 0 problem(s)`; in the second it blocks with `evidence.invalid` and a
+  detail that ends ` artifact(s), 1 problem(s)`, and the verdict is `block`
+
+### Scenario: a run over a manifest it may not read names the refusal
+
+- **GIVEN** the run and the bundle it wrote, where the read of the manifest is refused
+- **WHEN** `decision verify` runs again
+- **THEN** it exits 2, prints nothing on standard output and the one line `error: cannot write
+  the evidence bundle under <evidence directory>: cannot read 'manifest.json' of run '<run
+  id>': PermissionError` on standard error; the manifest holds what it held
+
+### Scenario: the readers of evidence look through the functions that keep a refusal
+
+- **GIVEN** the source of the filesystem store and of the use cases of the decision commands
+- **WHEN** it is read for the looks and listings of `pathlib` and `os.path` that drop a refusal
+  on some interpreter — `exists`, `is_file`, `is_dir`, `is_symlink`, `is_mount`, `is_junction`,
+  `iterdir`, `glob`, `rglob`, `walk`, `isfile`, `isdir`, `islink`, `lexists`
+- **THEN** none is named — called, handed on as a function or imported — but as a function of
+  the module of the fourth requirement, `auto_bi.filesystem`: found on whichever interpreter
+  reads the source, where a run of such a look answers one way up to Python 3.13 and another
+  from 3.14 on
+
 ## Known boundaries
 
 - The finding names the file and the class, not the value or its line: PyYAML's own errors are
@@ -1752,20 +2101,34 @@ inputs* are those of the requirements above.
   `PYTHONIOENCODING=ascii` the command ended in a traceback and exit code 1 after the four
   artifacts were written. A decision command now answers on such a stream
   (`unencodable-output.md`).
-- The fourth requirement covers `decision validate`, `decision verify` and `decision capture`.
-  `decision evidence` and the filesystem store still look through `pathlib`. Reproduced with the
-  command as a process over a written bundle, 7 runs under each interpreter, with the evidence
-  directory, the run directory or a directory above them of mode 000, 0o300 or 0o400: `decision
-  evidence` ends in a traceback in 6 of them under Python 3.13.13 and in 3 under 3.14.6, where 3
-  more answer `no evidence bundle under <path>: no run directory holds manifest.json` or
-  `evidence path not found: <path>` for a bundle that is there. In the seventh a directory of
-  the bundle that cannot be read is reported as `evidence.artifact_missing`, `… is not in the
-  store`.
+- The fourth requirement covers `decision validate`, `decision verify` and `decision capture`,
+  the eighth `decision evidence`, the filesystem store and the gate's second reading of the
+  bundle it wrote. `decision investigate` still asks `pathlib` whether its output directory is
+  there, and the v1 runtime looks as it did.
+- A refusal ends the reading of a bundle (eighth requirement): `decision evidence` gives no
+  verdict over what it could read and names the first path it was refused, not every one.
+  `--artifact` reads the manifest and one artifact and answers for those alone.
+- A bundle the gate wrote and may not read back was the verdict `block` and exit code 4 and is
+  a usage error and exit code 2. A caller that reads exit code 2 as "nothing was run" finds a
+  whole bundle under the evidence directory. What the gate graded is in that bundle — every
+  check and the summary — and whoever may read it reads it there; the run itself prints none
+  of it and gives no verdict.
+- The store tells an artifact from what is none by a look and reads it after the look. What
+  changes between the two is said by what the read was answered: an artifact that went away is
+  missing, and anything else — a directory laid where the artifact was — is a refusal of the
+  class the system gave. An evidence path that goes away between the look at it and its
+  listing is `cannot read <evidence path>: FileNotFoundError`, not `evidence path not found`.
+  Neither of the last two was run.
+- The eighth requirement tells a refusal from an absence for the filesystem store. A store of
+  another kind is graded by what it raises: a refusal it reports as a plain
+  `ArtifactStoreError` is read as an absence, as before. A symbolic link where an artifact was
+  is the store's own refusal and is graded `evidence.artifact_missing`, as before.
 - A refusal is told from "not there" by what the operating system answers. The answers of
   Windows and a directory whose entries are not told apart are given to the code by the tests:
   no run was made on Windows or on a filesystem that withholds the kind of an entry. Directories
   whose permission bits are taken away were run on macOS, as a user the bits keep out; a process
-  they do not keep out — root — is refused nothing.
+  they do not keep out — root — is refused nothing. The same holds for the files and the umask
+  of the eighth requirement.
 - A directory that cannot be listed stops the report or the run whatever it holds: the command
   cannot know that it holds no contract and no asset. A validated path with a directory in it
   that its reader may not list blocks until the directory is listed or left out of the paths.

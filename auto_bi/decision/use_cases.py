@@ -24,6 +24,7 @@ cannot silently load version 8's layout. A missing one is a finding, not a guess
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,6 +52,7 @@ from auto_bi.verification.environment import (
 )
 from auto_bi.verification.reconcile import ResultSet
 from auto_bi.verification.release_gate import (
+    EvidenceReadBackError,
     GateInputs,
     GateReport,
     NoResults,
@@ -193,6 +195,13 @@ def verify(request: VerifyRequest) -> GateReport:
         # What was written before the refusal has no manifest and is not a bundle.
         raise VerifyError(
             f"cannot write the evidence bundle under {request.evidence_dir}: {exc}"
+        ) from None
+    except EvidenceReadBackError as exc:
+        # Nor here, where the bundle is written: the run was refused the second reading of
+        # it, and a bundle nobody read back is reported neither as verified nor as invalid.
+        raise VerifyError(
+            f"cannot read back the evidence bundle under "
+            f"{filesystem.display_path(request.evidence_dir)}: {exc}"
         ) from None
 
 
@@ -533,14 +542,20 @@ def locate_evidence(path: str | Path, run_id: str = "") -> EvidenceLocation:
     pipeline was pointed at, and the single run directory someone copied out of it. What is
     not accepted is a guess — a root holding several runs names them and asks, because
     reading the wrong bundle is worse than reading none.
+
+    Nor is a refusal read as an absence. A path that may not be looked at is not a path
+    that is not there, and a directory under the root that may not be looked into is not
+    one that holds no run: each is the usage error of a path the command cannot read.
     """
     root = Path(path)
-    if (root / MANIFEST_PATH).is_file():  # the run directory itself
+    if _looked_at(root / MANIFEST_PATH, filesystem.is_file):  # the run directory itself
         if run_id and run_id != root.name:
-            raise VerifyError(f"{root} is run {root.name!r}, not {run_id!r}")
+            raise VerifyError(
+                f"{filesystem.display_path(root)} is run {root.name!r}, not {run_id!r}"
+            )
         return EvidenceLocation(FilesystemArtifactStore(root.parent), root.name)
-    if not root.is_dir():
-        raise VerifyError(f"evidence path not found: {root}")
+    if not _looked_at(root, filesystem.is_dir):
+        raise VerifyError(f"evidence path not found: {filesystem.display_path(root)}")
 
     store = FilesystemArtifactStore(root)
     if run_id:
@@ -548,20 +563,48 @@ def locate_evidence(path: str | Path, run_id: str = "") -> EvidenceLocation:
             store.run_root(run_id)  # the store owns the rule; here it is a usage error
         except ArtifactStoreError as exc:
             raise VerifyError(str(exc)) from None
-        if not (root / run_id / MANIFEST_PATH).is_file():
-            raise VerifyError(f"run {run_id!r} under {root} has no {MANIFEST_PATH}")
+        if not _looked_at(root / run_id / MANIFEST_PATH, filesystem.is_file):
+            raise VerifyError(
+                f"run {run_id!r} under {filesystem.display_path(root)} has no {MANIFEST_PATH}"
+            )
         return EvidenceLocation(store, run_id)
 
-    runs = sorted(child.name for child in root.iterdir() if (child / MANIFEST_PATH).is_file())
+    try:
+        names = sorted(os.listdir(root))
+    except OSError as exc:
+        raise VerifyError(
+            f"cannot read {filesystem.display_path(root)}: {unread_reason(exc)}"
+        ) from None
+    runs = [name for name in names if _holds_run(root / name)]
     if not runs:
         raise VerifyError(
-            f"no evidence bundle under {root}: no run directory holds {MANIFEST_PATH}"
+            f"no evidence bundle under {filesystem.display_path(root)}: "
+            f"no run directory holds {MANIFEST_PATH}"
         )
     if len(runs) > 1:
         raise VerifyError(
-            f"{root} holds {len(runs)} runs ({', '.join(runs)}); " "name the one to read with --run"
+            f"{filesystem.display_path(root)} holds {len(runs)} runs "
+            f"({', '.join(filesystem.display_path(name) for name in runs)}); "
+            "name the one to read with --run"
         )
     return EvidenceLocation(store, runs[0])
+
+
+def _holds_run(directory: Path) -> bool:
+    """Whether *directory*, found under an evidence root, holds a manifest.
+
+    A directory that may not be looked into is not passed over. It may hold the run that
+    was meant, or a second one, and which run is read would then be a guess. Naming the run
+    takes the question away, and the error says so.
+    """
+    manifest = directory / MANIFEST_PATH
+    try:
+        return filesystem.is_file(manifest)
+    except OSError as exc:
+        raise VerifyError(
+            f"cannot read {filesystem.display_path(manifest)}: {unread_reason(exc)}; "
+            "name the run to read with --run"
+        ) from None
 
 
 def _looked_at(path: Path, look: Callable[[Path], bool]) -> bool:
@@ -575,7 +618,9 @@ def _looked_at(path: Path, look: Callable[[Path], bool]) -> bool:
     try:
         return look(path)
     except OSError as exc:
-        raise VerifyError(f"cannot read {path}: {unread_reason(exc)}") from None
+        raise VerifyError(
+            f"cannot read {filesystem.display_path(path)}: {unread_reason(exc)}"
+        ) from None
 
 
 def _check_moment(name: str, moment: str) -> None:

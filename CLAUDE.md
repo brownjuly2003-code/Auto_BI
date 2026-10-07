@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-05 — T-61: отказ чтения evidence — `cannot read <путь>: <класс>`, exit 2 без
+  вердикта; отсутствие артефакта остаётся `evidence.artifact_missing`.
+  Гейт не объявляет отказанное повторное чтение invalid. Verifier 97, check 72.
+  Synthetic Astra xhigh review: LF/CR P2 исправлен, 8 red→green; не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_REFUSED_EVIDENCE_CHECKS_2026-10-05.md).
 - 2026-10-05 — T-60: decision-команда отвечает в любой поток: символ, которого кодировка
   потока не знает, печатается backslash-escape, `--json` — целиком в ASCII, payload артефакта
   — как есть или отказ; прежде это был traceback и exit 1 после вердикта. Verifier 97, check
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   вместо исключения после грейда или отказа после запроса. Verifier 97, check 72 — без
   изменений. Автор — Claude Opus 5.5 напрямую, модельного ревью нет.
   [Проверки и границы](docs/DECISIONOPS_STATED_RUN_FACTS_CHECKS_2026-10-05.md).
-- 2026-10-05 — T-57: таблица, колонка или join, которые `model.yaml` объявляет больше одного
-  раза, — один узел графа и advisory `gap.<kind>_repeated`, когда объявления одинаковы, и
-  block `gap.<kind>_conflict` без узла, когда расходятся. Verifier 97, check 72. Автор —
-  Claude Opus 5.5 напрямую, модельного ревью нет.
-  [Проверки и границы](docs/DECISIONOPS_REPEATED_DECLARATIONS_CHECKS_2026-10-05.md).
 
 ## Definition of done (фаза/задача)
 

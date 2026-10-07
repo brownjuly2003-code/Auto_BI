@@ -3,11 +3,11 @@
 Two answers of ``pathlib`` drop a refusal. ``Path.rglob`` reads a directory it cannot list as
 an empty one: the ``OSError`` of the scan is dropped where it is raised, what the directory
 holds is not in the result, and nothing in the result says so. And from Python 3.14 on
-``Path.exists``, ``Path.is_file`` and ``Path.is_dir`` answer ``False`` to every ``OSError``,
-so a path under a directory that may not be searched reads as a path that is not there; up to
-3.13 the same look raised. A reader that answers for every file under a path cannot tell
-either answer from the one for a path that holds nothing. The functions here ask the
-operating system the same questions and keep its refusal.
+``Path.exists``, ``Path.is_file``, ``Path.is_dir`` and ``Path.is_symlink`` answer ``False``
+to every ``OSError``, so a path under a directory that may not be searched reads as a path
+that is not there; up to 3.13 the same look raised. A reader that answers for every file
+under a path cannot tell either answer from the one for a path that holds nothing. The
+functions here ask the operating system the same questions and keep its refusal.
 """
 
 from __future__ import annotations
@@ -27,16 +27,26 @@ _NOT_THERE = frozenset({errno.ENOENT, errno.ENOTDIR, errno.EBADF, errno.ELOOP})
 _NOT_THERE_ON_WINDOWS = frozenset({21, 123, 1921})
 
 
-def _not_there(error: OSError) -> bool:
+def not_there(error: OSError) -> bool:
+    """Whether *error* is what the operating system answers for a path that is not there.
+
+    Any other error of a look, a listing or a read is a refusal: the path may be there.
+    """
     return error.errno in _NOT_THERE or getattr(error, "winerror", None) in _NOT_THERE_ON_WINDOWS
 
 
-def _status(path: str | os.PathLike[str]) -> os.stat_result | None:
-    """What *path* leads to, links followed — ``None`` where nothing is there."""
+def display_path(path: str | os.PathLike[str]) -> str:
+    """Spell a path on one diagnostic line, quoting names with control characters."""
+    name = str(path)
+    return name if name.isprintable() else repr(name)
+
+
+def _status(path: str | os.PathLike[str], *, follow: bool = True) -> os.stat_result | None:
+    """What *path* leads to — or, links not followed, what it is — ``None`` where nothing is."""
     try:
-        return os.stat(path)
+        return os.stat(path) if follow else os.lstat(path)
     except OSError as error:
-        if _not_there(error):
+        if not_there(error):
             return None
         raise
     except ValueError:  # a name the operating system has no form for: one that holds a NUL
@@ -60,6 +70,15 @@ def is_dir(path: str | os.PathLike[str]) -> bool:
     return status is not None and stat.S_ISDIR(status.st_mode)
 
 
+def is_link(path: str | os.PathLike[str]) -> bool:
+    """Whether *path* is a symbolic link: the link is looked at and is not followed.
+
+    A look the filesystem refuses raises its ``OSError``.
+    """
+    status = _status(path, follow=False)
+    return status is not None and stat.S_ISLNK(status.st_mode)
+
+
 def paths_under(
     root: str | os.PathLike[str], refused: list[OSError] | None = None
 ) -> Iterator[Path]:
@@ -78,7 +97,7 @@ def paths_under(
     """
 
     def refuse(error: OSError) -> None:
-        if _not_there(error):
+        if not_there(error):
             return
         if refused is None:
             raise error
@@ -100,7 +119,7 @@ def paths_under(
                 if entry.is_dir(follow_symlinks=False):
                     pending.append(entry.path)
             except OSError as error:
-                if untold is None and not _not_there(error):
+                if untold is None and not not_there(error):
                     untold = error
         if untold is not None:
             refuse(OSError(untold.errno, untold.strerror, directory))

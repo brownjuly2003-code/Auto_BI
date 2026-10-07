@@ -716,11 +716,14 @@ def test_the_store_answers_a_refused_look_with_its_own_error(
     """A directory that may not be searched refuses the look itself."""
     store = FilesystemArtifactStore(tmp_path)
     store.put(RUN, "checks/one.json", b"{}")
+    looked_at = os.lstat
 
-    def refuse(self: Path) -> bool:
-        raise PermissionError(errno.EACCES, "Permission denied", str(self))
+    def refuse(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+        if isinstance(path, (str, os.PathLike)) and tmp_path in Path(os.fspath(path)).parents:
+            raise PermissionError(errno.EACCES, "Permission denied", os.fspath(path))
+        return looked_at(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "is_symlink", refuse)
+    monkeypatch.setattr(os, "lstat", refuse)
 
     with pytest.raises(ArtifactStoreError) as looked:
         store.exists(RUN, "checks/one.json")
@@ -730,7 +733,7 @@ def test_the_store_answers_a_refused_look_with_its_own_error(
 
     with pytest.raises(ArtifactStoreError) as read:
         store.get(RUN, "checks/one.json")
-    assert str(read.value) == f"cannot read {where}"
+    assert str(read.value) == f"cannot read {where}: PermissionError"
 
     with pytest.raises(ArtifactStoreError) as wrote:
         store.put(RUN, "checks/two.json", b"{}")
@@ -742,14 +745,14 @@ def test_a_refused_look_into_the_evidence_directory_is_a_usage_error(
 ) -> None:
     case = _case(tmp_path)
     evidence = case.root / "evidence"
-    looked = Path.is_symlink
+    looked = os.lstat
 
-    def refuse(self: Path) -> bool:
-        if evidence in self.parents:
-            raise PermissionError(errno.EACCES, "Permission denied", str(self))
-        return looked(self)
+    def refuse(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+        if isinstance(path, (str, os.PathLike)) and evidence in Path(os.fspath(path)).parents:
+            raise PermissionError(errno.EACCES, "Permission denied", os.fspath(path))
+        return looked(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "is_symlink", refuse)
+    monkeypatch.setattr(os, "lstat", refuse)
 
     message = _refusal(case)
 

@@ -50,7 +50,7 @@ from auto_bi.evidence.canonical import canonical_bytes, digest_bytes, sha256_dig
 from auto_bi.evidence.manifest import BundleWriter, verify_bundle
 from auto_bi.evidence.model import ArtifactKind, ClaimType, EvidenceClassification
 from auto_bi.evidence.signing import EvidenceSigner
-from auto_bi.evidence.store import ArtifactStore
+from auto_bi.evidence.store import ArtifactRefusalError, ArtifactStore
 from auto_bi.ir.spec import DashboardSpec, TargetBI
 from auto_bi.ir.validate import validate_spec
 from auto_bi.refs import ContractRef
@@ -1037,6 +1037,15 @@ def run_id_for(key: str) -> str:
     return f"run-{key.removeprefix('sha256:')[:16]}"
 
 
+class EvidenceReadBackError(Exception):
+    """The gate wrote the bundle, and the filesystem refused it the read of what it wrote.
+
+    `evidence.bundle` says what a second reading of the bundle found. A reading that was
+    refused found nothing: the bundle is not verified and is not shown to be invalid, so
+    the run has no report to give. What was written stays where it was written.
+    """
+
+
 def run_gate(
     inputs: GateInputs,
     *,
@@ -1139,7 +1148,10 @@ def run_gate(
         ),
     )
     written = writer.write()
-    problems = verify_bundle(store, run_id, verifier=signer)
+    try:
+        problems = verify_bundle(store, run_id, verifier=signer)
+    except ArtifactRefusalError as exc:
+        raise EvidenceReadBackError(str(exc)) from exc
     checks.append(
         CheckResult(
             check_id="evidence.bundle",

@@ -26,6 +26,7 @@ import json
 
 from pydantic import Field, model_validator
 
+from auto_bi import filesystem
 from auto_bi.evidence.canonical import digest_bytes
 from auto_bi.evidence.manifest import (
     MANIFEST_PATH,
@@ -42,7 +43,7 @@ from auto_bi.evidence.model import (
     EvidenceIntegrity,
 )
 from auto_bi.evidence.signing import EvidenceVerifier
-from auto_bi.evidence.store import ArtifactStore, ArtifactStoreError
+from auto_bi.evidence.store import ArtifactRefusalError, ArtifactStore, ArtifactStoreError
 from auto_bi.scalars import Sha256Digest, Slug
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
@@ -69,6 +70,21 @@ class EvidenceDigestError(EvidenceReadError):
     def __init__(self, detail: str) -> None:
         self.detail = detail
         super().__init__(f"{self.code}: {detail}")
+
+
+def _unread(exc: ArtifactRefusalError) -> EvidenceReadError:
+    """What the filesystem refused the store, as the reader's error: the path and the class.
+
+    Never "is not in the store" and never "not an evidence bundle": whether the path holds
+    what the manifest says was not established, so nothing is graded and nothing is denied.
+    The line is the one a command gives for an input it cannot read.
+    """
+    refusal = exc.refusal
+    if refusal.filename is None:
+        return EvidenceReadError(str(exc))
+    return EvidenceReadError(
+        f"cannot read {filesystem.display_path(refusal.filename)}: {type(refusal).__name__}"
+    )
 
 
 class BundleInspection(StrictModel):
@@ -140,12 +156,19 @@ def inspect_bundle(
     """
     try:
         raw = store.get(run_id, MANIFEST_PATH)
+    except ArtifactRefusalError as exc:
+        raise _unread(exc) from exc
     except ArtifactStoreError as exc:
         raise EvidenceReadError(
             f"run {run_id!r} has no {MANIFEST_PATH}: this is not an evidence bundle"
         ) from exc
 
-    problems = list(verify_bundle(store, run_id, verifier=verifier, raw=raw))
+    try:
+        problems = list(verify_bundle(store, run_id, verifier=verifier, raw=raw))
+    except ArtifactRefusalError as exc:
+        # An artifact that may not be looked at or read: the bundle was not re-verified, and
+        # a verdict over the rest would be one about a bundle nobody read.
+        raise _unread(exc) from exc
     digest = digest_bytes(raw)
     if expected_digest and expected_digest != digest:
         problems.append(
@@ -184,6 +207,8 @@ def read_artifact(
     """One payload out of a bundle — only if it is still what the manifest addresses."""
     try:
         raw = store.get(run_id, MANIFEST_PATH)
+    except ArtifactRefusalError as exc:
+        raise _unread(exc) from exc
     except (ArtifactStoreError, ValueError) as exc:
         raise EvidenceReadError(
             f"run {run_id!r} has no readable {MANIFEST_PATH}, so nothing can be read out of it"
@@ -221,6 +246,8 @@ def read_artifact(
 
     try:
         payload = store.get(run_id, artifact.path)
+    except ArtifactRefusalError as exc:
+        raise _unread(exc) from exc
     except ArtifactStoreError as exc:
         raise EvidenceReadError(f"{artifact_id}: {artifact.path} is not in the store") from exc
     actual = digest_bytes(payload)

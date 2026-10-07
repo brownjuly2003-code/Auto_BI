@@ -17,6 +17,8 @@ import re
 from pathlib import Path
 from typing import Protocol
 
+from auto_bi import filesystem
+
 _MAX_SEGMENTS = 8
 #: A run id is one plain directory name, the same shape the manifest declares it in
 #: (`scalars.Slug`). Enforced here because the confinement check below is rooted *at* the
@@ -27,6 +29,21 @@ _RUN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*\Z")
 
 class ArtifactStoreError(Exception):
     """Refused write or read — never a silent fallback to another location."""
+
+
+class ArtifactRefusalError(ArtifactStoreError):
+    """The filesystem refused the store a look, a read or a write.
+
+    Told from what the store says itself because the two are different answers to whoever
+    grades a bundle. An artifact the store says is missing is a finding about the bundle. A
+    path that may not be looked at or read is none: the artifact is there or it is not, and
+    this reader was not let know. `refusal` is what the operating system raised, and it
+    names the path.
+    """
+
+    def __init__(self, message: str, refusal: OSError) -> None:
+        super().__init__(message)
+        self.refusal = refusal
 
 
 class ArtifactStore(Protocol):
@@ -55,7 +72,8 @@ class FilesystemArtifactStore:
     # What the filesystem refuses is this store's answer too: a caller that handles
     # `ArtifactStoreError` is not left with an `OSError` from under it. Looking at a path can
     # be refused as well as writing to it: under a directory that may not be searched the
-    # look itself raises `PermissionError`.
+    # look itself is refused. The looks are the operating system's (`auto_bi.filesystem`),
+    # not `pathlib`'s, which from Python 3.14 on answers "no" to such a refusal.
 
     def put(self, run_id: str, path: str, payload: bytes) -> None:
         try:
@@ -63,26 +81,31 @@ class FilesystemArtifactStore:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
         except OSError as exc:
-            raise ArtifactStoreError(
-                f"cannot write {path!r} of run {run_id!r}: {type(exc).__name__}"
+            raise ArtifactRefusalError(
+                f"cannot write {path!r} of run {run_id!r}: {type(exc).__name__}", exc
             ) from exc
 
     def get(self, run_id: str, path: str) -> bytes:
         try:
             return self._resolve(run_id, path, for_write=False).read_bytes()
         except OSError as exc:
-            raise ArtifactStoreError(f"cannot read {path!r} of run {run_id!r}") from exc
+            if filesystem.not_there(exc):  # it went away between the look and the read
+                raise ArtifactStoreError(_missing(run_id, path)) from exc
+            raise ArtifactRefusalError(
+                f"cannot read {path!r} of run {run_id!r}: {type(exc).__name__}", exc
+            ) from exc
 
     def exists(self, run_id: str, path: str) -> bool:
         try:
-            return self._resolve(run_id, path, for_write=False).is_file()
+            self._resolve(run_id, path, for_write=False)
         except ArtifactStoreError:
             return False
         except OSError as exc:
             # Not "no": whether the artifact is there was not established.
-            raise ArtifactStoreError(
-                f"cannot look for {path!r} of run {run_id!r}: {type(exc).__name__}"
+            raise ArtifactRefusalError(
+                f"cannot look for {path!r} of run {run_id!r}: {type(exc).__name__}", exc
             ) from exc
+        return True
 
     def _resolve(self, run_id: str, path: str, *, for_write: bool) -> Path:
         if not path or path.startswith("/") or "\\" in path:
@@ -99,13 +122,19 @@ class FilesystemArtifactStore:
         current = base
         for segment in segments[:-1]:
             current = current / segment
-            if current.is_symlink():
+            if filesystem.is_link(current):
                 raise ArtifactStoreError(f"artifact path crosses a symlink: {current}")
-        if target.is_symlink():
+        if filesystem.is_link(target):
             raise ArtifactStoreError(f"artifact path is a symlink: {target}")
 
         if not target.resolve().is_relative_to(base.resolve()):
             raise ArtifactStoreError(f"artifact path escapes the run directory: {path!r}")
-        if not for_write and not target.exists():
-            raise ArtifactStoreError(f"artifact {path!r} of run {run_id!r} is missing")
+        # An artifact is a file. A path that holds a directory, or anything else that is no
+        # regular file, holds no artifact — and is not opened to find that out.
+        if not for_write and not filesystem.is_file(target):
+            raise ArtifactStoreError(_missing(run_id, path))
         return target
+
+
+def _missing(run_id: str, path: str) -> str:
+    return f"artifact {path!r} of run {run_id!r} is missing"
