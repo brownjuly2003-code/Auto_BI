@@ -10,6 +10,29 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+- 2026-10-07 — T-63: файловый `ArtifactStore` прежде открывал target напрямую, поэтому
+  отказ во время записи manifest оставлял частичный файл и блокировал повтор. Теперь каждый
+  payload пишется в уникальный соседний staging и публикуется одним `os.replace`. Отказ записи
+  или публикации сохраняет прежние байты, а отсутствующий target не появляется; staging
+  удаляется при успешном cleanup, затем возможен повтор. Mode bits существующего
+  файла переносятся до публикации; на Windows staging для существующего target создаётся
+  через `CreateFileW(CREATE_NEW)` с owner/DACL target в `SECURITY_ATTRIBUTES`. Read-only target
+  получает отказ без изменения байтов и без read-only staging. `ArtifactRefusalError.refusal`
+  несёт исходный `OSError`.
+  Red-тесты на Mac воспроизвели частичный новый и существующий manifest и отказ публикации;
+  отдельные тесты закрепили mode `0600` при записи и сохранение `0600`/`0640`. Synthetic
+  Astra xhigh review выявило Windows-окно между созданием staging и переносом DACL: ранний
+  read-handle сохранил доступ к новому payload. Windows red-тест воспроизвёл утечку, green-тест
+  подтвердил отказ раннему reader; финальное synthetic review не нашло P1/P2. Связанные
+  модули: 238 passed, 3 skipped под Python 3.12, 3.13 и 3.14 на Mac; Windows-модуль:
+  25 passed, 4 skipped. Полный offline gate 3.13 с DuckDB:
+  6101 passed, 7 skipped, 38 deselected, exit 0; Black, Ruff, package-wide strict mypy чистые.
+  `VERIFIER_VERSION=97` и `CHECK_VERSION=72` не менялись. Гарантия относится к одному файлу,
+  не к bundle; parent dirs, гонки, прерывание, отказ cleanup, прочие metadata и power-loss
+  durability остаются вне неё.
+  Synthetic review не является human/production acceptance.
+  [Контракт](../specs/unreadable-inputs.md).
+
 - 2026-10-07 — T-62: `decision investigate` писал четыре файла прямо в новый output.
   Отказ третьей записи оставлял каталог с `plan.json` и `results.json`; повторный запуск
   получал `output directory already exists`. Теперь payload вычисляется до filesystem

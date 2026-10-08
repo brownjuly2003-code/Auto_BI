@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-07 — T-63: файловый store публикует каждый артефакт через соседний staging и
+  `os.replace`; частичный manifest больше не виден. Windows staging сразу получает owner/DACL
+  target: утечка через ранний read-handle исправлена red→green. Mac: 238 passed, 3 skipped под
+  3.12/3.13/3.14; Windows: 25 passed, 4 skipped; offline gate с DuckDB: 6101 passed, 7 skipped,
+  38 deselected. Synthetic Astra xhigh: 0 P1/P2; не human acceptance. [Контракт](docs/specs/unreadable-inputs.md).
 - 2026-10-07 — T-62: `decision investigate` пишет четыре артефакта в соседний staging и
   публикует каталог целиком; отказ записи/публикации очищает staging и допускает retry.
   127 целевых тестов под Python 3.12/3.13/3.14; полный offline gate 3.13 с duckdb:
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Гейт не объявляет отказанное повторное чтение invalid. Verifier 97, check 72.
   Synthetic Astra xhigh review: LF/CR P2 исправлен, 8 red→green; не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_REFUSED_EVIDENCE_CHECKS_2026-10-05.md).
-- 2026-10-05 — T-60: decision-команда отвечает в любой поток: символ, которого кодировка
-  потока не знает, печатается backslash-escape, `--json` — целиком в ASCII, payload артефакта
-  — как есть или отказ; прежде это был traceback и exit 1 после вердикта. Verifier 97, check
-  72 — без изменений. Автор — Claude Opus 5.5 напрямую, модельного ревью нет.
-  [Проверки и границы](docs/DECISIONOPS_UNENCODABLE_OUTPUT_CHECKS_2026-10-05.md).
 ## Definition of done (фаза/задача)
 
 - Тесты зелёные (pytest), ruff чистый.

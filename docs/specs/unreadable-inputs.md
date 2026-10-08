@@ -2157,10 +2157,11 @@ for the check.
   of either model named with empty text is taken by the schema of the model and refused where
   the two snapshots are compared — reproduced on the first table, the `ValidationError` of a
   `SemanticChange`.
-- The manifest is one write and the last one, so a refused write leaves none; nothing makes that
-  one write atomic. Reproduced with a manifest cut in half: the repeated run exits 2 with `run
-  '<id>' already holds bundle <digest>; refusing to overwrite it with <digest>` and `decision
-  evidence` exits 4 with `verdict: block (1 problem(s))`.
+- Before T-63, `FilesystemArtifactStore.put` wrote the manifest directly to its target. A
+  refused partial write could therefore leave a truncated manifest; the repeated run exited 2
+  with `run '<id>' already holds bundle <digest>; refusing to overwrite it with <digest>` and
+  `decision evidence` exited 4 with `verdict: block (1 problem(s))`. This is a historical
+  observation, superseded by the one-file staging contract below.
 - The line of a usage error may quote the file: the message of a value that could not be built,
   a key of the document as the place of a refusal, the key of a recorded result, a value the
   validator of a schema puts into its reason. It is printed to the standard error stream and is
@@ -2213,3 +2214,28 @@ also outside the guarantee. Process interruption or termination may leave stagin
 No filesystem sync is performed for power-loss durability. On POSIX the published directory
 inherits `mkdtemp` permissions (`0700` subject to umask), rather than the previous `mkdir`
 permissions (`0777` subject to umask).
+
+## Requirement: one artifact write is staged and replaced
+
+`FilesystemArtifactStore.put` SHALL write one payload to a unique staging file beside its
+target and publish it with one `os.replace`. On POSIX and for an absent Windows target, staging
+SHALL be opened with `os.open(..., 0o600)`. When replacing an existing Windows target, staging
+SHALL be created with `CreateFileW(CREATE_NEW)` using the target's owner and DACL in
+`SECURITY_ATTRIBUTES`, so the inherited parent DACL never grants an interim read of the new
+payload. If the payload write raises `OSError` after writing a prefix, the target SHALL remain
+byte-for-byte unchanged
+when it existed and SHALL remain absent otherwise. If `os.replace` raises `OSError`, the same
+before/after rule SHALL hold. In either case the staging file SHALL be removed when cleanup
+succeeds, and a later `put` MAY retry; `ArtifactRefusalError.refusal` SHALL be the original
+`OSError`.
+
+When replacing an existing target, its mode SHALL be applied to the staged file before
+publication; on POSIX, a new target retains the staging mode subject to umask. On Windows, an
+existing target's owner and DACL SHALL also be preserved, and a read-only target SHALL be
+refused without changing its bytes or leaving a read-only staging file behind. An absent
+Windows target receives the parent directory's DACL.
+
+This is a guarantee for one file only: it does not make a bundle atomic. Parent directories may
+remain, writers are not coordinated and concurrent target or parent-path races are outside the
+guarantee, interruption or cleanup failure may leave staging behind, and no `fsync` or power-loss
+durability is provided.

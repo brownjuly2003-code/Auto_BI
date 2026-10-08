@@ -12,7 +12,27 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=97`, `CHECK_VERSION=72`
 
-**Последний срез (T-62, 2026-10-07):** `decision investigate` больше не оставляет
+**Последний срез (T-63, 2026-10-07):** `FilesystemArtifactStore.put` пишет каждый артефакт,
+включая manifest, в уникальный соседний staging и публикует одним `os.replace`. На POSIX и
+для нового Windows target staging создаётся через `os.open(..., 0o600)`; при замене Windows
+target — через `CreateFileW(CREATE_NEW)` с owner/DACL target уже в `SECURITY_ATTRIBUTES`.
+Отказ частичной записи или публикации сохраняет прежние байты либо отсутствие target и
+убирает staging при успешной очистке; после отказа запись можно повторить. При замене
+сохраняются mode bits существующего файла, а в Windows также owner/DACL. Windows read-only
+target получает отказ без изменения байтов. Red/green на Mac покрыли частичную запись нового
+и существующего manifest, отказ `os.replace` и права staging. Synthetic Astra xhigh review
+нашло временное расширение DACL до записи: ранний read-handle прочитал новый payload после
+замены. Windows red-тест воспроизвёл утечку; создание staging с DACL target сделало его green.
+Связанные тесты на Mac: 238 passed, 3 skipped под Python 3.12, 3.13 и 3.14; Windows-модуль:
+25 passed, 4 skipped. Полный offline gate с DuckDB под 3.13: 6101 passed, 7 skipped,
+38 deselected, exit 0. Black, Ruff, package-wide strict mypy чистые; `VERIFIER_VERSION=97`,
+`CHECK_VERSION=72` не менялись. Финальное synthetic Astra xhigh review не нашло P1/P2.
+Гарантия ограничена одним файлом: всё bundle не атомарно; parent dirs могут остаться, гонки
+путей, прерывание, отказ cleanup, прочие metadata и
+power-loss durability не закрыты. Модельное ревью не является human/production acceptance.
+[Контракт](specs/unreadable-inputs.md).
+
+**Предыдущий срез (T-62, 2026-10-07):** `decision investigate` больше не оставляет
 частичный output после отказа записи: четыре артефакта записываются в соседний временный
 каталог, затем целиком публикуются через `os.rename`; при обычном отказе staging удаляется,
 тот же output можно использовать повторно. Существующий путь, включая symlink, проверяется

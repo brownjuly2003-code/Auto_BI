@@ -1398,6 +1398,19 @@ Public manifest содержит digest и classification restricted payload, н
 raw contents. Artifact paths строит store, а не пользователь; `..`, absolute
 paths и symlink escape запрещены.
 
+`FilesystemArtifactStore.put` пишет каждый файл в уникальный соседний временный файл и
+публикует одним `os.replace`. На POSIX и для нового Windows target staging создаётся через
+`os.open(..., 0o600)`; при замене существующего файла в Windows — через `CreateFileW` с owner
+и DACL target в `SECURITY_ATTRIBUTES`, чтобы права действовали с момента создания staging.
+При частичной записи или отказе публикации существующий файл сохраняет байты, отсутствующий
+не появляется; временный файл удаляется при успешной очистке, затем запись можно повторить. Права
+существующего файла сохраняются (mode bits; в Windows также owner и DACL); в Windows запись
+поверх read-only файла получает отказ.
+`ArtifactRefusalError.refusal` хранит исходный `OSError`. Гарантия относится к одному файлу,
+а не ко всему bundle: созданные родительские каталоги могут остаться, конкурентные изменения
+пути, прерывание и отказ очистки находятся вне неё; `fsync` и сохранность после сбоя питания
+не обеспечены ([полный контракт](specs/unreadable-inputs.md)).
+
 `reports/summary.md` пишет `verification/summary.py` — единственный артефакт в
 layout, написанный для человека, а не для машины. «Derived» здесь контракт, а не
 оговорка: отчёт пересказывает findings уже оценённых check'ов в порядке, нужном

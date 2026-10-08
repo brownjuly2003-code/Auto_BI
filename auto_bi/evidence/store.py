@@ -13,7 +13,11 @@ requirements, behind this same protocol (§11).
 
 from __future__ import annotations
 
+import errno
+import os
 import re
+import stat
+import uuid
 from pathlib import Path
 from typing import Protocol
 
@@ -76,14 +80,49 @@ class FilesystemArtifactStore:
     # not `pathlib`'s, which from Python 3.14 on answers "no" to such a refusal.
 
     def put(self, run_id: str, path: str, payload: bytes) -> None:
+        staged_path: Path | None = None
         try:
             target = self._resolve(run_id, path, for_write=True)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(payload)
+            try:
+                existing_mode = stat.S_IMODE(target.stat().st_mode)
+            except FileNotFoundError:
+                existing_mode = None
+            candidate = target.with_name(f".artifact-{uuid.uuid4().hex}")
+            if existing_mode is not None and os.name == "nt":
+                if not existing_mode & stat.S_IWRITE:
+                    # A read-only target refuses a write, while a read-only staged file
+                    # cannot be cleaned up after a failed Windows replacement.
+                    with target.open("ab"):
+                        pass
+                    raise PermissionError(errno.EACCES, "artifact is read-only", str(target))
+                descriptor = _open_windows_staged(target, candidate)
+            else:
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+                descriptor = os.open(candidate, flags, 0o600)
+            staged_path = candidate
+            try:
+                staged = os.fdopen(descriptor, "wb")
+            except OSError:
+                os.close(descriptor)
+                raise
+            with staged:
+                staged.write(payload)
+            if existing_mode is not None:
+                candidate.chmod(existing_mode)
+            os.replace(candidate, target)
+            staged_path = None
         except OSError as exc:
-            raise ArtifactRefusalError(
-                f"cannot write {path!r} of run {run_id!r}: {type(exc).__name__}", exc
-            ) from exc
+            detail = f"cannot write {path!r} of run {run_id!r}: {type(exc).__name__}"
+            if staged_path is not None:
+                try:
+                    staged_path.unlink(missing_ok=True)
+                except OSError as cleanup_exc:
+                    detail += (
+                        f"; cannot remove temporary file {str(staged_path)!r}: "
+                        f"{type(cleanup_exc).__name__}"
+                    )
+            raise ArtifactRefusalError(detail, exc) from exc
 
     def get(self, run_id: str, path: str) -> bytes:
         try:
@@ -138,3 +177,78 @@ class FilesystemArtifactStore:
 
 def _missing(run_id: str, path: str) -> str:
     return f"artifact {path!r} of run {run_id!r} is missing"
+
+
+def _open_windows_staged(source: Path, destination: Path) -> int:
+    """Create staging with the existing owner and DACL from its first instant."""
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    owner_and_dacl = 0x00000001 | 0x00000004
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    get_security = advapi32.GetFileSecurityW
+    get_security.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    get_security.restype = wintypes.BOOL
+
+    def refused(path: Path) -> OSError:
+        exc = ctypes.WinError(ctypes.get_last_error())
+        exc.filename = str(path)
+        return exc
+
+    size = wintypes.DWORD()
+    get_security(str(source), owner_and_dacl, None, 0, ctypes.byref(size))
+    if ctypes.get_last_error() != 122:  # ERROR_INSUFFICIENT_BUFFER
+        raise refused(source)
+    descriptor = ctypes.create_string_buffer(size.value)
+    if not get_security(str(source), owner_and_dacl, descriptor, size.value, ctypes.byref(size)):
+        raise refused(source)
+
+    class SecurityAttributes(ctypes.Structure):
+        _fields_ = [
+            ("nLength", wintypes.DWORD),
+            ("lpSecurityDescriptor", wintypes.LPVOID),
+            ("bInheritHandle", wintypes.BOOL),
+        ]
+
+    attributes = SecurityAttributes(
+        ctypes.sizeof(SecurityAttributes), ctypes.cast(descriptor, wintypes.LPVOID), False
+    )
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = [wintypes.HANDLE]
+    close_handle.restype = wintypes.BOOL
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(SecurityAttributes),
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    create_file.restype = wintypes.HANDLE
+    handle = create_file(
+        str(destination),
+        0x40000000,  # GENERIC_WRITE
+        7,  # FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
+        ctypes.byref(attributes),
+        1,  # CREATE_NEW
+        0x80,  # FILE_ATTRIBUTE_NORMAL
+        None,
+    )
+    if handle == ctypes.c_void_p(-1).value:
+        raise refused(destination)
+    try:
+        return msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+    except OSError:
+        close_handle(handle)
+        destination.unlink(missing_ok=True)
+        raise
