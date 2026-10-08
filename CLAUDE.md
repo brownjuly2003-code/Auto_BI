@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-08 — T-64: nonmapping `model.yaml` одинаково отклоняется в base/candidate/capture
+  до gate, probe/query и output; явный `{}` допустим. Red 40 → green 41; независимые
+  8 модулей на Windows 3.13: 553 passed, 1 skipped. Snapshots и 44 файла допустимых bundles
+  совпали с baseline; версии 97/72/native3 сохранены. Synthetic Astra xhigh: 0 P1/P2,
+  не human acceptance. [Контракт](docs/specs/unreadable-inputs.md).
 - 2026-10-07 — T-63: файловый store публикует каждый артефакт через соседний staging и
   `os.replace`; частичный manifest больше не виден. Windows staging сразу получает owner/DACL
   target: утечка через ранний read-handle исправлена red→green. Mac: 238 passed, 3 skipped под
@@ -99,11 +104,7 @@ GraceKelly (локальный сервис, должен быть запуще�
   127 целевых тестов под Python 3.12/3.13/3.14; полный offline gate 3.13 с duckdb:
   6094 passed, 4 skipped, 38 deselected. Synthetic Astra xhigh P2 для длинного имени
   исправлен; конкурентная замена пустого output остаётся вне гарантии. Не human acceptance.
-- 2026-10-05 — T-61: отказ чтения evidence — `cannot read <путь>: <класс>`, exit 2 без
-  вердикта; отсутствие артефакта остаётся `evidence.artifact_missing`.
-  Гейт не объявляет отказанное повторное чтение invalid. Verifier 97, check 72.
-  Synthetic Astra xhigh review: LF/CR P2 исправлен, 8 red→green; не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_REFUSED_EVIDENCE_CHECKS_2026-10-05.md).
+
 ## Definition of done (фаза/задача)
 
 - Тесты зелёные (pytest), ruff чистый.

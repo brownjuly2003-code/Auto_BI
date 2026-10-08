@@ -222,7 +222,7 @@ class NativeModelSource:
     def snapshot(self, revision: str = "") -> SemanticSnapshot:
         gaps: list[SemanticGap] = []
         model_bytes = self._model_path.read_bytes()
-        model = SemanticModel.model_validate(load_yaml_document(model_bytes.decode("utf-8")) or {})
+        model = SemanticModel.model_validate(load_yaml_document(model_bytes.decode("utf-8")))
 
         digests = {"model": digest_bytes(model_bytes)}
         contracts: list[MetricContract] = []

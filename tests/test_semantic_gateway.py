@@ -138,6 +138,44 @@ def gap_codes(snapshot: SemanticSnapshot) -> list[str]:
     return [gap.code for gap in snapshot.gaps]
 
 
+NONMAPPING_MODEL_DOCUMENTS = [
+    pytest.param("", id="an empty file"),
+    pytest.param(" \n# comment only\n", id="whitespace and comments only"),
+    pytest.param("---\n", id="a document marker"),
+    pytest.param("null\n", id="null"),
+    pytest.param("~\n", id="tilde null"),
+    pytest.param("false\n", id="false"),
+    pytest.param("0\n", id="zero"),
+    pytest.param("0.0\n", id="zero point zero"),
+    pytest.param("[]\n", id="an empty list"),
+    pytest.param("''\n", id="an empty YAML string"),
+]
+
+
+@pytest.mark.parametrize("text", NONMAPPING_MODEL_DOCUMENTS)
+def test_source_rejects_a_nonmapping_model_document(tmp_path: Path, text: str) -> None:
+    path = tmp_path / "model.yaml"
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ValidationError) as caught:
+        NativeModelSource(path, None).snapshot()
+
+    assert caught.value.title == SemanticModel.__name__
+    assert caught.value.errors()[0]["loc"] == ()
+
+
+def test_source_accepts_an_explicit_empty_mapping(tmp_path: Path) -> None:
+    path = tmp_path / "model.yaml"
+    path.write_text("{}\n", encoding="utf-8")
+
+    snapshot = NativeModelSource(path, None).snapshot()
+
+    assert snapshot.graph.tables == []
+    assert snapshot.graph.joins == []
+    assert snapshot.graph.metrics == []
+    assert snapshot.gaps == []
+
+
 def test_snapshot_projects_fields_joins_and_metrics(tmp_path: Path) -> None:
     snapshot = source(tmp_path).snapshot()
     assert snapshot.source_kind is SourceKind.NATIVE_MODEL_YAML

@@ -1592,6 +1592,10 @@ escape внутри это другой текст; отказ — exit `2` и �
 кончает чтение. Отказ схемы, под которую не написан ни один файл ref, сказан о ref вместе
 с её именем: `cannot load semantic ref <ref>: not a valid <схема>: …`
 ([files a command cannot read](specs/unreadable-inputs.md), шестое требование).
+`NativeModelSource.snapshot` требует YAML-mapping без подмены ложных значений на `{}`:
+пустой файл, комментарии, null, scalar или sequence отклоняются одинаково в base/candidate
+у `verify` и в candidate у `capture`, до gate и запросов движку. Явный `{}` остаётся
+допустимой пустой моделью; v1-загрузчик `SemanticModel.load` этим правилом не изменяется.
 Так же кончается прогон, чей evidence-каталог не принимает bundle: store отвечает
 своей ошибкой на отказ файловой системы, команда — `error: cannot write the evidence
 bundle under <каталог>: …`. Manifest пишется последним, поэтому записанное до отказа

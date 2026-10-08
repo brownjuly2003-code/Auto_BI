@@ -10,6 +10,22 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+- 2026-10-08 — T-64: `NativeModelSource.snapshot` больше не заменяет ложное YAML-значение
+  на `{}`. До исправления base принимал пустой `model.yaml` как пустую модель, candidate
+  получал отказ при повторном чтении, а capture доходил до query factory. Теперь документ
+  без mapping отвергается до gate, probe/query и output одинаково во всех трёх путях:
+  exit 2 и одна строка `<path> is not a valid semantic model: <root>: …`. Явный `{}` допустим.
+  Synthetic Astra xhigh выбрала срез по ADR 0006; Luna xhigh выполнила однострочную правку
+  и тесты. Red: 40 failed, 1 passed; green после финального уточнения тестов: 41 passed.
+  Codex независимо проверил восемь связанных модулей на Windows/Python 3.13.7:
+  553 passed, 1 skipped, exit 0. Ruff, Black и strict mypy (122 source files) чистые.
+  Контроль до/после: обычная mapping, `{}` в base и `{}` в candidate; snapshots, verdict
+  и все 44 файла трёх bundles идентичны. Версии verifier 97, check 72 и native source 3
+  сохранены. Финальное synthetic Astra xhigh review: 0 P1/P2; не human/production acceptance.
+  Полный offline suite и живые движки не запускались. v1 `SemanticModel.load` и asset loader
+  остаются за границей среза. [Контракт](../specs/unreadable-inputs.md),
+  [план и команды проверки](../../empty-model-consistency.md).
+
 - 2026-10-07 — T-63: файловый `ArtifactStore` прежде открывал target напрямую, поэтому
   отказ во время записи manifest оставлял частичный файл и блокировал повтор. Теперь каждый
   payload пишется в уникальный соседний staging и публикуется одним `os.replace`. Отказ записи

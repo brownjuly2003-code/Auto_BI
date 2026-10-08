@@ -263,7 +263,7 @@ below hand the string on past the loader.
 A run input that is read and is not what the file must hold SHALL be a usage error that names
 the file:
 
-- a `model.yaml` whose document is a list, a text or a mapping the schema refuses — of either
+- a `model.yaml` whose document is not a mapping, or is a mapping the schema refuses — of either
   ref, for both commands — `<file> is not a valid semantic model: ` and what the schema refuses,
   in the one line of the sixth requirement;
 - a file under the assets path that holds no verified asset — a list, a text, nothing or a
@@ -271,9 +271,9 @@ the file:
   refuses, in that one line, for both commands. Two assets of one id are the fault of no one
   file and stay `<assets path> holds an invalid verified asset: duplicate verified asset id:
   <id>`;
-- a dashboard spec or a results file that holds no mapping, and an empty `model.yaml` of the
-  candidate, `<file> must contain a mapping`, as before. An empty `model.yaml` of the base is a
-  model of nothing and is graded, as before.
+- a dashboard spec or a results file that holds no mapping, `<file> must contain a mapping`,
+  as before. Since T-64, an empty `model.yaml` is refused by the model's schema in both refs
+  and both commands; an explicit `{}` is still a valid empty model.
 
 `VerifiedAssetRepository.load` SHALL raise `VerifiedAssetFileError` for a file it cannot read or
 that holds no asset: a `ValueError`, which an asset the schema refuses has always been to whoever
@@ -409,13 +409,20 @@ recorded results. *The six texts PyYAML refuses* and the reason of each:
   a valid SemanticGap: reason: ` and does not say `is not a valid semantic model`; no evidence
   directory exists
 
-### Scenario: an empty model is read as it was
+### Scenario: a model document without a mapping is refused consistently
 
-- **GIVEN** the run with an empty `model.yaml` in the base ref; and the run with an empty
-  `model.yaml` in the candidate ref
-- **WHEN** `decision verify` runs
-- **THEN** the first is graded and its verdict is `block`; the second is refused with `<that
-  file> must contain a mapping` and no evidence directory exists
+- **GIVEN** `model.yaml` is empty, contains only whitespace or comments, or holds a null,
+  boolean, number, sequence or string instead of a mapping
+- **WHEN** `decision verify` reads either ref, or `decision capture` reads its candidate ref
+- **THEN** it exits 2 with one line, `<that file> is not a valid semantic model: <root>: …`,
+  no verdict or success output, and no evidence directory or captured result
+- **AND** no environment probe or capture query is opened
+- **AND** an explicit `{}` remains a valid empty model whose snapshot and gate findings are
+  unchanged; a normal mapping produces the same snapshot and evidence as before T-64.
+
+The rule belongs to `NativeModelSource.snapshot`: it validates the loaded document itself,
+without substituting an empty mapping for a false value. The v1 `SemanticModel.load` path is
+outside this requirement.
 
 ### Scenario: a spec or a results file that is no mapping is named as before
 
@@ -2075,9 +2082,10 @@ for the check.
   call. Timed on the fixture's `model.yaml` and on a model of 4039 lines, the best of seven:
   2.66 ms against 2.72 ms of `yaml.safe_load`, and 210.5 ms against 209.8 ms — no difference
   the measure can tell.
-- An empty `model.yaml` is read three ways, as before: of the base ref it is a model of nothing
-  and the run is graded; of the candidate ref `decision verify` refuses it with `<file> must
-  contain a mapping`, and `decision capture` goes on to the engine.
+- Before T-64, an empty `model.yaml` was read three ways: of the base ref it was a model of
+  nothing and the run was graded; of the candidate ref `decision verify` refused it with
+  `<file> must contain a mapping`, and `decision capture` went on to the engine. T-64 supersedes
+  this observation: both commands refuse a nonmapping document before the run or engine query.
 - The key of a recorded result is not looked at when the file is read. Reproduced: a result that
   is one, under a key that is the id of no asset — a word, a number — beside the result of the
   run, is read and never asked for, and the run is graded as without it; the result of the run

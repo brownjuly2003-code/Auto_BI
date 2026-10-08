@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-07
+**Обновлено:** 2026-10-08
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -12,7 +12,20 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=97`, `CHECK_VERSION=72`
 
-**Последний срез (T-63, 2026-10-07):** `FilesystemArtifactStore.put` пишет каждый артефакт,
+**Последний срез (T-64, 2026-10-08):** `NativeModelSource.snapshot` валидирует YAML-документ
+без подмены ложных значений на `{}`. Пустой файл, комментарии, null, false, число, список
+или строка одинаково отклоняются в base/candidate у `verify` и в candidate у `capture`:
+exit 2, одна строка `<path> is not a valid semantic model: <root>: …`, без verdict,
+probe/query и output. Явный `{}` остаётся допустимым. Luna xhigh: 40 red → 41 green;
+независимые восемь модулей на Windows/Python 3.13.7: 553 passed, 1 skipped, exit 0.
+Ruff, Black и package-wide strict mypy чистые. Сравнение до/после на обычной модели и
+на `{}` в каждом ref подтвердило идентичность snapshots, verdict и всех 44 файлов bundle.
+Версии verifier 97 / check 72 / native source 3 сохранены. Synthetic Astra xhigh выбрала
+срез и проверила diff: 0 P1/P2; это не human/production acceptance. Полный offline suite
+и live-стенды в этом срезе не запускались; v1 `SemanticModel.load` не изменялся.
+[Контракт](specs/unreadable-inputs.md), [план и проверки](../empty-model-consistency.md).
+
+**Предыдущий срез (T-63, 2026-10-07):** `FilesystemArtifactStore.put` пишет каждый артефакт,
 включая manifest, в уникальный соседний staging и публикует одним `os.replace`. На POSIX и
 для нового Windows target staging создаётся через `os.open(..., 0o600)`; при замене Windows
 target — через `CreateFileW(CREATE_NEW)` с owner/DACL target уже в `SECURITY_ATTRIBUTES`.

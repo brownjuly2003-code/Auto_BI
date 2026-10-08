@@ -29,8 +29,7 @@ from auto_bi.decision.use_cases import (
 )
 from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
 from auto_bi.semantic.gateway import NativeModelSource
-from auto_bi.verification.model import EXIT_ERROR, Verdict
-from auto_bi.verification.release_gate import GateReport
+from auto_bi.verification.model import EXIT_ERROR
 from auto_bi.verification.repository import VerifiedAssetFileError, VerifiedAssetRepository
 from auto_bi.yaml_document import load_yaml_document, unread_reason
 from tests.test_decision_cli import _verify_argv
@@ -82,6 +81,20 @@ REFUSED_AT = [
 NOT_A_MAPPING = [
     pytest.param("- a\n- b\n", id="a list"),
     pytest.param("just text\n", id="a text"),
+]
+
+#: Documents that a semantic model reader must reject because the YAML root is not a mapping.
+NONMAPPING_MODEL_DOCUMENTS = [
+    pytest.param("", id="an empty file"),
+    pytest.param(" \n# comment only\n", id="whitespace and comments only"),
+    pytest.param("---\n", id="a document marker"),
+    pytest.param("null\n", id="null"),
+    pytest.param("~\n", id="tilde null"),
+    pytest.param("false\n", id="false"),
+    pytest.param("0\n", id="zero"),
+    pytest.param("0.0\n", id="zero point zero"),
+    pytest.param("[]\n", id="an empty list"),
+    pytest.param("''\n", id="an empty YAML string"),
 ]
 
 #: A lone surrogate as a YAML file holds one: an escape in a double-quoted scalar. PyYAML
@@ -171,22 +184,26 @@ def _said_of(line: str, raised: type[BaseException]) -> str:
     return str(caught.value)
 
 
-def _refusal(case: Case) -> str:
+def _refusal(case: Case, **overrides: Any) -> str:
     """What `decision verify` refuses *case* with."""
     with pytest.raises(VerifyError) as caught:
-        case.run()
+        case.run(**overrides)
     return str(caught.value)
 
 
-def _refused(case: Case) -> str:
+def _refused(case: Case, **overrides: Any) -> str:
     """What `decision verify` refuses *case* with before anything is written for it."""
-    message = _refusal(case)
+    message = _refusal(case, **overrides)
     assert not (case.root / "evidence").exists()
     return message
 
 
 def _never() -> Any:
     raise AssertionError("no query may be opened for a run file that cannot be read")
+
+
+def _never_probe(*_args: Any) -> Any:
+    raise AssertionError("no environment probe may be opened for a run file that cannot be read")
 
 
 def _capture_refused(case: Case) -> str:
@@ -451,18 +468,48 @@ def test_a_refusal_of_another_schema_is_said_of_the_ref(
         assert _capture_refused(case) == message
 
 
-def test_an_empty_model_is_read_as_it_was(tmp_path: Path) -> None:
-    """The base's is a model of nothing and is graded; the candidate's must be a mapping."""
-    base = _case(tmp_path / "base")
-    (base.base / "model.yaml").write_bytes(b"")
-    report = base.run()
-    assert isinstance(report, GateReport)
-    assert report.verdict is Verdict.BLOCK
+@pytest.mark.parametrize(
+    "surface",
+    [
+        pytest.param("base", id="base"),
+        pytest.param("candidate", id="candidate"),
+        pytest.param("capture", id="capture"),
+    ],
+)
+@pytest.mark.parametrize("text", NONMAPPING_MODEL_DOCUMENTS)
+def test_a_nonmapping_model_is_refused_before_the_run(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    surface: str,
+    text: str,
+) -> None:
+    """Every nonmapping model document refuses before grading, capture, or evidence."""
+    case = _case(tmp_path)
+    path = case.base / "model.yaml" if surface == "base" else case.candidate / "model.yaml"
+    path.write_text(text, encoding="utf-8")
 
-    candidate = _case(tmp_path / "candidate")
-    path = candidate.candidate / "model.yaml"
-    path.write_bytes(b"")
-    assert _refused(candidate) == f"{path} must contain a mapping"
+    if surface == "capture":
+        message = _capture_refused(case)
+        output = case.root / "captured.yaml"
+        argv = ["decision", "capture", str(_assets(case)), "--candidate", str(case.candidate)]
+        argv += ["--dwh", "clickhouse", "--output", str(output), "--captured-at", CREATED_AT]
+    else:
+        message = _refused(case, probe=_never_probe)
+        output = None
+        argv = _verify_argv(case)
+
+    assert message.startswith(f"{path} is not a valid semantic model: <root>: ")
+    assert "\n" not in message
+    assert not (case.root / "evidence").exists()
+    assert main(argv) == EXIT_ERROR
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"error: {message}\n"
+    assert captured.err.count("\n") == 1
+    assert not (case.root / "evidence").exists()
+    if output is not None:
+        assert not output.exists()
 
 
 @pytest.mark.parametrize("which", ["a dashboard spec", "the recorded results"])
