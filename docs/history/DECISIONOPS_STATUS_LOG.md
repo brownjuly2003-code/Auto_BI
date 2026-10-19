@@ -10,6 +10,34 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+- 2026-10-19 — T-65: движок, до которого `decision verify --dwh` не дотянулся. На HEAD проба
+  движка соединялась при построении, до вызова use case, а то, что поднимал драйвер, уходило
+  наверх как есть. Процессами над закрытым портом loopback и над слушателем, который сразу
+  закрывает соединение: 8 прогонов `verify --dwh` из 8 — exit 1 и traceback (154 и 139 строк
+  у ClickHouse, первая — предупреждение драйвера через `logging.lastResort`; 23 и 24 у
+  PostgreSQL); прогоны с моментом, который не момент, и с файлом results, которого нет,
+  открывали сессию и кончались так же. `capture --dwh clickhouse` отвечал двумя строками.
+  Теперь клиент создаётся, когда use case спрашивает, — последним, после заявленного и всех
+  входов. То, что поднял драйвер (`ClickHouseError`, `StreamFailureError`, `psycopg.Error`),
+  проба поднимает как `EnvironmentProbeError` порта, use case — как `VerifyError`: `error:
+  cannot ask <engine> at <host>:<port>/<database>: <класс>: <текст в одну строку>`, exit 2,
+  без evidence. Отказ движка — факт, как прежде; поднятое не драйвером — как есть. `verify` и
+  `capture` с ClickHouse ставят один `NullHandler` на логгер `clickhouse_connect` до импорта
+  драйвера. На рабочем дереве из 12 прогонов пробы traceback драйвера — 0: `verify` — одна
+  строка в 8 (в 4 — отказ момента или файла без сессии), `capture --dwh clickhouse` — одна;
+  остаются две строки libpq у `capture --dwh postgres` и traceback порта, который не число.
+  Версии 97/72 не менялись. `tests/test_unanswered_engine.py`: 45 тестов, red на HEAD
+  37 failed / 8 passed; 16 ручных мутантов — 15 убиты на первом прогоне, выживший («у psycopg
+  только `OperationalError`») убит тестом с `DataCorrupted`. Контроль на 10 pilot-прогонах:
+  вердикты, run ID и байты bundle совпали с HEAD. Полный offline gate с duckdb: 6186 passed,
+  7 skipped, 38 deselected, exit 0 на 3.13, 3.12 и 3.14.
+  Black/Ruff чистые; strict mypy на macOS — 9 ошибок Windows-API `store.py` среза T-63, те же
+  на HEAD; с `--platform win32` чисто. Выполнил Claude Opus 5.5 напрямую, без MyFlow и других
+  моделей; модельного ревью (Astra xhigh, ADR 0006) не было — только проверки автора, не
+  human/production acceptance. Границы: сбой самой пробы и нечитаемые настройки — traceback;
+  ClickHouse `readonly=1` — usage error (по коду драйвера); `capture` печатает отказ psycopg
+  двумя строками и не ловит `StreamFailureError`; живой движок и Windows не прогонялись.
+  [Проверки и границы](../DECISIONOPS_UNANSWERED_ENGINE_CHECKS_2026-10-19.md).
 - 2026-10-08 — T-64: `NativeModelSource.snapshot` больше не заменяет ложное YAML-значение
   на `{}`. До исправления base принимал пустой `model.yaml` как пустую модель, candidate
   получал отказ при повторном чтении, а capture доходил до query factory. Теперь документ

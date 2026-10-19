@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-08
+**Обновлено:** 2026-10-19
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -12,7 +12,30 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=97`, `CHECK_VERSION=72`
 
-**Последний срез (T-64, 2026-10-08):** `NativeModelSource.snapshot` валидирует YAML-документ
+**Последний срез (T-65, 2026-10-19):** `decision verify --dwh`, чей движок не ответил,
+кончается usage error в одну строку вместо traceback драйвера. Проба движка больше не
+соединяется при построении: клиент создаётся, когда use case спрашивает, — последним, после
+заявленного прогоном и чтения всех входов; прогон, отвергнутый раньше, сессии не открывает
+(на HEAD открывал и кончался тем же traceback). То, что поднял драйвер (`ClickHouseError` и
+`StreamFailureError` clickhouse_connect, `psycopg.Error`), проба поднимает как
+`EnvironmentProbeError`, и use case отвечает `error: cannot ask <engine> at
+<host>:<port>/<database>: <класс>: <текст в одну строку>`, exit 2, без каталога evidence;
+отказ движка остаётся фактом, поднятое не драйвером — как есть. `verify` и `capture` с
+ClickHouse ставят `NullHandler` на логгер `clickhouse_connect`: предупреждение драйвера
+больше не печатается над строкой ответа. Проба процессами, 12 прогонов на дерево: на HEAD
+8 traceback (139–154 строки у ClickHouse, 23–24 у PostgreSQL), на рабочем дереве 0. Новый
+модуль: 45 тестов, red на HEAD 37 failed; 16 ручных мутантов убиты. Полный offline gate с
+duckdb: 6186 passed, 7 skipped, 38 deselected, exit 0 на 3.13, 3.12 и 3.14.
+Strict mypy на macOS — 9 ошибок Windows-API `store.py` среза T-63 (есть и на HEAD), с
+`--platform win32` чисто. Версии 97/72 не менялись. Выполнено Claude Opus 5.5 напрямую;
+модельного ревью (Astra xhigh, ADR 0006) не было — только проверки автора, не human
+acceptance. Границы: traceback у сбоя самой пробы и у настроек, которые не читаются;
+ClickHouse `readonly=1` теперь usage error (по коду драйвера, не на живом движке); `capture`
+печатает отказ psycopg двумя строками и не ловит `StreamFailureError`.
+[Контракт](specs/unanswered-engine.md),
+[проверки и границы](DECISIONOPS_UNANSWERED_ENGINE_CHECKS_2026-10-19.md).
+
+**Предыдущий срез (T-64, 2026-10-08):** `NativeModelSource.snapshot` валидирует YAML-документ
 без подмены ложных значений на `{}`. Пустой файл, комментарии, null, false, число, список
 или строка одинаково отклоняются в base/candidate у `verify` и в candidate у `capture`:
 exit 2, одна строка `<path> is not a valid semantic model: <root>: …`, без verdict,

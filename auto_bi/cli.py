@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from auto_bi.agent.machine import AgentTurn
     from auto_bi.config import Settings
     from auto_bi.decision.use_cases import EnvironmentProbe, ResultQueryFactory
+    from auto_bi.introspect.base import RunQuery
     from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
@@ -401,6 +402,22 @@ def _decision_investigate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _quiet_driver_log(name: str) -> None:
+    """Keep what a driver logs off the error stream a decision command answers on.
+
+    No `decision` command configures logging, so a record a driver logs is printed by
+    `logging.lastResort` — on stderr, above the one line the command answers with.
+    clickhouse_connect logs a warning of each request it fails before it raises, and one with
+    the traceback of a response it could not read to the end. A `NullHandler` on the driver's
+    logger is a handler found, so the last resort is not used; a process that configured
+    logging still has the records where its own handlers put them. Added once, however many
+    times a client is built.
+    """
+    driver = logging.getLogger(name)
+    if not any(isinstance(handler, logging.NullHandler) for handler in driver.handlers):
+        driver.addHandler(logging.NullHandler())
+
+
 def _result_capture_target(engine: str) -> tuple["ResultQueryFactory", str, str]:
     """Build a lazy driver factory plus the environment and actor it will use."""
     from auto_bi.config import get_settings
@@ -417,6 +434,7 @@ def _result_capture_target(engine: str) -> tuple["ResultQueryFactory", str, str]
             f"{settings.gp_host}:{settings.gp_port}/{settings.gp_database}",
             settings.gp_user,
         )
+    _quiet_driver_log("clickhouse_connect")
     return (
         lambda: make_clickhouse_result_query(settings),
         f"{settings.ch_host}:{settings.ch_port}/{settings.ch_database}",
@@ -461,15 +479,23 @@ def _decision_capture(args: argparse.Namespace) -> int:
 def _environment_probe(engine: str) -> "EnvironmentProbe | None":
     """A read-only look at the configured engine for §8.2 step 7, or nothing.
 
-    The client is built here rather than inside the use case so that a run without `--dwh`
-    stays what it has always been: files in, verdict out, no socket. Credentials come from
-    the same settings the rest of the CLI uses and never travel into the bundle — the facts
-    carry host, port and database, which is where the numbers came from, not how we got in.
+    The probe is built here rather than inside the use case so that a run without `--dwh`
+    stays what it has always been: files in, verdict out, no socket. Building it connects to
+    nothing: the client is made when the use case asks, which it does after the run's stated
+    facts and every input were taken — a run refused for one of them opens no session.
+    Credentials come from the same settings the rest of the CLI uses and never travel into
+    the bundle — the facts carry host, port and database, which is where the numbers came
+    from, not how we got in.
+
+    What the driver raises — a connection refused, a session lost, a question the engine
+    failed — is raised as `EnvironmentProbeError`, and the run ends as a usage error. What
+    the engine refused is not raised: it is a fact. What is not the driver's is raised as is.
     """
     if not engine:
         return None
 
     from auto_bi.config import get_settings
+    from auto_bi.decision.use_cases import EnvironmentProbeError
     from auto_bi.engine import GREENPLUM, sqlglot_dialect
     from auto_bi.verification.environment import EnvironmentFacts, EnvironmentQuestions
     from auto_bi.verification.environment_probe import collect
@@ -479,21 +505,36 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
     )
 
     settings = get_settings()
+    connect: Callable[[Settings], RunQuery]
+    driver_errors: tuple[type[Exception], ...]
     if sqlglot_dialect(engine) == sqlglot_dialect(GREENPLUM):
+        import psycopg
+
         from auto_bi.introspect.greenplum import make_run_query_pg
 
-        run_query = make_run_query_pg(settings)
+        connect = make_run_query_pg
         run_cost = make_postgres_runtime_probe(settings)
+        driver_errors = (psycopg.Error,)
         target = f"{settings.gp_host}:{settings.gp_port}/{settings.gp_database}"
     else:
+        # Before the driver is imported: it logs while it loads, too.
+        _quiet_driver_log("clickhouse_connect")
+        from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureError
+
         from auto_bi.introspect.clickhouse import make_run_query
 
-        run_query = make_run_query(settings)
+        connect = make_run_query
         run_cost = make_clickhouse_runtime_probe(settings)
+        # A result the engine stopped sending midway is raised outside the driver's hierarchy.
+        driver_errors = (ClickHouseError, StreamFailureError)
         target = f"{settings.ch_host}:{settings.ch_port}/{settings.ch_database}"
 
     def probe(questions: EnvironmentQuestions) -> EnvironmentFacts:
-        return collect(run_query, questions, engine=engine, target=target, run_cost=run_cost)
+        try:
+            run_query = connect(settings)
+            return collect(run_query, questions, engine=engine, target=target, run_cost=run_cost)
+        except driver_errors as error:
+            raise EnvironmentProbeError(engine, target, error) from error
 
     return probe
 

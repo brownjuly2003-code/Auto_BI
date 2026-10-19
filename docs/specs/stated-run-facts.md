@@ -203,14 +203,15 @@ and an environment that are taken writes the same file.
   `ResultAttestation` is not changed: a recorded result built in the process may still carry
   one, and `result_probe.capture` called by itself attests it.
 - The use case settles what its request states. Before it is called, `decision verify` has read
-  the signing key it was given and, with `--dwh`, has built the probe of the engine — which
-  connects when it is built. No question is asked of the engine for a run that is refused, but
-  the connection was opened. Reproduced with the command as a process and an engine that is a
-  closed port of the loopback address: `decision verify --dwh clickhouse` ends in a traceback
-  of 154 lines and exit code 1, `--dwh postgres` in one of 23, and a run of a moment that is
-  none ends the same way — the connection is refused before the use case is called.
+  the signing key it was given. With `--dwh` it has also built the probe of the engine, which
+  connected when it was built — a run of a moment that is none opened its session and ended in
+  the traceback of the refused connection, exit code 1. Since T-65 the probe connects to nothing
+  until the use case asks it, last, and such a run is refused in its one line without a session
+  ([an engine that did not answer](unanswered-engine.md)).
 - What `decision capture` says after `cannot capture <asset id>: ` is still the text of what was
-  raised, as it reads: an engine that answers with several lines is printed in several.
-  Reproduced over the same closed port: `cannot capture <asset id>: ClickHouse connection
-  failed: ` and what the driver said, in two lines, exit 2; with a moment that is none the
-  capture now answers with the one line of the moment and opens nothing.
+  raised, as it reads: an engine that answers with several lines is printed in several —
+  psycopg's refusal of a connection when libpq words it in two. The two lines a ClickHouse
+  engine that is not there was answered with were the warning clickhouse_connect logs, printed
+  by the last resort of `logging`, and the line of the refusal; since T-65 the warning is kept
+  off stderr ([an engine that did not answer](unanswered-engine.md)). With a moment that is
+  none the capture answers with the one line of the moment and opens nothing.

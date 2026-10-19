@@ -98,8 +98,28 @@ class VerifyError(Exception):
     """
 
 
+class EnvironmentProbeError(Exception):
+    """The engine a run was to ask §8.2 step 7's questions did not answer them.
+
+    A probe raises it for what its driver raised: a connection refused, a session lost, a
+    question the engine failed. What the engine refused is not raised — that is a fact of
+    the environment, and the gate grades it. The use case ends the run on it as a usage
+    error: an engine that is not there is no environment the gate could say anything of,
+    and a verdict without the facts the run was asked to gather is not the one asked for.
+
+    The message is one line: the class of what the driver raised and what it said, each
+    run of whitespace as one space — or the class alone, when it says nothing.
+    """
+
+    def __init__(self, engine: str, target: str, error: Exception) -> None:
+        said = " ".join(str(error).split())
+        raised = f"{type(error).__name__}: {said}" if said else type(error).__name__
+        super().__init__(f"{engine} at {target}: {raised}")
+
+
 #: Asks a live engine the questions §8.2 step 7 derives from the product and its
-#: candidate snapshot. One call, typed facts back, no state in between.
+#: candidate snapshot. One call, typed facts back, no state in between; an engine that
+#: did not answer is raised as `EnvironmentProbeError`.
 EnvironmentProbe = Callable[[EnvironmentQuestions], EnvironmentFacts]
 ResultQueryFactory = Callable[[], ResultQuery]
 
@@ -177,6 +197,7 @@ def verify(request: VerifyRequest) -> GateReport:
         assets=_load_assets(request.assets_dir, product),
         results=_load_results(request.results_file),
         environment_ref=request.environment_ref,
+        # Asked last: a run refused for any input above opens no session with the engine.
         environment=_probe(request.probe, product, candidate),
     )
     store = FilesystemArtifactStore(request.evidence_dir)
@@ -278,7 +299,10 @@ def _probe(
     """
     if probe is None:
         return None
-    return probe(questions_for(product, candidate))
+    try:
+        return probe(questions_for(product, candidate))
+    except EnvironmentProbeError as exc:
+        raise VerifyError(f"cannot ask {exc}") from None
 
 
 def _select_product(loaded: LoadedContracts, product_id: str) -> DecisionProductSpec:

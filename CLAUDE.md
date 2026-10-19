@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-19 — T-65: движок `--dwh`, который не ответил, — usage error в одну строку
+  `cannot ask <engine> at <host>:<port>/<db>: <класс>: …`, exit 2; проба не соединяется до
+  вопросов, отказ движка остаётся фактом, лог clickhouse_connect не в stderr. Verifier 97,
+  check 72. Opus 5.5 напрямую; модельного ревью не было, только проверки автора.
+  [Проверки и границы](docs/DECISIONOPS_UNANSWERED_ENGINE_CHECKS_2026-10-19.md).
 - 2026-10-08 — T-64: nonmapping `model.yaml` одинаково отклоняется в base/candidate/capture
   до gate, probe/query и output; явный `{}` допустим. Red 40 → green 41; независимые
   8 модулей на Windows 3.13: 553 passed, 1 skipped. Snapshots и 44 файла допустимых bundles
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   target: утечка через ранний read-handle исправлена red→green. Mac: 238 passed, 3 skipped под
   3.12/3.13/3.14; Windows: 25 passed, 4 skipped; offline gate с DuckDB: 6101 passed, 7 skipped,
   38 deselected. Synthetic Astra xhigh: 0 P1/P2; не human acceptance. [Контракт](docs/specs/unreadable-inputs.md).
-- 2026-10-07 — T-62: `decision investigate` пишет четыре артефакта в соседний staging и
-  публикует каталог целиком; отказ записи/публикации очищает staging и допускает retry.
-  127 целевых тестов под Python 3.12/3.13/3.14; полный offline gate 3.13 с duckdb:
-  6094 passed, 4 skipped, 38 deselected. Synthetic Astra xhigh P2 для длинного имени
-  исправлен; конкурентная замена пустого output остаётся вне гарантии. Не human acceptance.
 
 ## Definition of done (фаза/задача)
 
