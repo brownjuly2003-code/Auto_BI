@@ -17,6 +17,7 @@ import errno
 import os
 import re
 import stat
+import sys
 import uuid
 from pathlib import Path
 from typing import Protocol
@@ -89,7 +90,7 @@ class FilesystemArtifactStore:
             except FileNotFoundError:
                 existing_mode = None
             candidate = target.with_name(f".artifact-{uuid.uuid4().hex}")
-            if existing_mode is not None and os.name == "nt":
+            if sys.platform == "win32" and existing_mode is not None:
                 if not existing_mode & stat.S_IWRITE:
                     # A read-only target refuses a write, while a read-only staged file
                     # cannot be cleaned up after a failed Windows replacement.
@@ -179,76 +180,82 @@ def _missing(run_id: str, path: str) -> str:
     return f"artifact {path!r} of run {run_id!r} is missing"
 
 
-def _open_windows_staged(source: Path, destination: Path) -> int:
-    """Create staging with the existing owner and DACL from its first instant."""
-    import ctypes
-    import msvcrt
-    from ctypes import wintypes
+# Windows only, behind a check of `sys.platform`, which mypy reads (`os.name` it does
+# not): CI type-checks the package on Linux, where none of these APIs is.
+if sys.platform == "win32":
 
-    owner_and_dacl = 0x00000001 | 0x00000004
-    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
-    get_security = advapi32.GetFileSecurityW
-    get_security.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        ctypes.POINTER(wintypes.DWORD),
-    ]
-    get_security.restype = wintypes.BOOL
+    def _open_windows_staged(source: Path, destination: Path) -> int:
+        """Create staging with the existing owner and DACL from its first instant."""
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
 
-    def refused(path: Path) -> OSError:
-        exc = ctypes.WinError(ctypes.get_last_error())
-        exc.filename = str(path)
-        return exc
-
-    size = wintypes.DWORD()
-    get_security(str(source), owner_and_dacl, None, 0, ctypes.byref(size))
-    if ctypes.get_last_error() != 122:  # ERROR_INSUFFICIENT_BUFFER
-        raise refused(source)
-    descriptor = ctypes.create_string_buffer(size.value)
-    if not get_security(str(source), owner_and_dacl, descriptor, size.value, ctypes.byref(size)):
-        raise refused(source)
-
-    class SecurityAttributes(ctypes.Structure):
-        _fields_ = [
-            ("nLength", wintypes.DWORD),
-            ("lpSecurityDescriptor", wintypes.LPVOID),
-            ("bInheritHandle", wintypes.BOOL),
+        owner_and_dacl = 0x00000001 | 0x00000004
+        advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+        get_security = advapi32.GetFileSecurityW
+        get_security.argtypes = [
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
         ]
+        get_security.restype = wintypes.BOOL
 
-    attributes = SecurityAttributes(
-        ctypes.sizeof(SecurityAttributes), ctypes.cast(descriptor, wintypes.LPVOID), False
-    )
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    close_handle = kernel32.CloseHandle
-    close_handle.argtypes = [wintypes.HANDLE]
-    close_handle.restype = wintypes.BOOL
-    create_file = kernel32.CreateFileW
-    create_file.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        ctypes.POINTER(SecurityAttributes),
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.HANDLE,
-    ]
-    create_file.restype = wintypes.HANDLE
-    handle = create_file(
-        str(destination),
-        0x40000000,  # GENERIC_WRITE
-        7,  # FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
-        ctypes.byref(attributes),
-        1,  # CREATE_NEW
-        0x80,  # FILE_ATTRIBUTE_NORMAL
-        None,
-    )
-    if handle == ctypes.c_void_p(-1).value:
-        raise refused(destination)
-    try:
-        return msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
-    except OSError:
-        close_handle(handle)
-        destination.unlink(missing_ok=True)
-        raise
+        def refused(path: Path) -> OSError:
+            exc = ctypes.WinError(ctypes.get_last_error())
+            exc.filename = str(path)
+            return exc
+
+        size = wintypes.DWORD()
+        get_security(str(source), owner_and_dacl, None, 0, ctypes.byref(size))
+        if ctypes.get_last_error() != 122:  # ERROR_INSUFFICIENT_BUFFER
+            raise refused(source)
+        descriptor = ctypes.create_string_buffer(size.value)
+        if not get_security(
+            str(source), owner_and_dacl, descriptor, size.value, ctypes.byref(size)
+        ):
+            raise refused(source)
+
+        class SecurityAttributes(ctypes.Structure):
+            _fields_ = [
+                ("nLength", wintypes.DWORD),
+                ("lpSecurityDescriptor", wintypes.LPVOID),
+                ("bInheritHandle", wintypes.BOOL),
+            ]
+
+        attributes = SecurityAttributes(
+            ctypes.sizeof(SecurityAttributes), ctypes.cast(descriptor, wintypes.LPVOID), False
+        )
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = [wintypes.HANDLE]
+        close_handle.restype = wintypes.BOOL
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = [
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            ctypes.POINTER(SecurityAttributes),
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HANDLE,
+        ]
+        create_file.restype = wintypes.HANDLE
+        handle = create_file(
+            str(destination),
+            0x40000000,  # GENERIC_WRITE
+            7,  # FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
+            ctypes.byref(attributes),
+            1,  # CREATE_NEW
+            0x80,  # FILE_ATTRIBUTE_NORMAL
+            None,
+        )
+        if handle == ctypes.c_void_p(-1).value:
+            raise refused(destination)
+        try:
+            return msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+        except OSError:
+            close_handle(handle)
+            destination.unlink(missing_ok=True)
+            raise

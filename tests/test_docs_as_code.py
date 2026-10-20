@@ -413,6 +413,32 @@ def test_mypy_strict_package_gate_in_ci_and_slo() -> None:
         assert obsolete not in slo, f"obsolete SLO contract text still present: {obsolete!r}"
 
 
+def test_the_mypy_gate_names_the_platforms_it_checks() -> None:
+    """mypy checks one platform: CI runs it on Linux, once more for Windows, and the docs
+    tell a contributor on another platform how to check what CI checks."""
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    steps = [
+        (job["runs-on"], step["run"])
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if "mypy" in str(step.get("run", ""))
+    ]
+    assert {runner for runner, _ in steps} == {"ubuntu-latest"}
+    windows = "uv run --with mypy --with types-PyYAML mypy --platform win32 --strict auto_bi"
+    assert [run for _, run in steps if "--platform" in run] == [windows]
+
+    slo = SLO.read_text(encoding="utf-8")
+    assert "`mypy --platform linux --strict auto_bi`" in slo
+    assert "`mypy --platform win32 --strict auto_bi`" in slo
+    contributing = CONTRIBUTING.read_text(encoding="utf-8")
+    for line in (
+        windows,
+        "uv run --with mypy --with types-PyYAML mypy --platform linux auto_bi",
+        "uv run --with mypy --with types-PyYAML mypy --platform linux --strict auto_bi",
+    ):
+        assert line in contributing
+
+
 def test_runtime_evidence_harness_is_wired_without_claiming_production_slo() -> None:
     """CI samples must remain descriptive and distinct from production SLO evidence."""
     assert (REPO / "scripts" / "collect_runtime_evidence.py").is_file()

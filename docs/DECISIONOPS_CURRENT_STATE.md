@@ -12,7 +12,27 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=97`, `CHECK_VERSION=72`
 
-**Последний срез (T-65, 2026-10-19):** `decision verify --dwh`, чей движок не ответил,
+**Последний срез (T-66, 2026-10-19):** пакет снова проходит mypy так, как его запускает CI, —
+на Linux. Срез T-63 достигал Windows-API (`ctypes.WinDLL`, `ctypes.get_last_error`,
+`msvcrt.open_osfhandle`, `os.O_BINARY`) за проверкой `os.name == "nt"`, которую mypy не
+читает: с T-63 по T-65 `mypy auto_bi` и `mypy --strict auto_bi` находили в
+`auto_bi/evidence/store.py` 7 и 9 ошибок на Linux и macOS и 0 на Windows (T-63 и T-64
+записали strict mypy чистым, T-64 — на Windows). Теперь `put` ветвится по
+`sys.platform == "win32"` левым операндом `and`, а `_open_windows_staged` определена только за
+такой проверкой; поведение не изменилось. На рабочем дереве mypy чист на Linux, macOS и
+Windows, со `--strict` и без. Джоб CI `quality` получил шаг `mypy --platform win32 --strict
+auto_bi`: Windows-ветку Linux пропускает. Новый `tests/test_platform_guards.py` читает
+исходники `auto_bi` и находит Windows-only модули и имена вне проверки, которую читает mypy,
+и любое `os.name`; списки сверены с typeshed через mypy (33 из 33). Red на HEAD — проверка
+пакета, 8 находок в `store.py`; 16 ручных мутантов убиты. CONTRIBUTING и SLO называют
+платформу CI и `--platform linux` для локального прогона на Windows и macOS. Полный offline
+gate с duckdb: 6211 passed, 7 skipped, 38 deselected, exit 0 на 3.13, 3.12 и 3.14; pilot
+10/10 совпал с HEAD. Версии 97/72 не менялись. Выполнено Claude Opus 5.5 напрямую;
+модельного ревью (Astra xhigh, ADR 0006) не было — только проверки автора, не human
+acceptance. Границы: Windows не прогонялся; тест — эвристика над перечисленными именами, гейт
+остаётся за mypy. [Проверки и границы](DECISIONOPS_PLATFORM_GUARDS_CHECKS_2026-10-19.md).
+
+**Предыдущий срез (T-65, 2026-10-19):** `decision verify --dwh`, чей движок не ответил,
 кончается usage error в одну строку вместо traceback драйвера. Проба движка больше не
 соединяется при построении: клиент создаётся, когда use case спрашивает, — последним, после
 заявленного прогоном и чтения всех входов; прогон, отвергнутый раньше, сессии не открывает

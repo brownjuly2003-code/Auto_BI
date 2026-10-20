@@ -10,6 +10,37 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+- 2026-10-19 — T-66: Windows-only код за проверкой, которую читает mypy. CI проверяет типы на
+  Linux (`mypy auto_bi` и `mypy --strict auto_bi` в джобах `quality` и `quality-py-latest`
+  на `ubuntu-latest`); mypy пропускает ветку по `sys.platform`, а `os.name` не читает. Срез
+  T-63 достигал Windows-API (`ctypes.WinDLL`, `ctypes.get_last_error`,
+  `msvcrt.open_osfhandle`, `os.O_BINARY`) за `existing_mode is not None and os.name == "nt"`:
+  с T-63 по T-65 mypy, запущенный как в CI, находил 7 ошибок без `--strict` и 9 со `--strict`
+  в `auto_bi/evidence/store.py` на Linux и macOS, 0 на Windows (T-63 и T-64 записали strict
+  mypy чистым, T-64 — на Windows). У репозитория нет remote, CI на этих коммитах не
+  запускался. Теперь `put` ветвится по `sys.platform == "win32"` левым операндом `and`, а
+  `_open_windows_staged` определена под `if sys.platform == "win32":`; тело изменилось только
+  отступом и переносом одного вызова, поведение — нет. На рабочем дереве mypy чист на Linux,
+  macOS и Windows, со `--strict` и без. Джоб `quality` получил шаг `Mypy strict (Windows
+  branches)` — `mypy --platform win32 --strict auto_bi`, иначе Windows-ветку не проверял бы ни
+  один шаг CI; он же находит POSIX-only API вне проверки (проба: `os.geteuid()`,
+  `fcntl.LOCK_EX`). `tests/test_platform_guards.py` читает исходники `auto_bi` без mypy:
+  Windows-only модули (5) и имена `ctypes`, `os`, `subprocess`, `signal` (28), сверенные с
+  typeshed через mypy (33 из 33 на Linux и macOS, 0 на Windows), и собственные определения за
+  проверкой вне Windows-ветки в понимании mypy (`==`, `startswith`, `!=` и `not`, левый
+  операнд `and`/`or`) — находка, как и любое `os.name`. Red на HEAD с новым модулем: 1 failed
+  (проверка пакета: 8 находок в `store.py` — `os.name` и Windows-API на строках ошибок mypy),
+  49 passed; 16 ручных мутантов `store.py` и чтения проверок убиты на первом прогоне.
+  CONTRIBUTING («The gate») и SLO называют платформу CI и `--platform linux` для локального
+  прогона на Windows и macOS; `tests/test_docs_as_code.py` держит это рядом с CI. Контроль на
+  10 pilot-прогонах: вердикты, run ID и байты bundle совпали с HEAD. Полный offline gate с
+  duckdb: 6211 passed, 7 skipped, 38 deselected, exit 0 на 3.13, 3.12 и 3.14; Black и Ruff
+  чистые. Версии 97/72 не менялись. Выполнил Claude Opus 5.5 напрямую, без MyFlow и других
+  моделей; модельного ревью (Astra xhigh, ADR 0006) не было — только проверки автора, не
+  human/production acceptance. Границы: Windows не прогонялся; тест — эвристика над
+  перечисленным (не алиасы импорта, не `import *`, не определения глубже верхнего уровня),
+  гейт остаётся за mypy.
+  [Проверки и границы](../DECISIONOPS_PLATFORM_GUARDS_CHECKS_2026-10-19.md).
 - 2026-10-19 — T-65: движок, до которого `decision verify --dwh` не дотянулся. На HEAD проба
   движка соединялась при построении, до вызова use case, а то, что поднимал драйвер, уходило
   наверх как есть. Процессами над закрытым портом loopback и над слушателем, который сразу

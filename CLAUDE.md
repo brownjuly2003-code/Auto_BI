@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-19 — T-66: Windows-API `store.py` (T-63) — за `sys.platform`, не `os.name`: mypy,
+  как его гоняет CI на Linux, снова чист (с T-63 — 7 и 9 ошибок). CI проверяет Windows-ветки
+  шагом `--platform win32`; `tests/test_platform_guards.py` держит форму без mypy. Opus 5.5
+  напрямую; модельного ревью не было, только проверки автора.
+  [Проверки и границы](docs/DECISIONOPS_PLATFORM_GUARDS_CHECKS_2026-10-19.md).
 - 2026-10-19 — T-65: движок `--dwh`, который не ответил, — usage error в одну строку
   `cannot ask <engine> at <host>:<port>/<db>: <класс>: …`, exit 2; проба не соединяется до
   вопросов, отказ движка остаётся фактом, лог clickhouse_connect не в stderr. Verifier 97,
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   8 модулей на Windows 3.13: 553 passed, 1 skipped. Snapshots и 44 файла допустимых bundles
   совпали с baseline; версии 97/72/native3 сохранены. Synthetic Astra xhigh: 0 P1/P2,
   не human acceptance. [Контракт](docs/specs/unreadable-inputs.md).
-- 2026-10-07 — T-63: файловый store публикует каждый артефакт через соседний staging и
-  `os.replace`; частичный manifest больше не виден. Windows staging сразу получает owner/DACL
-  target: утечка через ранний read-handle исправлена red→green. Mac: 238 passed, 3 skipped под
-  3.12/3.13/3.14; Windows: 25 passed, 4 skipped; offline gate с DuckDB: 6101 passed, 7 skipped,
-  38 deselected. Synthetic Astra xhigh: 0 P1/P2; не human acceptance. [Контракт](docs/specs/unreadable-inputs.md).
 
 ## Definition of done (фаза/задача)
 

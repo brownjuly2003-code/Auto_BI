@@ -60,6 +60,11 @@ jobs:
       - name: Mypy strict (package)
         run: uv run --with mypy --with types-PyYAML mypy --strict auto_bi
 
+      # mypy checks one platform and skips what is behind `sys.platform` for another: the
+      # Windows-only branches (tests/test_platform_guards.py) are checked here.
+      - name: Mypy strict (Windows branches)
+        run: uv run --with mypy --with types-PyYAML mypy --platform win32 --strict auto_bi
+
       # Integration tests (require the ClickHouse/Superset/DataLens stand) are
       # deselected by default via pyproject `addopts = -m 'not integration'`,
       # so CI stays hermetic. pytest-cov + duckdb are pulled in ephemerally to avoid

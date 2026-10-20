@@ -64,6 +64,11 @@ Targeting the package automatically covers current and future modules under
 uv run --with mypy --with types-PyYAML mypy --strict auto_bi
 ```
 
+Both jobs run on Linux, and mypy checks the platform it runs on. On Windows or macOS
+the gate CI applies is `mypy --platform linux --strict auto_bi`; Windows-only code
+stays behind a `sys.platform` check (CONTRIBUTING, "The gate"), which Linux skips, so
+the 3.12 job checks it once more: `mypy --platform win32 --strict auto_bi`.
+
 Do **not** set `strict = true` as a global or per-module override in `pyproject`
 without verifying: on our mypy version that polluted the package-wide check.
 The CLI/CI `--strict` gate is intentional; keep the config non-strict and apply
