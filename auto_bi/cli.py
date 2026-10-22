@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, TextIO
 from auto_bi import __version__
 
 if TYPE_CHECKING:
+    from _typeshed import SupportsWrite
     from rich.console import Console
 
     from auto_bi.agent.machine import AgentTurn
@@ -20,8 +21,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _HelpArgumentParser(argparse.ArgumentParser):
+    """Escape unencodable help without changing streams or other parser messages."""
+
+    def print_help(self, file: "SupportsWrite[str] | None" = None) -> None:
+        stream = sys.stdout if file is None else file
+        text = self.format_help()
+        try:
+            stream.write(text)
+        except UnicodeEncodeError:
+            encoding = getattr(stream, "encoding", None) or "ascii"
+            stream.write(text.encode(encoding, "backslashreplace").decode(encoding))
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="auto_bi", description=__doc__)
+    parser = _HelpArgumentParser(prog="auto_bi", description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 

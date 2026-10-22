@@ -1579,6 +1579,13 @@ contract-тестом `tests/test_decision_cli.py::test_exit_code_contract_is_st
 escape внутри это другой текст; отказ — exit `2` и адрес файла в bundle
 ([спека](specs/unencodable-output.md)).
 
+Справка верхнего и вложенных CLI parser имеет такую же узкую защиту от
+`UnicodeEncodeError`: неподдерживаемый символ получает backslash-escape в кодировке
+потока (ASCII, если она не названа), exit остаётся `0`. Подкласс меняет только
+`print_help`, сохраняет форматирование и не перенастраивает потоки. Ошибки аргументов,
+usage, version и обработчики команд сохраняют поведение. Другие ошибки записи справки,
+включая `OSError`/`BrokenPipeError`, пробрасываются; стандартный argparse их подавлял.
+
 Файл контракта, который команда не может прочитать, — finding об этом файле, а не
 падение: в validated paths это `contract.unreadable`, среди контрактов semantic ref —
 `gap.contract_invalid`, оба block, и exit code команды остаётся вердиктом. Так же

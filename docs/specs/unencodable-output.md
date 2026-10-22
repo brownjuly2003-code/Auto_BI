@@ -230,13 +230,42 @@ on a stream that encodes every character of an answer, the answer is printed as 
 - **THEN** its exit code is 0, standard error is empty and standard output is ASCII that reads
   as the document a stream of UTF-8 holds, whose details hold a section sign
 
+## Requirement: CLI help survives an unencodable character (T-71)
+
+The root and nested CLI parsers SHALL print help to the requested stream (stdout by
+default), preserving the formatted text and its existing line breaks. The text SHALL
+first be offered unchanged. On `UnicodeEncodeError`, characters the stream cannot
+encode SHALL use `backslashreplace` in its declared encoding, or ASCII if none is named.
+Normal help completes with exit 0 and empty stderr. A stream accepting the text receives
+the original text, including under UTF-8 and cp1252.
+
+The parser SHALL NOT reconfigure or replace process streams. This behavior is confined
+to `print_help`; argument errors, usage, version, command handlers, JSON and artifact
+payloads retain their existing behavior. Non-encoding help write errors propagate;
+unlike the default argparse help printer, this printer does not suppress `OSError` or
+`BrokenPipeError`. Evidence versions remain unchanged.
+
+### Scenario: root or nested help on a narrow output stream
+
+- **GIVEN** strict ASCII or Latin-1 stdout
+- **WHEN** `auto_bi --help` or `auto_bi eval --help` prints a dash
+- **THEN** the dash is `\u2014`, help is printed once with no extra line breaks,
+  stderr is empty and exit is 0
+- **AND** ASCII-only `decision verify --help` prints its original text
+
+### Scenario: a caller owns the output stream
+
+- **GIVEN** a UTF-8, cp1252, StringIO or unnamed ASCII-only stream
+- **WHEN** the parser prints help
+- **THEN** supported characters stay unchanged, unsupported characters are escaped,
+  and the stream identity and encoding/error settings remain unchanged
+- **AND** a non-encoding write failure remains an exception, not a successful help exit
+
 ## Known boundaries
 
-- argparse prints for itself. The usage error of a command line it refuses goes to the standard
-  error stream of the interpreter, which escapes; its help goes to standard output as it is.
-  Reproduced at HEAD and with this requirement in place: `auto_bi --help` holds a dash and ends
-  in a traceback under ASCII and Latin-1; `auto_bi decision verify --help` is ASCII and is
-  printed.
+- Argument errors, usage and version retain argparse's own printing. Normal interpreter
+  stderr escapes unsupported characters; a caller-supplied strict stderr may still refuse
+  them. Help uses the T-71 boundary above.
 - The v1 commands print as before.
 - An escape is not told from the same characters typed. A line that holds a backslash is
   printed with it as it is, so a printed line cannot be read back into what was meant; a JSON
@@ -255,6 +284,6 @@ on a stream that encodes every character of an answer, the answer is printed as 
   ends in `UnicodeEncodeError` where the plan is opened, at HEAD and with this requirement in
   place: the filesystem has no form for the name, and that is no `OSError`. `decision validate`
   reads such a path as one that is not there.
-- No run was made on Windows. The encodings were named to the interpreter with
-  `PYTHONIOENCODING` on macOS; a stream that takes its encoding from a Windows code page was
-  not run.
+- T-60's original probes ran on macOS. T-71 tests help on Windows/Python 3.13.7 with
+  explicitly encoded strict streams and real ASCII/Latin-1 subprocesses; automatic
+  selection of the Windows console code page was not tested.
