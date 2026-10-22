@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-83: Unicode-суррогаты в Claim.unit/caveats дают schema refusal;
+  evidence inspection — exit 4, artifact — exit 2 без payload. Версии 98/73.
+  Evidence: 232 passed, 67 skipped; финальные Unicode-регрессии: 21 passed.
+  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-82: глубокий JSON manifest у `evidence --artifact` даёт exit 2,
   одну строку stderr, пустой stdout. Digest pin и full-inspection exit 4 прежние.
   Версии 98/73; evidence: 190 passed, 67 skipped; семь регрессий прошли.
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Investigation: 375 passed; полный offline после T-81: 6523 passed, 109 skipped, 38 deselected.
   Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-80: SQLGuardError внутри environment collector даёт CLI exit 2,
-  одну строку без SQL при обычном CLI logging, без evidence. Версии 98/73.
-  448 тестов; четыре completed bundle с fake DWH побайтно сохранены; вход — PlanQuestion.
-  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
-  [Проверки и review](docs/DECISIONOPS_ENVIRONMENT_SQL_GUARD_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

@@ -10,6 +10,21 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-83: Unicode-суррогаты в тексте evidence claim
+
+`Claim.unit/caveats` проверяются на допустимость Unicode до canonicalization.
+JSON-escape одиночного суррогата больше не вызывает traceback полной inspection
+и не допускается к artifact reader: `evidence.manifest_invalid`/exit 4 либо
+`EvidenceReadError`/exit 2 без payload. Digest pin имеет прежний приоритет.
+Допустимые Unicode, пробелы, canonical bytes и подписи сохранены; версии 98/73.
+Red: 14 failed, 5 passed; evidence: 232 passed, 67 skipped; investigation и
+регрессии: 53 passed; финальные Unicode-тесты: 21 passed. Ruff/Black чистые;
+четыре файла обычного bundle сохранили SHA-256. Полного/live gate не было.
+Выбор и review production diff с исходными 19 cases — synthetic Astra xhigh:
+0 открытых P1/P2, не human/production acceptance. Codex реализовал срез при
+недоступной `gpt-5.6-luna`; два положительных roundtrip добавлены после review.
+[Проверки и границы](../DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-82: управляемый отказ глубоко вложенного JSON manifest
 
 `decision evidence --artifact` переводит `RecursionError` при разборе manifest

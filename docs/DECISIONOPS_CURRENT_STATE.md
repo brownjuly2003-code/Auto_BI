@@ -16,7 +16,15 @@ human/design-partner outcome не измерен и не требуется дл
 с duckdb: **6523 passed, 109 skipped, 38 deselected**, exit 0. Код не менялся;
 live DWH/Mac не проверялись. [Команда и границы](DECISIONOPS_OFFLINE_VERIFICATION_2026-10-22.md).
 
-**Последний срез (T-82, 2026-10-22):** слишком глубокий JSON manifest у
+**Последний срез (T-83, 2026-10-22):** одиночные Unicode-суррогаты в `Claim.unit`
+и `Claim.caveats` отвергаются схемой до canonicalization. Полная evidence inspection
+даёт exit 4; artifact — exit 2 без payload. Digest pin, допустимый Unicode и подписи
+сохранены; версии 98/73 прежние. Evidence: 232 passed, 67 skipped; финальные Unicode
+регрессии: 21 passed. Synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
+Полный offline baseline выше относится к коду до T-82/T-83.
+[Проверки и границы T-83](DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-82, 2026-10-22):** слишком глубокий JSON manifest у
 `decision evidence --artifact` даёт управляемый отказ: exit 2, одна строка stderr,
 пустой stdout. Приоритет неверного digest pin и full-inspection exit 4 сохранены;
 версии 98/73 прежние. Профиль evidence: 190 passed, 67 skipped; семь регрессий прошли.

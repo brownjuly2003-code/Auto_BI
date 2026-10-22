@@ -178,6 +178,18 @@ class Claim(StrictModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _check_unicode_text(self) -> Claim:
+        # JSON escapes can carry lone surrogates through plain str validation, but
+        # RFC 8785 cannot represent them. Reject before inspection or signing.
+        try:
+            self.unit.encode("utf-8")
+            for caveat in self.caveats:
+                caveat.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError("claim text must contain only Unicode scalar values") from None
+        return self
+
 
 class EvidenceBundle(StrictModel):
     api_version: str = Field(default=API_VERSION, pattern=r"^auto-bi\.io/v2alpha1$")
