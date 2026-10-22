@@ -1618,7 +1618,12 @@ escape внутри это другой текст; отказ — exit `2` и �
 `verified asset`) — первые три отказа схемы без значений и ссылок, остальные сосчитаны,
 как у входов `investigate`. Recorded result назван ключом, под которым его держит файл:
 `<файл> holds an invalid recorded result for <ключ>: …`, и первый отвергнутый результат
-кончает чтение. Отказ схемы, под которую не написан ни один файл ref, сказан о ref вместе
+кончает чтение. После проверки схем всех результатов каждый ключ должен точно совпасть
+с `metadata.id` в полном переданном asset repository, до фильтрации по продукту.
+Неизвестный ключ — usage error с exit 2 до probe/evidence; известные assets других
+продуктов допустимы, отсутствующие ответы сохраняют прежний grading
+([recorded result keys](specs/recorded-result-keys.md)).
+Отказ схемы, под которую не написан ни один файл ref, сказан о ref вместе
 с её именем: `cannot load semantic ref <ref>: not a valid <схема>: …`
 ([files a command cannot read](specs/unreadable-inputs.md), шестое требование).
 `NativeModelSource.snapshot` требует YAML-mapping без подмены ложных значений на `{}`:

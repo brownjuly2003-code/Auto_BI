@@ -186,6 +186,13 @@ def verify(request: VerifyRequest) -> GateReport:
     candidate = _snapshot(candidate_root)
     candidate_model = _load_model(candidate_root / MODEL_FILE)
 
+    dashboards = _load_dashboards(request.dashboards_dir, product)
+    repository = (
+        _asset_repository(Path(request.assets_dir))
+        if request.assets_dir is not None
+        else VerifiedAssetRepository([])
+    )
+
     inputs = GateInputs(
         product=product,
         validation=loaded.report,
@@ -193,9 +200,9 @@ def verify(request: VerifyRequest) -> GateReport:
         base=base,
         candidate=candidate,
         candidate_model=candidate_model,
-        dashboards=_load_dashboards(request.dashboards_dir, product),
-        assets=_load_assets(request.assets_dir, product),
-        results=_load_results(request.results_file),
+        dashboards=dashboards,
+        assets=_load_assets(repository, product),
+        results=_load_results(request.results_file, repository),
         environment_ref=request.environment_ref,
         # Asked last: a run refused for any input above opens no session with the engine.
         environment=_probe(request.probe, product, candidate),
@@ -487,7 +494,7 @@ def _dashboard_file(root: Path, ref: str) -> Path | None:
 
 
 def _load_assets(
-    directory: str | Path | None, product: DecisionProductSpec
+    repository: VerifiedAssetRepository, product: DecisionProductSpec
 ) -> VerifiedAssetRepository:
     """The repository, narrowed to the assets that name one of the product's metrics.
 
@@ -497,16 +504,13 @@ def _load_assets(
     never delivers. Versions are ignored on both sides, as `resolve_impact` ignores them —
     whether the product's pin still resolves is graded by the gate's `contracts.validate` step.
     """
-    if directory is None:
-        return VerifiedAssetRepository([])
-    repository = _asset_repository(Path(directory))
     in_scope = {str(ContractRef.parse(ref).without_version()) for ref in product.scope.metrics}
     return VerifiedAssetRepository(
         [asset for asset in repository.assets if in_scope.intersection(asset.metric_ids())]
     )
 
 
-def _load_results(path: str | Path | None) -> ResultSource:
+def _load_results(path: str | Path | None, repository: VerifiedAssetRepository) -> ResultSource:
     """Candidate answers recorded outside the gate, keyed by verified-asset id.
 
     Two shapes, and which one a file uses is read from the file rather than from a flag:
@@ -525,9 +529,9 @@ def _load_results(path: str | Path | None) -> ResultSource:
     it. The two shapes cannot be confused — a `ResultSet` has no `result` key — so the
     detection is a fact about the document, not a guess about intent.
 
-    A file holds a result for each asset it was recorded for, so a result that is not one
-    is named by the key it stands under — as the file gives the key, which nothing has yet
-    required to be an asset id — and the first such result ends the reading.
+    Validate every value before checking keys, retaining the first malformed result's
+    diagnostic. Then require exact asset ids in the full supplied repository, including
+    assets outside the selected product. Unknown keys must not silently discard answers.
     """
     if path is None:
         return NoResults()
@@ -542,6 +546,13 @@ def _load_results(path: str | Path | None) -> ResultSource:
             raise VerifyError(
                 f"{file} holds an invalid recorded result for {key!r}: {_refusal(exc)}"
             ) from None
+    known_ids = {asset.metadata.id for asset in repository.assets}
+    for key in results:
+        if key not in known_ids:
+            raise VerifyError(
+                f"{filesystem.display_path(file)} holds a recorded result "
+                f"for unknown verified asset {key!r}"
+            )
     return RecordedResults(results)
 
 

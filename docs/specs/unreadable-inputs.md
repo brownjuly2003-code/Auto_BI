@@ -2109,7 +2109,10 @@ for the check.
   nothing and the run was graded; of the candidate ref `decision verify` refused it with
   `<file> must contain a mapping`, and `decision capture` went on to the engine. T-64 supersedes
   this observation: both commands refuse a nonmapping document before the run or engine query.
-- The key of a recorded result is not looked at when the file is read. Reproduced: a result that
+- Before T-84, the key of a recorded result was not looked at when the file was read.
+  [Recorded result keys](recorded-result-keys.md) supersedes this observation: after value
+  validation, an unknown key is refused against the full supplied asset repository, before
+  probe or evidence. Previously reproduced: a result that
   is one, under a key that is the id of no asset — a word, a number — beside the result of the
   run, is read and never asked for, and the run is graded as without it; the result of the run
   under such a key alone leaves the asset with none — `results.reconcile` is review with

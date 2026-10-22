@@ -10,6 +10,19 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-84: проверка ключей recorded results
+
+Неизвестный ключ результата больше не игнорируется: exit 2 до probe/evidence.
+Ключ точно сопоставляется с полным единожды прочитанным asset repository;
+известные out-of-scope assets допустимы. Приоритет отказа схем значений,
+bare/attested формы и отсутствие ответа сохраняют прежнее поведение.
+Контракт выбран synthetic Astra xhigh по ADR 0006, не human acceptance.
+Codex реализовал при недоступной `gpt-5.6-luna`; версии 98/73 прежние.
+Red: 12 failed, 7 passed. После исправления P2 однострочной диагностики:
+422 passed, 1 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
+Второе Astra review: 0 открытых P1/P2; полный offline/live gate не повторялся.
+[Проверки и границы](../DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — полный offline-baseline после T-83
 
 На `b75edef`, Windows/Python 3.13.7 с duckdb: 6551 passed, 109 skipped,

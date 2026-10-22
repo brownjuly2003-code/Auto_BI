@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-84: неизвестные ключи recorded results дают exit 2 до probe/evidence;
+  известные assets других продуктов допустимы. Версии 98/73 сохранены.
+  Профиль: 422 passed, 1 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
+  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-83: Unicode-суррогаты в Claim.unit/caveats дают schema refusal;
   evidence inspection — exit 4, artifact — exit 2 без payload. Версии 98/73.
   Evidence: 232 passed, 67 skipped; финальные Unicode-регрессии: 21 passed.
@@ -100,11 +105,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Версии 98/73; evidence: 190 passed, 67 skipped; семь регрессий прошли.
   Codex; synthetic Astra xhigh review: 0 открытых P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_MANIFEST_DEPTH_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-81: отрицательные исходные строки concentration дают GAP,
-  даже если сумма категории положительна. Skill 2, verifier/check 98/73 прежние.
-  Investigation: 375 passed; полный offline после T-81: 6523 passed, 109 skipped, 38 deselected.
-  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

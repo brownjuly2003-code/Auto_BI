@@ -16,7 +16,15 @@ human/design-partner outcome не измерен и не требуется дл
 с duckdb: **6551 passed, 109 skipped, 38 deselected**, exit 0. Код не менялся;
 live DWH/Mac не проверялись. [Команда и границы](DECISIONOPS_OFFLINE_T83_VERIFICATION_2026-10-22.md).
 
-**Последний срез (T-83, 2026-10-22):** одиночные Unicode-суррогаты в `Claim.unit`
+**Последний срез (T-84, 2026-10-22):** неизвестный ключ recorded results даёт
+usage error/exit 2 до probe/evidence. Проверка использует полный asset repository;
+известные assets других продуктов допустимы, отсутствующие ответы и приоритет
+ошибки схемы прежние. Версии 98/73 сохранены. Полный baseline выше относится к T-83.
+Профиль: 422 passed, 1 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
+Synthetic Astra xhigh: 0 открытых P1/P2, не human/production acceptance.
+[Проверки и границы T-84](DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-83, 2026-10-22):** одиночные Unicode-суррогаты в `Claim.unit`
 и `Claim.caveats` отвергаются схемой до canonicalization. Полная evidence inspection
 даёт exit 4; artifact — exit 2 без payload. Digest pin, допустимый Unicode и подписи
 сохранены; версии 98/73 прежние. Evidence: 232 passed, 67 skipped; финальные Unicode
