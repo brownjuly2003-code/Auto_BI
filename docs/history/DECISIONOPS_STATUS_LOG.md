@@ -10,6 +10,18 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-91: буквальные пояснения semantic impact в summary
+
+Timezone/calendar метрики попадали через semantic diff в ProductImpact.detail
+и добавляли ложные Verdict/Owner action при BLOCK. Весь detail теперь проходит
+`_literal`; исходный payload и grading сохранены. Другие свободные поля вне среза.
+Verifier 103 → 104, check 73; новые run IDs меняются. Red: 5 failed, 2 passed;
+смежный green: 303 passed; strict mypy Linux/Windows чистый.
+Ruff/Black чистые; финальные docs/new tests: 32 passed.
+Реализация Codex при недоступной `gpt-5.6-luna`; выбор и финальное ревью — synthetic
+Astra xhigh: 0 actionable findings, не human/production acceptance.
+[Проверки и границы](../DECISIONOPS_SUMMARY_IMPACT_DETAILS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-90: буквальные пояснения пробелов анализа в summary
 
 Quoted SQL-имя попадало через reads.unattributed в ChartGap.detail и добавляло

@@ -220,7 +220,7 @@ def _impact_section(
     lines = ["", "## Whose numbers this reaches", ""]
     for item in impacts:
         lines.append(f"- **{item.severity.value}** `{item.code}` — {item.subject}")
-        lines.append(f"  - {item.detail}")
+        lines.append(f"  - {_literal(item.detail)}")
         for label, refs in (
             # The subject is already on the line above; repeating it as "metrics: <subject>"
             # adds a word and no fact.
