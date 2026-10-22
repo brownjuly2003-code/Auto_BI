@@ -10,6 +10,22 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-87: буквальное отображение среды в summary
+
+Допустимое имя среды с Markdown и переводами строк добавляло ложный Verdict/Owner
+action в заголовке и через detail проверки provenance. Теперь заголовок Environment
+и весь detail `results.provenance` используют существующий literal-renderer;
+таблица не экранирует pipe повторно. Исходные findings/claims, JSON payload и grading
+прежние. Остальные свободные поля summary вне среза. Verifier 99 → 100, check 73;
+обычная пунктуация этих полей также экранируется, новые run IDs меняются.
+Red заголовка: 5 failed, 2 passed; отдельный red provenance: 3 failed.
+Смежный green: 342 passed; strict mypy Linux/Windows чистый.
+Выбор среза и финальное ревью — synthetic Astra xhigh: 0 actionable findings,
+не human/production acceptance. После форматирования/документации: 35 passed;
+Ruff/Black и diff check чистые.
+Реализовал Codex при недоступной `gpt-5.6-luna`.
+[Проверки и границы](../DECISIONOPS_SUMMARY_ENVIRONMENT_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-86: запрет перенаправленного каталога evidence run
 
 Store проверяет сам run-root через lstat до resolve/I/O и отвергает symlink/junction,

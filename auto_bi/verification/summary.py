@@ -97,7 +97,7 @@ def render_summary(
         f"**Candidate semantics:** {facts.candidate_digest}",
     ]
     if facts.environment_ref:
-        lines.append(f"**Environment:** {facts.environment_ref}")
+        lines.append(f"**Environment:** {_literal(facts.environment_ref)}")
     lines += [
         f"**Created:** {facts.created_at} by verifier {facts.verifier_version}",
         "",
@@ -207,7 +207,7 @@ def _severity_section(
     if intro:
         lines += [intro, ""]
     for check in checks:
-        lines.append(f"- **{check.check_id}** — `{check.summary_code}` — {check.detail}")
+        lines.append(f"- **{check.check_id}** — `{check.summary_code}` — {_detail(check)}")
     return lines
 
 
@@ -260,7 +260,7 @@ def _undone_section(checks: Sequence[CheckResult]) -> list[str]:
         lines.append("- every step of §8.2 produced evidence in this run")
         return lines
     for check in checks:
-        lines.append(f"- **{check.check_id}** — `{check.summary_code}` — {check.detail}")
+        lines.append(f"- **{check.check_id}** — `{check.summary_code}` — {_detail(check)}")
     return lines
 
 
@@ -269,7 +269,7 @@ def _table_section(checks: Sequence[CheckResult]) -> list[str]:
     for check in checks:
         lines.append(
             f"| `{check.check_id}` | {check.status.value} | `{check.summary_code}` "
-            f"| {_cell(check.detail)} |"
+            f"| {_detail(check, table=True)} |"
         )
     return lines
 
@@ -297,6 +297,14 @@ def _reading_guide_section() -> list[str]:
         "- The report is sealed before the bundle verification check. It does not assert that "
         "this bundle is signed or verified.",
     ]
+
+
+def _detail(check: CheckResult, *, table: bool = False) -> str:
+    """Provenance includes stated environments; render its whole detail as data."""
+    if check.check_id == "results.provenance":
+        # _literal already escapes pipes; applying _cell again would break tables.
+        return _literal(check.detail)
+    return _cell(check.detail) if table else check.detail
 
 
 def _cell(text: str) -> str:

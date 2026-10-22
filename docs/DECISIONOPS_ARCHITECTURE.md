@@ -620,12 +620,19 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=99`, `CHECK_VERSION=73`.
+`VERIFIER_VERSION=100`, `CHECK_VERSION=73`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
 на verdict текущего продукта. При пустом списке раздел отсутствует; grading и payload
 прежние. Свободные поля нового раздела выводятся буквальным Markdown-текстом.
+
+Заголовок Environment и весь detail проверки `results.provenance` во всех разделах
+summary выводятся буквально: Markdown-пунктуация экранируется, управляющие символы
+показываются явно. Это сохраняет имя среды данными, включая среду из attestation.
+Исходные findings, claims и JSON payload не экранируются; прочие свободные поля
+summary этим правилом не охвачены. Экранирование меняет также обычную пунктуацию
+provenance detail; новые run IDs учитывают verifier version, исторические bundles прежние.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 

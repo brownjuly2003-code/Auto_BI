@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-87: Environment и detail `results.provenance` в summary — буквальный текст;
+  raw evidence/grading прежние, verifier 100/check 73; новые run IDs меняются.
+  Смежный набор: 342 passed; strict mypy Linux/Windows чистый.
+  Codex; synthetic Astra xhigh: 0 actionable findings, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_SUMMARY_ENVIRONMENT_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-86: store отвергает symlink/junction самого run-root;
   configured root доверенный, версии 99/73 и корректные bundles прежние.
   Полный offline: 6582 passed, 134 skipped, 38 deselected; отдельно DuckDB: 15 passed.
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Полный offline: 6584 passed, 109 skipped, 38 deselected; lint/type checks чистые.
   Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
-- 2026-10-22 — T-84: неизвестные ключи recorded results дают exit 2 до probe/evidence;
-  известные assets других продуктов допустимы. Версии 98/73 сохранены.
-  Профиль: 422 passed, 1 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
-  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

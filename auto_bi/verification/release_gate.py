@@ -489,7 +489,7 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: alone no longer proves an exceeded bound, and row-limit errors do not prove byte excess.
 #: 99 — the summary names the validation issues of other products already sealed in
 #: contracts.validate, explicitly outside this run's verdict. Check payloads are unchanged.
-VERIFIER_VERSION = "99"
+VERIFIER_VERSION = "100"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
