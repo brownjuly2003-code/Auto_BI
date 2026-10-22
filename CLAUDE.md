@@ -91,7 +91,7 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 - 2026-10-22 — T-81: отрицательные исходные строки concentration дают GAP,
   даже если сумма категории положительна. Skill 2, verifier/check 98/73 прежние.
-  Investigation: 375 passed; четыре обычных payload побайтно сохранены.
+  Investigation: 375 passed; полный offline после T-81: 6523 passed, 109 skipped, 38 deselected.
   Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-80: SQLGuardError внутри environment collector даёт CLI exit 2,

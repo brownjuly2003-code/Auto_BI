@@ -12,6 +12,10 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
+**Полная offline-проверка после T-81 (2026-10-22):** на `e05703c`, Windows/Python 3.13.7
+с duckdb: **6523 passed, 109 skipped, 38 deselected**, exit 0. Код не менялся;
+live DWH/Mac не проверялись. [Команда и границы](DECISIONOPS_OFFLINE_VERIFICATION_2026-10-22.md).
+
 **Последний срез (T-81, 2026-10-22):** `concentration_shift` проверяет отрицательность
 исходных строк: компенсация положительным значением той же категории больше не
 скрывает нарушение предпосылки. Результат — `method.negative_value` GAP без

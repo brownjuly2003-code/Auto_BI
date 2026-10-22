@@ -10,6 +10,17 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — полная offline-проверка после T-81
+
+Код `e05703ca44e267d589a4c5ce1ddd972c77f4ff33`, нативный Windows/Python 3.13.7:
+`uv run --frozen --with duckdb pytest -q --tb=short` — **6523 passed, 109 skipped,
+38 deselected in 460.52s**, exit 0. Закрыт пробел полного прогона после T-79–T-81;
+production-код и тесты не менялись, нового функционального среза нет.
+Ограниченное synthetic Astra xhigh review investigation не выявило подтверждённого
+следующего дефекта и подтвердило выбор verification-only этапа.
+Live DWH/Mac не запускались; это не human/production acceptance.
+[Подробности и границы](../DECISIONOPS_OFFLINE_VERIFICATION_2026-10-22.md).
+
 ## 2026-10-22 — T-81: неотрицательность исходных строк концентрации
 
 `concentration_shift` больше не принимает отрицательную supplied row, скрытую
