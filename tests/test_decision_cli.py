@@ -392,6 +392,33 @@ def test_evidence_reads_back_the_bundle_the_gate_just_wrote(
     assert "verdict: pass" in out
 
 
+@pytest.mark.parametrize(("opening", "closing"), [(b"[", b"]"), (b'{"nested":', b"}")])
+def test_evidence_artifact_reports_manifest_beyond_json_parser_depth(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], opening: bytes, closing: bytes
+) -> None:
+    run_dir = tmp_path / "run-deep-manifest"
+    run_dir.mkdir()
+    raw = opening * 3000 + b'"private-manifest-marker"' + closing * 3000
+    manifest = run_dir / "manifest.json"
+    manifest.write_bytes(raw)
+
+    assert main(["decision", "evidence", str(run_dir), "--artifact", "check-any"]) == EXIT_ERROR
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert len(captured.err.splitlines()) == 1
+    assert "no readable manifest.json" in captured.err
+    assert "private-manifest-marker" not in captured.err
+    assert "Traceback" not in captured.err
+    assert manifest.read_bytes() == raw
+    assert list(run_dir.iterdir()) == [manifest]
+
+    assert main(["decision", "evidence", str(run_dir), "--json"]) == 4
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    inspection = json.loads(captured.out)
+    assert [problem["code"] for problem in inspection["problems"]] == ["evidence.manifest_invalid"]
+
+
 def test_evidence_accepts_the_run_directory_itself(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

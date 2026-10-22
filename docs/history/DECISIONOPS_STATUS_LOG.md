@@ -10,6 +10,20 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-82: управляемый отказ глубоко вложенного JSON manifest
+
+`decision evidence --artifact` переводит `RecursionError` при разборе manifest
+в существующий `EvidenceReadError`: exit 2, одна строка stderr, пустой stdout,
+без содержимого manifest и записи файлов. Неверный digest pin имеет прежний
+приоритет; полная inspection сохраняет `evidence.manifest_invalid` и exit 4.
+Writer, подписи, grading и версии 98/73 не менялись.
+Red: 6 failed, 1 passed; профиль: 190 passed, 67 skipped; после уточнения тестов
+семь регрессий прошли. Ruff/Black чистые. Выбор — synthetic Astra xhigh;
+реализация — Codex при недоступной `gpt-5.6-luna`. Synthetic Astra xhigh review:
+0 открытых P1/P2, не human/production acceptance.
+Полный offline suite финального кода и live DWH/Mac не запускались.
+[Проверки и границы](../DECISIONOPS_MANIFEST_DEPTH_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — полная offline-проверка после T-81
 
 Код `e05703ca44e267d589a4c5ce1ddd972c77f4ff33`, нативный Windows/Python 3.13.7:

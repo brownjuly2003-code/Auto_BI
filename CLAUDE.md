@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-82: глубокий JSON manifest у `evidence --artifact` даёт exit 2,
+  одну строку stderr, пустой stdout. Digest pin и full-inspection exit 4 прежние.
+  Версии 98/73; evidence: 190 passed, 67 skipped; семь регрессий прошли.
+  Codex; synthetic Astra xhigh review: 0 открытых P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_MANIFEST_DEPTH_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-81: отрицательные исходные строки concentration дают GAP,
   даже если сумма категории положительна. Skill 2, verifier/check 98/73 прежние.
   Investigation: 375 passed; полный offline после T-81: 6523 passed, 109 skipped, 38 deselected.
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   448 тестов; четыре completed bundle с fake DWH побайтно сохранены; вход — PlanQuestion.
   Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
   [Проверки и review](docs/DECISIONOPS_ENVIRONMENT_SQL_GUARD_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-79: detail GAP компилятора отображается буквальным текстом в Markdown;
-  raw JSON/digests, causal policy и версии 98/73 прежние. Investigation: 348 passed;
-  четыре обычных payload побайтно сохранены. Codex; synthetic Astra xhigh:
-  0 открытых P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_GAP_MARKDOWN_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

@@ -16,7 +16,15 @@ human/design-partner outcome не измерен и не требуется дл
 с duckdb: **6523 passed, 109 skipped, 38 deselected**, exit 0. Код не менялся;
 live DWH/Mac не проверялись. [Команда и границы](DECISIONOPS_OFFLINE_VERIFICATION_2026-10-22.md).
 
-**Последний срез (T-81, 2026-10-22):** `concentration_shift` проверяет отрицательность
+**Последний срез (T-82, 2026-10-22):** слишком глубокий JSON manifest у
+`decision evidence --artifact` даёт управляемый отказ: exit 2, одна строка stderr,
+пустой stdout. Приоритет неверного digest pin и full-inspection exit 4 сохранены;
+версии 98/73 прежние. Профиль evidence: 190 passed, 67 skipped; семь регрессий прошли.
+Synthetic Astra xhigh review: 0 открытых P1/P2, не human/production acceptance.
+Полный offline baseline выше относится к коду до T-82.
+[Проверки и границы T-82](DECISIONOPS_MANIFEST_DEPTH_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-81, 2026-10-22):** `concentration_shift` проверяет отрицательность
 исходных строк: компенсация положительным значением той же категории больше не
 скрывает нарушение предпосылки. Результат — `method.negative_value` GAP без
 concentration claims; variance/contribution и приоритет прежних gaps сохранены.

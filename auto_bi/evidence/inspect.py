@@ -220,7 +220,7 @@ def read_artifact(
         )
     try:
         bundle = EvidenceBundle.model_validate(json.loads(raw.decode("utf-8")))
-    except ValueError as exc:
+    except (ValueError, RecursionError) as exc:
         raise EvidenceReadError(
             f"run {run_id!r} has no readable {MANIFEST_PATH}, so nothing can be read out of it"
         ) from exc

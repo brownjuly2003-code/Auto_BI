@@ -214,6 +214,38 @@ def test_a_bundle_stored_under_another_run_id_is_reported(tmp_path: Path) -> Non
     assert inspection.bundle is not None
 
 
+@pytest.mark.parametrize(("opening", "closing"), [(b"[", b"]"), (b'{"nested":', b"}")])
+@pytest.mark.parametrize("pinned", [False, True])
+def test_artifact_read_refuses_manifest_beyond_json_parser_depth(
+    tmp_path: Path, opening: bytes, closing: bytes, pinned: bool
+) -> None:
+    raw = opening * 3000 + b'"private-manifest-marker"' + closing * 3000
+    store = store_of(tmp_path)
+    store.put(RUN, "manifest.json", raw)
+
+    with pytest.raises(EvidenceReadError, match=r"no readable manifest\.json") as caught:
+        read_artifact(
+            store,
+            RUN,
+            "check-freshness",
+            expected_digest=digest_bytes(raw) if pinned else None,
+        )
+    assert isinstance(caught.value.__cause__, RecursionError)
+    assert "private-manifest-marker" not in str(caught.value)
+
+    inspection = inspect_bundle(store, RUN)
+    assert inspection.verdict is Verdict.BLOCK
+    assert [problem.code for problem in inspection.problems] == ["evidence.manifest_invalid"]
+
+
+def test_artifact_digest_pin_precedes_manifest_depth_refusal(tmp_path: Path) -> None:
+    store = store_of(tmp_path)
+    store.put(RUN, "manifest.json", b"[" * 3000 + b"0" + b"]" * 3000)
+
+    with pytest.raises(EvidenceDigestError):
+        read_artifact(store, RUN, "check-freshness", expected_digest=digest_bytes(b"other"))
+
+
 def test_a_run_without_a_manifest_is_not_a_bundle(tmp_path: Path) -> None:
     with pytest.raises(EvidenceReadError, match="no manifest"):
         inspect_bundle(store_of(tmp_path), "run-that-never-ran")
