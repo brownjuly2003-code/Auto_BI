@@ -620,7 +620,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=105`, `CHECK_VERSION=73`.
+`VERIFIER_VERSION=106`, `CHECK_VERSION=73`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1470,8 +1470,12 @@ raw refs/subjects, relations, gap codes и grading остаются прежни
 timezone/calendar из semantic diff не добавляют инструкции владельцу в summary.
 Весь `ChartImpact.detail` выводится буквально для обеих relations: label меры
 не становится разметкой через пояснение `computes_metric`. Raw semantic/impact
-payload, relations и grading не меняются. Остальные check details этим правилом
-не охватываются.
+payload, relations и grading не меняются.
+Все `CheckResult.detail` выводятся буквально независимо от check/status: в списках
+findings/undone, таблице и Product scope intro. Имена ролей, target и evidence DWH
+не добавляют разметку, даже если входят в положительный detail. Pipe экранируется
+один раз. Raw findings и grading сохранены; правило касается detail, а не всех
+свободных полей summary.
 
 ### 9.3 Integrity и подпись
 

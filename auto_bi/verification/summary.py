@@ -128,7 +128,7 @@ def render_summary(
     review_intro = ""
     if unaffected is not None:
         review_intro = (
-            f"**Product scope:** `{unaffected.summary_code}` — {unaffected.detail}\n\n"
+            f"**Product scope:** `{unaffected.summary_code}` — {_detail(unaffected)}\n\n"
             "The human review below does not mean this product's numbers changed."
         )
     lines += _severity_section(
@@ -274,7 +274,7 @@ def _table_section(checks: Sequence[CheckResult]) -> list[str]:
     for check in checks:
         lines.append(
             f"| `{check.check_id}` | {check.status.value} | `{check.summary_code}` "
-            f"| {_detail(check, table=True)} |"
+            f"| {_detail(check)} |"
         )
     return lines
 
@@ -304,17 +304,9 @@ def _reading_guide_section() -> list[str]:
     ]
 
 
-def _detail(check: CheckResult, *, table: bool = False) -> str:
-    """Provenance includes stated environments; render its whole detail as data."""
-    if check.check_id == "results.provenance":
-        # _literal already escapes pipes; applying _cell again would break tables.
-        return _literal(check.detail)
-    return _cell(check.detail) if table else check.detail
-
-
-def _cell(text: str) -> str:
-    """A finding is data, not markup: a pipe inside it must not become a column."""
-    return text.replace("|", "\\|")
+def _detail(check: CheckResult) -> str:
+    """Every check explanation is data, in prose and in table cells alike."""
+    return _literal(check.detail)
 
 
 __all__ = ["SummaryFacts", "render_summary"]

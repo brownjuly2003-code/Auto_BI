@@ -207,7 +207,7 @@ def test_a_review_of_an_unreached_change_explains_product_scope() -> None:
     text = render_summary(FACTS, [changed, unaffected])
     human = text.split("## What needs a human")[1].split("## What was not done")[0]
 
-    assert "**Product scope:** `impact.none` — 0 of 1 change(s) reach this product" in human
+    assert r"**Product scope:** `impact.none` — 0 of 1 change\(s\) reach this product" in human
     assert "does not mean this product's numbers changed" in human
     assert human.index("Product scope") < human.index("semantic.diff")
 

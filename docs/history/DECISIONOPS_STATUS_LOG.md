@@ -10,6 +10,18 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-93: буквальные пояснения всех проверок в summary
+
+Role/target/evidence из environment facts попадали в raw CheckResult.detail и
+добавляли ложные Verdict/Owner action. Все details теперь проходят `_literal`
+в списках findings/undone, таблице и Product scope intro, включая PASS details.
+Raw findings и grading сохранены. Verifier 105 → 106, check 73; новые run IDs меняются.
+Red: 24 failed, 10 passed; смежный green: 348 passed. Ruff/Black и strict mypy
+Linux/Windows чистые; docs/new tests: 59 passed. Реализация Codex при недоступной
+`gpt-5.6-luna`; выбор и финальное ревью — synthetic Astra xhigh:
+0 actionable findings, не human/production acceptance.
+[Проверки и границы](../DECISIONOPS_SUMMARY_CHECK_DETAILS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-92: буквальные пояснения chart impact в summary
 
 Свободный Measure.label попадал через measure_alias в ChartImpact.detail и добавлял
