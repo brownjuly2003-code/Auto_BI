@@ -49,6 +49,25 @@ uv run --frozen --with mypy --with types-PyYAML mypy --platform win32 --strict a
 ```
 
 Девять новых symlink-сценариев пропущены из-за отсутствия Windows-привилегии;
-реальные junction проверены без пропусков. Native POSIX, live DWH/Mac и полный
-offline-набор на T-86 не запускались. Полный baseline T-85 не считается проверкой
-нового кода. Конкурентная замена путей и остальные виды reparse points не покрыты.
+реальные junction проверены без пропусков. Native POSIX и live DWH/Mac не запускались.
+Конкурентная замена путей и остальные виды reparse points не покрыты.
+
+## Полная offline-проверка T-86
+
+2026-10-22 synthetic Astra xhigh выбрала закрытие оставшегося пробела полной
+проверки общего store. Нового подтверждённого дефекта ограниченное ревью не
+выявило. Это модельный выбор среза, не human/production acceptance.
+
+Код `7453e3f`, Windows/Python 3.13.7, один полный прогон без DuckDB:
+**6582 passed, 134 skipped, 38 deselected in 561.71s**, exit 0.
+Отдельный профиль SQL-преобразований с DuckDB: **15 passed in 0.41s**, exit 0.
+Эти результаты не суммируются: профиль пересекается с полным набором.
+Пропуски не считаются проверенным поведением; 38 deselected исключены
+конфигурацией `not integration and not e2e`. Код и версии evidence не менялись.
+
+```powershell
+$env:PYTHONUTF8='1'
+$env:PYTHONIOENCODING='utf-8'
+.venv\Scripts\python.exe -m pytest -q --tb=short
+uv run --frozen --with duckdb pytest -q tests/test_sqlgen_transforms.py --tb=short
+```

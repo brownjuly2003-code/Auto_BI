@@ -18,8 +18,12 @@ Store проверяет сам run-root через lstat до resolve/I/O и о
 совпадают. Red: 12 failed, 1 passed, 9 skipped. Профиль: 194 passed, 76 skipped.
 Ruff/Black и strict mypy Linux/Windows чистые. Synthetic Astra xhigh: 0 P1/P2,
 не human/production acceptance. Codex реализовал при недоступной `gpt-5.6-luna`.
-Полный набор T-86 и native POSIX не запускались; Windows junction проверены,
-девять новых symlink-сценариев пропущены из-за привилегии Windows.
+Дополнительная проверка T-86 на `7453e3f` (2026-10-22), выбранная synthetic Astra xhigh:
+полный offline Windows/Python 3.13.7 без DuckDB — 6582 passed, 134 skipped,
+38 deselected in 561.71s, exit 0; отдельный профиль с DuckDB — 15 passed, exit 0.
+Результаты не суммируются. Код не менялся. Native POSIX и live DWH/Mac не проверялись;
+Windows junction проверены, девять новых symlink-сценариев пропущены из-за
+привилегии Windows. Модельный выбор не является human/production acceptance.
 [Проверки и границы](../DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-85: проблемы других продуктов в сводке

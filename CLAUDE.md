@@ -91,7 +91,7 @@ GraceKelly (локальный сервис, должен быть запуще�
 
 - 2026-10-22 — T-86: store отвергает symlink/junction самого run-root;
   configured root доверенный, версии 99/73 и корректные bundles прежние.
-  Профиль: 194 passed, 76 skipped; lint/type checks чистые; полного набора T-86 нет.
+  Полный offline: 6582 passed, 134 skipped, 38 deselected; отдельно DuckDB: 15 passed.
   Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-85: сводка называет проблемы других продуктов отдельно от verdict;
