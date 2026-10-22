@@ -332,7 +332,8 @@ def concentration_shift(
     grouped, group_gap = _grouped_values(step, data, budget, dimension, context)
     if group_gap is not None:
         return group_gap
-    if any(value < 0 for values in grouped.values() for value in values.values()):
+    # Grouping must not hide a negative input behind a positive value at another grain.
+    if any(row.value is not None and Decimal(row.value) < 0 for row in data.rows):
         return _gap(
             step,
             data,

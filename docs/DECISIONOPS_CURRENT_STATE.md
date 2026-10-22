@@ -12,7 +12,16 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-80, 2026-10-22):** `SQLGuardError` из environment collector
+**Последний срез (T-81, 2026-10-22):** `concentration_shift` проверяет отрицательность
+исходных строк: компенсация положительным значением той же категории больше не
+скрывает нарушение предпосылки. Результат — `method.negative_value` GAP без
+concentration claims; variance/contribution и приоритет прежних gaps сохранены.
+Skill version 2, verifier/check 98/73 прежние; четыре обычных payload побайтно прежние,
+исторические brief читаются. Investigation: 375 passed. Synthetic Astra xhigh:
+0 открытых P1/P2, не human/production acceptance.
+[Проверки и границы T-81](DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-80, 2026-10-22):** `SQLGuardError` из environment collector
 у `decision verify --dwh` даёт exit 2, одну строку без SQL при обычном CLI logging и пустой stdout,
 evidence не создаётся. Guard, прямые вызовы и версии 98/73 сохранены.
 Смежный набор: 448 passed; четыре completed runs с fake DWH сохраняют каждый

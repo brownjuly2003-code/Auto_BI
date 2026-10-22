@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-81: отрицательные исходные строки concentration дают GAP,
+  даже если сумма категории положительна. Skill 2, verifier/check 98/73 прежние.
+  Investigation: 375 passed; четыре обычных payload побайтно сохранены.
+  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-80: SQLGuardError внутри environment collector даёт CLI exit 2,
   одну строку без SQL при обычном CLI logging, без evidence. Версии 98/73.
   448 тестов; четыре completed bundle с fake DWH побайтно сохранены; вход — PlanQuestion.
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   четыре обычных payload побайтно сохранены. Codex; synthetic Astra xhigh:
   0 открытых P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_GAP_MARKDOWN_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-78: category/unit отображаются как буквальный текст в Markdown
-  variance/contribution-блоков компилятора; raw JSON и causal policy прежние.
-  Версии 98/73, обычные четыре payload побайтно сохранены. Полный offline: 6436 passed.
-  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_MARKDOWN_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

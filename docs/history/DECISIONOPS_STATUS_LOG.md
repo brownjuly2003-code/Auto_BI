@@ -10,6 +10,24 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-81: неотрицательность исходных строк концентрации
+
+`concentration_shift` больше не принимает отрицательную supplied row, скрытую
+положительной суммой категории. Существующий `method.negative_value` GAP заменяет
+ошибочный concentration result; brief не выпускает concentration claims. Приоритет
+прежних input/additivity/group diagnostics сохранён. Variance/contribution допускают
+отрицательные значения как прежде. Skill version 2, verifier/check 98/73 прежние;
+новые outputs ошибочно допускавшихся входов меняются, сохранённые brief читаются.
+
+Выбор и review — synthetic Astra xhigh; реализация — Codex при недоступной
+`gpt-5.6-luna`. Red: 14 failed, 7 passed; green: 21 passed; после добавления
+проверок diagnostic precedence профиль: 27 passed, весь investigation: 375 passed.
+Ruff/Black и strict mypy Linux чистые. Четыре payload обычного fixture побайтно
+совпали с исходной функцией. Astra независимо повторила профиль и сравнение:
+0 открытых P1/P2. Полный offline suite и live DWH не запускались;
+не human/production acceptance.
+Проверки и границы — [T-81](../DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-80: управляемый отказ environment SQL guard
 
 CLI переводит `SQLGuardError` только внутри вызова `collect` в `VerifyError`:
