@@ -31,6 +31,13 @@ class ResultCaptureError(ValueError):
     """The reviewed query could not be represented by its canonical result contract."""
 
 
+def _driver_reason(error: Exception) -> str:
+    """Name a driver failure in one line, including when it carries no message."""
+    said = " ".join(str(error).split())
+    name = type(error).__name__
+    return f"{name}: {said}" if said else name
+
+
 @dataclass(frozen=True)
 class QueryColumn:
     """One output column as the engine driver describes it."""
@@ -93,7 +100,7 @@ def capture(
 def make_clickhouse_result_query(settings: Settings) -> ResultQuery:
     """Build the metadata-preserving ClickHouse capture callable."""
     import clickhouse_connect
-    from clickhouse_connect.driver.exceptions import ClickHouseError
+    from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureError
 
     try:
         client = clickhouse_connect.get_client(
@@ -103,8 +110,8 @@ def make_clickhouse_result_query(settings: Settings) -> ResultQuery:
             password=settings.ch_password,
             database=settings.ch_database,
         )
-    except ClickHouseError as exc:
-        raise ResultCaptureError(f"ClickHouse connection failed: {exc}") from None
+    except (ClickHouseError, StreamFailureError) as exc:
+        raise ResultCaptureError(f"ClickHouse connection failed: {_driver_reason(exc)}") from None
 
     def run(sql: str) -> QueryResult:
         try:
@@ -115,15 +122,18 @@ def make_clickhouse_result_query(settings: Settings) -> ResultQuery:
                     f"SELECT * FROM ({statement}) LIMIT 0",
                     tz_mode="aware",
                 )
-        except ClickHouseError as exc:
-            raise ResultCaptureError(f"ClickHouse query failed: {exc}") from None
-        return QueryResult(
-            columns=tuple(
-                QueryColumn(name, column_type.name, nullable=column_type.nullable)
-                for name, column_type in zip(result.column_names, result.column_types, strict=True)
-            ),
-            rows=tuple(tuple(row) for row in result.result_rows),
-        )
+            # result_rows consumes the driver's lazy stream: it can fail after query returned.
+            return QueryResult(
+                columns=tuple(
+                    QueryColumn(name, column_type.name, nullable=column_type.nullable)
+                    for name, column_type in zip(
+                        result.column_names, result.column_types, strict=True
+                    )
+                ),
+                rows=tuple(tuple(row) for row in result.result_rows),
+            )
+        except (ClickHouseError, StreamFailureError) as exc:
+            raise ResultCaptureError(f"ClickHouse query failed: {_driver_reason(exc)}") from None
 
     return run
 
@@ -142,7 +152,7 @@ def make_postgres_result_query(settings: Settings) -> ResultQuery:
             autocommit=True,
         )
     except psycopg.Error as exc:
-        raise ResultCaptureError(f"PostgreSQL connection failed: {exc}") from None
+        raise ResultCaptureError(f"PostgreSQL connection failed: {_driver_reason(exc)}") from None
 
     def run(sql: str) -> QueryResult:
         try:
@@ -163,7 +173,7 @@ def make_postgres_result_query(settings: Settings) -> ResultQuery:
                     rows=tuple(tuple(row) for row in cursor.fetchall()),
                 )
         except psycopg.Error as exc:
-            raise ResultCaptureError(f"PostgreSQL query failed: {exc}") from None
+            raise ResultCaptureError(f"PostgreSQL query failed: {_driver_reason(exc)}") from None
 
     return run
 

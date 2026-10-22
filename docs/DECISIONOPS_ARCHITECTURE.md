@@ -1266,6 +1266,15 @@ Metamorphic checks объявляются явно в `tolerance.aggregate_check
 кандидатного semantic snapshot'а, среды и reviewed-запроса. Сам release gate остаётся pure и
 читает этот файл как обычный вход.
 
+Ошибка драйвера при соединении, запросе или чтении ответа — `ResultCaptureError` адаптера:
+`ClickHouseError` и `StreamFailureError` у ClickHouse, `psycopg.Error` у PostgreSQL-семейства.
+Граница включает metadata fallback и ленивое чтение `result_rows`: обрыв после первого блока
+не публикует частичный результат и не повторяет запрос. CLI отвечает exit 2, без stdout и
+файла результата, одной строкой `cannot capture <asset id>: <ClickHouse|PostgreSQL>
+<connection|query> failed: <класс>: <текст>`. Пробельные последовательности текста сжимаются
+до одного пробела; пустое сообщение представлено классом. Произвольные исключения в новый
+перехват не входят ([контракт](specs/unanswered-engine.md)).
+
 Три из четырёх её утверждений сверяются с тем, что гейт держит независимо:
 
 | Что сверяется | С чем | Код при расхождении |

@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-19
+**Обновлено:** 2026-10-22
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -12,7 +12,15 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=97`, `CHECK_VERSION=72`
 
-**Последний срез (T-66, 2026-10-19):** пакет снова проходит mypy так, как его запускает CI, —
+**Последний срез (T-67, 2026-10-22):** `decision capture` обрабатывает ошибки драйвера
+одной строкой с классом исключения и exit 2. ClickHouse-перехват включает `StreamFailureError`,
+metadata fallback и ленивое чтение `result_rows`; частичный ответ не создаёт файл результата
+и не повторяет запрос. Сообщения PostgreSQL-семейства также нормализованы. Версии 97/72
+сохранены. Codex реализовал срез; synthetic Astra xhigh выбрала его и проверила код, тесты
+и контракт: 0 P1/P2, не human/production acceptance. Проверки и границы —
+[T-67](DECISIONOPS_CAPTURE_DRIVER_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-66, 2026-10-19):** пакет снова проходит mypy так, как его запускает CI, —
 на Linux. Срез T-63 достигал Windows-API (`ctypes.WinDLL`, `ctypes.get_last_error`,
 `msvcrt.open_osfhandle`, `os.O_BINARY`) за проверкой `os.name == "nt"`, которую mypy не
 читает: с T-63 по T-65 `mypy auto_bi` и `mypy --strict auto_bi` находили в

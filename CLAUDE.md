@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-67: ошибки драйверов `decision capture` — одна строка, класс и exit 2.
+  ClickHouse-перехват включает ленивый поток и `StreamFailureError`; частичный результат
+  не публикуется. Версии 97/72 сохранены. Synthetic Astra xhigh: 0 P1/P2,
+  не human/production acceptance.
+  [Проверки и границы](docs/DECISIONOPS_CAPTURE_DRIVER_CHECKS_2026-10-22.md).
 - 2026-10-19 — T-66: Windows-API `store.py` (T-63) — за `sys.platform`, не `os.name`: mypy,
   как его гоняет CI на Linux, снова чист (с T-63 — 7 и 9 ошибок). CI проверяет Windows-ветки
   шагом `--platform win32`; `tests/test_platform_guards.py` держит форму без mypy. Opus 5.5
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   вопросов, отказ движка остаётся фактом, лог clickhouse_connect не в stderr. Verifier 97,
   check 72. Opus 5.5 напрямую; модельного ревью не было, только проверки автора.
   [Проверки и границы](docs/DECISIONOPS_UNANSWERED_ENGINE_CHECKS_2026-10-19.md).
-- 2026-10-08 — T-64: nonmapping `model.yaml` одинаково отклоняется в base/candidate/capture
-  до gate, probe/query и output; явный `{}` допустим. Red 40 → green 41; независимые
-  8 модулей на Windows 3.13: 553 passed, 1 skipped. Snapshots и 44 файла допустимых bundles
-  совпали с baseline; версии 97/72/native3 сохранены. Synthetic Astra xhigh: 0 P1/P2,
-  не human acceptance. [Контракт](docs/specs/unreadable-inputs.md).
 
 ## Definition of done (фаза/задача)
 

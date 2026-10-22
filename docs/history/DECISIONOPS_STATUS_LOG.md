@@ -10,6 +10,19 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-67: однострочная ошибка драйвера при capture
+
+`decision capture` преобразует ошибки ClickHouse и PostgreSQL-семейства в строку с
+классом исключения, exit 2, без stdout и файла результата. ClickHouse-перехват включает
+`StreamFailureError`, metadata fallback и ленивую материализацию `result_rows`; обрыв
+после первого блока не публикует частичный результат и не повторяет запрос. Сообщения
+драйверов нормализованы, пустое сообщение представлено классом. Успешный путь и версии
+verifier 97 / check 72 сохранены. Новые regression-тесты дали 30 red до правки; код,
+тесты и контракт прошли synthetic Astra xhigh review: 0 P1/P2, не human/production
+acceptance. Реализовал Codex: указанная `gpt-5.6-luna` недоступна. Свежие команды,
+результаты, уточнение сетевых тестов для `ConnectionTimeout` и границы —
+[проверки T-67](../DECISIONOPS_CAPTURE_DRIVER_CHECKS_2026-10-22.md).
+
 - 2026-10-19 — T-66: Windows-only код за проверкой, которую читает mypy. CI проверяет типы на
   Linux (`mypy auto_bi` и `mypy --strict auto_bi` в джобах `quality` и `quality-py-latest`
   на `ubuntu-latest`); mypy пропускает ветку по `sys.platform`, а `os.name` не читает. Срез

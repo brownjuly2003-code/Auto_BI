@@ -38,7 +38,14 @@ from auto_bi.introspect import clickhouse, greenplum
 from auto_bi.verification.environment import EnvironmentQuestions
 from auto_bi.verification.model import EXIT_ERROR
 from tests.test_decision_cli import _verify_argv
-from tests.test_decision_verify import ASSET_ID, CREATED_AT, Case, budgeted_contract
+from tests.test_decision_verify import (
+    ASSET_ID,
+    CREATED_AT,
+    Case,
+    _write_yaml,
+    budgeted_contract,
+    verified_asset,
+)
 from tests.test_environment_probe import FakeEngine, clickhouse_engine, postgres_engine
 from tests.test_stated_run_facts import _capture_argv, _verify
 from tests.test_unreadable_run_inputs import ROWS, _case
@@ -58,13 +65,16 @@ def _family(engine: str) -> str:
 
 
 @pytest.fixture
-def closed_port() -> int:
+def closed_port(monkeypatch: pytest.MonkeyPatch) -> int:
     """A port of the loopback address that was free a moment ago: a session is refused at once.
 
     Not one held bound and left without `listen`: macOS drops what is sent to such a port, and
     a session to it is refused only when the connection times out (psycopg: `could not receive
     data from server: Operation timed out`, after more than a minute).
     """
+    # Some hosts do not promptly refuse a closed port. Bound libpq's wait, including in
+    # subprocesses, while still asking the real driver and asserting its actual error class.
+    monkeypatch.setenv("PGCONNECT_TIMEOUT", "2")
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     probe.bind(("127.0.0.1", 0))
     port = int(probe.getsockname()[1])
@@ -138,6 +148,19 @@ def _one_line(capsys: pytest.CaptureFixture[str]) -> tuple[str, str]:
     line = captured.err[:-1]
     assert line.splitlines() == [line]
     return captured.out, line
+
+
+def _connection_failure(line: str, head: str, engine: str) -> None:
+    """A closed port can be refused or time out; neither outcome answers the command."""
+    assert line.startswith(head)
+    error_class, separator, reason = line[len(head) :].partition(": ")
+    expected = (
+        {"OperationalError"}
+        if engine == "clickhouse"
+        else {"OperationalError", "ConnectionTimeout"}
+    )
+    assert error_class in expected
+    assert separator and reason.strip()
 
 
 class _FallsOver:
@@ -224,8 +247,8 @@ def test_an_engine_that_is_not_reached_ends_the_run_in_one_line(
 
     out, line = _one_line(capsys)
     assert out == ""
-    head = f"error: cannot ask {engine} at 127.0.0.1:{closed_port}/dm: OperationalError: "
-    assert line.startswith(head) and line != head
+    head = f"error: cannot ask {engine} at 127.0.0.1:{closed_port}/dm: "
+    _connection_failure(line, head, engine)
     assert not (case.root / "evidence").exists()
 
 
@@ -544,20 +567,28 @@ def test_a_verify_process_whose_engine_is_not_reached_answers_in_one_line(
 
     assert (ended.returncode, ended.stdout) == (EXIT_ERROR, "")
     assert ended.stderr.count(NL) == 1 and ended.stderr.endswith(NL), ended.stderr
-    head = f"error: cannot ask {engine} at 127.0.0.1:{closed_port}/dm: OperationalError: "
-    assert ended.stderr.startswith(head)
+    head = f"error: cannot ask {engine} at 127.0.0.1:{closed_port}/dm: "
+    _connection_failure(ended.stderr[:-1], head, engine)
     assert not (case.root / "evidence").exists()
 
 
+@pytest.mark.parametrize("engine", ENGINES)
 def test_a_capture_process_whose_engine_is_not_reached_answers_in_one_line(
-    tmp_path: Path, closed_port: int
+    tmp_path: Path, closed_port: int, engine: str
 ) -> None:
     case = _case(tmp_path)
+    asset = verified_asset(case.base_digest)
+    asset["reference_query"]["engine"] = engine
+    assert case.assets is not None
+    _write_yaml(case.assets / "weekly_margin_by_region.yaml", asset)
+    argv = _capture_argv(case)
+    argv[argv.index("--dwh") + 1] = engine
 
-    ended = _process([*_capture_argv(case), "--captured-at", CREATED_AT], closed_port)
+    ended = _process([*argv, "--captured-at", CREATED_AT], closed_port)
 
     assert (ended.returncode, ended.stdout) == (EXIT_ERROR, "")
     assert ended.stderr.count(NL) == 1 and ended.stderr.endswith(NL), ended.stderr
-    head = f"error: cannot capture {ASSET_ID}: ClickHouse connection failed: "
-    assert ended.stderr.startswith(head)
+    family = "ClickHouse" if engine == "clickhouse" else "PostgreSQL"
+    head = f"error: cannot capture {ASSET_ID}: {family} connection failed: "
+    _connection_failure(ended.stderr[:-1], head, engine)
     assert not (case.root / "captured.yaml").exists()

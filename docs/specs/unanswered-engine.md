@@ -86,6 +86,9 @@ same way by raising it.
 - **WHEN** `decision verify --dwh <engine>` runs, for each engine `--dwh` takes
 - **THEN** it exits 2 with `error: cannot ask <engine> at 127.0.0.1:<port>/dm: OperationalError: `
   and what the driver said, in one line; nothing on stdout; no evidence directory
+- **AND** if the host does not refuse the connection before libpq's configured timeout,
+  the actual class is `ConnectionTimeout`, a subclass of `psycopg.OperationalError`, with
+  the same exit/output contract; tests bound that wait through `PGCONNECT_TIMEOUT=2`
 - **AND** psycopg's refusal is one line however libpq words it: `… failed: Connection refused`
   with `Is the server running on that host and accepting TCP/IP connections?` after a line
   break and a tab, or `… failed: could not receive data from server: Connection refused` in
@@ -143,6 +146,52 @@ leaves the logger as it is.
 - **THEN** it exits 2 and its stderr is one line: `error: cannot ask …` for verify, `error:
   cannot capture <asset id>: ClickHouse connection failed: …` for capture
 
+## Requirement: a driver failure ends a capture in one line without a result file
+
+`decision capture` SHALL convert `ClickHouseError` and `StreamFailureError` from
+clickhouse_connect, and `psycopg.Error` from the PostgreSQL family, into `ResultCaptureError`
+at the adapter boundary. This covers opening the connection, executing the reviewed query,
+ClickHouse's empty-result metadata fallback and consuming the result. In particular,
+ClickHouse's `result_rows` reads a lazy stream and SHALL remain inside this boundary even
+after `client.query` has returned.
+
+The use case SHALL report the error with exit 2, empty stdout and exactly one stderr line:
+
+`error: cannot capture <asset id>: <ClickHouse|PostgreSQL> <connection|query> failed: <class>: <text>`
+
+Each run of whitespace in the driver's text is one space. An empty or whitespace-only text
+leaves the class alone, without a trailing colon. `greenplum` and `greengage` use the
+PostgreSQL adapter and label. The result file and a missing output parent directory SHALL
+not be created, and partial rows SHALL not be published or trigger a retry. Successful
+captures retain their exact SQL, metadata, canonical result and attestation behavior.
+
+Only the named driver errors are added to this boundary. A `RuntimeError` still propagates;
+the use case's existing `ValueError` handling is unchanged.
+
+### Scenario: the ClickHouse stream fails after a first block
+
+- **GIVEN** the driver has returned query metadata and one block of rows
+- **WHEN** materializing `result_rows` raises `StreamFailureError`
+- **THEN** capture exits 2 with one `ClickHouse query failed: StreamFailureError: …` line
+- **AND** no output file or missing parent directory is created and no query is retried
+
+### Scenario: the connection, query or metadata fallback fails
+
+- **GIVEN** a named driver error during connection, query execution, metadata fallback or
+  PostgreSQL fetch, including `DataCorrupted` or `QueryCanceled`
+- **WHEN** capture runs
+- **THEN** its one-line refusal identifies the operation and exception class
+- **AND** line breaks, tabs and Unicode line separators in the message become spaces
+- **AND** a blank message is represented by the exception class alone
+
+### Scenario: an unavailable engine is used by a capture process
+
+- **GIVEN** a closed loopback port and each of `clickhouse`, `postgres`, `greenplum`, `greengage`
+- **WHEN** `decision capture` is run as a process
+- **THEN** it exits 2, stdout is empty and stderr is one line naming `OperationalError`
+  (or psycopg's `ConnectionTimeout` when the connection times out)
+- **AND** no recorded result is written
+
 ## Known boundaries
 
 - Only what the driver raises is a usage error. A fault of the probe itself — an identifier
@@ -157,10 +206,6 @@ leaves the logger as it is.
 - The target is printed as it is configured: host, port and database, never the user or the
   password. What the driver said is printed as it said it, in one line: libpq names the host
   and the port it tried, and an authentication refusal names the user.
-- What `decision capture` says after `cannot capture <asset id>: ` is still the text of what was
-  raised, as it reads: psycopg's refusal of a connection is printed in two lines when libpq
-  words it so (`… Connection refused`, then `Is the server running …` after a tab). Only the
-  warning of clickhouse_connect above a ClickHouse refusal is gone.
 - Settings that do not load — a port that is no number — end both commands in a traceback
   before anything is asked, as they did.
 - The engines of this slice are a closed port of the loopback address, a listener that accepts
