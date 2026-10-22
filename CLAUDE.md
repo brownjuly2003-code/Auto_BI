@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-85: сводка называет проблемы других продуктов отдельно от verdict;
+  grading/payload прежние. Verifier 99, check 73; профиль: 134 passed.
+  Полный offline: 6584 passed, 109 skipped, 38 deselected; lint/type checks чистые.
+  Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
 - 2026-10-22 — T-84: неизвестные ключи recorded results дают exit 2 до probe/evidence;
   известные assets других продуктов допустимы. Версии 98/73 сохранены.
   Профиль: 422 passed, 1 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
@@ -100,11 +105,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Полный offline после T-83: 6551 passed, 109 skipped, 38 deselected, exit 0.
   Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-82: глубокий JSON manifest у `evidence --artifact` даёт exit 2,
-  одну строку stderr, пустой stdout. Digest pin и full-inspection exit 4 прежние.
-  Версии 98/73; evidence: 190 passed, 67 skipped; семь регрессий прошли.
-  Codex; synthetic Astra xhigh review: 0 открытых P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_MANIFEST_DEPTH_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

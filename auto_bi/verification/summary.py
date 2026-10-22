@@ -24,6 +24,7 @@ Two boundaries follow from where the report lives:
 
 from __future__ import annotations
 
+import string
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -33,6 +34,7 @@ from auto_bi.severity import Severity
 from auto_bi.verification.model import Verdict, verdict_for
 
 if TYPE_CHECKING:  # a runtime import would close the loop: release_gate imports this module
+    from auto_bi.decision.validate import ValidationIssue
     from auto_bi.verification.release_gate import CheckResult
 
 #: Outcomes that mean a step produced nothing: not implemented offline, skipped because an
@@ -79,6 +81,8 @@ def render_summary(
     checks: Sequence[CheckResult],
     impacts: Sequence[ProductImpact] = (),
     chart_gaps: Sequence[ChartGap] = (),
+    *,
+    other_product_issues: Sequence[ValidationIssue] = (),
 ) -> str:
     """Render the owner-facing summary of one gate run."""
     verdict = verdict_for(
@@ -133,9 +137,38 @@ def render_summary(
         intro=review_intro,
     )
     lines += _undone_section([check for check in checks if check.summary_code in _UNDONE])
+    lines += _other_product_section(other_product_issues)
     lines += _reading_guide_section()
     lines += _table_section(checks)
     return "\n".join(lines) + "\n"
+
+
+def _other_product_section(issues: Sequence[ValidationIssue]) -> list[str]:
+    """Restate the validation payload's ungraded issues without extending this verdict."""
+    if not issues:
+        return []
+    lines = [
+        "",
+        "## Validation issues for other products",
+        "",
+        "These issues belong to other products in the validated paths and are not graded "
+        "for this product. They do not change this run's verdict.",
+        "",
+    ]
+    for issue in issues:
+        lines += [
+            f"- source: {_literal(issue.source)}",
+            f"  - code: {_literal(issue.code)}; reported severity: {issue.severity.value}",
+            f"  - subject: {_literal(issue.subject)}",
+            f"  - message: {_literal(issue.message)}",
+        ]
+    return lines
+
+
+def _literal(value: str) -> str:
+    """One inline value: visible controls and CommonMark-escaped punctuation."""
+    visible = "".join(char if char.isprintable() else ascii(char)[1:-1] for char in value)
+    return "".join(f"\\{char}" if char in string.punctuation else char for char in visible)
 
 
 def _owner_action_section(verdict: Verdict, *, product_unaffected: bool) -> list[str]:

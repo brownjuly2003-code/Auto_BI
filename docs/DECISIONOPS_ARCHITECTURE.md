@@ -620,7 +620,12 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=98`, `CHECK_VERSION=73`.
+`VERIFIER_VERSION=99`, `CHECK_VERSION=73`.
+
+`reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
+с source/code/reported severity/subject/message и явным пояснением, что они не влияют
+на verdict текущего продукта. При пустом списке раздел отсутствует; grading и payload
+прежние. Свободные поля нового раздела выводятся буквальным Markdown-текстом.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 

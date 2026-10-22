@@ -83,6 +83,24 @@ Because the same inputs can now pass where the verifier before it blocked or ask
 the verifier version and the check version SHALL be bumped; historical bundles are not
 rewritten.
 
+## Requirement: The summary names the other products' issues without grading them
+
+As of verifier 99, `reports/summary.md` SHALL show a conditional section
+`Validation issues for other products`, after `What was not done` and before
+`How to read this evidence`. It SHALL restate exactly the `other_product_issues`
+selected by the existing product partition, in their original order, including duplicates.
+Each entry names source, code, reported severity, subject and message. Free text
+is literal Markdown text with escaped punctuation and visible control characters.
+
+The section SHALL explain that these issues belong to other products in the validated
+paths, are not graded for this product and do not change this run's verdict. It SHALL
+be absent for an empty list. It changes no check payload, status, owner action or claim;
+the check version remains 73. Verifier 99 changes new run identity and summary evidence;
+historical bundles are not rewritten. With identical summary facts and no other-product
+issues, the rendered text remains byte-identical to verifier 98's renderer.
+
+## Scenarios
+
 In the scenarios below the *verified product* is `decision://sales/weekly_margin@1`: it pins
 `metric://sales/gross_margin_pct@3`, splits by `region` and `category` and verifies under
 `policy://release/default@1`. The validated contract of that metric is active, declares those

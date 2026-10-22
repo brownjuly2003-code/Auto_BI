@@ -10,16 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
+**Версии evidence:** `VERIFIER_VERSION=99`, `CHECK_VERSION=73`
 
-**Полная offline-проверка после T-83 (2026-10-22):** на `b75edef`, Windows/Python 3.13.7
-с duckdb: **6551 passed, 109 skipped, 38 deselected**, exit 0. Код не менялся;
-live DWH/Mac не проверялись. [Команда и границы](DECISIONOPS_OFFLINE_T83_VERIFICATION_2026-10-22.md).
+**Полная offline-проверка после T-85 (2026-10-22):** финальный код T-85, Windows/Python 3.13.7
+с duckdb: **6584 passed, 109 skipped, 38 deselected**, exit 0.
+Live DWH/Mac не проверялись. [Команда и границы](DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
 
-**Последний срез (T-84, 2026-10-22):** неизвестный ключ recorded results даёт
+**Последний срез (T-85, 2026-10-22):** сводка отдельно называет проблемы других
+продуктов из `other_product_issues` и поясняет, что они не меняют текущий verdict.
+Свободные поля отображаются буквально; пустой список не создаёт раздел.
+Verifier 99, check 73; grading и payload прежние, новые run IDs меняются.
+Профиль: 134 passed; полный набор выше включает T-85. Ruff/Black и strict mypy
+Linux/Windows чистые. Synthetic Astra xhigh: 0 открытых P1/P2,
+не human/production acceptance. [Проверки T-85](DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
+
+**Предыдущий срез (T-84, 2026-10-22):** неизвестный ключ recorded results даёт
 usage error/exit 2 до probe/evidence. Проверка использует полный asset repository;
 известные assets других продуктов допустимы, отсутствующие ответы и приоритет
-ошибки схемы прежние. Версии 98/73 сохранены. Полный baseline выше относится к T-83.
+ошибки схемы прежние. В срезе версии 98/73 сохранены; полный baseline выше включает T-84.
 Профиль: 422 passed, 1 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
 Synthetic Astra xhigh: 0 открытых P1/P2, не human/production acceptance.
 [Проверки и границы T-84](DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).

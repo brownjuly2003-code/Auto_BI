@@ -10,6 +10,19 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-85: проблемы других продуктов в сводке
+
+Условный раздел summary показывает source/code/reported severity/subject/message
+из прежнего other_product_issues, с буквальным отображением Markdown/control text.
+Grading, payload, claims и owner action прежние; пустой список не создаёт раздел.
+Verifier 99, check 73; historical bundles сохранены. Red: 7 failed; профиль: 134 passed.
+Контроль старого/нового renderer: четыре verdict-профиля без чужих issues побайтно
+совпали. Synthetic Astra xhigh по коду/тестам: 0 P1/P2, не human acceptance.
+Codex реализовал при недоступной `gpt-5.6-luna`.
+Полный offline на финальном коде: 6584 passed, 109 skipped, 38 deselected in 538.85s,
+exit 0. Ruff/Black, strict mypy Linux/Windows чистые. Review документации: 0 P1/P2.
+[Проверки и границы](../DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
+
 ## 2026-10-22 — T-84: проверка ключей recorded results
 
 Неизвестный ключ результата больше не игнорируется: exit 2 до probe/evidence.
