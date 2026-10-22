@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-89: chart refs и gap subjects в summary — буквальный текст.
+  Raw payload/grading прежние; verifier 102/check 73; смежный набор: 280 passed.
+  Ruff/Black, strict mypy Linux/Windows чистые; финальные docs/new tests: 32 passed.
+  Codex; synthetic Astra xhigh: 0 actionable findings, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_SUMMARY_CHART_REFS_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-88: владельцы в impact summary — буквальный текст; raw owner/grading прежние.
   Verifier 101/check 73; смежный набор: 211 passed; Ruff/Black, strict mypy Linux/Windows чистые.
   Codex; synthetic Astra xhigh: 0 actionable findings, не human acceptance.
@@ -98,11 +103,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Смежный набор: 342 passed; strict mypy Linux/Windows чистый.
   Codex; synthetic Astra xhigh: 0 actionable findings, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_SUMMARY_ENVIRONMENT_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-86: store отвергает symlink/junction самого run-root;
-  configured root доверенный, версии 99/73 и корректные bundles прежние.
-  Полный offline: 6582 passed, 134 skipped, 38 deselected; отдельно DuckDB: 15 passed.
-  Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

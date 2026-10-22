@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=101`, `CHECK_VERSION=73`
+**Версии evidence:** `VERIFIER_VERSION=102`, `CHECK_VERSION=73`
 
 **Полная offline-проверка после T-86 (2026-10-22):** код `7453e3f`, Windows/Python 3.13.7:
 **6582 passed, 134 skipped, 38 deselected**, exit 0 (без DuckDB).
@@ -18,7 +18,16 @@ human/design-partner outcome не измерен и не требуется дл
 не суммируются. Live DWH/Mac не проверялись.
 [Команды и границы](DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 
-**Последний срез (T-88, 2026-10-22):** владельцы в разделе impact summary
+**Последний срез (T-89, 2026-10-22):** chart refs и subjects пробелов анализа
+в impact summary выводятся буквально. Допустимый chart ID больше не добавляет
+ложные Verdict/Owner action; raw refs, relations, gap codes и grading сохранены.
+Verifier 102, check 73; новые run IDs меняются. Смежный набор: 280 passed;
+Ruff/Black и strict mypy Linux/Windows чистые. Финальные docs/new tests: 32 passed.
+Synthetic Astra xhigh: 0 actionable findings, не human/production acceptance.
+Полный baseline относится к T-86.
+[Проверки и границы](DECISIONOPS_SUMMARY_CHART_REFS_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-88, 2026-10-22):** владельцы в разделе impact summary
 выводятся буквально и не добавляют ложные Verdict/Owner action. Порядок списка,
 raw owner в impact payload и grading сохранены; остальные поля impact вне среза.
 Verifier 101, check 73; новые run IDs меняются. Смежный набор: 211 passed;

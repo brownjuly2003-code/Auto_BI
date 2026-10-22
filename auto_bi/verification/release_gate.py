@@ -490,7 +490,8 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 99 — the summary names the validation issues of other products already sealed in
 #: contracts.validate, explicitly outside this run's verdict. Check payloads are unchanged.
 #: 101 — owner names in the impact summary are literal text, not Markdown instructions.
-VERIFIER_VERSION = "101"
+#: 102 — chart references and gap subjects in the impact summary are literal text.
+VERIFIER_VERSION = "102"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

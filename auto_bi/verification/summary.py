@@ -234,7 +234,9 @@ def _impact_section(
             # The tile, not just the folder it sits in: the one line an owner opens the
             # dashboard for. The relation says whether it *is* the metric or merely reads
             # the column, because those are different things to go and check.
-            lines.append(f"  - chart `{chart.ref}` — {chart.relation.value}: {chart.detail}")
+            lines.append(
+                f"  - chart {_literal(chart.ref)} — {chart.relation.value}: {chart.detail}"
+            )
         if item.severity is not item.classified_severity:
             lines.append(
                 f"  - raised from {item.classified_severity.value} to {item.severity.value} "
@@ -249,7 +251,7 @@ def _impact_section(
             "not settle whether it computes a governed metric:",
             "",
         ]
-        lines += [f"- `{gap.code}` {gap.subject} — {gap.detail}" for gap in chart_gaps]
+        lines += [f"- `{gap.code}` {_literal(gap.subject)} — {gap.detail}" for gap in chart_gaps]
     return lines
 
 

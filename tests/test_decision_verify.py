@@ -1382,7 +1382,9 @@ def test_impact_names_the_tile_that_computes_the_changed_metric(tmp_path: Path) 
     summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
         encoding="utf-8"
     )
-    assert "chart `dashboard://weekly_margin@7#margin_by_region` — computes_metric" in summary
+    assert (
+        r"chart dashboard\:\/\/weekly\_margin\@7\#margin\_by\_region — computes_metric" in summary
+    )
 
 
 def _with_operator_tile(case: Case, sql: str, *, chart_id: str = "operator_table") -> Case:
@@ -1421,7 +1423,7 @@ def test_a_tile_the_run_cannot_read_is_named_in_the_report(tmp_path: Path) -> No
         "because part of its query was not read, or because its SQL does not settle whether "
         "it computes a governed metric:"
     ) in summary
-    assert "`chart.metric_unread` dashboard://weekly_margin@7#operator_table" in summary
+    assert r"`chart.metric_unread` dashboard\:\/\/weekly\_margin\@7\#operator\_table" in summary
     assert "not resolved at all" not in detail_of(report, "impact.products")
     assert (
         "1 delivered chart(s) named (0 read only in part); of the tiles not named: "
@@ -1447,7 +1449,9 @@ def test_empty_clickhouse_map_is_not_a_gate_level_template_gap(tmp_path: Path) -
     summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
         encoding="utf-8"
     )
-    assert "chart `dashboard://weekly_margin@7#margin_by_region` — computes_metric" in summary
+    assert (
+        r"chart dashboard\:\/\/weekly\_margin\@7\#margin\_by\_region — computes_metric" in summary
+    )
     assert "Charts this run could not resolve in whole" not in summary
 
 
@@ -1495,8 +1499,8 @@ def test_a_named_and_gapped_tile_is_counted_once_in_the_products_detail(tmp_path
     summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
         encoding="utf-8"
     )
-    assert "chart `dashboard://weekly_margin@7#operator_table` — reads_field" in summary
-    assert "`chart.sql_partial` dashboard://weekly_margin@7#operator_table" in summary
+    assert r"chart dashboard\:\/\/weekly\_margin\@7\#operator\_table — reads_field" in summary
+    assert r"`chart.sql_partial` dashboard\:\/\/weekly\_margin\@7\#operator\_table" in summary
 
 
 def test_unparseable_operator_sql_is_named_opaque_in_the_report(tmp_path: Path) -> None:
@@ -1516,7 +1520,7 @@ def test_unparseable_operator_sql_is_named_opaque_in_the_report(tmp_path: Path) 
     summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
         encoding="utf-8"
     )
-    assert "`chart.opaque_sql` dashboard://weekly_margin@7#operator_table" in summary
+    assert r"`chart.opaque_sql` dashboard\:\/\/weekly\_margin\@7\#operator\_table" in summary
 
 
 def test_partially_read_operator_sql_is_named_in_the_report(tmp_path: Path) -> None:
@@ -1536,7 +1540,7 @@ def test_partially_read_operator_sql_is_named_in_the_report(tmp_path: Path) -> N
     summary = (tmp_path / "evidence" / report.run_id / "reports" / "summary.md").read_text(
         encoding="utf-8"
     )
-    assert "`chart.sql_partial` dashboard://weekly_margin@7#operator_table" in summary
+    assert r"`chart.sql_partial` dashboard\:\/\/weekly\_margin\@7\#operator\_table" in summary
 
 
 def test_the_products_detail_counts_every_tile_exactly_once(tmp_path: Path) -> None:

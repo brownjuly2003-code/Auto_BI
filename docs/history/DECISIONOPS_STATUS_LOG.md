@@ -10,6 +10,19 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-89: буквальные ссылки на чарты в summary
+
+Допустимый ChartSpec.id добавлял ложные Verdict/Owner action через ChartImpact.ref
+и ChartGap.subject при BLOCK. Теперь обе позиции используют `_literal`, без
+внешних backticks у chart ref. Все gap subjects охвачены; details и остальные
+поля вне среза. Raw refs/subjects, relations, gap codes и grading сохранены.
+Verifier 101 → 102, check 73; новые run IDs меняются. Red: 7 failed;
+смежный green: 280 passed; strict mypy Linux/Windows чистый.
+Финальные Ruff/Black чистые; после форматирования docs/new tests: 32 passed.
+Выбор среза и финальное ревью — synthetic Astra xhigh: 0 actionable findings,
+не human/production acceptance. Реализовал Codex при недоступной `gpt-5.6-luna`.
+[Проверки и границы](../DECISIONOPS_SUMMARY_CHART_REFS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-88: буквальное отображение владельцев в summary
 
 Допустимый metadata.owner добавлял ложные Verdict/Owner action через список
