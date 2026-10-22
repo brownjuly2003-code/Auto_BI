@@ -14,6 +14,7 @@ from auto_bi.investigation.application import build_offline_investigation
 from auto_bi.investigation.claims import InvestigationBrief
 from auto_bi.investigation.data import CanonicalMetricResult
 from auto_bi.investigation.model import InvestigationPlan
+from auto_bi.investigation.skills import GapCode, InvestigationGap
 
 FIXTURES = Path(__file__).parent / "fixtures" / "investigation"
 PLAN_PATH = FIXTURES / "weekly_margin.yaml"
@@ -39,6 +40,127 @@ def supplied(field: str, label: str) -> CanonicalMetricResult:
     else:
         raw["unit"] = label
     return CanonicalMetricResult.model_validate(raw)
+
+
+def gap_inputs(dimension: str) -> tuple[InvestigationPlan, CanonicalMetricResult]:
+    plan = InvestigationPlan.load(PLAN_PATH).model_dump(mode="json")
+    plan["scope"]["dimensions"] = [dimension]
+    plan["steps"] = plan["steps"][2:]
+    for step in plan["steps"]:
+        step["dimensions"] = [dimension]
+    data = CanonicalMetricResult.load(FIXTURES / "revenue_results.yaml").model_dump(mode="json")
+    data["dimensions"] = [dimension]
+    for row in data["rows"]:
+        row["dimensions"] = {dimension: row["dimensions"]["category"]}
+    data["rows"][0]["dimensions"][dimension] = None
+    return InvestigationPlan.model_validate(plan), CanonicalMetricResult.model_validate(data)
+
+
+@pytest.mark.parametrize("dimension", [*LABELS, "<b>accepted</b>", "<!-- accepted -->"])
+def test_compiler_gap_details_are_literal_without_changing_json(dimension: str) -> None:
+    artifacts = build_offline_investigation(*_gap_arguments(dimension))
+    baseline = build_offline_investigation(*_gap_arguments("region"))
+    before = artifacts.brief.canonical_bytes()
+    markdown = artifacts.brief.render_markdown()
+
+    assert structure(markdown) == structure(baseline.brief.render_markdown())
+    visible = VisibleText()
+    visible.feed(MarkdownIt("commonmark").render(markdown))
+    assert not artifacts.brief.claims
+    for evidence, block in zip(artifacts.brief.evidence, artifacts.brief.blocks, strict=True):
+        output = evidence.output
+        assert isinstance(output, InvestigationGap)
+        assert output.code is GapCode.INPUT_NULL_DIMENSION
+        assert output.detail == f"dimension {dimension!r} contains NULL"
+        assert output.detail in visible.text
+        assert block.body == f"Факт не сформирован: `{output.code.value}` — {output.detail}"
+        assert evidence.digest == output.digest()
+        assert evidence.artifact_id in visible.text
+    assert artifacts.brief.canonical_bytes() == before
+    restored = InvestigationBrief.model_validate_json(before)
+    assert restored.render_markdown() == markdown
+
+
+def _gap_arguments(dimension: str) -> tuple[InvestigationPlan, list[CanonicalMetricResult]]:
+    plan, data = gap_inputs(dimension)
+    return plan, [data]
+
+
+@pytest.mark.parametrize("compatibility", ["legacy-id", "custom-body", "multiple-evidence"])
+def test_gap_rendering_keeps_stored_brief_compatibility(compatibility: str) -> None:
+    raw = build_offline_investigation(*_gap_arguments("<b>accepted</b>")).brief.model_dump(
+        mode="json"
+    )
+    block = raw["blocks"][0]
+    if compatibility == "legacy-id":
+        raw["evidence"][0]["artifact_id"] = "legacy-result"
+        block["evidence_refs"] = ["legacy-result"]
+    elif compatibility == "custom-body":
+        block["body"] = "Custom **operator** note."
+    else:
+        block["evidence_refs"].append(raw["evidence"][1]["artifact_id"])
+    brief = InvestigationBrief.model_validate(raw)
+
+    markdown = brief.render_markdown()
+
+    assert brief.model_dump(mode="json") == raw
+    if compatibility == "legacy-id":
+        assert "<b>accepted</b>" not in markdown
+        assert "`legacy-result`" in markdown
+    else:
+        assert f"\n{block['body']}\n" in markdown
+
+
+@pytest.mark.parametrize("dimension", ["<b>accepted</b>", "because_retail", "because", "due to"])
+def test_cli_gap_markdown_preserves_evidence_and_causal_policy(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], dimension: str
+) -> None:
+    plan, data = gap_inputs(dimension)
+    plan_path, result_path = tmp_path / "plan.yaml", tmp_path / "result.yaml"
+    plan_path.write_text(plan.to_yaml(), encoding="utf-8")
+    result_path.write_text(data.to_yaml(), encoding="utf-8")
+    output = tmp_path / "missing" / "out"
+
+    code = cli.main(
+        [
+            "decision",
+            "investigate",
+            str(plan_path),
+            "--results",
+            str(result_path),
+            "--output",
+            str(output),
+        ]
+    )
+
+    if dimension in {"because", "due to"}:
+        assert code == 2
+        assert not output.parent.exists()
+        assert capsys.readouterr().err == (
+            "error: causal wording is forbidden in the offline investigation alpha\n"
+        )
+        return
+    assert code == 0
+    assert capsys.readouterr().err == ""
+    assert {path.name for path in output.iterdir()} == {
+        "plan.json",
+        "results.json",
+        "brief.json",
+        "brief.md",
+    }
+    results = json.loads((output / "results.json").read_bytes())
+    assert results["canonical_results"] == [data.model_dump(mode="json")]
+    brief = InvestigationBrief.model_validate_json((output / "brief.json").read_bytes())
+    assert not brief.claims
+    markdown = (output / "brief.md").read_text(encoding="utf-8")
+    assert brief.render_markdown() == markdown
+    visible = VisibleText()
+    rendered = MarkdownIt("commonmark").render(markdown)
+    visible.feed(rendered)
+    assert "<b>accepted</b>" not in rendered
+    for evidence in brief.evidence:
+        assert isinstance(evidence.output, InvestigationGap)
+        assert evidence.output.detail in visible.text
 
 
 def structure(markdown: str) -> list[tuple[str, str, int]]:

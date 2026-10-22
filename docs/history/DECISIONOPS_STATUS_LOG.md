@@ -10,6 +10,24 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-79: буквальный detail GAP в Markdown investigation
+
+Имя dimension с Markdown/HTML давало разметку в описании `input.null_dimension`,
+достижимого через contribution/concentration. Теперь renderer экранирует detail
+`InvestigationGap`, когда блок имеет одну evidence reference и его body точно
+совпадает с шаблоном компилятора. Код GAP остаётся code span. Raw body, output,
+JSON/digests и causal policy сохранены; версии 98/73 прежние. Экранирование всей
+пунктуации detail меняет также Markdown обычных GAP. Custom prose и неоднозначная
+связь сохраняют отображение; legacy brief защищён при повторном рендеринге.
+
+Реализация — Codex при недоступной `gpt-5.6-luna`; выбор и review — synthetic Astra
+xhigh, один финальный проход: 0 открытых P1/P2, не human/production acceptance.
+Red: 8 failed, 10 passed; Markdown-модуль: 43 passed; investigation: 348 passed.
+Ruff/Black и package-wide strict mypy Linux чистые. Четыре payload обычного fixture
+побайтно сохранены; brief JSON/digest пяти GAP-входов совпали с исходным HEAD.
+Полный offline-набор на T-79 не повторялся; последний полный green — T-78.
+Подробные проверки — [T-79](../DECISIONOPS_INVESTIGATION_GAP_MARKDOWN_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-78: буквальные category/unit в Markdown investigation
 
 Допустимые category/unit больше не внедряют заголовки, ссылки и HTML в Markdown

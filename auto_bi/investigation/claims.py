@@ -171,7 +171,11 @@ class InvestigationBrief(StrictModel):
             # when rendering an already-saved brief. Custom block prose stays as stored.
             if len(block.evidence_refs) == 1:
                 output = evidence_by_id[block.evidence_refs[0]].output
-                if isinstance(output, PeriodVarianceResult) and body == _variance_body(
+                if isinstance(output, InvestigationGap) and body == _gap_body(
+                    output, markdown=False
+                ):
+                    body = _gap_body(output, markdown=True)
+                elif isinstance(output, PeriodVarianceResult) and body == _variance_body(
                     output, markdown=False
                 ):
                     body = _variance_body(output, markdown=True)
@@ -283,7 +287,7 @@ def _compile_output(artifact_id: str, output: SkillResult) -> tuple[list[Claim],
             block_id=f"block-{artifact_id}",
             kind=BriefBlockKind.GAP,
             title=f"Gap: {output.step_id}",
-            body=f"Факт не сформирован: `{output.code.value}` — {output.detail}",
+            body=_gap_body(output, markdown=False),
             evidence_refs=[artifact_id],
         )
     if isinstance(output, DataHealthResult):
@@ -363,6 +367,11 @@ def _markdown_literal(value: str) -> str:
     """One inline text value: visible controls and CommonMark-escaped punctuation."""
     visible = "".join(char if char.isprintable() else ascii(char)[1:-1] for char in value)
     return "".join(f"\\{char}" if char in string.punctuation else char for char in visible)
+
+
+def _gap_body(output: InvestigationGap, *, markdown: bool) -> str:
+    detail = _markdown_literal(output.detail) if markdown else output.detail
+    return f"Факт не сформирован: `{output.code.value}` — {detail}"
 
 
 def _variance_body(output: PeriodVarianceResult, *, markdown: bool) -> str:

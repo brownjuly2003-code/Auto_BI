@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-79: detail GAP компилятора отображается буквальным текстом в Markdown;
+  raw JSON/digests, causal policy и версии 98/73 прежние. Investigation: 348 passed;
+  четыре обычных payload побайтно сохранены. Codex; synthetic Astra xhigh:
+  0 открытых P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_GAP_MARKDOWN_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-78: category/unit отображаются как буквальный текст в Markdown
   variance/contribution-блоков компилятора; raw JSON и causal policy прежние.
   Версии 98/73, обычные четыре payload побайтно сохранены. Полный offline: 6436 passed.
@@ -99,10 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Версии 98/73; 381 профильный/смежный тест. Codex; synthetic Astra xhigh: 0 P1/P2,
   не human acceptance. Успешные payload сохранены побайтно.
   [Проверки](docs/DECISIONOPS_INVESTIGATION_POLICY_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-76: evidence ID investigation сохраняет полную пару шага и метрики;
-  Markdown называет обе части. Новые brief bytes меняются, прежний JSON читается.
-  Версии 98/73; 296 профильных тестов. Codex; synthetic Astra xhigh: 0 P1/P2,
-  не human acceptance. [Проверки](docs/DECISIONOPS_INVESTIGATION_IDENTITY_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

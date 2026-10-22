@@ -12,7 +12,16 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-78, 2026-10-22):** category/unit больше не добавляют разметку
+**Последний срез (T-79, 2026-10-22):** detail аналитического GAP компилятора
+отображается буквальным текстом в Markdown, включая свободное имя dimension.
+Raw body, evidence, JSON/digests и causal policy сохранены; версии 98/73 прежние.
+Граница — один output и точное совпадение body с шаблоном; custom prose прежний.
+Экранируется весь detail, поэтому Markdown GAP с обычной пунктуацией тоже меняется.
+Профильный набор: 348 passed; четыре payload обычного fixture побайтно сохранены.
+Synthetic Astra xhigh: 0 открытых P1/P2, не human/production acceptance.
+[Проверки и границы T-79](DECISIONOPS_INVESTIGATION_GAP_MARKDOWN_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-78, 2026-10-22):** category/unit больше не добавляют разметку
 в Markdown variance/contribution-блоков компилятора. Экранирование выполняется
 только при рендеринге; JSON, исходные значения и causal policy прежние. Обычный
 fixture сохранён побайтно; версии 98/73. Synthetic Astra xhigh: 0 открытых P1/P2,
