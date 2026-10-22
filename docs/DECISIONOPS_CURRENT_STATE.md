@@ -12,7 +12,15 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-72, 2026-10-22):** ошибочный Unicode-аргумент больше не вызывает
+**Последний срез (T-73, 2026-10-22):** две устаревшие границы capture в спецификациях
+[stated-run-facts](specs/stated-run-facts.md) и [unreadable-inputs](specs/unreadable-inputs.md)
+согласованы с T-67: перечисленные ошибки драйверов дают одну строку, exit 2, без результата
+и повтора запроса. Остальные исключения сохраняют прежние границы. Изменена только
+документация; версии 98/73 прежние. Capture и docs-as-code: 66 passed, exit 0.
+Выбор и review двух спецификаций — synthetic Astra xhigh: 0 P1/P2,
+не human/production acceptance.
+
+**Предыдущий срез (T-72, 2026-10-22):** ошибочный Unicode-аргумент больше не вызывает
 traceback при strict stderr. Usage/errors/version сохраняют форматирование, направления
 вывода и exit codes; неподдерживаемые символы получают backslash-escape. Остальные
 ошибки записи сохраняют поведение argparse; отдельный контракт справки T-71 прежний.

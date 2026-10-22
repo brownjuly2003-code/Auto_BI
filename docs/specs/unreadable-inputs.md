@@ -2048,9 +2048,11 @@ for the check.
   (`stated-run-facts.md`): a `--captured-at` that is no timestamp, which was refused in four
   lines of pydantic's listing and only after the query was run, and an `--environment` with a
   lone surrogate, which was attested as it was given, are usage errors of one line that cost no
-  query. What `decision capture` says after `cannot capture <asset id>: ` is still the text of
-  whatever was raised, as it reads, and an `--environment` of blanks or of two lines is still
-  attested as it is given.
+  query. Since T-67, `decision capture` reports `ClickHouseError`, `StreamFailureError` and
+  `psycopg.Error` with their class and whitespace-normalized text in one line, exit 2, without
+  publishing a result or retrying the query ([an engine that did not answer](unanswered-engine.md)).
+  Other exceptions retain their existing handling. An `--environment` of blanks or of two
+  lines is still attested as it is given.
 - A lone surrogate reaches no reader from a YAML file (seventh requirement). What stands behind
   the loader — a schema, the graph and the digest of a ref, the identity of a run — is held to
   its own answer for one only by tests that hand the string on past the loader. It still comes

@@ -208,10 +208,11 @@ and an environment that are taken writes the same file.
   the traceback of the refused connection, exit code 1. Since T-65 the probe connects to nothing
   until the use case asks it, last, and such a run is refused in its one line without a session
   ([an engine that did not answer](unanswered-engine.md)).
-- What `decision capture` says after `cannot capture <asset id>: ` is still the text of what was
-  raised, as it reads: an engine that answers with several lines is printed in several —
-  psycopg's refusal of a connection when libpq words it in two. The two lines a ClickHouse
-  engine that is not there was answered with were the warning clickhouse_connect logs, printed
-  by the last resort of `logging`, and the line of the refusal; since T-65 the warning is kept
-  off stderr ([an engine that did not answer](unanswered-engine.md)). With a moment that is
-  none the capture answers with the one line of the moment and opens nothing.
+- Since T-67, `decision capture` reports `ClickHouseError`, `StreamFailureError` and
+  `psycopg.Error` in one line, naming the exception class and folding each run of whitespace
+  in its text to one space. It exits 2 without publishing a result or retrying the query
+  ([an engine that did not answer](unanswered-engine.md)). This covers connection, query,
+  metadata fallback and result consumption; `RuntimeError` still propagates and the existing
+  `ValueError` handling is unchanged. Since T-65, the warning clickhouse_connect logs for an
+  unavailable engine is kept off stderr. With a moment that is none the capture answers with
+  the one line of the moment and opens nothing.

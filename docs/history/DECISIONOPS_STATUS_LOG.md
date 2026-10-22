@@ -10,6 +10,21 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-73: согласованы границы ошибок capture
+
+Устаревшие абзацы Known boundaries в [stated-run-facts](../specs/stated-run-facts.md) и
+[unreadable-inputs](../specs/unreadable-inputs.md) согласованы с реализованным T-67:
+`ClickHouseError`, `StreamFailureError` и `psycopg.Error` дают класс и нормализованный
+текст в одной строке, exit 2, без публикации результата и повторного запроса.
+Остальные исключения и допустимые значения environment сохраняют прежние границы.
+Изменена только документация; код, тесты и версии evidence 98/73 прежние.
+Реализовал Codex при недоступной `gpt-5.6-luna`; выбор и review двух спецификаций —
+synthetic Astra xhigh: 0 P1/P2. Записи статуса проверены Codex.
+Независимая проверка Astra: 37 passed. Проверка Codex: `python -m pytest -q
+tests/test_capture_driver_failures.py tests/test_docs_as_code.py --tb=short` —
+66 passed, exit 0 (Windows/Python 3.13.7). Полный offline suite и живые стенды не запускались.
+Не human/production acceptance.
+
 ## 2026-10-22 — T-72: ошибки аргументов на строгом stderr
 
 Закрыта документированная граница T-71: ошибочная Unicode-команда или option больше
