@@ -12,7 +12,17 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-77, 2026-10-22):** нарушение causal-wording policy при подстановке
+**Последний срез (T-78, 2026-10-22):** category/unit больше не добавляют разметку
+в Markdown variance/contribution-блоков компилятора. Экранирование выполняется
+только при рендеринге; JSON, исходные значения и causal policy прежние. Обычный
+fixture сохранён побайтно; версии 98/73. Synthetic Astra xhigh: 0 открытых P1/P2,
+не human/production acceptance. Граница — один output и точное совпадение body
+с исходным шаблоном; custom prose не санитизируется. Полный offline-набор с duckdb:
+6436 passed, 109 skipped, 38 deselected, exit 0. Прежний SQLite timing failure
+не воспроизведён профилем (0.390s) и полным набором; причина скачка не установлена.
+[Проверки и границы T-78](DECISIONOPS_INVESTIGATION_MARKDOWN_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-77, 2026-10-22):** нарушение causal-wording policy при подстановке
 category/unit в brief даёт управляемый отказ: CLI exit 2, одна строка без входных
 значений, output и отсутствующий parent не создаются. Остальные исключения не
 подавляются; сам запрет и версии 98/73 прежние. Investigation и смежные проверки:
@@ -23,7 +33,8 @@ category/unit в brief даёт управляемый отказ: CLI exit 2, �
 
 Полный baseline, начатый до T-77: 6401 passed, 109 skipped, 38 deselected и один
 отказ SQLite performance budget (25.66s вместо <5s); отдельно тот же тест прошёл.
-Нестабильность времени не устранена; полного green gate финального кода нет.
+На T-77 полного green gate финального кода не было; актуальный полный набор T-78
+прошёл. Нестабильность времени не устранена.
 
 **Предыдущий срез (T-76, 2026-10-22):** разные допустимые пары шага и метрики больше
 не сталкиваются по evidence ID offline investigation. ID использует SHA-256 полной

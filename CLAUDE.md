@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-78: category/unit отображаются как буквальный текст в Markdown
+  variance/contribution-блоков компилятора; raw JSON и causal policy прежние.
+  Версии 98/73, обычные четыре payload побайтно сохранены. Полный offline: 6436 passed.
+  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_MARKDOWN_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-77: causal-wording policy investigation даёт exit 2 без traceback,
   входных значений в диагностике и output; сам запрет и прочие исключения сохранены.
   Версии 98/73; 381 профильный/смежный тест. Codex; synthetic Astra xhigh: 0 P1/P2,
@@ -98,10 +103,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Markdown называет обе части. Новые brief bytes меняются, прежний JSON читается.
   Версии 98/73; 296 профильных тестов. Codex; synthetic Astra xhigh: 0 P1/P2,
   не human acceptance. [Проверки](docs/DECISIONOPS_INVESTIGATION_IDENTITY_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-75: отказ кодирования output-пути investigation даёт exit 2 и очистку staging;
-  непечатаемые символы пути экранируются. Версии 98/73; профильный набор: 278 passed.
-  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_OUTPUT_PATH_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

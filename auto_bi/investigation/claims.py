@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import string
 from enum import StrEnum
 from typing import Annotated, Literal
 
@@ -164,7 +165,21 @@ class InvestigationBrief(StrictModel):
             "- Human acceptance: `not measured`",
         ]
         for block in self.blocks:
-            lines.extend(["", f"## {block.title}", "", block.body, ""])
+            body = block.body
+            # Compiler-produced templates retain raw text in JSON and policy checks.
+            # Encode only their supplied labels at the Markdown boundary, including
+            # when rendering an already-saved brief. Custom block prose stays as stored.
+            if len(block.evidence_refs) == 1:
+                output = evidence_by_id[block.evidence_refs[0]].output
+                if isinstance(output, PeriodVarianceResult) and body == _variance_body(
+                    output, markdown=False
+                ):
+                    body = _variance_body(output, markdown=True)
+                elif isinstance(output, ContributionResult) and body == _contribution_body(
+                    output, markdown=False
+                ):
+                    body = _contribution_body(output, markdown=True)
+            lines.extend(["", f"## {block.title}", "", body, ""])
             evidence = ", ".join(
                 f"`{ref}` (`{evidence_by_id[ref].digest}`; "
                 f"step `{evidence_by_id[ref].output.step_id}`; "
@@ -334,19 +349,29 @@ def _variance_claims(
             f"relative_delta={output.relative_delta or 'undefined'}",
         ],
     )
-    relative = output.relative_delta or "undefined"
-    body = (
-        f"Наблюдаемое значение: {output.comparison_value} {output.unit} -> "
-        f"{output.current_value} {output.unit}; delta {output.absolute_delta} {output.unit}; "
-        f"relative {relative}."
-    )
     return [claim], BriefBlock(
         block_id=f"block-{artifact_id}",
         kind=BriefBlockKind.OBSERVATION,
         title="Изменение периода",
-        body=body,
+        body=_variance_body(output, markdown=False),
         claim_ids=[claim.claim_id],
         evidence_refs=[artifact_id],
+    )
+
+
+def _markdown_literal(value: str) -> str:
+    """One inline text value: visible controls and CommonMark-escaped punctuation."""
+    visible = "".join(char if char.isprintable() else ascii(char)[1:-1] for char in value)
+    return "".join(f"\\{char}" if char in string.punctuation else char for char in visible)
+
+
+def _variance_body(output: PeriodVarianceResult, *, markdown: bool) -> str:
+    unit = _markdown_literal(output.unit) if markdown else output.unit
+    relative = output.relative_delta or "undefined"
+    return (
+        f"Наблюдаемое значение: {output.comparison_value} {unit} -> "
+        f"{output.current_value} {unit}; delta {output.absolute_delta} {unit}; "
+        f"relative {relative}."
     )
 
 
@@ -370,23 +395,29 @@ def _contribution_claims(
         )
         for index, item in enumerate(output.contributions, start=1)
     ]
-    lines = [
-        f"Общая наблюдаемая дельта: {output.total_delta} {output.unit}; "
-        f"reconciliation={'pass' if output.reconciled else 'fail'}.",
-        *[
-            f"- {item.dimension_value}: {item.delta} {output.unit}; "
-            f"share {item.share_of_total_delta or 'undefined'}"
-            for item in output.contributions
-        ],
-    ]
     return claims, BriefBlock(
         block_id=f"block-{artifact_id}",
         kind=BriefBlockKind.CONTRIBUTION,
         title="Декомпозиция наблюдаемой дельты",
-        body="\n".join(lines),
+        body=_contribution_body(output, markdown=False),
         claim_ids=[claim.claim_id for claim in claims],
         evidence_refs=[artifact_id],
     )
+
+
+def _contribution_body(output: ContributionResult, *, markdown: bool) -> str:
+    unit = _markdown_literal(output.unit) if markdown else output.unit
+    lines = [
+        f"Общая наблюдаемая дельта: {output.total_delta} {unit}; "
+        f"reconciliation={'pass' if output.reconciled else 'fail'}.",
+    ]
+    for item in output.contributions:
+        category = _markdown_literal(item.dimension_value) if markdown else item.dimension_value
+        lines.append(
+            f"- {category}: {item.delta} {unit}; "
+            f"share {item.share_of_total_delta or 'undefined'}"
+        )
+    return "\n".join(lines)
 
 
 def _concentration_claims(

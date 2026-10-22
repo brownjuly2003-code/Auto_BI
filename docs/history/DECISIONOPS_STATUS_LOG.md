@@ -10,6 +10,26 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-78: буквальные category/unit в Markdown investigation
+
+Допустимые category/unit больше не внедряют заголовки, ссылки и HTML в Markdown
+variance/contribution-блоков компилятора. Рендерер экранирует значения только при
+единственном связанном output и точном совпадении body с исходным шаблоном.
+Raw JSON, Claim, evidence и causal policy прежние; custom prose и неоднозначная
+связь сохраняют поведение. Прежние compiler-produced brief защищаются при новом
+рендеринге; уже записанный Markdown не переписывается. Версии 98/73 сохранены.
+
+Реализация — Codex при недоступной `gpt-5.6-luna`; выбор и review — synthetic Astra
+xhigh. Первый review подтвердил P2 промежуточного экранирования в JSON; обработка
+перенесена в renderer, второй review: 0 открытых P1/P2, не human acceptance.
+Red: 18 failed, 2 passed; investigation: 327 passed до трёх дополнительных
+compatibility cases. Четыре обычных payload и шесть brief JSON специальных входов
+побайтно сохранены. Ruff/Black и package-wide strict mypy Linux чистые. Полный
+offline-набор с duckdb на финальном Python-коде: 6436 passed, 109 skipped,
+38 deselected in 1282.17s, exit 0; все 25 новых cases прошли. SQLite budget прошёл;
+два медленных теста после faulthandler-диагностики также завершились успешно.
+Подробные проверки — [T-78](../DECISIONOPS_INVESTIGATION_MARKDOWN_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-77: управляемый отказ causal-wording policy investigation
 
 Подставленные category/unit, нарушающие существующий запрет причинных формулировок,
