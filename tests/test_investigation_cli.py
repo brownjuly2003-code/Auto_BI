@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 import auto_bi.cli as cli
+from auto_bi.investigation.claims import InvestigationBrief
 from auto_bi.verification.model import EXIT_ERROR
 
 FIXTURES = Path(__file__).parent / "fixtures" / "investigation"
@@ -95,6 +96,36 @@ def test_missing_metric_fails_closed_without_creating_artifacts(
     assert invoke(output, write_plan(tmp_path, repoint)) == EXIT_ERROR
     assert not output.exists()
     assert "missing canonical result" in capsys.readouterr().err.lower()
+
+
+def test_distinct_metric_paths_publish_distinct_reproducible_evidence(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    metrics = ["metric://sales/revenue@5", "metric://sales-revenue@5"]
+
+    def two_metrics(raw: dict[str, Any]) -> None:
+        raw["scope"]["metrics"] = metrics
+        raw["steps"] = [{**raw["steps"][0], "metrics": metrics}]
+
+    plan_path = write_plan(tmp_path, two_metrics)
+    second_result = yaml.safe_load(RESULT_FIXTURE.read_text(encoding="utf-8"))
+    second_result["metric_ref"] = metrics[1]
+    second_result["result_id"] = "sales-revenue-flat"
+    result_path = tmp_path / "second-result.yaml"
+    result_path.write_text(yaml.safe_dump(second_result, sort_keys=False), encoding="utf-8")
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+
+    assert invoke(first, plan_path, RESULT_FIXTURE, result_path) == 0
+    assert invoke(second, plan_path, result_path, RESULT_FIXTURE) == 0
+    assert {path.name for path in first.iterdir()} == ARTIFACT_NAMES
+    assert {path.name: path.read_bytes() for path in first.iterdir()} == {
+        path.name: path.read_bytes() for path in second.iterdir()
+    }
+    brief = InvestigationBrief.model_validate_json((first / "brief.json").read_bytes())
+    assert [item.output.metric_ref for item in brief.evidence] == metrics
+    assert len({item.artifact_id for item in brief.evidence}) == 2
+    assert capsys.readouterr().err == ""
 
 
 def test_duplicate_metric_result_fails_closed_without_creating_artifacts(

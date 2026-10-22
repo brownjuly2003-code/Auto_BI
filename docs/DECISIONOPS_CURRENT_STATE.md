@@ -12,7 +12,15 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-75, 2026-10-22):** отказ кодирования output-пути у
+**Последний срез (T-76, 2026-10-22):** разные допустимые пары шага и метрики больше
+не сталкиваются по evidence ID offline investigation. ID использует SHA-256 полной
+canonical пары; Markdown явно называет шаг и метрику. Новые brief bytes/digest
+меняются, прежний JSON читается; plan/results и версии 98/73 прежние.
+Профильный набор: 296 passed. Synthetic Astra xhigh: 0 открытых P1/P2,
+не human/production acceptance. Полный набор прерван без итоговой сводки.
+[Проверки и совместимость T-76](DECISIONOPS_INVESTIGATION_IDENTITY_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-75, 2026-10-22):** отказ кодирования output-пути у
 `decision investigate` даёт exit 2 и проходит очистку временного каталога. Диагностика
 называет путь и `UnicodeEncodeError`, скрывает текст исключения и экранирует
 непечатаемые символы пути. Существующий output и байты успешной записи сохранены.

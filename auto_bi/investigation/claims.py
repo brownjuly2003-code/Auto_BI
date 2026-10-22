@@ -19,7 +19,6 @@ from auto_bi.investigation.skills import (
     PeriodVarianceResult,
     SkillResult,
 )
-from auto_bi.refs import ContractRef
 from auto_bi.scalars import NonBlankText, Sha256Digest, Slug
 from auto_bi.strict import StrictModel
 
@@ -162,7 +161,10 @@ class InvestigationBrief(StrictModel):
         for block in self.blocks:
             lines.extend(["", f"## {block.title}", "", block.body, ""])
             evidence = ", ".join(
-                f"`{ref}` (`{evidence_by_id[ref].digest}`)" for ref in block.evidence_refs
+                f"`{ref}` (`{evidence_by_id[ref].digest}`; "
+                f"step `{evidence_by_id[ref].output.step_id}`; "
+                f"metric `{evidence_by_id[ref].output.metric_ref}`)"
+                for ref in block.evidence_refs
             )
             lines.append(f"Evidence: {evidence}")
             if block.claim_ids:
@@ -242,9 +244,9 @@ def compile_brief(plan: InvestigationPlan, outputs: list[SkillResult]) -> Invest
 
 
 def _artifact_id(step: InvestigationStep, metric_ref: str) -> str:
-    ref = ContractRef.parse(metric_ref)
-    path = "-".join(ref.path)
-    return f"result-{step.step_id}-{path}-v{ref.version}"
+    # Hash the canonical pair: joining slugs loses both path and step boundaries.
+    identity = sha256_digest([step.step_id, metric_ref]).removeprefix("sha256:")
+    return f"result-{identity}"
 
 
 def _compile_output(artifact_id: str, output: SkillResult) -> tuple[list[Claim], BriefBlock]:

@@ -10,6 +10,20 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-76: различимая идентичность evidence investigation
+
+Устранены коллизии между сегментами metric ref и между границами step/metric при
+построении evidence ID. Новый ID содержит полный SHA-256 canonical пары
+`[step_id, metric_ref]`; claims и blocks адресуют правильный output. Markdown явно
+называет шаг и метрику. Новые brief bytes/digest меняются; прежний JSON читается,
+plan/results и skill-output digests сохранены. Версии verifier 98 / check 73 прежние.
+
+Реализация — Codex при недоступной `gpt-5.6-luna`. Synthetic Astra xhigh выбрала срез
+и выполнила два прохода review: P2 о читаемости Markdown исправлен; 0 открытых P1/P2.
+Это не human/production acceptance. Финальный investigation-набор: 296 passed,
+Ruff и Black чистые. Red/green, совместимость и границы —
+[в отчёте T-76](../DECISIONOPS_INVESTIGATION_IDENTITY_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-75: отказ кодирования output-пути investigation
 
 `decision investigate` переводит `UnicodeEncodeError` при подготовке, записи или

@@ -55,7 +55,7 @@ LONE_TEXTS = [pytest.param(LONE, id="alone"), pytest.param(f"a{LONE}b", id="insi
 
 #: What the fixture run prints as the content addresses of its plan and of its brief.
 PLAN_DIGEST = "sha256:cfbedd5368d2edeba94f2a17c19a4eebc4079b5bd048c46c93825ff41b696fcb"
-BRIEF_DIGEST = "sha256:e07680ef35e98144a7ca1ffcea738fdfb3552e911ddeaa166a1914e79908f4b4"
+BRIEF_DIGEST = "sha256:9ecf93c1728a160a88936ba1cbe4fe2e477b17d531f5e257224446a2703e4567"
 
 #: The first row of the result fixture, and the row with something else for its dimension.
 FIRST_ROW = '      category: A\n    value: "100"'

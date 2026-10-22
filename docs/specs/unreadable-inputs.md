@@ -1168,7 +1168,7 @@ In the scenarios below *the inputs* are the fixture plan `weekly_margin.yaml` an
 - **THEN** it exits 0, prints nothing on standard error, and on standard output four lines: the
   output path after `wrote`, the content address of the plan after `plan`,
   `sha256:cfbedd5368d2edeba94f2a17c19a4eebc4079b5bd048c46c93825ff41b696fcb`, that of the brief
-  after `brief`, `sha256:e07680ef35e98144a7ca1ffcea738fdfb3552e911ddeaa166a1914e79908f4b4`, and
+  after `brief`, `sha256:9ecf93c1728a160a88936ba1cbe4fe2e477b17d531f5e257224446a2703e4567`, and
   `trust    exploratory; human acceptance not measured`; the output directory holds the four
   artifacts
 - **AND** the models load the fixtures to a plan and a brief of those two content addresses

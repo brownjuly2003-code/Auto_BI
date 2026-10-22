@@ -1724,6 +1724,15 @@ decimal context вызывающего потока, порядка строк �
 `brief.json` и deterministic `brief.md`; trust brief всегда `exploratory`, а human
 acceptance — `not measured`.
 
+Evidence ID в brief — `result-<hex>`, где `<hex>` — полный SHA-256 canonical JSON
+массива `[step_id, metric_ref]`. Границы сегментов metric ref, его версия и граница
+между шагом и метрикой сохраняются; ID не зависит от соседних outputs или порядка
+их поступления. Claims и blocks ссылаются на тот же ID; Markdown рядом с evidence
+явно называет `step_id` и полный `metric_ref` соответствующего output. С T-76 это заменяет
+неоднозначное соединение имён дефисами: новые `brief.json`/`brief.md` и digest brief
+меняются также для прежних входов. `plan.json`, `results.json`, skill-output digests
+и версии verifier/check остаются прежними; уже сохранённые brief читаются как раньше.
+
 Application сначала строит все четыре payload, затем пишет их в уникальный временный
 каталог рядом с output и публикует весь каталог одним `os.rename`. При обычном отказе
 записи или публикации временный каталог удаляется; повторный запуск с тем же output

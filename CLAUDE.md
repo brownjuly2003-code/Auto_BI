@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-76: evidence ID investigation сохраняет полную пару шага и метрики;
+  Markdown называет обе части. Новые brief bytes меняются, прежний JSON читается.
+  Версии 98/73; 296 профильных тестов. Codex; synthetic Astra xhigh: 0 P1/P2,
+  не human acceptance. [Проверки](docs/DECISIONOPS_INVESTIGATION_IDENTITY_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-75: отказ кодирования output-пути investigation даёт exit 2 и очистку staging;
   непечатаемые символы пути экранируются. Версии 98/73; профильный набор: 278 passed.
   Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
@@ -97,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   чтения поздних входов и создания output. Версии 98/73; профильный набор: 258 passed.
   Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance. Полный baseline прерван.
   [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_PATH_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-73: две устаревшие границы capture в спецификациях согласованы с T-67:
-  перечисленные ошибки драйвера дают одну строку, exit 2, без результата и повторного запроса.
-  Только документация; версии 98/73. Capture и docs-as-code: 66 passed.
-  Выбор и review спецификаций — synthetic Astra xhigh: 0 P1/P2, не human acceptance.
 
 ## Definition of done (фаза/задача)
 
