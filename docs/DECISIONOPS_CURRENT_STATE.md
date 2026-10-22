@@ -12,7 +12,16 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-71, 2026-10-22):** верхняя и вложенная CLI-справка печатаются
+**Последний срез (T-72, 2026-10-22):** ошибочный Unicode-аргумент больше не вызывает
+traceback при strict stderr. Usage/errors/version сохраняют форматирование, направления
+вывода и exit codes; неподдерживаемые символы получают backslash-escape. Остальные
+ошибки записи сохраняют поведение argparse; отдельный контракт справки T-71 прежний.
+Версии 98/73. Red: 27 failed, 69 passed; green: 96 passed; смежный набор: 282 passed.
+Ruff, Black, strict mypy Linux/Windows чистые; документационные проверки: 32 passed.
+Выбор и review — synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
+[Проверки и границы T-72](DECISIONOPS_PARSER_DIAGNOSTICS_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-71, 2026-10-22):** верхняя и вложенная CLI-справка печатаются
 под ASCII/Latin-1 с escape неподдерживаемых символов и exit 0. Защита ограничена
 `print_help`; потоки, аргументы и обработчики команд сохраняют поведение. Другие
 ошибки записи справки пробрасываются. Версии 98/73 не менялись. Red: 9 failed,

@@ -239,9 +239,9 @@ encode SHALL use `backslashreplace` in its declared encoding, or ASCII if none i
 Normal help completes with exit 0 and empty stderr. A stream accepting the text receives
 the original text, including under UTF-8 and cp1252.
 
-The parser SHALL NOT reconfigure or replace process streams. This behavior is confined
-to `print_help`; argument errors, usage, version, command handlers, JSON and artifact
-payloads retain their existing behavior. Non-encoding help write errors propagate;
+The parser SHALL NOT reconfigure or replace process streams. This help behavior is confined
+to `print_help`; other parser messages use the T-72 requirement below. Command handlers,
+JSON and artifact payloads retain their existing behavior. Non-encoding help write errors propagate;
 unlike the default argparse help printer, this printer does not suppress `OSError` or
 `BrokenPipeError`. Evidence versions remain unchanged.
 
@@ -261,11 +261,41 @@ unlike the default argparse help printer, this printer does not suppress `OSErro
   and the stream identity and encoding/error settings remain unchanged
 - **AND** a non-encoding write failure remains an exception, not a successful help exit
 
+## Requirement: parser diagnostics survive a strict error stream (T-72)
+
+The root and nested parsers SHALL preserve their exit codes when an argument error names
+a character stderr cannot encode. Usage, argument errors and version text SHALL first be
+offered unchanged. On `UnicodeEncodeError`, the refused message SHALL be offered with
+`backslashreplace` in the effective stream's encoding, or ASCII if none is named.
+
+The effective stream for these messages SHALL follow argparse's `file or sys.stderr`;
+help retains its separate T-71 behavior. Formatting, destinations, stream identity and
+stream configuration SHALL be preserved. No message or usage SHALL be duplicated.
+Non-encoding write errors SHALL retain argparse's behavior on both attempts: suppress
+`AttributeError` and `OSError` (including `BrokenPipeError`), propagate other errors.
+Command handlers, evidence and verifier/check versions SHALL NOT change.
+
+### Scenario: an argument is not accepted on a strict stderr
+
+- **GIVEN** strict ASCII, Latin-1, cp1252, cp1251 or UTF-8 stderr
+- **WHEN** an invalid command choice, unknown option or invalid integer contains Cyrillic,
+  an emoji or an unencodable lone surrogate
+- **THEN** exit is 2, stdout is empty and stderr matches the ordinary formatted diagnostic
+  with escapes only where its encoding requires them, including one copy of usage
+
+### Scenario: an explicit or unnamed stream receives parser text
+
+- **GIVEN** an explicit stream or a strict ASCII stream with no declared encoding
+- **WHEN** the parser writes usage, an error or version text
+- **THEN** unsupported characters are escaped and supported characters remain unchanged
+- **AND** the caller's streams and the parser's exit status retain their original behavior
+
 ## Known boundaries
 
-- Argument errors, usage and version retain argparse's own printing. Normal interpreter
-  stderr escapes unsupported characters; a caller-supplied strict stderr may still refuse
-  them. Help uses the T-71 boundary above.
+- Normal interpreter stderr already escapes unsupported characters. T-72 additionally
+  covers caller-supplied strict streams; help retains the T-71 write-error boundary.
+- A nonstandard stream that writes a prefix before raising `UnicodeEncodeError` is not
+  covered by the no-duplicate-output guarantee.
 - The v1 commands print as before.
 - An escape is not told from the same characters typed. A line that holds a backslash is
   printed with it as it is, so a printed line cannot be read back into what was meant; a JSON
@@ -284,6 +314,6 @@ unlike the default argparse help printer, this printer does not suppress `OSErro
   ends in `UnicodeEncodeError` where the plan is opened, at HEAD and with this requirement in
   place: the filesystem has no form for the name, and that is no `OSError`. `decision validate`
   reads such a path as one that is not there.
-- T-60's original probes ran on macOS. T-71 tests help on Windows/Python 3.13.7 with
-  explicitly encoded strict streams and real ASCII/Latin-1 subprocesses; automatic
+- T-60's original probes ran on macOS. T-71/T-72 test parser output on Windows/Python 3.13.7
+  with explicitly encoded strict streams and real ASCII/Latin-1 subprocesses; automatic
   selection of the Windows console code page was not tested.

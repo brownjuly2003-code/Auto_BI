@@ -22,7 +22,18 @@ logger = logging.getLogger(__name__)
 
 
 class _HelpArgumentParser(argparse.ArgumentParser):
-    """Escape unencodable help without changing streams or other parser messages."""
+    """Escape unencodable parser text without changing streams or exit codes."""
+
+    def _print_message(self, message: str, file: "SupportsWrite[str] | None" = None) -> None:
+        try:
+            super()._print_message(message, file)
+        except UnicodeEncodeError:
+            stream = file or sys.stderr
+            encoding = getattr(stream, "encoding", None) or "ascii"
+            # Keep argparse's handling of non-encoding write errors on both attempts.
+            super()._print_message(
+                message.encode(encoding, "backslashreplace").decode(encoding), file
+            )
 
     def print_help(self, file: "SupportsWrite[str] | None" = None) -> None:
         stream = sys.stdout if file is None else file

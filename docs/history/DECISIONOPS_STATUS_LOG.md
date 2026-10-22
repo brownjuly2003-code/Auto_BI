@@ -10,6 +10,21 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-72: ошибки аргументов на строгом stderr
+
+Закрыта документированная граница T-71: ошибочная Unicode-команда или option больше
+не теряет диагностику из-за `UnicodeEncodeError` в strict stderr. Подкласс parser
+добавляет encoding fallback в `_print_message`, сохраняя выбор потока и подавление
+`AttributeError`/`OSError` стандартного argparse. Контракт `print_help` отдельный и
+сохранён; обработчики команд, grading и версии evidence 98/73 прежние.
+Red: 27 failed, 69 passed; green: 96 passed; смежный набор: 282 passed.
+Ruff, Black и strict mypy для Linux/Windows чистые. Реализовал Codex при недоступной
+`gpt-5.6-luna`; выбор и итоговое review — synthetic Astra xhigh: 0 P1/P2.
+Ревьюер независимо проверил пять сценариев повторной записи и выбора потока;
+документационные проверки: 32 passed.
+Не human/production acceptance.
+[Проверки и границы](../DECISIONOPS_PARSER_DIAGNOSTICS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-71: справка CLI на потоке с ограниченной кодировкой
 
 Закрыта документированная граница T-60: root `--help` и `eval --help` больше не

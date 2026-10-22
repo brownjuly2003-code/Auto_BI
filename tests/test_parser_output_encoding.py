@@ -1,4 +1,4 @@
-"""Help survives narrow output encodings; other parser messages keep their contract."""
+"""Parser messages survive narrow encodings without changing destinations or exits."""
 
 from __future__ import annotations
 
@@ -29,6 +29,19 @@ CASES = [
         id="unknown-option",
     ),
     pytest.param(["build"], 2, id="post-parse-error"),
+    pytest.param(["ошибка😀"], 2, id="unicode-root-choice"),
+    pytest.param(["decision", "ошибка😀"], 2, id="unicode-nested-choice"),
+    pytest.param(
+        ["decision", "validate", "missing.yaml", "--ошибка😀"],
+        2,
+        id="unicode-unknown-option",
+    ),
+    pytest.param(["build", "--max-charts", "число😀"], 2, id="unicode-invalid-type"),
+    pytest.param(
+        ["decision", "validate", "missing.yaml", "--bad\ud800"],
+        2,
+        id="surrogate-unknown-option",
+    ),
 ]
 
 
@@ -126,3 +139,84 @@ def test_unexpected_help_stream_errors_propagate(
     monkeypatch.setattr(sys, "stdout", BrokenStream())
     with pytest.raises(error_type, match="closed output"):
         main(["--help"])
+
+
+@pytest.mark.parametrize("encoding", ["ascii", "utf-8"])
+@pytest.mark.parametrize("action", ["usage", "error", "version"])
+def test_parser_messages_match_argparse_on_the_explicit_stream(
+    monkeypatch: pytest.MonkeyPatch, encoding: str, action: str
+) -> None:
+    def invoke(parser_type: type[argparse.ArgumentParser], stream: TextIO) -> None:
+        parser = parser_type(prog="auto_bi-данные😀")
+        parser.add_argument("--version", action="version", version="версия😀")
+        if action == "usage":
+            parser.print_usage(file=stream)
+            return
+        with monkeypatch.context() as patch:
+            patch.setattr(sys, "stdout", stream)
+            patch.setattr(sys, "stderr", stream)
+            with pytest.raises(SystemExit) as ended:
+                if action == "error":
+                    parser.error("ошибка😀")
+                else:
+                    parser.parse_args(["--version"])
+            assert ended.value.code == (2 if action == "error" else 0)
+
+    reference = io.StringIO()
+    invoke(argparse.ArgumentParser, reference)
+    payload = io.BytesIO()
+    with io.TextIOWrapper(payload, encoding=encoding, errors="strict", newline="") as stream:
+        invoke(_HelpArgumentParser, stream)
+        stream.flush()
+        assert payload.getvalue() == reference.getvalue().encode(encoding, "backslashreplace")
+        assert stream.encoding == encoding
+        assert stream.errors == "strict"
+
+
+def test_parser_error_uses_unnamed_stderr(monkeypatch: pytest.MonkeyPatch) -> None:
+    out, err = _UnnamedASCII(), _UnnamedASCII()
+    assert _invoke(monkeypatch, ["decision", "validate", "missing.yaml", "--ошибка"], out, err) == 2
+    assert out.getvalue() == ""
+    assert "unrecognized arguments: --\\u043e\\u0448\\u0438\\u0431\\u043a\\u0430" in err.getvalue()
+
+
+@pytest.mark.parametrize("error_type", [AttributeError, OSError, BrokenPipeError, ValueError])
+def test_non_encoding_parser_error_writes_keep_argparse_behavior(
+    monkeypatch: pytest.MonkeyPatch, error_type: type[Exception]
+) -> None:
+    class BrokenStream(io.StringIO):
+        def write(self, text: str) -> int:
+            raise error_type("closed error stream")
+
+    monkeypatch.setattr(sys, "stderr", BrokenStream())
+    expected = ValueError if error_type is ValueError else SystemExit
+    with pytest.raises(expected) as ended:
+        main(["unknown"])
+    if isinstance(ended.value, SystemExit):
+        assert ended.value.code == 2
+
+
+@pytest.mark.parametrize("encoding", ["ascii", "latin-1"])
+def test_argument_error_in_a_process_with_strict_stderr(encoding: str) -> None:
+    ended = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from auto_bi.cli import main; "
+            "sys.stderr.reconfigure(errors='strict'); main(sys.argv[1:])",
+            "decision",
+            "validate",
+            "missing.yaml",
+            "--ошибка😀",
+        ],
+        capture_output=True,
+        env=dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING=encoding),
+        check=False,
+        timeout=30,
+    )
+    assert ended.returncode == 2, ended.stderr.decode("ascii", "backslashreplace")
+    assert ended.stdout == b""
+    assert b"usage: auto_bi" in ended.stderr
+    assert b"unrecognized arguments: --\\u043e" in ended.stderr
+    assert b"\\U0001f600" in ended.stderr
+    assert b"Traceback" not in ended.stderr

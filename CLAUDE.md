@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-72: Unicode в ошибках argparse на strict stderr получает escape,
+  exit остаётся 2; usage/version и прочие ошибки записи сохраняют контракт. Версии 98/73.
+  Смежные проверки: 282 passed; Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_PARSER_DIAGNOSTICS_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-71: CLI-справка под ASCII/Latin-1 печатает escape вместо traceback,
   exit 0; остальные parser messages и обработчики сохранены. Версии 98/73.
   Смежные проверки: 244 passed; Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
@@ -97,11 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   ложного превышения. На Mac проверены readonly=1/2 и настоящие byte/timeout превышения.
   Версии 98/73; 368 passed. Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_RUNTIME_SETTINGS_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-69: отказ quoting environment probe — exit 2 и одна строка, без evidence.
-  Перехват только `UnsafeIdentifierError` вокруг `collect`; порядок IO, grading и
-  версии 97/72 сохранены. Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
-  Смежные проверки: 406 passed.
-  [Проверки и границы](docs/DECISIONOPS_ENVIRONMENT_IDENTIFIER_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 
