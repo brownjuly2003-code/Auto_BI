@@ -10,6 +10,18 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-90: буквальные пояснения пробелов анализа в summary
+
+Quoted SQL-имя попадало через reads.unattributed в ChartGap.detail и добавляло
+ложные Verdict/Owner action при BLOCK. Весь detail теперь проходит `_literal`
+для всех типов гэпа. Raw detail, gap codes, SQL-анализ и grading сохранены;
+другие impact/check details вне среза. Verifier 102 → 103, check 73;
+новые run IDs меняются. Red: 10 failed, 6 passed; смежный green: 296 passed.
+Ruff/Black и strict mypy Linux/Windows чистые; docs-as-code: 25 passed.
+Выбор и финальное ревью — synthetic Astra xhigh: 0 actionable findings,
+не human/production acceptance. Реализовал Codex при недоступной `gpt-5.6-luna`.
+[Проверки и границы](../DECISIONOPS_SUMMARY_GAP_DETAILS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-89: буквальные ссылки на чарты в summary
 
 Допустимый ChartSpec.id добавлял ложные Verdict/Owner action через ChartImpact.ref

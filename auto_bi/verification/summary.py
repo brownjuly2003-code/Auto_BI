@@ -251,7 +251,9 @@ def _impact_section(
             "not settle whether it computes a governed metric:",
             "",
         ]
-        lines += [f"- `{gap.code}` {_literal(gap.subject)} — {gap.detail}" for gap in chart_gaps]
+        lines += [
+            f"- `{gap.code}` {_literal(gap.subject)} — {_literal(gap.detail)}" for gap in chart_gaps
+        ]
     return lines
 
 

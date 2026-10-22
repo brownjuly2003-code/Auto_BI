@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-90: весь ChartGap.detail в summary — буквальный текст; raw detail/grading прежние.
+  Verifier 103/check 73; смежный набор: 296 passed; Ruff/Black и strict mypy Linux/Windows чистые.
+  Docs-as-code: 25 passed; Codex; synthetic Astra xhigh: 0 actionable findings, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_SUMMARY_GAP_DETAILS_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-89: chart refs и gap subjects в summary — буквальный текст.
   Raw payload/grading прежние; verifier 102/check 73; смежный набор: 280 passed.
   Ruff/Black, strict mypy Linux/Windows чистые; финальные docs/new tests: 32 passed.
@@ -98,11 +102,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Verifier 101/check 73; смежный набор: 211 passed; Ruff/Black, strict mypy Linux/Windows чистые.
   Codex; synthetic Astra xhigh: 0 actionable findings, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_SUMMARY_OWNERS_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-87: Environment и detail `results.provenance` в summary — буквальный текст;
-  raw evidence/grading прежние, verifier 100/check 73; новые run IDs меняются.
-  Смежный набор: 342 passed; strict mypy Linux/Windows чистый.
-  Codex; synthetic Astra xhigh: 0 actionable findings, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_SUMMARY_ENVIRONMENT_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

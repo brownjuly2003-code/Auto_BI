@@ -10,7 +10,7 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=102`, `CHECK_VERSION=73`
+**Версии evidence:** `VERIFIER_VERSION=103`, `CHECK_VERSION=73`
 
 **Полная offline-проверка после T-86 (2026-10-22):** код `7453e3f`, Windows/Python 3.13.7:
 **6582 passed, 134 skipped, 38 deselected**, exit 0 (без DuckDB).
@@ -18,7 +18,16 @@ human/design-partner outcome не измерен и не требуется дл
 не суммируются. Live DWH/Mac не проверялись.
 [Команды и границы](DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 
-**Последний срез (T-89, 2026-10-22):** chart refs и subjects пробелов анализа
+**Последний срез (T-90, 2026-10-22):** весь `ChartGap.detail` в impact summary
+выводится буквально. Quoted SQL-имя больше не добавляет ложные Verdict/Owner action
+через пояснение гэпа; raw detail, gap codes и grading сохранены.
+Verifier 103, check 73; новые run IDs меняются. Смежный набор: 296 passed;
+Ruff/Black и strict mypy Linux/Windows чистые. Полный baseline относится к T-86.
+Docs-as-code: 25 passed. Synthetic Astra xhigh: 0 actionable findings,
+не human/production acceptance.
+[Проверки и границы](DECISIONOPS_SUMMARY_GAP_DETAILS_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-89, 2026-10-22):** chart refs и subjects пробелов анализа
 в impact summary выводятся буквально. Допустимый chart ID больше не добавляет
 ложные Verdict/Owner action; raw refs, relations, gap codes и grading сохранены.
 Verifier 102, check 73; новые run IDs меняются. Смежный набор: 280 passed;
