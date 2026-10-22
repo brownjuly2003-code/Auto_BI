@@ -16,7 +16,14 @@ human/design-partner outcome не измерен и не требуется дл
 с duckdb: **6584 passed, 109 skipped, 38 deselected**, exit 0.
 Live DWH/Mac не проверялись. [Команда и границы](DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
 
-**Последний срез (T-85, 2026-10-22):** сводка отдельно называет проблемы других
+**Последний срез (T-86, 2026-10-22):** store отвергает symlink/junction самого
+каталога run до чтения и записи; configured root остаётся доверенным. Отказ ОС
+сохраняется отдельно от отсутствия. Версии 99/73 и байты корректных bundles прежние.
+Профиль: 194 passed, 76 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
+Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance. Полный набор T-86
+не запускался. [Проверки и границы](DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-85, 2026-10-22):** сводка отдельно называет проблемы других
 продуктов из `other_product_issues` и поясняет, что они не меняют текущий verdict.
 Свободные поля отображаются буквально; пустой список не создаёт раздел.
 Verifier 99, check 73; grading и payload прежние, новые run IDs меняются.

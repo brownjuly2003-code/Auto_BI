@@ -1418,6 +1418,12 @@ Public manifest содержит digest и classification restricted payload, н
 raw contents. Artifact paths строит store, а не пользователь; `..`, absolute
 paths и symlink escape запрещены.
 
+Сам каталог `<configured root>/<run_id>` проверяется без следования ссылке:
+symlink или Windows junction отвергается до доступа к артефакту, независимо от
+цели. Явно заданный configured root остаётся доверенным и может быть ссылкой.
+Отказ ОС при проверке run-root сохраняется как `ArtifactRefusalError`;
+отсутствующий run по-прежнему создаётся при записи.
+
 `FilesystemArtifactStore.put` пишет каждый файл в уникальный соседний временный файл и
 публикует одним `os.replace`. На POSIX и для нового Windows target staging создаётся через
 `os.open(..., 0o600)`; при замене существующего файла в Windows — через `CreateFileW` с owner

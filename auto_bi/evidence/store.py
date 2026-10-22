@@ -155,6 +155,19 @@ class FilesystemArtifactStore:
             raise ArtifactStoreError(f"artifact path is not confined to the run: {path!r}")
 
         base = self.run_root(run_id)
+        # A redirected run root would relocate the confinement boundary itself.
+        # The explicitly configured store root remains a trusted location.
+        try:
+            base_status = os.lstat(base)
+        except OSError as exc:
+            if not filesystem.not_there(exc):
+                raise
+        else:
+            if stat.S_ISLNK(base_status.st_mode) or (
+                sys.platform == "win32"
+                and base_status.st_reparse_tag == stat.IO_REPARSE_TAG_MOUNT_POINT
+            ):
+                raise ArtifactStoreError(f"run directory is a symlink or junction: {base}")
         target = base.joinpath(*segments)
 
         # Components are checked before resolution: a symlink is the specific diagnosis, and

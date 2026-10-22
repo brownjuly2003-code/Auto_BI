@@ -10,6 +10,18 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-86: запрет перенаправленного каталога evidence run
+
+Store проверяет сам run-root через lstat до resolve/I/O и отвергает symlink/junction,
+включая ссылку на соседний run. Configured root остаётся доверенным, OSError сохраняется.
+Версии 99/73 прежние; bundles через обычный root и configured-root junction побайтно
+совпадают. Red: 12 failed, 1 passed, 9 skipped. Профиль: 194 passed, 76 skipped.
+Ruff/Black и strict mypy Linux/Windows чистые. Synthetic Astra xhigh: 0 P1/P2,
+не human/production acceptance. Codex реализовал при недоступной `gpt-5.6-luna`.
+Полный набор T-86 и native POSIX не запускались; Windows junction проверены,
+девять новых symlink-сценариев пропущены из-за привилегии Windows.
+[Проверки и границы](../DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-85: проблемы других продуктов в сводке
 
 Условный раздел summary показывает source/code/reported severity/subject/message

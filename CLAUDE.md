@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-86: store отвергает symlink/junction самого run-root;
+  configured root доверенный, версии 99/73 и корректные bundles прежние.
+  Профиль: 194 passed, 76 skipped; lint/type checks чистые; полного набора T-86 нет.
+  Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-85: сводка называет проблемы других продуктов отдельно от verdict;
   grading/payload прежние. Verifier 99, check 73; профиль: 134 passed.
   Полный offline: 6584 passed, 109 skipped, 38 deselected; lint/type checks чистые.
@@ -99,12 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Профиль: 422 passed, 1 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
   Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-83: Unicode-суррогаты в Claim.unit/caveats дают schema refusal;
-  evidence inspection — exit 4, artifact — exit 2 без payload. Версии 98/73.
-  Evidence: 232 passed, 67 skipped; финальные Unicode-регрессии: 21 passed.
-  Полный offline после T-83: 6551 passed, 109 skipped, 38 deselected, exit 0.
-  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 
