@@ -12,7 +12,15 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-79, 2026-10-22):** detail аналитического GAP компилятора
+**Последний срез (T-80, 2026-10-22):** `SQLGuardError` из environment collector
+у `decision verify --dwh` даёт exit 2, одну строку без SQL при обычном CLI logging и пустой stdout,
+evidence не создаётся. Guard, прямые вызовы и версии 98/73 сохранены.
+Смежный набор: 448 passed; четыре completed runs с fake DWH сохраняют каждый
+файл bundle побайтно. Воспроизведение — через `PlanQuestion`, не обычный input
+typed compiler. Synthetic Astra xhigh review: 0 открытых P1/P2; не human/production acceptance.
+[Проверки и review T-80](DECISIONOPS_ENVIRONMENT_SQL_GUARD_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-79, 2026-10-22):** detail аналитического GAP компилятора
 отображается буквальным текстом в Markdown, включая свободное имя dimension.
 Raw body, evidence, JSON/digests и causal policy сохранены; версии 98/73 прежние.
 Граница — один output и точное совпадение body с шаблоном; custom prose прежний.

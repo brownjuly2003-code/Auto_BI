@@ -428,7 +428,7 @@ def _decision_investigate(args: argparse.Namespace) -> int:
 
 
 def _quiet_driver_log(name: str) -> None:
-    """Keep what a driver logs off the error stream a decision command answers on.
+    """Keep dependency warnings off the error stream a decision command answers on.
 
     No `decision` command configures logging, so a record a driver logs is printed by
     `logging.lastResort` — on stderr, above the one line the command answers with.
@@ -436,7 +436,7 @@ def _quiet_driver_log(name: str) -> None:
     the traceback of a response it could not read to the end. A `NullHandler` on the driver's
     logger is a handler found, so the last resort is not used; a process that configured
     logging still has the records where its own handlers put them. Added once, however many
-    times a client is built.
+    times a client is built. The same fallback can expose SQL in sqlglot parser warnings.
     """
     driver = logging.getLogger(name)
     if not any(isinstance(handler, logging.NullHandler) for handler in driver.handlers):
@@ -538,12 +538,13 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
 
     What the driver raises — a connection refused, a session lost, a question the engine
     failed — is raised as `EnvironmentProbeError`, and the run ends as a usage error. What
-    the engine refused is not raised: it is a fact. A local identifier quoting refusal is
-    a separate usage error; other unexpected exceptions are raised as is.
+    the engine refused is not raised: it is a fact. Local identifier quoting and SQL guard
+    refusals are separate usage errors; other unexpected exceptions are raised as is.
     """
     if not engine:
         return None
 
+    from auto_bi.agent.sql_guard import SQLGuardError
     from auto_bi.decision.use_cases import EnvironmentProbeError, VerifyError
     from auto_bi.engine import GREENPLUM, sqlglot_dialect
     from auto_bi.verification.environment import EnvironmentFacts, EnvironmentQuestions
@@ -581,12 +582,16 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
     def probe(questions: EnvironmentQuestions) -> EnvironmentFacts:
         try:
             run_query = connect(settings)
+            _quiet_driver_log("sqlglot")
             try:
                 return collect(
                     run_query, questions, engine=engine, target=target, run_cost=run_cost
                 )
             except UnsafeIdentifierError as error:
                 raise VerifyError(f"cannot build environment query: {error}") from None
+            except SQLGuardError:
+                # Parser diagnostics may contain SQL, line breaks and terminal controls.
+                raise VerifyError("cannot execute environment query: SQLGuardError") from None
         except driver_errors as error:
             raise EnvironmentProbeError(engine, target, error) from error
 

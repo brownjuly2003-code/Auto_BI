@@ -10,6 +10,26 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-80: управляемый отказ environment SQL guard
+
+CLI переводит `SQLGuardError` только внутри вызова `collect` в `VerifyError`:
+exit 2, пустой stdout, фиксированная строка без текста SQL/ANSI, без evidence.
+Для обычного CLI logging `NullHandler` убирает sqlglot warnings через `lastResort`;
+явно настроенные handlers, levels и propagation сохранены, их вывод вне гарантии.
+Guard, прямые collector/runtime вызовы, catalog factory и посторонние исключения
+сохраняют поведение. Каталоги и runtime connection могут предшествовать отказу;
+запрещённый runtime SQL не исполняется. Версии 98/73 прежние. Воспроизведение
+подставляет `PlanQuestion`; обычный compiler input, порождающий этот SQL, не найден.
+
+Реализация — Codex при недоступной `gpt-5.6-luna`; выбор и review — synthetic Astra xhigh.
+Red: 12 failed, 18 passed; green: 30 passed; финальный смежный набор: 448 passed.
+Первый review нашёл P2 в parser warning; red: 4 failed, после правки: 16 passed.
+Заключительный review: P2 закрыт, 0 открытых P1/P2. Docs-as-code/defaults: 32 passed.
+Ruff/Black и strict mypy Linux/Windows чистые. Четыре completed runs с fake DWH
+сохранили по 20 файлов bundle побайтно относительно исходного HEAD.
+Полный offline suite и live DWH не запускались; не human/production acceptance.
+Проверки и финальное review — [T-80](../DECISIONOPS_ENVIRONMENT_SQL_GUARD_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-79: буквальный detail GAP в Markdown investigation
 
 Имя dimension с Markdown/HTML давало разметку в описании `input.null_dimension`,

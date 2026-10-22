@@ -284,10 +284,38 @@ This corrects the earlier specification's statement that the local setting refus
 error: the former text classifier mistook the setting name for an exceeded ceiling.
 Verifier 98 / check 73 distinguish the new evidence; historical bundles are unchanged.
 
+## Runtime SQL guard refusal at the CLI boundary (T-80)
+
+If `collect` raises `SQLGuardError` while `decision verify --dwh` asks about the
+environment, the CLI SHALL return exit 2, empty stdout, and exactly one diagnostic:
+
+`error: cannot execute environment query: SQLGuardError`
+
+The diagnostic SHALL omit the exception text, which can contain SQL, line breaks
+and terminal controls from the parser. No evidence directory SHALL be created.
+The refusal SHALL NOT become `cost.not_measured`, a completed check or a retry.
+
+For ordinary CLI logging, a `NullHandler` on `sqlglot` SHALL prevent `logging.lastResort`
+from printing parser warnings (including SQL) before that diagnostic. It is installed
+after the catalog connection factory, before `collect`, and is not duplicated on later
+calls. Explicitly configured application handlers, levels and propagation are preserved:
+they can still receive parser records, so their output is outside the one-line guarantee.
+
+The handler covers only `collect`. A `SQLGuardError` raised by the catalog connection
+factory remains unchanged. Direct collector/runtime calls retain their exception;
+unrelated exceptions, including `TokenError`, remain outside this handler. Guard policy,
+connection/catalog order, successful artifacts and verifier 98 / check 73 are unchanged.
+Catalog queries and runtime connection creation may precede the guard refusal;
+the refused runtime statement is not executed.
+
+Verification supplies rejected SQL through the `PlanQuestion` seam, uses fake DWH
+clients, and exercises the real runtime guard for all four engine aliases. It does
+not establish that the current typed compiler emits that SQL from an ordinary input.
+
 ## Known boundaries
 
-- Other faults of the probe, including a guard that refuses the SQL of a plan, remain
-  outside the named driver and identifier handlers and may end in a traceback with exit 1.
+- Other faults of the probe, including tokenizer failures that are not `SQLGuardError`,
+  remain outside the named handlers and may end in a traceback with exit 1.
 - Other driver failures end the run through the existing handler. Server-side settings
   refusals, connection failures and unknown errors are not reclassified as measurements.
 - The target is printed as it is configured: host, port and database, never the user or the

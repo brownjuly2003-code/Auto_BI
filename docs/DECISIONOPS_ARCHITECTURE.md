@@ -1832,8 +1832,8 @@ bundle ([спека](specs/stated-run-facts.md)).
 поднимает как `EnvironmentProbeError` порта, и use case кончает прогон usage error в одну
 строку `cannot ask <engine> at <host>:<port>/<database>: <класс>: <что сказал драйвер>`:
 exit 2, без каталога evidence. Отказ движка («не для вас», «нет такого объекта») остаётся
-фактом окружения, который гейт оценивает; прочие ошибки пробрасываются, кроме локального
-отказа quoting, описанного ниже.
+фактом окружения, который гейт оценивает; прочие ошибки пробрасываются, кроме локальных
+отказов quoting и SQL guard, описанных ниже.
 clickhouse_connect предупреждает о каждом неудавшемся запросе в свой логгер, а ни одна
 команда `decision` logging не настраивает, и `logging.lastResort` печатал предупреждение в
 stderr над строкой ответа; поэтому `verify` и `capture` с ClickHouse ставят на логгер
@@ -1851,6 +1851,21 @@ stderr над строкой ответа; поэтому `verify` и `capture` 
 допустимые имена, grading и версии evidence сохранены. Отсутствие таблицы и ранний
 отказ чтения PostgreSQL остаются фактами. Прямой `collect` сохраняет подкласс
 `ValueError`; неожиданные `ValueError` и `RuntimeError` не перехватываются.
+
+С T-80 `SQLGuardError` внутри того же вызова `collect` становится `VerifyError`:
+`error: cannot execute environment query: SQLGuardError`, exit 2, пустой stdout,
+без evidence. Текст исключения не печатается: parser diagnostics могут содержать SQL,
+переносы и terminal controls. Отказ не становится `cost.not_measured` или verdict.
+Перед `collect`, после catalog connection factory, CLI добавляет один `NullHandler`
+логгеру `sqlglot`: его parser warnings тоже могут раскрыть SQL через `logging.lastResort`.
+Гарантия одной строки относится к обычному CLI без настроенного logging; пользовательские
+handlers, levels и propagation сохранены, и их вывод остаётся ответственностью приложения.
+Guard, прямые collector/runtime вызовы, порядок соединений и catalog queries,
+успешные payload и версии 98/73 сохранены. Каталоги и создание runtime connection
+могут предшествовать отказу; запрещённый runtime SQL не исполняется. Перехват не
+покрывает catalog connection factory и посторонние исключения, включая `TokenError`.
+Проверка подставляет SQL через `PlanQuestion` и использует настоящий guard с fake DWH;
+такой output обычного typed compiler не доказан.
 
 Загрузка Settings для `decision verify --dwh` и `decision capture` имеет отдельную
 CLI-границу: `ValidationError`, `OSError` и `UnicodeError` становятся `VerifyError`,
