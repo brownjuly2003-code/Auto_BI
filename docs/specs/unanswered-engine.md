@@ -192,6 +192,41 @@ the use case's existing `ValueError` handling is unchanged.
   (or psycopg's `ConnectionTimeout` when the connection times out)
 - **AND** no recorded result is written
 
+## Requirement: settings a DWH command cannot load
+
+`decision verify --dwh` and `decision capture` turn `ValidationError`, `OSError` and
+`UnicodeError` raised while loading Settings into a usage error: exit 2, empty stdout,
+one stderr line starting `error: cannot load settings:`, no DWH factory or session,
+no evidence and no captured result. The shared settings loader and other CLI commands
+retain their contracts; offline `decision verify` never loads Settings.
+
+Validation reports `ValidationError: <field> (<type code>); ...`: at most three errors,
+then `(+N more)`. Only known top-level Settings field names are printed; other locations
+become `<settings>`. Values, validation messages, context, URLs and nested locations are
+omitted. I/O and Unicode failures report only their exception class, without the source
+message or path. Unexpected loader exceptions and failures outside settings loading are
+not reclassified by this handler.
+
+### Scenario: a configured port is not an integer
+
+- **GIVEN** a noninteger port in the environment or `.env`, for any supported engine alias
+- **WHEN** either DWH command is run
+- **THEN** it refuses the settings before building a DWH factory, without artifacts
+- **AND** its one error line names `ch_port (int_parsing)` or `gp_port (int_parsing)`
+- **AND** the configured value does not appear, including when the command runs as a process
+
+### Scenario: the dotenv file cannot be read
+
+- **GIVEN** a `.env` file whose read raises `PermissionError` or `UnicodeDecodeError`
+- **WHEN** either DWH command is run
+- **THEN** it returns the same usage-error contract, naming only the exception class
+
+### Scenario: offline verification with invalid settings
+
+- **GIVEN** invalid settings and valid offline inputs
+- **WHEN** `decision verify` runs without `--dwh`
+- **THEN** it completes normally without reading Settings
+
 ## Known boundaries
 
 - Only what the driver raises is a usage error. A fault of the probe itself — an identifier
@@ -206,8 +241,9 @@ the use case's existing `ValueError` handling is unchanged.
 - The target is printed as it is configured: host, port and database, never the user or the
   password. What the driver said is printed as it said it, in one line: libpq names the host
   and the port it tried, and an authentication refusal names the user.
-- Settings that do not load — a port that is no number — end both commands in a traceback
-  before anything is asked, as they did.
+- Settings validation does not check connectivity or add new value restrictions. Other CLI
+  commands retain their existing settings-error handling. `SettingsError` from custom or
+  complex settings sources is outside this slice; current Settings fields are scalar.
 - The engines of this slice are a closed port of the loopback address, a listener that accepts
   a connection and closes it at once, and fake engines that raise the drivers' own errors. No
   live engine was asked.

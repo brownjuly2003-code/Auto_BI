@@ -270,6 +270,12 @@ reviewed-SQL формулы получают названный гэп вмес�
 оценивает гейт. См.
 [DECISIONOPS_ARCHITECTURE §8.2 и §12.1](DECISIONOPS_ARCHITECTURE.md).
 
+Если `decision verify --dwh` или `decision capture` не может загрузить настройки,
+команда возвращает exit `2` и одну строку `error: cannot load settings: …`, до соединения
+и записи результата. Ошибка валидации называет до трёх полей и кодов ошибок, например
+`ch_port (int_parsing)`; отказ чтения — только класс исключения. Значения настроек
+не выводятся. Offline `decision verify` без `--dwh` настройки не читает.
+
 `run_id` выводится из статических входов прогона: продукта, контрактов в validated paths,
 обоих semantic refs целиком, candidate `model.yaml`, dashboard specs и verified assets
 продукта, а также `--environment`, signing key и версии verifier. Изменился любой из них —

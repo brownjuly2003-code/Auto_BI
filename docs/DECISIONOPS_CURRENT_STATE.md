@@ -12,7 +12,15 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=97`, `CHECK_VERSION=72`
 
-**Последний срез (T-67, 2026-10-22):** `decision capture` обрабатывает ошибки драйвера
+**Последний срез (T-68, 2026-10-22):** ошибки загрузки настроек у `decision verify --dwh`
+и `decision capture` дают exit 2 и одну строку без значений настроек. Валидация называет
+до трёх полей и кодов ошибок; I/O и Unicode — только класс. Отказ происходит до
+DWH-фабрики, соединения и записи. Offline verify и v1 сохраняют поведение; версии
+97/72 не менялись. Новый модуль: 32 red → 35 green; смежный набор: 506 passed,
+1 skipped. Codex реализовал срез; synthetic Astra xhigh: 0 P1/P2, не human/production
+acceptance. [Проверки и границы T-68](DECISIONOPS_SETTINGS_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-67, 2026-10-22):** `decision capture` обрабатывает ошибки драйвера
 одной строкой с классом исключения и exit 2. ClickHouse-перехват включает `StreamFailureError`,
 metadata fallback и ленивое чтение `result_rows`; частичный ответ не создаёт файл результата
 и не повторяет запрос. Сообщения PostgreSQL-семейства также нормализованы. Версии 97/72

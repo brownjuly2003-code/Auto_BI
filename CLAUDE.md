@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-68: ошибки Settings у `decision verify --dwh` и `decision capture` —
+  exit 2 и одна строка без значений, до DWH-фабрики и записи. Offline verify и v1
+  сохранены; версии 97/72. Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
+  Смежные проверки: 506 passed, 1 skipped.
+  [Проверки и границы](docs/DECISIONOPS_SETTINGS_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-67: ошибки драйверов `decision capture` — одна строка, класс и exit 2.
   ClickHouse-перехват включает ленивый поток и `StreamFailureError`; частичный результат
   не публикуется. Версии 97/72 сохранены. Synthetic Astra xhigh: 0 P1/P2,
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   шагом `--platform win32`; `tests/test_platform_guards.py` держит форму без mypy. Opus 5.5
   напрямую; модельного ревью не было, только проверки автора.
   [Проверки и границы](docs/DECISIONOPS_PLATFORM_GUARDS_CHECKS_2026-10-19.md).
-- 2026-10-19 — T-65: движок `--dwh`, который не ответил, — usage error в одну строку
-  `cannot ask <engine> at <host>:<port>/<db>: <класс>: …`, exit 2; проба не соединяется до
-  вопросов, отказ движка остаётся фактом, лог clickhouse_connect не в stderr. Verifier 97,
-  check 72. Opus 5.5 напрямую; модельного ревью не было, только проверки автора.
-  [Проверки и границы](docs/DECISIONOPS_UNANSWERED_ENGINE_CHECKS_2026-10-19.md).
 
 ## Definition of done (фаза/задача)
 

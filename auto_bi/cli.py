@@ -418,16 +418,40 @@ def _quiet_driver_log(name: str) -> None:
         driver.addHandler(logging.NullHandler())
 
 
+def _decision_settings() -> "Settings":
+    """Load settings for DecisionOps without printing values or source error messages."""
+    from pydantic import ValidationError
+
+    from auto_bi.config import Settings, get_settings
+    from auto_bi.decision.use_cases import VerifyError
+
+    try:
+        return get_settings()
+    except ValidationError as exc:
+        errors = exc.errors(include_url=False, include_context=False, include_input=False)
+        reasons = []
+        for error in errors[:3]:
+            name = error["loc"][0] if error["loc"] else None
+            field = (
+                name if isinstance(name, str) and name in Settings.model_fields else "<settings>"
+            )
+            reasons.append(f"{field} ({error['type']})")
+        if len(errors) > len(reasons):
+            reasons.append(f"(+{len(errors) - len(reasons)} more)")
+        raise VerifyError(f"cannot load settings: ValidationError: {'; '.join(reasons)}") from exc
+    except (OSError, UnicodeError) as exc:
+        raise VerifyError(f"cannot load settings: {type(exc).__name__}") from exc
+
+
 def _result_capture_target(engine: str) -> tuple["ResultQueryFactory", str, str]:
     """Build a lazy driver factory plus the environment and actor it will use."""
-    from auto_bi.config import get_settings
     from auto_bi.engine import GREENPLUM, sqlglot_dialect
     from auto_bi.verification.result_probe import (
         make_clickhouse_result_query,
         make_postgres_result_query,
     )
 
-    settings = get_settings()
+    settings = _decision_settings()
     if sqlglot_dialect(engine) == sqlglot_dialect(GREENPLUM):
         return (
             lambda: make_postgres_result_query(settings),
@@ -450,8 +474,8 @@ def _decision_capture(args: argparse.Namespace) -> int:
     from auto_bi.verification.model import EXIT_ERROR
 
     captured_at = args.captured_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    query_factory, configured_environment, executed_by = _result_capture_target(args.dwh)
     try:
+        query_factory, configured_environment, executed_by = _result_capture_target(args.dwh)
         report = capture_result(
             CaptureRequest(
                 assets=args.assets,
@@ -494,7 +518,6 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
     if not engine:
         return None
 
-    from auto_bi.config import get_settings
     from auto_bi.decision.use_cases import EnvironmentProbeError
     from auto_bi.engine import GREENPLUM, sqlglot_dialect
     from auto_bi.verification.environment import EnvironmentFacts, EnvironmentQuestions
@@ -504,7 +527,7 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
         make_postgres_runtime_probe,
     )
 
-    settings = get_settings()
+    settings = _decision_settings()
     connect: Callable[[Settings], RunQuery]
     driver_errors: tuple[type[Exception], ...]
     if sqlglot_dialect(engine) == sqlglot_dialect(GREENPLUM):

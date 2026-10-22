@@ -10,6 +10,19 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-68: безопасные ошибки загрузки настроек
+
+`decision verify --dwh` и `decision capture` переводят `ValidationError`, `OSError` и
+`UnicodeError` только от загрузчика Settings в однострочный usage error, exit 2, без
+stdout, DWH-фабрик и выходных файлов. Валидация называет до трёх известных полей и
+кодов ошибок, остальные считает; значения, сообщения валидатора и context не
+выводятся. I/O и Unicode дают только класс исключения. Capture строит target внутри
+существующего `VerifyError` handler. Offline verify, общий загрузчик, v1 и версии
+97/72 сохранены. Red: 32 failed, 3 passed; green: 35 passed; смежные проверки:
+506 passed, 1 skipped. Synthetic Astra xhigh выбрала срез и проверила код, тесты и
+контракт: 0 P1/P2, не human/production acceptance. Codex реализовал срез при
+недоступной `gpt-5.6-luna`. [Проверки и границы](../DECISIONOPS_SETTINGS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-67: однострочная ошибка драйвера при capture
 
 `decision capture` преобразует ошибки ClickHouse и PostgreSQL-семейства в строку с
