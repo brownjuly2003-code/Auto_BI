@@ -226,7 +226,7 @@ def _impact_section(
             # adds a word and no fact.
             ("metrics", [] if item.metrics == [item.subject] else item.metrics),
             ("dashboards", item.dashboards),
-            ("owners", item.owners),
+            ("owners", [_literal(owner) for owner in item.owners]),
         ):
             if refs:
                 lines.append(f"  - {label}: {', '.join(refs)}")

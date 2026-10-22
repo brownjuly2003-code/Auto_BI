@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-88: владельцы в impact summary — буквальный текст; raw owner/grading прежние.
+  Verifier 101/check 73; смежный набор: 211 passed; Ruff/Black, strict mypy Linux/Windows чистые.
+  Codex; synthetic Astra xhigh: 0 actionable findings, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_SUMMARY_OWNERS_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-87: Environment и detail `results.provenance` в summary — буквальный текст;
   raw evidence/grading прежние, verifier 100/check 73; новые run IDs меняются.
   Смежный набор: 342 passed; strict mypy Linux/Windows чистый.
@@ -99,11 +103,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Полный offline: 6582 passed, 134 skipped, 38 deselected; отдельно DuckDB: 15 passed.
   Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-85: сводка называет проблемы других продуктов отдельно от verdict;
-  grading/payload прежние. Verifier 99, check 73; профиль: 134 passed.
-  Полный offline: 6584 passed, 109 skipped, 38 deselected; lint/type checks чистые.
-  Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

@@ -10,6 +10,18 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-88: буквальное отображение владельцев в summary
+
+Допустимый metadata.owner добавлял ложные Verdict/Owner action через список
+ProductImpact.owners при реальном BLOCK. Каждый owner теперь проходит `_literal`
+перед соединением списка; порядок, разделители, raw evidence и grading сохранены.
+Остальные поля impact вне среза. Verifier 100 → 101, check 73; новые run IDs меняются.
+Red: 4 failed, 2 passed; смежный green: 211 passed. Ruff/Black и strict mypy
+Linux/Windows чистые. Выбор среза и финальное ревью кода/тестов — synthetic Astra xhigh:
+0 actionable findings, не human/production acceptance.
+Реализовал Codex при недоступной `gpt-5.6-luna`.
+[Проверки и границы](../DECISIONOPS_SUMMARY_OWNERS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-87: буквальное отображение среды в summary
 
 Допустимое имя среды с Markdown и переводами строк добавляло ложный Verdict/Owner

@@ -96,7 +96,7 @@ def test_a_blocking_run_names_what_stops_it_and_whom_it_reaches(tmp_path: Path) 
     assert report.verdict.value == "block"
     assert "metric://sales/gross_margin_pct" in text
     assert "dashboard://weekly_margin@7" in text
-    assert "commercial-analytics" in text
+    assert r"commercial\-analytics" in text
     for check in report.blocking():
         assert check.check_id in text
 
