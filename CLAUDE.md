@@ -92,6 +92,7 @@ GraceKelly (локальный сервис, должен быть запуще�
 - 2026-10-22 — T-83: Unicode-суррогаты в Claim.unit/caveats дают schema refusal;
   evidence inspection — exit 4, artifact — exit 2 без payload. Версии 98/73.
   Evidence: 232 passed, 67 skipped; финальные Unicode-регрессии: 21 passed.
+  Полный offline после T-83: 6551 passed, 109 skipped, 38 deselected, exit 0.
   Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-82: глубокий JSON manifest у `evidence --artifact` даёт exit 2,

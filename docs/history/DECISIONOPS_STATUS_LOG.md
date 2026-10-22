@@ -10,6 +10,14 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — полный offline-baseline после T-83
+
+На `b75edef`, Windows/Python 3.13.7 с duckdb: 6551 passed, 109 skipped,
+38 deselected in 527.35s, exit 0. Один полный прогон; код, тесты и версии 98/73
+не менялись. Synthetic Astra xhigh подтвердила выбор задачи; это не
+human/production acceptance. Live DWH/Mac и отдельные lint/type-check gates
+не запускались. [Команда и границы](../DECISIONOPS_OFFLINE_T83_VERIFICATION_2026-10-22.md).
+
 ## 2026-10-22 — T-83: Unicode-суррогаты в тексте evidence claim
 
 `Claim.unit/caveats` проверяются на допустимость Unicode до canonicalization.
