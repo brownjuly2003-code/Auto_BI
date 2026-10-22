@@ -10,6 +10,19 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-69: однострочный отказ quoting environment probe
+
+`decision verify --dwh` переводит только локальный `UnsafeIdentifierError` из
+`collect` в `VerifyError`: exit 2, пустой stdout, одна строка
+`cannot build environment query: unsafe identifier: …`, без evidence. Новый тип
+наследует `ValueError`; допустимые имена и `repr` отказа сохранены. Ошибка отделена
+от `EnvironmentProbeError`; соединение, каталог и ранние факты отсутствия/нечитаемости
+сохраняют порядок. Неожиданные исключения не маскируются. Версии 97/72 сохранены.
+Red: 20 failed, 8 passed; green: 42 passed; смежные проверки: 406 passed.
+Synthetic Astra xhigh выбрала срез и проверила код, тесты и контракт: 0 P1/P2,
+не human/production acceptance. Codex реализовал срез при недоступной `gpt-5.6-luna`.
+[Проверки и границы](../DECISIONOPS_ENVIRONMENT_IDENTIFIER_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-68: безопасные ошибки загрузки настроек
 
 `decision verify --dwh` и `decision capture` переводят `ValidationError`, `OSError` и

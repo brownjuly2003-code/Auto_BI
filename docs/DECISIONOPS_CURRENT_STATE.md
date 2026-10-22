@@ -12,7 +12,17 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=97`, `CHECK_VERSION=72`
 
-**Последний срез (T-68, 2026-10-22):** ошибки загрузки настроек у `decision verify --dwh`
+**Последний срез (T-69, 2026-10-22):** локальный отказ quoting в `decision verify --dwh`
+даёт exit 2 и одну строку `cannot build environment query: unsafe identifier: …`.
+Неподдерживаемая временная колонка или компонент таблицы не отправляется в freshness
+SELECT, evidence не создаётся. Соединение и catalog queries могут уже состояться;
+их порядок сохранён. Перехватывается только новый `UnsafeIdentifierError(ValueError)`
+вокруг `collect`; драйверные и неожиданные ошибки сохраняют свои границы. Grading и
+версии 97/72 не менялись. Red: 20 failed, 8 passed; green: 42 passed; смежный набор:
+406 passed. Codex реализовал срез; synthetic Astra xhigh: 0 P1/P2, не human/production
+acceptance. [Проверки и границы T-69](DECISIONOPS_ENVIRONMENT_IDENTIFIER_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-68, 2026-10-22):** ошибки загрузки настроек у `decision verify --dwh`
 и `decision capture` дают exit 2 и одну строку без значений настроек. Валидация называет
 до трёх полей и кодов ошибок; I/O и Unicode — только класс. Отказ происходит до
 DWH-фабрики, соединения и записи. Offline verify и v1 сохраняют поведение; версии

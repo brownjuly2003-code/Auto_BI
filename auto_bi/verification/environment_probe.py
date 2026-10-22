@@ -191,6 +191,10 @@ _REFUSED_TEXT = re.compile(
 )
 
 
+class UnsafeIdentifierError(ValueError):
+    """An identifier the collector's existing SQL quoting rule cannot represent."""
+
+
 class _ChSession(NamedTuple):
     """Who ClickHouse thinks is asking, and what that identity may read.
 
@@ -1307,7 +1311,7 @@ def _ch_literal(value: str) -> str:
 
 def _ident(name: str) -> str:
     if not name.replace("_", "").isalnum():
-        raise ValueError(f"unsafe identifier: {name!r}")
+        raise UnsafeIdentifierError(f"unsafe identifier: {name!r}")
     return f'"{name}"'
 
 
@@ -1315,4 +1319,4 @@ def _qualified(table: str) -> str:
     return ".".join(_ident(part) for part in table.split("."))
 
 
-__all__ = ["CLICKHOUSE", "collect"]
+__all__ = ["CLICKHOUSE", "UnsafeIdentifierError", "collect"]

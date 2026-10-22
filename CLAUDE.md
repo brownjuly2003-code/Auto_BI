@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-69: отказ quoting environment probe — exit 2 и одна строка, без evidence.
+  Перехват только `UnsafeIdentifierError` вокруг `collect`; порядок IO, grading и
+  версии 97/72 сохранены. Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
+  Смежные проверки: 406 passed.
+  [Проверки и границы](docs/DECISIONOPS_ENVIRONMENT_IDENTIFIER_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-68: ошибки Settings у `decision verify --dwh` и `decision capture` —
   exit 2 и одна строка без значений, до DWH-фабрики и записи. Offline verify и v1
   сохранены; версии 97/72. Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   не публикуется. Версии 97/72 сохранены. Synthetic Astra xhigh: 0 P1/P2,
   не human/production acceptance.
   [Проверки и границы](docs/DECISIONOPS_CAPTURE_DRIVER_CHECKS_2026-10-22.md).
-- 2026-10-19 — T-66: Windows-API `store.py` (T-63) — за `sys.platform`, не `os.name`: mypy,
-  как его гоняет CI на Linux, снова чист (с T-63 — 7 и 9 ошибок). CI проверяет Windows-ветки
-  шагом `--platform win32`; `tests/test_platform_guards.py` держит форму без mypy. Opus 5.5
-  напрямую; модельного ревью не было, только проверки автора.
-  [Проверки и границы](docs/DECISIONOPS_PLATFORM_GUARDS_CHECKS_2026-10-19.md).
 
 ## Definition of done (фаза/задача)
 

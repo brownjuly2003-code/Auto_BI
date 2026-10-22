@@ -1768,7 +1768,8 @@ bundle ([спека](specs/stated-run-facts.md)).
 поднимает как `EnvironmentProbeError` порта, и use case кончает прогон usage error в одну
 строку `cannot ask <engine> at <host>:<port>/<database>: <класс>: <что сказал драйвер>`:
 exit 2, без каталога evidence. Отказ движка («не для вас», «нет такого объекта») остаётся
-фактом окружения, который гейт оценивает; то, что поднял не драйвер, поднимается как есть.
+фактом окружения, который гейт оценивает; прочие ошибки пробрасываются, кроме локального
+отказа quoting, описанного ниже.
 clickhouse_connect предупреждает о каждом неудавшемся запросе в свой логгер, а ни одна
 команда `decision` logging не настраивает, и `logging.lastResort` печатал предупреждение в
 stderr над строкой ответа; поэтому `verify` и `capture` с ClickHouse ставят на логгер
@@ -1776,6 +1777,16 @@ stderr над строкой ответа; поэтому `verify` и `capture` 
 сам, получает записи драйвера, как прежде. Причина: движок, до которого прогон не дотянулся, —
 ошибка использования, а не дефект гейта, и ответ на неё — строка, а не трассировка драйвера
 ([спека](specs/unanswered-engine.md)).
+
+Если `_ident` коллектора не принимает временную колонку или компонент имени таблицы,
+он поднимает `UnsafeIdentifierError(ValueError)` с прежним `repr` имени. CLI-проба
+перехватывает только этот тип вокруг `collect` и возвращает usage error
+`cannot build environment query: unsafe identifier: …`: exit 2, пустой stdout,
+без evidence. Это локальный отказ построения SQL, отдельно от `EnvironmentProbeError`.
+Соединение и запросы к каталогам к этому моменту могут уже состояться; порядок,
+допустимые имена, grading и версии evidence сохранены. Отсутствие таблицы и ранний
+отказ чтения PostgreSQL остаются фактами. Прямой `collect` сохраняет подкласс
+`ValueError`; неожиданные `ValueError` и `RuntimeError` не перехватываются.
 
 Загрузка Settings для `decision verify --dwh` и `decision capture` имеет отдельную
 CLI-границу: `ValidationError`, `OSError` и `UnicodeError` становятся `VerifyError`,

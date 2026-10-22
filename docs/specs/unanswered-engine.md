@@ -73,7 +73,8 @@ What the driver raises is, of clickhouse_connect, a `ClickHouseError` or a `Stre
 — a result the engine stopped sending midway, which the driver raises outside that hierarchy —
 and of psycopg, through which `postgres`, `greenplum` and `greengage` are asked, a
 `psycopg.Error`. A refusal SHALL NOT end the run, although the driver raises it as one of these:
-the probe answers it as before, as a fact. What is not the driver's SHALL be raised as it is.
+the probe answers it as before, as a fact. Other exceptions SHALL be raised as they are,
+apart from the local identifier quoting refusal specified below.
 
 The probe SHALL report the failure as `EnvironmentProbeError(engine, target, error)`, the error
 of the `EnvironmentProbe` port, and the use case SHALL turn it into the `VerifyError` above. A
@@ -227,11 +228,43 @@ not reclassified by this handler.
 - **WHEN** `decision verify` runs without `--dwh`
 - **THEN** it completes normally without reading Settings
 
+## Requirement: a local identifier quoting refusal ends verify in one line
+
+When the collector's existing `_ident` rule rejects an event-time column or a component
+of the table name, it SHALL raise `UnsafeIdentifierError`, a subclass of `ValueError`,
+with the unchanged message `unsafe identifier: <repr of the rejected component>`.
+The supported identifier syntax SHALL remain unchanged.
+
+The CLI-built probe SHALL convert only this type, only while calling `collect`, into
+`VerifyError`: exit 2, empty stdout, no evidence directory and exactly one stderr line:
+
+`error: cannot build environment query: unsafe identifier: <repr>`
+
+This is a local query-construction refusal, not `EnvironmentProbeError` or an engine
+answer to grade. No failing freshness SELECT SHALL be sent. The connection and catalog
+questions may already have happened; their order SHALL remain unchanged. An absent
+table or PostgreSQL's earlier unreadable-table answer SHALL still be an environment
+fact. Direct collector callers continue to receive a `ValueError` subclass. Offline
+verification and other command paths SHALL retain their behavior.
+
+### Scenario: the collector cannot quote an identifier
+
+- **GIVEN** a present, readable table and an unquotable event-time column, schema or
+  table component, including whitespace, line separators or an empty dotted component
+- **WHEN** `decision verify --dwh` runs with any supported engine alias
+- **THEN** the command returns the one-line usage error above, without a bundle
+- **AND** the rejected freshness SELECT is never passed to the query callable
+
+### Scenario: an unrelated exception has the same text
+
+- **GIVEN** an ordinary `ValueError` or `RuntimeError` with `unsafe identifier` in its text
+- **WHEN** the collector raises it, or the connection factory raises any exception
+- **THEN** the identifier handler does not reclassify it; existing driver handling remains
+
 ## Known boundaries
 
-- Only what the driver raises is a usage error. A fault of the probe itself — an identifier
-  step 7 will not quote (`unsafe identifier`), a guard that refuses the SQL of a plan — still
-  ends the command in a traceback with exit code 1.
+- Other faults of the probe, including a guard that refuses the SQL of a plan, remain
+  outside the named driver and identifier handlers and may end in a traceback with exit 1.
 - Every error of the driver ends the run, including one that might be graded as a ceiling that
   went unmeasured. Read from clickhouse_connect 1.6.0, not reproduced on a live engine: a
   session whose settings may not be changed — a profile with `readonly=1` — has the exact query

@@ -513,15 +513,16 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
 
     What the driver raises — a connection refused, a session lost, a question the engine
     failed — is raised as `EnvironmentProbeError`, and the run ends as a usage error. What
-    the engine refused is not raised: it is a fact. What is not the driver's is raised as is.
+    the engine refused is not raised: it is a fact. A local identifier quoting refusal is
+    a separate usage error; other unexpected exceptions are raised as is.
     """
     if not engine:
         return None
 
-    from auto_bi.decision.use_cases import EnvironmentProbeError
+    from auto_bi.decision.use_cases import EnvironmentProbeError, VerifyError
     from auto_bi.engine import GREENPLUM, sqlglot_dialect
     from auto_bi.verification.environment import EnvironmentFacts, EnvironmentQuestions
-    from auto_bi.verification.environment_probe import collect
+    from auto_bi.verification.environment_probe import UnsafeIdentifierError, collect
     from auto_bi.verification.runtime_probe import (
         make_clickhouse_runtime_probe,
         make_postgres_runtime_probe,
@@ -555,7 +556,12 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
     def probe(questions: EnvironmentQuestions) -> EnvironmentFacts:
         try:
             run_query = connect(settings)
-            return collect(run_query, questions, engine=engine, target=target, run_cost=run_cost)
+            try:
+                return collect(
+                    run_query, questions, engine=engine, target=target, run_cost=run_cost
+                )
+            except UnsafeIdentifierError as error:
+                raise VerifyError(f"cannot build environment query: {error}") from None
         except driver_errors as error:
             raise EnvironmentProbeError(engine, target, error) from error
 
