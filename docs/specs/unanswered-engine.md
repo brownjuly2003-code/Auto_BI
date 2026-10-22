@@ -261,16 +261,35 @@ verification and other command paths SHALL retain their behavior.
 - **WHEN** the collector raises it, or the connection factory raises any exception
 - **THEN** the identifier handler does not reclassify it; existing driver handling remains
 
+## Runtime settings refused by ClickHouse (T-70)
+
+A local `ProgrammingError` with the exact message `Setting <name> is unknown or readonly`
+for a setting passed by this runtime command leaves all declared runtime bounds unmeasured.
+The four possible names are `max_execution_time`, `timeout_overflow_mode`,
+`max_bytes_to_read`, and `read_overflow_mode`; the byte settings are passed only when a
+byte ceiling is declared. The fact carries no counters, checked bounds or exceeded bound.
+The existing grader emits `cost.not_measured` (review) for each declared runtime ceiling;
+catalog facts remain available. The query is not retried without limits.
+
+An unrelated setting, another error class or another message is not this refusal.
+An exceeded timeout requires server code 159. An exceeded scanned-byte limit requires
+code 307 and a message identifying an exceeded read-byte limit; a row or result-size
+limit does not prove scanned-byte excess. A structured driver code takes precedence;
+older drivers can supply the code in a `Code:` response line or `server response:` form.
+
+ClickHouse 24.8.14.39 on a throwaway Mac server reproduced the old false timeout evidence
+under `readonly=1`. With the correction it leaves the bounds unmeasured; `readonly=2`
+still executes successfully. Actual read-byte and timeout refusals were also checked.
+This corrects the earlier specification's statement that the local setting refusal was a usage
+error: the former text classifier mistook the setting name for an exceeded ceiling.
+Verifier 98 / check 73 distinguish the new evidence; historical bundles are unchanged.
+
 ## Known boundaries
 
 - Other faults of the probe, including a guard that refuses the SQL of a plan, remain
   outside the named driver and identifier handlers and may end in a traceback with exit 1.
-- Every error of the driver ends the run, including one that might be graded as a ceiling that
-  went unmeasured. Read from clickhouse_connect 1.6.0, not reproduced on a live engine: a
-  session whose settings may not be changed — a profile with `readonly=1` — has the exact query
-  of a runtime ceiling refused by the driver before it is sent, `ProgrammingError: Setting
-  max_execution_time is unknown or readonly`. Before this slice that was a traceback; now it is
-  the one line of a usage error. `readonly=2`, which the R3 stand ran with, allows the setting.
+- Other driver failures end the run through the existing handler. Server-side settings
+  refusals, connection failures and unknown errors are not reclassified as measurements.
 - The target is printed as it is configured: host, port and database, never the user or the
   password. What the driver said is printed as it said it, in one line: libpq names the host
   and the port it tried, and an authentication refusal names the user.

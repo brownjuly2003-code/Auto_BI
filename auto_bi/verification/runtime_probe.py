@@ -29,10 +29,9 @@ RuntimeCostProbe = Callable[[PlanQuestion], ExecutionFacts]
 SAFETY_TIMEOUT_MS = 60_000
 
 _CH_BYTES_EXCEEDED = re.compile(
-    r"TOO_MANY_ROWS_OR_BYTES|max_bytes_to_read|limit for bytes to read", re.IGNORECASE
-)
-_CH_TIMEOUT_EXCEEDED = re.compile(
-    r"TIMEOUT_EXCEEDED|max_execution_time|maximum execution time", re.IGNORECASE
+    r"\b(?:max_bytes_to_read|limit for (?:rows or )?bytes to read(?: or process)?)"
+    r"\b[^.\n]*\bexceeded\b",
+    re.IGNORECASE,
 )
 
 
@@ -89,6 +88,8 @@ def _clickhouse_execution(
     client: Any, question: PlanQuestion, *, error_type: type[Exception]
 ) -> ExecutionFacts:
     """Execute one SELECT with a server-side null output sink and final query summary."""
+    from clickhouse_connect.driver.exceptions import ProgrammingError
+
     guard_sql(question.sql, dialect="clickhouse")
     timeout_cap_ms, timeout_is_contract = _timeout_cap(question.budgets.timeout_ms)
     query_settings: dict[str, Any] = {
@@ -106,7 +107,26 @@ def _clickhouse_execution(
         result = client.command(_null_output(question.sql), settings=query_settings)
     except error_type as exc:
         message = str(exc)
-        if _CH_BYTES_EXCEEDED.search(message):
+        if isinstance(exc, ProgrammingError):
+            for setting in query_settings:
+                if message == f"Setting {setting} is unknown or readonly":
+                    return ExecutionFacts(
+                        metric_ref=question.metric_ref,
+                        evidence=(
+                            f"ClickHouse runtime setting {setting} is unknown or readonly; "
+                            "no declared runtime bound was measured"
+                        ),
+                    )
+            raise
+        # Newer drivers carry the server code separately. Older ones include a Code line.
+        # A setting name alone does not establish that a query ran or exceeded any limit.
+        code = getattr(exc, "code", None)
+        if code is None:
+            match = re.search(r"(?:\A|\n|server response: )\s*Code:\s*(\d+)\.", message)
+            if match is not None:
+                code = int(match[1])
+        # TOO_MANY_BYTES must concern reading, not e.g. an environment result-size limit.
+        if code == 307 and _CH_BYTES_EXCEEDED.search(message):
             if byte_limit is not None:
                 return _exceeded(
                     question,
@@ -121,7 +141,7 @@ def _clickhouse_execution(
                     "no declared runtime bound was measured"
                 ),
             )
-        if _CH_TIMEOUT_EXCEEDED.search(message):
+        if code == 159:
             if timeout_is_contract:
                 return _exceeded(
                     question,

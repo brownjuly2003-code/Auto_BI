@@ -620,7 +620,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=97`, `CHECK_VERSION=72`.
+`VERIFIER_VERSION=98`, `CHECK_VERSION=73`.
 
 ### 7.7 CheckResult, Claim и EvidenceBundle
 
@@ -955,7 +955,13 @@ Gate выполняет шаги в фиксированном порядке:
   `max_execution_time` с overflow=`throw`, а после успеха сохраняет доступные поля driver
   summary (`read_bytes`, `elapsed_ns`, `query_id`). Если public command API драйвера summary
   не вернул, завершение под точными engine limits всё равно доказывает ненулевые границы;
-  нулевая граница без соответствующего counter остаётся неизмеренной. PostgreSQL выполняет
+  нулевая граница без соответствующего counter остаётся неизмеренной. Точный локальный
+  `ProgrammingError: Setting <name> is unknown or readonly` для переданной runtime-настройки
+  оставляет все объявленные runtime-границы неизмеренными (`cost.not_measured`, **review**).
+  Запрос без лимитов не повторяется. Сам `readonly=1` не отключает пробу: драйвер допускает
+  уже равное запрошенному значение. Превышение времени требует server code 159; превышение
+  scanned bytes — code 307 и сообщения о превышении лимита чтения байтов, не строк или
+  размера результата. Остальные driver errors сохраняют usage-error границу. PostgreSQL выполняет
   SELECT в read-only транзакции, применяет transaction-local `statement_timeout` и
   отбрасывает строки через потоковый cursor; честного exact-query `scanned_bytes` PostgreSQL
   не отдаёт. Это проверено по native API PostgreSQL 14–18: `EXPLAIN (ANALYZE, BUFFERS)`

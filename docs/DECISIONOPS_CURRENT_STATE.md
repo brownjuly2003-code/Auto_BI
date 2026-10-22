@@ -10,9 +10,18 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=97`, `CHECK_VERSION=72`
+**Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-69, 2026-10-22):** локальный отказ quoting в `decision verify --dwh`
+**Последний срез (T-70, 2026-10-22):** отказ обязательной runtime-настройки ClickHouse
+оставляет объявленные потолки неизмеренными (`cost.not_measured`, review), без ложного
+превышения и без повторного запроса. Остальные driver errors сохраняют границу отказа;
+настоящие timeout/read-byte превышения различаются по коду движка и виду лимита.
+Mac ClickHouse 24.8.14.39 подтвердил исправление `readonly=1`, успешный `readonly=2`
+и оба настоящих превышения. Версии 98/73; смежные проверки: 368 passed.
+Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
+[Проверки и границы T-70](DECISIONOPS_RUNTIME_SETTINGS_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-69, 2026-10-22):** локальный отказ quoting в `decision verify --dwh`
 даёт exit 2 и одну строку `cannot build environment query: unsafe identifier: …`.
 Неподдерживаемая временная колонка или компонент таблицы не отправляется в freshness
 SELECT, evidence не создаётся. Соединение и catalog queries могут уже состояться;

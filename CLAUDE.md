@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-70: отказ runtime-настройки ClickHouse даёт `cost.not_measured`, без
+  ложного превышения. На Mac проверены readonly=1/2 и настоящие byte/timeout превышения.
+  Версии 98/73; 368 passed. Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_RUNTIME_SETTINGS_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-69: отказ quoting environment probe — exit 2 и одна строка, без evidence.
   Перехват только `UnsafeIdentifierError` вокруг `collect`; порядок IO, grading и
   версии 97/72 сохранены. Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
@@ -99,11 +103,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   сохранены; версии 97/72. Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
   Смежные проверки: 506 passed, 1 skipped.
   [Проверки и границы](docs/DECISIONOPS_SETTINGS_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-67: ошибки драйверов `decision capture` — одна строка, класс и exit 2.
-  ClickHouse-перехват включает ленивый поток и `StreamFailureError`; частичный результат
-  не публикуется. Версии 97/72 сохранены. Synthetic Astra xhigh: 0 P1/P2,
-  не human/production acceptance.
-  [Проверки и границы](docs/DECISIONOPS_CAPTURE_DRIVER_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

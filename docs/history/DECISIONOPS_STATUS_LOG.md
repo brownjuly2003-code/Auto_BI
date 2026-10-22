@@ -10,6 +10,22 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-70: отказ runtime-настройки не доказывает превышение бюджета
+
+Точный локальный `ProgrammingError` для настройки, переданной ClickHouse runtime command,
+даёт факт без counters, checked bounds и exceeded bound. `dwh.cost` называет каждый
+объявленный runtime-потолок `cost.not_measured` (review); каталог сохраняется, запрос
+без лимитов не повторяется. Превышение времени требует server code 159, байтов чтения —
+307 с соответствующим detail; посторонние ошибки сохраняют прежнюю границу отказа.
+Версии 98/73. На одноразовом Mac ClickHouse 24.8.14.39 воспроизведено старое ложное
+превышение для readonly=1; исправление, успешный readonly=2 и настоящие byte/timeout
+превышения проверены. Первичный red: 30 failed, 2 passed; реальные ответы дополнительно
+дали 3 failed, 1 passed до уточнения классификатора. Смежный набор: 368 passed;
+Ruff, Black, strict mypy Linux/Windows чистые. Реализовал Codex при недоступной
+`gpt-5.6-luna`; synthetic Astra xhigh выбрала срез и проверила итог: 0 P1/P2,
+не human/production acceptance.
+[Проверки и границы](../DECISIONOPS_RUNTIME_SETTINGS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-69: однострочный отказ quoting environment probe
 
 `decision verify --dwh` переводит только локальный `UnsafeIdentifierError` из

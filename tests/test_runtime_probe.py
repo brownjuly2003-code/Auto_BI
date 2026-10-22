@@ -120,7 +120,7 @@ def test_clickhouse_does_not_claim_an_unreported_zero_bound_was_checked() -> Non
 @pytest.mark.parametrize(
     ("message", "expected"),
     [
-        ("Code: 158. TOO_MANY_ROWS_OR_BYTES: max_bytes_to_read exceeded", CostBound.SCANNED_BYTES),
+        ("Code: 307. TOO_MANY_BYTES: max_bytes_to_read exceeded", CostBound.SCANNED_BYTES),
         ("Code: 159. TIMEOUT_EXCEEDED: max_execution_time exceeded", CostBound.TIMEOUT),
     ],
 )
