@@ -493,7 +493,8 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 102 — chart references and gap subjects in the impact summary are literal text.
 #: 103 — whole chart gap explanations in the impact summary are literal text.
 #: 104 — semantic change explanations in the impact summary are literal text.
-VERIFIER_VERSION = "104"
+#: 105 — chart impact explanations in the summary are literal text.
+VERIFIER_VERSION = "105"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

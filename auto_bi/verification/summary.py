@@ -235,7 +235,8 @@ def _impact_section(
             # dashboard for. The relation says whether it *is* the metric or merely reads
             # the column, because those are different things to go and check.
             lines.append(
-                f"  - chart {_literal(chart.ref)} — {chart.relation.value}: {chart.detail}"
+                f"  - chart {_literal(chart.ref)} — {chart.relation.value}: "
+                f"{_literal(chart.detail)}"
             )
         if item.severity is not item.classified_severity:
             lines.append(
