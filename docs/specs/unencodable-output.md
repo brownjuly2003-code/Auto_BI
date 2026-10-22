@@ -310,10 +310,12 @@ Command handlers, evidence and verifier/check versions SHALL NOT change.
   of `decision verify` and closes — the 33 lines of the answer are in the pipe by then, and the
   command exits 0 and says nothing.
 - A path whose name holds a lone surrogate outside U+DC80 to U+DCFF cannot be handed in on a
-  POSIX command line. In the process, `decision investigate` over a plan path that holds U+D800
-  ends in `UnicodeEncodeError` where the plan is opened, at HEAD and with this requirement in
-  place: the filesystem has no form for the name, and that is no `OSError`. `decision validate`
-  reads such a path as one that is not there.
+  POSIX command line. Before T-74, an in-process `decision investigate` call over a plan path
+  with U+D800 ended in `UnicodeEncodeError` when opening it. Since T-74, that failure while
+  loading a plan or result is `cannot read <path>: UnicodeEncodeError`, exit 2, before any
+  output is written ([input refusals](unreadable-inputs.md)). Readable names, including
+  surrogateescape paths, retain their behavior. Output paths and other commands are outside
+  that change; `decision validate` reads such an unencodable path as one that is not there.
 - T-60's original probes ran on macOS. T-71/T-72 test parser output on Windows/Python 3.13.7
   with explicitly encoded strict streams and real ASCII/Latin-1 subprocesses; automatic
   selection of the Windows console code page was not tested.

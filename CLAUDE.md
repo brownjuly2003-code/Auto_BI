@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-74: некодируемое имя входа investigation даёт exit 2 без traceback,
+  чтения поздних входов и создания output. Версии 98/73; профильный набор: 258 passed.
+  Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance. Полный baseline прерван.
+  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_PATH_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-73: две устаревшие границы capture в спецификациях согласованы с T-67:
   перечисленные ошибки драйвера дают одну строку, exit 2, без результата и повторного запроса.
   Только документация; версии 98/73. Capture и docs-as-code: 66 passed.
@@ -97,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   exit остаётся 2; usage/version и прочие ошибки записи сохраняют контракт. Версии 98/73.
   Смежные проверки: 282 passed; Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_PARSER_DIAGNOSTICS_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-71: CLI-справка под ASCII/Latin-1 печатает escape вместо traceback,
-  exit 0; остальные parser messages и обработчики сохранены. Версии 98/73.
-  Смежные проверки: 244 passed; Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_HELP_ENCODING_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

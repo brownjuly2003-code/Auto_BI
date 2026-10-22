@@ -961,6 +961,18 @@ the results in the order they are given; the first input that is refused ends th
   is not a valid <kind>: <refusals>`, the kind being `InvestigationPlan` or
   `CanonicalMetricResult`.
 
+Since T-74, a `UnicodeEncodeError` while loading a plan or result input SHALL use the same
+unreadable-input refusal: `cannot read <path>: UnicodeEncodeError`. This includes a filename
+the filesystem cannot encode. The exception's text SHALL NOT be printed. The application
+SHALL retain the original error as the cause and SHALL NOT read later inputs or create the
+output directory or its missing parent. The CLI prints the path through its existing
+encoding-safe output function.
+
+This handles an actual load failure, not a character blacklist for paths. Names the
+filesystem can read, including POSIX surrogateescape names, remain accepted; a successful
+run keeps the same artifact bytes. Other unexpected exceptions, such as `RuntimeError` or
+`UnicodeTranslateError`, still propagate. Output paths and other commands are outside T-74.
+
 The refusals SHALL be one line: `<place>: <reason>` for each of the first three errors of the
 schema, joined by `; `, and after them `; (+<n> more)` when the schema has `n` more. The place
 is the steps to what is refused, joined by `.`: names of fields, indices of lists counted from 0
@@ -999,6 +1011,15 @@ In the scenarios below *the inputs* are the fixture plan `weekly_margin.yaml` an
   the class and the message being what the interpreter raises for the line alone — for the line
   nested past the stack, the class `RecursionError` and whatever it says there
 - **AND** the output directory does not exist
+
+### Scenario: the filesystem cannot encode an investigation input's name
+
+- **GIVEN** a plan or result input whose load raises `UnicodeEncodeError`
+- **WHEN** `decision investigate` reads that input
+- **THEN** it exits 2, stdout is empty and stderr names the path and `UnicodeEncodeError`
+- **AND** the exception's text is not printed, later inputs are not read and no output
+  directory or missing parent is created
+- **AND** strict ASCII or UTF-8 stderr escapes a surrogate in the path instead of raising
 
 ### Scenario: an input PyYAML refuses is named with the position
 

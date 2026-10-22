@@ -178,7 +178,7 @@ def _load_input[Input: (InvestigationPlan, CanonicalMetricResult)](
     """
     try:
         return kind.load(path)
-    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+    except (OSError, UnicodeDecodeError, UnicodeEncodeError, yaml.YAMLError) as exc:
         raise OfflineInvestigationError(f"cannot read {path}: {unread_reason(exc)}") from exc
     except ValidationError as exc:
         raise OfflineInvestigationError(

@@ -12,7 +12,16 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-73, 2026-10-22):** две устаревшие границы capture в спецификациях
+**Последний срез (T-74, 2026-10-22):** отказ кодирования имени plan/result у
+`decision investigate` даёт одну строку с `UnicodeEncodeError` и exit 2 без traceback.
+Более поздние входы не читаются, output и отсутствующий parent не создаются;
+читаемые Unicode-имена сохраняют поведение и байты артефактов. Версии 98/73 прежние.
+Профильные проверки: 258 passed; Ruff, Black и strict mypy Linux/Windows чистые.
+Выбор и review кода, тестов и контракта — synthetic Astra xhigh: 0 P1/P2,
+не human/production acceptance. Полный baseline прерван, итогового результата нет.
+[Проверки и границы T-74](DECISIONOPS_INVESTIGATION_PATH_CHECKS_2026-10-22.md).
+
+**Предыдущий срез (T-73, 2026-10-22):** две устаревшие границы capture в спецификациях
 [stated-run-facts](specs/stated-run-facts.md) и [unreadable-inputs](specs/unreadable-inputs.md)
 согласованы с T-67: перечисленные ошибки драйверов дают одну строку, exit 2, без результата
 и повтора запроса. Остальные исключения сохраняют прежние границы. Изменена только

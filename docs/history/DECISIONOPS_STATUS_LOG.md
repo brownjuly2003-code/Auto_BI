@@ -10,6 +10,23 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-74: некодируемое имя входа investigation
+
+`decision investigate` переводит `UnicodeEncodeError` от загрузки plan/result в
+однострочный отказ `cannot read <path>: UnicodeEncodeError`, exit 2, пустой stdout.
+Исходная причина сохранена, её текст не печатается. Более поздние входы не читаются;
+выходной каталог и отсутствующий parent не создаются. Читаемые Unicode-имена и
+U+DCFF дают прежние байты артефактов; неожиданные исключения сохраняют свои границы.
+Output paths и другие команды не менялись; версии evidence 98/73 прежние.
+Red: 6 failed, 5 passed; финальный профильный набор: 258 passed, exit 0.
+Ruff, Black и package-wide strict mypy Linux/Windows чистые.
+Реализовал Codex при недоступной `gpt-5.6-luna`; выбор и review кода, тестов,
+спецификаций и архитектуры — synthetic Astra xhigh: 0 P1/P2.
+Записи статуса и отчёт проверены Codex; это не human/production acceptance.
+Полный baseline на исходном HEAD намеренно прерван до правки, итогового результата нет.
+Mac-проба подтверждает только отказ stdlib на Python 3.9.6, не запуск проекта.
+[Проверки и границы](../DECISIONOPS_INVESTIGATION_PATH_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-73: согласованы границы ошибок capture
 
 Устаревшие абзацы Known boundaries в [stated-run-facts](../specs/stated-run-facts.md) и
