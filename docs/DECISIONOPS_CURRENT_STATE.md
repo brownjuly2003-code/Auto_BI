@@ -12,7 +12,20 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=98`, `CHECK_VERSION=73`
 
-**Последний срез (T-76, 2026-10-22):** разные допустимые пары шага и метрики больше
+**Последний срез (T-77, 2026-10-22):** нарушение causal-wording policy при подстановке
+category/unit в brief даёт управляемый отказ: CLI exit 2, одна строка без входных
+значений, output и отсутствующий parent не создаются. Остальные исключения не
+подавляются; сам запрет и версии 98/73 прежние. Investigation и смежные проверки:
+381 passed (305 профильных, 76 документационных/контрактных).
+Успешные четыре payload сохранены побайтно. Synthetic Astra xhigh: 0 P1/P2,
+не human/production acceptance.
+[Проверки и границы T-77](DECISIONOPS_INVESTIGATION_POLICY_CHECKS_2026-10-22.md).
+
+Полный baseline, начатый до T-77: 6401 passed, 109 skipped, 38 deselected и один
+отказ SQLite performance budget (25.66s вместо <5s); отдельно тот же тест прошёл.
+Нестабильность времени не устранена; полного green gate финального кода нет.
+
+**Предыдущий срез (T-76, 2026-10-22):** разные допустимые пары шага и метрики больше
 не сталкиваются по evidence ID offline investigation. ID использует SHA-256 полной
 canonical пары; Markdown явно называет шаг и метрику. Новые brief bytes/digest
 меняются, прежний JSON читается; plan/results и версии 98/73 прежние.

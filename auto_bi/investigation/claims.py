@@ -6,7 +6,7 @@ import re
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
 
 from auto_bi.evidence.canonical import canonical_bytes, sha256_digest
 from auto_bi.evidence.model import Claim, ClaimType, ComparisonSemantics
@@ -28,10 +28,15 @@ _CAUSAL_WORDING = re.compile(
     r"\b(?:caus(?:e|ed|es|ing|al|ality)|because|due\s+to|" r"причин\w*|вызвал\w*|из-за)\b",
     re.IGNORECASE,
 )
+_CAUSAL_POLICY_REASON = "causal wording is forbidden in the offline investigation alpha"
 
 
 class BriefCompilationError(ValueError):
     """The supplied outputs cannot produce a complete, bounded brief."""
+
+
+class _CausalWordingError(ValueError):
+    """Distinguish the wording policy from unexpected block validation failures."""
 
 
 type EvidenceOutput = Annotated[
@@ -87,7 +92,7 @@ class BriefBlock(StrictModel):
         if self.kind is not BriefBlockKind.GAP and not self.claim_ids:
             raise ValueError("a factual brief block requires at least one claim")
         if _CAUSAL_WORDING.search(f"{self.title}\n{self.body}"):
-            raise ValueError("causal wording is forbidden in the offline investigation alpha")
+            raise _CausalWordingError(_CAUSAL_POLICY_REASON)
         return self
 
 
@@ -225,7 +230,15 @@ def compile_brief(plan: InvestigationPlan, outputs: list[SkillResult]) -> Invest
                 output=output,
             )
         )
-        output_claims, block = _compile_output(artifact_id, output)
+        try:
+            output_claims, block = _compile_output(artifact_id, output)
+        except ValidationError as exc:
+            errors = exc.errors(include_url=False, include_input=False)
+            if len(errors) != 1 or not isinstance(
+                errors[0].get("ctx", {}).get("error"), _CausalWordingError
+            ):
+                raise
+            raise BriefCompilationError(_CAUSAL_POLICY_REASON) from exc
         claims.extend(output_claims)
         blocks.append(block)
 

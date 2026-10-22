@@ -10,6 +10,24 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-77: управляемый отказ causal-wording policy investigation
+
+Подставленные category/unit, нарушающие существующий запрет причинных формулировок,
+больше не завершают offline investigation необработанной `ValidationError`.
+Компилятор различает эту policy-ошибку по собственному типу и переводит только её
+в `BriefCompilationError`; application и CLI возвращают штатный отказ, exit 2.
+Диагностика фиксированная, без входных значений; output и отсутствующий parent
+не создаются. Прочие исключения, сам запрет и версии verifier 98 / check 73 прежние.
+
+Реализация — Codex при недоступной `gpt-5.6-luna`; выбор и review — synthetic Astra
+xhigh, 0 открытых P1/P2, не human/production acceptance. Red: 6 failed, 2 passed;
+investigation и смежные проверки: 381 passed (305 + 76). Успешные четыре payload
+сохранены побайтно; Ruff, Black и package-wide strict mypy Linux чистые.
+Полный baseline, начатый до правки: 6401 passed, 109 skipped, 38 deselected,
+1 failed (SQLite write budget, 25.66s при лимите 5s). Отдельная диагностика —
+1 passed, call 0.84s; полного green gate финального кода нет.
+Подробные проверки — [T-77](../DECISIONOPS_INVESTIGATION_POLICY_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-76: различимая идентичность evidence investigation
 
 Устранены коллизии между сегментами metric ref и между границами step/metric при
