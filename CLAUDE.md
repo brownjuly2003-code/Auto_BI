@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-94: весь ProductImpact.subject в summary — буквальный текст.
+  Raw subject, привязки impact и grading прежние; verifier 107/check 73; реализация Codex.
+  354 passed; Ruff/Black и strict mypy Linux/Windows чистые; docs/new tests: 31 passed.
+  Synthetic Astra xhigh: 0 actionable findings, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_SUMMARY_IMPACT_SUBJECTS_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-93: все CheckResult.detail в summary — буквальный текст во всех разделах.
   Raw findings/grading прежние; verifier 106/check 73; реализация Codex.
   348 passed; Ruff/Black и strict mypy Linux/Windows чистые; docs/new tests: 59 passed.
@@ -98,10 +103,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Verifier 105/check 73; смежный набор: 314 passed; strict mypy Linux/Windows чистый.
   Ruff/Black чистые; docs/new tests: 36 passed; Codex; synthetic Astra xhigh: 0 findings, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_SUMMARY_CHART_DETAILS_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-91: весь ProductImpact.detail в summary — буквальный текст; raw detail/grading прежние.
-  Verifier 104/check 73; смежный набор: 303 passed; strict mypy Linux/Windows чистый.
-  Ruff/Black чистые; docs/new tests: 32 passed; Codex; synthetic Astra xhigh: 0 findings, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_SUMMARY_IMPACT_DETAILS_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

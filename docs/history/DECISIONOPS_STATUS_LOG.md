@@ -10,6 +10,18 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-22 — T-94: буквальные subjects semantic impact в summary
+
+Изменение типа governed-поля переносило свободное имя в ProductImpact.subject,
+добавляя ложные Verdict/Owner action при BLOCK. Весь subject теперь проходит
+`_literal`; raw subject, привязки impact и grading сохранены. Остальные поля вне среза.
+Verifier 106 → 107, check 73; новые run IDs меняются. Подтверждённый red: 4 failed,
+2 passed; смежный green: 354 passed. Ruff/Black и strict mypy Linux/Windows чистые;
+docs/new tests: 31 passed. Реализация Codex при недоступной `gpt-5.6-luna`;
+выбор и финальное ревью — synthetic Astra xhigh: 0 actionable findings,
+не human/production acceptance.
+[Проверки и границы](../DECISIONOPS_SUMMARY_IMPACT_SUBJECTS_CHECKS_2026-10-22.md).
+
 ## 2026-10-22 — T-93: буквальные пояснения всех проверок в summary
 
 Role/target/evidence из environment facts попадали в raw CheckResult.detail и
