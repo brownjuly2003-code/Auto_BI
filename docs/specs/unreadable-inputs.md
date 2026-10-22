@@ -2224,6 +2224,28 @@ SHALL never remove an existing output path. If removing its temporary directory 
 the error SHALL name both the original failure and the cleanup failure; a temporary directory
 may remain. Parent directories created for the output may also remain.
 
+Since T-75, a `UnicodeEncodeError` during output preparation, writing or publication SHALL
+follow that same refusal and cleanup path. The diagnostic SHALL be `cannot write output
+directory <path>: UnicodeEncodeError`, without the exception's text. Paths containing
+nonprintable characters SHALL be quoted and escaped with `filesystem.display_path` in this
+diagnostic, including the temporary path if cleanup fails. When cleanup succeeds or is not
+needed, the original error SHALL remain the direct cause; when cleanup fails, its error
+SHALL be the direct cause, as before. The CLI SHALL use its existing encoding-safe error
+output. Readable
+Unicode paths SHALL keep their behavior and artifact bytes; names SHALL NOT be rejected
+by character inspection. Other exception classes, including `ValueError` and
+`UnicodeTranslateError`, SHALL keep their existing boundaries.
+
+### Scenario: the filesystem cannot encode the output path
+
+- **WHEN** creating the output parent raises `UnicodeEncodeError`
+- **THEN** the command exits 2 without success output or an output directory.
+- **WHEN** publication raises `UnicodeEncodeError` after all four staged files were written
+- **THEN** the command exits 2, removes its temporary directory and leaves no output path.
+- **AND** after successful cleanup stderr names the output path and error class in one
+  encoding-safe line (also for a name with LF or CR), without
+  the original exception's text; an existing output remains untouched.
+
 ### Scenario: a write fails after leaving a partial artifact
 
 - **WHEN** any of the four artifact writes leaves a prefix and raises `OSError`

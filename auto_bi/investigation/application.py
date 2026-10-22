@@ -147,7 +147,11 @@ def write_offline_investigation(
             raise OfflineInvestigationError(f"output directory already exists: {target}")
         os.rename(staging, target)
         staging = None
-    except (OfflineInvestigationError, OSError) as exc:
+    except (OfflineInvestigationError, OSError, UnicodeEncodeError) as exc:
+        detail = type(exc).__name__ if isinstance(exc, UnicodeEncodeError) else str(exc)
+        output_name = (
+            filesystem.display_path(target) if isinstance(exc, UnicodeEncodeError) else str(target)
+        )
         if staging is not None:
             try:
                 shutil.rmtree(staging)
@@ -155,14 +159,22 @@ def write_offline_investigation(
                 reason = (
                     str(exc)
                     if isinstance(exc, OfflineInvestigationError)
-                    else f"cannot write output directory {target}: {exc}"
+                    else f"cannot write output directory {output_name}: {detail}"
+                )
+                temporary_name = (
+                    filesystem.display_path(staging)
+                    if isinstance(exc, UnicodeEncodeError)
+                    else str(staging)
                 )
                 raise OfflineInvestigationError(
-                    f"{reason}; cannot clean temporary output directory {staging}: {cleanup_exc}"
+                    f"{reason}; cannot clean temporary output directory "
+                    f"{temporary_name}: {cleanup_exc}"
                 ) from cleanup_exc
         if isinstance(exc, OfflineInvestigationError):
             raise
-        raise OfflineInvestigationError(f"cannot write output directory {target}: {exc}") from exc
+        raise OfflineInvestigationError(
+            f"cannot write output directory {output_name}: {detail}"
+        ) from exc
     return artifacts
 
 

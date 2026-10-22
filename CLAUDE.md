@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-22 — T-75: отказ кодирования output-пути investigation даёт exit 2 и очистку staging;
+  непечатаемые символы пути экранируются. Версии 98/73; профильный набор: 278 passed.
+  Codex; synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_OUTPUT_PATH_CHECKS_2026-10-22.md).
 - 2026-10-22 — T-74: некодируемое имя входа investigation даёт exit 2 без traceback,
   чтения поздних входов и создания output. Версии 98/73; профильный набор: 258 passed.
   Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance. Полный baseline прерван.
@@ -97,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   перечисленные ошибки драйвера дают одну строку, exit 2, без результата и повторного запроса.
   Только документация; версии 98/73. Capture и docs-as-code: 66 passed.
   Выбор и review спецификаций — synthetic Astra xhigh: 0 P1/P2, не human acceptance.
-- 2026-10-22 — T-72: Unicode в ошибках argparse на strict stderr получает escape,
-  exit остаётся 2; usage/version и прочие ошибки записи сохраняют контракт. Версии 98/73.
-  Смежные проверки: 282 passed; Codex; synthetic Astra xhigh: 0 P1/P2, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_PARSER_DIAGNOSTICS_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 
