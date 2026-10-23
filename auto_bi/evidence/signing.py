@@ -123,12 +123,12 @@ def load_ed25519_signer(path: str | Path) -> Ed25519Signer:
     except (TypeError, ValueError, UnsupportedAlgorithm) as exc:
         raise EvidenceSignatureError(
             "evidence.signing_key_invalid",
-            f"cannot load Ed25519 PKCS#8 private key {source}",
+            f"cannot load Ed25519 PKCS#8 private key {filesystem.display_path(source)}",
         ) from exc
     if not isinstance(key, Ed25519PrivateKey):
         raise EvidenceSignatureError(
             "evidence.signing_key_invalid",
-            f"private key {source} is not Ed25519",
+            f"private key {filesystem.display_path(source)} is not Ed25519",
         )
     return Ed25519Signer(key)
 
@@ -150,12 +150,12 @@ def load_ed25519_trust_store(paths: list[str | Path]) -> Ed25519TrustStore:
         except (ValueError, UnsupportedAlgorithm) as exc:
             raise EvidenceSignatureError(
                 "evidence.trust_key_invalid",
-                f"cannot load Ed25519 public trust key {source}",
+                f"cannot load Ed25519 public trust key {filesystem.display_path(source)}",
             ) from exc
         if not isinstance(key, Ed25519PublicKey):
             raise EvidenceSignatureError(
                 "evidence.trust_key_invalid",
-                f"public trust key {source} is not Ed25519",
+                f"public trust key {filesystem.display_path(source)} is not Ed25519",
             )
         keys.append(key)
     return Ed25519TrustStore(keys)

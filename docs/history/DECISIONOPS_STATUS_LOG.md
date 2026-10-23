@@ -10,6 +10,27 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-104: буквальные пути в invalid-key диагностике
+
+Четыре сообщения invalid key в Ed25519 loaders вставляли raw source: читаемый файл
+с U+2028 в имени разбивал диагностический текст на строки при отказе PEM parser или
+при ключе другого алгоритма. Все четыре сообщения теперь используют display_path;
+обычные Unicode-имена сохраняют прежний текст. Коды signing_key_invalid/trust_key_invalid,
+исходные причины, политика доверия и успешные payload не менялись.
+
+Восемь тестов test_evidence_invalid_key_paths.py используют реальные временные файлы
+и parsers: private/public × malformed PEM/EC key × Unicode/U+2028. Проверяются точные
+loader detail/code/cause, CLI exit 2, пустой stdout и одна строка stderr, отсутствие
+verify/locate_evidence/output, неизменность файла ключа. До исправления — 4 failed,
+4 passed; после — 8 passed. Нативные LF/ESC-имена и Mac/Linux не проверялись.
+
+Windows: все test_evidence*.py через rg --files плюс test_decision_cli.py —
+211 passed, 13 skipped, exit 0. Ruff и Black --check двух затронутых Python-файлов,
+uv run mypy --platform win32 --strict auto_bi/evidence/signing.py — exit 0.
+Выбор и финальное synthetic review — Astra xhigh, actionable findings нет;
+не human/production acceptance. Реализация — Codex, gpt-5.6-luna недоступна.
+Версии evidence 108/73 прежние. Полный offline gate не запускался.
+
 ## 2026-10-23 — T-103: штатный отказ чтения некодируемого пути ключа
 
 Загрузчики Ed25519 private/trust keys перехватывали только OSError; UnicodeEncodeError

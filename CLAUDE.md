@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-104: пути в invalid-key диагностике Ed25519 выводятся безопасно.
+  Реальные U+2028-имена не добавляют строк; коды ошибок и версии 108/73 прежние.
+  Codex; evidence/decision CLI — 211 passed, 13 skipped; Ruff/Black/strict mypy win32 чистые.
+  Synthetic Astra xhigh без замечаний, не human acceptance. Подробности — в журнале T-104.
 - 2026-10-23 — T-103: encoding refusal при чтении Ed25519 ключа даёт exit 2.
   Путь в unreadable-диагностике безопасен; версии 108/73 прежние. Codex; Windows:
   evidence и decision CLI — 203 passed, 13 skipped; Ruff/Black и strict mypy win32 чистые.
@@ -97,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Точная граница разрешена, превышение останавливает CLI до записи; версии 108/73 прежние.
   Codex; Windows: весь investigation — 433 passed, Ruff/Black чистые; три мутанта обнаружены.
   Synthetic Astra xhigh без замечаний, не human acceptance. Подробности — в журнале T-102.
-- 2026-10-23 — T-101: тесты совместного отказа output collision и cleanup.
-  Обе причины сохранены, чужой output неизменен; продуктовый код и версии 108/73 прежние.
-  Codex; Windows: весь investigation — 421 passed, Ruff/Black чистые.
-  Synthetic Astra xhigh без замечаний, не human acceptance. Подробности — в журнале T-101.
 
 ## Definition of done (фаза/задача)
 
