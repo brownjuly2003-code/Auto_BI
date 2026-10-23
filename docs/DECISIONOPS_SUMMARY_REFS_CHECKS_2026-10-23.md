@@ -88,4 +88,30 @@ uv run --frozen --with mypy --with types-PyYAML mypy --platform linux --strict a
 uv run --frozen --with mypy --with types-PyYAML mypy --platform win32 --strict auto_bi
 ```
 
-Live DWH и Mac не запускались.
+## Полный прогон на Mac
+
+После коммита, дерево `db54a05` (`8b057fc`), imac-julia, с DuckDB, `-p no:randomly`:
+
+- Python 3.13.13: **6 failed, 6796 passed, 17 skipped, 38 deselected in 290.97s**.
+  Black (`auto_bi`, `tests`), Ruff по всему репозиторию, mypy `--platform linux`,
+  strict Linux и strict win32 (122 source files) — exit 0.
+- Python 3.12: **6 failed, 6796 passed** in 290.53s; Python 3.14.6: **6 failed,
+  6796 passed** in 251.98s; skipped и deselected те же.
+- Все три раза падают одни и те же шесть тестов. Их три модуля на `7363962` (до T-95
+  и его тестового коммита) дают **6 failed, 51 passed**, на дереве T-95 — столько же.
+  Это не регрессия T-95, а тесты T-74, T-75 и T-82, которые запускались только на
+  Windows:
+  - четыре варианта `test_artifact_read_refuses_manifest_beyond_json_parser_depth`
+    ждут `RecursionError` JSON-декодера на вложенности 3000. Такой C-лимит рекурсии
+    у CPython на Windows; на macOS декодер эту вложенность разбирает, и manifest
+    отвергает уже валидация `EvidenceBundle`. Ответ reader тот же —
+    `EvidenceReadError` «no readable manifest.json», — но ветка `RecursionError`
+    на macOS не проверяется. По исходникам CPython 3.12/3.13 лимит вне Windows —
+    10000, так что Linux CI, вероятно, тоже красный; запуском на Linux не проверено.
+  - `test_encodable_output_paths_keep_artifact_bytes` (кейс с одиночным суррогатом
+    U+DCFF в имени output) и `test_readable_unicode_input_names_keep_the_artifact_bytes`
+    (кейс `surrogateescape`): APFS не принимает имя с байтом вне UTF-8
+    (`Errno 92 Illegal byte sequence`). Первый получает управляемый отказ записи
+    output, второй падает ещё при создании входного файла в тесте.
+
+Live DWH не запускался.

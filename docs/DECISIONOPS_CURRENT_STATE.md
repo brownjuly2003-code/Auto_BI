@@ -16,7 +16,11 @@ human/design-partner outcome не измерен и не требуется дл
 Windows/Python 3.13.7, без DuckDB: **9 failed, 6703 passed, 107 skipped, 38 deselected**.
 Все 9 — среда при нехватке памяти: 8 подпроцессов с `0xC0000142` и wall-clock бюджет
 SQLite; их три модуля отдельно — **170 passed**. С T-93 набор был красным (13 тестов
-искали в summary сырой detail) — исправлено. Live DWH/Mac не проверялись.
+искали в summary сырой detail) — исправлено. Mac, Python 3.12/3.13/3.14 с DuckDB: каждый
+прогон — **6 failed, 6796 passed**; Black, Ruff и mypy как в CI чистые. Те же шесть
+падают и до T-95: тесты T-74/T-75/T-82 непереносимы на macOS (APFS не принимает имя
+не в UTF-8; вложенность 3000 превышает лимит JSON-декодера только на Windows).
+Live DWH не проверялся.
 [Проверки и границы](DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md); предыдущая полная
 проверка — T-86, [команды и границы](DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 
