@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-100: тестами закреплён runtime budget investigation на границах этапов.
+  Продуктовый код прежний; 12 новых тестов, весь investigation — 419 passed, Ruff/Black чистые.
+  Четыре in-memory мутанта обнаружены; synthetic Astra xhigh без замечаний, не human acceptance.
+  Codex; подробности — в журнале T-100, версии 108/73 прежние.
 - 2026-10-23 — T-99: compiler сверяет dimension/top_n готовых outputs с объявленным шагом.
   Несовпадение — BriefCompilationError; GAP, соответствующие outputs и версии 108/73 прежние.
   Codex; все investigation: 407 passed, Ruff/Black и strict mypy win32 compiler чистые.
@@ -98,11 +102,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Codex; Windows: 395 investigation-тестов прошли, Ruff/Black чистые; полного gate не было.
   Synthetic Astra xhigh: функциональных замечаний нет; замечание о LF исправлено.
   Подробности — в журнале статуса T-98; не human acceptance, версии 108/73 прежние.
-- 2026-10-23 — T-97: step id в заголовке GAP investigation `brief.md` — буквальный текст.
-  `null-_dimension_-check` больше не уходит в курсив; raw title, JSON/digests и версии 108/73 прежние.
-  Mac 3.12/3.13/3.14: 6809 passed; после правки теста по ревью gate 3.13: 6811 passed, линтеры чистые.
-  Claude Opus 5.5; Astra xhigh: 1 P2 (байты заголовка не закреплены тестом) исправлено, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md).
 
 ## Definition of done (фаза/задача)
 

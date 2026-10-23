@@ -10,6 +10,30 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-100: проверки runtime budget investigation
+
+Tests-only срез закрепляет существующий контракт `max_runtime_ms`: ровно лимит разрешён,
+превышение на 1 нс даёт exit 2 до создания output. Проверены границы до первого skill,
+после первого и последнего skill, после настоящего compiler; отказ не запускает
+следующие этапы. На успешном пути сохранены четыре artifacts, plan digest и семь claims.
+Часы детерминированы, начало ненулевое; нет sleep и фиксации числа обращений к часам.
+Обёртки исполняют настоящий CLI/application/skills/compiler, подставных outputs нет.
+
+Runtime budget — проверки между этапами, не прерывание вычислений и не ограничение
+полного wall time с загрузкой YAML, сериализацией и записью. Продуктовый код, evidence
+и версии skill/verifier/check прежние. Оснований дублировать stop-GAP policy в compiler
+или вводить раннюю остановку группировки найдено не было; эти изменения не выполнялись.
+
+Выбор и финальное synthetic review — Astra xhigh по ADR 0006: замечаний нет;
+не human/production acceptance. Реализация — Codex; gpt-5.6-luna недоступна.
+Windows, `.venv\Scripts\python.exe -m pytest tests/test_investigation_runtime_budget.py -q`:
+12 passed. Весь `tests/test_investigation*.py` через список `rg --files` и pytest:
+419 passed, exit 0. Ruff и Black `--check` нового модуля — exit 0.
+Четыре локальных in-memory мутанта в отдельных pytest-процессах обнаружены assertions:
+удаление проверки до skill, после skill, после compiler — по 1 failed;
+замена `>` на `>=` — 4 failed. Исходные продуктовые файлы при этом не менялись.
+Полный offline gate и Mac/Linux после добавления тестов не запускались.
+
 ## 2026-10-23 — T-99: параметры output соответствуют объявленному шагу
 
 `compile_brief` принимал настоящий результат другого валидного плана с теми же
