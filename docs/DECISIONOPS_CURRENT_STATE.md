@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-22
+**Обновлено:** 2026-10-23
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,15 +10,27 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=107`, `CHECK_VERSION=73`
+**Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Полная offline-проверка после T-86 (2026-10-22):** код `7453e3f`, Windows/Python 3.13.7:
-**6582 passed, 134 skipped, 38 deselected**, exit 0 (без DuckDB).
-Отдельный профиль SQL-преобразований с DuckDB: **15 passed**, exit 0; результаты
-не суммируются. Live DWH/Mac не проверялись.
-[Команды и границы](DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
+**Полная offline-проверка после T-95 (2026-10-23):** итоговое дерево T-95,
+Windows/Python 3.13.7, без DuckDB: **9 failed, 6703 passed, 107 skipped, 38 deselected**.
+Все 9 — среда при нехватке памяти: 8 подпроцессов с `0xC0000142` и wall-clock бюджет
+SQLite; их три модуля отдельно — **170 passed**. С T-93 набор был красным (13 тестов
+искали в summary сырой detail) — исправлено. Live DWH/Mac не проверялись.
+[Проверки и границы](DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md); предыдущая полная
+проверка — T-86, [команды и границы](DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 
-**Последний срез (T-94, 2026-10-22):** весь `ProductImpact.subject` в summary
+**Последний срез (T-95, 2026-10-23):** ref продукта в заголовке summary и refs
+метрик и дашбордов в строках impact выводятся буквально. Валидный ref с `-_x_-`
+больше не теряет подчёркивания в курсиве и не склеивается с соседним ref; raw refs
+и grading сохранены. Verifier 108, check 73; новые run IDs меняются.
+Отдельный коммит чинит 13 тестов, которые с T-93 искали в summary сырой detail:
+полный набор на T-93 и T-94 был красным. Реализация — Claude Opus 5.5.
+Финальное synthetic Astra xhigh: 1 P2 (описание test helper) исправлено формулировкой,
+повторного ревью не было; не human/production acceptance.
+[Проверки и границы](DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
+
+**Предыдущий срез (T-94, 2026-10-22):** весь `ProductImpact.subject` в summary
 выводится буквально. Имя governed-поля больше не добавляет ложные Verdict/Owner
 action; raw subject, привязки impact и grading сохранены. Verifier 107, check 73;
 новые run IDs меняются. Полный baseline относится к T-86.

@@ -89,7 +89,7 @@ def render_summary(
         severity for check in checks if (severity := check.severity()) is not None
     )
     lines: list[str] = [
-        f"# Release gate — {facts.product_ref}",
+        f"# Release gate — {_literal(facts.product_ref)}",
         "",
         f"**Verdict:** {verdict.value}",
         f"**Run:** {facts.run_id}",
@@ -226,10 +226,12 @@ def _impact_section(
             # adds a word and no fact.
             ("metrics", [] if item.metrics == [item.subject] else item.metrics),
             ("dashboards", item.dashboards),
-            ("owners", [_literal(owner) for owner in item.owners]),
+            ("owners", item.owners),
         ):
+            # Refs are data like the owners: even a grammar-valid `a-_b_-c` would otherwise
+            # render as emphasis and drop the underscores an owner copies the ref by.
             if refs:
-                lines.append(f"  - {label}: {', '.join(refs)}")
+                lines.append(f"  - {label}: {', '.join(_literal(ref) for ref in refs)}")
         for chart in item.charts:
             # The tile, not just the folder it sits in: the one line an owner opens the
             # dashboard for. The relation says whether it *is* the metric or merely reads

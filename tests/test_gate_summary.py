@@ -28,7 +28,6 @@ from auto_bi.verification.release_gate import (
 )
 from auto_bi.verification.summary import SummaryFacts, render_summary
 from tests.test_decision_verify import (
-    PRODUCT_ID,
     Case,
     _formula_change,
     budgeted_contract,
@@ -82,7 +81,7 @@ def test_the_bundle_carries_a_derived_summary(tmp_path: Path) -> None:
 def test_the_summary_names_the_verdict_the_product_and_both_snapshots(tmp_path: Path) -> None:
     report, text = run_with_summary(Case(tmp_path).with_candidate())
 
-    assert f"{PRODUCT_ID}@1" in text
+    assert r"decision\:\/\/sales\/weekly\_margin\@1" in text
     assert report.verdict.value in text
     assert report.base_digest in text
     assert report.candidate_digest in text
@@ -95,7 +94,7 @@ def test_a_blocking_run_names_what_stops_it_and_whom_it_reaches(tmp_path: Path) 
 
     assert report.verdict.value == "block"
     assert r"metric\:\/\/sales\/gross\_margin\_pct" in text
-    assert "dashboard://weekly_margin@7" in text
+    assert r"dashboard\:\/\/weekly\_margin\@7" in text
     assert r"commercial\-analytics" in text
     for check in report.blocking():
         assert check.check_id in text

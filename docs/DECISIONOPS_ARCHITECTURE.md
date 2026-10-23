@@ -620,7 +620,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=107`, `CHECK_VERSION=73`.
+`VERIFIER_VERSION=108`, `CHECK_VERSION=73`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1479,6 +1479,13 @@ findings/undone, таблице и Product scope intro. Имена ролей, t
 Весь `ProductImpact.subject` также выводится буквально: имя governed-поля не
 добавляет разметку через заголовок изменения. Raw subject и привязки impact
 сохранены; решение о достижимости продукта выполняется до рендеринга.
+Ref продукта в заголовке и refs метрик и дашбордов в строках impact также выводятся
+буквально. Грамматика ref (§7.1) допускает `_` и `-`, поэтому валидный `a-_b_-c`
+без экранирования читается как курсив: подчёркивания пропадают, а курсив может
+склеить соседние refs одного списка. Raw refs, пропуск строки metrics, равной
+subject, и grading не меняются. Без `_literal` в summary остаются только машинные
+значения и закрытые наборы: коды, check ID, статусы, run ID, digests, timestamp и
+версия verifier.
 
 ### 9.3 Integrity и подпись
 

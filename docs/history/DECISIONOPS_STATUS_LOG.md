@@ -10,6 +10,21 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-95: буквальные refs продукта, метрик и дашбордов в summary
+
+Грамматика ref допускает `_` и `-`, и валидный ref с `-_x_-` в заголовке summary и
+строках metrics/dashboards читался как курсив: подчёркивания пропадали, курсив
+склеивал соседние refs. Все эти refs теперь проходят `_literal`; raw refs, пропуск
+metrics, равной subject, и grading сохранены. Verifier 107 → 108, check 73; новые
+run IDs меняются. Red: 5 failed, 1 passed. Отдельный коммит чинит 13 тестов в шести
+модулях, которые с T-93 искали в summary сырой detail: полный набор на T-93/T-94
+был красным, смежные наборы их не включали. Полный прогон: 9 failed, 6703 passed —
+все 9 подпроцессы `0xC0000142` и wall-clock бюджет при нехватке памяти, их модули
+отдельно 170 passed. Ruff/Black и strict mypy Linux/Windows чистые. Реализация —
+Claude Opus 5.5; финальное synthetic Astra xhigh: 1 P2 (описание test helper)
+исправлено формулировкой, не human/production acceptance.
+[Проверки и границы](../DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
+
 ## 2026-10-22 — T-94: буквальные subjects semantic impact в summary
 
 Изменение типа governed-поля переносило свободное имя в ProductImpact.subject,
