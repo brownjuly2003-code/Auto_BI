@@ -21,6 +21,7 @@ from tests.test_decision_verify import (
     product_contract,
     revenue_metric,
     semantic_model,
+    shown,
     status_of,
     summary_of,
 )
@@ -110,7 +111,8 @@ def test_a_candidate_at_another_version_blocks_the_release(tmp_path: Path) -> No
     )
     stops = summary.split("What stops the release", 1)[1].split("\n## ", 1)[0]
     assert any(
-        "contracts.validate" in line and MISMATCH_DETAIL in line for line in stops.splitlines()
+        "contracts.validate" in line and MISMATCH_DETAIL in line
+        for line in shown(stops).splitlines()
     )
 
 

@@ -47,7 +47,7 @@ from tests.test_bi_contract_validation import (
 )
 from tests.test_bi_contract_validation import spec as kpi
 from tests.test_decision_cli import _verify_argv
-from tests.test_decision_verify import Case, semantic_model
+from tests.test_decision_verify import Case, semantic_model, shown
 from tests.test_semantic_gateway import model
 
 MART = "dm.sales_daily"
@@ -585,7 +585,7 @@ def test_decision_verify_exits_by_the_verdict(
     payload = json.loads((run_dir / "checks" / "check-bi.contract.json").read_text("utf-8"))
     assert [item["dashboard"] for item in payload["refused"]] == [REF]
     summary = (run_dir / "reports" / "summary.md").read_text(encoding="utf-8")
-    assert f"`bi.compile_refused` — {COMPILED_NONE}{REFUSES}{REF}" in summary
+    assert f"`bi.compile_refused` — {COMPILED_NONE}{REFUSES}{REF}" in shown(summary)
 
 
 def test_no_other_check_moves_with_a_refused_dashboard(tmp_path: Path) -> None:

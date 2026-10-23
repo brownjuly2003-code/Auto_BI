@@ -11,6 +11,7 @@ presentation-only change does not block, and the run touches no BI and no DWH.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -364,6 +365,15 @@ def summary_of(report: GateReport, check_id: str) -> str:
 
 def detail_of(report: GateReport, check_id: str) -> str:
     return next(check.detail for check in report.checks if check.check_id == check_id)
+
+
+def shown(markdown: str) -> str:
+    """Summary text with its punctuation escapes removed, to assert what a detail says.
+
+    Not a CommonMark renderer: that the summary escapes a detail at all is pinned by the
+    `_literal` tests (`tests/test_summary_check_details.py`), not by assertions using this.
+    """
+    return re.sub(r"\\([!-/:-@\[-`{-~])", r"\1", markdown)
 
 
 # --- the happy path -----------------------------------------------------------

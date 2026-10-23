@@ -26,6 +26,7 @@ from tests.test_decision_verify import (
     product_contract,
     revenue_metric,
     semantic_model,
+    shown,
     status_of,
     summary_of,
 )
@@ -197,7 +198,7 @@ def test_a_candidate_that_moves_the_pinned_metric_back_to_draft_needs_review(
     needs = summary.split("What needs a human", 1)[1].split("\n## ", 1)[0]
     assert any(
         "contracts.validate" in line and detail_of(report, "contracts.validate") in line
-        for line in needs.splitlines()
+        for line in shown(needs).splitlines()
     )
 
 

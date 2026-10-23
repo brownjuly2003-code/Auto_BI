@@ -41,6 +41,7 @@ from tests.test_decision_verify import (
     product_contract,
     revenue_metric,
     semantic_model,
+    shown,
     status_of,
     summary_of,
 )
@@ -215,7 +216,7 @@ def test_another_products_moved_pin_does_not_block_this_products_release(tmp_pat
     assert "## What stops the release" not in summary
     assert "## What needs a human" not in summary
     row = next(line for line in summary.splitlines() if line.startswith("| `contracts.validate`"))
-    assert "1 issue(s) of 1 other product(s) not graded" in row
+    assert "1 issue(s) of 1 other product(s) not graded" in shown(row)
 
 
 def _pins_unknown(case: Case) -> dict[str, Any]:

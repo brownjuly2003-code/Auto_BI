@@ -26,6 +26,7 @@ from tests.test_decision_verify import (
     product_contract,
     revenue_metric,
     semantic_model,
+    shown,
     status_of,
     summary_of,
 )
@@ -235,7 +236,7 @@ def test_a_validated_contract_that_neither_snapshot_holds_blocks_the_release(
     stops = summary.split("What stops the release", 1)[1].split("\n## ", 1)[0]
     assert any(
         "contracts.validate" in line and detail_of(report, "contracts.validate") in line
-        for line in stops.splitlines()
+        for line in shown(stops).splitlines()
     )
 
 

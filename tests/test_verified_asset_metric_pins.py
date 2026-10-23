@@ -25,6 +25,7 @@ from tests.test_decision_verify import (
     product_contract,
     revenue_metric,
     semantic_model,
+    shown,
     status_of,
     summary_of,
     verified_asset,
@@ -128,7 +129,7 @@ def test_a_pin_to_a_version_the_candidate_does_not_hold_blocks_the_release(tmp_p
     stops = text.split("What stops the release", 1)[1].split("\n## ", 1)[0]
     assert any(
         "assets.invalidated" in line and detail_of(report, "assets.invalidated") in line
-        for line in stops.splitlines()
+        for line in shown(stops).splitlines()
     )
 
 
