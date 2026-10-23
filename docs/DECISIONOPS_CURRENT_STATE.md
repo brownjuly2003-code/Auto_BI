@@ -12,7 +12,15 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Последний срез (T-98, 2026-10-23):** непечатаемые символы в диагностике отказов
+**Последний срез (T-99, 2026-10-23):** `compile_brief` отвергает готовый output
+contribution/concentration с другим измерением и concentration с другим `top_n`.
+Результат другого валидного плана больше не получает digest целевого плана.
+Граница — compiler; штатный application запускает объявленный шаг. GAP, соответствующие
+outputs и версии 108/73 прежние. Все investigation: 407 passed; Ruff/Black и strict mypy
+win32 для compiler чистые. Synthetic Astra xhigh: замечаний нет, не human acceptance.
+Проверки и ограничения — в журнале статуса T-99.
+
+**Предыдущий срез (T-98, 2026-10-23):** непечатаемые символы в диагностике отказов
 `decision investigate` выводятся видимыми escape-последовательностями. Допустимое
 имя отсутствующего dimension с LF/CR/ESC больше не создаёт лишние строки или команды
 терминала. Raw domain error, GAP detail, policy и evidence прежние; версии 108/73.

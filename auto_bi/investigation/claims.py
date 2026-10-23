@@ -230,6 +230,19 @@ def compile_brief(plan: InvestigationPlan, outputs: list[SkillResult]) -> Invest
                 f"output for step {step.step_id} has kind {output.kind}, "
                 f"expected {step.expected_evidence.value}"
             )
+        if (
+            isinstance(output, (ContributionResult, ConcentrationResult))
+            and output.dimension != step.dimensions[0]
+        ):
+            raise BriefCompilationError(
+                f"output for step {step.step_id} has dimension {output.dimension!r}, "
+                f"expected {step.dimensions[0]!r}"
+            )
+        if isinstance(output, ConcentrationResult) and output.top_n != step.top_n:
+            raise BriefCompilationError(
+                f"output for step {step.step_id} has top_n {output.top_n}, "
+                f"expected {step.top_n}"
+            )
         by_key[key] = output
 
     missing = [key for key in expected if key not in by_key]

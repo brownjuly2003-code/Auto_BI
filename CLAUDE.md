@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-99: compiler сверяет dimension/top_n готовых outputs с объявленным шагом.
+  Несовпадение — BriefCompilationError; GAP, соответствующие outputs и версии 108/73 прежние.
+  Codex; все investigation: 407 passed, Ruff/Black и strict mypy win32 compiler чистые.
+  Synthetic Astra xhigh: замечаний нет, не human acceptance. Подробности — в журнале T-99.
 - 2026-10-23 — T-98: непечатаемые символы в stderr отказов `investigate` видимы как escapes.
   Имя dimension больше не добавляет строки/команды терминала; raw ошибки и evidence прежние.
   Codex; Windows: 395 investigation-тестов прошли, Ruff/Black чистые; полного gate не было.
@@ -99,11 +103,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Mac 3.12/3.13/3.14: 6809 passed; после правки теста по ревью gate 3.13: 6811 passed, линтеры чистые.
   Claude Opus 5.5; Astra xhigh: 1 P2 (байты заголовка не закреплены тестом) исправлено, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md).
-- 2026-10-23 — T-96: тесты T-74/T-75/T-82 проходят на macOS; продуктовый код не менялся.
-  Depth-тесты — вложенность 100 000 с предусловием `RecursionError` (3000 — предел только Windows);
-  суррогатные имена — skip только при `EILSEQ` (APFS). Mac 3.12/3.13/3.14: 6800 passed, exit 0.
-  Black/Ruff/mypy чистые; Claude Opus 5.5; Astra xhigh: 1 P2 исправлено, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
 
 ## Definition of done (фаза/задача)
 

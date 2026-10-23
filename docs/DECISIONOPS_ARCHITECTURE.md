@@ -1777,6 +1777,16 @@ decimal context вызывающего потока, порядка строк �
 `brief.json` и deterministic `brief.md`; trust brief всегда `exploratory`, а human
 acceptance — `not measured`.
 
+С T-99 `compile_brief` сопоставляет параметры готового output с объявленным шагом:
+`dimension` для contribution/concentration должна совпадать с единственным измерением
+шага, а `top_n` concentration — с `step.top_n`. Несовпадение вызывает
+`BriefCompilationError` до создания brief. Одного совпадения step id, metric ref,
+skill, версии и kind недостаточно: результат другой группировки или другого top-N
+не может получить digest целевого плана. GAP этих параметров не содержит и сохраняет
+прежнюю обработку. Проверка не подтверждает арифметическую достоверность произвольного
+output; штатный application сам исполняет объявленный шаг. Соответствующие outputs,
+успешные bytes/digests и версии skill/verifier/check не меняются.
+
 `concentration_shift` требует неотрицательности каждой исходной строки canonical
 result: положительная сумма категории не компенсирует отрицательное значение
 на другом grain. С T-81 такой вход даёт `method.negative_value` GAP без concentration

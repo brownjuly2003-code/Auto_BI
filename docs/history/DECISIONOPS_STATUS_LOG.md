@@ -10,6 +10,31 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-99: параметры output соответствуют объявленному шагу
+
+`compile_brief` принимал настоящий результат другого валидного плана с теми же
+step id/metric/skill/version/kind, но с другим dimension или top_n, и связывал factual
+claims с digest целевого плана. Теперь contribution/concentration проверяют точное
+совпадение dimension с измерением шага, concentration дополнительно проверяет top_n.
+Несовпадение — `BriefCompilationError` до построения brief. GAP, соответствующие outputs,
+успешные bytes/digests и версии skill/verifier/check прежние. Штатный application сам
+запускает объявленный шаг; дефект обычного CLI этим воспроизведением не заявляется.
+Арифметическая достоверность произвольного output остаётся вне этого среза.
+
+Выбор и финальное synthetic review — Astra xhigh по ADR 0006: замечаний нет;
+не human/production acceptance. Реализация — Codex; gpt-5.6-luna недоступна.
+Нативный Windows Python: regression-модуль до правки — 4 failed, 6 passed;
+после — 10 passed, с двумя дополнительными GAP-контролями — 12 passed, exit 0.
+Финальный набор `tests/test_investigation*.py` (14 модулей через `rg --files` и массив
+аргументов PowerShell) — 407 passed, exit 0; команда `.venv\Scripts\python.exe -m pytest
+@tests -q --tb=short`. Предыдущий прогон до двух GAP-контролей — 405 passed.
+Тесты используют настоящие producer plans и run_skill: обе схемы dimension,
+меньший/больший top_n, положительный top_n сверх числа групп, сохранение bytes/digest.
+`python -m ruff check auto_bi/investigation/claims.py tests/test_investigation_output_parameters.py`
+и `python -m black --check` с теми же путями — exit 0.
+`uv run --with mypy --with types-PyYAML mypy --platform win32 --strict auto_bi/investigation/claims.py`
+— exit 0, один модуль. Полный offline gate и Mac/Linux после правки не запускались.
+
 ## 2026-10-23 — T-98: однострочная диагностика отказов investigation
 
 Допустимое имя отсутствующего dimension с LF добавляло вторую строку stderr при
