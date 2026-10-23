@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-102: тесты бюджета объединения групп двух периодов.
+  Точная граница разрешена, превышение останавливает CLI до записи; версии 108/73 прежние.
+  Codex; Windows: весь investigation — 433 passed, Ruff/Black чистые; три мутанта обнаружены.
+  Synthetic Astra xhigh без замечаний, не human acceptance. Подробности — в журнале T-102.
 - 2026-10-23 — T-101: тесты совместного отказа output collision и cleanup.
   Обе причины сохранены, чужой output неизменен; продуктовый код и версии 108/73 прежние.
   Codex; Windows: весь investigation — 421 passed, Ruff/Black чистые.
@@ -97,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Продуктовый код прежний; 12 новых тестов, весь investigation — 419 passed, Ruff/Black чистые.
   Четыре in-memory мутанта обнаружены; synthetic Astra xhigh без замечаний, не human acceptance.
   Codex; подробности — в журнале T-100, версии 108/73 прежние.
-- 2026-10-23 — T-99: compiler сверяет dimension/top_n готовых outputs с объявленным шагом.
-  Несовпадение — BriefCompilationError; GAP, соответствующие outputs и версии 108/73 прежние.
-  Codex; все investigation: 407 passed, Ruff/Black и strict mypy win32 compiler чистые.
-  Synthetic Astra xhigh: замечаний нет, не human acceptance. Подробности — в журнале T-99.
 
 ## Definition of done (фаза/задача)
 

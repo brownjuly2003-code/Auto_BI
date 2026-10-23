@@ -10,6 +10,27 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-102: бюджет объединения групп двух периодов
+
+Tests-only срез закрепляет max_groups_per_step для contribution и concentration:
+лимит считается по объединению категорий comparison/current. Проверены одинаковые
+{A,B}/{A,B}, пересекающиеся {A,B}/{B,C} и непересекающиеся {A,B}/{C,D} наборы,
+каждый с бюджетом union−1 и union. Skill возвращает точный budget.groups_exceeded
+при превышении; реальный CLI даёт exit 2 и пустой stdout до создания output parent.
+На точной границе CLI публикует четыре artifacts с исходным typed output и plan digest.
+
+Прежняя проверка одинаковых категорий пропускала in-memory мутант подсчёта максимума
+по одному периоду. Новый модуль обнаруживает его (4 failed, 8 passed), подсчёт суммой
+периодов (4 failed, 8 passed) и >= вместо > (6 failed, 6 passed); каждый mutant pytest
+завершился ожидаемым exit 1. Файлы продуктового кода для мутаций не менялись.
+
+Выбор и финальное synthetic review — Astra xhigh: actionable findings нет,
+не human/production acceptance. Реализация — Codex; gpt-5.6-luna недоступна.
+Windows: uv run pytest tests/test_investigation_group_budget.py -q — 12 passed;
+все tests/test_investigation*.py, выбранные через rg --files, — 433 passed, exit 0.
+Ruff и Black --check нового модуля — exit 0. Продуктовый код, evidence и версии
+108/73 прежние. Полный offline gate и Mac/Linux после тестов не запускались.
+
 ## 2026-10-23 — T-101: отказ очистки после появления чужого output
 
 Tests-only срез закрепляет существующий контракт публикации investigation: другой
