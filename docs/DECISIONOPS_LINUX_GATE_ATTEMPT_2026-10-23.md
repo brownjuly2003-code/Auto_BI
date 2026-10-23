@@ -42,3 +42,9 @@ IO `full avg60=37.57`. Эти наблюдения показывают давл
 
 Synthetic Astra xhigh review: 0 P1/P2 findings; оговорка о причине exit 137 учтена.
 Это модельное ревью отчёта, не human/production acceptance.
+
+Завершение: `colima stop` — exit 0, VM остановлена, как до сессии.
+Журнал сохранён в `.tmp/linux-pytest-e90485e.log` локально и
+`/tmp/autobi-linux-e90485e/pytest.log` на Mac. Удаление остановленного тестового
+контейнера не подтверждено: `docker rm` вернул EOF при выключении Docker.
+При следующем запуске этого профиля проверить остаток `autobi-linux-e90485e`.
