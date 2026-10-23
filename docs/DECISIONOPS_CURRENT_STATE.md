@@ -12,19 +12,28 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Полная offline-проверка после T-95 (2026-10-23):** итоговое дерево T-95,
-Windows/Python 3.13.7, без DuckDB: **9 failed, 6703 passed, 107 skipped, 38 deselected**.
-Все 9 — среда при нехватке памяти: 8 подпроцессов с `0xC0000142` и wall-clock бюджет
-SQLite; их три модуля отдельно — **170 passed**. С T-93 набор был красным (13 тестов
-искали в summary сырой detail) — исправлено. Mac, Python 3.12/3.13/3.14 с DuckDB: каждый
-прогон — **6 failed, 6796 passed**; Black, Ruff и mypy как в CI чистые. Те же шесть
-падают и до T-95: тесты T-74/T-75/T-82 непереносимы на macOS (APFS не принимает имя
-не в UTF-8; вложенность 3000 превышает лимит JSON-декодера только на Windows).
-Live DWH не проверялся.
-[Проверки и границы](DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md); предыдущая полная
-проверка — T-86, [команды и границы](DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
+**Полная offline-проверка после T-96 (2026-10-23):** Mac, Python 3.12/3.13/3.14 с
+DuckDB, дерево T-96 до правки по ревью: каждый прогон — **6800 passed, 19 skipped,
+38 deselected**, exit 0; Black, Ruff и mypy как в CI (Linux, strict Linux, strict win32)
+чистые. Правка по ревью меняет одну строку теста: его модули под тремя интерпретаторами —
+**94 passed, 2 skipped**. Windows: пять затронутых модулей — **96 passed**. Последний полный прогон
+Windows — T-95: 9 failed от среды при нехватке памяти, их модули отдельно 170 passed;
+на Mac T-95 давал 6 failed — тесты T-74/T-75/T-82, исправленные в T-96. Live DWH
+и Linux не проверялись.
+[Проверки и границы](DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md); предыдущая полная
+проверка — T-95, [команды и границы](DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
 
-**Последний срез (T-95, 2026-10-23):** ref продукта в заголовке summary и refs
+**Последний срез (T-96, 2026-10-23):** тесты T-74, T-75 и T-82 проходят на macOS.
+Три теста T-82 — reader, CLI и приоритет digest pin — строят manifest с вложенностью
+100 000 и предусловием `RecursionError` у `json.loads`: вложенность 3000 превышала лимит
+декодера только на Windows, и на macOS CLI-тест и тест pin не замечали своих мутантов.
+Суррогатные кейсы имён пропускаются только там, где файловая система отвергает имя
+(`EILSEQ`, APFS). Продуктовый код, evidence и версии 108/73 не менялись.
+Реализация — Claude Opus 5.5. Финальное synthetic Astra xhigh: 1 P2 (тест pin тоже брал
+вложенность 3000) исправлено, повторного ревью не было; не human/production acceptance.
+[Проверки и границы](DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
+
+**Предыдущий срез (T-95, 2026-10-23):** ref продукта в заголовке summary и refs
 метрик и дашбордов в строках impact выводятся буквально. Валидный ref с `-_x_-`
 больше не теряет подчёркивания в курсиве и не склеивается с соседним ref; raw refs
 и grading сохранены. Verifier 108, check 73; новые run IDs меняются.

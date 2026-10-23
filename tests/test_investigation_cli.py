@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,22 @@ def write_plan(tmp_path: Path, mutate: Any) -> Path:
     path = tmp_path / "plan.yaml"
     path.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
     return path
+
+
+def skip_where_the_filesystem_refuses(path: Path) -> None:
+    """Skip a case whose path name the filesystem under the test cannot hold.
+
+    On POSIX a lone surrogate reaches the filesystem as a byte outside UTF-8
+    (`surrogateescape`). ext4 stores that name; APFS refuses it with `EILSEQ`, so on macOS
+    there is no such file to read or write. NTFS stores the surrogate itself.
+    """
+    try:
+        path.mkdir()
+    except OSError as exc:
+        if exc.errno != errno.EILSEQ:
+            raise
+        pytest.skip(f"the filesystem refuses this name: {exc.strerror}")
+    path.rmdir()
 
 
 def test_fixture_run_writes_only_reproducible_offline_artifacts(

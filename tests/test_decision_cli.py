@@ -26,6 +26,7 @@ from tests.test_decision_verify import (
     Case,
     _formula_change,
 )
+from tests.test_evidence_inspect import manifest_past_json_parser_depth
 
 
 def test_capture_cli_writes_a_result_file_consumable_by_verify(
@@ -398,7 +399,7 @@ def test_evidence_artifact_reports_manifest_beyond_json_parser_depth(
 ) -> None:
     run_dir = tmp_path / "run-deep-manifest"
     run_dir.mkdir()
-    raw = opening * 3000 + b'"private-manifest-marker"' + closing * 3000
+    raw = manifest_past_json_parser_depth(opening, closing)
     manifest = run_dir / "manifest.json"
     manifest.write_bytes(raw)
 

@@ -11,7 +11,13 @@ import pytest
 
 from auto_bi.investigation import application
 from auto_bi.investigation.application import OfflineInvestigationError, write_offline_investigation
-from tests.test_investigation_cli import ARTIFACT_NAMES, PLAN_FIXTURE, RESULT_FIXTURE, invoke
+from tests.test_investigation_cli import (
+    ARTIFACT_NAMES,
+    PLAN_FIXTURE,
+    RESULT_FIXTURE,
+    invoke,
+    skip_where_the_filesystem_refuses,
+)
 
 
 def _refuse_output(
@@ -144,6 +150,7 @@ def test_existing_output_is_preserved_before_publication(
 def test_encodable_output_paths_keep_artifact_bytes(tmp_path: Path, name: str) -> None:
     baseline = tmp_path / "baseline"
     output = tmp_path / name
+    skip_where_the_filesystem_refuses(output)
     write_offline_investigation(PLAN_FIXTURE, [RESULT_FIXTURE], baseline)
     write_offline_investigation(PLAN_FIXTURE, [RESULT_FIXTURE], output)
     assert {path.name: path.read_bytes() for path in output.iterdir()} == {

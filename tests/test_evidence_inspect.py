@@ -18,6 +18,7 @@ Three properties are pinned here:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -214,12 +215,25 @@ def test_a_bundle_stored_under_another_run_id_is_reported(tmp_path: Path) -> Non
     assert inspection.bundle is not None
 
 
+def manifest_past_json_parser_depth(opening: bytes, closing: bytes) -> bytes:
+    """A manifest nested deeper than `json.loads` goes on the interpreter running the test.
+
+    CPython's C recursion limit stops the decoder near 3000 levels on Windows and near 10000
+    elsewhere through 3.13; 3.14 goes on until the stack runs out (about 37000 levels on
+    macOS). Nesting that only Windows refuses sends the read past the parser on the others.
+    """
+    raw = opening * 100_000 + b'"private-manifest-marker"' + closing * 100_000
+    with pytest.raises(RecursionError):
+        json.loads(raw)
+    return raw
+
+
 @pytest.mark.parametrize(("opening", "closing"), [(b"[", b"]"), (b'{"nested":', b"}")])
 @pytest.mark.parametrize("pinned", [False, True])
 def test_artifact_read_refuses_manifest_beyond_json_parser_depth(
     tmp_path: Path, opening: bytes, closing: bytes, pinned: bool
 ) -> None:
-    raw = opening * 3000 + b'"private-manifest-marker"' + closing * 3000
+    raw = manifest_past_json_parser_depth(opening, closing)
     store = store_of(tmp_path)
     store.put(RUN, "manifest.json", raw)
 
@@ -240,7 +254,7 @@ def test_artifact_read_refuses_manifest_beyond_json_parser_depth(
 
 def test_artifact_digest_pin_precedes_manifest_depth_refusal(tmp_path: Path) -> None:
     store = store_of(tmp_path)
-    store.put(RUN, "manifest.json", b"[" * 3000 + b"0" + b"]" * 3000)
+    store.put(RUN, "manifest.json", manifest_past_json_parser_depth(b"[", b"]"))
 
     with pytest.raises(EvidenceDigestError):
         read_artifact(store, RUN, "check-freshness", expected_digest=digest_bytes(b"other"))

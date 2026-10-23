@@ -9,7 +9,12 @@ from pathlib import Path
 import pytest
 
 from auto_bi.investigation.application import OfflineInvestigationError, write_offline_investigation
-from tests.test_investigation_cli import PLAN_FIXTURE, RESULT_FIXTURE, invoke
+from tests.test_investigation_cli import (
+    PLAN_FIXTURE,
+    RESULT_FIXTURE,
+    invoke,
+    skip_where_the_filesystem_refuses,
+)
 
 
 def _refuse_read(monkeypatch: pytest.MonkeyPatch, path: Path, error: Exception) -> list[Path]:
@@ -101,6 +106,7 @@ def test_other_input_failures_still_propagate(
 def test_readable_unicode_input_names_keep_the_artifact_bytes(tmp_path: Path, suffix: str) -> None:
     plan = tmp_path / f"план-{suffix}.yaml"
     result = tmp_path / f"результат-{suffix}.yaml"
+    skip_where_the_filesystem_refuses(plan)
     plan.write_bytes(PLAN_FIXTURE.read_bytes())
     result.write_bytes(RESULT_FIXTURE.read_bytes())
     baseline = tmp_path / "baseline"

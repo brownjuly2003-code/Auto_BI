@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-96: тесты T-74/T-75/T-82 проходят на macOS; продуктовый код не менялся.
+  Depth-тесты — вложенность 100 000 с предусловием `RecursionError` (3000 — предел только Windows);
+  суррогатные имена — skip только при `EILSEQ` (APFS). Mac 3.12/3.13/3.14: 6800 passed, exit 0.
+  Black/Ruff/mypy чистые; Claude Opus 5.5; Astra xhigh: 1 P2 исправлено, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
 - 2026-10-23 — T-95: refs продукта, метрик и дашбордов в summary — буквальный текст.
   Отдельный коммит чинит 13 тестов, сломанных T-93 (полный набор T-93/T-94 был красным).
   Полный прогон: 6703 passed, 9 failed от среды (их модули: 170 passed); verifier 108/check 73.
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   354 passed; Ruff/Black и strict mypy Linux/Windows чистые; docs/new tests: 31 passed.
   Synthetic Astra xhigh: 0 actionable findings, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_SUMMARY_IMPACT_SUBJECTS_CHECKS_2026-10-22.md).
-- 2026-10-22 — T-93: все CheckResult.detail в summary — буквальный текст во всех разделах.
-  Raw findings/grading прежние; verifier 106/check 73; реализация Codex.
-  348 passed; Ruff/Black и strict mypy Linux/Windows чистые; docs/new tests: 59 passed.
-  Synthetic Astra xhigh: 0 actionable findings, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_SUMMARY_CHECK_DETAILS_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 
