@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+from auto_bi import filesystem
 from auto_bi.evidence.canonical import digest_bytes
 from auto_bi.evidence.model import EvidenceSignature
 
@@ -112,10 +113,10 @@ def load_ed25519_signer(path: str | Path) -> Ed25519Signer:
     source = Path(path)
     try:
         pem = source.read_bytes()
-    except OSError as exc:
+    except (OSError, UnicodeEncodeError) as exc:
         raise EvidenceSignatureError(
             "evidence.signing_key_unreadable",
-            f"cannot read Ed25519 private key {source}",
+            f"cannot read Ed25519 private key {filesystem.display_path(source)}",
         ) from exc
     try:
         key = serialization.load_pem_private_key(pem, password=None)
@@ -139,10 +140,10 @@ def load_ed25519_trust_store(paths: list[str | Path]) -> Ed25519TrustStore:
         source = Path(path)
         try:
             pem = source.read_bytes()
-        except OSError as exc:
+        except (OSError, UnicodeEncodeError) as exc:
             raise EvidenceSignatureError(
                 "evidence.trust_key_unreadable",
-                f"cannot read Ed25519 public trust key {source}",
+                f"cannot read Ed25519 public trust key {filesystem.display_path(source)}",
             ) from exc
         try:
             key = serialization.load_pem_public_key(pem)

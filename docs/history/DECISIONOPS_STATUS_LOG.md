@@ -10,6 +10,30 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-103: штатный отказ чтения некодируемого пути ключа
+
+Загрузчики Ed25519 private/trust keys перехватывали только OSError; UnicodeEncodeError
+из Path.read_bytes выходил наружу через decision verify/evidence. Теперь он становится
+существующим EvidenceSignatureError signing_key_unreadable/trust_key_unreadable с
+исходной __cause__. Обе unreadable-диагностики используют filesystem.display_path:
+непечатаемые символы пути видны как escapes, сообщение исключения не выводится.
+CLI возвращает 2 с пустым stdout и одной строкой stderr до запуска verify/locate_evidence;
+следующий trust key не читается. Invalid PEM diagnostics и неожиданные ошибки прежние.
+
+Новый tests/test_evidence_key_paths.py: private/trust × loader/CLI × Unicode/непечатный
+путь × UnicodeEncodeError/OSError; дополнительно RuntimeError пробрасывается и реальные
+ключи с Unicode-именами подписывают и проверяют payload. После исправления двух ошибок
+тестового harness (повторный --trust-key и обязательный signed_at), до правки продукта:
+12 failed, 7 passed; после правки — 19 passed. Encoding refusal смоделирован на Windows,
+нативное поведение файловой системы POSIX здесь не проверялось.
+
+Windows: uv run pytest по всем test_evidence*.py (rg --files) и test_decision_cli.py:
+203 passed, 13 skipped, exit 0. Ruff/Black --check двух затронутых Python-файлов и
+uv run mypy --platform win32 --strict auto_bi/evidence/signing.py — exit 0.
+Выбор и финальное synthetic review — Astra xhigh, actionable findings нет;
+не human/production acceptance. Реализация — Codex, gpt-5.6-luna недоступна.
+Evidence и версии 108/73 прежние. Полный offline gate и Mac/Linux не запускались.
+
 ## 2026-10-23 — T-102: бюджет объединения групп двух периодов
 
 Tests-only срез закрепляет max_groups_per_step для contribution и concentration:
