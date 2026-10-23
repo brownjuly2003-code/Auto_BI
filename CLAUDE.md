@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-97: step id в заголовке GAP investigation `brief.md` — буквальный текст.
+  `null-_dimension_-check` больше не уходит в курсив; raw title, JSON/digests и версии 108/73 прежние.
+  Mac 3.12/3.13/3.14: 6809 passed; после правки теста по ревью gate 3.13: 6811 passed, линтеры чистые.
+  Claude Opus 5.5; Astra xhigh: 1 P2 (байты заголовка не закреплены тестом) исправлено, не human acceptance.
+  [Проверки и границы](docs/DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md).
 - 2026-10-23 — T-96: тесты T-74/T-75/T-82 проходят на macOS; продуктовый код не менялся.
   Depth-тесты — вложенность 100 000 с предусловием `RecursionError` (3000 — предел только Windows);
   суррогатные имена — skip только при `EILSEQ` (APFS). Mac 3.12/3.13/3.14: 6800 passed, exit 0.
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Полный прогон: 6703 passed, 9 failed от среды (их модули: 170 passed); verifier 108/check 73.
   Ruff/Black, strict mypy чистые; Claude Opus 5.5; Astra xhigh: 1 P2 исправлено, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
-- 2026-10-22 — T-94: весь ProductImpact.subject в summary — буквальный текст.
-  Raw subject, привязки impact и grading прежние; verifier 107/check 73; реализация Codex.
-  354 passed; Ruff/Black и strict mypy Linux/Windows чистые; docs/new tests: 31 passed.
-  Synthetic Astra xhigh: 0 actionable findings, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_SUMMARY_IMPACT_SUBJECTS_CHECKS_2026-10-22.md).
 
 ## Definition of done (фаза/задача)
 

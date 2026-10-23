@@ -165,16 +165,18 @@ class InvestigationBrief(StrictModel):
             "- Human acceptance: `not measured`",
         ]
         for block in self.blocks:
-            body = block.body
+            title, body = block.title, block.body
             # Compiler-produced templates retain raw text in JSON and policy checks.
-            # Encode only their supplied labels at the Markdown boundary, including
-            # when rendering an already-saved brief. Custom block prose stays as stored.
+            # Encode only their supplied labels and step ids at the Markdown boundary,
+            # including when rendering an already-saved brief. Custom titles and prose
+            # stay as stored.
             if len(block.evidence_refs) == 1:
                 output = evidence_by_id[block.evidence_refs[0]].output
-                if isinstance(output, InvestigationGap) and body == _gap_body(
-                    output, markdown=False
-                ):
-                    body = _gap_body(output, markdown=True)
+                if isinstance(output, InvestigationGap):
+                    if title == _gap_title(output, markdown=False):
+                        title = _gap_title(output, markdown=True)
+                    if body == _gap_body(output, markdown=False):
+                        body = _gap_body(output, markdown=True)
                 elif isinstance(output, PeriodVarianceResult) and body == _variance_body(
                     output, markdown=False
                 ):
@@ -183,7 +185,7 @@ class InvestigationBrief(StrictModel):
                     output, markdown=False
                 ):
                     body = _contribution_body(output, markdown=True)
-            lines.extend(["", f"## {block.title}", "", body, ""])
+            lines.extend(["", f"## {title}", "", body, ""])
             evidence = ", ".join(
                 f"`{ref}` (`{evidence_by_id[ref].digest}`; "
                 f"step `{evidence_by_id[ref].output.step_id}`; "
@@ -286,7 +288,7 @@ def _compile_output(artifact_id: str, output: SkillResult) -> tuple[list[Claim],
         return [], BriefBlock(
             block_id=f"block-{artifact_id}",
             kind=BriefBlockKind.GAP,
-            title=f"Gap: {output.step_id}",
+            title=_gap_title(output, markdown=False),
             body=_gap_body(output, markdown=False),
             evidence_refs=[artifact_id],
         )
@@ -367,6 +369,12 @@ def _markdown_literal(value: str) -> str:
     """One inline text value: visible controls and CommonMark-escaped punctuation."""
     visible = "".join(char if char.isprintable() else ascii(char)[1:-1] for char in value)
     return "".join(f"\\{char}" if char in string.punctuation else char for char in visible)
+
+
+def _gap_title(output: InvestigationGap, *, markdown: bool) -> str:
+    # A slug may hold `-_x_-`, which CommonMark would show as emphasis without underscores.
+    step_id = _markdown_literal(output.step_id) if markdown else output.step_id
+    return f"Gap: {step_id}"
 
 
 def _gap_body(output: InvestigationGap, *, markdown: bool) -> str:

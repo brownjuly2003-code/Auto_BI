@@ -10,6 +10,23 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-97: буквальный step id в заголовке GAP investigation Markdown
+
+Компилятор называет блок GAP `Gap: {step_id}`, а грамматика step id допускает `_` между
+`-` или `.` и буквой: `## Gap: null-_dimension_-check` CommonMark показывал курсивом без
+подчёркиваний. Renderer экранирует step id, когда блок ссылается на один GAP и title
+точно совпадает с шаблоном; custom title и несколько evidence references выводятся как
+сохранены. Raw title, JSON/digests, causal policy и версии 108/73 прежние; байты
+заголовка меняются у step id с `_`, `-` или `.`. Mac: новый модуль на прежнем
+`claims.py` — 5 failed, 4 passed; пять планов — JSON-payload побайтно прежние, в
+`brief.md` отличаются только строки `## Gap:`; полный прогон 3.12/3.13/3.14 — каждый
+6809 passed, 19 skipped, exit 0; Black, Ruff и mypy как в CI чистые. Реализация —
+Claude Opus 5.5; финальное synthetic Astra xhigh: 1 P2 — тесты не закрепляли байты
+заголовка для `-` и `.`, мутант с экранированием одного `_` проходил. Исправлено тестом
+точных строк заголовка, мутант ловится; итоговые код и тесты: gate 3.13 — 6811 passed, 19 skipped, exit 0.
+Не human/production acceptance.
+[Проверки и границы](../DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md).
+
 ## 2026-10-23 — T-96: тесты T-74, T-75 и T-82 на macOS
 
 Полный прогон T-95 на Mac давал 6 failed, и те же шесть падали до T-95: тесты

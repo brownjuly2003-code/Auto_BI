@@ -12,18 +12,28 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Полная offline-проверка после T-96 (2026-10-23):** Mac, Python 3.12/3.13/3.14 с
-DuckDB, дерево T-96 до правки по ревью: каждый прогон — **6800 passed, 19 skipped,
-38 deselected**, exit 0; Black, Ruff и mypy как в CI (Linux, strict Linux, strict win32)
-чистые. Правка по ревью меняет одну строку теста: его модули под тремя интерпретаторами —
-**94 passed, 2 skipped**. Windows: пять затронутых модулей — **96 passed**. Последний полный прогон
-Windows — T-95: 9 failed от среды при нехватке памяти, их модули отдельно 170 passed;
-на Mac T-95 давал 6 failed — тесты T-74/T-75/T-82, исправленные в T-96. Live DWH
-и Linux не проверялись.
-[Проверки и границы](DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md); предыдущая полная
-проверка — T-95, [команды и границы](DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
+**Полная offline-проверка после T-97 (2026-10-23):** Mac, Python 3.12/3.13/3.14 с
+DuckDB, код и тесты T-97 до правки теста по ревью (дерево `69c7118`): каждый прогон —
+**6809 passed, 19 skipped, 38 deselected**, exit 0; Black, Ruff и mypy как в CI (Linux,
+strict Linux, strict win32) чистые. Итоговые код и тесты (`dc40fd6`): полный gate 3.13 —
+**6811 passed, 19 skipped, 38 deselected**, exit 0, Black/Ruff/mypy чистые; новый модуль
+под тремя интерпретаторами — **11 passed**. Windows: все investigation-модули —
+**386 passed**. Последний полный прогон Windows — T-95: 9 failed от среды при нехватке
+памяти, их модули отдельно 170 passed. Live DWH и Linux не проверялись.
+[Проверки и границы](DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md); предыдущая
+полная проверка — T-96, [команды и границы](DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
 
-**Последний срез (T-96, 2026-10-23):** тесты T-74, T-75 и T-82 проходят на macOS.
+**Последний срез (T-97, 2026-10-23):** step id в заголовке GAP investigation `brief.md`
+выводится буквально. Допустимый step id с `-_x_-` больше не показывается курсивом без
+подчёркиваний. Граница — один связанный GAP и title, точно совпадающий с шаблоном
+`Gap: {step_id}`; custom title прежний. Raw title, JSON/digests, causal policy и версии
+108/73 прежние; байты заголовка меняются у step id с `_`, `-` или `.`.
+Реализация — Claude Opus 5.5. Финальное synthetic Astra xhigh: 1 P2 (тесты не закрепляли
+байты заголовка для `-` и `.`) исправлено, повторного ревью не было; не human/production
+acceptance.
+[Проверки и границы](DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md).
+
+**Предыдущий срез (T-96, 2026-10-23):** тесты T-74, T-75 и T-82 проходят на macOS.
 Три теста T-82 — reader, CLI и приоритет digest pin — строят manifest с вложенностью
 100 000 и предусловием `RecursionError` у `json.loads`: вложенность 3000 превышала лимит
 декодера только на Windows, и на macOS CLI-тест и тест pin не замечали своих мутантов.
