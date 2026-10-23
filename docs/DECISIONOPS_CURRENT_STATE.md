@@ -12,7 +12,14 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Последний срез (T-100, 2026-10-23):** тестами закреплён runtime budget investigation:
+**Последний срез (T-101, 2026-10-23):** тестами закреплён совместный отказ:
+во время staging другой писатель создаёт output, а очистка staging завершается ошибкой.
+Application и CLI сохраняют обе причины; чужой output не изменяется, rename не вызывается.
+Продуктовый код и версии 108/73 прежние. Windows: 2 новых теста, весь investigation —
+421 passed; Ruff/Black чистые. Synthetic Astra xhigh: замечаний нет, не human acceptance.
+Полный offline gate и Mac/Linux не запускались. Подробности — в журнале T-101.
+
+**Предыдущий срез (T-100, 2026-10-23):** тестами закреплён runtime budget investigation:
 точная граница, остановка перед/после skill и после compiler, отсутствие output при
 отказе. Продуктовый код и версии 108/73 прежние. Windows: 12 новых тестов, весь набор
 investigation — 419 passed; Ruff/Black чистые. Четыре локальных in-memory мутанта

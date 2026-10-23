@@ -10,6 +10,25 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-101: отказ очистки после появления чужого output
+
+Tests-only срез закрепляет существующий контракт публикации investigation: другой
+писатель создаёт output при записи последнего staging-артефакта, затем rmtree
+отказывает с PermissionError. Application сохраняет исходную причину коллизии и
+ошибку очистки, с cleanup error в прямом __cause__; CLI возвращает 2, пустой stdout
+и точную диагностику обеих причин. Rename не вызывается. Чужой output с бинарным
+sentinel неизменен; staging содержит четыре полностью записанных реальных artifacts.
+Teardown снимает подмены и проверяет расположение staging перед его удалением.
+Общая безопасность гонки после последней проверки существования не заявляется.
+
+Продуктовый код, evidence и версии 108/73 прежние. Выбор и финальное synthetic review —
+Astra xhigh: замечаний нет, не human/production acceptance. Реализация — Codex;
+gpt-5.6-luna недоступна. Windows: новый модуль
+`tests/test_investigation_cleanup_collision.py` — 2 passed; весь набор
+`tests/test_investigation*.py` через `rg --files` и pytest — 421 passed, exit 0.
+Ruff и Black --check нового модуля — exit 0. Полный offline gate и Mac/Linux
+после добавления тестов не запускались.
+
 ## 2026-10-23 — T-100: проверки runtime budget investigation
 
 Tests-only срез закрепляет существующий контракт `max_runtime_ms`: ровно лимит разрешён,
