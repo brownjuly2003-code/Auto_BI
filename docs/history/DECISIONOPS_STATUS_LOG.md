@@ -10,6 +10,28 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-98: однострочная диагностика отказов investigation
+
+Допустимое имя отсутствующего dimension с LF добавляло вторую строку stderr при
+`scope.unsupported_dimension`. CLI теперь показывает непечатаемые символы всех
+`OfflineInvestigationError` видимыми escapes; обычный Unicode и пробелы сохраняются.
+Граница — обработчик отказов `decision investigate`; общий `_say`, raw domain error,
+GAP detail, policy, evidence и версии 108/73 прежние. До создания output отказ остаётся
+exit 2; существующие правила очистки при ошибках записи не менялись.
+
+Выбор и финальное synthetic review — Astra xhigh по ADR 0006. Функциональных замечаний
+нет; замечание о CRLF в добавленных строках исправлено. Не human/production acceptance.
+Реализация — Codex: предписанная gpt-5.6-luna отсутствует среди доступных моделей.
+
+Windows, нативная `.venv\Scripts\python.exe`: новый regression-модуль до исправления —
+7 failed, 2 passed; после — 9 passed. Полный набор `tests/test_investigation_*.py` —
+395 passed, exit 0 (13 модулей переданы явно). Новые кейсы используют настоящий YAML
+и CLI: LF, CRLF, CR, TAB, ESC, Unicode separators/bidi, обычный ASCII и кириллица;
+проверены raw error, точный stderr, пустой stdout и отсутствие output parent.
+`python -m ruff check auto_bi/cli.py tests/test_investigation_policy_diagnostics.py`
+и `python -m black --check` с теми же путями — exit 0.
+Полный offline gate и Mac/Linux после этой правки не запускались.
+
 ## 2026-10-23 — T-97: буквальный step id в заголовке GAP investigation Markdown
 
 Компилятор называет блок GAP `Gap: {step_id}`, а грамматика step id допускает `_` между

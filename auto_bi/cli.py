@@ -418,7 +418,9 @@ def _decision_investigate(args: argparse.Namespace) -> int:
     try:
         artifacts = write_offline_investigation(args.plan, args.results, args.output)
     except OfflineInvestigationError as exc:
-        _say(f"error: {exc}", file=sys.stderr)
+        # Supplied names and paths must not insert lines or terminal controls.
+        reason = "".join(char if char.isprintable() else ascii(char)[1:-1] for char in str(exc))
+        _say(f"error: {reason}", file=sys.stderr)
         return EXIT_ERROR
     _say(f"wrote    {args.output}")
     _say(f"plan     {artifacts.plan.digest()}")

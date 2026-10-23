@@ -1847,6 +1847,13 @@ budget или claim budget завершают команду кодом `2` до
 или unsupported аналитический вход даёт evidence-backed gap без factual claim. Ни один
 путь `investigate` не создаёт DWH/BI client и не вызывает remote mutation.
 
+С T-98 CLI отображает непечатаемые символы в сообщении `OfflineInvestigationError`
+видимыми escape-последовательностями (`\n`, `\r`, `\x1b`, `\u2028` и т. п.).
+Например, отсутствующее измерение с переводом строки в имени больше не добавляет
+вторую строку диагностики остановки scope policy. Обычный Unicode и пробелы сохраняются;
+исходные domain error, GAP detail, решения policy и байты evidence не меняются.
+Преобразование ограничено stderr отказов `investigate`, общий `_say` прежний.
+
 Если подставленные в brief значения (например, название категории `Cause` или unit
 со словом `because`) нарушают существующий запрет причинных формулировок, компилятор
 возвращает `BriefCompilationError`, application — `OfflineInvestigationError`, а CLI —

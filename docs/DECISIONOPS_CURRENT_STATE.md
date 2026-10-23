@@ -12,6 +12,14 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
+**Последний срез (T-98, 2026-10-23):** непечатаемые символы в диагностике отказов
+`decision investigate` выводятся видимыми escape-последовательностями. Допустимое
+имя отсутствующего dimension с LF/CR/ESC больше не создаёт лишние строки или команды
+терминала. Raw domain error, GAP detail, policy и evidence прежние; версии 108/73.
+Windows: 395 investigation-тестов прошли, Ruff/Black чистые. Synthetic Astra xhigh:
+функциональных замечаний нет; замечание о LF исправлено, не human acceptance.
+Полный offline gate после правки не запускался. Подробности — в журнале статуса T-98.
+
 **Linux offline-проверка (2026-10-23):** изолированный Colima на Mac, Python 3.12.15:
 **6813 passed, 17 skipped, 38 deselected**, exit 0, coverage **95.93%**.
 Ruff/Black и mypy (обычный Linux, strict Linux, strict win32) чистые.
@@ -29,7 +37,7 @@ strict Linux, strict win32) чистые. Итоговые код и тесты 
 [Проверки и границы](DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md); предыдущая
 полная проверка — T-96, [команды и границы](DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
 
-**Последний срез (T-97, 2026-10-23):** step id в заголовке GAP investigation `brief.md`
+**Предыдущий срез (T-97, 2026-10-23):** step id в заголовке GAP investigation `brief.md`
 выводится буквально. Допустимый step id с `-_x_-` больше не показывается курсивом без
 подчёркиваний. Граница — один связанный GAP и title, точно совпадающий с шаблоном
 `Gap: {step_id}`; custom title прежний. Raw title, JSON/digests, causal policy и версии

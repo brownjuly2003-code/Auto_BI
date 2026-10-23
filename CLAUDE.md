@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-98: непечатаемые символы в stderr отказов `investigate` видимы как escapes.
+  Имя dimension больше не добавляет строки/команды терминала; raw ошибки и evidence прежние.
+  Codex; Windows: 395 investigation-тестов прошли, Ruff/Black чистые; полного gate не было.
+  Synthetic Astra xhigh: функциональных замечаний нет; замечание о LF исправлено.
+  Подробности — в журнале статуса T-98; не human acceptance, версии 108/73 прежние.
 - 2026-10-23 — T-97: step id в заголовке GAP investigation `brief.md` — буквальный текст.
   `null-_dimension_-check` больше не уходит в курсив; raw title, JSON/digests и версии 108/73 прежние.
   Mac 3.12/3.13/3.14: 6809 passed; после правки теста по ревью gate 3.13: 6811 passed, линтеры чистые.
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   суррогатные имена — skip только при `EILSEQ` (APFS). Mac 3.12/3.13/3.14: 6800 passed, exit 0.
   Black/Ruff/mypy чистые; Claude Opus 5.5; Astra xhigh: 1 P2 исправлено, не human acceptance.
   [Проверки и границы](docs/DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
-- 2026-10-23 — T-95: refs продукта, метрик и дашбордов в summary — буквальный текст.
-  Отдельный коммит чинит 13 тестов, сломанных T-93 (полный набор T-93/T-94 был красным).
-  Полный прогон: 6703 passed, 9 failed от среды (их модули: 170 passed); verifier 108/check 73.
-  Ruff/Black, strict mypy чистые; Claude Opus 5.5; Astra xhigh: 1 P2 исправлено, не human acceptance.
-  [Проверки и границы](docs/DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
 
 ## Definition of done (фаза/задача)
 
