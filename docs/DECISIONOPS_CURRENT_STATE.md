@@ -12,10 +12,11 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Попытка Linux gate (2026-10-23):** контейнерный прогон на Mac прерван из-за
-давления ресурсов общего профиля Colima; полной сводки pytest нет, линтеры не
-достигнуты. Linux остаётся непроверенным; нужен изолированный профиль.
-[Наблюдения и границы](DECISIONOPS_LINUX_GATE_ATTEMPT_2026-10-23.md).
+**Linux offline-проверка (2026-10-23):** изолированный Colima на Mac, Python 3.12.15:
+**6813 passed, 17 skipped, 38 deselected**, exit 0, coverage **95.93%**.
+Ruff/Black и mypy (обычный Linux, strict Linux, strict win32) чистые.
+Код и тесты прежние; Linux 3.13/3.14 и live DWH не проверялись.
+[Команды, среда и границы](DECISIONOPS_LINUX_CHECKS_2026-10-23.md).
 
 **Полная offline-проверка после T-97 (2026-10-23):** Mac, Python 3.12/3.13/3.14 с
 DuckDB, код и тесты T-97 до правки теста по ревью (дерево `69c7118`): каждый прогон —
@@ -24,7 +25,7 @@ strict Linux, strict win32) чистые. Итоговые код и тесты 
 **6811 passed, 19 skipped, 38 deselected**, exit 0, Black/Ruff/mypy чистые; новый модуль
 под тремя интерпретаторами — **11 passed**. Windows: все investigation-модули —
 **386 passed**. Последний полный прогон Windows — T-95: 9 failed от среды при нехватке
-памяти, их модули отдельно 170 passed. Live DWH и Linux не проверялись.
+памяти, их модули отдельно 170 passed. Live DWH не проверялись; Linux 3.12 проверен отдельно выше.
 [Проверки и границы](DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md); предыдущая
 полная проверка — T-96, [команды и границы](DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
 
