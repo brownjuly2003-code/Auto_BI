@@ -12,6 +12,11 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
+**Попытка Linux gate (2026-10-23):** контейнерный прогон на Mac прерван из-за
+давления ресурсов общего профиля Colima; полной сводки pytest нет, линтеры не
+достигнуты. Linux остаётся непроверенным; нужен изолированный профиль.
+[Наблюдения и границы](DECISIONOPS_LINUX_GATE_ATTEMPT_2026-10-23.md).
+
 **Полная offline-проверка после T-97 (2026-10-23):** Mac, Python 3.12/3.13/3.14 с
 DuckDB, код и тесты T-97 до правки теста по ревью (дерево `69c7118`): каждый прогон —
 **6809 passed, 19 skipped, 38 deselected**, exit 0; Black, Ruff и mypy как в CI (Linux,
