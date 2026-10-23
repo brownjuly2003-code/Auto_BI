@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-105: полный Windows offline gate после T-104, Python 3.13.7 с DuckDB.
+  6786 passed, 118 skipped, 38 deselected; coverage 96.15%, exit 0, без перезапуска.
+  Ruff/Black и mypy Linux/strict Linux/strict win32 чистые; код и тесты прежние.
+  Отчёт — docs/DECISIONOPS_WINDOWS_CHECKS_2026-10-23.md; версии 108/73 сохранены.
 - 2026-10-23 — T-104: пути в invalid-key диагностике Ed25519 выводятся безопасно.
   Реальные U+2028-имена не добавляют строк; коды ошибок и версии 108/73 прежние.
   Codex; evidence/decision CLI — 211 passed, 13 skipped; Ruff/Black/strict mypy win32 чистые.
@@ -97,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Путь в unreadable-диагностике безопасен; версии 108/73 прежние. Codex; Windows:
   evidence и decision CLI — 203 passed, 13 skipped; Ruff/Black и strict mypy win32 чистые.
   Synthetic Astra xhigh без замечаний, не human acceptance. Подробности — в журнале T-103.
-- 2026-10-23 — T-102: тесты бюджета объединения групп двух периодов.
-  Точная граница разрешена, превышение останавливает CLI до записи; версии 108/73 прежние.
-  Codex; Windows: весь investigation — 433 passed, Ruff/Black чистые; три мутанта обнаружены.
-  Synthetic Astra xhigh без замечаний, не human acceptance. Подробности — в журнале T-102.
 
 ## Definition of done (фаза/задача)
 

@@ -12,7 +12,14 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Последний срез (T-104, 2026-10-23):** пути в четырёх invalid-key сообщениях Ed25519
+**Последний срез (T-105, 2026-10-23):** полный нативный Windows offline gate после
+T-104 прошёл: Python 3.13.7, DuckDB, 6786 passed, 118 skipped, 38 deselected,
+coverage 96.15%, exit 0. Ruff/Black и mypy (Linux, strict Linux, strict win32) чистые.
+Один pytest, без перезапуска; код и тесты прежние, версии 108/73 сохранены.
+Это Windows offline verification, не весь CI, не Mac/Linux runtime или live DWH.
+[Команды, среда и границы](DECISIONOPS_WINDOWS_CHECKS_2026-10-23.md).
+
+**Предыдущий срез (T-104, 2026-10-23):** пути в четырёх invalid-key сообщениях Ed25519
 выводятся безопасно. Читаемый файл с U+2028 в имени больше не добавляет строку в
 диагностику отказа PEM/типа ключа. Коды ошибок, причины и версии 108/73 прежние.
 Windows: 8 новых тестов с реальными файлами; evidence и decision CLI — 211 passed,

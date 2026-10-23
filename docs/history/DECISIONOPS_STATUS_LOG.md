@@ -10,6 +10,22 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-105: полный Windows offline gate после T-104
+
+После профильных проверок T-98–T-104 выбран полный нативный Windows offline gate.
+HEAD 0d17bf3, Python 3.13.7 с DuckDB: 6786 passed, 118 skipped, 38 deselected,
+coverage 96.15%, exit 0, 931.48 s. Один запуск; дополнительных исправлений и повторов
+не потребовалось. Ruff/Black и mypy Linux/strict Linux/strict win32 — exit 0.
+Код, тесты и версии evidence 108/73 прежние. Изменена только документация.
+
+118 skips обусловлены Windows symlink/POSIX доступом, named pipe, отсутствующим
+Playwright и проверками отсутствующего SDK; 38 deselected — integration/e2e.
+Это не полный CI и не проверка runtime Mac/Linux или live DWH.
+[Отчёт с командами и средой](../DECISIONOPS_WINDOWS_CHECKS_2026-10-23.md).
+Synthetic Astra xhigh selection/review: 0 actionable findings, не human acceptance.
+Docs-as-code после добавления отчёта в индекс: 25 passed; первоначальный отказ
+касался ссылок на ещё untracked отчёт. Исполнение — Codex.
+
 ## 2026-10-23 — T-104: буквальные пути в invalid-key диагностике
 
 Четыре сообщения invalid key в Ed25519 loaders вставляли raw source: читаемый файл
