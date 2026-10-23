@@ -10,6 +10,34 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-106: локальный каталог evidence-прогонов
+
+По synthetic owner/design-partner selection Astra xhigh (ADR 0006) реализован
+первый read-only `RunRepository.list_runs()`, архитектура §11.2.
+`uv run python -m auto_bi.cli decision runs <evidence-root> --json` возвращает
+список по имени run-каталога: адресующий и manifest run ID, product/time и digest
+однократно прочитанных байтов manifest. `integrity_checked=false`; подпись и
+payload hashes не проверяются. Выбранный bundle проверяет `decision evidence`.
+Нет индекса, записи, рекурсии, новых runtime или изменений evidence versions 108/73.
+
+Пустой root успешен, незапечатанные каталоги пропускаются. Невалидный/нечитаемый
+manifest и недоступный root дают exit 2 без частичного stdout; store сохраняет
+защиту от symlink/junction. Слишком глубокий JSON также обрабатывается штатно:
+дефект найден при Astra-review, подтверждён failing test, исправлен.
+Тесты используют реальные bundles, включая signed bundle без trust с испорченным
+payload; проверяют единственное чтение manifest и отсутствие store writes.
+
+Windows: `uv run pytest tests/test_decision_runs.py tests/test_decision_cli.py
+tests/test_evidence_bundle.py tests/test_evidence_store.py tests/test_evidence_inspect.py
+tests/test_evidence_signing.py tests/test_evidence_run_root.py tests/test_docs_as_code.py
+tests/test_docs_defaults.py -q` — 178 passed, 14 skipped, exit 0.
+Ruff и Black по трём изменённым Python-файлам чистые; strict mypy Linux/win32
+по `auto_bi/decision/runs.py auto_bi/cli.py` — без ошибок.
+Полный offline gate не повторялся; Mac/Linux runtime и live DWH не запускались.
+Финальный synthetic Astra xhigh review: существенных замечаний нет;
+это не human outcome или production acceptance.
+В current state исправлен устаревший procedural human gate на ADR 0006.
+
 ## 2026-10-23 — T-105: полный Windows offline gate после T-104
 
 После профильных проверок T-98–T-104 выбран полный нативный Windows offline gate.

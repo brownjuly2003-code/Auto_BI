@@ -1578,6 +1578,17 @@ Cache/reuse key включает actor/tenant/policy context. Cross-tenant resul
 
 ### 11.2 Pilot
 
+Первый локальный контракт `RunRepository.list_runs()` реализован в
+`auto_bi/decision/runs.py` (T-106): `decision runs <evidence-root> [--json]`
+читает только manifests непосредственных run-каталогов, по имени каталога.
+Строка содержит адресующий `run_id`, `manifest_run_id`, `product_ref`, `created_at`,
+`manifest_digest` прочитанных байтов и `integrity_checked=false`. Manifest читается
+один раз через `FilesystemArtifactStore`; payload hashes и подпись не проверяются.
+Это discovery, не verdict: выбранный bundle проверяет `decision evidence --run …`.
+Пустой root даёт пустой список; каталоги без manifest пропускаются. Невалидный или
+нечитаемый manifest, перенаправленный sealed run и недоступный root дают exit 2
+без частичного stdout. Каталог ничего не записывает и не ведёт индекс.
+
 До добавления PostgreSQL вводятся ports `ProductRepository`, `RunRepository`,
 `JobStore`, `ArtifactStore` и `Outbox`. Pilot backend может использовать:
 

@@ -12,7 +12,15 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Последний срез (T-105, 2026-10-23):** полный нативный Windows offline gate после
+**Последний срез (T-106, 2026-10-23):** `decision runs <evidence-root> [--json]`
+даёт локальный каталог прогонов: два run ID, product/time из manifest и digest его
+прочитанных байтов. `integrity_checked=false`: discovery не проверяет payload/signature.
+Первый `RunRepository` read-only; ошибки не оставляют частичный stdout.
+Windows: 178 passed, 14 skipped; Ruff/Black, strict mypy Linux/win32 чистые.
+Synthetic Astra xhigh review без существенных замечаний, не human acceptance.
+Версии evidence 108/73 сохранены. Контракт — архитектура §11.2.
+
+**Предыдущий срез (T-105, 2026-10-23):** полный нативный Windows offline gate после
 T-104 прошёл: Python 3.13.7, DuckDB, 6786 passed, 118 skipped, 38 deselected,
 coverage 96.15%, exit 0. Ruff/Black и mypy (Linux, strict Linux, strict win32) чистые.
 Один pytest, без перезапуска; код и тесты прежние, версии 108/73 сохранены.
@@ -2241,7 +2249,7 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE; 2026-09-18 ClickHouse-алиас читается насквозь, а не как колонка (`CHECK_VERSION` 11 → 12); `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной находки поля `IN rev` больше нет, неуправляемая таблица справа от `IN` — review `asset.query_ungoverned` (`CHECK_VERSION` 12 → 13); 2026-09-24 inline- и ARRAY JOIN-алиасы не именуются как поля, но их определения и source array грейдятся (`CHECK_VERSION` 13 → 14) |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
 | Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; pilot-only signer создан вне checkout на Mac, production trust root не назначен |
-| Continuous platform | заблокирована до human/design-partner evidence |
+| Continuous platform | конкретные срезы через Astra-review по ADR 0006; human outcome не измерен |
 
 Четыре tracked pilot-сценария и найденные дефекты описаны в
 [pilot rehearsal](DECISIONOPS_PILOT_2026-08-25.md) и `docs/pilot/`; сохранённые там bundles
@@ -2256,8 +2264,10 @@ report содержит один `computes_metric` chart и один имено�
 [Live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md) добавляет к тому же change
 reviewed capture, provenance/governance, все пять live DWH checks и signed evidence.
 Это всё ещё техническая подготовка. Task 8 human outcome остаётся открытым,
-а [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) не разблокирует
-scheduler, PostgreSQL, REST/MCP, notifications или actions.
+а процедурный gate [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md)
+заменён [ADR 0006](adr/0006-modelled-review-development-gate.md): дальнейшая
+разработка требует конкретного Astra-reviewed среза. Это не общее разрешение
+на scheduler, PostgreSQL, REST/MCP, notifications, actions или внешние операции.
 
 ## Карта реализации
 

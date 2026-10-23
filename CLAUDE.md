@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-106: read-only `decision runs` для навигации по локальным bundles.
+  Product/time и digest manifest; явно `integrity_checked=false`, без payload/signature checks.
+  Ошибки чтения/парсинга дают exit 2 без частичного stdout; версии 108/73 прежние.
+  Проверки и synthetic Astra-review — в журнале T-106.
 - 2026-10-23 — T-105: полный Windows offline gate после T-104, Python 3.13.7 с DuckDB.
   6786 passed, 118 skipped, 38 deselected; coverage 96.15%, exit 0, без перезапуска.
   Ruff/Black и mypy Linux/strict Linux/strict win32 чистые; код и тесты прежние.
@@ -97,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Реальные U+2028-имена не добавляют строк; коды ошибок и версии 108/73 прежние.
   Codex; evidence/decision CLI — 211 passed, 13 skipped; Ruff/Black/strict mypy win32 чистые.
   Synthetic Astra xhigh без замечаний, не human acceptance. Подробности — в журнале T-104.
-- 2026-10-23 — T-103: encoding refusal при чтении Ed25519 ключа даёт exit 2.
-  Путь в unreadable-диагностике безопасен; версии 108/73 прежние. Codex; Windows:
-  evidence и decision CLI — 203 passed, 13 skipped; Ruff/Black и strict mypy win32 чистые.
-  Synthetic Astra xhigh без замечаний, не human acceptance. Подробности — в журнале T-103.
 
 ## Definition of done (фаза/задача)
 

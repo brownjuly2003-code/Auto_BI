@@ -289,6 +289,12 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true", help="Emit the inspection as JSON and nothing else"
     )
 
+    runs = decision_sub.add_parser(
+        "runs", help="List local runs without checking evidence integrity"
+    )
+    runs.add_argument("path", help="Evidence root containing run directories")
+    runs.add_argument("--json", action="store_true", help="Emit the catalogue as JSON")
+
     investigate = decision_sub.add_parser(
         "investigate",
         help="Run a typed investigation over canonical results (offline, no DWH/BI/LLM)",
@@ -331,6 +337,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "prune":
         return _prune(args.session, args.dry_run, args.model_path)
     if args.command == "decision":
+        if args.decision_command == "runs":
+            return _decision_runs(args)
         if args.decision_command == "capture":
             return _decision_capture(args)
         if args.decision_command == "verify":
@@ -340,6 +348,26 @@ def main(argv: list[str] | None = None) -> int:
         if args.decision_command == "investigate":
             return _decision_investigate(args)
         return _decision_validate(args.paths, args.json)
+    return 0
+
+
+def _decision_runs(args: argparse.Namespace) -> int:
+    from auto_bi.decision.runs import FilesystemRunRepository, RunDiscoveryError
+
+    try:
+        rows = FilesystemRunRepository(args.path).list_runs()
+    except RunDiscoveryError as exc:
+        _say(str(exc), file=sys.stderr)
+        return 2
+    if args.json:
+        _say_json([row.model_dump(mode="json") for row in rows])
+    else:
+        _say("Local runs (integrity_checked=false; use decision evidence to verify):")
+        for row in rows:
+            _say(
+                f"{row.run_id}  {row.product_ref!r}  {row.created_at!r}  "
+                f"{row.manifest_digest}  manifest_run_id={row.manifest_run_id}"
+            )
     return 0
 
 
