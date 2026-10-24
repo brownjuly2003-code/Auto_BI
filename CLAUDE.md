@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-24 — T-114: ID claim и BI payload кончаются полным SHA-256 ref, slug впереди для
+  чтения: два эквивалентных assets или два скомпилированных дашборда одного slug больше не
+  кончают `decision verify` traceback с exit 1 без bundle. Verifier 113, check 76; 11 мутантов
+  ловятся; полный Windows gate 6899 passed, exit 0.
+  Срез выбрала synthetic Astra xhigh; ревью: P1, P2 и два P3 исправлены, повторного нет.
 - 2026-10-24 — T-113: spec дашборда читается по полному ref — каталоги сегментов
   (`sales/weekly_margin@7.yaml`), без отката на файл последнего сегмента: чужая вёрстка больше
   не компилируется под ref, отсутствующий spec — `bi.spec_missing`. Verifier 112, check 76;
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   вердикт больше не зависит от раскладки `metrics/`. `asset.metric_ref_ambiguous` гейт не выносит.
   Verifier 111, check 75; 11 мутантов ловятся; полный Windows gate 6872 passed, exit 0.
   Срез выбрала synthetic Astra xhigh; ревью — P2 и два P3 исправлены, повторного нет.
-- 2026-10-24 — T-111: source digest snapshot хранит digest каждого прочитанного файла;
-  одноимённые контракты разных подкаталогов `metrics/` — отсортированным списком с повторами.
-  Правка затенённого файла меняет run id; ref без повторов имён — прежний digest (pilot ×10).
-  Verifier 110, check 74; 6 мутантов ловятся; полный Windows gate 6855 passed, exit 0.
-  Срез выбрала synthetic Astra xhigh; ревью: P1 и P3 исправлены, повторного нет.
 
 ## Definition of done (фаза/задача)
 

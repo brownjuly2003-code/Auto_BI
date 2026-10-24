@@ -10,6 +10,71 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-24 — T-114: ID claim и BI payload по хешу ref
+
+`_slugify` (`auto_bi/verification/release_gate.py`) давал ID claim эквивалентного результата
+(`claim-<slug asset id>`) и скомпилированного BI payload (`bi-<slug dashboard ref>-<payload id>`)
+одним slug: нижний регистр, каждый символ, кроме букв и цифр, — `-`. Эквивалентные assets
+`asset://sales/weekly_margin_by_region` и `asset://sales/weekly-margin-by-region` (или
+`asset://sales/weekly/margin_by-region`), скомпилированные дашборды `dashboard://weekly_margin@7` и
+`dashboard://weekly-margin@7` получали один ID; `EvidenceBundle` отвергал повтор, и `decision
+verify` после оценки всех шагов кончался pydantic `ValidationError` traceback с exit 1 — без
+bundle, без строки `error:` и без вердикта (`.tmp/t114/audit/f4_slug_collision.out`,
+воспроизведено на HEAD `0caec3b`). Теперь ID — `claim-<slug>-<hex>` с полным SHA-256 canonical
+JSON `[asset id]` и `bi-<slug>-<payload id>-<hex>` с хешем `[dashboard ref, payload id]`
+(`_ref_id`); slug остался впереди для чтения — claim иначе не называет свой asset в `decision
+evidence`. Хеш хранит сегменты и разделители, пин и границу между ref и payload id и не зависит
+от payload, соседних ref и их порядка; одинаковые payload двух дашбордов делят content address.
+Id asset уникален в репозитории (`duplicate verified asset id`), поэтому уникален и ID его claim.
+Verifier 112 → 113, check 76 и `NATIVE_SOURCE_VERSION` 3 прежние: ни одна проверка не оценивает
+иначе; run id сдвигается у каждого прогона вместе с verifier version. Прежние bundle читаются со
+своими slug-ID (pilot `2026-08-25-ch-control` — тест). Граница: повтор одного ref в
+`delivery.dashboards` проходит `decision validate` и, если его spec компилируется, кончает
+`decision verify` тем же traceback (`.tmp/t114/audit/f4b_repeated_delivery.out`) — это правило
+`DeliverySpec`, не ID. Spec — [evidence ref ids](../specs/evidence-ref-ids.md); абзац — §9.2
+архитектуры и USER_GUIDE.
+
+Срез выбрала synthetic Astra xhigh (ADR 0006, `.tmp/t114/astra_select.out`) из кандидатов
+аудита T-111, перепроверенных на HEAD (`.tmp/t114/audit/`); не human acceptance. Отклонены:
+повтор delivery-ref (отдельное правило уникальности `DeliverySpec`), пересечение validated paths
+(ложный block, нужна идентичность файлов), нестрогий `Timestamp` (контракт времени и
+совместимость старого evidence), порядок gaps и узлов (нестабильный run id при сохранённом
+block), тесты `decision runs` из worktree B (дефекта нет, часть fixtures закрепляет нестрогий
+`Timestamp`). Astra предлагала голый хеш (`claim-<hex>`, как `result-<hex>` investigation);
+Claude Opus 5.5 оставил slug впереди: в `decision evidence` ID claim — единственное место, где
+виден его asset.
+
+Windows, Python 3.13.7: `tests/test_evidence_ref_ids.py` на коде HEAD `0caec3b` — 12 failed,
+1 passed (`.tmp/t114/red_head.log`; проходит чтение pilot-bundle со старыми ID — оно и не должно
+меняться), после правки — 13 passed. Десять мутантов ловятся (`.tmp/t114/mutants.py`,
+`.tmp/t114/mutants.log`; каждый валит тест среза): slug вместо хеша у claim и у BI payload
+(обязательная пара по выбору), хеш payload вместо ref, хеш slug, хеш одного ref без payload id,
+хеш склеенного текста, хеш, усечённый до 16 знаков, позиция артефакта в хеше, pinned ref asset
+вместо id, читаемая часть без payload id; файл восстановлен. Точные ID в `assert_digests`
+(`tests/test_bi_contract_validation.py`) пересчитаны под новый формат, digests payload прежние.
+Black, Ruff, mypy (default, strict, strict Linux, strict win32) чистые; 18 соседних модулей —
+714 passed, 51 skipped, 1 failed (`.tmp/t114/checks.log`): `test_internal_markdown_links_resolve`
+— новая spec ещё не была в индексе; после `git add` обоих новых файлов docs-тесты на итоговых
+доках — 32 passed (`.tmp/t114/docs.log`). Полный Windows offline gate
+(`.tmp/t114/gate.py`, `uv run` с pytest-cov и duckdb) — 6899 passed, 91 skipped, exit 0, покрытие
+96% (`.tmp/t114/pytest.log`), на дереве до правок по ревью. Прогоны шли медленно: одни и те же
+пять модулей прошли за 31 с, а следующим прогоном — за 11 мин; вероятная причина — Defender
+(`MsMpEng`), не проверена.
+
+Ревью synthetic Astra xhigh (`.tmp/t114/REVIEW_BRIEF.md` → `.tmp/t114/astra_review.out`; не
+human acceptance) шло одновременно с gate. P1: spec обещала, что ни один прежний bundle не держит
+двух ref одного slug, но неэквивалентный asset не даёт claim, а пропущенный, невалидный или
+отклонённый дашборд — payload, и такие ref остаются в checks: отказ был только при двух записанных
+ID. Уточнены spec, архитектура, CURRENT_STATE, журнал, CLAUDE.md, комментарий `#: 113` и
+сообщение коммита. P2: замедление прогонов приписывалось Defender без доказательства — теперь это
+гипотеза. P3: хеш ref со сжатыми повторами `-` проходил тесты — добавлена пара `weekly-margin@7`
+/ `weekly--margin@7`, мутант `hash-of-collapsed-separators` ловится (`.tmp/t114/mutant_sep.py`,
+`.tmp/t114/mutant_sep.log`). P3: USER_GUIDE называет хешируемые массивы canonical JSON. Slug
+перед хешем ревью сочло оправданным, повтор delivery-ref — верно оставленным `DeliverySpec`.
+После правок: 28 модулей (срез и читающие правленые доки) — 1061 passed, 51 skipped,
+black и ruff чистые; на дереве T-114 повтор delivery-ref по-прежнему кончается тем же traceback
+(`.tmp/t114/audit/f4b_repeated_delivery.t114.out`). Повторного ревью нет.
+
 ## 2026-10-24 — T-113: spec дашборда по полному пути ref
 
 `_dashboard_file` (`auto_bi/decision/use_cases.py`) называл файл spec последним сегментом

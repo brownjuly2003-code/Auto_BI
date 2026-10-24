@@ -364,6 +364,11 @@ manifest. Это не атомарный snapshot всего каталога: �
 `--artifact ID` печатает один payload — но только если он всё ещё хешируется в свой адрес,
 а `restricted`-артефакт не печатается никогда: в манифесте у него есть digest, размер и
 класс, и это вся публичная поверхность (§10.2).
+ID claim и BI payload, названные по ref, — slug ref для чтения и на конце полный SHA-256
+canonical JSON: `[asset id]` у claim, `[dashboard ref, payload id]` у payload
+(`claim-asset-sales-weekly-margin-by-region-<64 hex>`,
+`bi-dashboard-weekly-margin-7-dataset-1-<64 hex>`): у `weekly_margin` и `weekly-margin`
+slug один, хеш разный. ID для `--artifact` берите из списка артефактов `decision evidence`.
 
 `--expect-digest` действует и вместе с `--artifact`: несовпадение manifest digest даёт
 `4`, диагностику `evidence.digest_unexpected` в stderr и пустой stdout. При совпадении

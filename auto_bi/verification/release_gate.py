@@ -517,7 +517,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: but the last a directory (`sales/weekly_margin@7.yaml`). Verifier 111 read the file of the
 #: last segment, so `dashboard://ops/weekly_margin@7` could compile, and chart impact could read,
 #: the layout of another dashboard, and a dashboard nobody supplied a spec for passed as compiled.
-VERIFIER_VERSION = "112"
+#: 113 — the id of an equivalent result's claim and of a compiled BI payload ends in the full
+#: SHA-256 of the ref it is about (with the compiler's id of the payload), after the slug it
+#: had. Verifier 112 named them by the slug alone, which folds `_`, `-`, `/` and `@` into one
+#: `-`: two equivalent assets or two compiled dashboards of one slug ended the run in a
+#: traceback, no bundle written.
+VERIFIER_VERSION = "113"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -1809,7 +1814,7 @@ def _check_results(
         # A factual claim needs its evidence (invariant 5) — here, the comparison itself and
         # the attestation of the number it compared.
         writer.add_claim(
-            claim_id=f"claim-{_slugify(asset.metadata.id)}",
+            claim_id=_ref_id("claim", asset.metadata.id),
             claim_type=ClaimType.OBSERVATION,
             summary_code="result.equivalent",
             evidence_refs=[ref, provenance_ref],
@@ -2003,10 +2008,9 @@ def _write_bi_payloads(
     configs) whose numbers are IEEE-754 by construction — the strict decimal-string rule
     governs our contracts, not theirs.
     """
-    prefix = _slugify(dashboard_ref)
     for artifact in contract.artifacts:
         writer.add_blob(
-            f"bi-{prefix}-{artifact.artifact_id}",
+            _ref_id("bi", dashboard_ref, artifact.artifact_id),
             kind=ArtifactKind.BI_CONTRACT,
             payload=canonical_bytes(artifact.payload, allow_float=True),
             media_type="application/json",
@@ -2420,7 +2424,20 @@ def _skipped(check_id: str, category: CheckCategory, product_ref: str, reason: s
     )
 
 
+def _ref_id(kind: str, ref: str, *parts: str) -> str:
+    """The id of an artifact or claim about *ref*: a slug to read, then the hash it is told by.
+
+    The slug folds `_`, `-`, `/`, `:` and `@` alike, so `asset://sales/weekly_margin_by_region`
+    and `asset://sales/weekly-margin-by-region` share one, and a bundle holds an id once. The
+    full SHA-256 of the canonical array `[ref, *parts]` keeps every segment and separator, the
+    pin and the boundary between the ref and its parts; it does not depend on the payload or on
+    any other ref of the run.
+    """
+    identity = sha256_digest([ref, *parts]).removeprefix("sha256:")
+    return "-".join([kind, _slugify(ref), *parts, identity])
+
+
 def _slugify(ref: str) -> str:
-    """A ref (`decision://sales/weekly_margin@1`) as an artifact-id slug."""
+    """A ref (`decision://sales/weekly_margin@1`) as the readable part of an id; lossy."""
     out = "".join(char if char.isalnum() else "-" for char in ref.lower())
     return "-".join(part for part in out.split("-") if part) or "ref"

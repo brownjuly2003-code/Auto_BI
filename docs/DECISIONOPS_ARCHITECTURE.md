@@ -641,7 +641,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=112`, `CHECK_VERSION=76`.
+`VERIFIER_VERSION=113`, `CHECK_VERSION=76`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1481,6 +1481,23 @@ symlink или Windows junction отвергается до доступа к а
 а не ко всему bundle: созданные родительские каталоги могут остаться, конкурентные изменения
 пути, прерывание и отказ очистки находятся вне неё; `fsync` и сохранность после сбоя питания
 не обеспечены ([полный контракт](specs/unreadable-inputs.md)).
+
+ID двух видов записей bundle выводятся из ref. Claim эквивалентного результата
+(`results.reconcile`, §8.4) — `claim-<slug>-<hex>`, где `<hex>` — полный SHA-256 canonical JSON
+массива `[asset id]`; скомпилированный BI payload (§8.5) — `bi-<slug>-<payload id>-<hex>`, где
+`<hex>` — тот же хеш массива `[dashboard ref, payload id]`. Slug — ref в нижнем регистре, в котором
+каждый символ, кроме букв и цифр, стал одним `-`; он стоит впереди для чтения в `decision
+evidence` (claim иначе не называет свой asset), а различает ID хеш. До verifier 113 ID был одним
+slug: claim эквивалентных результатов assets `asset://sales/weekly_margin_by_region` и
+`asset://sales/weekly-margin-by-region` или payload скомпилированных дашбордов
+`dashboard://weekly_margin@7` и `dashboard://weekly-margin@7` получали один ID, `EvidenceBundle`
+отвергал повтор, и прогон после оценки всех шагов кончался traceback с exit 1 — без bundle и без
+вердикта. Хеш хранит каждый сегмент и разделитель, пин и границу между ref и payload id и не
+зависит ни от payload, ни от соседних ref, ни от их порядка; одинаковые payload двух дашбордов
+делят content address под своими ID. Остальные ID bundle (`check-<check id>`, `snapshot-base`,
+`report-summary-md`) не выводятся из ref и не менялись; bundle прежних версий читаются со своими
+slug-ID. Повтор одного ref в `delivery.dashboards`, чей spec компилируется, по-прежнему даёт один
+ID дважды — граница [спеки](specs/evidence-ref-ids.md).
 
 `reports/summary.md` пишет `verification/summary.py` — единственный артефакт в
 layout, написанный для человека, а не для машины. «Derived» здесь контракт, а не

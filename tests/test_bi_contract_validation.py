@@ -185,8 +185,10 @@ def assert_digests(report: GateReport, store: MemoryStore, target: str) -> None:
     artifacts = [
         a for a in read_bundle(store, report.run_id).artifacts if a.kind.value == "bi_contract"
     ]
+    identity = "dashboard://weekly_margin@7"
     assert {a.artifact_id: a.digest for a in artifacts} == {
-        "bi-dashboard-weekly-margin-7-" + suffix: digest
+        f"bi-dashboard-weekly-margin-7-{suffix}-"
+        + sha256_digest([identity, suffix]).removeprefix("sha256:"): digest
         for suffix, digest in DIGESTS[target].items()
     }
     for artifact in artifacts:

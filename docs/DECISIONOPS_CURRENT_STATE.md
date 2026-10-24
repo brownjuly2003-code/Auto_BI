@@ -10,9 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=112`, `CHECK_VERSION=76`
+**Версии evidence:** `VERIFIER_VERSION=113`, `CHECK_VERSION=76`
 
-**Последний срез (T-113, 2026-10-24):** spec доставленного дашборда читается из файла полного
+**Последний срез (T-114, 2026-10-24):** ID claim эквивалентного результата и скомпилированного
+BI payload кончаются полным SHA-256 своего ref (у payload — вместе с его id от компилятора):
+`claim-<slug>-<hex>`, `bi-<slug>-<payload id>-<hex>`. ID был одним slug ref, а slug сводит `_`,
+`-`, `/` и `@` к одному `-`: два assets `asset://sales/weekly_margin_by_region` и
+`asset://sales/weekly-margin-by-region` с эквивалентными результатами или два скомпилированных
+дашборда `weekly_margin@7` и `weekly-margin@7` получали один ID, и прогон после оценки кончался
+pydantic traceback с exit 1 — без bundle и без вердикта (воспроизведено на HEAD `0caec3b`). Slug
+остался впереди для чтения в `decision evidence`. Verifier 112 → 113, check 76 и native source 3
+прежние; run id сдвигается у каждого прогона вместе с verifier version, прежние bundle читаются
+со своими ID. Граница: повтор одного ref в `delivery.dashboards` проходит `decision validate` и,
+если его spec компилируется, кончает `decision verify` тем же traceback.
+[Spec](specs/evidence-ref-ids.md); полный Windows gate 6899 passed, 91 skipped, exit 0; ревью
+synthetic Astra xhigh — P1 (отказ был только при двух записанных ID), P2 и два P3 исправлены,
+повторного нет; прогоны и замечания — в журнале T-114.
+
+**Предыдущий срез (T-113, 2026-10-24):** spec доставленного дашборда читается из файла полного
 ref: каждый сегмент, кроме последнего, — каталог (`dashboard://sales/weekly_margin@7` →
 `sales/weekly_margin@7.yaml`). Имя файла несло только последний сегмент и пин, поэтому
 `dashboard://sales/weekly_margin@7` и `dashboard://ops/weekly_margin@7` читали один
