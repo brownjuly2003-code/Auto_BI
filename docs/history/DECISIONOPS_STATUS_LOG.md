@@ -10,6 +10,21 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-24 — T-110: полный offline-прогон на Mac после T-109
+
+Последний полный прогон вне Windows был на дереве T-97; T-98…T-109 проверялись на Windows,
+где проверки symlink, POSIX modes и отказов доступа пропускаются (91 skipped). На Mac
+(iMac Intel, macOS 13.7.8) дерево `5cb2c08` прошло под Python 3.13.13, 3.12.13 и 3.14.6
+с DuckDB: каждый прогон — 6919 passed, 20 skipped, 38 deselected, exit 0. Black, Ruff и
+mypy (Linux, strict Linux, strict win32) чистые. 20 skips — Windows junction/ACL/read-only,
+`Illegal byte sequence` macOS, Playwright и отсутствующий Anthropic SDK.
+
+Рабочий каталог `/tmp/autobi_t47` пришлось пересобрать: ежедневная очистка `/tmp` в macOS
+удалила файлы прежних venv, первый запуск завершился за 44 s без тестов (отказ среды).
+Исполнитель — Claude Opus 5.5, без модельного ревью: изменена только документация.
+Код и версии 109/74 прежние; Linux runtime и live DWH не запускались.
+[Отчёт с командами и средой](../DECISIONOPS_MAC_CHECKS_2026-10-24.md).
+
 ## 2026-10-23 — T-109: JSON-контракты при обходе validated каталогов
 
 Архитектура §11.1 называет decision products и metric contracts Git-tracked YAML/JSON, и

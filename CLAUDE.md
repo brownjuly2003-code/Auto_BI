@@ -89,6 +89,9 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-24 — T-110: полный offline-прогон на Mac после T-109, без изменений кода.
+  Python 3.13/3.12/3.14: каждый 6919 passed, 20 skipped, exit 0; Black/Ruff/mypy чистые.
+  POSIX-проверки T-98…T-109 впервые исполнены вне Windows; Linux и live DWH — нет.
 - 2026-10-23 — T-109: обход validated каталогов берёт `.json` рядом с `.yaml`/`.yml`.
   Битый, неизвестного kind или дублирующий JSON блокирует; JSON-метрика разрешает pin.
   Каталог `*.json/`/`*.yaml/` обходится, не читается; `metrics/` semantic ref — только YAML.
@@ -98,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Signed owner-summary, границы одного payload и stdout при несовпадении pin.
   Код и версии 108/73 прежние; Windows CLI/docs — 66 passed.
   Проверки и synthetic review — в журнале T-108.
-- 2026-10-23 — T-107: тесты отказов discovery до чтения manifest и manifest-каталога.
-  Text/JSON: exit 2, без частичного stdout и утечки исходной причины отказа.
-  Windows: 338 passed, 74 skipped; Ruff/Black чистые; код и версии 108/73 прежние.
-  Synthetic Astra xhigh без существенных замечаний; подробности — в журнале T-107.
 
 ## Definition of done (фаза/задача)
 

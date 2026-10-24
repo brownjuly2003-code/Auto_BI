@@ -12,7 +12,15 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=109`, `CHECK_VERSION=74`
 
-**Последний срез (T-109, 2026-10-23):** обход каталогов в `decision validate` и
+**Последний срез (T-110, 2026-10-24):** полный offline-прогон на Mac после T-109
+(`5cb2c08`): Python 3.13.13, 3.12.13 и 3.14.6 с DuckDB — каждый **6919 passed,
+20 skipped, 38 deselected**, exit 0; Black, Ruff и mypy (Linux, strict Linux,
+strict win32) чистые. Проверки symlink, POSIX modes и отказов доступа, которые Windows
+пропускает (91 skipped), исполнены; для тестов T-98…T-109 это первый прогон вне Windows.
+Код и версии 109/74 прежние; Linux runtime и live DWH не проверялись.
+[Команды, среда и границы](DECISIONOPS_MAC_CHECKS_2026-10-24.md).
+
+**Предыдущий срез (T-109, 2026-10-23):** обход каталогов в `decision validate` и
 `decision verify` находит контракты `.json` рядом с `.yaml`/`.yml`, в том числе во
 вложенных каталогах, и проверяет их тем же loader и правилами, что явно переданные
 файлы. Битый, неизвестного kind или дублирующий JSON блокирует, а не пропускается;
