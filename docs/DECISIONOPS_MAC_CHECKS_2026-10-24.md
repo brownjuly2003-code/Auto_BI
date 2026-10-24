@@ -36,10 +36,13 @@ Black проверил 353 файла, каждый режим mypy — 123 sour
 1 Windows read-only replacement, 2 имени, которые файловая система macOS отвергает
 (`Illegal byte sequence`), 2 browser-модуля без Playwright, 2 проверки отсутствующего
 Anthropic SDK. 38 deselected — штатное исключение integration/e2e через `pyproject.toml`.
-Полный Windows-прогон T-109 (тот же код и тесты) пропускает 91 тест; проверки symlink, POSIX modes и отказов
-доступа здесь исполнены. Для тестов T-98…T-109 это первый прогон вне Windows: прежние
+Полный Windows-прогон T-109 (тот же код и тесты) пропускает 91 тест: 86 проверок POSIX
+modes и отказов доступа, 1 named pipe, 2 browser-модуля и 2 проверки SDK. Первые 87 здесь
+исполнены. Для тестов T-98…T-109 это первый прогон вне Windows: прежние
 Mac- и Linux-проверки относились к дереву T-97.
 
 Это offline gate на macOS, не весь CI: coverage, browser, mutation, eval, dependency-audit
-и package jobs не запускались. Linux runtime и live DWH не проверялись;
-`mypy --platform linux` проверяет типы, а не исполнение на Linux. Версии evidence 109/74.
+и package jobs не запускались. `mypy --platform linux` проверяет типы, а не исполнение на
+Linux: Linux/Python 3.12 проверен отдельно —
+[отчёт](DECISIONOPS_LINUX_CHECKS_2026-10-24.md). Live DWH не проверялись. Версии
+evidence 109/74.

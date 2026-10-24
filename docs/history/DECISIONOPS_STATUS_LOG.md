@@ -10,10 +10,11 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
-## 2026-10-24 — T-110: полный offline-прогон на Mac после T-109
+## 2026-10-24 — T-110: полный offline-прогон на Mac и в Linux после T-109
 
 Последний полный прогон вне Windows был на дереве T-97; T-98…T-109 проверялись на Windows,
-где проверки symlink, POSIX modes и отказов доступа пропускаются (91 skipped). На Mac
+где пропускаются 86 проверок POSIX modes и отказов доступа и 1 named pipe (всего 91
+skipped). На Mac
 (iMac Intel, macOS 13.7.8) дерево `5cb2c08` прошло под Python 3.13.13, 3.12.13 и 3.14.6
 с DuckDB: каждый прогон — 6919 passed, 20 skipped, 38 deselected, exit 0. Black, Ruff и
 mypy (Linux, strict Linux, strict win32) чистые. 20 skips — Windows junction/ACL/read-only,
@@ -21,9 +22,16 @@ mypy (Linux, strict Linux, strict win32) чистые. 20 skips — Windows junc
 
 Рабочий каталог `/tmp/autobi_t47` пришлось пересобрать: ежедневная очистка `/tmp` в macOS
 удалила файлы прежних venv, первый запуск завершился за 44 s без тестов (отказ среды).
+Затем Linux: изолированный Colima `autobi-linux` на том же Mac, контейнер
+`python:3.12-slim` по digest, CPython 3.12.15, дерево `636772f` (тот же код плюс запись
+Mac-проверки). От непривилегированного пользователя: 6921 passed, 18 skipped,
+38 deselected, exit 0, coverage 96.00%; Ruff, Black и три режима mypy чистые. Linux
+исполняет два теста имён, которые macOS отвергает (6921 + 18 = 6919 + 20). Контейнер
+удалён, профиль остановлен.
 Исполнитель — Claude Opus 5.5, без модельного ревью: изменена только документация.
-Код и версии 109/74 прежние; Linux runtime и live DWH не запускались.
-[Отчёт с командами и средой](../DECISIONOPS_MAC_CHECKS_2026-10-24.md).
+Код и версии 109/74 прежние; Linux 3.13/3.14 и live DWH не запускались. Отчёты с
+командами и средой: [Mac](../DECISIONOPS_MAC_CHECKS_2026-10-24.md),
+[Linux](../DECISIONOPS_LINUX_CHECKS_2026-10-24.md).
 
 ## 2026-10-23 — T-109: JSON-контракты при обходе validated каталогов
 
