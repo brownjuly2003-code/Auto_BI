@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-24 — T-112: два контракта одного metric id в semantic ref — blocking
+  `gap.metric_duplicate`; шесть шагов, как при непрочитанном контракте, — `check.not_run`:
+  вердикт больше не зависит от раскладки `metrics/`. `asset.metric_ref_ambiguous` гейт не выносит.
+  Verifier 111, check 75; 11 мутантов ловятся; полный Windows gate 6872 passed, exit 0.
+  Срез выбрала synthetic Astra xhigh; ревью — P2 и два P3 исправлены, повторного нет.
 - 2026-10-24 — T-111: source digest snapshot хранит digest каждого прочитанного файла;
   одноимённые контракты разных подкаталогов `metrics/` — отсортированным списком с повторами.
   Правка затенённого файла меняет run id; ref без повторов имён — прежний digest (pilot ×10).
@@ -98,11 +103,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Mac 3.13/3.12/3.14: каждый 6919 passed, 20 skipped; Linux 3.12 (Colima): 6921 passed,
   18 skipped, coverage 96.00%; везде exit 0, Black/Ruff/mypy чистые.
   POSIX-проверки T-98…T-109 впервые исполнены вне Windows; live DWH — нет.
-- 2026-10-23 — T-109: обход validated каталогов берёт `.json` рядом с `.yaml`/`.yml`.
-  Битый, неизвестного kind или дублирующий JSON блокирует; JSON-метрика разрешает pin.
-  Каталог `*.json/`/`*.yaml/` обходится, не читается; `metrics/` semantic ref — только YAML.
-  Verifier 109, check 74; полный Windows gate 6848 passed (тест T-106 исправлен `4877671`).
-  Synthetic Astra xhigh: P1 и P2 исправлены, повторного ревью нет; подробности — в журнале.
 
 ## Definition of done (фаза/задача)
 

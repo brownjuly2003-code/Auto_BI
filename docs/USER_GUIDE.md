@@ -238,6 +238,13 @@ Candidate ref должен держать каждую запинненную п
 контрактом на запинненной версии, иначе `contracts.validate` блокирует выпуск:
 `metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,
 `metric_ref.candidate_absent`.
+Каждый metric id semantic ref — и base, и candidate — должен определяться одним
+контрактом под `metrics/`, в каком бы подкаталоге ни лежал файл. Два контракта одного id,
+даже одинаковые, — blocking `gap.metric_duplicate` в `semantic.gaps`: ref не говорит,
+какой из них он имеет в виду. Тогда `semantic.diff`, `impact.products`,
+`assets.invalidated`, `results.reconcile`, `results.provenance` и `sql.compile` выходят
+`check.not_run`, как при контракте, который не загрузился. Старую версию контракта держите
+вне `metrics/` и его подкаталогов.
 Контракт запинненной метрики в validated paths должен быть определением, которое
 держит candidate ref, или определением, которое держит base ref: тогда изменение
 candidate — изменение под review. Иначе `contracts.validate` сообщает
@@ -261,8 +268,8 @@ validated-контракте, второй раз не сообщается.
 его exit code следует issues всех продуктов.
 Каждая запись `metric_refs` verified asset, переданного прогону, тоже должна пинить
 версию, которую держит candidate ref, ровно одним контрактом этой метрики. Иначе
-`assets.invalidated` блокирует выпуск с `asset.metric_ref_version_mismatch`,
-`asset.metric_ref_ambiguous` или `asset.metric_ref_absent`. После сдвига версии
+`assets.invalidated` блокирует выпуск с `asset.metric_ref_version_mismatch` или
+`asset.metric_ref_absent`. После сдвига версии
 перепиньте asset вместе с candidate.
 
 Для агрегатного результата asset может объявить проверки в `tolerance.aggregate_checks`.

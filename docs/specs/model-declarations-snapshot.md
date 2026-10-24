@@ -133,7 +133,9 @@ The gaps stand in this order: for each table name, where the model first declare
 `gap.table_repeated` or `gap.table_conflict` and then its `gap.missing_physical` (a
 `gap.table_unnamed` stands at the place of its own table among them); then the field gaps in the
 order the field ids first stand; then the join gaps in the order the join ids first stand; then
-the gaps of raw-SQL metrics and of metric contracts, as before.
+the gaps of raw-SQL metrics and of metric contracts, as before; last, the gaps of metric ids that
+more than one contract defines
+([two contracts of one metric id](repeated-metric-contracts.md)).
 
 The gate grades these gaps as it grades any gap. `semantic.gaps` is advisory when a repeat is
 the worst gap of the two snapshots and blocks when either holds a conflict; the snapshots are
@@ -250,9 +252,9 @@ bumped.
 - Names are compared as text: `dm.Sales` and `dm.sales` are two tables, whatever the engine
   makes of them.
 - A raw-SQL metric a model declares twice is two `gap.raw_sql_metric` gaps at one path, as
-  before. Two metric contracts of one id in a ref are a metric node each: the gate names them
-  where a product or a verified asset pins the metric, a semantic diff compares the last of
-  them and the gate reads the first.
+  before. Two metric contracts of one id in a ref are a metric node each and the blocking gap
+  `gap.metric_duplicate` of the id, on which the gate does not run the checks a contract that did
+  not load leaves not run ([two contracts of one metric id](repeated-metric-contracts.md)).
 - The v1 readers of `model.yaml` — the spec validator, the BI compile, the SQL generator —
   read the first declaration of a name and are not changed: a mart column declared twice,
   alike, is an advisory of the snapshot and still a dashboard `bi.contract` refuses to

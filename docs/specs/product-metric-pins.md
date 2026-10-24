@@ -815,6 +815,8 @@ ref holds it.
   `assets.invalidated` resolves them in the candidate snapshot
   ([verified asset metric pins](verified-asset-metric-pins.md)), by version; their contents are
   not compared with the validated contract.
-- A semantic ref holding two contracts of one metric id is not a snapshot gap: for a metric that
-  neither the product nor a verified asset given to the run pins, the diff and the reference-SQL
-  compiler may still read different contracts of it.
+- A semantic ref holding two contracts of one metric id carries the blocking gap
+  `gap.metric_duplicate`, whichever metric it is, and the checks a contract that did not load
+  leaves not run are not run ([two contracts of one metric id](repeated-metric-contracts.md)). Only
+  `gap.contract_invalid` makes a pin the candidate does not hold `not_compared`: beside a
+  duplicate of another metric such a pin is `absent`.

@@ -47,6 +47,11 @@ ref the asset writes more than once SHALL be graded once, at its first position.
 | more than one such node, whatever their versions | `ambiguous` | `asset.metric_ref_ambiguous`, block |
 | no such node | `absent` | `asset.metric_ref_absent`, block |
 
+A native candidate snapshot holds more than one such node only beside the blocking gap
+`gap.metric_duplicate`, on which the gate does not run `assets.invalidated`
+([two contracts of one metric id](repeated-metric-contracts.md)): the outcome `ambiguous` is
+what `VerifiedAssetRepository.resolve_metric_pins` gives for a snapshot handed to it.
+
 Each finding SHALL name the asset by the asset's own ref and SHALL carry this detail, where `<id>`
 is the metric id without the version, `<p>` the pinned version, and the versions held are written
 in ascending order, joined by `, `:
@@ -157,12 +162,14 @@ rewritten.
 
 - **GIVEN** a candidate ref holding two contracts of `metric://sales/gross_margin_pct`, versions
   3 and 4, in either file order, and the asset pinning `@3`
-- **WHEN** the gate runs
-- **THEN** `assets.invalidated` is block with `asset.metric_ref_ambiguous`; the finding's detail
-  is `the candidate snapshot holds 2 contracts of metric://sales/gross_margin_pct (versions 3,
-  4), pinned at version 3`; `metric_pins` has `candidate_versions` `[3, 4]` and the outcome
-  `ambiguous` in both file orders; and with both contracts at version 3 the detail names
-  `(versions 3, 3)` and `candidate_versions` is `[3, 3]`
+- **WHEN** `VerifiedAssetRepository.resolve_metric_pins` is given the candidate snapshot
+- **THEN** the finding is `asset.metric_ref_ambiguous` with the detail `the candidate snapshot
+  holds 2 contracts of metric://sales/gross_margin_pct (versions 3, 4), pinned at version 3`;
+  the pin has `candidate_versions` `[3, 4]` and the outcome `ambiguous` in both file orders; and
+  with both contracts at version 3 the detail names `(versions 3, 3)` and `candidate_versions`
+  is `[3, 3]`
+- **AND** when the gate runs, `assets.invalidated` is `check.not_run`, for the snapshot carries
+  `gap.metric_duplicate`, and no file of the bundle holds an `asset.metric_ref_` finding
 
 ### Scenario: every pin of a selected asset is graded, a metric outside the product included
 
@@ -272,5 +279,8 @@ rewritten.
   asset was reviewed for; a changed definition reaches the asset through `semantic.diff`
   (`asset.metric_changed`) when the asset was verified against the base, and through
   `asset.stale_snapshot` otherwise.
-- A semantic ref holding two contracts of a metric id that neither the product nor a selected
-  asset pins is still not a snapshot gap.
+- A semantic ref holding two contracts of a metric id carries the blocking gap
+  `gap.metric_duplicate`, and `assets.invalidated` is then `check.not_run`
+  ([two contracts of one metric id](repeated-metric-contracts.md)). The gate therefore no longer
+  reports `asset.metric_ref_ambiguous` on a native snapshot; the repository names such a pin for
+  a snapshot handed to `resolve_metric_pins`, as the scenario above shows.

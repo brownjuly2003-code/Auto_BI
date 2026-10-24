@@ -173,7 +173,8 @@ class SemanticGraph(StrictModel):
         # One node to an id. A diff reads a graph by id and keeps the last node of one, the
         # gate reads a table or a field by the first: of a graph that held two nodes under
         # one id the two would answer apart. Metrics are not held to it here: two contracts
-        # of one id are what the gate's own checks of a pin name.
+        # of one id stay two nodes, whose versions the gate's checks of a pin name, and the
+        # snapshot of a source carries `gap.metric_duplicate` for the id.
         _one_node_to_an_id("table", [node.id for node in self.tables])
         _one_node_to_an_id("field", [node.id for node in self.fields])
         _one_node_to_an_id("join", [node.id for node in self.joins])
@@ -486,6 +487,30 @@ def _build_graph(
         )
 
     metrics = [_metric_node(contract, known, gaps) for contract in contracts]
+
+    # Two contracts of one metric id are two definitions of the metric, and the ref does not
+    # say which of them it means: a diff keeps the last node of an id, the gate reads the
+    # first, and which node is last is the order of their files — moving one between the
+    # directories of the metrics changed what a run compared. The nodes all stay, for a pin
+    # names the versions it was given; the id is a blocking gap, one to the id and in the
+    # order of the ids, whatever the order of the files.
+    versions: dict[str, list[int]] = {}
+    for metric_node in metrics:
+        versions.setdefault(metric_node.id, []).append(metric_node.version)
+    for metric_id, held in sorted(versions.items()):
+        if len(held) > 1:
+            gaps.append(
+                SemanticGap(
+                    code="gap.metric_duplicate",
+                    severity=Severity.BLOCK,
+                    path=f"metrics.{metric_id}",
+                    reason=(
+                        f"metric is defined by {len(held)} contracts (versions "
+                        f"{', '.join(str(version) for version in sorted(held))}): "
+                        "which of them the ref means is not known"
+                    ),
+                )
+            )
 
     return SemanticGraph(
         tables=sorted(tables, key=lambda node: node.id),

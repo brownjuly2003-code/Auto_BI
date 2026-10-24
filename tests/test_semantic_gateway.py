@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from auto_bi.evidence.canonical import digest_bytes, sha256_digest
 from auto_bi.semantic.gateway import (
     NativeModelSource,
+    SemanticGap,
     SemanticSnapshot,
     SourceKind,
 )
@@ -429,6 +430,83 @@ def test_a_contracts_file_named_model_does_not_take_the_place_of_the_model(
     assert after.source_digest != before.source_digest
     digests = [digest_bytes(path.read_bytes()), digest_bytes(named.read_bytes())]
     assert after.source_digest == sha256_digest({"model": sorted(digests)})
+
+
+def _duplicate(metric_id: str, versions: str, count: int = 2) -> SemanticGap:
+    return SemanticGap(
+        code="gap.metric_duplicate",
+        severity=Severity.BLOCK,
+        path=f"metrics.{metric_id}",
+        reason=(
+            f"metric is defined by {count} contracts (versions {versions}): "
+            "which of them the ref means is not known"
+        ),
+    )
+
+
+def test_two_contracts_of_one_metric_id_are_a_blocking_gap_and_two_nodes(tmp_path: Path) -> None:
+    """The ref does not say which of them it means; a pin still names the versions it holds."""
+    newer = contract(metadata={**contract()["metadata"], "version": 4})
+    snapshot = source(
+        tmp_path,
+        contracts={"gross_margin_pct.yaml": contract(), "archive/gross_margin_pct.yaml": newer},
+    ).snapshot()
+
+    assert snapshot.gaps == [_duplicate("metric://sales/gross_margin_pct", "3, 4")]
+    assert sorted(node.version for node in snapshot.graph.metrics) == [3, 4]
+
+
+def test_copies_of_a_contract_are_one_gap_that_counts_each_of_them(tmp_path: Path) -> None:
+    snapshot = source(
+        tmp_path, contracts={f"{below}/gross_margin_pct.yaml": contract() for below in "abc"}
+    ).snapshot()
+
+    assert snapshot.gaps == [_duplicate("metric://sales/gross_margin_pct", "3, 3, 3", count=3)]
+    assert [node.version for node in snapshot.graph.metrics] == [3, 3, 3]
+
+
+def test_the_versions_of_a_repeated_id_are_named_in_the_order_of_numbers(tmp_path: Path) -> None:
+    """Version 10 follows version 2: the versions are numbers, not text."""
+    snapshot = source(
+        tmp_path,
+        contracts={
+            f"{below}/gross_margin_pct.yaml": contract(
+                metadata={**contract()["metadata"], "version": version}
+            )
+            for below, version in (("a", 2), ("b", 10), ("c", 2))
+        },
+    ).snapshot()
+
+    assert snapshot.gaps == [_duplicate("metric://sales/gross_margin_pct", "2, 2, 10", count=3)]
+
+
+def test_the_gaps_of_two_metric_ids_follow_the_ids_not_the_files(tmp_path: Path) -> None:
+    """The files put `other_pct` first; the two gaps stand in the order of the ids, after the
+    gap of a contract that did not load and the gap of a metric node, wherever their files lie."""
+    third = contract(metadata={**contract()["metadata"], "id": "metric://sales/third_pct"})
+    third["formula"]["numerator"]["column"] = "margin_typo"
+    snapshot = source(
+        tmp_path,
+        contracts={
+            "a/other_pct.yaml": _other_metric(),
+            "b/gross_margin_pct.yaml": contract(),
+            "c/other_pct.yaml": _other_metric(),
+            "d/gross_margin_pct.yaml": contract(),
+            "e/unread.yaml": "kind: MetricContract\nnot: a contract\n",
+            "f/third_pct.yaml": third,
+        },
+    ).snapshot()
+
+    assert gap_codes(snapshot) == [
+        "gap.contract_invalid",
+        "gap.metric_field_missing",
+        "gap.metric_duplicate",
+        "gap.metric_duplicate",
+    ]
+    assert snapshot.gaps[2:] == [
+        _duplicate("metric://sales/gross_margin_pct", "3, 3"),
+        _duplicate("metric://sales/other_pct", "3, 3"),
+    ]
 
 
 def test_capabilities_are_declared_not_assumed(tmp_path: Path) -> None:

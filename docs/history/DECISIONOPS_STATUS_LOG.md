@@ -10,6 +10,56 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-24 — T-112: два контракта одного metric id — blocking gap snapshot'а
+
+Граф native snapshot держит узел на каждый загруженный контракт, и `SemanticGraph` допускает
+два узла одного metric id. `diff_snapshots` оставлял последний узел id,
+`SemanticSnapshot.metric` — первый, а узлы одного id стоят в порядке путей файлов. Старая
+версия запинненной метрики (v2, другая формула) рядом с текущей v3 в base: verifier 110 из
+`metrics/` давал `block` (diff сравнивал v2), из `metrics/archive/` — `pass_with_advisory`
+(`semantic.unchanged`); воспроизведено на HEAD `269285c` (`.tmp/t112/head_layouts.py`).
+Теперь `_build_graph` после узлов метрик добавляет на каждый id с двумя и более контрактами
+blocking `gap.metric_duplicate` по адресу `metrics.<id>`: `metric is defined by <n> contracts
+(versions …): which of them the ref means is not known`, версии по возрастанию с повторами;
+гэпы стоят после остальных и в порядке id. Узлы остаются, поэтому
+`metric_ref.candidate_ambiguous` прежний. `UNTRUSTWORTHY_GAPS` включает новый гэп:
+`semantic.diff`, `impact.products`, `assets.invalidated`, `results.reconcile`,
+`results.provenance` и `sql.compile` — `check.not_run` с причиной о дубле, при обоих гэпах —
+обе причины через `; `. `not_compared` для pin, которого candidate не держит, остаётся только
+при `gap.contract_invalid` (`UNLOADED_CONTRACT_GAPS`). Verifier 110 → 111, check 74 → 75,
+`NATIVE_SOURCE_VERSION` 3 прежний. Spec — [two contracts of one metric
+id](../specs/repeated-metric-contracts.md); абзацы — §7.4 и §8.2 архитектуры и USER_GUIDE;
+поправлены границы трёх смежных spec.
+
+Срез выбрала synthetic Astra xhigh (ADR 0006) из кандидатов аудита T-111; не human
+acceptance. Отклонены: namespace dashboard spec (нужен контракт имени файла), slug и повтор
+delivery-ref, пересечение validated paths, `Timestamp`. Claude Opus 5.5 проверил выбор
+независимо. Модель 2026-10-04 держала такой гэп вне пропуска шагов, чтобы правила pin
+оставались достижимы, но тогда bundle называл `semantic.unchanged` при двух определениях.
+Принят сегодняшний вариант; его цена — `asset.metric_ref_ambiguous` гейт больше не выносит
+(правило осталось в `VerifiedAssetRepository.resolve_metric_pins`, граница записана).
+Повторов metric id в десяти pilot-ref нет (`.tmp/t112/pilot_duplicates.py`).
+
+Windows, Python 3.13.7: новые и изменённые тесты на коде HEAD `269285c` — 17 failed. На
+итоговом дереве до тестов по ревью `pytest tests/test_repeated_metric_contracts.py
+tests/test_semantic_gateway.py tests/test_verified_asset_metric_pins.py
+tests/test_product_metric_pins.py tests/test_decision_verify.py tests/test_run_identity.py
+tests/test_repeated_declarations.py tests/test_unlisted_paths.py tests/test_docs_as_code.py
+tests/test_docs_defaults.py` — 604 passed, 33 skipped. На дереве с тестами по ревью
+одиннадцать мутантов ловятся (`.tmp/t112/mutants.py`, каждый валит тест среза): гэпы не в
+порядке id, версии без повторов, версии по сортировке текста, гэп только при разных версиях,
+severity review, число разных версий вместо числа контрактов, дубль не пропускает шаги,
+дубль подавляет pin, из двух причин только последняя, только первая, в обратном порядке;
+файлы восстановлены. Ruff, Black и mypy (default, strict, strict Linux, strict win32)
+чистые. Полный Windows offline gate на итоговом дереве: 6872 passed, 91 skipped, 38
+deselected, coverage 96.18%, exit 0. Ревью synthetic Astra xhigh
+(`.tmp/t112/astra_review.out`): P1 нет. P2 — не описана граница DWH: шаг 7 спрашивает о
+запинненной метрике по id, то есть о первом из двух её контрактов, и планы `dwh.cost`
+следуют порядку файлов; граница записана в spec и §8.2 и закреплена offline-тестом. P3 —
+«digest меняется» неверно для побайтовых копий: сужено до различающихся контрактов. P3 —
+однозначные версии не ловили сортировку как текста: добавлены тест 2, 10, 2 и мутант.
+Повторного ревью нет.
+
 ## 2026-10-24 — T-111: source digest snapshot адресует каждый прочитанный файл
 
 `NativeModelSource.snapshot` хранил digest контракта под `path.name`, а `_contract_files`

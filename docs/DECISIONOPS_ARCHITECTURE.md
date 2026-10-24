@@ -339,6 +339,16 @@ Source digest native-источника адресует байты `model.yaml`
 поэтому правка любого из них меняет snapshot и run id. Ref без повторяющихся имён
 сохраняет прежний digest.
 
+Граф держит узел на каждый загруженный контракт, и у одного metric id их может быть
+несколько. Такой id — blocking `gap.metric_duplicate` по адресу `metrics.<id>` с версиями
+всех его контрактов по возрастанию, с повторами; один гэп на id, после остальных гэпов и в
+порядке id, где бы ни лежали файлы (verifier 111). Diff читает граф по id и берёт последний
+узел, поиск метрики по id — первый, а какой узел последний, решает порядок путей файлов
+([two contracts of one metric id](specs/repeated-metric-contracts.md)). Узлы остаются: pin
+называет версии, которые держит snapshot. Они стоят в порядке файлов, поэтому canonical
+digest такого ref может зависеть от места файлов, когда контракты id различаются; вердикт —
+нет.
+
 Native `model.yaml` — первый source adapter. Текущий `dbt_import.py` остаётся
 enrichment helper и не объявляется полноценным MetricFlow importer. Apache
 Ossie (бывший OSI) используется через adapter, pinned на tag или commit;
@@ -396,6 +406,10 @@ Ref пинит версию, для которой asset был reviewed (§7.1)
 Версия, сдвинувшаяся без изменения определения (`metric.version_changed`, advisory
 в diff), поэтому блокирует выпуск, пока asset не перепинят. Asset, перепиненный
 вместе с candidate, проходит: ровно один контракт на запинненной версии сохраняет clean.
+Несколько контрактов одного id native candidate держит только вместе с blocking
+`gap.metric_duplicate`, и тогда шаг 5 не запускается (§8.2): `asset.metric_ref_ambiguous`
+даёт `VerifiedAssetRepository.resolve_metric_pins` для snapshot, переданного ему напрямую,
+а гейт этой находки не выносит.
 
 Оба уровня нужны: governance на уровне витрины говорит, что число «про эти витрины», а
 метрика определена над **полями**, и запрос по governed-витрине, читающий необъявленную
@@ -627,7 +641,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=110`, `CHECK_VERSION=74`.
+`VERIFIER_VERSION=111`, `CHECK_VERSION=75`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -762,9 +776,10 @@ Gate выполняет шаги в фиксированном порядке:
   всех продуктов ([the validation issues a run grades](specs/validation-issue-scope.md)).
   Pins verified assets (`metric_refs`) резолвит шаг 5 (`assets.invalidated`), а не
   этот шаг.
-  Два контракта одного metric id сами по себе не snapshot gap: для метрики вне pins
-  продукта и выбранных verified assets diff и reference-SQL compiler по-прежнему
-  могут читать разные контракты.
+  Два контракта одного metric id — blocking `gap.metric_duplicate` snapshot'а, какую бы
+  метрику они ни определяли, и шаги, которые не запускаются при непрочитанном контракте,
+  не запускаются и здесь (ниже, «Reject blocking semantic gaps»). Pin продукта на такой id в candidate этот шаг
+  по-прежнему называет `metric_ref.candidate_ambiguous`.
 - Шаг 6 реализован в `verification/sql_contract.py` — reference query метрики: её
   определение на её же grain, без окна, фильтра и top-N (это принадлежит продукту и
   прогону, не метрике). Граница узкая намеренно: typed aggregate компилируется
@@ -1000,9 +1015,21 @@ Gate выполняет шаги в фиксированном порядке:
   несколько весов. Typed `executions` сохраняются в evidence рядом с `plans`. Прогон без
   `--dwh` выносит все пять проверок как `check.not_configured` — ответ, а не пропуск: чистый
   bundle не должен читаться как полная верификация.
-- «Reject blocking semantic gaps» останавливает последовательность ТОЛЬКО на
+- «Reject blocking semantic gaps» останавливает последовательность ТОЛЬКО на двух гэпах.
   `gap.contract_invalid`: непрочитанный контракт отсутствует в графе, и diff назвал
-  бы это удалённой метрикой. Остальные blocking-гэпы (dangling join, отсутствующее
+  бы это удалённой метрикой. `gap.metric_duplicate`: у metric id два контракта, diff
+  сравнил бы тот, чей файл стоит последним, а поиск метрики по id читает первый. Старый
+  контракт запинненной метрики рядом с текущим в base блокировал выпуск из `metrics/` и
+  давал `pass_with_advisory` из `metrics/archive/` (verifier 110;
+  [two contracts of one metric id](specs/repeated-metric-contracts.md)). Причина в
+  `check.not_run` называет гэп, при обоих — оба через `; `. Pin продукта, которого
+  candidate не держит, становится `not_compared` только при `gap.contract_invalid`: дубль
+  другой метрики не говорит, загрузился ли контракт этой. С настроенным DWH шаг 7 по-прежнему
+  спрашивает о запинненной метрике по id, а из двух её контрактов в candidate — о том, чей
+  файл прочитан первым: спросит ли `dwh.cost` план бюджета, который объявляет только один из
+  них, и что он ответит, следует порядку файлов. Выпуск заблокирован в любом случае: pin
+  `ambiguous`, и `semantic.gaps` блокирует. Остальные blocking-гэпы
+  (dangling join, отсутствующее
   поле метрики, таблица без имени, объявления одного id, которые расходятся) описывают
   правдивый граф с названной дырой — diff и
   impact по нему по-прежнему стоит читать, а сам гэп уже блокирует релиз. Пропущенные шаги
@@ -1011,7 +1038,9 @@ Gate выполняет шаги в фиксированном порядке:
   с пустым id diff назвать не может. Она — `gap.table_unnamed` (block) по адресу
   `tables.<индекс>.name`. Граф держит один узел на id таблицы, поля и join'а: diff читает
   граф по id и берёт последний узел, гейт и v1-модель — первый, и о графе с двумя узлами
-  одного id они ответили бы врозь. То, что модель объявляет больше одного раза, — один узел
+  одного id они ответили бы врозь. Метрики — исключение: узел на каждый контракт остаётся,
+  а id становится `gap.metric_duplicate` (§7.4). То, что модель объявляет больше одного
+  раза, — один узел
   и advisory `gap.table_repeated`, `gap.field_repeated`, `gap.join_repeated`, когда
   объявления дают графу одно и то же, и `gap.table_conflict`, `gap.field_conflict`,
   `gap.join_conflict` (block) без узла, когда не дают: какое из них модель имеет в виду,
@@ -1022,7 +1051,9 @@ Gate выполняет шаги в фиксированном порядке:
   (`asset.stale_snapshot` и коды из diff'а), metric pin asset'а не резолвится в candidate
   snapshot ровно в один контракт на запинненной версии
   (`asset.metric_ref_version_mismatch`, `asset.metric_ref_ambiguous`,
-  `asset.metric_ref_absent`, block), или его reviewed `reference_query` читает
+  `asset.metric_ref_absent`, block; `ambiguous` гейт на native snapshot не выносит —
+  такой candidate несёт `gap.metric_duplicate`, и шаг 5 не запускается), или его
+  reviewed `reference_query` читает
   витрину или колонку, которой этот snapshot не управляет (`asset.query_ungoverned`,
   `asset.query_ungoverned_field`, §7.5). Вопрос один — перестал ли asset быть
   доказательством, — поэтому и проверка одна, но summary code

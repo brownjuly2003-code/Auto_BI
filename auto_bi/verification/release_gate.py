@@ -24,10 +24,11 @@ Two properties this module exists to keep:
   engine answered nothing for says `not_run` rather than clean. Neither may leave a bundle
   that reads as a full verification. Step 6 compiles the reference query of each
   in-scope metric where the semantics are exact offline and names what it will not guess
-  (`sql_contract.py`). The same applies downstream of a metric contract that failed to load:
-  the diff would call the unparsed contract a *removed metric*, so those checks are emitted
-  as `check.not_run` instead of a guess (see `UNTRUSTWORTHY_GAPS` for why that is the only
-  gap that stops the sequence).
+  (`sql_contract.py`). The same applies downstream of a metric contract that failed to load,
+  where the diff would call the unparsed contract a *removed metric*, and of a ref holding
+  two contracts of one metric id, where it would compare whichever stands last: those checks
+  are emitted as `check.not_run` instead of a guess (see `UNTRUSTWORTHY_GAPS` for why those
+  are the only gaps that stop the sequence).
 
 The evidence bundle carries every input and finding the verdict was computed from. The
 `evidence.bundle` check itself is in the report but not in the bundle — it grades the
@@ -507,7 +508,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: included; a ref without such a name keeps its source digest. Verifier 109 kept the digest
 #: of the last file read under a name, so a change to the others, or to the model, that
 #: neither the graph nor a gap carries moved neither the snapshot nor the run id.
-VERIFIER_VERSION = "110"
+#: 111 — a semantic ref that holds two or more contracts of one metric id carries the blocking
+#: gap `gap.metric_duplicate`, one to the id, and the checks a contract that did not load leaves
+#: not run — the diff, impact, assets, both result checks and the reference SQL — are not run.
+#: Verifier 110 compared the contract of the id whose file stood last, so moving a file between
+#: directories of the metrics could turn `block` into `pass_with_advisory`.
+VERIFIER_VERSION = "111"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -771,15 +777,24 @@ VERIFIER_VERSION = "110"
 #: 74 — contracts.validate includes JSON files discovered under validated paths, using
 #: the same schema and cross-contract rules as explicitly supplied files; a directory with
 #: a contract suffix is walked, where it blocked as an unreadable contract.
-CHECK_VERSION = "74"
+#: 75 — semantic.gaps blocks on `gap.metric_duplicate`, and a snapshot that carries it leaves
+#: semantic.diff, impact.products, assets.invalidated, results.reconcile, results.provenance
+#: and sql.compile `check.not_run`, with a reason that says so.
+CHECK_VERSION = "75"
 
-#: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
-#: it would be fiction: a metric contract that failed to parse is simply absent from the
-#: candidate graph, and the diff would call that a removed metric. Every other blocking gap
-#: (a dangling join, a metric field the model does not declare) describes a truthful graph
-#: with a named hole — the diff and the impact over it are still worth reading, and the gap's
-#: own `block` severity already stops the release.
-UNTRUSTWORTHY_GAPS = frozenset({"gap.contract_invalid"})
+#: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
+#: absent from the candidate graph, so the graph does not represent its source *at all*, and
+#: the diff would call that a removed metric. Of a metric two contracts define, the diff would
+#: compare the one whose file stands last, where a lookup of the metric by its id reads the
+#: first. Every other blocking gap (a dangling join, a metric field the model does not declare)
+#: describes a truthful graph with a named hole — the diff and the impact over it are still
+#: worth reading, and the gap's own `block` severity already stops the release.
+UNTRUSTWORTHY_GAPS = frozenset({"gap.contract_invalid", "gap.metric_duplicate"})
+
+#: Of those, the gap that can leave a metric out of the graph: a pin the candidate does not
+#: hold is not compared when a contract of the candidate did not load, for that contract may
+#: be of the pinned metric. Two contracts of another metric say nothing of this one.
+UNLOADED_CONTRACT_GAPS = frozenset({"gap.contract_invalid"})
 
 _COMPILERS: dict[TargetBI, Callable[[], BIContractCompiler]] = {
     TargetBI.SUPERSET: SupersetContractCompiler,
@@ -1108,10 +1123,19 @@ def run_gate(
     # 4-5. semantic diff, product impact, verified-asset invalidation
     impact: ImpactReport | None = None
     if untrustworthy:
-        reason = (
-            "a metric contract did not load, so the snapshot does not represent its source; "
-            "a diff would report the parse failure as a removed metric"
-        )
+        codes = {gap.code for gap in untrustworthy}
+        reasons = []
+        if codes & UNLOADED_CONTRACT_GAPS:
+            reasons.append(
+                "a metric contract did not load, so the snapshot does not represent its source; "
+                "a diff would report the parse failure as a removed metric"
+            )
+        if "gap.metric_duplicate" in codes:
+            reasons.append(
+                "a semantic ref holds more than one contract of a metric id, so a diff would "
+                "compare whichever of them stands last in the order of their files"
+            )
+        reason = "; ".join(reasons)
         checks.extend(
             _skipped(check_id, category, product_ref, reason)
             for check_id, category in (
@@ -1121,7 +1145,8 @@ def run_gate(
                 ("results.reconcile", CheckCategory.RESULT),
                 ("results.provenance", CheckCategory.RESULT),
                 # 6. the same reason: a metric whose contract did not parse is absent from
-                # the graph, and compiling would report it as a metric with no definition.
+                # the graph, and compiling would report it as a metric with no definition;
+                # of a metric two contracts define, it would compile the first.
                 ("sql.compile", CheckCategory.EXECUTION),
             )
         )
@@ -1284,7 +1309,7 @@ def _candidate_metric_pins(
     pins: list[dict[str, Any]] = []
     issues: list[ValidationIssue] = []
     clauses: list[str] = []
-    untrustworthy = any(gap.code in UNTRUSTWORTHY_GAPS for gap in inputs.candidate.gaps)
+    unloaded = any(gap.code in UNLOADED_CONTRACT_GAPS for gap in inputs.candidate.gaps)
     for ref in inputs.product.scope.metrics:
         parsed = ContractRef.parse(ref)
         metric_id = str(parsed.without_version())
@@ -1336,7 +1361,7 @@ def _candidate_metric_pins(
                 clauses.append(
                     f"it holds version {versions[0]} of {metric_id}, pinned at version {pinned}"
                 )
-        elif untrustworthy:
+        elif unloaded:
             outcome = "not_compared"
             clauses.append(
                 f"{ref} was not compared, because a metric contract of the candidate did not load"

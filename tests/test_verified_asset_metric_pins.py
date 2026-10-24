@@ -209,23 +209,40 @@ def test_an_asset_verified_against_another_snapshot_keeps_its_review_and_has_its
 def test_several_contracts_of_the_pinned_metric_are_ambiguous(
     tmp_path: Path, filename: str, version: int
 ) -> None:
+    """The repository names them; the gate does not ask it, for the snapshot is then a
+    `gap.metric_duplicate` (docs/specs/repeated-metric-contracts.md)."""
     case = Case(tmp_path).with_candidate()
     _write_yaml(case.candidate / "metrics" / filename, _version(version))
+    asset = verified_asset(case.base_digest)
+    asset["metric_refs"] = [PIN]
+    snapshot = NativeModelSource(
+        case.candidate / "model.yaml", case.candidate / "metrics"
+    ).snapshot()
+    pins, findings = VerifiedAssetRepository(
+        [VerifiedAsset.model_validate(asset)]
+    ).resolve_metric_pins(snapshot)
+    assert pins == [_pin(versions=[3, version], outcome="ambiguous")]
+    assert [finding.model_dump(mode="json") for finding in findings] == [
+        _finding(
+            "asset.metric_ref_ambiguous",
+            f"the candidate snapshot holds 2 contracts of {METRIC} "
+            f"(versions 3, {version}), pinned at version 3",
+        )
+    ]
+
     _asset(case, [PIN])
-    _assert_assets(
-        case,
-        case.run(),
-        [_pin(versions=[3, version], outcome="ambiguous")],
-        [
-            _finding(
-                "asset.metric_ref_ambiguous",
-                f"the candidate snapshot holds 2 contracts of {METRIC} "
-                f"(versions 3, {version}), pinned at version 3",
-            )
-        ],
-        status=CheckStatus.BLOCK,
-        summary="asset.metric_ref_ambiguous",
+    report = case.run()
+    assert [gap.code for gap in snapshot.gaps] == ["gap.metric_duplicate"]
+    assert status_of(report, "semantic.gaps") is CheckStatus.BLOCK
+    assert status_of(report, "assets.invalidated") is CheckStatus.REVIEW
+    assert summary_of(report, "assets.invalidated") == "check.not_run"
+    assert detail_of(report, "assets.invalidated") == (
+        "a semantic ref holds more than one contract of a metric id, so a diff would "
+        "compare whichever of them stands last in the order of their files"
     )
+    for path in (case.root / "evidence" / report.run_id).rglob("*"):
+        if path.is_file():
+            assert b"asset.metric_ref_" not in path.read_bytes()
 
 
 @pytest.mark.parametrize("version", [None, 3, 9])
