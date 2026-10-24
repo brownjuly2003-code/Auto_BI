@@ -1,6 +1,8 @@
 """The run catalogue discovers manifests; it does not accept evidence."""
 
+import errno
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -112,6 +114,67 @@ def test_refused_read_has_no_partial_stdout(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "z-refused" in captured.err
+
+
+@pytest.mark.parametrize("options", [[], ["--json"]], ids=["text", "json"])
+@pytest.mark.parametrize("operation", ["listdir", "run-stat", "manifest-stat", "manifest-lstat"])
+def test_refused_discovery_metadata_has_no_partial_output(
+    tmp_path, monkeypatch, capsys, options, operation
+):
+    seal(tmp_path, "a-good")
+    run = tmp_path / "z-refused"
+    run.mkdir()
+    manifest = run / "manifest.json"
+    target = tmp_path if operation == "listdir" else run if operation == "run-stat" else manifest
+    name = (
+        "listdir"
+        if operation == "listdir"
+        else "lstat" if operation == "manifest-lstat" else "stat"
+    )
+    original = getattr(os, name)
+    refused = []
+    reads = []
+    get = FilesystemArtifactStore.get
+
+    def refuse(path, *args, **kwargs):
+        if Path(path) == target:
+            refused.append(path)
+            raise PermissionError(errno.EACCES, "private diagnostic must not leak", str(path))
+        return original(path, *args, **kwargs)
+
+    def read(self, run_id, path):
+        reads.append((run_id, path))
+        return get(self, run_id, path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, name, refuse)
+        patch.setattr(FilesystemArtifactStore, "get", read)
+        result = main(["decision", "runs", str(tmp_path), *options])
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert captured.out == ""
+    assert len(captured.err.splitlines()) == 1
+    assert str(target) in captured.err
+    assert "PermissionError" in captured.err
+    assert "private diagnostic" not in captured.err
+    assert len(refused) == 1
+    assert reads == ([] if operation == "listdir" else [("a-good", "manifest.json")])
+
+
+@pytest.mark.parametrize("options", [[], ["--json"]], ids=["text", "json"])
+def test_manifest_directory_is_not_an_unsealed_run(tmp_path, capsys, options):
+    seal(tmp_path, "a-good")
+    manifest = tmp_path / "z-invalid" / "manifest.json"
+    manifest.mkdir(parents=True)
+
+    assert main(["decision", "runs", str(tmp_path), *options]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert len(captured.err.splitlines()) == 1
+    assert str(manifest) in captured.err
+    assert "ArtifactStoreError" in captured.err
+    assert manifest.is_dir()
 
 
 @pytest.mark.parametrize(

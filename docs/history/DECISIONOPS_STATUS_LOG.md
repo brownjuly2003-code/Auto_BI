@@ -10,6 +10,27 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-107: отказы discovery до чтения manifest
+
+По synthetic owner/design selection Astra xhigh (ADR 0006) закреплён существующий
+контракт архитектуры §11.2. Четыре адресных OS-отказа: `os.listdir(root)`,
+`os.stat(run)`, `os.stat(manifest)` и `os.lstat(manifest)` после отсутствующего stat.
+Отдельно проверен реальный каталог вместо `manifest.json`. Все пять случаев
+проверяются в text/JSON: exit 2, пустой stdout, одна строка stderr с расположением
+и классом ошибки; приватный текст PermissionError не выводится. Учёт чтений
+подтверждает обработку первого корректного run до отказа второго.
+
+Реализация — Codex: указанная в правилах `gpt-5.6-luna` недоступна в списке моделей.
+Production-код и evidence versions 108/73 не менялись. Новых runtime нет.
+Windows: `uv run pytest tests/test_decision_runs.py tests/test_refused_evidence.py
+tests/test_evidence_run_root.py tests/test_unreadable_run_inputs.py -q --tb=short`
+— 338 passed, 74 skipped, exit 0. Профильный модуль — 22 passed, 1 skipped.
+`uv run ruff check tests/test_decision_runs.py` и
+`uv run black --check tests/test_decision_runs.py` — exit 0.
+Финальный synthetic Astra xhigh review: существенных замечаний нет;
+это не human outcome или production acceptance. Полный offline gate,
+Mac/Linux runtime и live DWH в этом срезе не запускались.
+
 ## 2026-10-23 — T-106: локальный каталог evidence-прогонов
 
 По synthetic owner/design-partner selection Astra xhigh (ADR 0006) реализован

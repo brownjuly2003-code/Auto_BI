@@ -12,7 +12,14 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Последний срез (T-106, 2026-10-23):** `decision runs <evidence-root> [--json]`
+**Последний срез (T-107, 2026-10-23):** тестами закреплены отказы discovery до
+чтения manifest: перечисление root, stat run/manifest, lstat отсутствующего manifest,
+а также manifest-каталог. В text/JSON — exit 2 без частичного stdout и утечки причины.
+Windows: 10 новых сценариев; смежный набор — 338 passed, 74 skipped; Ruff/Black чистые.
+Synthetic Astra xhigh review без существенных замечаний, не human acceptance.
+Продуктовый код и версии evidence 108/73 прежние. Подробности — в журнале T-107.
+
+**Предыдущий срез (T-106, 2026-10-23):** `decision runs <evidence-root> [--json]`
 даёт локальный каталог прогонов: два run ID, product/time из manifest и digest его
 прочитанных байтов. `integrity_checked=false`: discovery не проверяет payload/signature.
 Первый `RunRepository` read-only; ошибки не оставляют частичный stdout.

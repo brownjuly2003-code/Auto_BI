@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-107: тесты отказов discovery до чтения manifest и manifest-каталога.
+  Text/JSON: exit 2, без частичного stdout и утечки исходной причины отказа.
+  Windows: 338 passed, 74 skipped; Ruff/Black чистые; код и версии 108/73 прежние.
+  Synthetic Astra xhigh без существенных замечаний; подробности — в журнале T-107.
 - 2026-10-23 — T-106: read-only `decision runs` для навигации по локальным bundles.
   Product/time и digest manifest; явно `integrity_checked=false`, без payload/signature checks.
   Ошибки чтения/парсинга дают exit 2 без частичного stdout; версии 108/73 прежние.
@@ -97,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   6786 passed, 118 skipped, 38 deselected; coverage 96.15%, exit 0, без перезапуска.
   Ruff/Black и mypy Linux/strict Linux/strict win32 чистые; код и тесты прежние.
   Отчёт — docs/DECISIONOPS_WINDOWS_CHECKS_2026-10-23.md; версии 108/73 сохранены.
-- 2026-10-23 — T-104: пути в invalid-key диагностике Ed25519 выводятся безопасно.
-  Реальные U+2028-имена не добавляют строк; коды ошибок и версии 108/73 прежние.
-  Codex; evidence/decision CLI — 211 passed, 13 skipped; Ruff/Black/strict mypy win32 чистые.
-  Synthetic Astra xhigh без замечаний, не human acceptance. Подробности — в журнале T-104.
 
 ## Definition of done (фаза/задача)
 
