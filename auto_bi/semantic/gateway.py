@@ -224,11 +224,11 @@ class NativeModelSource:
         model_bytes = self._model_path.read_bytes()
         model = SemanticModel.model_validate(load_yaml_document(model_bytes.decode("utf-8")))
 
-        digests = {"model": digest_bytes(model_bytes)}
+        read: dict[str, list[str]] = {"model": [digest_bytes(model_bytes)]}
         contracts: list[MetricContract] = []
         for path in self._contract_files():
             raw = path.read_bytes()
-            digests[path.name] = digest_bytes(raw)
+            read.setdefault(path.name, []).append(digest_bytes(raw))
             contract = _parse_contract(path, raw, gaps)
             if contract is not None:
                 contracts.append(contract)
@@ -239,7 +239,7 @@ class NativeModelSource:
             source_version=NATIVE_SOURCE_VERSION,
             source_revision=revision,
             capabilities=list(NATIVE_CAPABILITIES),
-            source_digest=sha256_digest(digests),
+            source_digest=_source_digest(read),
             canonical_digest=sha256_digest(graph.model_dump(mode="json")),
             graph=graph,
             gaps=gaps,
@@ -262,6 +262,24 @@ class NativeModelSource:
             for child in filesystem.paths_under(self._contracts_path)
             if child.suffix in _YAML_SUFFIXES and filesystem.is_file(child)
         )
+
+
+def _source_digest(read: dict[str, list[str]]) -> str:
+    """Content address of the bytes a snapshot was read from, every file of them kept.
+
+    The model's digest is kept under `model` and a contract's under its file name alone, not
+    under the directory below the contracts path that holds it, so a contract moved between
+    those directories leaves this digest as it was. Two files can then share a name —
+    `a/margin.yaml` and `b/margin.yaml`, or the model and a contracts path that is one file
+    named `model` — and the name keeps the digest of each: sorted, because which of the
+    directories holds which file is no more a part of this digest than the directory of a
+    single file is, and with a repeat as often as it was read, because two copies of a
+    contract are two files of the ref. A name of one file keeps that file's digest alone, so
+    a ref whose files all have names of their own has the source digest it always had.
+    """
+    return sha256_digest(
+        {name: found[0] if len(found) == 1 else sorted(found) for name, found in read.items()}
+    )
 
 
 def _parse_contract(path: Path, raw: bytes, gaps: list[SemanticGap]) -> MetricContract | None:

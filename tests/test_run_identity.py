@@ -318,6 +318,38 @@ def test_the_bytes_a_snapshot_was_read_from_are_part_of_the_identity(
     assert _graded(first) == _graded(second)
 
 
+def _named_alike(root: Path) -> Case:
+    """Both refs hold two contracts of one file name, in two directories of `metrics/`."""
+    case = Case(root).with_candidate()
+    for ref in (case.base, case.candidate):
+        metrics = ref / "metrics"
+        (metrics / "a").mkdir()
+        (metrics / "gross_margin_pct.yaml").rename(metrics / "a" / "gross_margin_pct.yaml")
+        _write_yaml(metrics / "b" / "gross_margin_pct.yaml", revenue_metric())
+    return case.with_asset().with_results(ROWS)
+
+
+@pytest.mark.parametrize("side", ["base", "candidate"])
+def test_contracts_that_share_a_file_name_are_both_part_of_the_identity(
+    tmp_path: Path, side: str
+) -> None:
+    """A comment in the contract whose path sorts first moves neither graph, and is another
+    run: the bytes of every contract a snapshot was read from are in its source digest."""
+    first, second = _named_alike(tmp_path / "first"), _named_alike(tmp_path / "second")
+    _comment(getattr(second, side) / "metrics" / "a" / "gross_margin_pct.yaml")
+    before, after = _snapshot(getattr(first, side)), _snapshot(getattr(second, side))
+
+    assert [metric.id for metric in before.graph.metrics] == [METRIC_ID, "metric://sales/revenue"]
+    assert before.gaps == []
+    assert after.graph == before.graph
+    assert after.canonical_digest == before.canonical_digest
+    assert after.source_digest != before.source_digest
+    one, other = _run(first), _run(second)
+    assert one.idempotency_key != other.idempotency_key
+    assert one.run_id != other.run_id
+    assert _graded(one) == _graded(other)
+
+
 # --- the fields of the gate inputs ---------------------------------------------
 
 

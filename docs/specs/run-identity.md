@@ -115,6 +115,22 @@ the dashboard specs or the verified assets are handed does not move it.
 - **WHEN** both run
 - **THEN** in each case the canonical digests of the two runs are equal and the run ids differ
 
+### Scenario: contracts that share a file name in two directories are both part of the identity
+
+- **GIVEN** two runs whose base and candidate refs each hold two contracts of different metrics
+  under one file name in two directories of the metrics directory,
+  `metrics/a/gross_margin_pct.yaml` and `metrics/b/gross_margin_pct.yaml`, and that differ only
+  in a YAML comment appended to the first of them in the base ref; or in the candidate ref
+- **WHEN** both run
+- **THEN** in each case the graphs and the canonical digests of the two snapshots are equal and
+  every check has the same status and summary code in both, while the source digests and the
+  run ids differ — where verifier 109 kept the digest of the last file read under a name and
+  gave both runs one run id; a file name keeps the digest of each file that has it, sorted and
+  with a repeat as often as it was read, so the two contracts with their directories swapped
+  give the same source digest, a byte-identical copy of a contract in another directory moves the
+  source digest, and a ref in which no two contracts share a file name keeps the source digest
+  verifier 109 gave it
+
 ### Scenario: every field of the gate inputs is either in the key or an observation
 
 - **GIVEN** the fields of `GateInputs`

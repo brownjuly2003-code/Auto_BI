@@ -501,7 +501,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: invalid or duplicate JSON can block, and JSON metrics can resolve unknown references.
 #: A directory under them with a contract suffix (`archive.json/`, `old.yaml/`) is walked,
 #: no longer read as a contract.
-VERIFIER_VERSION = "109"
+#: 110 — a snapshot's source digest holds the digest of every file it was read from: metric
+#: contracts of one file name in two directories of the metrics, or the model and a contracts
+#: file named `model`, are kept under that name as the sorted list of their digests, repeats
+#: included; a ref without such a name keeps its source digest. Verifier 109 kept the digest
+#: of the last file read under a name, so a change to the others, or to the model, that
+#: neither the graph nor a gap carries moved neither the snapshot nor the run id.
+VERIFIER_VERSION = "110"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

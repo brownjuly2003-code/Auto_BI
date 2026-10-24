@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-24 — T-111: source digest snapshot хранит digest каждого прочитанного файла;
+  одноимённые контракты разных подкаталогов `metrics/` — отсортированным списком с повторами.
+  Правка затенённого файла меняет run id; ref без повторов имён — прежний digest (pilot ×10).
+  Verifier 110, check 74; 6 мутантов ловятся; полный Windows gate 6855 passed, exit 0.
+  Срез выбрала synthetic Astra xhigh; ревью: P1 и P3 исправлены, повторного нет.
 - 2026-10-24 — T-110: полный offline-прогон после T-109 на Mac и в Linux, код прежний.
   Mac 3.13/3.12/3.14: каждый 6919 passed, 20 skipped; Linux 3.12 (Colima): 6921 passed,
   18 skipped, coverage 96.00%; везде exit 0, Black/Ruff/mypy чистые.
@@ -98,10 +103,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Каталог `*.json/`/`*.yaml/` обходится, не читается; `metrics/` semantic ref — только YAML.
   Verifier 109, check 74; полный Windows gate 6848 passed (тест T-106 исправлен `4877671`).
   Synthetic Astra xhigh: P1 и P2 исправлены, повторного ревью нет; подробности — в журнале.
-- 2026-10-23 — T-108: USER_GUIDE — discovery → выбранный run → inspection с digest pin.
-  Signed owner-summary, границы одного payload и stdout при несовпадении pin.
-  Код и версии 108/73 прежние; Windows CLI/docs — 66 passed.
-  Проверки и synthetic review — в журнале T-108.
 
 ## Definition of done (фаза/задача)
 

@@ -17,7 +17,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from auto_bi.evidence.canonical import sha256_digest
+from auto_bi.evidence.canonical import digest_bytes, sha256_digest
 from auto_bi.semantic.gateway import (
     NativeModelSource,
     SemanticSnapshot,
@@ -131,7 +131,9 @@ def source(
     contract_dir.mkdir(exist_ok=True)
     for name, data in (contracts or {"gross_margin_pct.yaml": contract()}).items():
         payload = data if isinstance(data, str) else yaml.safe_dump(data, allow_unicode=True)
-        (contract_dir / name).write_text(payload, encoding="utf-8")
+        path = contract_dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload, encoding="utf-8")
     return NativeModelSource(tmp_path / "model.yaml", contract_dir)
 
 
@@ -309,6 +311,124 @@ def test_json_beside_the_contracts_is_not_read_by_the_snapshot(tmp_path: Path) -
     assert beside.gaps == []
     assert beside.source_digest == plain.source_digest
     assert beside.canonical_digest == plain.canonical_digest
+
+
+def _other_metric() -> dict[str, Any]:
+    return contract(metadata={**contract()["metadata"], "id": "metric://sales/other_pct"})
+
+
+def test_a_ref_without_two_contracts_of_one_file_name_keeps_its_source_digest(
+    tmp_path: Path,
+) -> None:
+    """The digest verifier 109 gave it: the model and each contract under its file name,
+    wherever below the contracts path the contract lies."""
+    (tmp_path / "flat").mkdir()
+    (tmp_path / "below").mkdir()
+    flat = source(
+        tmp_path / "flat",
+        contracts={"gross_margin_pct.yaml": contract(), "other_pct.yml": _other_metric()},
+    ).snapshot()
+    below = source(
+        tmp_path / "below",
+        contracts={"a/gross_margin_pct.yaml": contract(), "b/c/other_pct.yml": _other_metric()},
+    ).snapshot()
+
+    root = tmp_path / "flat"
+    expected = sha256_digest(
+        {
+            "model": digest_bytes((root / "model.yaml").read_bytes()),
+            "gross_margin_pct.yaml": digest_bytes(
+                (root / "contracts" / "gross_margin_pct.yaml").read_bytes()
+            ),
+            "other_pct.yml": digest_bytes((root / "contracts" / "other_pct.yml").read_bytes()),
+        }
+    )
+    assert flat.source_digest == expected
+    assert below.source_digest == expected
+
+
+def test_every_copy_of_a_contract_file_name_is_in_the_source_digest(tmp_path: Path) -> None:
+    """Copies of a contract in two directories are two files the ref was read from, though
+    their bytes are alike: one copy, two and three are three sources."""
+    digests = []
+    for count in (1, 2, 3):
+        (tmp_path / str(count)).mkdir()
+        copies = {f"{below}/gross_margin_pct.yaml": contract() for below in "abc"[:count]}
+        digests.append(source(tmp_path / str(count), contracts=copies).snapshot().source_digest)
+
+    assert len(set(digests)) == 3
+
+
+def test_three_contracts_of_one_file_name_are_each_in_the_source_digest(tmp_path: Path) -> None:
+    """A name of three files keeps the three digests themselves, not a summary of them: the
+    digest is the sorted list of all three, and a change to any of them moves it."""
+    third = contract(metadata={**contract()["metadata"], "id": "metric://sales/third_pct"})
+    frozen = source(
+        tmp_path, contracts={"a/m.yaml": contract(), "b/m.yaml": _other_metric(), "c/m.yaml": third}
+    )
+    files = sorted((tmp_path / "contracts").rglob("m.yaml"))
+    model_digest = digest_bytes((tmp_path / "model.yaml").read_bytes())
+
+    def expected() -> str:
+        found = sorted(digest_bytes(path.read_bytes()) for path in files)
+        return sha256_digest({"model": model_digest, "m.yaml": found})
+
+    before = frozen.snapshot()
+    assert len(files) == 3
+    assert before.source_digest == expected()
+
+    for path in files:
+        path.write_bytes(path.read_bytes() + b"# a comment that changes no meaning\n")
+        after = frozen.snapshot()
+        assert after.graph == before.graph
+        assert after.source_digest == expected()
+        assert after.source_digest != before.source_digest
+        before = after
+
+
+def test_contracts_of_one_file_name_are_frozen_whatever_directory_holds_which(
+    tmp_path: Path,
+) -> None:
+    """The source digest does not say where below the contracts path a contract lies: two refs
+    that hold the same contracts under the same file names have one source digest, and — the
+    contracts being of different metrics and leaving no gap — they are one snapshot."""
+    (tmp_path / "one").mkdir()
+    (tmp_path / "other").mkdir()
+    one = source(
+        tmp_path / "one", contracts={"a/m.yaml": contract(), "b/m.yaml": _other_metric()}
+    ).snapshot()
+    other = source(
+        tmp_path / "other", contracts={"a/m.yaml": _other_metric(), "b/m.yaml": contract()}
+    ).snapshot()
+
+    assert one.gaps == []
+    assert [metric.id for metric in one.graph.metrics] == [
+        "metric://sales/gross_margin_pct",
+        "metric://sales/other_pct",
+    ]
+    assert other == one
+
+
+def test_a_contracts_file_named_model_does_not_take_the_place_of_the_model(
+    tmp_path: Path,
+) -> None:
+    """A contracts path that is one file is read whatever its name, and `model` is the name
+    the model's own digest is kept under: the name keeps both digests."""
+    model().dump(tmp_path / "model.yaml")
+    named = tmp_path / "model"
+    named.write_text(yaml.safe_dump(contract(), allow_unicode=True), encoding="utf-8")
+    frozen = NativeModelSource(tmp_path / "model.yaml", named)
+    before = frozen.snapshot()
+    path = tmp_path / "model.yaml"
+    path.write_bytes(path.read_bytes() + b"\n# a comment that changes no meaning\n")
+    after = frozen.snapshot()
+
+    assert [metric.id for metric in before.graph.metrics] == ["metric://sales/gross_margin_pct"]
+    assert after.graph == before.graph
+    assert after.canonical_digest == before.canonical_digest
+    assert after.source_digest != before.source_digest
+    digests = [digest_bytes(path.read_bytes()), digest_bytes(named.read_bytes())]
+    assert after.source_digest == sha256_digest({"model": sorted(digests)})
 
 
 def test_capabilities_are_declared_not_assumed(tmp_path: Path) -> None:

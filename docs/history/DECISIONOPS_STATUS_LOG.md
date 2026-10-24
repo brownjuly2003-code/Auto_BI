@@ -10,6 +10,50 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-24 — T-111: source digest snapshot адресует каждый прочитанный файл
+
+`NativeModelSource.snapshot` хранил digest контракта под `path.name`, а `_contract_files`
+обходит `metrics/` рекурсивно. Из двух одноимённых контрактов разных подкаталогов
+(`metrics/a/gross_margin_pct.yaml`, `metrics/b/gross_margin_pct.yaml`) в `source_digest`
+оставался последний по пути. Комментарий, добавленный в первый, не менял ни graph, ни
+canonical и source digest: два прогона с разными байтами входа получали один run id —
+вопреки требованию [run identity](../specs/run-identity.md) запечатывать snapshot с digest
+байтов, из которых он прочитан. Так же через API файл контрактов с именем `model` вытеснял
+digest модели. Теперь `_source_digest` хранит под именем одного файла его digest, как
+прежде, а под именем нескольких — их отсортированный список с повторами. Каталог под
+`metrics/` в digest не входит (требование [unreadable inputs](../specs/unreadable-inputs.md)
+о вложенных каталогах сохранено), две байтовые копии — два файла. Ref без повторяющихся
+имён сохраняет digest verifier 109: у всех десяти pilot-ref он равен запечатанному в их
+bundles. Verifier 109 → 110; check 74 и `NATIVE_SOURCE_VERSION` прежние. Сценарий — в run
+identity, абзац — в §7.4 архитектуры.
+
+Срез выбрала synthetic Astra xhigh (ADR 0006) из кандидатов предыдущей сессии и того же
+дефекта, найденного Claude Opus 5.5 независимо; не human acceptance. Реализовал субагент
+Claude Opus в отдельном git worktree (новые тесты на HEAD: 5 failed), интегрировал и
+проверил Claude Opus 5.5: docstring и комментарий версии сужены до того, что проверено.
+Windows, Python 3.13.7: `pytest tests/test_semantic_gateway.py tests/test_run_identity.py
+tests/test_unlisted_paths.py tests/test_decision_verify.py tests/test_docs_as_code.py
+tests/test_docs_defaults.py` — 324 passed, 33 skipped. Мутанты last-wins, dedupe, без
+сортировки, всегда список, «сводка вместо списка из трёх» и «контракт `model` вытесняет
+модель» ловятся (6/1/2/2/1/1 failed),
+файл восстановлен. Ruff, Black и mypy (default, strict, strict Linux, strict win32) чистые.
+Полный Windows offline gate на итоговом дереве: 6855 passed, 91 skipped, 38 deselected,
+coverage 96.18%, exit 0. Ревью synthetic Astra xhigh: P1 — тексты обещали неизменный
+snapshot при перестановке файлов, но gaps идут в порядке файлов, — сужены до source
+digest; P3 — не было теста на три разных одноимённых файла (мутант «сводка min/max/count»
+проходил), тест добавлен. Остальное — без замечаний; повторного ревью нет.
+
+Параллельно read-only аудит (субагент Claude Opus) нашёл дефекты того же семейства.
+Snapshot зависит от раскладки при двух контрактах одного metric id: перенос старой версии
+запиненной метрики в `metrics/archive/` меняет вердикт `block` на `pass_with_advisory`
+(воспроизведено и на дереве T-111); при контрактах с gaps — их порядок.
+Dashboard spec называется только последним сегментом ref: `sales/x@7` и `ops/x@7` — один
+файл. Slug id claim и артефактов теряет различия, и повтор delivery-ref обрывает прогон
+traceback'ом. Субагент Claude Sonnet написал тесты `decision runs` на потоках без UTF-8 и
+нашёл, что evidence `Timestamp` пропускает текст между микросекундами и `Z`
+(`datetime.fromisoformat` в 3.13 принимает `…123456abc+00:00`). Его тесты строк держатся
+на этой нестрогости и не влиты. Скрипты — `.tmp/t111/`.
+
 ## 2026-10-24 — T-110: полный offline-прогон на Mac и в Linux после T-109
 
 Последний полный прогон вне Windows был на дереве T-97; T-98…T-109 проверялись на Windows,

@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-23
+**Обновлено:** 2026-10-24
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,9 +10,23 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=109`, `CHECK_VERSION=74`
+**Версии evidence:** `VERIFIER_VERSION=110`, `CHECK_VERSION=74`
 
-**Последний срез (T-110, 2026-10-24):** полный offline-прогон после T-109 (`5cb2c08`)
+**Последний срез (T-111, 2026-10-24):** source digest snapshot адресует байты каждого
+прочитанного файла. Digest контракта хранился под именем файла, а `metrics/` обходится
+рекурсивно, поэтому из одноимённых контрактов разных подкаталогов (`a/margin.yaml`,
+`b/margin.yaml`) оставался digest последнего. Правка байтов другого файла, которую не несут
+ни graph, ни gap, не меняла ни snapshot, ни run id — вопреки
+[run identity](specs/run-identity.md). Теперь имя нескольких файлов хранит отсортированный
+список их digest'ов с повторами; так же модель и файл контрактов `model` (только через API).
+Ref без повторяющихся имён сохраняет digest verifier 109: у всех десяти pilot-ref он равен
+запечатанному. Verifier 109 → 110, check 74 прежний. Граница: snapshot ещё зависит от
+раскладки `metrics/`, когда в ref два контракта одного metric id (diff берёт последний по
+пути файла: перенос старой версии в `metrics/archive/` меняет `block` на
+`pass_with_advisory`) или контракты с gaps (их порядок) — найдено аудитом,
+кандидат следующего среза. Ревью и прогоны — в журнале T-111.
+
+**Предыдущий срез (T-110, 2026-10-24):** полный offline-прогон после T-109 (`5cb2c08`)
 на Mac и в Linux. Mac, Python 3.13.13, 3.12.13 и 3.14.6 с DuckDB — каждый **6919 passed,
 20 skipped, 38 deselected**, exit 0. Linux (изолированный Colima на Mac, Python 3.12.15) —
 **6921 passed, 18 skipped, 38 deselected**, exit 0, coverage 96.00%: он исполняет и два

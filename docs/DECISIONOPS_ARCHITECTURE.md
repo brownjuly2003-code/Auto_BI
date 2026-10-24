@@ -332,6 +332,13 @@ expression → reviewed parameterized SQL. Raw SQL не становится д�
 - список `SemanticGap(path, reason, severity, source_value_ref)`;
 - physical/catalog/policy refs без секретов.
 
+Source digest native-источника адресует байты `model.yaml` и каждого прочитанного
+контракта под именем файла. Каталог под `metrics/` в него не входит: контракт,
+перенесённый между подкаталогами, digest не меняет. Одноимённые файлы разных подкаталогов
+хранятся под своим именем отсортированным списком digest'ов с повторами (verifier 110),
+поэтому правка любого из них меняет snapshot и run id. Ref без повторяющихся имён
+сохраняет прежний digest.
+
 Native `model.yaml` — первый source adapter. Текущий `dbt_import.py` остаётся
 enrichment helper и не объявляется полноценным MetricFlow importer. Apache
 Ossie (бывший OSI) используется через adapter, pinned на tag или commit;
@@ -620,7 +627,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=109`, `CHECK_VERSION=74`.
+`VERIFIER_VERSION=110`, `CHECK_VERSION=74`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
