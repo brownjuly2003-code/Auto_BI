@@ -620,7 +620,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=108`, `CHECK_VERSION=73`.
+`VERIFIER_VERSION=109`, `CHECK_VERSION=74`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1570,6 +1570,16 @@ Cache/reuse key включает actor/tenant/policy context. Cross-tenant resul
 ### 11.1 MVP
 
 - Decision products и metric contracts — Git-tracked YAML/JSON.
+- Обход validated contract paths включает `.yaml`, `.yml` и `.json`, в том числе
+  во вложенных каталогах. Для всех используется существующий YAML-compatible loader
+  и одинаковые schema/cross-contract checks; битые и дублированные JSON не пропускаются.
+  Каждый найденный файл с таким suffix проверяется как контракт: JSON другого назначения
+  (`{}`, `{"kind": "Other"}`) блокирует как `contract.unknown_kind`, поэтому его держат вне
+  переданных paths. Каталог с таким suffix (`archive.json/`, `old.yaml/`) обходится, а не
+  читается как контракт; путь, на который файловая система не даёт посмотреть, читается, и
+  отказ называет чтение. Каталог `metrics/` semantic ref этот обход
+  не затрагивает: snapshot по-прежнему читает в нём только `.yaml`/`.yml`, и JSON рядом
+  с ними не меняет ни graph, ни digests.
 - VQR — Git-tracked fixtures с review metadata.
 - Verify — synchronous one-shot CLI.
 - Evidence — filesystem `ArtifactStore` с atomic temp-write + rename.

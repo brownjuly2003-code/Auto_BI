@@ -1,6 +1,6 @@
 """Cross-contract validation of decision products (ARCHITECTURE §6, bootstrap task 3).
 
-Contracts live in Git as YAML; this module reads the working tree and answers one question
+Contracts live in Git as YAML/JSON; this module reads the working tree and answers one question
 offline — do they agree with each other? No DWH, BI or LLM is involved, which is what makes
 it usable as a pre-merge check.
 
@@ -35,7 +35,7 @@ from auto_bi.yaml_document import load_yaml_document
 
 API_VERSION = "auto-bi.io/v2alpha1"
 
-_YAML_SUFFIXES = (".yaml", ".yml")
+_CONTRACT_SUFFIXES = (".yaml", ".yml", ".json")
 _MAX_SCHEMA_ERRORS = 3
 
 _LIFECYCLE_ISSUES: dict[MetricLifecycle, tuple[str, Severity, str]] = {
@@ -149,7 +149,7 @@ def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIss
                 sorted(
                     child
                     for child in filesystem.paths_under(path, refused)
-                    if child.suffix in _YAML_SUFFIXES
+                    if _names_a_contract(child)
                 )
             )
             unlisted = sorted(
@@ -165,6 +165,21 @@ def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIss
         else:
             issues.append(_unread_path(path, "path does not exist"))
     return files
+
+
+def _names_a_contract(path: Path) -> bool:
+    """Whether a path found under a validated directory is read as a contract.
+
+    One with a contract suffix is, unless it is a directory: `archive.json/` is walked, and
+    the contracts it holds are found on their own. A path the filesystem refuses to look at
+    is kept: reading it is what says it could not be read.
+    """
+    if path.suffix not in _CONTRACT_SUFFIXES:
+        return False
+    try:
+        return not filesystem.is_dir(path)
+    except OSError:
+        return True
 
 
 def _unread_path(path: Path, message: str) -> ValidationIssue:

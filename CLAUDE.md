@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-109: обход validated каталогов берёт `.json` рядом с `.yaml`/`.yml`.
+  Битый, неизвестного kind или дублирующий JSON блокирует; JSON-метрика разрешает pin.
+  Каталог `*.json/`/`*.yaml/` обходится, не читается; `metrics/` semantic ref — только YAML.
+  Verifier 109, check 74; полный Windows gate 6848 passed (тест T-106 исправлен `4877671`).
+  Synthetic Astra xhigh: P1 и P2 исправлены, повторного ревью нет; подробности — в журнале.
 - 2026-10-23 — T-108: USER_GUIDE — discovery → выбранный run → inspection с digest pin.
   Signed owner-summary, границы одного payload и stdout при несовпадении pin.
   Код и версии 108/73 прежние; Windows CLI/docs — 66 passed.
@@ -97,10 +102,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Text/JSON: exit 2, без частичного stdout и утечки исходной причины отказа.
   Windows: 338 passed, 74 skipped; Ruff/Black чистые; код и версии 108/73 прежние.
   Synthetic Astra xhigh без существенных замечаний; подробности — в журнале T-107.
-- 2026-10-23 — T-106: read-only `decision runs` для навигации по локальным bundles.
-  Product/time и digest manifest; явно `integrity_checked=false`, без payload/signature checks.
-  Ошибки чтения/парсинга дают exit 2 без частичного stdout; версии 108/73 прежние.
-  Проверки и synthetic Astra-review — в журнале T-106.
 
 ## Definition of done (фаза/задача)
 

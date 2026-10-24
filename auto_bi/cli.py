@@ -188,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     validate = decision_sub.add_parser(
         "validate", help="Validate Git-tracked decision products against their metric contracts"
     )
-    validate.add_argument("paths", nargs="+", help="Contract files or directories (YAML)")
+    validate.add_argument("paths", nargs="+", help="Contract files or directories (YAML or JSON)")
     validate.add_argument(
         "--json", action="store_true", help="Emit the report as JSON and nothing else"
     )
@@ -226,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
         "verify",
         help="Run the Analytics Release & Evidence Gate for one decision product",
     )
-    verify.add_argument("paths", nargs="+", help="Contract files or directories (YAML)")
+    verify.add_argument("paths", nargs="+", help="Contract files or directories (YAML or JSON)")
     verify.add_argument(
         "--base", required=True, help="Base semantic ref: a directory holding model.yaml"
     )

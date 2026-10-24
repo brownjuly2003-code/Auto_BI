@@ -9,6 +9,7 @@ snapshot), and anything the projection cannot represent becomes an explicit
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -289,6 +290,25 @@ def test_unparsable_contract_is_a_blocking_gap_not_a_silent_drop(tmp_path: Path)
     ).snapshot()
     assert "gap.contract_invalid" in gap_codes(snapshot)
     assert [metric.id for metric in snapshot.graph.metrics] == ["metric://sales/gross_margin_pct"]
+
+
+def test_json_beside_the_contracts_is_not_read_by_the_snapshot(tmp_path: Path) -> None:
+    """Directory discovery of `decision validate` takes JSON; the snapshot reads YAML only."""
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "beside").mkdir()
+    plain = source(tmp_path / "plain").snapshot()
+    other = contract(metadata={**contract()["metadata"], "id": "metric://sales/other_pct"})
+    beside = source(
+        tmp_path / "beside",
+        contracts={
+            "gross_margin_pct.yaml": contract(),
+            "broken.json": "{",
+            "other_pct.json": json.dumps(other),
+        },
+    ).snapshot()
+    assert beside.gaps == []
+    assert beside.source_digest == plain.source_digest
+    assert beside.canonical_digest == plain.canonical_digest
 
 
 def test_capabilities_are_declared_not_assumed(tmp_path: Path) -> None:

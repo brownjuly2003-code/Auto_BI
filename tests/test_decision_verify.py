@@ -779,6 +779,22 @@ def test_blocking_semantic_gap_stops_the_diff_instead_of_guessing(tmp_path: Path
 # --- evidence -----------------------------------------------------------------
 
 
+def test_invalid_discovered_json_contract_blocks_and_is_sealed(tmp_path: Path) -> None:
+    case = Case(tmp_path)
+    invalid = case.contracts / "broken.json"
+    invalid.write_text("{", encoding="utf-8")
+    report = case.run()
+    assert report.verdict is Verdict.BLOCK
+    assert status_of(report, "contracts.validate") is CheckStatus.BLOCK
+    store = FilesystemArtifactStore(tmp_path / "evidence")
+    bundle = read_bundle(store, report.run_id)
+    artifact = next(a for a in bundle.artifacts if a.artifact_id == "check-contracts.validate")
+    payload = store.get(report.run_id, artifact.path).decode("utf-8")
+    assert "contract.unreadable" in payload
+    assert "broken.json" in payload
+    assert verify_bundle(store, report.run_id) == []
+
+
 def test_the_bundle_holds_every_input_the_verdict_used(tmp_path: Path) -> None:
     case = Case(tmp_path).with_asset().with_results([["Москва", "0.412"], ["Казань", "0.377"]])
     report = case.run()

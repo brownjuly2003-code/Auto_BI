@@ -10,6 +10,54 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-109: JSON-контракты при обходе validated каталогов
+
+Архитектура §11.1 называет decision products и metric contracts Git-tracked YAML/JSON, и
+явно переданный JSON-файл загружался, но обход каталога брал только `.yaml`/`.yml`.
+JSON-контракт в каталоге молча выпадал из `decision validate` и `contracts.validate`:
+битый, неизвестного kind или дублирующий JSON не блокировал, а pin продукта на метрику,
+описанную только в JSON, не разрешался. Теперь `_iter_contract_files` берёт `.yaml`,
+`.yml` и `.json`, в том числе во вложенных каталогах; loader и правила те же, что у явно
+переданных файлов. Посторонний JSON в переданном каталоге блокирует как
+`contract.unknown_kind` — это сказано в USER_GUIDE и §11.1. Каталог с contract suffix
+(`archive.json/`, а теперь и `old.yaml/`, который раньше блокировал как нечитаемый
+контракт) обходится, а не читается (`_names_a_contract`); путь, на который файловая система
+не даёт посмотреть, по-прежнему читается. Каталог `metrics/` semantic ref не затронут:
+snapshot читает там только
+YAML, и JSON рядом не меняет graph и digests — это закреплено тестом. Справка CLI путей
+контрактов — «YAML or JSON». Verifier 108 → 109, check 73 → 74; historical bundles прежние.
+
+Срез начат интерактивной сессией Codex (код, версии, тесты validate/verify, USER_GUIDE,
+§11.1); владелец закрыл её до коммита. Доделал Claude Opus 5.5: граница snapshot и её тест,
+справка CLI, записи состояния и журнала.
+Windows: `uv run pytest tests/test_decision_validate.py tests/test_decision_verify.py
+tests/test_semantic_gateway.py tests/test_decision_cli.py tests/test_docs_as_code.py
+tests/test_docs_defaults.py tests/test_unlisted_paths.py tests/test_validation_issue_scope.py
+tests/test_repeated_declarations.py tests/test_run_identity.py tests/test_surrogate_escapes.py
+tests/test_unreadable_run_inputs.py -q` — 928 passed, 33 skipped, exit 0. Мутанты до ревью: обход
+только YAML — 7 failed из 26 выбранных тестов; snapshot, читающий JSON, — новый тест падает.
+Ruff check, Black --check и mypy (Linux, strict Linux, strict win32) чистые.
+Полный Windows offline gate (`uv run --with pytest-cov --with duckdb pytest -q -rs
+--tb=short --cov=auto_bi --cov-report=term --cov-fail-under=90`, Python 3.13.7): 6843
+passed, 91 skipped, 38 deselected, 1 failed, coverage 96.20%. Упал статический
+`test_no_decision_command_prints_past_the_one_function`: его перечень команд не знал
+`_decision_runs` из T-106, и полный набор был красным с `3253b3b`. Исправлено отдельным
+коммитом `4877671`, модуль — 119 passed; весь набор повторно не прогонялся.
+Synthetic Astra xhigh review (cw, read-only, по ADR 0006): 2 замечания. P1 — обход
+отдавал и каталоги, и `archive.json/` читался как контракт, блокируя проверку; исправлено
+`_names_a_contract` и тестами на каталоги `.json`/`.yaml`/`.yml` и на отказ посмотреть на
+путь. P2 — USER_GUIDE и §11.1 не говорили, что посторонний JSON блокирует; дописано.
+Тест границы snapshot по гипотезе ревью держит и валидный JSON-контракт рядом. После
+правок: `uv run pytest tests/test_decision_validate.py tests/test_semantic_gateway.py
+tests/test_decision_verify.py tests/test_unlisted_paths.py tests/test_unreadable_run_inputs.py
+tests/test_validation_issue_scope.py -q` — 463 passed, 33 skipped; пять мутантов (обход
+только YAML, каталог читается, отказ посмотреть отбрасывает путь, snapshot читает JSON,
+snapshot читает только валидный JSON) обнаружены; Ruff/Black чистые. Повторного ревью не
+было; это не human acceptance.
+Итоговое дерево: тот же полный Windows offline gate — 6848 passed, 91 skipped,
+38 deselected, exit 0, coverage 96.18%; Ruff check, Black --check и mypy (Linux, strict
+Linux, strict win32) чистые. Mac/Linux runtime и live DWH не запускались.
+
 ## 2026-10-23 — T-108: операторский путь от discovery к проверке evidence
 
 По synthetic owner/design selection Astra xhigh (ADR 0006) закрыт пробел T-106

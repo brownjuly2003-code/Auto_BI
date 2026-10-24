@@ -11,6 +11,7 @@ lifecycle or policy question needs review, a deprecation is advisory.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,8 @@ from typing import Any
 import pytest
 import yaml
 
-from auto_bi.decision.validate import ValidationReport, validate_paths
+from auto_bi import filesystem
+from auto_bi.decision.validate import ValidationReport, load_contracts, validate_paths
 from auto_bi.verification.model import Severity, Verdict
 
 FIXTURES = Path(__file__).parent / "fixtures" / "decision"
@@ -65,6 +67,79 @@ def test_single_file_path_is_accepted(tmp_path: Path) -> None:
     root = write_contracts(tmp_path)
     report = validate_paths([root / "weekly_margin.yaml", root / "gross_margin_pct.yaml"])
     assert report.verdict is Verdict.PASS
+
+
+@pytest.mark.parametrize(
+    "json_names", [("weekly_margin",), ("gross_margin_pct",), ("weekly_margin", "gross_margin_pct")]
+)
+def test_directory_discovers_json_contracts_like_explicit_paths(tmp_path, json_names):
+    root = write_contracts(tmp_path)
+    nested = root / "nested"
+    nested.mkdir()
+    for name in json_names:
+        source = root / f"{name}.yaml"
+        data = yaml.safe_load(source.read_text(encoding="utf-8"))
+        (nested / f"{name}.json").write_text(json.dumps(data), encoding="utf-8")
+        source.unlink()
+    paths = sorted(path for path in root.rglob("*") if path.is_file())
+    explicit = load_contracts(paths)
+    discovered = load_contracts([root])
+    assert explicit.report.verdict is Verdict.PASS
+    assert discovered == explicit
+    assert discovered.report.products == ["decision://sales/weekly_margin@1"]
+    assert discovered.report.metrics == ["metric://sales/gross_margin_pct@3"]
+
+
+@pytest.mark.parametrize(
+    "content,code", [("{", "contract.unreadable"), ('{"kind":"Unknown"}', "contract.unknown_kind")]
+)
+def test_invalid_json_in_directory_is_not_silently_ignored(tmp_path, content, code):
+    root = write_contracts(tmp_path)
+    invalid = root / "invalid.json"
+    invalid.write_text(content, encoding="utf-8")
+    report = validate_paths([root])
+    assert report.verdict is Verdict.BLOCK
+    assert codes(report) == [code]
+    assert report.issues[0].source == str(invalid)
+
+
+def test_json_duplicate_of_yaml_contract_blocks(tmp_path):
+    root = write_contracts(tmp_path)
+    data = yaml.safe_load((root / "weekly_margin.yaml").read_text(encoding="utf-8"))
+    (root / "duplicate.json").write_text(json.dumps(data), encoding="utf-8")
+    report = validate_paths([root])
+    assert report.verdict is Verdict.BLOCK
+    assert codes(report) == ["contract.duplicate_id"]
+
+
+@pytest.mark.parametrize("suffix", [".json", ".yaml", ".yml"])
+def test_directory_with_a_contract_suffix_is_walked_not_read(tmp_path: Path, suffix: str) -> None:
+    root = write_contracts(tmp_path)
+    archive = root / f"archive{suffix}"
+    archive.mkdir()
+    (root / "gross_margin_pct.yaml").rename(archive / "gross_margin_pct.yaml")
+    report = validate_paths([root])
+    assert report.verdict is Verdict.PASS
+    assert report.issues == []
+    assert report.metrics == ["metric://sales/gross_margin_pct@3"]
+
+
+def test_contract_path_the_filesystem_refuses_to_look_at_is_still_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = write_contracts(tmp_path)
+    refused = root / "gross_margin_pct.yaml"
+    is_dir = filesystem.is_dir
+
+    def look(path: Path) -> bool:
+        if Path(path) == refused:
+            raise PermissionError(13, "Permission denied", str(path))
+        return is_dir(path)
+
+    monkeypatch.setattr(filesystem, "is_dir", look)
+    report = validate_paths([root])
+    assert report.verdict is Verdict.PASS
+    assert report.metrics == ["metric://sales/gross_margin_pct@3"]
 
 
 def test_unknown_metric_ref_blocks(tmp_path: Path) -> None:

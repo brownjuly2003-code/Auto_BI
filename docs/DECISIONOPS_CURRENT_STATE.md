@@ -10,9 +10,20 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
+**Версии evidence:** `VERIFIER_VERSION=109`, `CHECK_VERSION=74`
 
-**Последний срез (T-108, 2026-10-23):** USER_GUIDE описывает `decision runs` и переход
+**Последний срез (T-109, 2026-10-23):** обход каталогов в `decision validate` и
+`decision verify` находит контракты `.json` рядом с `.yaml`/`.yml`, в том числе во
+вложенных каталогах, и проверяет их тем же loader и правилами, что явно переданные
+файлы. Битый, неизвестного kind или дублирующий JSON блокирует, а не пропускается;
+посторонний JSON держат вне переданных каталогов. Каталог с contract suffix
+(`archive.json/`, `old.yaml/`) обходится, а не читается как контракт. Каталог `metrics/`
+semantic ref по-прежнему читается только как YAML. Версии 109/74. Synthetic Astra xhigh:
+P1 (каталог `*.json` читался как контракт) и P2 (посторонний JSON) исправлены, повторного
+ревью не было; не human acceptance. Полный Windows offline gate: 6848 passed, 91 skipped,
+38 deselected, exit 0. Подробности и проверки — в журнале T-109.
+
+**Предыдущий срез (T-108, 2026-10-23):** USER_GUIDE описывает `decision runs` и переход
 к проверке выбранного bundle через адресующий `run_id` и `--expect-digest`.
 Показано чтение signed owner-summary; пояснены границы pin, подписи и одного payload,
 различие stdout при неверном pin. Код и версии evidence 108/73 прежние.
@@ -2166,7 +2177,7 @@ InvestigationPlan + CanonicalMetricResult -> четыре pure version-pinned sk
        -> evidence-backed observations/gaps -> deterministic brief artifacts
 ```
 
-- `auto_bi decision validate` проверяет связанные YAML-контракты.
+- `auto_bi decision validate` проверяет связанные YAML/JSON-контракты.
 - `auto_bi decision capture` исполняет reviewed SQL одного positive asset под SELECT-only
   guard, сверяет типы и nullable-контракт с asset'ом и пишет новый gate-ready YAML с
   canonical result и attestation, привязанной к digest кандидатного semantic snapshot'а.

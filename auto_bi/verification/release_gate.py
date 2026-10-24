@@ -497,7 +497,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: 106 — all check explanations in the summary are literal text.
 #: 107 — semantic impact subjects in the summary are literal text.
 #: 108 — product, metric and dashboard refs in the summary are literal text.
-VERIFIER_VERSION = "108"
+#: 109 — validated directories include JSON contracts alongside YAML; previously skipped
+#: invalid or duplicate JSON can block, and JSON metrics can resolve unknown references.
+#: A directory under them with a contract suffix (`archive.json/`, `old.yaml/`) is walked,
+#: no longer read as a contract.
+VERIFIER_VERSION = "109"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -758,7 +762,10 @@ VERIFIER_VERSION = "108"
 #: snapshot that held a node for each declaration.
 #: 73 — dwh.cost reports a known runtime-setting refusal as cost.not_measured rather than
 #: a false cost.over_budget; other driver failures retain their error boundary.
-CHECK_VERSION = "73"
+#: 74 — contracts.validate includes JSON files discovered under validated paths, using
+#: the same schema and cross-contract rules as explicitly supplied files; a directory with
+#: a contract suffix is walked, where it blocked as an unreadable contract.
+CHECK_VERSION = "74"
 
 #: Gaps that mean the canonical graph does not represent its source *at all*, so a diff over
 #: it would be fiction: a metric contract that failed to parse is simply absent from the
