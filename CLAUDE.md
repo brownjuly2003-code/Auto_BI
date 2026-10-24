@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-24 — T-113: spec дашборда читается по полному ref — каталоги сегментов
+  (`sales/weekly_margin@7.yaml`), без отката на файл последнего сегмента: чужая вёрстка больше
+  не компилируется под ref, отсутствующий spec — `bi.spec_missing`. Verifier 112, check 76;
+  11 мутантов ловятся; полный Windows gate 6886 passed, exit 0.
+  Срез выбрала synthetic Astra xhigh; ревью: P1 и два P3 исправлены, повторного нет.
 - 2026-10-24 — T-112: два контракта одного metric id в semantic ref — blocking
   `gap.metric_duplicate`; шесть шагов, как при непрочитанном контракте, — `check.not_run`:
   вердикт больше не зависит от раскладки `metrics/`. `asset.metric_ref_ambiguous` гейт не выносит.
@@ -99,10 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Правка затенённого файла меняет run id; ref без повторов имён — прежний digest (pilot ×10).
   Verifier 110, check 74; 6 мутантов ловятся; полный Windows gate 6855 passed, exit 0.
   Срез выбрала synthetic Astra xhigh; ревью: P1 и P3 исправлены, повторного нет.
-- 2026-10-24 — T-110: полный offline-прогон после T-109 на Mac и в Linux, код прежний.
-  Mac 3.13/3.12/3.14: каждый 6919 passed, 20 skipped; Linux 3.12 (Colima): 6921 passed,
-  18 skipped, coverage 96.00%; везде exit 0, Black/Ruff/mypy чистые.
-  POSIX-проверки T-98…T-109 впервые исполнены вне Windows; live DWH — нет.
 
 ## Definition of done (фаза/задача)
 

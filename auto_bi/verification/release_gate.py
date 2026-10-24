@@ -513,7 +513,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: not run — the diff, impact, assets, both result checks and the reference SQL — are not run.
 #: Verifier 110 compared the contract of the id whose file stood last, so moving a file between
 #: directories of the metrics could turn `block` into `pass_with_advisory`.
-VERIFIER_VERSION = "111"
+#: 112 — the spec of a delivered dashboard is read from the path of its whole ref, every segment
+#: but the last a directory (`sales/weekly_margin@7.yaml`). Verifier 111 read the file of the
+#: last segment, so `dashboard://ops/weekly_margin@7` could compile, and chart impact could read,
+#: the layout of another dashboard, and a dashboard nobody supplied a spec for passed as compiled.
+VERIFIER_VERSION = "112"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -780,7 +784,10 @@ VERIFIER_VERSION = "111"
 #: 75 — semantic.gaps blocks on `gap.metric_duplicate`, and a snapshot that carries it leaves
 #: semantic.diff, impact.products, assets.invalidated, results.reconcile, results.provenance
 #: and sql.compile `check.not_run`, with a reason that says so.
-CHECK_VERSION = "75"
+#: 76 — bi.contract compiles, and impact.products reads, the spec of the whole ref of a dashboard
+#: of more than one segment, where rule 75 took the file of its last segment: its `bi.compiled`
+#: could stand for the layout of another dashboard, and its missing spec gave no review.
+CHECK_VERSION = "76"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and

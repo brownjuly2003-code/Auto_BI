@@ -231,9 +231,14 @@ key можно повторить во время ротации. Без signing
 проинспектировать только как blocked и нельзя читать через `--artifact`.
 
 Форматы входов: semantic ref — каталог с `model.yaml` и необязательным `metrics/`;
-dashboard spec — файл `<segment>@<version>.yaml` (версия в имени, чтобы продукт, запинненный
-на `@7`, не подхватил вёрстку `@8`); assets — YAML `VerifiedAsset`; results — `{asset id:
-ResultSet}` с кандидатными ответами, снятыми вне гейта.
+dashboard spec — файл по полному ref: `dashboard://sales/weekly_margin@7` читается из
+`<dashboards>/sales/weekly_margin@7.yaml` (или `.yml`, `.json`), `dashboard://weekly_margin@7` —
+из `<dashboards>/weekly_margin@7.yaml`. Без версии в имени продукт, запинненный на `@7`,
+подхватил бы вёрстку `@8`, без каталогов — вёрстку другого дашборда с тем же последним
+сегментом. Spec ref из нескольких сегментов, который лежит в корне каталога по последнему
+сегменту (так его читал verifier 111), не читается: `bi.contract` даёт review
+`bi.spec_missing`, пока файл не перенесён на путь своего ref. Assets — YAML `VerifiedAsset`;
+results — `{asset id: ResultSet}` с кандидатными ответами, снятыми вне гейта.
 Candidate ref должен держать каждую запинненную продуктом метрику ровно одним
 контрактом на запинненной версии, иначе `contracts.validate` блокирует выпуск:
 `metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,

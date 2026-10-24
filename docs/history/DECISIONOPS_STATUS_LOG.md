@@ -10,6 +10,56 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-24 — T-113: spec дашборда по полному пути ref
+
+`_dashboard_file` (`auto_bi/decision/use_cases.py`) называл файл spec последним сегментом
+ref и пином: `dashboard://sales/weekly_margin@7` и `dashboard://ops/weekly_margin@7` читали
+один `weekly_margin@7.yaml`. Без spec ops-дашборда verifier 111 компилировал под его ref
+вёрстку другого дашборда, запечатывал её payloads и читал её плитки в chart impact;
+`bi.contract` давал `bi.compiled` вместо review `bi.spec_missing`, и вердикт pilot-раскладки
+`needs_review` становился `pass_with_advisory` (`.tmp/t113/audit/f1_dashboard_segment.out`,
+воспроизведено на HEAD `9076ed0`). Продукт, доставляющий только
+`dashboard://ops/weekly_margin@7`, так же читал вёрстку `dashboard://weekly_margin@7`.
+Теперь каждый сегмент ref, кроме последнего, — каталог: spec читается из
+`<dashboards>/sales/weekly_margin@7.yaml` (`.yaml`, `.yml`, `.json` — в этом порядке), отката на
+файл последнего сегмента нет. Файла нет — `bi.spec_missing` и `chart.dashboard_spec_missing`,
+сегмент-файл вместо каталога — тоже; отказ взгляда или чтения и невалидный `DashboardSpec`
+кончают прогон, как прежде, с путём файла, и соседний суффикс его не заменяет. Сегмент ref —
+`[a-z0-9][a-z0-9_-]*`, поэтому текст пути не выходит из каталога и два ref не дают один путь;
+symlink, junction и hard link под каталогом читаются насквозь — граница в spec. Ref из одного
+сегмента (все tracked pilot-ref) читают прежний файл. Verifier 111 → 112, check 75 → 76,
+`NATIVE_SOURCE_VERSION` 3 прежний; гейт, compile и chart impact берут specs по ref и не
+менялись, run id сдвигается у каждого прогона — verifier version в ключе. Spec — [dashboard spec paths](../specs/dashboard-spec-paths.md); абзац —
+§12.1 архитектуры (форматы входов) и USER_GUIDE.
+
+Срез выбрала synthetic Astra xhigh (ADR 0006, `.tmp/t113/astra_select.out`) из кандидатов
+аудита T-111, перепроверенных на HEAD (`.tmp/t113/audit/`); не human acceptance. Отклонены:
+slug и повтор delivery-ref (явный отказ, отдельный контракт идентичности), пересечение
+validated paths (ложный block), нестрогий `Timestamp` (нужен контракт времени и
+совместимости старого evidence), порядок gaps и узлов (нестабильный run id, вердикт закрыт
+T-112), тесты `decision runs` из worktree B (дефекта нет, часть fixtures закрепляет
+нестрогий `Timestamp`). Claude Opus 5.5 проверил выбор независимо: грамматика сегмента
+исключает `..`, точки и верхний регистр; `ENOTDIR` и путь через файл на Windows — «нет
+файла» (`filesystem._NOT_THERE`).
+
+Windows, Python 3.13.7: `tests/test_dashboard_spec_paths.py` на коде HEAD `9076ed0` — 14
+failed (`.tmp/t113/red_head.log`), после правки — 14 passed. Девять мутантов ловятся
+(`.tmp/t113/mutants.py`, каждый валит тест среза): откат на файл последнего сегмента, только
+последний сегмент, только первый или только последний каталог, сегменты в одном имени файла,
+имя без пина, откат на старшую версию, обратный порядок суффиксов, взгляд мимо `_looked_at`;
+файл восстановлен. Black, Ruff, mypy (default, strict, strict Linux, strict win32) чистые; 17
+соседних модулей до ревью — 942 passed, 84 skipped (POSIX-режимы файлов на Windows не
+исполняются). Полный Windows offline gate на итоговом дереве: 6886 passed, 91 skipped, 38
+deselected, coverage 96.18%, exit 0. Ревью synthetic Astra xhigh
+(`.tmp/t113/astra_review.out`), не human acceptance: P1 — гарантия «путь не выходит из
+каталога, два ref не делят файл» верна только для текста пути; docstring, spec, §12.1 и журнал
+сужены до неё, symlink, junction и hard link — граница spec. P3 — алгоритм run identity
+прежний, но run id сдвигается у каждого прогона вместе с verifier version; сказано явно. P3 —
+у тестов отказа взгляда, отказа чтения и невалидного spec теперь валидный `.yml` рядом; два
+новых мутанта — отказ взгляда, отказ чтения или разбора передают ход следующему суффиксу —
+ловятся, всего одиннадцать; на коде HEAD тесты среза — снова 14 failed
+(`.tmp/t113/red_head2.log`). P2 нет; повторного ревью нет.
+
 ## 2026-10-24 — T-112: два контракта одного metric id — blocking gap snapshot'а
 
 Граф native snapshot держит узел на каждый загруженный контракт, и `SemanticGraph` допускает

@@ -479,15 +479,21 @@ def _load_dashboards(
 
 
 def _dashboard_file(root: Path, ref: str) -> Path | None:
-    """`dashboard://weekly_margin@7` -> `weekly_margin@7.yaml`, and nothing else.
+    """`dashboard://sales/weekly_margin@7` -> `sales/weekly_margin@7.yaml`, and nothing else.
 
     Dropping the version from the file name would let a product pinned to 7 load 8's layout
-    — the exact drift a pinned ref exists to prevent (§7.1).
+    — the exact drift a pinned ref exists to prevent (§7.1). Dropping a segment would let
+    `dashboard://ops/weekly_margin@7` load the layout of `dashboard://sales/weekly_margin@7`,
+    so every segment but the last is a directory. A segment is lowercase letters, digits,
+    `_` and `-` (`auto_bi.refs`): the text of the path stays under *root*, and no two refs
+    spell one path. Links are followed, as by every look at an input, so a symlink or a
+    junction under *root* may still lead the path out of it, or two refs to one file.
     """
     parsed = ContractRef.parse(ref)
-    stem = f"{parsed.path[-1]}@{parsed.version}"
+    *directories, name = parsed.path
+    stem = f"{name}@{parsed.version}"
     for suffix in _SPEC_SUFFIXES:
-        candidate = root / f"{stem}{suffix}"
+        candidate = root.joinpath(*directories, f"{stem}{suffix}")
         if _looked_at(candidate, filesystem.is_file):
             return candidate
     return None

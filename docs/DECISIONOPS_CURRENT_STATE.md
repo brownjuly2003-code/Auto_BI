@@ -10,9 +10,24 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=111`, `CHECK_VERSION=75`
+**Версии evidence:** `VERIFIER_VERSION=112`, `CHECK_VERSION=76`
 
-**Последний срез (T-112, 2026-10-24):** semantic ref с двумя контрактами одного metric id
+**Последний срез (T-113, 2026-10-24):** spec доставленного дашборда читается из файла полного
+ref: каждый сегмент, кроме последнего, — каталог (`dashboard://sales/weekly_margin@7` →
+`sales/weekly_margin@7.yaml`). Имя файла несло только последний сегмент и пин, поэтому
+`dashboard://sales/weekly_margin@7` и `dashboard://ops/weekly_margin@7` читали один
+`weekly_margin@7.yaml`: без spec ops-дашборда verifier 111 компилировал под его ref чужую
+вёрстку, запечатывал её и читал её плитки в chart impact, а `bi.contract` давал `bi.compiled`
+вместо review `bi.spec_missing` — `needs_review` становился `pass_with_advisory`
+(воспроизведено на HEAD `9076ed0`). Отката на файл последнего сегмента нет; ref из одного
+сегмента — так доставляет каждый pilot — читают прежний файл. Verifier 111 → 112, check 75 →
+76, native source 3 прежний; гейт, compile и chart impact не менялись, run id сдвигается у
+каждого прогона вместе с verifier version. Symlink и junction под каталогом читаются насквозь
+— граница в spec. [Spec](specs/dashboard-spec-paths.md); полный Windows gate 6886 passed, 91
+skipped, exit 0; ревью synthetic Astra xhigh — P1 (гарантия путей — только для текста пути) и
+два P3 исправлены, повторного нет; прогоны и замечания — в журнале T-113.
+
+**Предыдущий срез (T-112, 2026-10-24):** semantic ref с двумя контрактами одного metric id
 блокирует выпуск, где бы ни лежали файлы. Граф держит узел на контракт; diff брал последний
 узел id, поиск метрики по id — первый, а последний определял путь файла: старая версия
 запинненной метрики рядом с текущей в base блокировала выпуск из `metrics/` и давала

@@ -641,7 +641,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=111`, `CHECK_VERSION=75`.
+`VERIFIER_VERSION=112`, `CHECK_VERSION=76`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1955,9 +1955,22 @@ valid <kind>: <место>: <причина>; …` — файл прочитан
 | Вход | Форма |
 |---|---|
 | semantic ref (`--base`/`--candidate`) | каталог с `model.yaml` и необязательным `metrics/` |
-| dashboard spec | `<segment>@<version>.yaml` — имя файла несёт пин, иначе продукт с `@7` молча подхватил бы вёрстку `@8` |
+| dashboard spec | `<segment>/…/<segment>@<version>.yaml` — каждый сегмент ref, кроме последнего, — каталог, имя файла несёт последний сегмент и пин |
 | verified assets | файл или каталог YAML (`VerifiedAsset`) |
 | recorded results | `{asset id: ResultSet}` **или** `{asset id: {result, attestation}}` |
+
+Без пина в имени файла продукт с `@7` молча подхватил бы вёрстку `@8`, без каталогов один
+ref взял бы вёрстку другого. До verifier 112 файл назывался по последнему
+сегменту, и `dashboard://ops/weekly_margin@7` читал `weekly_margin@7.yaml` — вёрстку
+`dashboard://sales/weekly_margin@7` или `dashboard://weekly_margin@7`: `bi.contract`
+компилировал её как spec ops-дашборда, chart impact читал её плитки, а отсутствующий spec
+проходил как `bi.compiled` вместо review `bi.spec_missing`. Теперь читается только файл
+полного ref (`sales/weekly_margin@7.yaml`); суффиксы — `.yaml`, `.yml`, `.json` в этом
+порядке; файла нет — `bi.spec_missing`, как и для ref из одного сегмента. Сегмент ref —
+строчные буквы, цифры, `_` и `-`, поэтому текст пути не выходит из каталога и два ref не
+дают один путь. Ссылки при этом читаются насквозь, как при любом взгляде на вход: symlink
+или junction под каталогом может увести путь ref наружу или к файлу другого ref, hard link
+даёт двум ref один файл ([dashboard spec paths](specs/dashboard-spec-paths.md)).
 
 Обе формы recorded results валидны, и какая перед ним — `use_cases.py` читает из самого
 документа, а не из флага: у `ResultSet` нет ключа `result`, поэтому различение — факт про
