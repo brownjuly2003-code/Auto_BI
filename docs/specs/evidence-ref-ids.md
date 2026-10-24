@@ -93,10 +93,10 @@ every run gets another run id, a run of one asset and one dashboard too.
 
 ## Known boundaries
 
-- A dashboard ref repeated in `delivery.dashboards` passes `decision validate`; when its spec
-  compiles, its payloads still get one id twice, and `decision verify` ends in the same
-  traceback. A delivery of one ref twice is a rule of the product contract (`DeliverySpec`), not
-  of the id.
+- A dashboard ref repeated in `delivery.dashboards` gave one id twice when its spec compiled, and
+  ended `decision verify` in the same traceback: the hash cannot tell one ref from itself. A
+  delivery of one ref twice is a rule of the product contract, not of the id, and since
+  verifier 114 `DeliverySpec` refuses it ([repeated delivery entries](repeated-delivery-entries.md)).
 - Other ids of the bundle are not named after a ref (`check-<check id>`, `snapshot-base`,
   `report-summary-md`) and are not changed. The evidence ids of an investigation brief are already
   the hash of their step and metric ref (§12.1).

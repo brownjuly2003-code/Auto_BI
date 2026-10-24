@@ -297,6 +297,15 @@ actions:
 В alpha-схеме `decision`, `owner`, `metric refs` и verification policy
 обязательны. Cadence описывает продукт, но scheduler не входит в MVP.
 
+Списки `scope.metrics`, `scope.dimensions`, `delivery.dashboards` и `delivery.brief_formats` —
+множества по смыслу: запись, повторённая в одном из них, меняет digest продукта, не меняя того,
+что он покрывает и доставляет, и схема её отвергает (`duplicate entries in <список>: <записи>`,
+в `decision validate` — `contract.invalid`). Ref сравниваются целым текстом, а грамматика ref
+даёт ему одно написание: две версии одного дашборда — два ref. Повтор в доставке отвергается с
+verifier 114. Прежде повтор формата только сдвигал digest, а прогон компилировал каждую запись
+`delivery.dashboards`, и payload дашборда, чей spec компилировался, запечатывались под одним ID
+дважды — traceback с exit 1 без bundle ([spec](specs/repeated-delivery-entries.md)).
+
 ### 7.3 MetricContract
 
 Минимальная переносимая часть:
@@ -641,7 +650,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=113`, `CHECK_VERSION=76`.
+`VERIFIER_VERSION=114`, `CHECK_VERSION=77`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1496,8 +1505,8 @@ slug: claim эквивалентных результатов assets `asset://sa
 зависит ни от payload, ни от соседних ref, ни от их порядка; одинаковые payload двух дашбордов
 делят content address под своими ID. Остальные ID bundle (`check-<check id>`, `snapshot-base`,
 `report-summary-md`) не выводятся из ref и не менялись; bundle прежних версий читаются со своими
-slug-ID. Повтор одного ref в `delivery.dashboards`, чей spec компилируется, по-прежнему даёт один
-ID дважды — граница [спеки](specs/evidence-ref-ids.md).
+slug-ID. Повтор одного ref в `delivery.dashboards`, чей spec компилируется, давал один ID дважды:
+хеш не отличит ref от него самого. С verifier 114 такой повтор отвергает схема продукта (§7.2).
 
 `reports/summary.md` пишет `verification/summary.py` — единственный артефакт в
 layout, написанный для человека, а не для машины. «Derived» здесь контракт, а не

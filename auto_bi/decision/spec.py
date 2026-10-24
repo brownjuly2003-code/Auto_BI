@@ -97,6 +97,20 @@ class DeliverySpec(StrictModel):
     dashboards: list[DashboardDelivery] = Field(min_length=1)
     brief_formats: list[BriefFormat] = Field(default_factory=lambda: [BriefFormat.MARKDOWN])
 
+    @model_validator(mode="after")
+    def _check_unique(self) -> DeliverySpec:
+        """Both lists are sets by meaning, as the lists of `DecisionScope` are: a repeated
+        entry changes the digest without changing the delivery. The gate also takes each entry
+        of `dashboards`: a dashboard delivered twice would be named twice in its evidence, and
+        if its spec compiles, its payloads would be sealed under one id twice."""
+        refs = [item.ref for item in self.dashboards]
+        formats = [item.value for item in self.brief_formats]
+        for name, values in (("dashboards", refs), ("brief_formats", formats)):
+            duplicates = sorted({value for value in values if values.count(value) > 1})
+            if duplicates:
+                raise ValueError(f"duplicate entries in delivery.{name}: {', '.join(duplicates)}")
+        return self
+
 
 class ActionsSpec(StrictModel):
     mode: ActionsMode = ActionsMode.DISABLED

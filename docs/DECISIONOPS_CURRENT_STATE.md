@@ -10,9 +10,27 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=113`, `CHECK_VERSION=76`
+**Версии evidence:** `VERIFIER_VERSION=114`, `CHECK_VERSION=77`
 
-**Последний срез (T-114, 2026-10-24):** ID claim эквивалентного результата и скомпилированного
+**Последний срез (T-115, 2026-10-24):** продукт, который дважды перечисляет один ref в
+`delivery.dashboards` или один формат в `delivery.brief_formats`, не проходит схему:
+`DeliverySpec` отвергает повтор, как `DecisionScope` — повтор метрики или dimension
+(`duplicate entries in delivery.dashboards: <ref>`; в `decision validate` — `contract.invalid`,
+block). Прежде такой продукт проходил `decision validate`, а `decision verify` компилировал
+каждую запись: payload дашборда, чей spec компилировался, запечатывались под одним ID дважды, и
+прогон кончался pydantic traceback с exit 1 без bundle (воспроизведено на HEAD `951153b`); без
+spec, с невалидным или отклонённым compile bundle называл дашборд дважды. Теперь прогон такого
+продукта — usage error exit 2 `no decision product …` без записи, а прогон другого продукта тех
+же путей блокирует `contracts.validate`: `contract.invalid` — issue загрузки файла. Ref
+сравниваются целым текстом: две версии одного дашборда остаются двумя ref. Verifier 113 → 114,
+check 76 → 77, native source 3 прежний; прежние bundle читаются как были — читатель bundle
+продукт не разбирает. Граница: `decision verify` не говорит, почему продукта нет, — это говорит
+`decision validate` (так для любого продукта, отвергнутого схемой).
+[Spec](specs/repeated-delivery-entries.md); полный Windows gate 6922 passed, 91 skipped,
+exit 0; ревью synthetic Astra xhigh — P1 и P2 нет, три P3 исправлены, повторного нет; прогоны
+и замечания — в журнале T-115.
+
+**Предыдущий срез (T-114, 2026-10-24):** ID claim эквивалентного результата и скомпилированного
 BI payload кончаются полным SHA-256 своего ref (у payload — вместе с его id от компилятора):
 `claim-<slug>-<hex>`, `bi-<slug>-<payload id>-<hex>`. ID был одним slug ref, а slug сводит `_`,
 `-`, `/` и `@` к одному `-`: два assets `asset://sales/weekly_margin_by_region` и
@@ -22,7 +40,8 @@ pydantic traceback с exit 1 — без bundle и без вердикта (во�
 остался впереди для чтения в `decision evidence`. Verifier 112 → 113, check 76 и native source 3
 прежние; run id сдвигается у каждого прогона вместе с verifier version, прежние bundle читаются
 со своими ID. Граница: повтор одного ref в `delivery.dashboards` проходит `decision validate` и,
-если его spec компилируется, кончает `decision verify` тем же traceback.
+если его spec компилируется, кончает `decision verify` тем же traceback (закрыта T-115: повтор
+отвергает схема продукта).
 [Spec](specs/evidence-ref-ids.md); полный Windows gate 6899 passed, 91 skipped, exit 0; ревью
 synthetic Astra xhigh — P1 (отказ был только при двух записанных ID), P2 и два P3 исправлены,
 повторного нет; прогоны и замечания — в журнале T-114.

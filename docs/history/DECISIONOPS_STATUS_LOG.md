@@ -10,6 +10,56 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-24 — T-115: повтор записи в доставке продукта отвергает схема
+
+`DeliverySpec` (`auto_bi/decision/spec.py`) брал `delivery.dashboards` и `delivery.brief_formats`
+как написаны. Продукт, который дважды перечислял один ref, проходил `decision validate`;
+`bi.contract` компилировал каждую запись, и payload дашборда, чей spec компилировался,
+запечатывались под одним ID дважды: `EvidenceBundle` отвергал повтор, и `decision verify`
+кончался pydantic `ValidationError` traceback с exit 1 без bundle (`.tmp/t115/repro.out`, P1, на
+дереве T-114; хеш ID из T-114 тут не помогает — ref один и тот же). Без spec прогон писал bundle,
+который называл дашборд дважды — в subjects, detail и `missing` шага `bi.contract` (P2); так же
+`invalid` и `refused` при невалидном spec и отклонённом compile (код шага и тест). Повтор у
+другого продукта тех же путей прогон первого не задевал (P3), повтор `markdown` в
+`brief_formats` принимался (P4). Теперь оба списка — множества, как списки `DecisionScope`:
+`DeliverySpec._check_unique` отвергает повтор (`duplicate entries in delivery.<список>:
+<записи>`, каждая один раз, в порядке сортировки). Ref сравниваются целым текстом — у ref одно
+написание: `@7`/`@8`, `@7`/`@17`, ref одного slug и одного последнего сегмента доставляются
+вместе. Отказ схемы — `contract.invalid` (block) в `decision validate` (exit 2, если продукт был
+единственным, рядом с валидным — 4); прогон этого продукта — usage error exit 2 `no decision
+product …` без записи; прогон другого продукта тех же путей блокирует `contracts.validate`
+(`contracts.issues`), как любой issue загрузки файла. Verifier 113 → 114, check 76 → 77, native
+source 3 прежний. Прежние bundle читаются: читатели bundle продукт не разбирают (тест
+запечатывает bundle с повтором в обход схемы и проверяет его). Spec —
+[repeated delivery entries](../specs/repeated-delivery-entries.md); абзацы — §7.2 и §9.2
+архитектуры и USER_GUIDE; граница в [evidence ref ids](../specs/evidence-ref-ids.md) закрыта.
+
+Срез выбрал владелец — кандидат, который выбор T-114 отложил как отдельное правило `DeliverySpec`;
+не synthetic Astra. Отвергнуто: issue валидации с дедупом записей в гейте — повтор оставался бы в
+digest, чужие продукты путей не блокировались бы, и это расходится с прецедентом `DecisionScope`.
+Следующий кандидат: `decision verify --product X` для X, отвергнутого схемой, говорит «нет такого
+продукта», а не почему.
+
+Прогоны: red на HEAD `951153b` — 15 failed, 7 passed (проходят разные ref и чтение прежних
+bundle — то, что не должно меняться); на дереве 22 passed. Тринадцать мутантов
+(`.tmp/t115/proto.py`, `.tmp/t115/mutants22.log`) пойманы: без правила; правило только для одного
+из двух списков (×2); сравнение без версии, по slug, по последнему сегменту; тихий дедуп до
+проверки; сообщение без записей; повторы без сортировки и единственности; дедуп в гейте вместо
+правила; правило в field validator продукта, а не в `DeliverySpec`; verifier version и check
+version без подъёма (по одной). Black, Ruff, mypy (default, strict, strict Linux, strict win32) и
+63 соседних модуля — 2466 passed, 84 skipped (`.tmp/t115/checks.log`, до правок по ревью).
+Полный Windows gate после правок по ревью — 6922 passed, 91 skipped, exit 0,
+покрытие 96% (`.tmp/t115/pytest.log`).
+
+Ревью synthetic Astra xhigh (`.tmp/t115/astra_review.out`; не human acceptance): P1 и P2 нет,
+три P3 исправлены. Тесты не привязывали правило к `DeliverySpec`: перенос в field validator
+продукта их проходил (мутант M11 выжил) — добавлен прямой тест `DeliverySpec`, M11 пойман.
+Docstring `_check_unique` обещал двойную компиляцию без условия «если spec компилируется». Журнал
+называл M10 «версиями без подъёма», хотя он откатывал только verifier version, — добавлен M10b
+для check version. По ответам ревью в spec добавлены границы: правило держится для
+валидированного продукта (собранный в обход валидации и переданный гейту напрямую грейдится как
+есть), а тест прежнего bundle запечатывает его сегодняшним writer. Повторного ревью нет.
+
 ## 2026-10-24 — T-114: ID claim и BI payload по хешу ref
 
 `_slugify` (`auto_bi/verification/release_gate.py`) давал ID claim эквивалентного результата

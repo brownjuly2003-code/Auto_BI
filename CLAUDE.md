@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-24 — T-115: `DeliverySpec` отвергает повтор ref в `delivery.dashboards`
+  и формата в `brief_formats`, как `DecisionScope`: `decision verify` такого продукта больше не
+  кончается traceback с exit 1 — отказ exit 2, а прогон чужого продукта путей блокируется.
+  Verifier 114, check 77; 13 мутантов ловятся; полный Windows gate 6922 passed, exit 0.
+  Срез выбрал владелец; ревью Astra: три P3 исправлены, повторного нет.
 - 2026-10-24 — T-114: ID claim и BI payload кончаются полным SHA-256 ref, slug впереди для
   чтения: два эквивалентных assets или два скомпилированных дашборда одного slug больше не
   кончают `decision verify` traceback с exit 1 без bundle. Verifier 113, check 76; 11 мутантов
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   не компилируется под ref, отсутствующий spec — `bi.spec_missing`. Verifier 112, check 76;
   11 мутантов ловятся; полный Windows gate 6886 passed, exit 0.
   Срез выбрала synthetic Astra xhigh; ревью: P1 и два P3 исправлены, повторного нет.
-- 2026-10-24 — T-112: два контракта одного metric id в semantic ref — blocking
-  `gap.metric_duplicate`; шесть шагов, как при непрочитанном контракте, — `check.not_run`:
-  вердикт больше не зависит от раскладки `metrics/`. `asset.metric_ref_ambiguous` гейт не выносит.
-  Verifier 111, check 75; 11 мутантов ловятся; полный Windows gate 6872 passed, exit 0.
-  Срез выбрала synthetic Astra xhigh; ревью — P2 и два P3 исправлены, повторного нет.
 
 ## Definition of done (фаза/задача)
 

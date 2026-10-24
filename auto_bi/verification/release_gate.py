@@ -522,7 +522,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: had. Verifier 112 named them by the slug alone, which folds `_`, `-`, `/` and `@` into one
 #: `-`: two equivalent assets or two compiled dashboards of one slug ended the run in a
 #: traceback, no bundle written.
-VERIFIER_VERSION = "113"
+#: 114 — a product that repeats a dashboard ref in `delivery.dashboards`, or a format in
+#: `delivery.brief_formats`, fails its schema (`contract.invalid`): its run is refused, and
+#: the run of another product of its paths blocks. Verifier 113 compiled each entry: a spec
+#: that compiled sealed its payloads under one id twice, and the run ended in a traceback; a
+#: dashboard with no spec, an invalid one or one the compile refused was named twice in a
+#: bundle.
+VERIFIER_VERSION = "114"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -792,7 +798,10 @@ VERIFIER_VERSION = "113"
 #: 76 — bi.contract compiles, and impact.products reads, the spec of the whole ref of a dashboard
 #: of more than one segment, where rule 75 took the file of its last segment: its `bi.compiled`
 #: could stand for the layout of another dashboard, and its missing spec gave no review.
-CHECK_VERSION = "76"
+#: 77 — contracts.validate blocks on a product file that repeats an entry of
+#: `delivery.dashboards` or `delivery.brief_formats` (`contract.invalid`), where rule 76
+#: graded the product built of it.
+CHECK_VERSION = "77"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and
