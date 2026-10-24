@@ -12,7 +12,14 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=108`, `CHECK_VERSION=73`
 
-**Последний срез (T-107, 2026-10-23):** тестами закреплены отказы discovery до
+**Последний срез (T-108, 2026-10-23):** USER_GUIDE описывает `decision runs` и переход
+к проверке выбранного bundle через адресующий `run_id` и `--expect-digest`.
+Показано чтение signed owner-summary; пояснены границы pin, подписи и одного payload,
+различие stdout при неверном pin. Код и версии evidence 108/73 прежние.
+Windows: профильный набор 92 passed, 1 skipped; CLI/docs после финального примера —
+66 passed. Подробности и результат synthetic review — в журнале T-108.
+
+**Предыдущий срез (T-107, 2026-10-23):** тестами закреплены отказы discovery до
 чтения manifest: перечисление root, stat run/manifest, lstat отсутствующего manifest,
 а также manifest-каталог. В text/JSON — exit 2 без частичного stdout и утечки причины.
 Windows: 10 новых сценариев; смежный набор — 338 passed, 74 skipped; Ruff/Black чистые.

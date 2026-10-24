@@ -10,6 +10,28 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-23 — T-108: операторский путь от discovery к проверке evidence
+
+По synthetic owner/design selection Astra xhigh (ADR 0006) закрыт пробел T-106
+в USER_GUIDE: команда `decision runs` добавлена в таблицу и walkthrough.
+Поля каталога объяснены; адресующий `run_id` и `manifest_digest` одной строки
+передаются в inspection. Отдельный пример читает signed `report-summary-md`
+с тем же pin и независимым trust key. Текст различает discovery, полную inspection
+и чтение одного payload; pin фиксирует manifest, но не удостоверяет производителя
+и не создаёт атомарный snapshot каталога. Обычная inspection при stale pin
+возвращает отчёт в stdout и exit 4; `--artifact` — пустой stdout, stderr и exit 4.
+
+Изменена только документация. Исполнитель — Codex (`gpt-5.6-luna` недоступна).
+Production-код, тесты и версии evidence 108/73 прежние.
+Windows: `uv run pytest tests/test_decision_runs.py tests/test_evidence_inspect.py
+tests/test_evidence_signing.py tests/test_docs_as_code.py tests/test_docs_defaults.py
+-q --tb=short` — 92 passed, 1 skipped, exit 0. После добавления примера artifact:
+`uv run pytest tests/test_decision_cli.py tests/test_docs_as_code.py
+tests/test_docs_defaults.py -q --tb=short` — 66 passed, exit 0.
+Финальный synthetic Astra xhigh review: существенных замечаний нет; уточнение,
+что пустой каталог даёт `[]` только при `--json`, внесено. Это не human acceptance.
+Полный offline gate, Mac/Linux runtime и live DWH не запускались.
+
 ## 2026-10-23 — T-107: отказы discovery до чтения manifest
 
 По synthetic owner/design selection Astra xhigh (ADR 0006) закреплён существующий

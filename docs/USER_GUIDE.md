@@ -79,6 +79,7 @@ auto_bi serve            # http://127.0.0.1:8200
 | `decision validate` | **DecisionOps.** Offline-проверка decision products против metric contracts (пины версий, lifecycle, dimensions, policy). Аргументы — файлы/каталоги YAML, `--json`. Ни DWH, ни BI, ни LLM. |
 | `decision verify` | **DecisionOps.** Полный Analytics Release & Evidence Gate для ОДНОГО продукта: `--base`/`--candidate` (каталоги с `model.yaml`), `--evidence DIR`, `--dashboards DIR`, `--assets PATH`, `--results FILE`, `--product ID`, `--environment REF`, `--created-at TS`, opt-in `--signing-key PRIVATE_PEM`, `--json`. Тоже полностью offline без `--dwh`. |
 | `decision evidence` | **DecisionOps.** Чтение написанного evidence bundle с пересчётом всех content address. Аргумент — каталог evidence или один run-каталог внутри; `--run ID` (если run'ов несколько), `--artifact ID` (напечатать один payload), `--expect-digest sha256:…`, повторяемый `--trust-key PUBLIC_PEM`, `--json`. Signed bundle без совпавшего trust key блокируется. |
+| `decision runs` | **DecisionOps.** Локальный каталог прогонов: `decision runs EVIDENCE_ROOT [--json]`. Читает manifests без проверки payload hashes и подписи; `integrity_checked=false`. Для проверки выбранного bundle используйте `decision evidence --run ID`. |
 
 ### build
 ```bash
@@ -165,6 +166,7 @@ auto_bi decision verify contracts/ \
         --evidence .evidence --dashboards dashboards/ \
         --assets assets/ --results results.yaml \
         --signing-key /secure/path/evidence-private.pem
+auto_bi decision runs .evidence --json                   # выбрать run перед проверкой
 auto_bi decision evidence .evidence \
         --trust-key /secure/path/evidence-public.pem     # digest + signature
 auto_bi decision evidence .evidence --artifact check-semantic.diff \
@@ -176,6 +178,50 @@ governed-числа. `validate` отвечает на один вопрос — 
 semantic snapshot'ов → семантические gap'ы → diff → impact до продукта, дашборда и владельца →
 инвалидация verified assets → сверка результатов → компиляция дашбордов под их BI **без единого
 remote-вызова** → сборка content-addressed evidence bundle и его повторная верификация.
+
+Чтобы найти нужный прогон среди нескольких, выполните `auto_bi decision runs .evidence --json`.
+Команда читает только manifests непосредственных run-каталогов и сортирует строки по имени
+каталога, не по времени. Она ничего не записывает. Поля строки:
+
+| Поле | Как использовать |
+|---|---|
+| `run_id` | Имя каталога; передайте его в `decision evidence --run`. |
+| `manifest_run_id` | ID, записанный внутри manifest; после переименования каталога может отличаться от `run_id`. |
+| `product_ref`, `created_at` | Заявленные в manifest продукт и время; помогают выбрать прогон. |
+| `manifest_digest` | SHA-256 прочитанных байтов manifest; передайте целиком, включая `sha256:`, в `--expect-digest`. |
+| `integrity_checked` | Всегда `false`: каталог не проверяет payload hashes или подпись, даже у signed bundle. |
+
+Скопируйте `run_id` и `manifest_digest` из одной выбранной строки, заменив заполнители
+в команде ниже. Для signed bundle добавьте `--trust-key` с доверенным public key,
+полученным независимо от bundle:
+
+```text
+auto_bi decision evidence .evidence --run "<run_id>" --expect-digest "<manifest_digest>" --json
+```
+
+Эта команда проверяет выбранный bundle, включая совпадение двух run ID. Digest из каталога
+фиксирует увиденную версию manifest, но сам по себе не доказывает её подлинность или
+одобрение владельцем. Если manifest изменился между командами, несовпадение pin даёт
+exit `4` и отчёт с `evidence.digest_unexpected` в stdout. При чтении конкретного payload
+через `--artifact ID` несовпадение pin также даёт exit `4`, но stdout пуст, причина — в stderr.
+Pin не заменяет проверку payload hashes и подписи и не создаёт атомарный snapshot каталога.
+
+Чтобы прочитать owner-summary signed bundle, используйте те же выбранные значения
+и путь к доверенному ключу (замените все заполнители):
+
+```text
+auto_bi decision evidence .evidence --run "<run_id>" --expect-digest "<manifest_digest>" --artifact report-summary-md --trust-key "<public-key.pem>"
+```
+
+`--artifact` проверяет digest выбранного payload и ограничения его чтения; остальные
+payload этой командой не проверяются. Для полной проверки сначала выполните inspection
+без `--artifact`, добавив тот же `--trust-key`.
+
+Пустой evidence root при `--json` возвращает `[]` с exit `0`; текстовый режим печатает
+только заголовок каталога. Каталоги без manifest пропускаются.
+Отсутствующий или недоступный root, невалидный либо нечитаемый manifest, каталог вместо
+manifest и перенаправленный sealed run дают exit `2`, stderr с причиной и пустой stdout.
+Даже если до ошибки найден корректный run, частичный каталог не выводится.
 
 `--signing-key` принимает Ed25519 unencrypted PKCS#8 PEM только по явному пути. Private key
 хранится вне checkout, evidence и логов; на Mac задайте ему mode `0600`. Соответствующий

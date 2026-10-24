@@ -89,6 +89,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-23 — T-108: USER_GUIDE — discovery → выбранный run → inspection с digest pin.
+  Signed owner-summary, границы одного payload и stdout при несовпадении pin.
+  Код и версии 108/73 прежние; Windows CLI/docs — 66 passed.
+  Проверки и synthetic review — в журнале T-108.
 - 2026-10-23 — T-107: тесты отказов discovery до чтения manifest и manifest-каталога.
   Text/JSON: exit 2, без частичного stdout и утечки исходной причины отказа.
   Windows: 338 passed, 74 skipped; Ruff/Black чистые; код и версии 108/73 прежние.
@@ -97,10 +101,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   Product/time и digest manifest; явно `integrity_checked=false`, без payload/signature checks.
   Ошибки чтения/парсинга дают exit 2 без частичного stdout; версии 108/73 прежние.
   Проверки и synthetic Astra-review — в журнале T-106.
-- 2026-10-23 — T-105: полный Windows offline gate после T-104, Python 3.13.7 с DuckDB.
-  6786 passed, 118 skipped, 38 deselected; coverage 96.15%, exit 0, без перезапуска.
-  Ruff/Black и mypy Linux/strict Linux/strict win32 чистые; код и тесты прежние.
-  Отчёт — docs/DECISIONOPS_WINDOWS_CHECKS_2026-10-23.md; версии 108/73 сохранены.
 
 ## Definition of done (фаза/задача)
 
