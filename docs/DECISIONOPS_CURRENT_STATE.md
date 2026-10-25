@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-24
+**Обновлено:** 2026-10-25
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -12,7 +12,24 @@ human/design-partner outcome не измерен и не требуется дл
 
 **Версии evidence:** `VERIFIER_VERSION=114`, `CHECK_VERSION=77`
 
-**Последний срез (T-115, 2026-10-24):** продукт, который дважды перечисляет один ref в
+**Последний срез (T-116, 2026-10-25):** прогон продукта, которого схема не пропустила,
+говорит, какой это файл и что схема отвергла. Файл `kind: DecisionProduct`, не прошедший схему,
+— issue `contract.invalid` и не продукт путей, поэтому `decision verify` отказывал словами `no
+decision product …` (exit 2), как будто продукта нет, а почему — говорил только `decision
+validate`. Теперь usage error продолжается `; <n> decision product(s) failed the schema: '<id>'
+in <файл> (<причина>)`: с `--product` — файлы, которые объявляют этот id, без него — каждый
+отвергнутый; в обоих случаях первые три и ` (+<k> more)`, в порядке чтения файлов, до
+непрочитанных путей.
+Причина — одной строкой, как usage error говорит о любом документе, отвергнутом схемой
+(`schema_reason`); id — в кавычках Python, путь с управляющим символом — тоже. Контракт другого
+kind с тем же id, непрочитанный файл и файл чужого kind не называются; файл без id называется
+только без `--product`. Validation report, гейт и bundle не меняются: verifier 114, check 77,
+native source 3 прежние. Граница: суффикс непрочитанных путей печатает путь как есть, и путь с
+переводом строки там по-прежнему ломает строку. [Spec](specs/schema-refused-products.md); полный
+Windows gate 6938 passed, 91 skipped, exit 0; ревью synthetic Astra xhigh — P1 и P2 нет, три P3
+исправлены, повторного нет; прогоны и замечания — в журнале T-116.
+
+**Предыдущий срез (T-115, 2026-10-24):** продукт, который дважды перечисляет один ref в
 `delivery.dashboards` или один формат в `delivery.brief_formats`, не проходит схему:
 `DeliverySpec` отвергает повтор, как `DecisionScope` — повтор метрики или dimension
 (`duplicate entries in delivery.dashboards: <ref>`; в `decision validate` — `contract.invalid`,
@@ -25,7 +42,8 @@ spec, с невалидным или отклонённым compile bundle на�
 сравниваются целым текстом: две версии одного дашборда остаются двумя ref. Verifier 113 → 114,
 check 76 → 77, native source 3 прежний; прежние bundle читаются как были — читатель bundle
 продукт не разбирает. Граница: `decision verify` не говорит, почему продукта нет, — это говорит
-`decision validate` (так для любого продукта, отвергнутого схемой).
+`decision validate` (так для любого продукта, отвергнутого схемой; закрыта T-116: usage error
+называет файл продукта и причину).
 [Spec](specs/repeated-delivery-entries.md); полный Windows gate 6922 passed, 91 skipped,
 exit 0; ревью synthetic Astra xhigh — P1 и P2 нет, три P3 исправлены, повторного нет; прогоны
 и замечания — в журнале T-115.

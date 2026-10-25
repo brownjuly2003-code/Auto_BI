@@ -35,7 +35,12 @@ from pydantic import TypeAdapter, ValidationError
 
 from auto_bi import filesystem
 from auto_bi.decision.spec import DecisionProductSpec
-from auto_bi.decision.validate import LoadedContracts, ValidationReport, load_contracts
+from auto_bi.decision.validate import (
+    LoadedContracts,
+    RefusedProduct,
+    ValidationReport,
+    load_contracts,
+)
 from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.evidence.manifest import MANIFEST_PATH, EvidenceConflictError
 from auto_bi.evidence.signing import EvidenceSignatureError, EvidenceSigner
@@ -82,6 +87,8 @@ METRICS_DIR = "metrics"
 _SPEC_SUFFIXES = (".yaml", ".yml", ".json")
 #: How many unread paths a refusal that found no product names before it counts the rest.
 _MAX_UNREAD_NAMED = 3
+#: How many product files the schema refused it names before it counts the rest.
+_MAX_REFUSED_NAMED = 3
 
 #: The moment a run or a capture is stated to be of, as a manifest and an attestation take it.
 _MOMENT: TypeAdapter[str] = TypeAdapter(Timestamp)
@@ -317,21 +324,24 @@ def _select_product(loaded: LoadedContracts, product_id: str) -> DecisionProduct
 
     That the paths hold no such product is known only of what was read, so the refusal
     names what was not: the product may be in a directory that could not be listed or in
-    a file that could not be read.
+    a file that could not be read. Before that it names what was read and is no product: a
+    product file its schema refused — of the id asked for, or any, when none was.
     """
     products = loaded.products
     if product_id:
         product = products.get(product_id)
         if product is None:
             known = ", ".join(sorted(products)) or "none"
+            refused = [r for r in loaded.refused_products if r.declared == product_id]
             raise VerifyError(
                 f"no decision product {product_id!r} in the given paths ({known})"
-                f"{_unread_paths(loaded.report)}"
+                f"{_refused_products(refused)}{_unread_paths(loaded.report)}"
             )
         return product
     if not products:
         raise VerifyError(
-            f"no decision product contract found in the given paths{_unread_paths(loaded.report)}"
+            "no decision product contract found in the given paths"
+            f"{_refused_products(loaded.refused_products)}{_unread_paths(loaded.report)}"
         )
     if len(products) > 1:
         known = ", ".join(sorted(products))
@@ -340,6 +350,23 @@ def _select_product(loaded: LoadedContracts, product_id: str) -> DecisionProduct
             "name the one to verify with --product"
         )
     return next(iter(products.values()))
+
+
+def _refused_products(refused: Sequence[RefusedProduct]) -> str:
+    """The decision products of the validated paths their schema refused, and why, if any."""
+    if not refused:
+        return ""
+    named = ", ".join(_refused_product(product) for product in refused[:_MAX_REFUSED_NAMED])
+    rest = len(refused) - _MAX_REFUSED_NAMED
+    more = f" (+{rest} more)" if rest > 0 else ""
+    return f"; {len(refused)} decision product(s) failed the schema: {named}{more}"
+
+
+def _refused_product(product: RefusedProduct) -> str:
+    where = filesystem.display_path(product.source)
+    if product.declared is None:
+        return f"{where} ({product.reason})"
+    return f"{product.declared!r} in {where} ({product.reason})"
 
 
 def _unread_paths(report: ValidationReport) -> str:

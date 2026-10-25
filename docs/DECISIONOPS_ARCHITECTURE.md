@@ -1836,7 +1836,12 @@ asset'а и создаёт новый gate-ready result с attestation; суще
 перезаписывается. Ошибка контракта, подключения или запроса завершается операционным кодом
 `2`, а не становится verdict гейта.
 `verify` — полный гейт §8.2 для ОДНОГО продукта: один run = один продукт, потому
-что и idempotency key, и evidence bundle называют один `product_ref`.
+что и idempotency key, и evidence bundle называют один `product_ref`. Когда в путях нет
+продукта, который прогон должен взять, usage error (exit 2) говорит и почему, насколько это
+известно из прочитанного: файлы продуктов, отвергнутых схемой, — с `--product` только этого id
+([schema-refused products](specs/schema-refused-products.md)), и пути, которые не прочитаны
+([files a command cannot read](specs/unreadable-inputs.md)). Причина печатается и не хранится:
+report и bundle те же.
 `evidence` — чтение уже написанного bundle: пересчёт каждого content address,
 список claim'ов и артефактов, при `--artifact` — сам payload. Для signed bundle
 повторяемый `--trust-key` задаёт out-of-band trust root; без совпавшего public key

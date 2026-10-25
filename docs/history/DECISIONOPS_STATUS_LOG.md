@@ -10,6 +10,50 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-25 — T-116: отказ прогона называет продукт, отвергнутый схемой
+
+Файл `kind: DecisionProduct`, не прошедший схему, — issue `contract.invalid` validation report и
+не продукт путей. `decision verify` отказывал его прогону, как прогону продукта, которого нет:
+`no decision product contract found in the given paths` или с `--product` `no decision product
+'<id>' in the given paths (<прочитанные>)`, exit 2, — а почему, говорил только `decision
+validate`. Так было для каждого отказа схемы: повтор в `delivery.dashboards` (T-115), в
+`scope.metrics`, файл без `metadata`. Теперь `LoadedContracts` держит отвергнутые схемой файлы
+продуктов отдельно (`RefusedProduct`: объявленный id, файл, причина `schema_reason` одной
+строкой), в порядке чтения, и `_select_product` продолжает usage error словами `; <n> decision
+product(s) failed the schema: '<id>' in <файл> (<причина>)` — с `--product` только файлы с этим
+id, без него каждый (первые три и ` (+<k> more)`); непрочитанные пути идут после, как прежде.
+Файл без id называется только без `--product` и одним файлом; id — `repr`, путь —
+`display_path`. Validation report, гейт и bundle не меняются: verifier 114, check 77, native
+source 3 прежние. Spec — [schema-refused products](../specs/schema-refused-products.md);
+граница в [repeated delivery entries](../specs/repeated-delivery-entries.md) закрыта, абзац в
+[unreadable inputs](../specs/unreadable-inputs.md), §12.1 архитектуры, USER_GUIDE.
+
+Срез взят Claude по кандидату из handoff T-115 на «продолжи доработку» владельца — не synthetic
+Astra-выбор. Отвергнуто: искать в report `contract.invalid`, чей subject равен `--product`, —
+issue не знает kind своего файла (metric contract, объявивший id продукта, назвался бы
+продуктом), а subject файла без id — имя файла, и `--product weekly_margin.yaml` назвал бы его.
+
+Прогоны: red на HEAD `b347050` — 10 failed, 5 passed (проходят неизменные отказы: контракт
+другого kind, непрочитанный файл и файл чужого kind, два прочитанных продукта, продукт этого id
+рядом с отвергнутым, версии); на дереве 15 passed, с тестом границы причины (`\e` в ключе
+проходит как есть) — 16, после правок по ревью — 17; тест T-115 обновлён под новый текст отказа.
+Восемнадцать мутантов (`.tmp/t116/mutants.py`, `mutants_post_review.log`) пойманы: без продолжения; поиск по
+report с `--product` и без; с `--product` все отвергнутые; предел 5 и 2; непрочитанные пути
+раньше; причина — многострочный message report; id файла без id — имя файла; без продолжения в
+ветке без `--product`; id без `repr`; путь без `display_path`; продолжение в ветке двух
+продуктов; порядок по id; отказы metric contract тоже; счёт `(+k more)` и общий счёт; предел до
+фильтра по id (M18, из ревью). Black, Ruff, mypy (default, strict, strict Linux, strict win32)
+чистые (`.tmp/t116/checks.log`). Полный Windows gate — 6938 passed, 91 skipped, exit 0, покрытие
+96.22% (`.tmp/t116/pytest.log`, до правок по ревью); после правок — 10 соседних модулей с
+docs-тестами, 540 passed, 33 skipped; Black и Ruff чистые (`.tmp/t116/post_review.log`).
+
+Ревью synthetic Astra xhigh (`.tmp/t116/astra_review.out`; не human acceptance): P1 и P2 нет,
+три P3 исправлены. Spec обещал одну строку всей ошибки, а суффикс непрочитанных путей печатает
+путь как есть — обещание сужено до того, что называет продукт, суффикс назван границей. Тесты не
+держали фильтр по id до предела трёх под `--product` (предел до фильтра их проходил) — тест с
+тремя чужими отказами впереди и мутант M18. Тест версий замораживал 114/77 — теперь нижние
+границы, отсутствие подъёма в T-116 видно по diff. Повторного ревью нет.
+
 ## 2026-10-24 — T-115: повтор записи в доставке продукта отвергает схема
 
 `DeliverySpec` (`auto_bi/decision/spec.py`) брал `delivery.dashboards` и `delivery.brief_formats`
@@ -38,7 +82,7 @@ source 3 прежний. Прежние bundle читаются: читател�
 не synthetic Astra. Отвергнуто: issue валидации с дедупом записей в гейте — повтор оставался бы в
 digest, чужие продукты путей не блокировались бы, и это расходится с прецедентом `DecisionScope`.
 Следующий кандидат: `decision verify --product X` для X, отвергнутого схемой, говорит «нет такого
-продукта», а не почему.
+продукта», а не почему (закрыт T-116).
 
 Прогоны: red на HEAD `951153b` — 15 failed, 7 passed (проходят разные ref и чтение прежних
 bundle — то, что не должно меняться); на дереве 22 passed. Тринадцать мутантов

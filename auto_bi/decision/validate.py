@@ -31,7 +31,7 @@ from auto_bi.refs import ContractRef
 from auto_bi.semantic.metric_contract import MetricContract, MetricLifecycle
 from auto_bi.strict import StrictModel
 from auto_bi.verification.model import Severity, Verdict, verdict_for
-from auto_bi.yaml_document import load_yaml_document
+from auto_bi.yaml_document import load_yaml_document, schema_reason
 
 API_VERSION = "auto-bi.io/v2alpha1"
 
@@ -84,17 +84,35 @@ class ValidationReport(StrictModel):
 
 
 @dataclass(frozen=True)
+class RefusedProduct:
+    """A file of kind ``DecisionProduct`` that fails its schema: no product, but one written.
+
+    *declared* is the id its metadata declares, spelled as the subject of its
+    ``contract.invalid`` issue — ``None`` when it declares none, where the issue names the
+    file. *reason* is what the schema refused, in the one line of a usage error: it is
+    printed by a run that cannot find the product, and never kept in a report or a bundle.
+    """
+
+    declared: str | None
+    source: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class LoadedContracts:
     """The parsed contracts behind a :class:`ValidationReport`.
 
     The release gate needs both halves — the report to grade step 1 of §8.2, and the specs
     themselves to run the rest — and loading the working tree twice would let the two
-    disagree about what was on disk.
+    disagree about what was on disk. The decision products the schema refused are kept
+    apart, in the order their files were read, so that a run asked for one can say why it
+    is not there: the report's issue does not say of what kind its file was.
     """
 
     products: dict[str, DecisionProductSpec]
     metrics: dict[str, MetricContract]
     report: ValidationReport
+    refused_products: tuple[RefusedProduct, ...] = ()
 
 
 def load_contracts(paths: Iterable[str | Path]) -> LoadedContracts:
@@ -102,9 +120,10 @@ def load_contracts(paths: Iterable[str | Path]) -> LoadedContracts:
     issues: list[ValidationIssue] = []
     products: dict[str, DecisionProductSpec] = {}
     metrics: dict[str, MetricContract] = {}
+    refused: list[RefusedProduct] = []
 
     for path in _iter_contract_files(paths, issues):
-        _load_contract(path, products, metrics, issues)
+        _load_contract(path, products, metrics, issues, refused)
 
     for _, product in sorted(products.items()):
         issues.extend(_validate_product(product, metrics))
@@ -118,6 +137,7 @@ def load_contracts(paths: Iterable[str | Path]) -> LoadedContracts:
             metrics=sorted(metric.self_ref() for metric in metrics.values()),
             issues=issues,
         ),
+        refused_products=tuple(refused),
     )
 
 
@@ -197,6 +217,7 @@ def _load_contract(
     products: dict[str, DecisionProductSpec],
     metrics: dict[str, MetricContract],
     issues: list[ValidationIssue],
+    refused: list[RefusedProduct],
 ) -> None:
     source = str(path)
     try:
@@ -226,7 +247,13 @@ def _load_contract(
 
     kind = raw.get("kind")
     if kind == "DecisionProduct":
-        _store(DecisionProductSpec, raw, path, products, issues)
+        refusal = _store(DecisionProductSpec, raw, path, products, issues)
+        if refusal is not None:
+            refused.append(
+                RefusedProduct(
+                    declared=_declared(raw), source=source, reason=schema_reason(refusal)
+                )
+            )
     elif kind == "MetricContract":
         _store(MetricContract, raw, path, metrics, issues)
     else:
@@ -247,7 +274,8 @@ def _store(
     path: Path,
     into: dict[str, Any],
     issues: list[ValidationIssue],
-) -> None:
+) -> ValidationError | None:
+    """Keep the contract of *raw* under its id; what its schema refused, if it did."""
     source = str(path)
     try:
         contract = model.model_validate(raw)
@@ -261,7 +289,7 @@ def _store(
                 message=_schema_errors(exc),
             )
         )
-        return
+        return exc
     identifier = contract.metadata.id
     if identifier in into:
         issues.append(
@@ -273,16 +301,23 @@ def _store(
                 message="the same contract id is defined in more than one file",
             )
         )
-        return
+        return None
     into[identifier] = contract
+    return None
 
 
 def _declared_id(raw: dict[str, Any], path: Path) -> str:
     """What names a contract that fails its schema: the id it declares, or its file."""
+    declared = _declared(raw)
+    return path.name if declared is None else declared
+
+
+def _declared(raw: dict[str, Any]) -> str | None:
+    """The id a contract declares, as text, whatever its schema says of it — if it declares one."""
     metadata = raw.get("metadata")
     if isinstance(metadata, dict) and "id" in metadata:
         return str(metadata["id"])
-    return path.name
+    return None
 
 
 def _schema_errors(exc: ValidationError) -> str:

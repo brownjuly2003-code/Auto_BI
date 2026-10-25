@@ -112,9 +112,11 @@ another product of its paths may block where it did not, so `VERIFIER_VERSION` S
 
 ## Known boundaries
 
-- The usage error of a refused run says that the product is not among what was read, not why: the
-  schema's refusal is named by `decision validate`, not by `decision verify`. That is so for every
-  product its schema refuses, a repeat in `scope.metrics` too.
+- The usage error of a refused run said that the product was not among what was read, not why: the
+  schema's refusal was named by `decision validate` alone, for every product its schema refuses, a
+  repeat in `scope.metrics` too. The usage error now goes on with the product file and what its
+  schema refused ([schema-refused products](schema-refused-products.md)); the report and the
+  bundle are unchanged.
 - Bundles written before verifier 114 are not rewritten. A run of a product with a repeated
   dashboard wrote one when no payload of that dashboard was sealed — no spec, an invalid one, or one
   the compile refused. No reader of a bundle builds the product (the run key holds its digest

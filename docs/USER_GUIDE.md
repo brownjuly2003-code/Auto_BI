@@ -273,7 +273,9 @@ validated-контракте, второй раз не сообщается.
 перечисляет один дашборд в `delivery.dashboards` или один формат в `delivery.brief_formats`
 (как повтор в `scope.metrics`): `decision validate` называет повтор, а `decision verify`
 от такого продукта отказывается, как от продукта, которого нет в путях (`no decision
-product …`, exit 2).
+product …`, exit 2), и в той же строке называет его файл и что отвергла схема:
+`; 1 decision product(s) failed the schema: '<id>' in <файл> (<причина>)`. С `--product`
+называются файлы продуктов с этим id, без него — каждый отвергнутый схемой (первые три).
 За пути целиком отвечает `decision validate`: его exit code следует issues всех продуктов.
 Каждая запись `metric_refs` verified asset, переданного прогону, тоже должна пинить
 версию, которую держит candidate ref, ровно одним контрактом этой метрики. Иначе

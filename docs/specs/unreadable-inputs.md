@@ -644,7 +644,9 @@ errors `no decision product contract found in the given paths` and `no decision 
 in the given paths (<the products read>)` SHALL go on with `; <n> path(s) could not be read: `
 and the first three `contract.unreadable` issues of the report, each as `<source> (<message>)`
 and separated by `, `, then ` (+<k> more)` when there are more than three. Where the report
-holds no such issue both SHALL read as before. `decision validate` prints its report above its
+holds no such issue both SHALL read as before. (A product file its schema refused is named
+before them, the verifier version unchanged: [schema-refused products](schema-refused-products.md).)
+`decision validate` prints its report above its
 own error and names them there.
 
 In a semantic ref and under the assets path a directory that cannot be listed SHALL end

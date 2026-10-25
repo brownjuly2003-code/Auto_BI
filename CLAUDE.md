@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-25 — T-116: `decision verify` без продукта называет файлы продуктов, отвергнутых
+  схемой, и причину (`; <n> decision product(s) failed the schema: '<id>' in <файл> (…)`; с
+  `--product` — только этого id): прежде говорил «нет такого продукта», а почему — только
+  `decision validate`. Report и bundle прежние, verifier 114 / check 77; 18 мутантов ловятся;
+  полный Windows gate 6938 passed, exit 0. Ревью Astra: три P3 исправлены, повторного нет.
 - 2026-10-24 — T-115: `DeliverySpec` отвергает повтор ref в `delivery.dashboards`
   и формата в `brief_formats`, как `DecisionScope`: `decision verify` такого продукта больше не
   кончается traceback с exit 1 — отказ exit 2, а прогон чужого продукта путей блокируется.
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   кончают `decision verify` traceback с exit 1 без bundle. Verifier 113, check 76; 11 мутантов
   ловятся; полный Windows gate 6899 passed, exit 0.
   Срез выбрала synthetic Astra xhigh; ревью: P1, P2 и два P3 исправлены, повторного нет.
-- 2026-10-24 — T-113: spec дашборда читается по полному ref — каталоги сегментов
-  (`sales/weekly_margin@7.yaml`), без отката на файл последнего сегмента: чужая вёрстка больше
-  не компилируется под ref, отсутствующий spec — `bi.spec_missing`. Verifier 112, check 76;
-  11 мутантов ловятся; полный Windows gate 6886 passed, exit 0.
-  Срез выбрала synthetic Astra xhigh; ревью: P1 и два P3 исправлены, повторного нет.
 
 ## Definition of done (фаза/задача)
 

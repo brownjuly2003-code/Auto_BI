@@ -201,10 +201,15 @@ def test_verify_refuses_the_product_before_anything_is_written(
 ) -> None:
     case = _delivering_twice(Case(tmp_path).with_asset().with_results(ROWS))
     arrange(case)
+    # The refusal names the product and what its schema refused (schema-refused-products).
+    named = (
+        f"1 decision product(s) failed the schema: '{PRODUCT_ID}' in "
+        f"{case.contracts / 'weekly_margin.yaml'} ({REPEATED})"
+    )
 
-    assert _refused(case) == NO_PRODUCT
+    assert _refused(case) == f"{NO_PRODUCT}; {named}"
     assert _refused(case, product_id=PRODUCT_ID) == (
-        f"no decision product '{PRODUCT_ID}' in the given paths (none)"
+        f"no decision product '{PRODUCT_ID}' in the given paths (none); {named}"
     )
 
 
