@@ -1841,7 +1841,14 @@ asset'а и создаёт новый gate-ready result с attestation; суще
 известно из прочитанного: файлы продуктов, отвергнутых схемой, — с `--product` только этого id
 ([schema-refused products](specs/schema-refused-products.md)), и пути, которые не прочитаны
 ([files a command cannot read](specs/unreadable-inputs.md)). Причина печатается и не хранится:
-report и bundle те же.
+report и bundle те же. Каждый такой путь записан, как путь отвергнутого продукта: в кавычках
+Python, если в нём есть непечатаемый символ.
+Строка, которой останавливается `verify`, `capture`, `evidence`, `investigate` или `runs`, —
+одна: символ, который `str.isprintable` не считает печатным (перевод строки, ESC, U+2028,
+одиночный surrogate), записан escape-последовательностью Python, остальное — как есть, и
+обратная косая черта остаётся одной. Меняется напечатанная строка, а в тексте исключения —
+только запись непрочитанных путей; остальной текст исключения, report и bundle прежние
+([one-line errors](specs/one-line-errors.md)).
 `evidence` — чтение уже написанного bundle: пересчёт каждого content address,
 список claim'ов и артефактов, при `--artifact` — сам payload. Для signed bundle
 повторяемый `--trust-key` задаёт out-of-band trust root; без совпавшего public key

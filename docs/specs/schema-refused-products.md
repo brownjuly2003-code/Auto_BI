@@ -42,8 +42,8 @@ The products are named in the order their files were read, which is the order of
 control character — so what this names of a product holds no line break. What the paths could
 not read (`; <n> path(s) could not be read: …`, [files a command cannot read](unreadable-inputs.md))
 SHALL follow, as before. The error is printed after `error: ` on standard error, exit 2, nothing
-on standard output and no evidence directory created; it is one line unless a path that could not
-be read holds a line break (a known boundary below).
+on standard output and no evidence directory created; it is one line (since T-117 whatever a
+path that could not be read holds: [one-line errors](one-line-errors.md)).
 
 A contract of another kind that fails its schema SHALL NOT be named, whatever id it declares: a
 metric contract that declares `decision://sales/weekly_margin` is no decision product of that id.
@@ -143,9 +143,11 @@ gate and every bundle are unchanged — no run that wrote a bundle writes anothe
 - The reason is what the schema says, as `decision verify` says it of every file a schema refuses:
   a validator may quote a value of the file in it (the repeated refs of a delivery are quoted).
   `schema_reason` gives each run of whitespace as one space, a line break included, and leaves
-  any other character as it is: a key spelled with a YAML escape such as `\e` reaches the line as
-  that character, as it does in the refusal of any run file a schema refuses. The id and the file
-  are escaped; the reason is not.
-- The suffix of the paths that could not be read is unchanged: it spells each path as it is, so a
-  path with a line break there still breaks the line of the error, as it did before this
-  requirement ([files a command cannot read](unreadable-inputs.md)).
+  any other character as it is: a key spelled with a YAML escape such as `\e` reaches the message
+  as that character, as it does in the refusal of any run file a schema refuses. The id and the
+  file are escaped; the reason is not. Since T-117 the line the command prints spells that
+  character by its escape, `\x1b` ([one-line errors](one-line-errors.md)); the message keeps it.
+- The suffix of the paths that could not be read was unchanged by this requirement: it spelled
+  each path as it is, so a path with a line break there broke the line of the error
+  ([files a command cannot read](unreadable-inputs.md)). Closed by T-117: each path is spelled as
+  the file of a refused product is ([one-line errors](one-line-errors.md)).

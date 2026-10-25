@@ -357,7 +357,7 @@ def _decision_runs(args: argparse.Namespace) -> int:
     try:
         rows = FilesystemRunRepository(args.path).list_runs()
     except RunDiscoveryError as exc:
-        _say(str(exc), file=sys.stderr)
+        _say(_one_line(str(exc)), file=sys.stderr)
         return 2
     if args.json:
         _say_json([row.model_dump(mode="json") for row in rows])
@@ -386,6 +386,23 @@ def _say(text: str, file: TextIO | None = None) -> None:
     except UnicodeEncodeError:
         encoding = getattr(stream, "encoding", None) or "ascii"
         print(text.encode(encoding, "backslashreplace").decode(encoding), file=stream)
+
+
+def _one_line(text: str) -> str:
+    """*text* with each character that is not printable spelled by its escape: one line.
+
+    A refusal quotes what it refuses — a path found under a directory, a key of a document,
+    what a validator or an engine said — and any of them may hold a line break, which splits
+    the refusal into lines, or a control a terminal acts on. Each such character is spelled
+    as Python escapes it (``\\n``, ``\\x1b``, ``\\u2028``); every other character, a backslash
+    among them, is left as it is.
+    """
+    return "".join(char if char.isprintable() else ascii(char)[1:-1] for char in text)
+
+
+def _say_error(message: object) -> None:
+    """Print why a decision command stopped: one line, after ``error: ``, on standard error."""
+    _say(f"error: {_one_line(str(message))}", file=sys.stderr)
 
 
 def _say_json(document: Any) -> None:
@@ -447,8 +464,7 @@ def _decision_investigate(args: argparse.Namespace) -> int:
         artifacts = write_offline_investigation(args.plan, args.results, args.output)
     except OfflineInvestigationError as exc:
         # Supplied names and paths must not insert lines or terminal controls.
-        reason = "".join(char if char.isprintable() else ascii(char)[1:-1] for char in str(exc))
-        _say(f"error: {reason}", file=sys.stderr)
+        _say_error(exc)
         return EXIT_ERROR
     _say(f"wrote    {args.output}")
     _say(f"plan     {artifacts.plan.digest()}")
@@ -545,7 +561,7 @@ def _decision_capture(args: argparse.Namespace) -> int:
             )
         )
     except VerifyError as exc:
-        _say(f"error: {exc}", file=sys.stderr)
+        _say_error(exc)
         return EXIT_ERROR
 
     _say(f"wrote    {report.output}")
@@ -660,7 +676,7 @@ def _decision_verify(args: argparse.Namespace) -> int:
             )
         )
     except (VerifyError, EvidenceSignatureError) as exc:
-        _say(f"error: {exc}", file=sys.stderr)
+        _say_error(exc)
         return EXIT_ERROR
 
     if args.json:
@@ -708,10 +724,9 @@ def _decision_evidence(args: argparse.Namespace) -> int:
             try:
                 text = payload.decode("utf-8")
             except UnicodeDecodeError:
-                _say(
-                    f"error: {artifact.artifact_id} is not text ({artifact.media_type}, "
-                    f"{artifact.size_bytes} bytes); it is stored at {artifact.path}",
-                    file=sys.stderr,
+                _say_error(
+                    f"{artifact.artifact_id} is not text ({artifact.media_type}, "
+                    f"{artifact.size_bytes} bytes); it is stored at {artifact.path}"
                 )
                 return EXIT_ERROR
             try:
@@ -719,10 +734,9 @@ def _decision_evidence(args: argparse.Namespace) -> int:
             except UnicodeEncodeError:
                 # The payload is the evidence: spelled with escapes it would be other text.
                 encoding = getattr(sys.stdout, "encoding", None) or "an unnamed encoding"
-                _say(
-                    f"error: {artifact.artifact_id} holds text the output stream cannot encode "
-                    f"({encoding}); it is stored at {artifact.path}",
-                    file=sys.stderr,
+                _say_error(
+                    f"{artifact.artifact_id} holds text the output stream cannot encode "
+                    f"({encoding}); it is stored at {artifact.path}"
                 )
                 return EXIT_ERROR
             return 0
@@ -733,10 +747,10 @@ def _decision_evidence(args: argparse.Namespace) -> int:
             verifier=verifier,
         )
     except EvidenceDigestError as exc:
-        _say(f"error: {exc}", file=sys.stderr)
+        _say_error(exc)
         return exit_code_for(Verdict.BLOCK)
     except (VerifyError, EvidenceReadError, EvidenceSignatureError) as exc:
-        _say(f"error: {exc}", file=sys.stderr)
+        _say_error(exc)
         return EXIT_ERROR
 
     if args.json:

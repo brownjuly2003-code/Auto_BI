@@ -370,11 +370,17 @@ def _refused_product(product: RefusedProduct) -> str:
 
 
 def _unread_paths(report: ValidationReport) -> str:
-    """What the validated paths hold that the report could not read, if anything."""
+    """What the validated paths hold that the report could not read, if anything.
+
+    Each path is spelled as a diagnostic line spells one, as the file of a refused product is.
+    """
     unread = [issue for issue in report.issues if issue.code == "contract.unreadable"]
     if not unread:
         return ""
-    named = ", ".join(f"{issue.source} ({issue.message})" for issue in unread[:_MAX_UNREAD_NAMED])
+    named = ", ".join(
+        f"{filesystem.display_path(issue.source)} ({issue.message})"
+        for issue in unread[:_MAX_UNREAD_NAMED]
+    )
     rest = len(unread) - _MAX_UNREAD_NAMED
     more = f" (+{rest} more)" if rest > 0 else ""
     return f"; {len(unread)} path(s) could not be read: {named}{more}"

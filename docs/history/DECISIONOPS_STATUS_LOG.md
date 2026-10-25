@@ -10,6 +10,64 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-25 — T-117: причина остановки decision-команды — одна строка
+
+Срез взят Claude по кандидату handoff T-116 на «продолжи доработку» владельца (не synthetic
+Astra-выбор). Граница T-116: суффикс `; <n> path(s) could not be read: <путь> (<сообщение>)`
+отказа `decision verify` печатал путь как есть, и путь с переводом строки делил ошибку на две
+строки. Шире — тот же класс у всех decision-команд: `verify`, `capture` и `evidence` печатали
+`error: {exc}` как есть, и ключ `"bad\ekey"` в файле продукта, `model.yaml` или verified asset
+выводил в терминал сырой ESC (воспроизведено на HEAD `880e452`: путь — две строки stderr, ESC —
+у продукта и `model.yaml`). Только `decision investigate` уже записывал непечатаемые символы
+escape-последовательностью.
+Теперь `cli._one_line` записывает каждый символ, для которого `str.isprintable()` ложно, как
+`ascii(char)[1:-1]`, остальные — как есть (обратная косая черта одна); `cli._say_error` печатает
+`error: ` и эту строку через `_say` в stderr. Через него идут все строки `error:` команд
+`capture`, `verify`, `evidence` (VerifyError, EvidenceReadError, EvidenceSignatureError,
+EvidenceDigestError с exit 4, артефакт не текст, артефакт, который поток не кодирует) и
+`investigate`; `decision runs` печатает `_one_line(str(exc))` без `error: `, как прежде. Коды
+выхода и потоки прежние. `_unread_paths` записывает каждый путь через `display_path`, как
+T-116 — файл отвергнутого продукта: только этот текст `VerifyError` и меняется. Файл `cli.py` —
+со смешанными CRLF/LF; правка по байтам, конец каждой строки сохранён (`.tmp/t117/patch.py`).
+Отвергнуто: `display_path` в каждом месте, где назван путь из обхода (ключи и текст валидатора
+остались бы сырыми); экранирование в `VerifyError.__init__` (меняет текст для приложения и не
+покрывает ошибки evidence). Verifier 114, check 77, native source 3 прежние.
+Spec — [one-line errors](../specs/one-line-errors.md); границы в
+[schema-refused products](../specs/schema-refused-products.md) закрыты, абзацы в
+[unreadable inputs](../specs/unreadable-inputs.md) и
+[unencodable output](../specs/unencodable-output.md), §12.1 архитектуры, USER_GUIDE.
+
+Срез начало другое окно Claude; оно завершилось на полном гейте (18:24, прогон дошёл до 33%,
+`.tmp/t117/pytest_interrupted.log`), и срез доведён в новой сессии на том же дереве.
+
+Прогоны: red на HEAD `880e452` — 17 failed, 2 passed (проходят неизменные `decision investigate`
+и версии; прогон был до того, как сообщение теста получило U+202E и combining accent, и до одной
+проверки use case); на дереве 19 passed. Девятнадцать мутантов (`.tmp/t117/mutants.py`,
+`mutants.log`; `mutants2.py`, `mutants2.log`) пойманы: путь как есть; экранирован только LF;
+`repr`, `unicode_escape` и `ascii` всего текста; только ASCII-управляющие; сырая строка у verify,
+capture, evidence digest, evidence read, артефакта не текст, артефакта, который поток не кодирует,
+runs и investigate; ошибка в stdout; без `error: `; каждый путь в кавычках; экранирование в
+`VerifyError.__init__` (отвергнутая альтернатива, M18); `print` вместо `_say` (M19). Black, Ruff,
+`ruff format --check` изменённых файлов, кроме `cli.py` (его смешанные концы строк не проходят
+проверку и на HEAD), mypy (default, strict, strict Linux, strict win32) чистые
+(`.tmp/t117/checks.log`). Полный Windows gate — 6958 passed, 91 skipped, exit 0, покрытие 96.19%
+(`.tmp/t117/pytest.log`). После гейта менялись только доки и одна константа теста: модули,
+которые читают доки, с `test_decision_cli.py` и новым модулем — 2136 passed, 87 skipped
+(`.tmp/t117/post_docs.log`, затем `post_review.log`).
+
+Ревью synthetic Astra xhigh (`.tmp/t117/astra_review.out`; не human acceptance): P1 нет, ошибок
+реализации нет; два P2 и три P3 исправлены. Spec обещал, что путь отличим от escape по кавычкам,
+— но кавычки бывают и в самом имени, а `display_path` и `repr` пишут и другие поля: граница
+переписана (строка — для чтения, исходный текст по ней восстанавливается не всегда), та же
+оговорка — в USER_GUIDE и состоянии. Граница `unanswered-engine.md` обещала печать target и
+ответа драйвера как есть — теперь текст хранит их как есть, а строка экранирует. В USER_GUIDE
+стояла сама буква вместо её escape (инструмент правки раскодировал последовательность;
+переписано по байтам); в §12.1 — текст исключения меняется только в записи непрочитанных путей.
+Тест не держал категорию Zs: в сообщение добавлен no-break space, мутант M20 (экранирует C*, Zl
+и Zp, но не Zs) выживал (`m20_before_fix.log`) и теперь пойман; M1–M20 прогнаны заново
+(`mutants3.log`). Повторное ревью Astra xhigh по diff исправлений (`astra_review2.out`):
+замечаний нет.
+
 ## 2026-10-25 — T-116: отказ прогона называет продукт, отвергнутый схемой
 
 Файл `kind: DecisionProduct`, не прошедший схему, — issue `contract.invalid` validation report и

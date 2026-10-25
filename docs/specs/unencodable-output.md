@@ -56,7 +56,9 @@ U+00FF, `\uNNNN` up to U+FFFF and `\UNNNNNNNN` beyond, in lowercase digits — t
 the interpreter uses on its own error stream. The encoding is the one the stream names; a
 stream that refuses and names none is printed to in ASCII. A stream that takes the line gets it
 as it is, whatever it names. A line goes to the stream it is meant for — standard output, or
-the stream that is named — and is printed once, ending in one line break.
+the stream that is named — and is printed once, ending in one line break. (Since T-117 the line
+a decision command stops with is built with each character that is not printable spelled by its
+escape before it is offered: [one-line errors](one-line-errors.md).)
 
 A JSON answer (`--json` of `decision validate`, `decision verify` and `decision evidence`)
 SHALL be the same document on any stream. It is offered to the stream as it is — the

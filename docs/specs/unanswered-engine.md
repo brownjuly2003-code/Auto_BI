@@ -318,9 +318,11 @@ not establish that the current typed compiler emits that SQL from an ordinary in
   remain outside the named handlers and may end in a traceback with exit 1.
 - Other driver failures end the run through the existing handler. Server-side settings
   refusals, connection failures and unknown errors are not reclassified as measurements.
-- The target is printed as it is configured: host, port and database, never the user or the
-  password. What the driver said is printed as it said it, in one line: libpq names the host
-  and the port it tried, and an authentication refusal names the user.
+- The target is named as it is configured: host, port and database, never the user or the
+  password. What the driver said is kept as it said it, in one line: libpq names the host and
+  the port it tried, and an authentication refusal names the user. The message keeps both as
+  they are; since T-117 the line the command prints spells each character of it that is not
+  printable by its escape ([one-line errors](one-line-errors.md)).
 - Settings validation does not check connectivity or add new value restrictions. Other CLI
   commands retain their existing settings-error handling. `SettingsError` from custom or
   complex settings sources is outside this slice; current Settings fields are scalar.

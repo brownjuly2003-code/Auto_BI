@@ -645,7 +645,9 @@ in the given paths (<the products read>)` SHALL go on with `; <n> path(s) could 
 and the first three `contract.unreadable` issues of the report, each as `<source> (<message>)`
 and separated by `, `, then ` (+<k> more)` when there are more than three. Where the report
 holds no such issue both SHALL read as before. (A product file its schema refused is named
-before them, the verifier version unchanged: [schema-refused products](schema-refused-products.md).)
+before them, the verifier version unchanged: [schema-refused products](schema-refused-products.md).
+Since T-117 `<source>` is spelled as a diagnostic line spells a path, quoted when it holds a
+character that is not printable: [one-line errors](one-line-errors.md).)
 `decision validate` prints its report above its
 own error and names them there.
 
@@ -2126,8 +2128,9 @@ for the check.
   string, unable to parse raw data as a unicode string`. No YAML file hands such a key in any
   more (seventh requirement).
 - One line means no line break: every run of whitespace in a refusal is one space. Any other
-  character of a key, or of a value a validator quotes, is printed as it is — an escape
-  character among them.
+  character of a key, or of a value a validator quotes, stays in the refusal as it is — an
+  escape character among them. Since T-117 the line a decision command prints spells each
+  character that is not printable by its escape ([one-line errors](one-line-errors.md)).
 - Before T-62, `decision investigate` wrote its output directory file by file. Reproduced with
   the third write refused, `No space left on device`: the run answered `cannot write output
   directory <path>: ` and what the system said, left `plan.json` and `results.json` under the
