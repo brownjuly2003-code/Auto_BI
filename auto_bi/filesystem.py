@@ -13,8 +13,10 @@ functions here ask the operating system the same questions and keep its refusal.
 from __future__ import annotations
 
 import errno
+import ntpath
 import os
 import stat
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -68,6 +70,33 @@ def is_dir(path: str | os.PathLike[str]) -> bool:
     """Whether *path* is a directory. A look the filesystem refuses raises its ``OSError``."""
     status = _status(path)
     return status is not None and stat.S_ISDIR(status.st_mode)
+
+
+def file_identity(path: str | os.PathLike[str]) -> tuple[int, int] | None:
+    """The device and the number of the file *path* leads to, links followed — if it has them.
+
+    Two paths of one identity lead to one file, whatever their text: a directory's path joined
+    with a name the directory lists and the file's own path, one file spelled with ``.``, in
+    another case where the filesystem folds case, relative and absolute, through a link or as
+    another hard link of it. Two files of equal bytes are two identities. A path that is not
+    there, that the filesystem refuses to look at, or whose filesystem numbers no file — it
+    answers ``0`` for each — has none; nor has a named stream of a file on Windows
+    (``name:stream``), whose number is the number of every stream of the file. ``None`` says
+    nothing of whether it is the file of another path.
+
+    The identity is the filesystem's numbers, taken as reported: that they stay while the paths
+    are read and that no two volumes report one device — a cloned disk mounted beside its
+    original may give two files one identity — is the filesystem's to keep.
+    """
+    if sys.platform == "win32" and ":" in ntpath.basename(os.fspath(path)):
+        return None
+    try:
+        status = os.stat(path)
+    except (OSError, ValueError):
+        return None
+    if not status.st_ino:
+        return None
+    return status.st_dev, status.st_ino
 
 
 def is_link(path: str | os.PathLike[str]) -> bool:

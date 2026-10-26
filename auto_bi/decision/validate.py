@@ -153,6 +153,8 @@ def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIss
     to list is therefore no directory without contracts, and a path it refuses to look at
     — as one under a directory that may not be searched — is no path that does not exist:
     each is an issue of its own, and everything that could be listed is still loaded.
+
+    A file is read once, however many of the paths reach it (`_each_file_once`).
     """
     files: list[Path] = []
     for raw in paths:
@@ -184,7 +186,35 @@ def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIss
             files.append(path)
         else:
             issues.append(_unread_path(path, "path does not exist"))
-    return files
+    return _each_file_once(files)
+
+
+def _each_file_once(files: list[Path]) -> list[Path]:
+    """*files* with each file once, under the first of its paths, in the order they were found.
+
+    Two of the validated paths can reach one file: a directory and a file in it, one directory
+    given twice, one file spelled two ways. Read twice, the file would be the contract of its
+    id "defined in more than one file", and a contract set that holds every id once would
+    block. A file is told by the filesystem's identity of it (`filesystem.file_identity`), not
+    by the text of its path: text that differs can name one file, and text made alike by
+    folding `..` can name two. Only one text is sure to name one file: the path's own, as
+    `pathlib` writes it — `.` and doubled separators dropped, case kept. Two paths are one file
+    when their identities are one or their texts are; a path without an identity — not there,
+    refused a look, on a filesystem that numbers no file, a named stream — is one file with a
+    path of its text only, and one path is one file whether a look gives it an identity or not.
+    Two files of equal bytes stay two files, and their id is still defined twice.
+    """
+    seen: set[tuple[str, object]] = set()
+    once: list[Path] = []
+    for path in files:
+        keys: set[tuple[str, object]] = {("path", str(path))}
+        identity = filesystem.file_identity(path)
+        if identity is not None:
+            keys.add(("file", identity))
+        if keys.isdisjoint(seen):
+            once.append(path)
+        seen |= keys
+    return once
 
 
 def _names_a_contract(path: Path) -> bool:

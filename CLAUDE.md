@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-26 — T-119: контрактный файл читается один раз, сколько бы validated paths до него ни
+  доходили (каталог и файл в нём, `./`, регистр, ссылка): файл узнаёт `filesystem.file_identity`
+  (`st_dev`, `st_ino`) или равный текст пути; поток NTFS и копия — второй файл, ложного
+  `contract.duplicate_id` нет. Verifier 116 / check 79; 20 мутантов ловятся; полный Windows gate
+  7101 passed, exit 0. Ревью Astra: два P1, два P2 и P3 исправлены, повторное — P3 закрыт тестом.
 - 2026-10-25 — T-118: `Timestamp` — только RFC 3339 `date-time` с `Z` (грамматика и календарь
   конструктором `datetime`, не `fromisoformat`): attestation со строкой после шестой цифры
   дроби, `--created-at …abcZ` и `reviewed_at` без секунд больше не запечатываются — exit 2 или
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   (`cli._one_line`), непрочитанный путь — через `display_path`. Report и bundle прежние,
   verifier 114 / check 77; 20 мутантов ловятся; полный Windows gate 6958 passed, exit 0.
   Ревью Astra: два P2 и три P3 исправлены, повторное — замечаний нет.
-- 2026-10-25 — T-116: `decision verify` без продукта называет файлы продуктов, отвергнутых
-  схемой, и причину (`; <n> decision product(s) failed the schema: '<id>' in <файл> (…)`; с
-  `--product` — только этого id): прежде говорил «нет такого продукта», а почему — только
-  `decision validate`. Report и bundle прежние, verifier 114 / check 77; 18 мутантов ловятся;
-  полный Windows gate 6938 passed, exit 0. Ревью Astra: три P3 исправлены, повторного нет.
 
 ## Definition of done (фаза/задача)
 

@@ -533,7 +533,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: digit of a fraction fails its schema, and so does a recorded result attested so. Verifier
 #: 114 took what `datetime.fromisoformat` read: such a contract passed `contracts.validate`,
 #: and a line after the sixth digit was sealed as part of the moment.
-VERIFIER_VERSION = "115"
+#: 116 — a contract file is read once, however many of the validated paths reach it: a
+#: directory and a file in it, one directory twice, one file spelled two ways or through a
+#: link. Verifier 115 read such a file again, and its second reading was
+#: `contract.duplicate_id`: a contract set that holds each id once blocked.
+VERIFIER_VERSION = "116"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -810,7 +814,9 @@ VERIFIER_VERSION = "115"
 #: on a metric contract of a ref (`gap.contract_invalid`), that holds a moment of another
 #: spelling than RFC 3339's one for UTC, where rule 77 graded the contract
 #: `datetime.fromisoformat` read.
-CHECK_VERSION = "78"
+#: 79 — contracts.validate grades each file of the validated paths once, where rule 78
+#: blocked on the second reading of a file two of the paths reach (`contract.duplicate_id`).
+CHECK_VERSION = "79"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and

@@ -657,7 +657,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=115`, `CHECK_VERSION=78`.
+`VERIFIER_VERSION=116`, `CHECK_VERSION=79`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1648,7 +1648,13 @@ Cache/reuse key включает actor/tenant/policy context. Cross-tenant resul
   (`{}`, `{"kind": "Other"}`) блокирует как `contract.unknown_kind`, поэтому его держат вне
   переданных paths. Каталог с таким suffix (`archive.json/`, `old.yaml/`) обходится, а не
   читается как контракт; путь, на который файловая система не даёт посмотреть, читается, и
-  отказ называет чтение. Каталог `metrics/` semantic ref этот обход
+  отказ называет чтение. Файл читается один раз, сколько бы переданных paths до него ни
+  доходили (каталог и файл в нём, одно написание через `./` или в другом регистре, ссылка):
+  его узнаёт идентичность файловой системы — устройство и номер файла, — а из текстов пути
+  один файл называет только равный (путь без идентичности, как именованный поток NTFS, — им);
+  копия с равными байтами — второй файл, и повтор id остаётся `contract.duplicate_id`
+  ([contract files once](specs/contract-files-once.md), verifier 116).
+  Каталог `metrics/` semantic ref этот обход
   не затрагивает: snapshot по-прежнему читает в нём только `.yaml`/`.yml`, и JSON рядом
   с ними не меняет ни graph, ни digests.
 - VQR — Git-tracked fixtures с review metadata.
