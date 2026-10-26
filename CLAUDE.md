@@ -89,6 +89,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-25 — T-118: `Timestamp` — только RFC 3339 `date-time` с `Z` (грамматика и календарь
+  конструктором `datetime`, не `fromisoformat`): attestation со строкой после шестой цифры
+  дроби, `--created-at …abcZ` и `reviewed_at` без секунд больше не запечатываются — exit 2 или
+  блок контракта. Verifier 115 / check 78; 20 мутантов ловятся; полный Windows gate 7062 passed,
+  exit 0. Ревью Astra: P2 и два P3 исправлены, повторное — замечаний нет.
 - 2026-10-25 — T-117: decision-команда говорит, почему остановилась, одной строкой: непечатаемые
   символы (перевод строки, ESC из YAML-ключа) в `error:` записаны escape-последовательностью
   (`cli._one_line`), непрочитанный путь — через `display_path`. Report и bundle прежние,
@@ -99,11 +104,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   `--product` — только этого id): прежде говорил «нет такого продукта», а почему — только
   `decision validate`. Report и bundle прежние, verifier 114 / check 77; 18 мутантов ловятся;
   полный Windows gate 6938 passed, exit 0. Ревью Astra: три P3 исправлены, повторного нет.
-- 2026-10-24 — T-115: `DeliverySpec` отвергает повтор ref в `delivery.dashboards`
-  и формата в `brief_formats`, как `DecisionScope`: `decision verify` такого продукта больше не
-  кончается traceback с exit 1 — отказ exit 2, а прогон чужого продукта путей блокируется.
-  Verifier 114, check 77; 13 мутантов ловятся; полный Windows gate 6922 passed, exit 0.
-  Срез выбрал владелец; ревью Astra: три P3 исправлены, повторного нет.
 
 ## Definition of done (фаза/задача)
 

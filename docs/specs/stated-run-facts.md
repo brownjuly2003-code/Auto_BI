@@ -32,8 +32,9 @@ line on stderr and nothing on stdout). The refusal SHALL NOT quote what was stat
 a line break or a lone surrogate.
 
 A stated moment SHALL be a `Timestamp` — the scalar the manifest of a bundle and the attestation
-of a result carry. Any other text, the empty text too, is refused with `<name> must be an RFC
-3339 UTC timestamp ending in Z`, where `<name>` is `--created-at` for `decision verify` and
+of a result carry, of one spelling since T-118 ([UTC timestamps](utc-timestamps.md)). Any other
+text, the empty text too, is refused with `<name> must be an RFC 3339 UTC timestamp such as
+2026-08-25T09:00:00Z`, where `<name>` is `--created-at` for `decision verify` and
 `--captured-at` for `decision capture`. What the request of a run takes for a moment SHALL be
 exactly what the manifest takes.
 
@@ -63,10 +64,12 @@ and an environment that are taken writes the same file.
 - **GIVEN** a run that passes, and a `created_at` that is a word, a timestamp with an offset in
   place of `Z`, with no zone, with a blank ahead of it, with a line break behind it, with a
   blank for `T`, of a day or an hour there is none of, with a small `z`, with a lone surrogate,
-  of the year 0000, a date alone, blanks or the empty text
+  of the year 0000, a date alone, blanks or the empty text — or, since T-118, a line after the
+  sixth digit of a fraction, no seconds, no separators, a week and a day, a comma for the point
+  or the hour 24
 - **WHEN** `verify` is called
-- **THEN** it raises `VerifyError` with `--created-at must be an RFC 3339 UTC timestamp ending
-  in Z`, no engine is asked and no evidence directory is created
+- **THEN** it raises `VerifyError` with `--created-at must be an RFC 3339 UTC timestamp such as
+  2026-08-25T09:00:00Z`, no engine is asked and no evidence directory is created
 
 ### Scenario: a run takes the moments a manifest takes
 
@@ -116,8 +119,8 @@ and an environment that are taken writes the same file.
 
 - **GIVEN** a capture that would be written, and a `captured_at` of the first scenario
 - **WHEN** `capture_result` is called
-- **THEN** it raises `VerifyError` with `--captured-at must be an RFC 3339 UTC timestamp ending
-  in Z`; the query factory is not called, no query is run and no file is written
+- **THEN** it raises `VerifyError` with `--captured-at must be an RFC 3339 UTC timestamp such as
+  2026-08-25T09:00:00Z`; the query factory is not called, no query is run and no file is written
 
 ### Scenario: a capture takes the moments an attestation takes
 
@@ -167,9 +170,9 @@ and an environment that are taken writes the same file.
 
 - **GIVEN** a `--created-at` that is no moment, or an `--environment` that is no text
 - **WHEN** `decision verify` runs
-- **THEN** it exits 2 with `error: --created-at must be an RFC 3339 UTC timestamp ending in Z` —
-  or `error: --environment must be text without a lone surrogate` — as the one line on stderr,
-  prints nothing on stdout and creates no evidence directory
+- **THEN** it exits 2 with `error: --created-at must be an RFC 3339 UTC timestamp such as
+  2026-08-25T09:00:00Z` — or `error: --environment must be text without a lone surrogate` — as
+  the one line on stderr, prints nothing on stdout and creates no evidence directory
 - **AND** `decision capture` with such a `--captured-at` or `--environment` exits 2 with the
   line of its refusal, opens no engine, runs no query and writes no file
 
@@ -190,12 +193,13 @@ and an environment that are taken writes the same file.
 
 ## Known boundaries
 
-- A moment is whatever a `Timestamp` is, and the schema of that scalar is not changed: it ends
-  in `Z`, holds a `T`, and the rest is what `datetime.fromisoformat` reads with `+00:00` in
-  place of the `Z`. That is wider than RFC 3339. Reproduced on the command line of both
-  commands: a moment with no seconds (`2026-08-25T09:00Z`), with no separators
-  (`20260825T090000Z`), of a week and a day (`2026-W35-2T09:00:00Z`) and with a comma for the
-  fraction is taken, attested and sealed as it is stated.
+- A moment is whatever a `Timestamp` is. Until T-118 the scalar took what
+  `datetime.fromisoformat` read with `+00:00` in place of the `Z`, wider than RFC 3339: a
+  moment with no seconds (`2026-08-25T09:00Z`), with no separators (`20260825T090000Z`), of a
+  week and a day (`2026-W35-2T09:00:00Z`) and with a comma for the fraction was taken,
+  attested and sealed as it was stated. Closed by T-118: a `Timestamp` is text of RFC 3339's
+  one UTC spelling ([UTC timestamps](utc-timestamps.md)), and both commands refuse the rest by
+  their flag.
 - An environment is compared as text. One with a blank behind it or a line break inside is not
   the environment a result was captured on, which `results.provenance` says as before
   (`provenance.other_environment`, review), and `summary.md` shows it as it was stated.

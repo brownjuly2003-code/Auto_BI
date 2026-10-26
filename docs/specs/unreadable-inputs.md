@@ -1331,7 +1331,8 @@ not a valid verified asset: ` for a file under the assets path.
 - **WHEN** `decision verify` runs, and `decision capture` over the same assets
 - **THEN** each is refused with `<that file> is not a valid verified asset:
   expectation.result.rows.1: Input should be a valid list; review.reviewed_at: Value error,
-  must be an RFC 3339 UTC timestamp ending in Z`
+  must be an RFC 3339 UTC timestamp such as 2026-08-25T09:00:00Z` (the words since T-118,
+  [UTC timestamps](utc-timestamps.md))
 
 ### Scenario: the repository says it in one line and keeps what the schema raised
 

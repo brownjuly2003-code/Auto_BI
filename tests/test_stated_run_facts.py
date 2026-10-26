@@ -50,7 +50,7 @@ LONE = chr(0xD800)
 #: What a byte of a command line that is no UTF-8 is decoded to (`surrogateescape`).
 UNDECODED = chr(0xDCFF)
 
-NOT_A_MOMENT = "must be an RFC 3339 UTC timestamp ending in Z"
+NOT_A_MOMENT = "must be an RFC 3339 UTC timestamp such as 2026-08-25T09:00:00Z"
 NOT_TEXT = "must be text without a lone surrogate"
 CAPTURE_ENVIRONMENT = "--environment, or the configured host:port/database it defaults to,"
 CAPTURE_ACTOR = "the configured DWH user"
@@ -59,6 +59,7 @@ CAPTURE_ACTOR = "the configured DWH user"
 MOMENTS = [
     pytest.param(CREATED_AT, id="to the second"),
     pytest.param("2026-08-25T09:00:00.123Z", id="a fraction of a second"),
+    pytest.param("2026-08-25T09:00:00.123456789Z", id="to the nanosecond"),
     pytest.param("0001-01-01T00:00:00Z", id="the first second there is"),
     pytest.param("9999-12-31T23:59:59Z", id="the last second there is"),
 ]
@@ -78,6 +79,12 @@ GIVEN_NOT_MOMENTS = [
     pytest.param("2026-08-25T09:00:00" + UNDECODED + "Z", id="a byte that is no UTF-8"),
     pytest.param("0000-01-01T00:00:00Z", id="the year 0000"),
     pytest.param("2026-08-25", id="a date alone"),
+    pytest.param("2026-08-25T09:00:00.123456" + NL + "verdict: passZ", id="a line in it"),
+    pytest.param("2026-08-25T09:00Z", id="no seconds"),
+    pytest.param("20260825T090000Z", id="no separators"),
+    pytest.param("2026-W35-2T09:00:00Z", id="a week and a day"),
+    pytest.param("2026-08-25T09:00:00,5Z", id="a comma for the point"),
+    pytest.param("2026-08-25T24:00:00Z", id="the hour 24"),
     pytest.param("   ", id="blanks"),
 ]
 #: Text that is no such moment, as a request can state it.

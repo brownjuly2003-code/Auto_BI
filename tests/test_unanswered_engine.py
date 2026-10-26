@@ -224,7 +224,7 @@ def test_a_run_refused_before_its_questions_opens_no_session(
     assert out == ""
     assert not line.startswith("error: cannot ask")
     if refused == "the moment":
-        assert "--created-at must be an RFC 3339 UTC timestamp ending in Z" in line
+        assert "--created-at must be an RFC 3339 UTC timestamp such as 2026-08-25T09:00:00Z" in line
     assert sessions.opened == []
     assert not (case.root / "evidence").exists()
 

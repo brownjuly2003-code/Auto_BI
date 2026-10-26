@@ -258,7 +258,14 @@ offline investigation alpha получают готовые canonical results,
 - Денежные, ratio и tolerance values сериализуются decimal-строками, а не
   бинарными float.
 - Время хранится в UTC RFC 3339; business timezone/calendar остаются явными
-  полями metric contract.
+  полями metric contract. У момента (`Timestamp`) одно написание: `YYYY-MM-DDTHH:MM:SS`,
+  необязательная дробь секунды любой длины, `Z`; цифры ASCII, `T` и `Z` заглавные, день
+  есть в календаре, час 00–23, минута и секунда 00–59, год 0001–9999. Форму проверяет
+  грамматика скаляра, а не `datetime.fromisoformat`: тот читает и формы ISO 8601, которых
+  нет в RFC 3339, перестаёт читать дробь на шестой цифре, если за ней смещение, и `24:00` — только с
+  Python 3.14, так что от интерпретатора зависело бы, держит ли bundle момент. Текст
+  момента не нормализуется, в отличие от decimal-строк: `09:00:00Z` и `09:00:00.0Z` — два
+  текста одного мгновения ([UTC timestamps](specs/utc-timestamps.md), verifier 115).
 - Unknown keys отклоняются существующей моделью `StrictModel(extra="forbid")`.
 
 ### 7.2 DecisionProductSpec
@@ -650,7 +657,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=114`, `CHECK_VERSION=77`.
+`VERIFIER_VERSION=115`, `CHECK_VERSION=78`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют

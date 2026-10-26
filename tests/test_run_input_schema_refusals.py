@@ -238,7 +238,8 @@ def test_values_of_an_asset_are_refused_by_their_places_and_not_shown(tmp_path: 
     expected = (
         f"{path} is not a valid verified asset: "
         "expectation.result.rows.1: Input should be a valid list; "
-        "review.reviewed_at: Value error, must be an RFC 3339 UTC timestamp ending in Z"
+        "review.reviewed_at: Value error, "
+        "must be an RFC 3339 UTC timestamp such as 2026-08-25T09:00:00Z"
     )
 
     assert _refused(case) == expected

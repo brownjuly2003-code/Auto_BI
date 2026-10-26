@@ -10,6 +10,82 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-25 — T-118: момент evidence — одно написание RFC 3339 UTC
+
+Срез выбран Claude на «реши сам, как лучше… в фокусе — качество финального продукта» владельца
+(не synthetic Astra-выбор). Из кандидатов — ложный `duplicate_id` у пересекающихся путей, порядок
+gaps по раскладке каталогов, `Timestamp` — взят последний: только он запечатывал в evidence
+текст, который не момент. `Timestamp` (`auto_bi/scalars.py`) обещал RFC 3339 UTC, а брал любой
+текст с `T` и `Z` в конце, который читал `datetime.fromisoformat` с `+00:00` вместо `Z`: момент
+без секунд, без разделителей, неделей и днём, с запятой перед дробью. Перед смещением CPython
+перестаёт читать дробь на шестой цифре, и всё между ней и `Z` бралось — слово, управляющий
+символ, перевод строки и строка вида `verdict: pass`. `24:00:00` читает только Python 3.14:
+держит ли bundle момент, зависело от интерпретатора. Воспроизведено на HEAD `3e75954`
+(`.tmp/t118/head_repro.py`, `head_repro.log`, копия HEAD через `git archive`): attestation
+записанного результата `2026-08-25T08:00:00.123456`, перевод строки, `verdict: passZ` — `decision
+verify` exit 0, provenance запечатан со второй строкой; `--created-at …123456abcZ` — момент
+manifest; verified asset с `reviewed_at` без секунд — exit 0. На дереве все три — exit 2 одной
+строкой (`tree_repro.log`).
+Теперь `_utc_timestamp` проверяет форму грамматикой `YYYY-MM-DDTHH:MM:SS[.дробь]Z` на `[0-9]`
+(не `\d`: `\d` берёт цифры любой письменности, и `int` их читает), а календарь — конструктором
+`datetime` из групп: день есть, час 00–23, минута и секунда 00–59, год 0001–9999. Текст берётся
+как написан. Отказ — `must be an RFC 3339 UTC timestamp such as 2026-08-25T09:00:00Z`;
+`date`/`datetime` (их строит YAML из момента без кавычек) — `… as text, such as
+'2026-08-25T09:00:00Z' in quotes: YAML reads an unquoted one as a date`; `_check_moment`
+(`--created-at`, `--captured-at`) говорит те же слова. Каждая запись отказывает там, где на любое
+значение своей схемы: attestation и verified asset — exit 2, метрический контракт —
+`contract.invalid` (`contracts.validate`) или `gap.contract_invalid` (`semantic.gaps`), данные
+investigation — `CanonicalMetricResult`, manifest — `evidence.manifest_invalid`. Контракт, который
+проходил, теперь блокирует: verifier 115, check 78 (прецедент T-115); native source 3 прежний.
+Отвергнуто: нормализовать текст момента (меняет hash контрактов, которые проходили, и текст,
+записанный владельцем; decimal нормализуется ради сравнения чисел, момент не сравнивается
+текстом); календарь через `fromisoformat` после грамматики (ответ снова от интерпретатора —
+мутант M7); принимать смещения и переписывать в `Z` (два написания одного evidence); переводить
+потребителей (`provenance`, окружение, investigation) с `fromisoformat` на свой разбор — строгая
+форма читается одинаково на 3.12–3.14, дробь — до микросекунды (граница spec).
+Spec — [UTC timestamps](../specs/utc-timestamps.md);
+[stated run facts](../specs/stated-run-facts.md) (требование, сценарии, граница «шире RFC 3339»
+закрыта), абзац в
+[unreadable inputs](../specs/unreadable-inputs.md), §7.1 и §7.6 архитектуры, USER_GUIDE,
+граница «`Timestamp` шире RFC 3339» среза 2026-10-05 в состоянии.
+
+Прогоны: red — четыре модуля (`test_utc_timestamps`, `test_stated_run_facts`,
+`test_run_input_schema_refusals`, `test_unanswered_engine`) с кодом HEAD: 143 failed, 216 passed
+(`.tmp/t118/red.log`). Мутанты (`.tmp/t118/mutants.py`): в первом прогоне выжили M7 (календарь
+через `fromisoformat` — на 3.13 он отвергает то же) и M13 (год из четырёх и больше цифр —
+конструктор отвергает `12026`); добавлены тест с подменой `scalars.datetime` и годы `02026`,
+месяц `008`. Первая форма валидатора прошла все тесты, но не mypy (`value` не сужался до `str`):
+переписана через walrus и распаковку шести групп, мутанты прогнаны заново. На итоговой форме
+пойманы все: валидатор HEAD, `\d`, `$` вместо `\Z`, дробь до шести цифр и без цифры, без
+календаря, календарь через `fromisoformat`, нормализация дроби, без учёта регистра, дата как её
+isoformat и с общим отказом, пробел вместо `T`, год из 4+ цифр, `+00:00` вместо `Z`, запятая,
+секунды по желанию, старые слова `_check_moment`, версии 114 и 77, после ревью — `\d` только в
+дроби (M20; `mutants3.log`, затем M0–M20 — `mutants4.log`). Модули `test_utc_timestamps`,
+`test_stated_run_facts`, `test_run_input_schema_refusals` на Python 3.12 и 3.14 (scratch venv из
+`uv export --frozen`) — 316 passed каждый, до переписывания и после (`other_pythons.log`,
+`other_pythons2.log`). Производители момента проверены: часы CLI пишут `%Y-%m-%dT%H:%M:%SZ`,
+`signed_at` — `created_at` manifest, остальное — заявленное или из файла. Pilot bundles
+репозитория `decision evidence` читает как на HEAD: пять — exit 0, `owner-review-live-r3` — exit 4
+(`evidence.signature_untrusted` без trust root), вывод побайтно как у HEAD. Black, Ruff,
+`ruff format --check` изменённых файлов, mypy (default, strict, strict Linux, strict win32) чистые
+(`.tmp/t118/checks.log`). Полный Windows gate — 7062 passed, 91 skipped, exit 0, покрытие 96.20%
+(`.tmp/t118/pytest.log`); первый запуск автор остановил, когда mypy нашёл ошибку типа, и гейт
+прошёл с начала на исправленном коде. Ревью вернулось, пока шёл гейт: docstring `_utc_timestamp`,
+доки и три теста модуля момента правились во время прогона, поэтому после него прогнаны модули,
+которые читают доки, и модули момента — 2236 passed, 87 skipped (`.tmp/t118/post_review.log`).
+
+Ревью synthetic Astra xhigh (`.tmp/t118/astra_review.out`; не human acceptance): P1 нет, ошибок
+диапазона и производителей, пишущих отвергаемое, нет; P2 и два P3 исправлены. P2 — spec,
+USER_GUIDE и состояние говорили, что не читается любой bundle с моментом другого написания, а
+reader проверяет только моменты manifest (`created_at`, `signed_at`), артефакт — по digest и
+размеру: граница сужена, новый тест держит, что bundle с attestation `2026-08-25T08:00:00,000Z` в
+payload `results.provenance` читается с exit 0. P3 — цифра другой письменности в дроби не была
+закреплена: добавлены `.` + U+0661 и `.123456` + U+0661, мутант M20 пойман. P3 — «читает любую
+форму ISO 8601» неточно (`fromisoformat` не читает, например, ordinal date): docstring, spec и §7.1
+говорят «формы ISO 8601, которых нет в RFC 3339». Повторное ревью Astra xhigh по diff исправлений
+(`astra_review2.out`): замечаний нет; регрессия P2 не прошла бы, если бы `decision evidence`
+валидировал attestation внутри артефакта.
+
 ## 2026-10-25 — T-117: причина остановки decision-команды — одна строка
 
 Срез взят Claude по кандидату handoff T-116 на «продолжи доработку» владельца (не synthetic

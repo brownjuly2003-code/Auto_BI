@@ -708,7 +708,9 @@ def _check_moment(name: str, moment: str) -> None:
     try:
         _MOMENT.validate_python(moment)
     except ValidationError:
-        raise VerifyError(f"{name} must be an RFC 3339 UTC timestamp ending in Z") from None
+        raise VerifyError(
+            f"{name} must be an RFC 3339 UTC timestamp such as 2026-08-25T09:00:00Z"
+        ) from None
 
 
 def _check_text(name: str, text: str) -> None:

@@ -528,7 +528,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: that compiled sealed its payloads under one id twice, and the run ended in a traceback; a
 #: dashboard with no spec, an invalid one or one the compile refused was named twice in a
 #: bundle.
-VERIFIER_VERSION = "114"
+#: 115 — a moment is text of RFC 3339's one UTC spelling and no other: a metric contract or a
+#: verified asset reviewed at `2026-08-21T09:00Z`, a week, a comma or text after the sixth
+#: digit of a fraction fails its schema, and so does a recorded result attested so. Verifier
+#: 114 took what `datetime.fromisoformat` read: such a contract passed `contracts.validate`,
+#: and a line after the sixth digit was sealed as part of the moment.
+VERIFIER_VERSION = "115"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -801,7 +806,11 @@ VERIFIER_VERSION = "114"
 #: 77 — contracts.validate blocks on a product file that repeats an entry of
 #: `delivery.dashboards` or `delivery.brief_formats` (`contract.invalid`), where rule 76
 #: graded the product built of it.
-CHECK_VERSION = "77"
+#: 78 — contracts.validate blocks on a validated file (`contract.invalid`), and semantic.gaps
+#: on a metric contract of a ref (`gap.contract_invalid`), that holds a moment of another
+#: spelling than RFC 3339's one for UTC, where rule 77 graded the contract
+#: `datetime.fromisoformat` read.
+CHECK_VERSION = "78"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and

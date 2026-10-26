@@ -15,7 +15,7 @@ digests that look identical in a report but hash differently.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
@@ -27,6 +27,13 @@ _DECIMAL_RE = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?\Z")
 _DURATION_RE = re.compile(
     r"^P(?!\Z)(?:\d+Y)?(?:\d+M)?(?:\d+W)?(?:\d+D)?(?:T(?!\Z)(?:\d+H)?(?:\d+M)?(?:\d+S)?)?\Z"
 )
+# RFC 3339 `date-time` with the offset `Z`, nothing else: the date in full, `T`, the time to
+# the second, a fraction of any length, `Z`. `[0-9]`, because `\d` matches every script's
+# digits and `int` reads them.
+_TIMESTAMP_RE = re.compile(
+    r"^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.[0-9]+)?Z\Z"
+)
+_NOT_A_TIMESTAMP = "must be an RFC 3339 UTC timestamp such as 2026-08-25T09:00:00Z"
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}\Z")
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*\Z")
 
@@ -71,12 +78,26 @@ def _duration(value: object) -> str:
 
 
 def _utc_timestamp(value: object) -> str:
-    if not isinstance(value, str) or not value.endswith("Z") or "T" not in value:
-        raise ValueError("must be an RFC 3339 UTC timestamp ending in Z")
+    """Text of the one spelling of a UTC moment, kept as it is written (§7.1).
+
+    The form is checked by the pattern and the calendar by `datetime` itself: the day must
+    exist, the hour be 00-23, the minute and the second 00-59, the year 0001-9999. Nothing is
+    left to `datetime.fromisoformat`, which reads forms of ISO 8601 that RFC 3339 has not, stops
+    reading a fraction at its sixth digit when an offset follows, and reads `24:00` from Python
+    3.14 on: whether a bundle holds a moment would depend on the interpreter that reads it.
+    """
+    if isinstance(value, date):  # what YAML builds of a moment that is not quoted
+        raise ValueError(
+            "must be an RFC 3339 UTC timestamp as text, such as '2026-08-25T09:00:00Z' in "
+            "quotes: YAML reads an unquoted one as a date"
+        )
+    if not isinstance(value, str) or (match := _TIMESTAMP_RE.match(value)) is None:
+        raise ValueError(_NOT_A_TIMESTAMP)
+    year, month, day, hour, minute, second = (int(part) for part in match.groups())
     try:
-        datetime.fromisoformat(value[:-1] + "+00:00")
+        datetime(year, month, day, hour, minute, second)
     except ValueError:
-        raise ValueError("must be an RFC 3339 UTC timestamp ending in Z") from None
+        raise ValueError(_NOT_A_TIMESTAMP) from None
     return value
 
 
