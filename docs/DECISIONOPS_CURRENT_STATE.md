@@ -8,7 +8,8 @@ impact доведён до чарта; происхождение кандида
 реализован и проверен на живых PostgreSQL и ClickHouse; evidence manifest получает
 opt-in Ed25519 authentication; единый signed R3 owner-пакет выпущен на Mac;
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
-human/design-partner outcome не измерен и не требуется для продолжения разработки
+human/design-partner outcome не измеряется — по решению владельца 2026-10-28 он не входит в
+цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md))
 
 **Версии evidence:** `VERIFIER_VERSION=118`, `CHECK_VERSION=79`
 
@@ -2499,14 +2500,14 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Tasks 1–7 | завершены |
 | Task 8: технический pilot | завершён на ClickHouse 24.8.14.39; R3 unified live package tracked и проверен |
 | Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
-| Task 8: human owner outcome | открыт: реальное время и понятность отчёта не измерены |
+| Task 8: human owner outcome | не измеряется: по [ADR 0007](adr/0007-human-outcome-out-of-scope.md) не входит в цели; время и понятность отчёта для человека не измерены и не заявляются |
 | Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
 | Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; ClickHouse-алиас больше не `chart.sql_partial` «not attributed to a table», а чтение через expression-form WITH даёт `reads_field` (verifier 24); `IN <table>` читается как звезда над этой таблицей и открывает именованную CTE (verifier 25); 2026-09-22 `chart.metric_unread` решается по каждому дашборду — объединением метрик продуктов в scope, доставляющих этот точный pinned ref (verifier 26); 2026-09-24 inline- и ARRAY JOIN-алиасы не дают phantom `reads_field`, но ARRAY source остаётся чтением (verifier 27); tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
 | Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
 | Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE; 2026-09-18 ClickHouse-алиас читается насквозь, а не как колонка (`CHECK_VERSION` 11 → 12); `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной находки поля `IN rev` больше нет, неуправляемая таблица справа от `IN` — review `asset.query_ungoverned` (`CHECK_VERSION` 12 → 13); 2026-09-24 inline- и ARRAY JOIN-алиасы не именуются как поля, но их определения и source array грейдятся (`CHECK_VERSION` 13 → 14) |
 | Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
 | Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; pilot-only signer создан вне checkout на Mac, production trust root не назначен |
-| Continuous platform | конкретные срезы через Astra-review по ADR 0006; human outcome не измерен |
+| Continuous platform | конкретные срезы через Astra-review по ADR 0006; human outcome не измеряется (ADR 0007) |
 
 Четыре tracked pilot-сценария и найденные дефекты описаны в
 [pilot rehearsal](DECISIONOPS_PILOT_2026-08-25.md) и `docs/pilot/`; сохранённые там bundles
@@ -2520,9 +2521,10 @@ report содержит один `computes_metric` chart и один имено�
 `chart.metric_unread`.
 [Live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md) добавляет к тому же change
 reviewed capture, provenance/governance, все пять live DWH checks и signed evidence.
-Это всё ещё техническая подготовка. Task 8 human outcome остаётся открытым,
-а процедурный gate [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md)
-заменён [ADR 0006](adr/0006-modelled-review-development-gate.md): дальнейшая
+Это всё ещё техническая подготовка. Task 8 human outcome не измеряется и открытым пунктом
+не считается ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)), а процедурный gate
+[ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) заменён
+[ADR 0006](adr/0006-modelled-review-development-gate.md): дальнейшая
 разработка требует конкретного Astra-reviewed среза. Это не общее разрешение
 на scheduler, PostgreSQL, REST/MCP, notifications, actions или внешние операции.
 
@@ -2641,8 +2643,9 @@ reviewed capture, provenance/governance, все пять live DWH checks и sign
   непроверенным вместо того, чтобы быть приписанным ближайшему: innermost-first изменил бы
   контракт атрибуции для каждого коррелированного scope и сначала должен быть задан как
   требование.
-- Нет измеренного человеком owner outcome: proxy-review не заменяет время и
-  подтверждение понятности от живого владельца.
+- Owner outcome человеком не измеряется: по решению владельца это не цель проекта
+  ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Proxy- и Astra-review не заменяют
+  время и подтверждение понятности от живого владельца, и такие утверждения не делаются.
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
   **Ossie**, **MetricFlow** и **column-level lineage** не реализованы; проверка колонок
   reviewed-запроса — это governance («объявлено ли поле»), а не lineage («откуда значение
@@ -2950,12 +2953,17 @@ Scheduler, PostgreSQL platform runtime, REST/MCP, notifications и actions не 
    plan/results/brief artifacts; continuous runtime и внешние actions не начинаются.
 5. Дальнейшие срезы выбираются через Astra-review по ADR 0006; synthetic outcome
    не означает production-certified brief или разрешение внешних действий.
+6. Human owner/design-partner outcome не измеряется и не входит в цели проекта
+   ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)); synthetic оценка его не заменяет,
+   утверждения о пользе для человека не делаются.
 
 ## Источники истины
 
 1. Текущий Git status, код и [целевая архитектура](DECISIONOPS_ARCHITECTURE.md).
 2. [ADR 0003](adr/0003-decisionops-additive-control-plane.md),
    [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md),
-   [ADR 0005](adr/0005-ed25519-evidence-trust-root.md) и tracked pilot evidence, включая
+   [ADR 0005](adr/0005-ed25519-evidence-trust-root.md),
+   [ADR 0006](adr/0006-modelled-review-development-gate.md),
+   [ADR 0007](adr/0007-human-outcome-out-of-scope.md) и tracked pilot evidence, включая
    [live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md).
 3. Для baseline v0.5.0 — [ARCHITECTURE.md](ARCHITECTURE.md) и [CURRENT_STATE.md](CURRENT_STATE.md).

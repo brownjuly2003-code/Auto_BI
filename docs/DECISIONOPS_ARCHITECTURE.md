@@ -2234,7 +2234,9 @@ human outcome.
 human time, не является human/design-partner evidence и не доказывает production
 acceptance. Актуальный порядок —
 [ADR 0006](adr/0006-modelled-review-development-gate.md); evidence-ограничения
-[ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) сохраняются.
+[ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) сохраняются. Human
+owner/design-partner outcome не измеряется и не входит в цели проекта
+([ADR 0007](adr/0007-human-outcome-out-of-scope.md)).
 
 ## 17. Риски и решения
 
