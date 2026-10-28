@@ -5,12 +5,12 @@
 
 DECISIONOPS_ARCHITECTURE principle 6 says semantics the canonical graph cannot carry becomes an
 explicit gap. The metrics of a native snapshot are the contracts under the ref's metrics
-directory, read in the order of their paths, and the graph holds a node for each: the graph keeps
+directory, read until verifier 117 in the order of their paths, and the graph holds a node for each: the graph keeps
 one node to an id for tables, fields and joins
 ([what a model declares that the graph cannot hold](model-declarations-snapshot.md)), not for
 metrics. A ref that held two contracts of one metric id was read two ways. The semantic diff kept
 the last node of the id, a lookup of the metric by its id returned the first, and which node
-stands last is the order of the paths. With an older contract of the pinned metric beside the
+stood last was the order of the paths. With an older contract of the pinned metric beside the
 current one in the base, verifier 110 blocked the release when the older file stood in `metrics/`
 and gave `pass_with_advisory` when the same bytes stood in `metrics/archive/`: `semantic.diff`
 compared the older contract in the first layout and the current one in the second.
@@ -76,7 +76,7 @@ block with `semantic.gaps_present`, its payload listing the gap under the side t
 The checks that a metric contract which did not load leaves not run — `semantic.diff`,
 `impact.products`, `assets.invalidated`, `results.reconcile`, `results.provenance` and
 `sql.compile` — SHALL NOT be run either: each SHALL be `check.not_run` (review) with the detail
-`a semantic ref holds more than one contract of a metric id, so a diff would compare whichever of them stands last in the order of their files`.
+`a semantic ref holds more than one contract of a metric id, so it does not say which of them a diff should compare`.
 When a snapshot of the run carries `gap.contract_invalid` as well, the detail SHALL be the reason
 given for that gap,
 `a metric contract did not load, so the snapshot does not represent its source; a diff would report the parse failure as a removed metric`,
@@ -144,16 +144,19 @@ otherwise, so `VERIFIER_VERSION` and `CHECK_VERSION` SHALL be bumped.
 
 ## Known boundaries
 
-- The nodes of an id stand in the graph in the order of their files, so the canonical digest of a
-  ref, and with it the run id, can still differ when two contracts of an id differ and the file
-  of one of them moves to where it is read before or after the other. The verdict does not.
+- Until verifier 117 the nodes of an id stood in the graph in the order of their files, so the
+  canonical digest of a ref, and with it the run id, differed when two contracts of an id differed
+  and the file of one of them moved to where it was read before or after the other. Since
+  verifier 117 they stand in the order of versions, then of the digests of their bytes, wherever
+  the files lie ([contract read order](contract-read-order.md)). The verdict did not move.
 - `contracts.validate`, the environment checks and `bi.contract` are run as before. With an
   engine configured, the environment checks ask about each metric the product pins by its id,
-  and of two contracts of it in the candidate about the one whose file is read first: whether
-  `dwh.cost` asks the engine for the plan of a budget only one of them declares, and so what it
-  reports, follows the order of the files. Where the candidate holds two contracts of a pinned
-  metric, the run is blocked by both `contracts.validate` and `semantic.gaps` whichever of them a
-  check reads.
+  and of two contracts of it in the candidate about the one a lookup of the id finds — until
+  verifier 117 the one whose file was read first, since then the lowest version, then the lowest
+  digest of bytes: whether `dwh.cost` asks the engine for the plan of a budget only one of them
+  declares, and so what it reports, follows that order. Where the candidate holds two contracts
+  of a pinned metric, the run is blocked by both `contracts.validate` and `semantic.gaps`
+  whichever of them a check reads.
 - `asset.metric_ref_ambiguous` is no longer reached through the gate on a native snapshot: a
   candidate that holds two contracts of a metric carries the gap, and `assets.invalidated` is not
   run. `VerifiedAssetRepository.resolve_metric_pins` still names such a pin for a snapshot handed

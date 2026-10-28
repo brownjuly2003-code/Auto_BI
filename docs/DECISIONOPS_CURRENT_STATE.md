@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-26
+**Обновлено:** 2026-10-27
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,9 +10,34 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=116`, `CHECK_VERSION=79`
+**Версии evidence:** `VERIFIER_VERSION=117`, `CHECK_VERSION=79`
 
-**Последний срез (T-119, 2026-10-26):** контрактный файл читается один раз, сколько бы validated
+**Последний срез (T-120, 2026-10-27):** snapshot берёт контракты в порядке того, что они
+держат, а не того, как их выдал листинг. Source digest хранит digest контракта под именем
+файла, без каталога (T-111), но всё остальное в snapshot шло в порядке `sorted` путей — каталог
+раньше имени, на Windows без регистра: gaps двух контрактов и узлы одного metric id стояли
+иначе, когда файл переезжал в другой подкаталог `metrics/` или ref читался на другой ОС, и
+snapshot, который запечатывается целиком и входит в idempotency key, был другим — при прежних
+source и canonical digest, если переставлялись только гэпы, и с другим canonical digest, если
+узлы одного id (воспроизведено на HEAD `17f59f8`: `x.yaml`, `y.yaml` и `z/x.yaml`, `y.yaml` с
+двумя контрактами reviewed SQL — два `gap.opaque_metric_formula` в обратном порядке, два run
+id у `decision verify`; `x.yaml` и `Y.yaml` Windows и POSIX сортируют по-разному). Теперь
+файл, который не загрузился, отвечает `gap.contract_invalid` в порядке имён по code point,
+затем digest байтов; загруженный контракт стоит в графе и отвечает гэпами в порядке metric id,
+версии, затем digest байтов. Порядок групп прежний: файлы, модель, контракты,
+`gap.metric_duplicate` по id; гэпы одного контракта — в своём порядке. Все 11 tracked ref
+(pilot и `semantic/`) дают snapshot, равный снятому gateway `17f59f8`. Проверки, которые
+пропускает дублированный id, больше не говорят о порядке файлов. Verifier 117, check 79,
+native source 3. Границы: имя сравнивается как текст листинга, без нормализации Unicode;
+`decision validate` читает validated paths как прежде; его report называет файл путём (в
+написании ОС) только в issue файла, продукт — ref'ом, и где такой issue есть, перенос файла
+между validated-каталогами, а при каталоге в пути — и другая ОС, по-прежнему дают другой run
+id; hard link и symlink в `metrics/` — по-прежнему второй файл (`gap.metric_duplicate`).
+[Spec](specs/contract-read-order.md); полный Windows gate 7114 passed, 94 skipped, exit 0; Mac
+(Python 3.13, APFS) — модули среза зелёные, против HEAD красные; ревью synthetic Astra xhigh —
+три P1 и P3 исправлены, повторное — два P2 и P3 исправлены; прогоны — в журнале T-120.
+
+**Предыдущий срез (T-119, 2026-10-26):** контрактный файл читается один раз, сколько бы validated
 paths его ни достигали. `decision validate` и `decision verify` читали файлы каждого пути, как
 нашли, и файл, до которого доходили два пути, читался дважды: второе чтение —
 `contract.duplicate_id` («defined in more than one file»), и набор, где каждый id определён одним

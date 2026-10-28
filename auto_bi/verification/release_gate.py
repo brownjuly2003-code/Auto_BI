@@ -537,7 +537,15 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: directory and a file in it, one directory twice, one file spelled two ways or through a
 #: link. Verifier 115 read such a file again, and its second reading was
 #: `contract.duplicate_id`: a contract set that holds each id once blocked.
-VERIFIER_VERSION = "116"
+#: 117 — a snapshot freezes its contracts in an order of what they hold: a file that does not
+#: load by file name, then bytes; a contract that loads by metric id, version, then bytes.
+#: Verifier 116 took the order its files were listed in — the directory first and, on
+#: Windows, without case: a contract moved between the directories of `metrics/`, or the ref
+#: read on another system, put its gaps in another order — another snapshot and run id with
+#: the source and canonical digests unchanged — or the nodes of an id two contracts define,
+#: and with them the canonical digest. The checks a duplicated id leaves not run no longer
+#: say a diff compares the contract whose file stands last.
+VERIFIER_VERSION = "117"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -821,8 +829,8 @@ CHECK_VERSION = "79"
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and
 #: the diff would call that a removed metric. Of a metric two contracts define, the diff would
-#: compare the one whose file stands last, where a lookup of the metric by its id reads the
-#: first. Every other blocking gap (a dangling join, a metric field the model does not declare)
+#: compare the one that stands last in the graph, where a lookup of the metric by its id reads
+#: the first. Every other blocking gap (a dangling join, a metric field the model does not declare)
 #: describes a truthful graph with a named hole — the diff and the impact over it are still
 #: worth reading, and the gap's own `block` severity already stops the release.
 UNTRUSTWORTHY_GAPS = frozenset({"gap.contract_invalid", "gap.metric_duplicate"})
@@ -1168,8 +1176,8 @@ def run_gate(
             )
         if "gap.metric_duplicate" in codes:
             reasons.append(
-                "a semantic ref holds more than one contract of a metric id, so a diff would "
-                "compare whichever of them stands last in the order of their files"
+                "a semantic ref holds more than one contract of a metric id, so it does not say "
+                "which of them a diff should compare"
             )
         reason = "; ".join(reasons)
         checks.extend(

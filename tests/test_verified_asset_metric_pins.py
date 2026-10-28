@@ -237,8 +237,8 @@ def test_several_contracts_of_the_pinned_metric_are_ambiguous(
     assert status_of(report, "assets.invalidated") is CheckStatus.REVIEW
     assert summary_of(report, "assets.invalidated") == "check.not_run"
     assert detail_of(report, "assets.invalidated") == (
-        "a semantic ref holds more than one contract of a metric id, so a diff would "
-        "compare whichever of them stands last in the order of their files"
+        "a semantic ref holds more than one contract of a metric id, so it does not say "
+        "which of them a diff should compare"
     )
     for path in (case.root / "evidence" / report.run_id).rglob("*"):
         if path.is_file():

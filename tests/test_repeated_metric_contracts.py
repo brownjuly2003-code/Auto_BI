@@ -1,10 +1,10 @@
 """Two contracts of one metric id in a semantic ref, through the real offline release gate.
 
 Durable spec: docs/specs/repeated-metric-contracts.md. A diff keeps the last node of a metric
-id and the gate reads the first, and which node is last is the order of the files: an older
-contract of the pinned metric beside the current one blocked the release from `metrics/` and
-let it pass from `metrics/archive/`. Such an id is now the blocking gap `gap.metric_duplicate`,
-and the checks a contract that did not load leaves not run are not run.
+id and the gate reads the first, and until verifier 117 which node was last was the order of
+the files: an older contract of the pinned metric beside the current one blocked the release
+from `metrics/` and let it pass from `metrics/archive/`. Such an id is now the blocking gap
+`gap.metric_duplicate`, and the checks a contract that did not load leaves not run are not run.
 """
 
 from copy import deepcopy
@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from auto_bi.evidence.canonical import digest_bytes
 from auto_bi.semantic.gateway import NativeModelSource
 from auto_bi.verification.environment import EnvironmentFacts, EnvironmentQuestions
 from auto_bi.verification.model import Verdict
@@ -33,8 +34,8 @@ from tests.test_decision_verify import (
 GROSS_MARGIN = "metric://sales/gross_margin_pct"
 REVENUE = "metric://sales/revenue"
 DUPLICATE = (
-    "a semantic ref holds more than one contract of a metric id, so a diff would "
-    "compare whichever of them stands last in the order of their files"
+    "a semantic ref holds more than one contract of a metric id, so it does not say "
+    "which of them a diff should compare"
 )
 UNLOADED = (
     "a metric contract did not load, so the snapshot does not represent its source; "
@@ -100,8 +101,10 @@ def test_an_older_contract_beside_the_pinned_one_blocks_wherever_its_file_lies(
         }
         assert status_of(report, "evidence.bundle") is CheckStatus.PASS
         reports.append(report)
-    # The nodes still stand in the order of their files, so the two bases are two snapshots.
-    assert reports[0].base_digest != reports[1].base_digest
+    # Verifier 116 kept the nodes in the order of their files, and the two bases were two
+    # snapshots; since 117 they stand in the order of their versions, wherever the files lie.
+    assert reports[0].base_digest == reports[1].base_digest
+    assert reports[0].run_id == reports[1].run_id
 
 
 @pytest.mark.parametrize("side", ["base", "candidate"])
@@ -160,7 +163,8 @@ def test_with_an_engine_the_environment_is_asked_about_the_contract_read_first(
     tmp_path: Path, budgeted_first: bool
 ) -> None:
     """A known boundary: step 7 asks about a pinned metric by its id, so of two contracts of it
-    in the candidate it asks about the one whose file is read first. The run blocks either way."""
+    in the candidate it asks about the one a lookup of the id finds — of one version, the one of
+    the lower digest of bytes, wherever its file lies (verifier 117). The run blocks either way."""
     case = Case(tmp_path).with_candidate()
     budgeted = metric_contract()
     budgeted["budgets"] = {"max_scanned_rows": 1000}
@@ -175,10 +179,14 @@ def test_with_an_engine_the_environment_is_asked_about_the_contract_read_first(
     report = case.run(probe=probe)
 
     _assert_not_run(report)
-    assert [plan.metric_ref for plan in asked[0].plans] == (
-        [f"{GROSS_MARGIN}@3"] if budgeted_first else []
+    metrics = case.candidate / "metrics"
+    found_first = digest_bytes((metrics / name).read_bytes()) < digest_bytes(
+        (metrics / "gross_margin_pct.yaml").read_bytes()
     )
-    assert (summary_of(report, "dwh.cost") == "cost.no_budget_declared") is not budgeted_first
+    assert [plan.metric_ref for plan in asked[0].plans] == (
+        [f"{GROSS_MARGIN}@3"] if found_first else []
+    )
+    assert (summary_of(report, "dwh.cost") == "cost.no_budget_declared") is not found_first
 
 
 def test_a_contract_that_did_not_load_and_a_duplicate_are_both_named(tmp_path: Path) -> None:

@@ -226,13 +226,26 @@ class NativeModelSource:
         model = SemanticModel.model_validate(load_yaml_document(model_bytes.decode("utf-8")))
 
         read: dict[str, list[str]] = {"model": [digest_bytes(model_bytes)]}
-        contracts: list[MetricContract] = []
+        files: list[tuple[str, str, Path, bytes]] = []
         for path in self._contract_files():
             raw = path.read_bytes()
-            read.setdefault(path.name, []).append(digest_bytes(raw))
+            digest = digest_bytes(raw)
+            read.setdefault(path.name, []).append(digest)
+            files.append((path.name, digest, path, raw))
+
+        # The source digest does not say which directory holds a contract, and nothing else
+        # of the snapshot may: the order a listing gives — the directory first and, on
+        # Windows, without case — would order the gaps of two contracts and the nodes of one
+        # id, and the snapshot, sealed whole and part of the run's identity, would be another
+        # one when a file moved or the ref was read on another system. A file that does not
+        # load is answered in the order of file names, by code point, then of bytes; a
+        # contract that loads, in the order of metric ids, then of versions, then of bytes.
+        loaded: list[tuple[str, int, str, MetricContract]] = []
+        for _, digest, path, raw in sorted(files, key=lambda file: file[:2]):
             contract = _parse_contract(path, raw, gaps)
             if contract is not None:
-                contracts.append(contract)
+                loaded.append((contract.metadata.id, contract.metadata.version, digest, contract))
+        contracts = [contract for *_, contract in sorted(loaded, key=lambda item: item[:3])]
 
         graph = _build_graph(model, contracts, gaps)
         return SemanticSnapshot(
@@ -489,11 +502,11 @@ def _build_graph(
     metrics = [_metric_node(contract, known, gaps) for contract in contracts]
 
     # Two contracts of one metric id are two definitions of the metric, and the ref does not
-    # say which of them it means: a diff keeps the last node of an id, the gate reads the
-    # first, and which node is last is the order of their files — moving one between the
-    # directories of the metrics changed what a run compared. The nodes all stay, for a pin
-    # names the versions it was given; the id is a blocking gap, one to the id and in the
-    # order of the ids, whatever the order of the files.
+    # say which of them it means: a diff keeps the last node of an id and the gate reads the
+    # first, in the order `snapshot` hands the contracts in — of versions, then of bytes —
+    # and neither is one the ref chose. The nodes all stay, for a pin names the versions it
+    # was given; the id is a blocking gap, one to the id and in the order of the ids,
+    # whatever the order of the files.
     versions: dict[str, list[int]] = {}
     for metric_node in metrics:
         versions.setdefault(metric_node.id, []).append(metric_node.version)
