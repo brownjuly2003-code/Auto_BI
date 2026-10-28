@@ -193,8 +193,8 @@ def _unlisted(directory: Path, refusal: str = "PermissionError") -> dict[str, An
     return {
         "code": "contract.unreadable",
         "severity": "block",
-        "subject": str(directory),
-        "source": str(directory),
+        "subject": directory.as_posix(),
+        "source": directory.as_posix(),
         "message": f"cannot list directory: {refusal}",
     }
 
@@ -204,8 +204,8 @@ def _unlooked(path: Path) -> dict[str, Any]:
     return {
         "code": "contract.unreadable",
         "severity": "block",
-        "subject": str(path),
-        "source": str(path),
+        "subject": path.as_posix(),
+        "source": path.as_posix(),
         "message": "cannot look at path: PermissionError",
     }
 
@@ -649,7 +649,7 @@ def test_unlisted_directories_come_first_in_the_order_of_their_paths(
     # paths, not in the order the walk came to them; then what the files it read gave.
     assert issues[:7] == [_unlisted(other), *(_unlisted(directory) for directory in sorted(kept))]
     assert [(issue["code"], issue["source"], issue["message"]) for issue in issues[7:]] == [
-        ("contract.unreadable", str(broken), "cannot read contract: ParserError")
+        ("contract.unreadable", broken.as_posix(), "cannot read contract: ParserError")
     ]
 
 
@@ -725,8 +725,8 @@ def test_a_path_that_is_not_there_is_reported_as_before(tmp_path: Path) -> None:
         {
             "code": "contract.unreadable",
             "severity": "block",
-            "subject": str(nowhere),
-            "source": str(nowhere),
+            "subject": nowhere.as_posix(),
+            "source": nowhere.as_posix(),
             "message": "path does not exist",
         }
     ]
@@ -759,8 +759,8 @@ def test_decision_validate_names_the_directory_and_exits_by_the_verdict(
     assert main(["decision", "validate", str(case.contracts)]) == 4
     printed = capsys.readouterr().out.splitlines()
     assert printed[:2] == [
-        f"{'block':<8} {'contract.unreadable':<26} {kept}",
-        f"{'':<8} cannot list directory: PermissionError [{kept}]",
+        f"{'block':<8} {'contract.unreadable':<26} {kept.as_posix()}",
+        f"{'':<8} cannot list directory: PermissionError [{kept.as_posix()}]",
     ]
     assert printed[-1] == "verdict: block (1 product(s), 1 metric contract(s), 1 issue(s))"
 
@@ -777,8 +777,8 @@ def test_decision_validate_without_a_product_shows_what_it_could_not_list(
     assert main(["decision", "validate", str(case.contracts)]) == EXIT_ERROR
 
     assert capsys.readouterr().out.splitlines() == [
-        f"{'block':<8} {'contract.unreadable':<26} {case.contracts}",
-        f"{'':<8} cannot list directory: PermissionError [{case.contracts}]",
+        f"{'block':<8} {'contract.unreadable':<26} {case.contracts.as_posix()}",
+        f"{'':<8} cannot list directory: PermissionError [{case.contracts.as_posix()}]",
         "verdict: block (0 product(s), 0 metric contract(s), 1 issue(s))",
         f"error: {NO_PRODUCT}",
     ]
@@ -795,8 +795,8 @@ def test_decision_validate_names_a_path_it_may_not_look_at(
     assert main(["decision", "validate", str(metric), str(product)]) == 4
 
     assert capsys.readouterr().out.splitlines()[:2] == [
-        f"{'block':<8} {'contract.unreadable':<26} {metric}",
-        f"{'':<8} cannot look at path: PermissionError [{metric}]",
+        f"{'block':<8} {'contract.unreadable':<26} {metric.as_posix()}",
+        f"{'':<8} cannot look at path: PermissionError [{metric.as_posix()}]",
     ]
 
 
@@ -849,7 +849,7 @@ def test_no_product_names_the_path_that_could_not_be_listed(
 
     assert _refused(case) == (
         f"{NO_PRODUCT}; 1 path(s) could not be read: "
-        f"{case.contracts} (cannot list directory: PermissionError)"
+        f"{case.contracts.as_posix()} (cannot list directory: PermissionError)"
     )
 
 
@@ -860,7 +860,7 @@ def test_no_product_names_a_contract_file_that_could_not_be_read(tmp_path: Path)
 
     assert _refused(case) == (
         f"{NO_PRODUCT}; 1 path(s) could not be read: "
-        f"{product} (cannot read contract: ParserError)"
+        f"{product.as_posix()} (cannot read contract: ParserError)"
     )
 
 
@@ -869,7 +869,8 @@ def test_no_product_names_a_path_that_is_not_there(tmp_path: Path) -> None:
     case.contracts = tmp_path / "no contracts"
 
     assert _refused(case) == (
-        f"{NO_PRODUCT}; 1 path(s) could not be read: {case.contracts} (path does not exist)"
+        f"{NO_PRODUCT}; 1 path(s) could not be read: {case.contracts.as_posix()} "
+        "(path does not exist)"
     )
 
 
@@ -886,7 +887,7 @@ def test_an_unknown_product_names_the_paths_that_could_not_be_read(
 
     assert str(caught.value) == (
         f"no decision product 'decision://sales/other' in the given paths ({PRODUCT_ID}); "
-        f"1 path(s) could not be read: {kept} (cannot list directory: PermissionError)"
+        f"1 path(s) could not be read: {kept.as_posix()} (cannot list directory: PermissionError)"
     )
     assert not (case.root / "evidence").exists()
 
@@ -902,7 +903,7 @@ def test_no_product_names_three_paths_and_counts_the_rest(
     _deny_listing(monkeypatch, *kept[:3])
 
     named = ", ".join(
-        f"{directory} (cannot list directory: PermissionError)" for directory in kept[:3]
+        f"{directory.as_posix()} (cannot list directory: PermissionError)" for directory in kept[:3]
     )
     assert _refused(case) == f"{NO_PRODUCT}; 3 path(s) could not be read: {named}"
 
@@ -938,7 +939,7 @@ def test_decision_verify_exits_2_and_names_what_it_could_not_list(
     assert captured.out == ""
     assert captured.err == (
         f"error: {NO_PRODUCT}; 1 path(s) could not be read: "
-        f"{case.contracts} (cannot list directory: PermissionError)\n"
+        f"{case.contracts.as_posix()} (cannot list directory: PermissionError)\n"
     )
     assert not (case.root / "evidence").exists()
 

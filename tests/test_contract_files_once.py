@@ -140,7 +140,7 @@ def test_two_files_of_equal_bytes_are_two_files(tmp_path: Path) -> None:
     shutil.copy(root / "gross_margin_pct.yaml", copy / "gross_margin_pct.yaml")
     report = validate_paths([root, copy])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == str(copy / "gross_margin_pct.yaml")
+    assert report.issues[0].source == (copy / "gross_margin_pct.yaml").as_posix()
     assert report.issues[0].message == DEFINED_TWICE
     assert report.verdict is Verdict.BLOCK
 
@@ -161,7 +161,7 @@ def test_a_parent_through_a_link_is_the_parent_the_link_leads_to(tmp_path: Path)
     assert not os.path.samefile(other, root / "gross_margin_pct.yaml")
     report = validate_paths([root / "gross_margin_pct.yaml", root / "weekly_margin.yaml", other])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == str(other)
+    assert report.issues[0].source == other.as_posix()
 
 
 # --- the file keeps the first of its paths ----------------------------------------------------
@@ -178,11 +178,11 @@ def test_a_file_the_schema_refuses_is_refused_once_under_its_first_path(tmp_path
     assert str(spelled) != str(root / "gross_margin_pct.yaml")
     report = validate_paths([spelled, root])
     assert codes(report) == ["contract.invalid", "metric_ref.unknown"]
-    assert report.issues[0].source == str(spelled)
+    assert report.issues[0].source == spelled.as_posix()
 
     report = validate_paths([root, spelled])
     assert codes(report) == ["contract.invalid", "metric_ref.unknown"]
-    assert report.issues[0].source == str(root / "gross_margin_pct.yaml")
+    assert report.issues[0].source == (root / "gross_margin_pct.yaml").as_posix()
 
 
 def test_the_files_keep_the_order_they_were_found_in(
@@ -207,7 +207,7 @@ def test_a_refused_product_is_named_once(tmp_path: Path) -> None:
     loaded = load_contracts([root, root / "weekly_margin.yaml"])
     assert [issue.code for issue in loaded.report.issues] == ["contract.invalid"]
     assert [refused.source for refused in loaded.refused_products] == [
-        str(root / "weekly_margin.yaml")
+        (root / "weekly_margin.yaml").as_posix()
     ]
 
 
@@ -244,7 +244,7 @@ def test_a_path_without_an_identity_is_told_by_its_text_with_its_case(
     monkeypatch.setattr(filesystem, "file_identity", lambda path: None)
     report = validate_paths([root, upper])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == str(upper)
+    assert report.issues[0].source == upper.as_posix()
 
 
 @pytest.mark.parametrize("first_has_one", [False, True], ids=["then-identity", "then-none"])
@@ -315,12 +315,12 @@ def test_a_named_stream_is_not_its_file(tmp_path: Path) -> None:
     assert filesystem.file_identity(stream) is None
     report = validate_paths([path, stream])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == str(stream)
+    assert report.issues[0].source == stream.as_posix()
     # A boundary: the file under its unnamed stream's name is told by its text too.
     unnamed = Path(f"{path}::$DATA")
     report = validate_paths([path, unnamed])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == str(unnamed)
+    assert report.issues[0].source == unnamed.as_posix()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="a colon names a stream on Windows")
@@ -337,8 +337,8 @@ def test_a_missing_path_given_twice_is_named_twice(tmp_path: Path) -> None:
     missing = tmp_path / "missing"
     report = validate_paths([root, missing, missing])
     assert [(issue.code, issue.subject) for issue in report.issues] == [
-        ("contract.unreadable", str(missing)),
-        ("contract.unreadable", str(missing)),
+        ("contract.unreadable", missing.as_posix()),
+        ("contract.unreadable", missing.as_posix()),
     ]
 
 
@@ -351,8 +351,8 @@ def test_a_directory_that_cannot_be_listed_reached_twice_is_named_twice(
     _deny_listing(monkeypatch, archive)
     report = validate_paths([root, archive])
     assert [(issue.code, issue.subject, issue.message) for issue in report.issues] == [
-        ("contract.unreadable", str(archive), "cannot list directory: PermissionError"),
-        ("contract.unreadable", str(archive), "cannot list directory: PermissionError"),
+        ("contract.unreadable", archive.as_posix(), "cannot list directory: PermissionError"),
+        ("contract.unreadable", archive.as_posix(), "cannot list directory: PermissionError"),
     ]
 
 

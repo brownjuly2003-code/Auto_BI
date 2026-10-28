@@ -317,7 +317,7 @@ def test_decision_validate_and_the_run_block_on_such_a_metric_contract(tmp_path:
 
     (issue,) = [issue for issue in report.issues if issue.code == "contract.invalid"]
     assert issue.severity is Severity.BLOCK
-    assert issue.source == str(case.contracts / "gross_margin_pct.yaml")
+    assert issue.source == (case.contracts / "gross_margin_pct.yaml").as_posix()
     assert "formula.review.reviewed_at" in issue.message
     assert NOT_A_TIMESTAMP in issue.message
     assert report.verdict is Verdict.BLOCK

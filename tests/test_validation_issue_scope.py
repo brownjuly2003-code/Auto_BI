@@ -388,9 +388,9 @@ def test_the_issues_keep_the_reports_order_on_both_sides(tmp_path: Path) -> None
         _issue(
             "contract.unreadable",
             "block",
-            str(notes),
+            notes.as_posix(),
             "contract file must contain a YAML mapping",
-            str(notes),
+            notes.as_posix(),
         ),
         _undeclared("store", VERIFIED),
     ]
@@ -527,7 +527,9 @@ def test_an_issue_of_loading_a_file_is_graded_whatever_the_file_holds(
     assert summary_of(report, "contracts.validate") == "contracts.issues"
     assert detail_of(report, "contracts.validate") == _detail(1, metrics=metrics)
     payload = _payload(case, report)
-    assert [(issue["code"], issue["source"]) for issue in payload["issues"]] == [(code, str(path))]
+    assert [(issue["code"], issue["source"]) for issue in payload["issues"]] == [
+        (code, path.as_posix())
+    ]
     assert payload["other_product_issues"] == []
     assert report.verdict is Verdict.BLOCK
 
@@ -535,7 +537,7 @@ def test_an_issue_of_loading_a_file_is_graded_whatever_the_file_holds(
 def test_a_path_that_does_not_exist_is_graded_however_it_is_spelled(tmp_path: Path) -> None:
     case = _two_products(tmp_path)
     spelled = Path(OTHER)
-    assert str(spelled) != OTHER
+    assert spelled.as_posix() != OTHER
 
     report = verify(
         VerifyRequest(
@@ -553,7 +555,13 @@ def test_a_path_that_does_not_exist_is_graded_however_it_is_spelled(tmp_path: Pa
     payload = _payload(case, report)
     assert payload["products"] == [OTHER, VERIFIED]
     assert payload["issues"] == [
-        _issue("contract.unreadable", "block", str(spelled), "path does not exist", str(spelled))
+        _issue(
+            "contract.unreadable",
+            "block",
+            spelled.as_posix(),
+            "path does not exist",
+            spelled.as_posix(),
+        )
     ]
     assert payload["other_product_issues"] == []
 

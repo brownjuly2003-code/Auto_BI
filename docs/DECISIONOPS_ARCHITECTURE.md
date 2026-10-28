@@ -373,8 +373,12 @@ ref на другой ОС давали другой snapshot и run id: при 
 переставлялись только гэпы, и с другим canonical digest, если узлы одного id
 ([contract read order](specs/contract-read-order.md)). Validation report в run id называет
 файл путём только в issue файла (issue продукта — его ref'ом): где такой issue есть,
-раскладка validated paths, а при каталоге в пути — и написание пути ОС по-прежнему дают
-другой прогон.
+раскладка validated paths по-прежнему даёт другой прогон. ОС — больше нет (verifier 118):
+путь пишется через `/`, а то, что держит validated каталог, читается в порядке путей — имя
+за именем, по code point с регистром. Прежде путь писал `str` с разделителем ОС, а порядок
+давал `sorted`, на Windows без регистра: те же файлы по тем же относительным путям на
+Windows и на POSIX давали другие issues и, у id из двух файлов, другой контракт прогона
+([validation report paths](specs/validation-report-paths.md)).
 
 Native `model.yaml` — первый source adapter. Текущий `dbt_import.py` остаётся
 enrichment helper и не объявляется полноценным MetricFlow importer. Apache
@@ -668,7 +672,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=117`, `CHECK_VERSION=79`.
+`VERIFIER_VERSION=118`, `CHECK_VERSION=79`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1666,7 +1670,10 @@ Cache/reuse key включает actor/tenant/policy context. Cross-tenant resul
   его узнаёт идентичность файловой системы — устройство и номер файла, — а из текстов пути
   один файл называет только равный (путь без идентичности, как именованный поток NTFS, — им);
   копия с равными байтами — второй файл, и повтор id остаётся `contract.duplicate_id`
-  ([contract files once](specs/contract-files-once.md), verifier 116).
+  ([contract files once](specs/contract-files-once.md), verifier 116). Переданные paths
+  обходятся в данном порядке, а то, что держит каталог, — в порядке путей, имя за именем по
+  code point с регистром, одинаково на любой ОС; issue файла называет его путём через `/`
+  ([validation report paths](specs/validation-report-paths.md), verifier 118).
   Каталог `metrics/` semantic ref этот обход
   не затрагивает: snapshot по-прежнему читает в нём только `.yaml`/`.yml`, и JSON рядом
   с ними не меняет ни graph, ни digests.

@@ -88,8 +88,10 @@ first three and ` (+<k> more)` SHALL stay as they were.
   line break that is not there
 - **WHEN** `decision verify` runs, with or without `--product`
 - **THEN** the refusal ends `; 1 path(s) could not be read: '<the path>' (path does not exist)`,
-  the path quoted, its line break the two characters `\n`, and on Windows each backslash of the
-  path doubled, as Python spells the path
+  the path quoted, its line break the two characters `\n`, and its names joined by `/` on every
+  system, as the validation report names a file
+  ([validation report paths](validation-report-paths.md), verifier 118; before it, on Windows,
+  each backslash of the path doubled, as Python spells the path)
 - **AND** the command exits 2 with that one line after `error: ` and no evidence directory
 
 ### Scenario: printable paths read as before
@@ -107,7 +109,9 @@ first three and ` (+<k> more)` SHALL stay as they were.
   the catalogue of `decision runs` — names what it read as it is, and so does `decision validate`'s
   report above its own error.
 - A backslash is printed as it is, so `\n` on the line is either a line break that was spelled or
-  a backslash and an `n` that were there: a Windows path `C:\new` reads as it is. The parts of a
+  a backslash and an `n` that were there: a Windows path `C:\new` reads as it is where a message
+  writes a path as the system does, and as `C:/new` where it names a file of the validation
+  report ([validation report paths](validation-report-paths.md)). The parts of a
   message keep the spelling they had: the paths that could not be read and the file of a refused
   product are quoted as Python quotes a string when they hold a character that is not printable,
   as is any other path or value a message already spells with `display_path` or `repr`; the rest

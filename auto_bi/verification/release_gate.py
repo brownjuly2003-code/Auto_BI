@@ -545,7 +545,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: the source and canonical digests unchanged — or the nodes of an id two contracts define,
 #: and with them the canonical digest. The checks a duplicated id leaves not run no longer
 #: say a diff compares the contract whose file stands last.
-VERIFIER_VERSION = "117"
+#: 118 — the validation report is one report on every system: it names a file by its path
+#: with `/` between the names, and takes what a validated directory holds in the order of its
+#: paths, name by name, by code point with case. Verifier 117 joined the names by the
+#: separator of the system and, on Windows, ordered the files without case: the same files
+#: read on Windows and on POSIX gave issues of files in other words and in another order, and
+#: of an id two files define the run was handed the other contract — another report and run
+#: id.
+VERIFIER_VERSION = "118"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

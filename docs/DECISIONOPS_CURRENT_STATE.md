@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-27
+**Обновлено:** 2026-10-28
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -10,9 +10,31 @@ opt-in Ed25519 authentication; единый signed R3 owner-пакет выпу�
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измерен и не требуется для продолжения разработки
 
-**Версии evidence:** `VERIFIER_VERSION=117`, `CHECK_VERSION=79`
+**Версии evidence:** `VERIFIER_VERSION=118`, `CHECK_VERSION=79`
 
-**Последний срез (T-120, 2026-10-27):** snapshot берёт контракты в порядке того, что они
+**Последний срез (T-121, 2026-10-28):** validation report один на любой ОС. `decision
+validate` и `decision verify` называли файл в issue путём в написании ОС (`str(path)`:
+`contracts\sub\a.yaml` на Windows, `contracts/sub/a.yaml` на POSIX) и брали содержимое
+validated-каталога в порядке `sorted` путей — на Windows без регистра. Report запечатывается
+целиком и входит в idempotency key, поэтому одни и те же файлы на Windows и на POSIX давали
+другой report и другой run id, а из двух файлов одного id прогон получал другой контракт
+(воспроизведено на HEAD `9ef1811`: один id в `contracts/m/B.yaml` и `contracts/m/a.yaml` —
+Windows держал `a.yaml`, macOS — `B.yaml`; `run-42d88e9a70ec9b55` против
+`run-32f45c3e4019b6ef`). Теперь issue называет файл путём с `/` между именами на любой ОС, а
+содержимое каталога читается в порядке путей — имя за именем, по code point с регистром; на
+POSIX report прежний. Те же байты на Windows и на macOS — один run id `run-e5aebfe5ee3db71f`.
+Verifier 118, check 79, native source 3. Границы: путь в report есть только в issue, которое
+называет файл, — где оно есть, разные абсолютные пути и два пути к одному каталогу, которые
+`pathlib` пишет по-разному, по-прежнему дают два report и два run id; файлы с CRLF и с LF — разные
+байты и два snapshot; без нормализации Unicode; на ФС, складывающей регистр, `M.yaml` и `m.yaml`
+— один файл; повтор `contract.unreadable` на каждый путь к файлу и hard link в `metrics/` —
+по-прежнему. [Spec](specs/validation-report-paths.md); полный Windows gate — 7138 passed, 96
+skipped, покрытие 96.24%, exit 0; Mac на итоговом дереве (Python 3.12/3.13/3.14, APFS) — 722
+passed, тесты регистра — на case-sensitive образе APFS, 40 passed; из 20 мутантов 19 ловятся на
+Windows, замена `\` на `/` в тексте пути — на Mac; ревью synthetic Astra xhigh — P1, P2 и P3
+исправлены, повторное — P3 исправлен.
+
+**Предыдущий срез (T-120, 2026-10-27):** snapshot берёт контракты в порядке того, что они
 держат, а не того, как их выдал листинг. Source digest хранит digest контракта под именем
 файла, без каталога (T-111), но всё остальное в snapshot шло в порядке `sorted` путей — каталог
 раньше имени, на Windows без регистра: gaps двух контрактов и узлы одного metric id стояли

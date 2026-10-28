@@ -10,6 +10,68 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-28 — T-121: validation report один на любой ОС
+
+Срез взят Claude по кандидату handoff на «продолжи доработку» владельца (не synthetic
+Astra-выбор): `source` issue validation report — `str(path)` с разделителем ОС, и тот же каталог
+на Windows и на POSIX — два run id. `validate_paths` (`auto_bi/decision/validate.py`), общий для
+`decision validate` и `decision verify`, называл файл в issue — не загрузился, не прочитался, id
+определён в двух файлах, путь не найден, каталог не перечислить — и файл продукта, отвергнутого
+схемой, `str(path)`: `contracts\sub\a.yaml` на Windows, `contracts/sub/a.yaml` на POSIX;
+содержимое validated-каталога шло в порядке `sorted` путей, а `Path` на Windows сравнивает без
+регистра. Validation report входит в idempotency key целиком (`_static_inputs`), поэтому одни и
+те же файлы на двух ОС давали два report и два run id, а из двух файлов одного id прогон получал
+контракт, прочитанный первым, — на Windows другой. Воспроизведено на HEAD `9ef1811`
+(`.tmp/t121/repro.py`, `runid.py`): `contracts/sub/a.yaml` и `B.yaml` — issues в обратном порядке
+и с `\`; один id в `contracts/m/B.yaml` (team-b) и `contracts/m/a.yaml` (team-a) — Windows держал
+`a.yaml`, macOS — `B.yaml`; `decision verify` над одними байтами (LF) — `run-42d88e9a70ec9b55`
+на Windows, `run-32f45c3e4019b6ef` на macOS. Теперь файл называется `Path.as_posix()`
+(`_spelled`) в `source` issue, в `subject` у `contract.unreadable` и в `source` отвергнутого
+продукта (`subject` у `contract.invalid` прежний: объявленный id или имя файла), а файлы каталога
+и подкаталоги, которые не удалось перечислить, идут в порядке `Path.parts` (`_path_order`) — имя
+за именем, по code point с регистром; пути, данные команде, — в своём порядке, как прежде. На
+POSIX report прежний. С фиксом те же байты дают `run-e5aebfe5ee3db71f` и на Windows, и на macOS.
+Verifier 118; check 79 и native source 3 прежние: ни одна проверка, gap или digest не значит
+нового. Отвергнуто: `str(path).replace("\\", "/")` — на POSIX обратная косая черта — часть имени
+(мутант M16 на Windows неотличим, на Mac пойман тестом с `contracts/a\b.yaml`); порядок без
+регистра на всех ОС — на ФС, хранящей регистр, `M.yaml` и `m.yaml` — два файла, и их порядок
+снова зависел бы от листинга. Тесты 10 модулей, ожидавшие `str(path)`, переписаны на
+`as_posix()`. Границы: путь в report есть только в issue, которое называет файл, — где оно есть,
+разные абсолютные пути и два пути к одному каталогу, которые `pathlib` пишет по-разному,
+по-прежнему дают два report и два run id; файлы с CRLF и с LF — разные байты и два snapshot; без
+нормализации Unicode; на ФС, складывающей регистр, `M.yaml` и `m.yaml` — один файл; класс отказа
+(`PermissionError`) — как называет ОС; путь вне validated-файлов — как пишет ОС; повтор
+`contract.unreadable` на каждый путь к файлу и hard link в `metrics/` — по-прежнему; порядок
+snapshot не менялся. Spec — [validation report paths](../specs/validation-report-paths.md);
+границы [contract read order](../specs/contract-read-order.md),
+[contract files once](../specs/contract-files-once.md),
+[one-line errors](../specs/one-line-errors.md),
+[unreadable inputs](../specs/unreadable-inputs.md), [run identity](../specs/run-identity.md);
+§7.4 и §11.1 архитектуры, состояние.
+
+Прогоны: мутанты (`.tmp/t121/mutants.py`, `mutants2_win.log`) — 19 из 20 пойманы на Windows
+(M18 и M19 — имя в NFC или NFD перед сравнением — добавлены по ревью); M16 (`\` → `/` в тексте
+пути) на Windows неотличим и пойман на Mac. Mac (APFS), итоговое дерево: модули среза и соседние
+(15 модулей с `test_docs_as_code`) — 722 passed, 3 skipped на Python 3.12, 3.13 и 3.14.6
+(`t121d.log` на Mac; до правок ревью — 720, `t121b.log`); тесты регистра этого среза и T-120 на
+APFS пропускаются, на одноразовом case-sensitive образе APFS — 40 passed, 0 skipped (`t121c.log`;
+до правок — 38). Первый полный Windows gate (до ревью): black, Ruff, `ruff format --check`
+изменённых файлов, mypy ×4 чистые; pytest — 1 failed, 7135 passed, 96 skipped, покрытие 96.23%,
+за 71 мин на загруженной машине: таймаут 30 с подпроцесса CLI
+`test_decision_settings.py::…[clickhouse-verify]`; модуль отдельно — 35 passed, самый долгий
+вызов 1.68 с (`.tmp/t121/pytest_v1.log`). Полный Windows gate после ревью: black, Ruff,
+`ruff format --check` изменённых файлов, mypy ×4 чистые (`.tmp/t121/checks.log`); pytest — 7138
+passed, 96 skipped, покрытие 96.24%, exit 0, за 67 мин (`.tmp/t121/pytest.log`).
+
+Ревью synthetic Astra xhigh (`.tmp/t121/astra_review.out`; не human acceptance): P1 — spec
+обещала два report для разных абсолютных путей всегда, хотя путь в report есть только в issue
+файла, и требовала `/` в `subject` всех issue, хотя `subject` у `contract.invalid` — id или имя
+файла: переписано в spec, состоянии и журнале. P2 — сценарий «id в двух файлах» сливал две
+раскладки в одну — разделён. P3 — порядок Unicode не закреплён — тест `e` + U+0301 и `é` против
+`f.yaml`, мутанты M18 и M19. Повторное ревью по diff исправлений (`astra_review2.out`): P1–P3
+закрыты, новых P1 и P2 нет; P3 — числа Mac были с дерева до правок — заменены итоговыми.
+Третьего ревью не было.
+
 ## 2026-10-27 — T-120: snapshot берёт контракты в порядке того, что они держат
 
 Срез взят Claude по кандидату handoff на «продолжи доработку» владельца (не synthetic

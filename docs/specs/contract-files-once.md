@@ -24,7 +24,9 @@ contracts could be changed to clear the finding: each id was defined by one file
 
 A file under the validated paths SHALL be read once, under the first of the paths that reached
 it, and the files SHALL keep the order in which they were found: the paths in the order given,
-the files of a directory in the order they were listed before. Two paths reach one file when the
+the files of a directory in the order they were listed before (since verifier 118 the order of
+their paths, one on every system: [validation report paths](validation-report-paths.md)). Two
+paths reach one file when the
 filesystem gives them one identity — the device and the number it reports for the file a path
 leads to, links followed (`filesystem.file_identity`): a directory's path joined with a name it
 lists and the file's own path; one directory given twice, or a directory and one below it; one

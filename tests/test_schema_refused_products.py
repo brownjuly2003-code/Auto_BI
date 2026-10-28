@@ -77,7 +77,7 @@ def test_the_refusal_names_the_product_and_what_its_schema_refused(tmp_path: Pat
     case = Case(tmp_path)
     path = case.contracts / "weekly_margin.yaml"
     _write_yaml(path, _delivering_twice())
-    named = f"1 {FAILED}: '{PRODUCT_ID}' in {path} ({REPEATED})"
+    named = f"1 {FAILED}: '{PRODUCT_ID}' in {path.as_posix()} ({REPEATED})"
 
     assert _refused(case, product_id=PRODUCT_ID) == (
         f"no decision product '{PRODUCT_ID}' in the given paths (none); {named}"
@@ -97,7 +97,9 @@ def test_the_command_says_it_in_one_line_with_exit_two(
         captured = capsys.readouterr()
         assert captured.out == ""
         assert captured.err.startswith("error: no decision product ")
-        assert captured.err.endswith(f"; 1 {FAILED}: '{PRODUCT_ID}' in {path} ({REPEATED})\n")
+        assert captured.err.endswith(
+            f"; 1 {FAILED}: '{PRODUCT_ID}' in {path.as_posix()} ({REPEATED})\n"
+        )
         assert captured.err.count("\n") == 1
         assert "Traceback" not in captured.err
         assert not (tmp_path / "evidence").exists()
@@ -110,7 +112,7 @@ def test_only_the_product_asked_for_is_named(tmp_path: Path) -> None:
 
     assert _refused(case, product_id=OTHER_ID) == (
         f"no decision product '{OTHER_ID}' in the given paths ({PRODUCT_ID}); "
-        f"1 {FAILED}: '{OTHER_ID}' in {path} ({PINNED_TWICE})"
+        f"1 {FAILED}: '{OTHER_ID}' in {path.as_posix()} ({PINNED_TWICE})"
     )
     # The refused product declares another id than the one asked for.
     assert _refused(case, product_id="decision://sales/missing") == (
@@ -128,8 +130,8 @@ def test_two_files_of_the_id_asked_for_are_both_named_in_the_order_they_were_rea
 
     assert _refused(case, product_id=PRODUCT_ID) == (
         f"no decision product '{PRODUCT_ID}' in the given paths (none); "
-        f"2 {FAILED}: '{PRODUCT_ID}' in {first} ({FORMAT_TWICE}), "
-        f"'{PRODUCT_ID}' in {second} ({REPEATED})"
+        f"2 {FAILED}: '{PRODUCT_ID}' in {first.as_posix()} ({FORMAT_TWICE}), "
+        f"'{PRODUCT_ID}' in {second.as_posix()} ({REPEATED})"
     )
 
 
@@ -144,7 +146,7 @@ def test_products_of_other_ids_are_left_out_before_three_are_taken(tmp_path: Pat
         path = case.contracts / f"b{index}.yaml"
         _write_yaml(path, _delivering_twice())
         paths.append(path)
-    named = ", ".join(f"'{PRODUCT_ID}' in {path} ({REPEATED})" for path in paths[:3])
+    named = ", ".join(f"'{PRODUCT_ID}' in {path.as_posix()} ({REPEATED})" for path in paths[:3])
 
     assert _refused(case, product_id=PRODUCT_ID) == (
         f"no decision product '{PRODUCT_ID}' in the given paths (none); "
@@ -164,7 +166,7 @@ def test_with_no_product_asked_for_the_first_three_are_named_in_the_order_they_w
         _write_yaml(path, _pinning_twice(f"decision://sales/p{4 - index}"))
         paths.append(path)
     named = ", ".join(
-        f"'decision://sales/p{4 - index}' in {path} ({PINNED_TWICE})"
+        f"'decision://sales/p{4 - index}' in {path.as_posix()} ({PINNED_TWICE})"
         for index, path in enumerate(paths[:3])
     )
 
@@ -173,7 +175,7 @@ def test_with_no_product_asked_for_the_first_three_are_named_in_the_order_they_w
     # The order is the report's: decision validate gives the issues of these files in it.
     issues = validate_paths([case.contracts]).issues
     assert [issue.source for issue in issues if issue.code == "contract.invalid"] == [
-        str(path) for path in paths
+        path.as_posix() for path in paths
     ]
 
     for path in paths[3:]:
@@ -187,7 +189,9 @@ def test_a_file_that_declares_no_id_is_named_by_its_file(tmp_path: Path) -> None
     del product["metadata"]
     path = _only(case, "weekly_margin.yaml", product)
 
-    assert _refused(case) == f"{NO_PRODUCT}; 1 {FAILED}: {path} (metadata: Field required)"
+    assert (
+        _refused(case) == f"{NO_PRODUCT}; 1 {FAILED}: {path.as_posix()} (metadata: Field required)"
+    )
 
     # decision validate names it by its file's name; that is no id a run may ask for.
     (issue,) = validate_paths([case.contracts]).issues
@@ -208,7 +212,7 @@ def test_an_id_that_is_no_text_is_compared_as_the_report_spells_it(tmp_path: Pat
     (issue,) = validate_paths([case.contracts]).issues
     assert issue.subject == "7"
     assert _refused(case, product_id="7").startswith(
-        f"no decision product '7' in the given paths (none); 1 {FAILED}: '7' in {path} ("
+        f"no decision product '7' in the given paths (none); 1 {FAILED}: '7' in {path.as_posix()} ("
     )
 
 
@@ -233,7 +237,8 @@ def test_a_reason_or_an_id_with_a_line_break_is_said_in_one_line(
     assert captured.out == ""
     assert captured.err.count("\n") == 1
     assert captured.err.startswith(
-        f"error: {NO_PRODUCT}; 1 {FAILED}: 'decision://sales/weekly\\nmargin' in {path} ("
+        f"error: {NO_PRODUCT}; 1 {FAILED}: 'decision://sales/weekly\\nmargin' in "
+        f"{path.as_posix()} ("
     )
     assert "bad key: Extra inputs are not permitted" in captured.err
 
@@ -245,7 +250,7 @@ def test_the_reason_is_said_as_every_schema_refusal_is_said(tmp_path: Path) -> N
     path.write_text(path.read_text(encoding="utf-8") + '"bad\\ekey\\tthere": 1\n', encoding="utf-8")
 
     assert _refused(case) == (
-        f"{NO_PRODUCT}; 1 {FAILED}: '{PRODUCT_ID}' in {path} "
+        f"{NO_PRODUCT}; 1 {FAILED}: '{PRODUCT_ID}' in {path.as_posix()} "
         "(bad\x1bkey there: Extra inputs are not permitted)"
     )
 
@@ -297,7 +302,8 @@ def test_a_file_that_cannot_be_read_is_named_as_one_and_not_as_refused(tmp_path:
     path.write_text("kind: DecisionProduct\nmetadata: [unclosed\n", encoding="utf-8")
 
     assert _refused(case) == (
-        f"{NO_PRODUCT}; 1 path(s) could not be read: {path} (cannot read contract: ParserError)"
+        f"{NO_PRODUCT}; 1 path(s) could not be read: {path.as_posix()} "
+        "(cannot read contract: ParserError)"
     )
 
     path.write_text("kind: Other\n", encoding="utf-8")
@@ -315,8 +321,9 @@ def test_a_refused_product_comes_before_a_path_that_could_not_be_read(
     _deny_listing(monkeypatch, archive)
 
     assert _refused(case) == (
-        f"{NO_PRODUCT}; 1 {FAILED}: '{PRODUCT_ID}' in {path} ({REPEATED}); "
-        f"1 path(s) could not be read: {archive} (cannot list directory: PermissionError)"
+        f"{NO_PRODUCT}; 1 {FAILED}: '{PRODUCT_ID}' in {path.as_posix()} ({REPEATED}); "
+        f"1 path(s) could not be read: {archive.as_posix()} "
+        "(cannot list directory: PermissionError)"
     )
 
 

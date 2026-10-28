@@ -147,8 +147,8 @@ def _unreadable(path: Path) -> dict[str, Any]:
     return {
         "code": "contract.unreadable",
         "severity": "block",
-        "subject": str(path),
-        "source": str(path),
+        "subject": path.as_posix(),
+        "source": path.as_posix(),
         "message": UNREAD,
     }
 
@@ -420,7 +420,7 @@ def test_no_place_of_a_validated_file_takes_such_an_escape(
         report = validate_paths([case.contracts])
         issues = [issue.model_dump(mode="json") for issue in report.issues]
         assert issues[0] == _unreadable(path), (kind, where)
-        assert [issue["source"] for issue in issues].count(str(path)) == 1, (kind, where)
+        assert [issue["source"] for issue in issues].count(path.as_posix()) == 1, (kind, where)
 
 
 @pytest.mark.parametrize("keys", [("kind",), ("metadata", "id")], ids=["its kind", "its id"])
@@ -438,8 +438,8 @@ def test_decision_validate_prints_the_finding_to_a_stream_that_encodes(
     assert main(["decision", "validate", str(case.contracts)]) == 4
     printed = _printed(out).splitlines()
     assert printed[:2] == [
-        f"{'block':<8} {'contract.unreadable':<26} {path}",
-        f"{'':<8} {UNREAD} [{path}]",
+        f"{'block':<8} {'contract.unreadable':<26} {path.as_posix()}",
+        f"{'':<8} {UNREAD} [{path.as_posix()}]",
     ]
     assert printed[-1] == "verdict: block (1 product(s), 1 metric contract(s), 1 issue(s))"
 
@@ -456,7 +456,7 @@ def test_a_product_with_such_an_escape_leaves_no_product_to_verify(tmp_path: Pat
 
     message = _refused(case)
 
-    assert message.endswith(f"; 1 path(s) could not be read: {path} ({UNREAD})")
+    assert message.endswith(f"; 1 path(s) could not be read: {path.as_posix()} ({UNREAD})")
     assert "\n" not in message
 
 

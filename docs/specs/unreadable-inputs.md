@@ -2177,7 +2177,9 @@ for the check.
   like a YAML file is a contract that cannot be read. In a ref and under the assets path such a
   directory is passed over, as before.
 - The order in which a walk gives paths is the filesystem's. Every reader sorts what it reads,
-  and the refusals under one validated path are sorted by their paths.
+  and the refusals under one validated path are sorted by their paths — since verifier 118 name
+  by name, by code point with case, on every system
+  ([validation report paths](validation-report-paths.md)).
 - The dashboards directory is never listed: a spec is looked for by its name. A dashboards
   directory that is searched and not listed therefore reads as any other.
 - A contract the filesystem refuses to open is a finding under the validated paths

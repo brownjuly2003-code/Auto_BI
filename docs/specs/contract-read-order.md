@@ -159,8 +159,10 @@ gap or digest means anything new.
   validated files define the run is handed the contract read first. A report none of whose
   issues is of a file holds no path.
 - The same ref is now one snapshot on every system, and its sealed snapshot artifact one
-  artifact. The path an issue of a file names is spelled as the system spells it: where it holds
-  a directory, the same contracts read on Windows and on POSIX are still two runs.
+  artifact. The path an issue of a file names was spelled as the system spells it, and what a
+  validated directory holds was read in the order `sorted` gives, so the same contracts read on
+  Windows and on POSIX were still two runs; since verifier 118 they are one
+  ([validation report paths](validation-report-paths.md)).
 - `metrics/` is still read by the snapshot alone: a hard link or symbolic link to a contract is
   a second file there, and its id is `gap.metric_duplicate` ([two contracts of one metric
   id](repeated-metric-contracts.md)).

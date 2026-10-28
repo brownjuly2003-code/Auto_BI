@@ -322,7 +322,10 @@ verifiers derived.
   ([the validation issues a run grades](validation-issue-scope.md)); the run id still moves.
 - A file-level issue of the validation report names its file by the path it was read from. The
   same contracts read from another directory are then another report, another
-  `contracts.validate` artifact — as before — and another run id.
+  `contracts.validate` artifact — as before — and another run id. Read from the same relative
+  path, they are one report on every system since verifier 118: the path is written with `/`,
+  and what a directory holds is read in one order
+  ([validation report paths](validation-report-paths.md)).
 - `decision verify` hands the gate the dashboard specs the product pins and the verified assets
   that name one of its metrics. A file outside that selection does not reach the gate and does
   not move the run id.

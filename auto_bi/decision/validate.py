@@ -89,8 +89,9 @@ class RefusedProduct:
 
     *declared* is the id its metadata declares, spelled as the subject of its
     ``contract.invalid`` issue — ``None`` when it declares none, where the issue names the
-    file. *reason* is what the schema refused, in the one line of a usage error: it is
-    printed by a run that cannot find the product, and never kept in a report or a bundle.
+    file — and *source* is its file, spelled as the source of that issue. *reason* is what
+    the schema refused, in the one line of a usage error: it is printed by a run that cannot
+    find the product, and never kept in a report or a bundle.
     """
 
     declared: str | None
@@ -154,7 +155,9 @@ def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIss
     — as one under a directory that may not be searched — is no path that does not exist:
     each is an issue of its own, and everything that could be listed is still loaded.
 
-    A file is read once, however many of the paths reach it (`_each_file_once`).
+    The paths are gone through in the order they are given, and what a directory holds in
+    the order of its paths (`_path_order`). A file is read once, however many of the paths
+    reach it (`_each_file_once`).
     """
     files: list[Path] = []
     for raw in paths:
@@ -169,14 +172,20 @@ def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIss
             refused: list[OSError] = []
             files.extend(
                 sorted(
-                    child
-                    for child in filesystem.paths_under(path, refused)
-                    if _names_a_contract(child)
+                    (
+                        child
+                        for child in filesystem.paths_under(path, refused)
+                        if _names_a_contract(child)
+                    ),
+                    key=_path_order,
                 )
             )
             unlisted = sorted(
-                (Path(error.filename) if error.filename else path, type(error).__name__)
-                for error in refused
+                (
+                    (Path(error.filename) if error.filename else path, type(error).__name__)
+                    for error in refused
+                ),
+                key=lambda unread: (_path_order(unread[0]), unread[1]),
             )
             issues.extend(
                 _unread_path(directory, f"cannot list directory: {refusal}")
@@ -217,6 +226,26 @@ def _each_file_once(files: list[Path]) -> list[Path]:
     return once
 
 
+def _path_order(path: Path) -> tuple[str, ...]:
+    """Where *path* stands among the paths found under one validated directory.
+
+    Name by name, from the directory down, each name compared by code point with its case, on
+    every system. `sorted` folds case where the system does, on Windows: `B.yaml` stood after
+    `a.yaml` there and before it on POSIX, the issues of the two files stood in the other
+    order, and of an id the two files define the run was handed the other contract.
+    """
+    return path.parts
+
+
+def _spelled(path: Path) -> str:
+    """*path* as the report names it: its names joined by `/`, on every system.
+
+    `str` joins them by the separator of the system, so the same files read on Windows and on
+    POSIX were named by two texts, and gave two reports and two runs.
+    """
+    return path.as_posix()
+
+
 def _names_a_contract(path: Path) -> bool:
     """Whether a path found under a validated directory is read as a contract.
 
@@ -236,8 +265,8 @@ def _unread_path(path: Path, message: str) -> ValidationIssue:
     return ValidationIssue(
         code="contract.unreadable",
         severity=Severity.BLOCK,
-        subject=str(path),
-        source=str(path),
+        subject=_spelled(path),
+        source=_spelled(path),
         message=message,
     )
 
@@ -249,7 +278,7 @@ def _load_contract(
     issues: list[ValidationIssue],
     refused: list[RefusedProduct],
 ) -> None:
-    source = str(path)
+    source = _spelled(path)
     try:
         raw = load_yaml_document(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
@@ -306,7 +335,7 @@ def _store(
     issues: list[ValidationIssue],
 ) -> ValidationError | None:
     """Keep the contract of *raw* under its id; what its schema refused, if it did."""
-    source = str(path)
+    source = _spelled(path)
     try:
         contract = model.model_validate(raw)
     except ValidationError as exc:
