@@ -111,7 +111,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Iterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any, NamedTuple
 
 from auto_bi.engine import CLICKHOUSE, GREENPLUM, sqlglot_dialect
@@ -680,6 +680,8 @@ def _clickhouse_table(
         table,
         reading[0],
         event_time_column=question.event_time_column,
+        # clickhouse-connect hands a `DateTime` read in UTC back naive (`tz_mode="naive_utc"`).
+        naive_in_utc=True,
         columns=columns,
         layout=layout,
         column_reads=reads,
@@ -1123,6 +1125,8 @@ def _postgres_table(
         table,
         reading[0],
         event_time_column=question.event_time_column,
+        # psycopg hands a `timestamp`, a clock with no zone, back naive.
+        naive_in_utc=False,
         columns=columns,
         layout=None,
         column_reads=reads,
@@ -1201,6 +1205,7 @@ def _reading(
     row: dict[str, Any],
     *,
     event_time_column: str,
+    naive_in_utc: bool,
     columns: dict[str, str] | None = None,
     layout: LayoutFacts | None = None,
     column_reads: dict[str, bool] | None = None,
@@ -1208,6 +1213,7 @@ def _reading(
     row_policies: list[RowPolicyFacts] | None = None,
 ) -> TableFacts:
     rows_seen = int(row.get("rows_seen") or 0)
+    newest = row.get("max_event_time")
     return TableFacts(
         table=table,
         event_time_column=event_time_column,
@@ -1215,7 +1221,7 @@ def _reading(
         readable=True,
         rows_seen=rows_seen,
         # An empty mart has nothing to date; ClickHouse would still hand back the epoch.
-        max_event_time=_moment(row.get("max_event_time")) if rows_seen else None,
+        max_event_time=_moment(newest, naive_in_utc=naive_in_utc) if rows_seen else None,
         columns=columns,
         layout=layout,
         column_reads=column_reads,
@@ -1249,12 +1255,28 @@ def _truthy(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "t", "true"}
 
 
-def _moment(value: object) -> str | None:
-    """Engine value as ISO 8601 — a date stays a date, a datetime keeps its offset."""
+def _moment(value: object, *, naive_in_utc: bool) -> str | None:
+    """Engine value in a form `dwh.freshness` reads (docs/specs/event-time-readings.md).
+
+    A date stays a day. A datetime that names an instant is spelled once, in UTC with `Z`,
+    whatever zone the driver handed it back in: one instant read through two zones would
+    otherwise seal two texts, and a second run into the same evidence directory would be
+    refused. A naive datetime names an instant only where the driver reads it in UTC; where it
+    does not, it is a clock with no zone and keeps none. An instant UTC cannot spell, before
+    0001-01-01 or past 9999-12-31, keeps the offset it came with, which the check names as
+    unreadable. Text is the engine's own and is only stripped.
+    """
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.isoformat().replace("+00:00", "Z")
+        if value.utcoffset() is None:
+            if not naive_in_utc:
+                return value.isoformat()
+            value = value.replace(tzinfo=UTC)
+        try:
+            return value.astimezone(UTC).replace(tzinfo=None).isoformat() + "Z"
+        except OverflowError:
+            return value.isoformat()
     if isinstance(value, date):
         return value.isoformat()
     text = str(value).strip()

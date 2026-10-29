@@ -192,7 +192,13 @@ A contract that passed now blocks, so the same input can give a different verdic
   A moment inside an artifact is not read again: `decision evidence` checks an artifact by its
   digest and size. A bundle whose manifest is of the one spelling reads as before, even when
   the payload of `results.provenance` holds a result attested at `2026-08-25T08:00:00,000Z`.
-- **Times that are not a `Timestamp`.** Two kinds of time are not read as one, and are read as
-  before:
-  - the newest event time a DWH reports for `dwh.freshness`, which the engine spells;
-  - the `captured_at` of a semantic model's physical statistics.
+- **Times that are not a `Timestamp`.** Two kinds of time are not read as one:
+  - the newest event time a DWH reports for `dwh.freshness` is a day, a clock with no zone, or a
+    UTC moment of the `Timestamp` form, told apart by the form and the calendar
+    ([event-time readings](event-time-readings.md));
+  - the `captured_at` of a semantic model's physical statistics is text. The introspectors stamp
+    `YYYY-MM-DDTHH:MM:SS+00:00`, which a `Timestamp` refuses; no code reads the stamp as a
+    moment, and the canonical graph does not carry it. A model that differs only in it is
+    another run, as for any byte of `model.yaml` ([run identity](run-identity.md)). A word is
+    taken too. An unquoted stamp, which YAML reads as a `datetime`, is not a valid semantic
+    model.

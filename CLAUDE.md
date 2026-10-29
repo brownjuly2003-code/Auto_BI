@@ -92,6 +92,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-29 — T-124: самое свежее время события — день, часы без зоны или UTC-момент: проба пишет
+  мгновение один раз, в UTC с `Z`; день и часы — в единственной зоне метрик (`fold=0`), иначе
+  `freshness.event_time_zone_unknown`; позже `created_at` — `freshness.event_time_ahead`; прочее —
+  unreadable; сверено с живыми CH 24.8 и PG 16. Verifier 120 / check 80; мутанты 38/38 и 3/3;
+  Mac gate 7473 passed (1 — perf под нагрузкой). Ревью Astra: P2 и P3, повторное — 3 P3; исправлены.
 - 2026-10-29 — T-123: ответ `decision` validate/verify/evidence/runs и отказ argparse на строке
   `decision` — по строке на строку: значение извне (имя файла, ключ, detail, версия и caveat
   bundle, `--expect-digest`, run) — через `_one_line`, `--json` прежний. Verifier 119 / check 79;
@@ -102,11 +107,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   macOS), и один run id, пока validated paths и verified assets не читают ссылок; hard link —
   копия. Verifier 119 / check 79; из 14 мутантов 12 ловятся на Windows, два на Mac; полный
   Windows gate 7161 passed, exit 0. Ревью Astra: два P2 и P3 исправлены, повторное — тоже.
-- 2026-10-28 — T-121: validation report один на любой ОС: issue называет файл путём с `/`, файлы
-  validated-каталога идут в порядке путей — по code point с регистром: те же файлы на Windows и
-  macOS не дают два report и два run id, а из двух файлов одного id — разные контракты. Verifier
-  118 / check 79; из 20 мутантов 19 ловятся на Windows, 20-й на Mac; полный Windows gate 7138
-  passed, exit 0. Ревью Astra: P1, P2, P3 исправлены, повторное — P3 исправлен.
 
 ## Definition of done (фаза/задача)
 

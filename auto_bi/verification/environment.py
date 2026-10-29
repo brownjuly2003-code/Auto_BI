@@ -33,9 +33,12 @@ versions (ClickHouse 24.8.14.39, PostgreSQL 14.24):
 **Freshness is measured against the run's `created_at`, not a wall clock.** The gate takes
 its timestamp as an input so the same verification is reproducible (§7.6); reading
 `datetime.now()` here would make the age — and the verdict — depend on when the report was
-rendered. A date-only event time is read as that day's start in UTC: the conservative end
-of the day it stands for, and the detail says so, because the metric's declared timezone can
-move a day boundary by up to fourteen hours.
+rendered. A UTC moment is the instant it names. A clock with no zone (PostgreSQL's
+`timestamp`) and a day are read in the one timezone the metrics declare for the column, a day
+as its 00:00 there — the conservative end of the day it stands for — and the detail says what
+each was read as. No declared zone, several, or a reading after `created_at` is a review, not
+a guess. The probe spells an instant once, in UTC; any other text is unreadable, by its form,
+on every interpreter (docs/specs/event-time-readings.md).
 
 The *cost* half keeps plan and runtime evidence separate. Scanned rows are priced from the
 plan of each governed query, and the two engines answer that question differently — **both
@@ -98,9 +101,11 @@ Grading, and why:
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import NamedTuple
+from zoneinfo import ZoneInfo, available_timezones
 
 from pydantic import Field
 
@@ -152,8 +157,9 @@ class TableQuestion(StrictModel):
     #: Column -> declared type, for exactly the fields the in-scope metrics read.
     columns: dict[str, str] = Field(default_factory=dict)
     layout: LayoutClaim = Field(default_factory=LayoutClaim)
-    #: The business timezone the metrics declare for that column — reported, not applied:
-    #: it is what makes a date-only reading an assumption rather than a fact.
+    #: The business timezones the metrics declare for that column. A day or a clock with no
+    #: zone is read in the one zone named here; none, several, or a name the zone database
+    #: does not hold leave it unread (docs/specs/event-time-readings.md).
     timezones: list[str] = Field(default_factory=list)
     #: The metrics that read this table at this grain, so a finding names them.
     metric_refs: list[str] = Field(default_factory=list)
@@ -243,8 +249,9 @@ class TableFacts(StrictModel):
     readable: bool
     #: Rows behind the event-time reading. Zero is why `max_event_time` may be meaningless.
     rows_seen: int = Field(ge=0, default=0)
-    #: ISO 8601 as the engine gave it: `2026-08-24` or `2026-08-24T09:00:00Z`. `None` when
-    #: the engine has nothing to date (no rows, or a NULL max).
+    #: A day `2026-08-24`, a UTC moment `2026-08-24T09:00:00Z`, or a clock with no zone
+    #: `2026-08-24T09:00:00`; any other text is the engine's own, and `dwh.freshness` names it
+    #: unreadable. `None` when the engine has nothing to date (no rows, or a NULL max).
     max_event_time: str | None = None
     #: Column -> type as the engine spells it. `None` means the probe did not ask.
     columns: dict[str, str] | None = None
@@ -382,10 +389,21 @@ def reading_for(
     return None
 
 
-class _Age(NamedTuple):
-    seconds: float
-    read_as: str
-    assumed_start_of_day: bool
+#: The forms of a newest event time `dwh.freshness` reads, and no other: a day, a clock with no
+#: zone, and a UTC moment of the one `Timestamp` spelling (docs/specs/event-time-readings.md).
+#: `[0-9]`, because `\d` matches every script's digits and `int` reads them.
+_EVENT_TIME = re.compile(
+    r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]+))?(Z?))?"
+)
+
+
+class _Reading(NamedTuple):
+    """A newest event time read by its form, before any zone is applied."""
+
+    #: The clock it names, with no zone; a day is its 00:00.
+    clock: datetime
+    #: `day`, `clock` (no zone) or `moment` (UTC, the one `Timestamp` spelling).
+    form: str
 
 
 def questions_for(product: DecisionProductSpec, snapshot: SemanticSnapshot) -> EnvironmentQuestions:
@@ -686,22 +704,84 @@ def check_freshness(
                 )
             )
             continue
-        age = _age_seconds(table.max_event_time, created_at)
-        if age is None:
+        reported = (
+            f"{question.table} on {facts.target} reports {table.max_event_time!r} as its "
+            f"newest {question.event_time_column}"
+        )
+        reading = _read(table.max_event_time)
+        if reading is None:
             findings.append(
                 EnvironmentFinding(
                     code="freshness.unreadable_event_time",
                     severity=Severity.REVIEW,
                     subject=question.table,
                     detail=(
-                        f"{question.table} reports {table.max_event_time!r} as its newest "
-                        f"{question.event_time_column}, which is not a timestamp this check "
-                        "can read"
+                        f"{reported}, which is none of the forms this check reads: a day "
+                        "YYYY-MM-DD, a clock YYYY-MM-DDTHH:MM:SS with no zone, or a UTC moment "
+                        "such as 2026-08-25T09:00:00Z"
                     ),
                 )
             )
             continue
-        if age.seconds > window:
+        read_as = ""
+        if reading.form == "moment":
+            instant = reading.clock.replace(tzinfo=UTC)
+        else:
+            zone, unread = _zone_for(question)
+            if zone is None:
+                findings.append(
+                    EnvironmentFinding(
+                        code="freshness.event_time_zone_unknown",
+                        severity=Severity.REVIEW,
+                        subject=question.table,
+                        detail=(
+                            f"{reported}, a {reading.form} with no zone; {unread}, so the "
+                            "instant it names is not known and its age is not graded"
+                        ),
+                    )
+                )
+                continue
+            try:
+                # `fold=0`: a clock the zone repeats is its first instant, and one it skips
+                # takes the offset before the skip; a day's 00:00 is read by the same rule
+                # (docs/specs/event-time-readings.md names the days where that is not when
+                # the day began).
+                instant = reading.clock.replace(tzinfo=zone, fold=0).astimezone(UTC)
+            except OverflowError:
+                findings.append(
+                    EnvironmentFinding(
+                        code="freshness.unreadable_event_time",
+                        severity=Severity.REVIEW,
+                        subject=question.table,
+                        detail=(
+                            f"{reported}, a {reading.form} that read in {zone.key} falls "
+                            "outside the years 0001 to 9999 of UTC, where no instant is read"
+                        ),
+                    )
+                )
+                continue
+            read_as = (
+                f", read in {zone.key} as {_utc_text(instant)}"
+                if reading.form == "clock"
+                else f", read as 00:00 of that day in {zone.key}, {_utc_text(instant)}"
+            )
+        now = _run_moment(created_at)
+        if instant > now:
+            findings.append(
+                EnvironmentFinding(
+                    code="freshness.event_time_ahead",
+                    severity=Severity.REVIEW,
+                    subject=question.table,
+                    detail=(
+                        f"{reported}{read_as}, after the run's created_at {created_at}: a "
+                        "source cannot be dated after the run that reads it, so its age is "
+                        "not graded"
+                    ),
+                )
+            )
+            continue
+        age = (now - instant).total_seconds()
+        if age > window:
             findings.append(
                 EnvironmentFinding(
                     code="freshness.stale",
@@ -709,10 +789,8 @@ def check_freshness(
                     subject=question.table,
                     detail=(
                         f"{question.table} is dated {table.max_event_time} by "
-                        f"{question.event_time_column} "
-                        f"({_hours(age.seconds)} before {created_at}"
-                        f"{_assumption(age, question)}), older than the {max_age} this "
-                        "product declares"
+                        f"{question.event_time_column} ({_hours(age)} before {created_at}"
+                        f"{read_as}), older than the {max_age} this product declares"
                     ),
                 )
             )
@@ -1191,36 +1269,68 @@ def _normalized(type_or_key: str) -> str:
     return "".join(type_or_key.split()).lower()
 
 
-def _assumption(age: _Age, question: TableQuestion) -> str:
-    """Name the reading when a date-only value had to stand for a moment in time."""
-    if not age.assumed_start_of_day:
-        return ""
-    zones = ", ".join(question.timezones) or "unstated"
-    return f", read as {age.read_as} while the metric declares timezone {zones}"
-
-
 def _hours(seconds: float) -> str:
     hours = seconds / 3600
     return f"{hours:.1f}h" if hours < 48 else f"{hours / 24:.1f}d"
 
 
-def _age_seconds(event_time: str, created_at: Timestamp) -> _Age | None:
-    """How old the newest row is at the run's own timestamp."""
-    text = event_time.strip()
-    date_only = len(text) == 10
-    normalized = f"{text}T00:00:00Z" if date_only else text.replace(" ", "T")
+def _zone_for(question: TableQuestion) -> tuple[ZoneInfo | None, str]:
+    """The one zone a day or a clock with no zone is read in, or why there is none.
+
+    A name counts only as the zone database lists it (`available_timezones`): `ZoneInfo` on
+    Windows also opens `utc`, `Europe\\Moscow` and a name with a blank behind it, which the
+    database does not list, so what opens depends on the host's file system.
+    """
+    zones = list(dict.fromkeys(question.timezones))
+    if not zones:
+        return None, "the metrics that read it declare no timezone"
+    if len(zones) > 1:
+        named = ", ".join(repr(zone) for zone in zones)
+        return None, f"the metrics that read it declare {len(zones)} timezones, {named}"
+    if zones[0] not in available_timezones():
+        return None, (
+            f"the metrics that read it declare {zones[0]!r}, which the zone database this "
+            "gate reads does not hold"
+        )
+    return ZoneInfo(zones[0]), ""
+
+
+def _utc_text(instant: datetime) -> str:
+    """A UTC instant in the one `Timestamp` spelling."""
+    return instant.replace(tzinfo=None).isoformat() + "Z"
+
+
+def _run_moment(created_at: Timestamp) -> datetime:
+    reading = _read(created_at)
+    if reading is None or reading.form != "moment":
+        raise ValueError(f"created_at must be a Timestamp, not {created_at!r}")
+    return reading.clock.replace(tzinfo=UTC)
+
+
+def _read(text: str) -> _Reading | None:
+    """The clock a reading names and its form; `None` for a form not read.
+
+    Decided by the form and the calendar, never by `datetime.fromisoformat`, which reads forms of
+    ISO 8601 beyond these and `24:00` from Python 3.14 on (utc-timestamps.md). Digits of a
+    fraction after the sixth are not counted.
+    """
+    match = _EVENT_TIME.fullmatch(text)
+    if match is None:
+        return None
+    year, month, day, hour, minute, second, fraction, utc = match.groups()
     try:
-        moment = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        clock = datetime(
+            int(year),
+            int(month),
+            int(day),
+            int(hour or 0),
+            int(minute or 0),
+            int(second or 0),
+            int((fraction or "")[:6].ljust(6, "0")),
+        )
     except ValueError:
         return None
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=UTC)
-    now = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-    return _Age(
-        seconds=(now - moment).total_seconds(),
-        read_as=normalized,
-        assumed_start_of_day=date_only,
-    )
+    return _Reading(clock, "moment" if utc else "day" if hour is None else "clock")
 
 
 __all__ = [

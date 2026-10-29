@@ -558,7 +558,16 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: it is false. Verifier 118 read the link through: one commit was two snapshots by the
 #: checkout it was read from — the contract the link leads to, or a file of its text — and two
 #: run ids.
-VERIFIER_VERSION = "119"
+#: 120 — the newest event time is spelled once, in UTC with `Z`, and read in one of three
+#: forms: a day and a clock with no zone in the one timezone the metrics declare for the
+#: column, a day as its 00:00 there, and a UTC moment as the instant it names. Verifier 119
+#: sealed `isoformat()` of what the driver handed back — one instant in as many texts as zones
+#: the driver read it in, so a second run of the same inputs into one evidence directory was
+#: refused — and read a day and a clock in UTC. No one declared zone
+#: (`freshness.event_time_zone_unknown`) and a reading after `created_at`
+#: (`freshness.event_time_ahead`) are review, and text in none of the forms is
+#: `freshness.unreadable_event_time`.
+VERIFIER_VERSION = "120"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -837,7 +846,13 @@ VERIFIER_VERSION = "119"
 #: `datetime.fromisoformat` read.
 #: 79 — contracts.validate grades each file of the validated paths once, where rule 78
 #: blocked on the second reading of a file two of the paths reach (`contract.duplicate_id`).
-CHECK_VERSION = "79"
+#: 80 — dwh.freshness reads a day and a clock with no zone in the one timezone the metrics
+#: declare for the column, a day as its 00:00 there, where rule 79 read both in UTC; with no
+#: one such zone it reports freshness.event_time_zone_unknown, and for a reading after
+#: created_at freshness.event_time_ahead, both review, where rule 79 graded the age. Text in
+#: none of the three forms — a week, `YYYYMMDD`, a blank for `T`, an offset — is
+#: freshness.unreadable_event_time, where rule 79 read what `datetime.fromisoformat` read.
+CHECK_VERSION = "80"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and

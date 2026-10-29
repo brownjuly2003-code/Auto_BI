@@ -89,10 +89,12 @@ class Physical(StrictModel):
     rows: int = 0
     bytes: int = 0
     cardinality: dict[str, int] = Field(default_factory=dict)
-    # when these stats were captured (UTC ISO-8601, introspector-stamped). Stats live in git
-    # while the DWH keeps growing and every environment differs (demo 1M / stand 20M / prod
-    # 100M), so consumers that can measure live (advisor scan fraction) must not trust `rows`
-    # as "now" — this stamp is what makes the staleness visible instead of implicit.
+    # when these stats were captured: text as the introspector stamps it
+    # (`2026-10-01T12:00:00+00:00`), not a `Timestamp`. Nothing reads it as a moment; it moves
+    # a run's identity like any other byte of `model.yaml` (docs/specs/utc-timestamps.md).
+    # Stats live in git while the DWH keeps growing and every environment differs (demo 1M /
+    # stand 20M / prod 100M), so consumers that can measure live (advisor scan fraction) must
+    # not trust `rows` as "now".
     captured_at: str = ""
 
 

@@ -112,8 +112,8 @@ def test_only_the_marts_this_product_reads_are_asked_about(tmp_path: Path) -> No
 
 
 def test_the_declared_timezone_travels_with_the_question(tmp_path: Path) -> None:
-    """A date-only event time is read as a moment; the timezone is what makes that a
-    stated assumption instead of a silent one."""
+    """A date-only event time is read in the timezone the metric declares, so the zone has
+    to reach the check."""
     questions = questions_for(product(), snapshot_of(tmp_path))
 
     assert questions.tables[0].timezones == ["Europe/Moscow"]
@@ -248,8 +248,8 @@ def test_a_source_older_than_the_declared_window_is_review(tmp_path: Path) -> No
 
 
 def test_a_date_only_reading_says_what_it_assumed(tmp_path: Path) -> None:
-    """A daily mart dates its rows by day; turning that into a moment is an assumption, and
-    the declared timezone can move a day boundary by up to fourteen hours."""
+    """A daily mart dates its rows by day; turning that into a moment is an assumption: the
+    day's 00:00 in the timezone the metric declares, and the detail names it."""
     questions = questions_for(product(), snapshot_of(tmp_path))
 
     findings = check_freshness(
@@ -257,8 +257,7 @@ def test_a_date_only_reading_says_what_it_assumed(tmp_path: Path) -> None:
     )
 
     assert findings[0].code == "freshness.stale"
-    assert "2026-08-24T00:00:00Z" in findings[0].detail
-    assert "Europe/Moscow" in findings[0].detail
+    assert "read as 00:00 of that day in Europe/Moscow, 2026-08-23T21:00:00Z" in findings[0].detail
 
 
 def test_an_empty_mart_is_unknown_freshness_not_a_stale_one(tmp_path: Path) -> None:
