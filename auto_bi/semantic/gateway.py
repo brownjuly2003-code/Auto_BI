@@ -23,6 +23,8 @@ against.
 from __future__ import annotations
 
 import json
+import os
+import sys
 from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
@@ -228,7 +230,7 @@ class NativeModelSource:
         read: dict[str, list[str]] = {"model": [digest_bytes(model_bytes)]}
         files: list[tuple[str, str, Path, bytes]] = []
         for path in self._contract_files():
-            raw = path.read_bytes()
+            raw = self._held_bytes(path)
             digest = digest_bytes(raw)
             read.setdefault(path.name, []).append(digest)
             files.append((path.name, digest, path, raw))
@@ -266,6 +268,11 @@ class NativeModelSource:
         path it refuses to look at is not one that is no file: read as that, the ref
         would be frozen without the metrics they hold and the snapshot would say nothing
         of it. The `OSError` of the listing or of the look is raised.
+
+        Below the contracts directory a symbolic link with a contract suffix is a contract
+        file whatever it leads to — a file, a directory, nothing, a path the filesystem
+        refuses to look at: the ref holds the link, the look is at the link and not through
+        it, and the link is read as its text (`_held_bytes`).
         """
         if self._contracts_path is None:
             return []
@@ -274,8 +281,46 @@ class NativeModelSource:
         return sorted(
             child
             for child in filesystem.paths_under(self._contracts_path)
-            if child.suffix in _YAML_SUFFIXES and filesystem.is_file(child)
+            if child.suffix in _YAML_SUFFIXES
+            and (filesystem.is_link(child) or filesystem.is_file(child))
         )
+
+    def _held_bytes(self, path: Path) -> bytes:
+        """What the ref holds at *path*: a symbolic link's text, any other file's bytes.
+
+        Git commits a symbolic link as the text it holds, not as the file it leads to, and a
+        checkout makes the link again where `core.symlinks` is true and writes a file of that
+        text where it is false. Read through the link, one commit was two snapshots — the
+        contract the link leads to where the link was made, a file of its text where it was
+        not — and the bytes read first need not be in the commit at all. Read as its text, a
+        link below the contracts directory is the file a checkout without links writes, where
+        the text the link gives back reads as the text committed (`_link_text`); the bytes are
+        then parsed as those of any contract file.
+
+        A hard link is not told apart: git commits it as one more file of the bytes it has,
+        and a checkout writes it as a copy. The contracts path itself is the caller's to name
+        and is read through a link, as `model.yaml` is.
+        """
+        if path != self._contracts_path and filesystem.is_link(path):
+            return os.fsencode(_link_text(os.readlink(path)))
+        return path.read_bytes()
+
+
+def _link_text(text: str) -> str:
+    """A symbolic link's text as git commits it, from the text `os.readlink` gives back.
+
+    On POSIX the two are one text, and a backslash is a character of a name. Git for Windows
+    commits a link's text with `/` between names and makes the link with a backslash between
+    them, and Windows gives an absolute target back in its long form. So on Windows each
+    backslash is read as `/`, and the long form as the text it stands for: `//?/C:/x` as
+    `C:/x`, `//?/UNC/server/share/x` as `//server/share/x`.
+    """
+    if sys.platform == "win32":
+        text = text.replace("\\", "/")
+        if text.startswith("//?/UNC/"):
+            return "//" + text.removeprefix("//?/UNC/")
+        return text.removeprefix("//?/")
+    return text
 
 
 def _source_digest(read: dict[str, list[str]]) -> str:

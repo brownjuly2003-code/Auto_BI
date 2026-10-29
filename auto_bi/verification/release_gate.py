@@ -552,7 +552,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: read on Windows and on POSIX gave issues of files in other words and in another order, and
 #: of an id two files define the run was handed the other contract — another report and run
 #: id.
-VERIFIER_VERSION = "118"
+#: 119 — a symbolic link below the contracts directory of a semantic ref is read as its text,
+#: the text git commits for it, and not through: git commits a link as its text, and a
+#: checkout makes the link where `core.symlinks` is true and writes a file of that text where
+#: it is false. Verifier 118 read the link through: one commit was two snapshots by the
+#: checkout it was read from — the contract the link leads to, or a file of its text — and two
+#: run ids.
+VERIFIER_VERSION = "119"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

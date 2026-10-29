@@ -180,11 +180,13 @@ bundles SHALL NOT be rewritten.
 
 ## Known boundaries
 
-- The contracts path of a semantic ref — the `metrics/` a snapshot reads — is read as before: a
-  hard link of a contract file of the directory, or a symbolic link to one, is a second file, and
-  the snapshot carries `gap.metric_duplicate`, block (checked with a hard link at the tree of this
-  capability, while `decision validate` of the same directory passes). The run is blocked either
-  way.
+- The contracts path of a semantic ref — the `metrics/` a snapshot reads — is not read by
+  identity: a hard link of a contract file of the directory is a second file, as the copy a
+  checkout writes of it is, and the snapshot carries `gap.metric_duplicate`, block; a symbolic
+  link to one is the file of its text, as git commits it, and the snapshot carries what a file
+  of that text carries — for a path such as `gross_margin_pct.yaml`, `gap.contract_invalid`,
+  block ([metrics links](metrics-links.md)). `decision validate` of the same directory passes.
+  The run is blocked either way.
 - A path that cannot be gone through is still an issue for each path that names it: a missing
   path given twice is two `contract.unreadable`, and so is a directory that cannot be listed,
   given and reached under another path. The verdict was already `block`.

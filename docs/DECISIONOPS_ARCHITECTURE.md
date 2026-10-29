@@ -380,6 +380,17 @@ ref на другой ОС давали другой snapshot и run id: при 
 Windows и на POSIX давали другие issues и, у id из двух файлов, другой контракт прогона
 ([validation report paths](specs/validation-report-paths.md)).
 
+Символическая ссылка под `metrics/` читается как её текст, а не как файл, на который она
+ведёт (verifier 119): git коммитит ссылку текстом (mode `120000`), а checkout создаёт ссылку
+при `core.symlinks=true` и пишет файл этого текста при `false`. Прочитанная насквозь, ссылка
+давала одному коммиту два snapshot и два run id; теперь это файл её текста на любом checkout:
+байты разбираются, как у любого контрактного файла, — путь вроде `gross_margin_pct.yaml` не
+контракт, `gap.contract_invalid`. Snapshot один, пока текст, который отдаёт ссылка, — тот, что
+закоммичен; run id один, пока совпадает и остальное, что читает прогон: `decision validate` и
+verified assets читают ссылку насквозь. Жёсткая ссылка — ещё один файл тех же байтов, как копия, которую пишет checkout.
+Путь контрактов и `model.yaml`, которые называет вызывающий, читаются сквозь ссылку, как
+прежде ([metrics links](specs/metrics-links.md)).
+
 Native `model.yaml` — первый source adapter. Текущий `dbt_import.py` остаётся
 enrichment helper и не объявляется полноценным MetricFlow importer. Apache
 Ossie (бывший OSI) используется через adapter, pinned на tag или commit;
@@ -672,7 +683,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=118`, `CHECK_VERSION=79`.
+`VERIFIER_VERSION=119`, `CHECK_VERSION=79`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют

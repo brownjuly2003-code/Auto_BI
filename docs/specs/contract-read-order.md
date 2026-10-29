@@ -163,9 +163,10 @@ gap or digest means anything new.
   validated directory holds was read in the order `sorted` gives, so the same contracts read on
   Windows and on POSIX were still two runs; since verifier 118 they are one
   ([validation report paths](validation-report-paths.md)).
-- `metrics/` is still read by the snapshot alone: a hard link or symbolic link to a contract is
-  a second file there, and its id is `gap.metric_duplicate` ([two contracts of one metric
-  id](repeated-metric-contracts.md)).
+- `metrics/` is still read by the snapshot alone: a hard link of a contract is a second file
+  there, and its id is `gap.metric_duplicate` ([two contracts of one metric
+  id](repeated-metric-contracts.md)); a symbolic link is the file of its text — for a path such
+  as `gross_margin_pct.yaml`, `gap.contract_invalid` ([metrics links](metrics-links.md)).
 - A run with two contracts of a pinned metric in its candidate is blocked, as before. With an
   engine configured, the environment checks ask about the contract a lookup of the id finds —
   now the lowest version, then the lowest digest of bytes — wherever its file lies.

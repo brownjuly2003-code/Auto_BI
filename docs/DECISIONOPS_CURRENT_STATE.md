@@ -11,9 +11,39 @@ Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поя�
 human/design-partner outcome не измеряется — по решению владельца 2026-10-28 он не входит в
 цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md))
 
-**Версии evidence:** `VERIFIER_VERSION=118`, `CHECK_VERSION=79`
+**Версии evidence:** `VERIFIER_VERSION=119`, `CHECK_VERSION=79`
 
-**Последний срез (T-121, 2026-10-28):** validation report один на любой ОС. `decision
+**Последний срез (T-122, 2026-10-28):** symlink в `metrics/` замораживается как текст, который
+за него коммитит git. Native snapshot читал символическую ссылку насквозь: ссылка на контракт
+была вторым контрактом того же id (`gap.metric_duplicate`), ссылка в никуда или на каталог
+файлом не была и не читалась. Git коммитит ссылку как её текст (mode `120000`), а checkout
+создаёт ссылку, где `core.symlinks` true, и пишет файл этого текста, где false (так задано в
+системной конфигурации Git for Windows на машине воспроизведения), поэтому один коммит давал два
+snapshot и два run id — по тому, из какого checkout его читали (воспроизведено на HEAD
+`0e8db1f`: кандидат `decision verify` с `linked.yaml` — ссылкой на контракт — давал
+`run-525149c3e8a23257`, с файлом её текста — `run-dd17d0f8b1cfe39c`). Теперь путь ниже каталога
+контрактов с суффиксом `.yaml`/`.yml`, который сам symlink, — контрактный файл, куда бы ссылка
+ни вела, и читается как её текст, а не насквозь; на Windows `\` читается как `/`, `//?/UNC/` —
+как `//`, иной ведущий `//?/` снимается. Текст ссылки разбирается, как байты любого контрактного
+файла: путь вроде `gross_margin_pct.yaml` — не `MetricContract`, `gap.contract_invalid` (block),
+как у файла этого текста. Hard link — по-прежнему копия (`gap.metric_duplicate`). Оба коммита
+воспроизведения — один snapshot в клонах с `core.symlinks` true и false на Windows и на macOS;
+ссылка и файл её текста — один run id, пока validated paths до неё не доходят; 11 tracked ref —
+прежний snapshot. Ref, чей единственный контракт — symlink `out.yaml` на
+`../shared/gross_margin_pct.yaml` вне `metrics/`, там, где ссылка создана, давал snapshot с этим
+контрактом и без гэпа, а теперь блокирует на любом checkout. Verifier 119, check 79, native
+source 3. Границы: `decision validate` и verified assets читают ссылку насквозь — validated
+path, который доходит до ссылки, читает на одном checkout то, куда она ведёт, на другом — файл
+её текста, и где report расходятся, расходятся и run id; verified asset, который сам ссылка, на
+одном checkout грузится, на другом отвергается; `metrics` или `model.yaml`, которые сами ссылка,
+— по-прежнему два ref по checkout; `\` в тексте ссылки, закоммиченной на POSIX, — два snapshot
+на Windows; junction на Windows обходится как каталог; гэп не говорит, что файл был ссылкой.
+[Spec](specs/metrics-links.md); полный Windows gate — 7161 passed, 98 skipped, покрытие 96.24%,
+exit 0; полный Mac gate на итоговом дереве (Python 3.13, APFS) — 7236 passed; из 14 мутантов 12
+ловятся на Windows, два — на Mac; ревью synthetic Astra xhigh — два P2 и P3 исправлены,
+повторное — два P2 и P3 исправлены.
+
+**Предыдущий срез (T-121, 2026-10-28):** validation report один на любой ОС. `decision
 validate` и `decision verify` называли файл в issue путём в написании ОС (`str(path)`:
 `contracts\sub\a.yaml` на Windows, `contracts/sub/a.yaml` на POSIX) и брали содержимое
 validated-каталога в порядке `sorted` путей — на Windows без регистра. Report запечатывается

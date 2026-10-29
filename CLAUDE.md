@@ -92,6 +92,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-28 — T-122: symlink в `metrics/` читается как его текст — то, что коммитит git, — а не
+  насквозь: один коммит — один snapshot при `core.symlinks` true и false (клоны на Windows и
+  macOS), и один run id, пока validated paths и verified assets не читают ссылок; hard link —
+  копия. Verifier 119 / check 79; из 14 мутантов 12 ловятся на Windows, два на Mac; полный
+  Windows gate 7161 passed, exit 0. Ревью Astra: два P2 и P3 исправлены, повторное — тоже.
 - 2026-10-28 — T-121: validation report один на любой ОС: issue называет файл путём с `/`, файлы
   validated-каталога идут в порядке путей — по code point с регистром: те же файлы на Windows и
   macOS не дают два report и два run id, а из двух файлов одного id — разные контракты. Verifier
@@ -102,11 +107,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   байтов. Перенос контракта между подкаталогами `metrics/` и сортировка ОС больше не меняют
   snapshot. Verifier 117 / check 79; 16 мутантов ловятся; полный Windows gate 7114 passed, exit 0.
   Ревью Astra: три P1 и P3 исправлены, повторное — два P2 и P3 исправлены.
-- 2026-10-26 — T-119: контрактный файл читается один раз, сколько бы validated paths до него ни
-  доходили (каталог и файл в нём, `./`, регистр, ссылка): файл узнаёт `filesystem.file_identity`
-  (`st_dev`, `st_ino`) или равный текст пути; поток NTFS и копия — второй файл, ложного
-  `contract.duplicate_id` нет. Verifier 116 / check 79; 20 мутантов ловятся; полный Windows gate
-  7101 passed, exit 0. Ревью Astra: два P1, два P2 и P3 исправлены, повторное — P3 закрыт тестом.
 
 ## Definition of done (фаза/задача)
 

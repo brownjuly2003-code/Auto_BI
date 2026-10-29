@@ -10,6 +10,88 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-28 — T-122: symlink в `metrics/` — текст, который за него коммитит git
+
+Срез взят Claude из прототипа агента metrics-links (вариант E) по «продолжи работу» владельца
+(не synthetic Astra-выбор): symlink в `metrics/` читался насквозь, и один коммит давал два
+snapshot и два run id — по `core.symlinks` того checkout, из которого его читали.
+`NativeModelSource` (`auto_bi/semantic/gateway.py`) брал в контракты каждый `.yaml`/`.yml` ниже
+каталога контрактов, для которого `filesystem.is_file` (взгляд сквозь ссылку), и читал его байты
+сквозь ссылку: ссылка на контракт — второй контракт того же id, `gap.metric_duplicate`; ссылка в
+никуда, на каталог или на саму себя — не файл и не читалась. Git коммитит ссылку как её текст
+(mode `120000`), а checkout с `core.symlinks=false` (так в системной конфигурации Git for Windows
+на этой машине) пишет файл этого текста — `gap.contract_invalid`. Воспроизведено агентом на HEAD
+`0e8db1f` (`.tmp/t122/metrics-links/REPORT.md`): коммит с контрактом, его hard link `hard.yaml`
+и symlink `soft.yaml` — исходное дерево и клон с `core.symlinks=true` давали три узла id и
+`gap.metric_duplicate`, клон с `false` — два узла, `gap.contract_invalid` и
+`gap.metric_duplicate`, другие source и canonical digest; коммит, чей единственный контракт —
+`metrics/out.yaml`, ссылка на `../shared/gross_margin_pct.yaml`, — метрика без гэпа против
+`gap.contract_invalid` без метрики; `Case` из `tests/test_decision_verify.py` со ссылкой рядом с
+контрактом — `run-525149c3e8a23257`, с файлом её текста — `run-dd17d0f8b1cfe39c`. Теперь
+`_contract_files` берёт и путь с контрактным суффиксом, который сам ссылка
+(`filesystem.is_link`), куда бы она ни вела, а `_held_bytes` читает ссылку ниже каталога
+контрактов как её текст (`os.readlink`), не глядя, куда она ведёт; на Windows `_link_text`
+читает `\` как `/`, `//?/UNC/` как `//` и снимает иной ведущий `//?/`. Пути, которые называет
+вызывающий (каталог или файл контрактов, `model.yaml`), читаются сквозь ссылку, как прежде; hard
+link — копия, как прежде. Verifier 119: ref со ссылкой ниже каталога контрактов замораживается из
+текста ссылки, а не из файла, куда она вела, или из ничего — source digest другой, если байты не
+совпали случайно; текст разбирается, как байты любого контрактного файла (путь вроде
+`gross_margin_pct.yaml` — не контракт, `gap.contract_invalid`; `[x.yaml` или байты не в UTF-8 —
+`metric contract cannot be read`); ref, чей единственный контракт — ссылка `out.yaml` на
+`../shared/gross_margin_pct.yaml` вне `metrics/`, там, где ссылка создана, давал snapshot с этим
+контрактом и без гэпа, а теперь блокирует на любом checkout. Check 79 и native source 3 прежние;
+11 tracked ref дают прежний snapshot, tracked ссылок нет. Отвергнуто (сравнение — в отчёте
+агента): A — только задокументировать; B — один файл на identity, как `decision validate`
+(T-119): в клоне hard link — копия с другой identity, а ссылки нет — снова по checkout (мутант
+M5); C — свой gap для ссылки: checkout без ссылок её не видит, плюс новый код gap и bump check;
+D — побайтово равные контракты как один: текст ссылки не равен байтам контракта, и отменяется
+правило [двух контрактов одного id](../specs/repeated-metric-contracts.md) (мутант M6). Границы:
+`decision validate` и verified assets (`VerifiedAssetRepository.load`) читают ссылку насквозь —
+validated path, который доходит до ссылки, читает на одном checkout то, куда она ведёт, на другом
+— файл её текста, и где report расходятся, расходятся и run id; verified asset, который сам
+ссылка, на одном checkout грузится, на другом отвергается; `metrics` или `model.yaml`, которые
+сами ссылка, — по-прежнему два ref по checkout; `\` в тексте ссылки, закоммиченной на POSIX, —
+два snapshot на Windows; иные длинные формы Windows (`//?/Volume{…}/`) не проверены; junction
+обходится как каталог; гэп не называет ссылку. Spec — [metrics links](../specs/metrics-links.md);
+границы [contract files once](../specs/contract-files-once.md),
+[contract read order](../specs/contract-read-order.md); §7.4 архитектуры, состояние.
+
+Прогоны: агент — на коде HEAD новый модуль 17 failed, 4 passed, 1 skipped, на прототипе 21
+passed, 1 skipped (Windows; POSIX-тест обратной косой черты пропущен). Основное дерево до правок
+по ревью: Windows — модули среза и соседние, все модули с `VERIFIER_VERSION` и docs — 1244
+passed, 39 skipped; мутанты (`.tmp/t122/metrics-links/scripts/mutants.py`,
+`out_mutants_main.txt`) — 12 из 13 пойманы; M4 (`\` → `/` на любой ОС) на Windows неотличим и
+пойман на Mac пятью тестами; Mac (APFS) — 12 модулей (среза, соседние, `test_decision_verify`,
+`test_docs_as_code`) — 693 passed, 2 skipped на Python 3.12, 3.13 и 3.14
+(`.tmp/t122/mac_t122a.log`). Сквозная проверка (`.tmp/t122/xm/`): оба коммита агента bundle'ом,
+клоны с `core.symlinks` true и false на Windows (ссылки с `\`) и на macOS — source и canonical
+digest равны во всех четырёх клонах каждого коммита. Run id (`.tmp/t122/out_main_run_ids.txt`):
+ссылка и файл её текста — `run-762958ed160b6142`, hard link и копия — `run-c332ba7850212826`. 11
+tracked ref — прежний snapshot (`out_main_tracked_refs.txt`). После правок по первому ревью: те
+же 12 модулей на Mac — 696 passed, 2 skipped на 3.12, 3.13 и 3.14; мутант P3 (UTF-8 encode
+вместо `os.fsencode`) пойман POSIX-тестом недекодируемого текста (`.tmp/t122/mac_t122b.sh`).
+Итоговое дерево (правки повторного ревью — тексты и проверка причины гэпа в тесте «куда бы ни
+вела»): полный Mac gate (Python 3.13, APFS) — 7236 passed, 23 skipped, 38 deselected, black,
+Ruff и mypy (linux, strict, win32) чистые (`t122gate2.log` на Mac); полный Windows gate: black,
+Ruff, `ruff format --check` изменённых файлов, mypy ×4 чистые (`.tmp/t122/checks.log`;
+`gateway.py` в `ruff format --check` не входит — на HEAD он называет те же 6 строк неявной
+конкатенации, которых diff не касается, форматтер проекта — black); pytest — 7161 passed, 98
+skipped, 38 deselected, покрытие 96.24%, exit 0, за 101 мин — параллельно шли прогоны агентов
+(`.tmp/t122/pytest.log`).
+
+Ревью synthetic Astra xhigh (не human acceptance; `.tmp/t122/first_review.md`,
+`second_review.md`): P1 нет. Первое — два P2 и P3: spec обещал любому тексту ссылки
+`gap.contract_invalid` с одной причиной, а текст разбирается, как любые байты (`[x.yaml` и байты
+не в UTF-8 — `metric contract cannot be read`), — requirement теперь «файл этого текста», два
+новых теста; «один коммит — один snapshot и один run» было шире кода — названы условия snapshot и
+run, сценарий и тест validated path, который доходит до ссылки; P3 — `os.fsencode` не был
+закреплён — POSIX-тест текста с байтом `0xff` против файла тех же байтов, мутант на Mac.
+Повторное — P1 нет, два P2 и P3: граница run id шире правды (asset-ссылка — отказ загрузки, а не
+второй run; report могут и совпасть) — теперь «где report расходятся, расходятся и run id»;
+безусловные утверждения о разборе текста («путь — не контракт», одна причина в границе гэпа)
+сужены до примеров, причина для путей сценария «куда бы ни вела» закреплена в тесте; результаты
+до правок помечены как таковые.
+
 ## 2026-10-28 — T-121: validation report один на любой ОС
 
 Срез взят Claude по кандидату handoff на «продолжи доработку» владельца (не synthetic
