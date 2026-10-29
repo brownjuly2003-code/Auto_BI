@@ -10,6 +10,81 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-10-29 — T-123: ответ `decision` — по строке на строку, что бы строка ни называла
+
+Срез посажен Claude из прототипов агента answer-lines: граница (2) — вариант 2b по решению
+владельца 2026-10-28 (каждая строка текстового ответа — через `_one_line`, JSON прежний), граница
+(1) — вариант A прототипа (выбор Claude), после первого ревью Astra дополненный root на строке
+`decision`. T-117 записал escape-последовательностями строку отказа (`error: …`), но текстовые
+ответы `decision validate`, `verify`, `evidence` и `runs` и отказы самого argparse печатали
+прочитанное как есть. Воспроизведено на `0e8db1f` (`.tmp/land/answer-lines/repro_answers_HEAD.txt`;
+`auto_bi/cli.py` тот же, что в `cb25a7f`): `validate` над контрактами с файлом, в имени которого
+U+2028 и U+202E, печатал оба символа в строках issue; ключ `"x\rverdict: pass\e[8m": 1` в файле
+продукта давал читателю строк вторую строку `verdict: pass…` над вердиктом report; results file,
+чья attestation называет среду `clickhouse-prod:9000/dm`, `\r`, `verdict: pass` и `\x1b[8m`,
+делал то же с detail `results.provenance` в `verify` (exit 3) и с caveat claim'а в `evidence` над
+bundle этого run; bundle, записанный `BundleWriter` с такими версией и caveat, — две лишние строки
+в `evidence`, `--expect-digest` с тем же хвостом — третью (exit 4); `runs` печатал run id, digest
+и run id манифеста из репозитория как есть. Отказ argparse: `decision runs <root>` с аргументом
+`x`, переводом строки и `y` кончался строкой `unrecognized arguments: x` и второй `y`;
+`decision verify <root> --d=…` — `ambiguous option:` в две строки. На Mac CPython 3.12.0 и 3.12.6
+отвергали `--=x`, перевод строки и хвост после `decision runs` в root (`ambiguous option: … could
+match --help, --version`, три строки), а 3.12.7, 3.12.13, 3.13.13 и 3.14.6 оставляют эту опцию
+parser `runs`; опцию до `decision` root печатал так на всех
+(`.tmp/land/answer-lines/argv_root_before.txt`, `argv_root_313_314.txt`).
+
+Теперь в `auto_bi/cli.py` `_HelpArgumentParser.one_line` стоит на `decision` и каждой её команде,
+а на root — когда первый аргумент строки, который не начинается с `-`, — `decision`: опции root
+значения не берут, и другой строки argparse `decision` не отдаёт. Переопределённый `error`
+спеллит сообщение `_one_line`, и `unrecognized arguments:` root с хвостами команд тоже, поэтому
+переопределение `parse_known_args` из прототипа снято. Строки v1 — как у argparse.
+`_say_one_line(text)` = `_say(_one_line(text))` стоит на 15 строках ответа; строки, которые
+программа пишет сама (вердикты, digest, integrity, status, строка проверки, run id `run-<hex>`,
+заголовок `runs`), идут через `_say`, как прежде. `--json` — прежний документ байт в байт
+(sha256 семи ответов, digest bundle и run id равны прежним); `_say` по-прежнему не экранирует
+(T-60). Версии не меняются: напечатанное не запечатывается, verifier 119, check 79 и native
+source 3 прежние. Отвергнуто: (1) B — подкласс через `parser_class=` (parser `decision` создаёт
+root без приватной подмены), D — ошибка из самого decision-парсера (меняет usage и prog); C,
+спеллинг в root, прототип отверг целиком (root общий с v1) — принят только для строки `decision`;
+поднять минимальную версию Python до 3.12.7 — граница осталась бы для опции до `decision`; (2) 2a —
+только записать в spec, 2c — оставить границей (поддельная строка `verdict:` остаётся); спеллинг
+в `_say` (ломает T-60, мутант H4), спеллинг JSON (мутанты H5, H6), спеллинг строк программы
+(эквивалентен, мутант H11), `capture`/`investigate` (вне решения владельца). Границы: `wrote` у
+`capture` и `investigate` — путь, как передан; payload `--artifact`; печатаемое значение — как
+читается; `str.isprintable` — версии интерпретатора; отказ argparse — одна строка под его
+строками usage; аргумент перед `decision`, который argparse берёт как позиционный (с пробелом и
+не называющий опцию `auto_bi`, отрицательное число, `-`), отвергается как неизвестная команда —
+в кавычках Python; колонка (код issue, summary code claim, код problem) — по ширине прочитанного
+значения, и спеллинг может вывести значение за неё. Spec —
+[one-line answers](../specs/one-line-answers.md), требование argparse в
+[one-line errors](../specs/one-line-errors.md); USER_GUIDE, §12.1 архитектуры; фраза T-117 в
+состоянии («ответы команд … печатают как есть») помечена «до T-123».
+
+Прогоны: агент (Windows, Python 3.13.7, worktree от `0e8db1f`) — на коде HEAD новые и
+изменённые тесты 18 failed, 29 passed, 2 skipped; с правкой модули среза — 282 passed, 2
+skipped; 24 соседних модуля — 1403 passed, 88 skipped. Мутанты (`mutants_answers.txt`) — 25 из
+26 пойманы, H11 эквивалентен; argparse — 12 из 12. Основное дерево до ревью: Windows, семь
+модулей — 341 passed, 2 skipped; Mac — десять модулей, 483 passed, 1 skipped на Python 3.13, 3.12 и
+3.14, полный gate — 7261 passed, 23 skipped, 1 failed: бюджет записи SQLite
+(`test_sqlite_session_write_and_backup_budgets`, 31,9 с при бюджете 5 с на занятом Mac), отдельно
+— 3 passed. После ревью: Windows — четыре модуля 167 passed, 2 skipped, с docs-тестом 74 passed, 2
+skipped; мутанты исправлений (`mutants_fix.txt`) — 6 из 6; Mac — десять модулей 489 passed, 1
+skipped на 3.13, 3.12 и 3.14, модули argparse на CPython 3.12.0 — 266 passed; `argv_root.py` после
+правки — строка `decision` даёт одну строку отказа на 3.12.0, 3.12.6, 3.12.7, 3.12.13, 3.13.13 и
+3.14.6, строка v1 (`--=x…` перед `gaps`) — как прежде; байт argv, которого не декодирует ни один
+символ, — exit 2 и его escape; полный gate — 7268 passed, 23 skipped, black, ruff и mypy как в CI
+чисты. После повторного ревью: Windows — answers, errors и docs-тест 139 passed, 2 skipped;
+мутанты (`mutants_fix2.txt`) — 6 из 6, пять из них тесты до правки пропускали; Mac — те же три
+модуля, 141 passed на 3.13, 3.12, 3.14 и CPython 3.12.0. Полный Windows gate — на вершине стека,
+после T-124 и T-125.
+
+Ревью synthetic Astra xhigh: первое — P1 (root CPython 3.12.0 печатал отказ строки `decision`
+построчно) и P2 (тест `verify` проверял только CR и ESC) исправлены; повторное — P2 (тесты
+каждой строки подавали символ только рядом с переводом строки или возвратом каретки: строка,
+которая спеллит лишь такое значение, их проходила) и P3 (аргумент с пробелом — позиционный, только
+если не называет опцию) исправлены: каждый из 16 символов, которые спеллит строка, — отдельно в
+тестах validate, verify, evidence и runs; формулировки — в тесте и spec.
+
 ## 2026-10-28 — T-122: symlink в `metrics/` — текст, который за него коммитит git
 
 Срез взят Claude из прототипа агента metrics-links (вариант E) по «продолжи работу» владельца

@@ -92,6 +92,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-29 — T-123: ответ `decision` validate/verify/evidence/runs и отказ argparse на строке
+  `decision` — по строке на строку: значение извне (имя файла, ключ, detail, версия и caveat
+  bundle, `--expect-digest`, run) — через `_one_line`, `--json` прежний. Verifier 119 / check 79;
+  мутанты 25 из 26 (26-й эквивалентен), argparse 12/12, правок ревью 12/12; Mac gate 7268 passed.
+  Ревью Astra: P1 и P2 исправлены, повторное — P2 и P3 исправлены.
 - 2026-10-28 — T-122: symlink в `metrics/` читается как его текст — то, что коммитит git, — а не
   насквозь: один коммит — один snapshot при `core.symlinks` true и false (клоны на Windows и
   macOS), и один run id, пока validated paths и verified assets не читают ссылок; hard link —
@@ -102,11 +107,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   macOS не дают два report и два run id, а из двух файлов одного id — разные контракты. Verifier
   118 / check 79; из 20 мутантов 19 ловятся на Windows, 20-й на Mac; полный Windows gate 7138
   passed, exit 0. Ревью Astra: P1, P2, P3 исправлены, повторное — P3 исправлен.
-- 2026-10-27 — T-120: snapshot берёт контракты в порядке того, что они держат: файл, который не
-  загрузился, — по имени (code point), затем digest байтов; контракт — по id, версии, digest
-  байтов. Перенос контракта между подкаталогами `metrics/` и сортировка ОС больше не меняют
-  snapshot. Verifier 117 / check 79; 16 мутантов ловятся; полный Windows gate 7114 passed, exit 0.
-  Ревью Astra: три P1 и P3 исправлены, повторное — два P2 и P3 исправлены.
 
 ## Definition of done (фаза/задача)
 

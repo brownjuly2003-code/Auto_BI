@@ -1892,7 +1892,11 @@ Python, если в нём есть непечатаемый символ.
 одиночный surrogate), записан escape-последовательностью Python, остальное — как есть, и
 обратная косая черта остаётся одной. Меняется напечатанная строка, а в тексте исключения —
 только запись непрочитанных путей; остальной текст исключения, report и bundle прежние
-([one-line errors](specs/one-line-errors.md)).
+([one-line errors](specs/one-line-errors.md)). Так же записан отказ самого argparse у `decision`
+и его команд — аргумент, которого команда не берёт, опция, которую нельзя отличить, опция до
+`decision`; над строкой — прежние строки usage, exit 2. Команды v1 — как у argparse. Так же
+записана строка текстового ответа `validate`, `verify`, `evidence` и `runs`, которая называет
+прочитанное ([one-line answers](specs/one-line-answers.md)); `--json` прежний байт в байт.
 `evidence` — чтение уже написанного bundle: пересчёт каждого content address,
 список claim'ов и артефактов, при `--artifact` — сам payload. Для signed bundle
 повторяемый `--trust-key` задаёт out-of-band trust root; без совпавшего public key

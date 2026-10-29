@@ -501,13 +501,17 @@ def test_a_path_with_a_lone_surrogate_is_named_on_a_stream_of_utf8(
 
     said = stand.run(argv, "utf-8")
 
-    assert char in meant.out
     assert (said.code, said.err) == (4, "")
     if as_json:
+        assert char in meant.out
         assert said.out.isascii()
         assert json.loads(said.out) == json.loads(meant.out)
     else:
-        assert said.out == meant.out.replace(char, f"{BS}u{ord(char):04x}")
+        # A line that names what the command read spells it before a stream is asked
+        # (docs/specs/one-line-answers.md), so a stream of any encoding gets the escape.
+        assert char not in meant.out
+        assert said.out == meant.out
+        assert f"{BS}u{ord(char):04x}" in said.out
 
 
 # --- one artifact -------------------------------------------------------------------------

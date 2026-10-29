@@ -11,6 +11,8 @@ diagnostic line spells a path, as the products their schema refused are.
 from __future__ import annotations
 
 import io
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -418,3 +420,228 @@ def test_the_versions_of_evidence_are_at_least_those_this_was_written_under() ->
     """The line is printed and never kept: no report, check or bundle changes with it."""
     assert int(VERIFIER_VERSION) >= 114
     assert int(CHECK_VERSION) >= 77
+
+
+# argparse's own refusal of a decision command -------------------------------------------------
+
+#: RAW without its spaces. argparse takes an argument that holds a space and names no option of
+#: its parser, in full or in part, for a positional, whatever it begins with, so an option is
+#: written with none.
+BARE = RAW.replace(" ", "")
+#: BARE, as the line spells it.
+BARE_SAID = SAID.replace(" ", "")
+
+
+def _argparse_refusal(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> str:
+    """Standard error of a command line argparse refuses, with exit 2 and no standard output.
+
+    Both streams take every character as it is, as a stream an application hands over may.
+    """
+    out, err = io.StringIO(), io.StringIO()
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "stdout", out)
+        patch.setattr(sys, "stderr", err)
+        with pytest.raises(SystemExit) as ended:
+            main(argv)
+    assert ended.value.code == 2
+    assert out.getvalue() == ""
+    return err.getvalue()
+
+
+def _usage(monkeypatch: pytest.MonkeyPatch, *command: str) -> str:
+    """The usage lines of *command*, which its `--help` begins with."""
+    out = io.StringIO()
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "stdout", out)
+        with pytest.raises(SystemExit) as ended:
+            main([*command, "--help"])
+    assert ended.value.code == 0
+    return out.getvalue().split("\n\n", 1)[0] + "\n"
+
+
+@pytest.mark.parametrize(
+    ("argv", "quoted"),
+    [
+        pytest.param(["decision", "runs", "evidence", RAW], SAID, id="argument"),
+        pytest.param(["decision", "runs", "evidence", "--" + BARE], "--" + BARE_SAID, id="option"),
+        pytest.param(
+            ["decision", "--" + BARE, "runs", "evidence"], "--" + BARE_SAID, id="before-the-command"
+        ),
+        pytest.param(
+            ["--" + BARE, "decision", "runs", "evidence"], "--" + BARE_SAID, id="before-decision"
+        ),
+    ],
+)
+def test_an_argument_a_decision_command_does_not_take_is_spelled(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], quoted: str
+) -> None:
+    """argparse quotes it after `unrecognized arguments: `, below the usage lines, as before."""
+    assert _argparse_refusal(monkeypatch, argv) == (
+        _usage(monkeypatch) + f"auto_bi: error: unrecognized arguments: {quoted}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("command", "prefix", "matches"),
+    [("verify", "--d", "--dashboards, --dwh"), ("capture", "--c", "--candidate, --captured-at")],
+)
+def test_an_option_that_could_be_two_is_spelled(
+    monkeypatch: pytest.MonkeyPatch, command: str, prefix: str, matches: str
+) -> None:
+    """The command quotes the option it cannot tell, below its own usage lines, as before."""
+    assert _argparse_refusal(monkeypatch, ["decision", command, f"{prefix}={BARE}"]) == (
+        _usage(monkeypatch, "decision", command)
+        + f"auto_bi decision {command}: error: ambiguous option: {prefix}={BARE_SAID}"
+        + f" could match {matches}\n"
+    )
+
+
+def test_an_option_auto_bi_may_refuse_ahead_of_the_command_is_spelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--=` could be `--help` or `--version` of `auto_bi`, and `--help` or `--json` of `runs`.
+
+    CPython 3.12.0 and 3.12.6 refuse it in the parser of `auto_bi`, ahead of `decision`; 3.12.7
+    and later, in the parser of `runs`. Either line is spelled.
+    """
+    err = _argparse_refusal(monkeypatch, ["decision", "runs", "evidence", "--=" + BARE])
+    said = f"error: ambiguous option: --={BARE_SAID} could match --help"
+    assert err in (
+        _usage(monkeypatch) + f"auto_bi: {said}, --version\n",
+        _usage(monkeypatch, "decision", "runs") + f"auto_bi decision runs: {said}, --json\n",
+    )
+
+
+@pytest.mark.parametrize(
+    ("argv", "command", "line"),
+    [
+        pytest.param(
+            ["decision", "runs", "evidence", "мера"],
+            (),
+            "auto_bi: error: unrecognized arguments: мера",
+            id="argument",
+        ),
+        pytest.param(
+            ["decision", "--мера", "runs", "evidence"],
+            (),
+            "auto_bi: error: unrecognized arguments: --мера",
+            id="before-the-command",
+        ),
+        pytest.param(
+            ["--мера", "decision", "runs", "evidence"],
+            (),
+            "auto_bi: error: unrecognized arguments: --мера",
+            id="before-decision",
+        ),
+        pytest.param(
+            ["decision", "verify", "--d=мера"],
+            ("decision", "verify"),
+            "auto_bi decision verify: error: ambiguous option: --d=мера could match"
+            " --dashboards, --dwh",
+            id="ambiguous",
+        ),
+    ],
+)
+def test_a_printable_argument_is_refused_as_before(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], command: tuple[str, ...], line: str
+) -> None:
+    assert _argparse_refusal(monkeypatch, argv) == _usage(monkeypatch, *command) + line + "\n"
+
+
+@pytest.mark.parametrize(
+    ("argv", "quoted"),
+    [
+        pytest.param(["gaps", "--" + BARE], "--" + BARE, id="after-a-v1-command"),
+        pytest.param(["--" + BARE, "gaps"], "--" + BARE, id="before-a-v1-command"),
+        pytest.param(
+            ["gaps", "decision", "--" + BARE],
+            "decision --" + BARE,
+            id="decision-after-a-v1-command",
+        ),
+    ],
+)
+def test_argparse_outside_decision_refuses_as_it_did(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], quoted: str
+) -> None:
+    """A command line of the v1 runtime quotes it as it is, wherever it is written."""
+    assert _argparse_refusal(monkeypatch, argv) == (
+        _usage(monkeypatch) + f"auto_bi: error: unrecognized arguments: {quoted}\n"
+    )
+
+
+def test_a_choice_argparse_refuses_is_quoted_as_python_quotes_a_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """argparse quotes the value itself, its backslash doubled, as it did before."""
+    err = _argparse_refusal(monkeypatch, ["decision", RAW])
+    usage = _usage(monkeypatch, "decision")
+    assert err.startswith(usage)
+    line = err[len(usage) :]
+    assert line.startswith(
+        f"auto_bi decision: error: argument decision_command: invalid choice: {RAW!r} (choose from "
+    )
+    assert line.endswith(")\n")
+    assert line.count("\n") == 1
+    assert all(char.isprintable() for char in line[:-1])
+
+
+def test_an_argument_argparse_takes_for_the_command_is_quoted_as_a_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`-` and RAW holds a space and names no option, so argparse takes it for the command.
+
+    Ahead of `decision` too: it is quoted as Python quotes a string, as before.
+    """
+    refused = "-" + RAW
+    err = _argparse_refusal(monkeypatch, [refused, "decision", "runs", "evidence"])
+    usage = _usage(monkeypatch)
+    assert err.startswith(usage)
+    line = err[len(usage) :]
+    assert line.startswith(
+        f"auto_bi: error: argument command: invalid choice: {refused!r} (choose "
+    )
+    assert line.endswith(")\n")
+    assert line.count("\n") == 1
+
+
+def test_an_argparse_refusal_on_a_stream_that_encodes_ascii(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What is spelled is ASCII; a printable letter the stream has no form for is escaped."""
+    stderr = io.TextIOWrapper(io.BytesIO(), encoding="ascii", newline="\n")
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "stdout", io.StringIO())
+        patch.setattr(sys, "stderr", stderr)
+        with pytest.raises(SystemExit) as ended:
+            main(["decision", "runs", "evidence", RAW])
+    assert ended.value.code == 2
+    stderr.flush()
+    written = stderr.buffer.getvalue().decode("ascii")  # type: ignore[attr-defined]
+    said = _usage(monkeypatch) + f"auto_bi: error: unrecognized arguments: {SAID}\n"
+    assert written == said.encode("ascii", "backslashreplace").decode("ascii")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows hands a program its arguments as text")
+def test_a_byte_of_argv_no_character_decodes_is_spelled_by_a_process(tmp_path: Path) -> None:
+    """On POSIX Python reads an argument byte UTF-8 has no character for as a lone surrogate."""
+    ended = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "auto_bi.cli",
+            "decision",
+            "runs",
+            str(tmp_path),
+            b"--x" + bytes([0x80]) + b"y",
+        ],
+        capture_output=True,
+        env=dict(os.environ, PYTHONUTF8="1"),
+        check=False,
+        timeout=30,
+    )
+    assert ended.returncode == 2
+    assert ended.stdout == b""
+    backslash = bytes([92])
+    assert ended.stderr.endswith(
+        b"\nauto_bi: error: unrecognized arguments: --x" + backslash + b"udc80y\n"
+    )

@@ -4,7 +4,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, TextIO
+from typing import TYPE_CHECKING, Any, NoReturn, TextIO
 
 from auto_bi import __version__
 
@@ -23,6 +23,13 @@ logger = logging.getLogger(__name__)
 
 class _HelpArgumentParser(argparse.ArgumentParser):
     """Escape unencodable parser text without changing streams or exit codes."""
+
+    #: Set on `decision` and its commands, and on `auto_bi` for a command line of `decision`:
+    #: what the parser refuses is said in one line.
+    one_line = False
+
+    def error(self, message: str) -> NoReturn:
+        super().error(_one_line(message) if self.one_line else message)
 
     def _print_message(self, message: str, file: "SupportsWrite[str] | None" = None) -> None:
         try:
@@ -309,6 +316,16 @@ def main(argv: list[str] | None = None) -> int:
     investigate.add_argument(
         "--output", required=True, help="New directory for canonical plan/results/brief artifacts"
     )
+    for command_parser in (decision, *decision_sub.choices.values()):
+        command_parser.one_line = True
+    # `auto_bi` refuses what no command takes, quoted after `unrecognized arguments: ` — what a
+    # decision command does not take among it — and on CPython 3.12.6 and earlier an option
+    # after `decision runs` that could be one of its own, `--=x`. A command line argparse hands
+    # to `decision` has it as its first argument that does not begin with `-`: what comes before
+    # is options of `auto_bi`, and they take no value.
+    arguments = sys.argv[1:] if argv is None else argv
+    command = next((argument for argument in arguments if not argument.startswith("-")), None)
+    parser.one_line = command == "decision"
 
     args = parser.parse_args(argv)
 
@@ -364,7 +381,7 @@ def _decision_runs(args: argparse.Namespace) -> int:
     else:
         _say("Local runs (integrity_checked=false; use decision evidence to verify):")
         for row in rows:
-            _say(
+            _say_one_line(
                 f"{row.run_id}  {row.product_ref!r}  {row.created_at!r}  "
                 f"{row.manifest_digest}  manifest_run_id={row.manifest_run_id}"
             )
@@ -405,6 +422,19 @@ def _say_error(message: object) -> None:
     _say(f"error: {_one_line(str(message))}", file=sys.stderr)
 
 
+def _say_one_line(text: str) -> None:
+    """Print a line of an answer that names what the command read: one line, as a refusal is.
+
+    A line of a text answer names a file found under a directory, quotes a key of a document,
+    the detail a check wrote of an attestation, a caveat or a version of a bundle, a run of a
+    store. Any of them may hold a line break or a carriage return — each makes two lines of one
+    for a reader of lines, and the second may read `verdict: pass` — or an escape. Each
+    character that is not printable is spelled by its escape (`_one_line`) before `_say` offers
+    the line. A JSON answer is not spelled.
+    """
+    _say(_one_line(text))
+
+
 def _say_json(document: Any) -> None:
     """Print a JSON answer; in ASCII, by the escapes of JSON, when the stream refuses it.
 
@@ -433,12 +463,12 @@ def _decision_validate(paths: list[str], as_json: bool) -> int:
         _say_json(report.model_dump(mode="json"))
     else:
         for issue in report.issues:
-            _say(f"{issue.severity.value:<8} {issue.code:<26} {issue.subject}")
-            _say(f"{'':<8} {issue.message} [{issue.source}]")
+            _say_one_line(f"{issue.severity.value:<8} {issue.code:<26} {issue.subject}")
+            _say_one_line(f"{'':<8} {issue.message} [{issue.source}]")
         for ref in report.products:
-            _say(f"product  {ref}")
+            _say_one_line(f"product  {ref}")
         for ref in report.metrics:
-            _say(f"metric   {ref}")
+            _say_one_line(f"metric   {ref}")
         _say(
             f"verdict: {report.verdict.value} "
             f"({len(report.products)} product(s), {len(report.metrics)} metric contract(s), "
@@ -684,7 +714,7 @@ def _decision_verify(args: argparse.Namespace) -> int:
     else:
         for check in report.checks:
             _say(f"{check.status.value:<8} {check.check_id:<22} {check.summary_code}")
-            _say(f"{'':<8} {check.detail}")
+            _say_one_line(f"{'':<8} {check.detail}")
         _say(f"run      {report.run_id}  evidence {report.evidence_digest}")
         _say(f"status   {report.operational_status.value}")
         _say(f"verdict: {report.verdict.value} ({len(report.blocking())} blocking check(s))")
@@ -756,28 +786,28 @@ def _decision_evidence(args: argparse.Namespace) -> int:
     if args.json:
         _say_json(inspection.model_dump(mode="json"))
     else:
-        _say(f"run       {inspection.run_id}")
+        _say_one_line(f"run       {inspection.run_id}")
         _say(f"digest    {inspection.manifest_digest}")
         bundle = inspection.bundle
         if bundle is not None:
-            _say(f"product   {bundle.product_ref}")
-            _say(f"created   {bundle.created_at}   verifier {bundle.verifier_version}")
+            _say_one_line(f"product   {bundle.product_ref}")
+            _say_one_line(f"created   {bundle.created_at}   verifier {bundle.verifier_version}")
             _say(f"integrity {bundle.integrity.value}")
             if bundle.signature is not None:
                 status = "verified" if inspection.signature_verified else "unverified"
-                _say(f"signature {status}   key {bundle.signature.key_id}")
+                _say_one_line(f"signature {status}   key {bundle.signature.key_id}")
             for claim in bundle.claims:
-                _say(f"claim     {claim.claim_type.value:<13} {claim.summary_code:<24} ")
-                _say(f"{'':<10} {claim.claim_id} <- {', '.join(claim.evidence_refs)}")
+                _say_one_line(f"claim     {claim.claim_type.value:<13} {claim.summary_code:<24} ")
+                _say_one_line(f"{'':<10} {claim.claim_id} <- {', '.join(claim.evidence_refs)}")
                 for caveat in claim.caveats:
-                    _say(f"{'':<10} caveat: {caveat}")
+                    _say_one_line(f"{'':<10} caveat: {caveat}")
             for artifact in bundle.artifacts:
-                _say(
+                _say_one_line(
                     f"artifact  {artifact.classification.value:<13} {artifact.kind.value:<18} "
                     f"{artifact.size_bytes:>8} B  {artifact.artifact_id}"
                 )
         for problem in inspection.problems:
-            _say(f"{problem.severity.value:<9} {problem.code:<28} {problem.detail}")
+            _say_one_line(f"{problem.severity.value:<9} {problem.code:<28} {problem.detail}")
         _say(f"verdict: {inspection.verdict.value} ({len(inspection.problems)} problem(s))")
     return exit_code_for(inspection.verdict)
 

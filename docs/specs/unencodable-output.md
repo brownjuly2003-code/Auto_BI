@@ -58,7 +58,8 @@ stream that refuses and names none is printed to in ASCII. A stream that takes t
 as it is, whatever it names. A line goes to the stream it is meant for — standard output, or
 the stream that is named — and is printed once, ending in one line break. (Since T-117 the line
 a decision command stops with is built with each character that is not printable spelled by its
-escape before it is offered: [one-line errors](one-line-errors.md).)
+escape before it is offered: [one-line errors](one-line-errors.md); so is each line of a text
+answer that names what the command read: [one-line answers](one-line-answers.md).)
 
 A JSON answer (`--json` of `decision validate`, `decision verify` and `decision evidence`)
 SHALL be the same document on any stream. It is offered to the stream as it is — the
@@ -267,7 +268,9 @@ unlike the default argparse help printer, this printer does not suppress `OSErro
 
 The root and nested parsers SHALL preserve their exit codes when an argument error names
 a character stderr cannot encode. Usage, argument errors and version text SHALL first be
-offered unchanged. On `UnicodeEncodeError`, the refused message SHALL be offered with
+offered unchanged. (An argument error of `decision` or of one of its commands is built with
+each character that is not printable spelled ([one-line errors](one-line-errors.md)); that is
+the text offered.) On `UnicodeEncodeError`, the refused message SHALL be offered with
 `backslashreplace` in the effective stream's encoding, or ASCII if none is named.
 
 The effective stream for these messages SHALL follow argparse's `file or sys.stderr`;

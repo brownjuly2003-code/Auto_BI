@@ -102,12 +102,117 @@ first three and ` (+<k> more)` SHALL stay as they were.
 - **THEN** the first is as it is, the next two are quoted, and the fourth is counted in
   ` (+1 more)`
 
+## Requirement: argparse's own refusal of a decision command is one line too
+
+argparse quoted what it refused as it was. Reproduced on HEAD `0e8db1f`: `decision runs <root>`
+with one more argument, `x`, a line break and `y`, ended in `auto_bi: error: unrecognized
+arguments: x` and a second line `y`; `decision verify <root> --d=x`, a line break and `y`, in
+`ambiguous option: --d=x` and a second line `y could match --dashboards, --dwh`. A right-to-left
+override and a lone surrogate were printed as they were too. On CPython 3.12.0 and 3.12.6
+`decision runs <root> --=x`, a line break and `y`, ended in `auto_bi: error: ambiguous option:
+--=x` and a second line `y could match --help, --version`: those interpreters refuse the option
+in the parser of `auto_bi`, ahead of the parser of `runs`, which 3.12.7 and later leave it to.
+
+When argparse refuses the command line of `decision` or of one of its commands, the line after
+`error: ` SHALL spell each character that is not printable as the first requirement spells it:
+an argument the command does not take, written after the command, between `decision` and the
+command or ahead of `decision`, quoted after `unrecognized arguments: `, and an option argparse
+cannot tell, quoted after `ambiguous option: `. Everything else SHALL be as argparse prints it:
+the usage lines above the line — those of `auto_bi` for an argument no parser takes and for an
+option the parser of `auto_bi` cannot tell, those of the command for an option it cannot tell —,
+the prefix `auto_bi: error: ` or `auto_bi decision <command>: error: `,
+exit 2, nothing on standard output, and every printable character, a backslash and a letter of
+any script among them. A choice argparse refuses — a command `decision` does not have, a
+`--dwh` it does not know — SHALL stay quoted as Python quotes a string, its backslash doubled,
+as before.
+A printable character the stream has no form for SHALL be spelled by its backslash escape, as
+before ([output a stream cannot encode](unencodable-output.md), T-72).
+
+The parser of `decision` and the parser of each of its commands spell so, and so does the parser
+of `auto_bi` on a command line whose first argument that does not begin with `-` is `decision`:
+argparse hands no other command line to `decision`, for the options of `auto_bi` take no value.
+On any other command line the parser of `auto_bi`, which the v1 runtime shares, quotes what it
+refuses as it is. Nothing is kept: no report, check or bundle changes, and no version with them.
+
+### Scenario: an argument a decision command does not take
+
+- **GIVEN** `decision runs <root>` and one more argument that holds a line break, an escape that
+  clears the screen, a line separator, a zero-width space, a right-to-left override, a lone
+  surrogate, a backslash, a Cyrillic word, a tab and a no-break space; or that argument, with no
+  space in it, as an option after `runs`, between `decision` and `runs` or ahead of `decision`
+- **WHEN** argparse refuses it
+- **THEN** standard error is the usage lines of `auto_bi` and one line, `auto_bi: error:
+  unrecognized arguments: ` and the argument, each of those characters but the backslash and the
+  letters spelled by its escape
+- **AND** the exit code is 2 and standard output is empty
+
+### Scenario: an option a decision command cannot tell
+
+- **GIVEN** `decision verify --d=<that text>`, or `decision capture --c=<that text>`, with no
+  space in the text
+- **WHEN** argparse refuses the option, which could be `--dashboards` or `--dwh`, or
+  `--candidate` or `--captured-at`
+- **THEN** standard error is the usage lines of the command and one line, `auto_bi decision
+  verify: error: ambiguous option: --d=<the text, spelled> could match --dashboards, --dwh`,
+  exit 2
+
+### Scenario: an option `auto_bi` may refuse ahead of the command
+
+- **GIVEN** `decision runs <root> --=<that text>`, with no space in the text
+- **WHEN** argparse refuses the option, which could be `--help` or `--version` of `auto_bi`, and
+  `--help` or `--json` of `runs`
+- **THEN** standard error is the usage lines of `auto_bi` and one line, `auto_bi: error:
+  ambiguous option: --=<the text, spelled> could match --help, --version`, where the interpreter
+  refuses it in the parser of `auto_bi`, as CPython 3.12.0 and 3.12.6 do; or the usage lines of
+  `runs` and `auto_bi decision runs: error: ambiguous option: --=<the text, spelled> could match
+  --help, --json`, where it refuses it in the parser of `runs`, as 3.12.7, 3.12.13, 3.13.13 and
+  3.14.6 do; exit 2
+
+### Scenario: a printable argument is refused as before
+
+- **GIVEN** `мера` after `decision runs <root>`, `--мера` between `decision` and `runs` or ahead
+  of `decision`, or `decision verify --d=мера`
+- **WHEN** argparse refuses it
+- **THEN** standard error is what argparse printed before: the same usage lines, and the line
+  with `мера` as it is
+
+### Scenario: a command line of the v1 runtime
+
+- **GIVEN** `gaps` and the argument of the first scenario with no space in it, as an option after
+  `gaps` or ahead of it, or `decision` and that option after `gaps`
+- **WHEN** argparse refuses it
+- **THEN** standard error is the usage lines of `auto_bi` and `auto_bi: error: unrecognized
+  arguments: ` with the option, or `decision` and the option, as they are, as before
+
+### Scenario: a choice argparse refuses
+
+- **GIVEN** `decision <that text>`
+- **WHEN** argparse refuses the command it names
+- **THEN** the line is `auto_bi decision: error: argument decision_command: invalid choice: `
+  and the text as Python quotes a string, in quotes and its backslash doubled, as before
+
+### Scenario: a stream that encodes ASCII
+
+- **GIVEN** a standard error that encodes ASCII and refuses a character it cannot encode
+- **WHEN** argparse refuses the argument of the first scenario
+- **THEN** the line holds what is spelled as it is, and the Cyrillic word by the backslash
+  escapes of its letters, `\u043c\u0435\u0301\u0440\u0430`
+
+### Scenario: a byte a POSIX command line cannot decode
+
+- **GIVEN** on POSIX the argument `--x`, the byte 0x80 and `y` after `decision runs <root>`,
+  which Python reads with the lone surrogate U+DC80
+- **WHEN** the command runs in a process
+- **THEN** standard error ends `auto_bi: error: unrecognized arguments: --x\udc80y`, exit 2:
+  the line the interpreter's error stream wrote before, its `backslashreplace` spelling the
+  surrogate. What changes is the line a stream of an application's own takes in the process.
+
 ## Known boundaries
 
 - One line is the line of a refusal. What a command prints when it answers — the report of
   `decision validate`, the checks of `decision verify`, the inspection of `decision evidence`,
-  the catalogue of `decision runs` — names what it read as it is, and so does `decision validate`'s
-  report above its own error.
+  the catalogue of `decision runs` — is spelled the same way where it names what the command
+  read, and its `--json` is the document it was ([one-line answers](one-line-answers.md)).
 - A backslash is printed as it is, so `\n` on the line is either a line break that was spelled or
   a backslash and an `n` that were there: a Windows path `C:\new` reads as it is where a message
   writes a path as the system does, and as `C:/new` where it names a file of the validation
@@ -122,4 +227,12 @@ first three and ` (+<k> more)` SHALL stay as they were.
   script, a combining mark, a letter that looks like another. A mark that turns the direction of
   the text, such as U+202E, is a format character and is spelled `\u202e`.
 - The commands outside `decision` — `build`, `introspect`, `gaps` and the rest of the v1 runtime
-  — are unchanged, and so are argparse's own usage errors.
+  — are unchanged, argparse's refusals of them with them. The parser of `auto_bi` tells a command
+  line of `decision` by its first argument that does not begin with `-`; an argument ahead of it
+  that argparse takes for a positional though it begins with `-` — one that holds a space and
+  names no option of `auto_bi`, in full or in part; a negative number; `-` itself — is refused as
+  a command `auto_bi` does not have, quoted as Python quotes a string, whichever way the line is
+  read.
+- A refusal by argparse is one line below its usage lines, not one line of standard error: the
+  usage lines are argparse's, as many as the width of the terminal makes them. A program that
+  reads standard error for the refusal reads its last line.
