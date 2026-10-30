@@ -6,6 +6,19 @@ bounded callable in `runtime_probe.py`, because an arbitrarily large result must
 materialised into `RunQuery`'s list. Nothing in this module decides anything — it asks,
 normalises and hands typed facts back for the pure rules to grade.
 
+Catalog values are string literals, separate from COUNT/MAX identifiers. ClickHouse
+doubles backslashes and quotes; PostgreSQL uses E strings with both doubled when a value
+contains a backslash, and ordinary quoted strings otherwise. Catalog SQL for ordinary
+names keeps its bytes. Gate PostgreSQL connections request UTF8 client encoding and
+standard_conforming_strings=on and check both before each explicit execute or stream and
+transaction start; result capture also checks after reading its result inside its transaction.
+Transaction exit has no separate check. Literal preservation assumes those settings and a value
+representable in the database encoding; callers supplying their own RunQuery must provide
+its settings. Absence and PostgreSQL unreadability precede COUNT/MAX identifier quoting
+when the earlier catalog questions
+succeed. PostgreSQL privilege functions also parse relation-name text and can raise
+InvalidName before a presence fact, including for an absent mart under a non-superuser.
+
 **The gate never probes by writing.** Whether the session could write is read out of the
 engine's own answer, because an INSERT "just to see" is a write to somebody's warehouse, and
 a gate that mutates the thing it verifies has already failed invariant 3.
@@ -634,7 +647,7 @@ def _clickhouse_table(
     present = _ask(
         run_query,
         "SELECT engine, sorting_key, partition_key FROM system.tables WHERE database = "
-        f"{_literal(database)} AND name = {_literal(name)}",
+        f"{_ch_literal(database)} AND name = {_ch_literal(name)}",
     )
     if not present:
         # A mart this role holds no grant on is hidden from `system.tables` too, so "absent"
@@ -664,7 +677,7 @@ def _clickhouse_table(
         for row in _ask(
             run_query,
             "SELECT name, type FROM system.columns WHERE database = "
-            f"{_literal(database)} AND table = {_literal(name)}",
+            f"{_ch_literal(database)} AND table = {_ch_literal(name)}",
         )
         or []
     }
@@ -742,8 +755,8 @@ def _ch_policies(
     rows = _ask(
         run_query,
         "SELECT short_name, select_filter, is_restrictive, apply_to_all, apply_to_list, "
-        f"apply_to_except FROM system.row_policies WHERE database = {_literal(database)} "
-        f"AND table = {_literal(name)}",
+        f"apply_to_except FROM system.row_policies WHERE database = {_ch_literal(database)} "
+        f"AND table = {_ch_literal(name)}",
     )
     if rows is None or (rows and not session.roles_known):
         return None
@@ -1315,7 +1328,13 @@ def _refused(error: Exception) -> bool:
 
 
 def _literal(value: str) -> str:
-    """A single-quoted literal with quotes doubled — these are catalog lookups, not user SQL."""
+    """A PostgreSQL catalog literal for the gate's checked UTF8, standard-string session.
+
+    Only values containing a backslash need the E form; other SQL bytes stay as before.
+    """
+    if "\\" in value:
+        escaped = value.replace("\\", "\\\\").replace("'", "''")
+        return f"E'{escaped}'"
     escaped = value.replace("'", "''")
     return f"'{escaped}'"
 

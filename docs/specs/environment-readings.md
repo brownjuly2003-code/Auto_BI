@@ -12,6 +12,162 @@ reading answers the question it was made for and no other: grading one question 
 question's reading turns a stale clock into a fresh one, a denied column into an unasked one,
 and makes the verdict depend on the order of the readings.
 
+## Requirement: catalog values cannot supply SQL syntax
+
+Every value inserted as a ClickHouse catalog string literal SHALL pass through
+`_ch_literal`, which doubles every backslash and every single quote. PostgreSQL-family
+catalog values containing a backslash SHALL use `E'…'` with backslashes and quotes doubled;
+values without a backslash SHALL retain their ordinary single-quoted form with quotes
+doubled. In the gate's checked PostgreSQL session (`client_encoding=UTF8`,
+`standard_conforming_strings=on`), reading each representable NUL-free literal SHALL
+recover the supplied value and SHALL NOT add a SQL condition. The same value and structure
+requirements apply to ClickHouse catalog literals. Questions for names consisting of
+letters, digits and underscores SHALL retain their SQL bytes.
+
+`make_run_query_pg`, `make_postgres_runtime_probe` and `make_postgres_result_query` SHALL
+request UTF8 through the driver and standard strings on through its connection options.
+On connection, before each explicit `execute` or `stream`, and before the start of each
+transaction, they SHALL check both server-reported parameters through
+`connection.info.parameter_status`. Result capture SHALL use an explicit transaction and
+check again after reading its statement's result, while that transaction is still open;
+it SHALL return the result only after the transaction ends. Transaction exit sends its
+fixed COMMIT or ROLLBACK without a separate session check; if a refusal has closed the
+connection, exit sends neither command and preserves the refusal. A value other than
+exactly `UTF8` or `on`, respectively,
+including a missing parameter, SHALL close the connection and raise a driver error;
+the pending statement SHALL NOT be sent, and a captured result awaiting its final check
+SHALL NOT be returned. Result capture SHALL retain its `ResultCaptureError` connection-error
+wrapper. These checks SHALL issue no SQL.
+
+### Scenario: the connection reports different settings
+
+- **WHEN** the driver returns a connection reporting `client_encoding=EUC_JP`, `SJIS`,
+  `LATIN1` or `SQL_ASCII`, `standard_conforming_strings=off` or `ON`, or a missing value
+  for either parameter
+- **THEN** the factory refuses that connection before asking catalog, runtime or result
+  questions, and its error names the setting, required value and reported value
+
+### Scenario: a statement changes the session settings
+
+- **WHEN** a statement changes `client_encoding` to `EUC_JP` or
+  `standard_conforming_strings` to `off` on a retained connection
+- **THEN** the next explicit `execute` or `stream` is refused before it is sent, and a
+  runtime or capture call is refused before its transaction starts; the error names the
+  setting, required value and reported value
+- **AND** if a change during result capture is still in effect after reading the result,
+  capture raises the same connection-error wrapper instead of returning the result.
+  This includes transaction-local changes from `set_config('client_encoding', 'LATIN1', true)`
+  or `set_config('standard_conforming_strings', 'off', true)`
+
+### Scenario: capture cannot complete its transaction
+
+- **WHEN** COMMIT raises a driver error after capture has read its result
+- **THEN** capture raises `ResultCaptureError` with `PostgreSQL query failed:`, the driver
+  error type and its text, without returning the result
+- **WHEN** the statement raises a driver error and its ROLLBACK succeeds or also fails
+- **THEN** capture raises the same query-error wrapper for the statement's error, without
+  returning a result; a failed ROLLBACK does not replace that error
+
+### Scenario: the same capture callable is used after a session refusal
+
+- **GIVEN** capture refused a transaction-local setting change and closed its connection
+- **WHEN** that same callable is called again
+- **THEN** it raises `ResultCaptureError` with
+  `PostgreSQL connection failed: OperationalError: the connection is closed` before starting
+  a transaction or sending the next statement, and opens no second connection
+
+### Scenario: a name contains an escape or a quote
+
+- **WHEN** a database, table, column or role name used by a catalog question contains a
+  backslash (including literal `\n` or `\x27`), a quote, two adjacent quotes, a line feed,
+  a NUL-free control character, a non-ASCII letter or `¥`
+- **THEN** the question retains its text outside literals and each literal representable
+  in the database encoding reads as the original value under the session settings above
+
+### Scenario: the mart is absent or unreadable
+
+- **WHEN** the earlier catalog questions succeed, the mart is absent or PostgreSQL reports
+  it unreadable, and the event-time identifier is outside the collector's quoting rule
+- **THEN** the collector still returns the absence or unreadability fact before quoting
+  the event-time identifier
+
+### Scenario: a present mart needs an unsupported identifier
+
+- **WHEN** collection reaches COUNT/MAX and its table or event-time identifier is outside
+  the existing identifier rule
+- **THEN** the collector raises `UnsafeIdentifierError`; `decision verify` writes no bundle
+
+### Known boundaries of catalog literals
+
+- Session checks detect a change still in effect at a checked point. A change made and
+  restored inside one statement is not detected, including by capture's check after reading
+  the result. When a live server reports a changed parameter is established only for the
+  recorded kernels below.
+- Literal escaping does not expand the identifier rule. Tests of later catalog questions
+  substitute only the COUNT/MAX table identifier to reach those questions with hostile names;
+  separate tests keep the real rule and its refusal order.
+- PostgreSQL `has_table_privilege(text, …)`, `has_any_column_privilege(text, …)` and
+  `to_regclass(text)` parse their relation-name argument after reading the literal.
+  On recorded PostgreSQL 16.15 and 9.4.26 runs, the two privilege functions raised
+  `InvalidName` (SQLSTATE 42602) for `public.mart\' OR 1=1 --`; `to_regclass` returned NULL
+  on 16.15 and raised `InvalidName` on 9.4.26. The collector does not treat 42602 as an
+  access refusal. A non-superuser's write-privilege questions precede presence, so such
+  an error can end collection before an absence fact. Superuser sessions skip those
+  questions; for the present mart the recorded collector reached readability and raised
+  `InvalidName` on PostgreSQL, and raised `UnsafeIdentifierError` on ClickHouse.
+- Recorded macOS runs before the connection changes used ClickHouse 24.8.14.39,
+  PostgreSQL 16.15 and the PostgreSQL 9.4.26 kernel, with PostgreSQL standard strings
+  both on and off. With the literal changes, every server-read literal equalled its
+  supplied name and `missing\' OR 1=1 --` was absent: zero literal or presence mismatches.
+  At `40052f9` there were 26 mismatches on ClickHouse plus PostgreSQL 16 and 15 on 9.4;
+  the absent name was found on ClickHouse and on both PostgreSQL kernels with standard
+  strings off.
+- Further recorded PostgreSQL 16.15 and 9.4.26 runs used superuser sessions in EUC_JP and
+  UTF8 databases, both with database-default standard strings off. At `40052f9`, the
+  EUC_JP connection reported EUC_JP/off: the absent `missing¥' OR 1=1 --` was found and
+  collection raised `SyntaxError` (42601). The absent `missing\¥' OR 1=1 --` was reported
+  absent, but its literals lost `¥` and read as `missing\' OR 1=1 --`. With only the first
+  literal changes, both absent names were found in EUC_JP and collection raised 42601.
+  In UTF8 both names were absent in both trees; at `40052f9`, the second name's literals
+  lost the backslash.
+- With the connection helper, those runs reported UTF8/on in both databases on both
+  kernels. In UTF8 both names were absent and every literal read back exactly. In EUC_JP,
+  every question containing `¥` raised `UntranslatableCharacter` (22P05): the UTF8 bytes
+  `0xc2 0xa5` have no equivalent in EUC_JP. Collection raised that error without returning
+  facts. The gate sets the client encoding; it does not change the database encoding.
+- Later recorded runs on both kernels asked the catalog callable, in each database,
+  `SELECT set_config('client_encoding', 'EUC_JP', false)` or
+  `SELECT set_config('standard_conforming_strings', 'off', false)` and then, on the same
+  callable, the presence question for the absent `missing¥' OR 1=1 --`. At `40052f9` and
+  with only the literal changes, the presence question was sent: after the encoding change
+  in either database and after the standard-strings change in the EUC_JP database it
+  returned the `pg_tables` rows of other tables (68 on 16.15, 58 on 9.4.26) instead of
+  none; after the standard-strings change in the UTF8 database it returned none. With the
+  per-statement check it was not sent: the callable raised the session error naming the
+  setting, the required value and the reported value.
+- On both kernels and in each database, capture through `make_postgres_result_query` was
+  also asked `SELECT set_config('client_encoding', 'LATIN1', true) AS changed, 'Ã©' AS value`
+  and `SELECT set_config('standard_conforming_strings', 'off', true) AS changed`. With the
+  check inside the capture's transaction, it raised the session error naming the setting for
+  both statements in the UTF8 database and for the standard-strings change in the EUC_JP
+  database; the EUC_JP database refused LATIN1 itself (`FeatureNotSupported`, 0A000), and
+  capture raised its query-error wrapper. No capture returned a result. At `40052f9`, and
+  with the final check after an autocommit statement whose own transaction had restored the
+  setting, the standard-strings capture returned `off` in both databases, and the encoding
+  capture in the UTF8 database returned `LATIN1` and `é` for the literal `Ã©`.
+- Escaping a Python string alone cannot preserve it through every client encoding:
+  Python `euc_jp` and `shift_jis` encode `¥` as byte `0x5c`. The gate fixes the client
+  encoding, not the database encoding. A supplied `RunQuery` is responsible for its own
+  session settings; this requirement does not cover other connections. PostgreSQL
+  generators and ClickHouse identifier generators are unchanged.
+- The test reader covers the emitted single-quoted forms, not arbitrary SQL. NUL-containing
+  names, dollar quoting, and SQL supplied as a complete reference query are outside this
+  literal requirement. The recorded 9.4.26 run covers the emitted E form; it does not
+  establish full Greenplum or Greengage compatibility.
+
+Tests: `tests/test_catalog_literals.py`, `tests/test_postgres_sessions.py`,
+`tests/test_environment_identifiers.py`.
+
 ## Requirement: a reading answers the question it was collected for
 
 The native collectors SHALL record on every table reading the event-time column of the question

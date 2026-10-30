@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -194,6 +195,12 @@ class FakeTransaction:
 
 class FakePostgres:
     def __init__(self, *, error: Exception | None = None) -> None:
+        self.info = SimpleNamespace(
+            parameter_status={
+                "client_encoding": "UTF8",
+                "standard_conforming_strings": "on",
+            }.get
+        )
         self.cursor_value = FakeCursor(error=error)
         self.transactions = 0
 

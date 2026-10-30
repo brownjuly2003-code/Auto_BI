@@ -40,7 +40,7 @@ FAILURES = (
     ]
     + [
         pytest.param("postgres", psycopg.OperationalError, stage, id=f"pg-{stage}")
-        for stage in ("connection", "query", "rows")
+        for stage in ("connection", "query", "rows", "commit")
     ]
     + [
         pytest.param("postgres", psycopg.errors.DataCorrupted, "rows", id="pg-data-corrupted"),
@@ -104,9 +104,30 @@ def _driver(
             fetchall=fetchall,
         )
 
+    @contextmanager
+    def transaction() -> Iterator[None]:
+        calls.append("begin")
+        try:
+            yield
+        except Exception:
+            calls.append("rollback")
+            raise
+        else:
+            fail_at("commit")
+
     def connect(**_kwargs: Any) -> SimpleNamespace:
         fail_at("connection")
-        return SimpleNamespace(query=ch_query, cursor=cursor)
+        return SimpleNamespace(
+            query=ch_query,
+            cursor=cursor,
+            transaction=transaction,
+            info=SimpleNamespace(
+                parameter_status={
+                    "client_encoding": "UTF8",
+                    "standard_conforming_strings": "on",
+                }.get
+            ),
+        )
 
     settings = Settings(_env_file=None)
     monkeypatch.setattr(config, "get_settings", lambda: settings)
@@ -168,29 +189,38 @@ def test_capture_driver_failure_is_one_line_without_a_partial_file(
     assert not output.parent.exists()
     expected_calls = ["connection"]
     if stage != "connection":
+        if engine != "clickhouse":
+            expected_calls.append("begin")
         expected_calls.append("query")
     if stage in {"metadata", "rows"}:
         expected_calls.append(stage)
+    if stage == "commit":
+        expected_calls.extend(["rows", "commit"])
+    elif engine != "clickhouse" and stage != "connection":
+        expected_calls.append("rollback")
     assert calls == expected_calls  # no retry, including after a partial stream
 
 
-@pytest.mark.parametrize("engine", ["clickhouse", "postgres"])
+@pytest.mark.parametrize(
+    "engine,stage", [("clickhouse", "rows"), ("postgres", "rows"), ("postgres", "commit")]
+)
 def test_adapter_reports_a_port_error_before_the_use_case_sees_it(
-    monkeypatch: pytest.MonkeyPatch, engine: str
+    monkeypatch: pytest.MonkeyPatch, engine: str, stage: str
 ) -> None:
     error = (
         StreamFailureError("lost\nresponse")
         if engine == "clickhouse"
         else psycopg.DataError("lost\nresponse")
     )
-    _driver(monkeypatch, engine, "rows", error)
+    _driver(monkeypatch, engine, stage, error)
     factory = make_clickhouse_result_query if engine == "clickhouse" else make_postgres_result_query
     run_query = factory(Settings(_env_file=None))
 
     with pytest.raises(ResultCaptureError) as raised:
         run_query(REFERENCE_SQL)
 
-    assert str(raised.value).endswith(f"{type(error).__name__}: lost response")
+    family = "ClickHouse" if engine == "clickhouse" else "PostgreSQL"
+    assert str(raised.value) == f"{family} query failed: {type(error).__name__}: lost response"
 
 
 @pytest.mark.parametrize(
@@ -228,4 +258,8 @@ def test_answered_capture_keeps_its_canonical_result(
     recorded = yaml.safe_load(output.read_text(encoding="utf-8"))[ASSET_ID]
     assert recorded["result"]["rows"] == [["Москва", "0.412"]]
     assert recorded["attestation"]["captured_at"] == CREATED_AT
-    assert calls == ["connection", "query", "rows"]
+    assert calls == (
+        ["connection", "query", "rows"]
+        if engine == "clickhouse"
+        else ["connection", "begin", "query", "rows", "commit"]
+    )

@@ -16,6 +16,7 @@ from time import perf_counter_ns
 from typing import TYPE_CHECKING, Any
 
 from auto_bi.agent.sql_guard import guard_sql
+from auto_bi.postgres import check_postgres_session, connect_postgres
 from auto_bi.verification.environment import CostBound, ExecutionFacts, PlanQuestion
 
 if TYPE_CHECKING:
@@ -59,7 +60,6 @@ def make_clickhouse_runtime_probe(settings: Settings) -> RuntimeCostProbe:
 
 def make_postgres_runtime_probe(settings: Settings) -> RuntimeCostProbe:
     """Build a lazy PostgreSQL-family exact-query timeout probe."""
-    import psycopg
     from psycopg.errors import QueryCanceled
 
     connection: Any | None = None
@@ -71,7 +71,7 @@ def make_postgres_runtime_probe(settings: Settings) -> RuntimeCostProbe:
         if question.budgets.timeout_ms is None:
             return _postgres_execution(None, question, cancelled_error=QueryCanceled)
         if connection is None:
-            connection = psycopg.connect(
+            connection = connect_postgres(
                 host=settings.gp_host,
                 port=settings.gp_port,
                 dbname=settings.gp_database,
@@ -191,9 +191,13 @@ def _postgres_execution(
     timeout_cap_ms, timeout_is_contract = _timeout_cap(timeout)
     started = perf_counter_ns()
     try:
+        check_postgres_session(connection)
         with connection.transaction(), connection.cursor() as cursor:
+            check_postgres_session(connection)
             cursor.execute("SET TRANSACTION READ ONLY")
+            check_postgres_session(connection)
             cursor.execute(f"SET LOCAL statement_timeout = {timeout_cap_ms}")
+            check_postgres_session(connection)
             for _row in cursor.stream(question.sql, size=1):
                 pass
     except cancelled_error as exc:

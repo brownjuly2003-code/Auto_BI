@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from auto_bi.agent.sql_guard import guard_sql
 from auto_bi.engine import CLICKHOUSE, GREENPLUM, sqlglot_dialect
+from auto_bi.postgres import check_postgres_session, connect_postgres
 from auto_bi.scalars import Sha256Digest, Timestamp
 from auto_bi.verification.provenance import ResultAttestation, ResultOrigin
 from auto_bi.verification.reconcile import ColumnSchema, ColumnType, ResultSet
@@ -139,11 +140,18 @@ def make_clickhouse_result_query(settings: Settings) -> ResultQuery:
 
 
 def make_postgres_result_query(settings: Settings) -> ResultQuery:
-    """Build the metadata-preserving PostgreSQL-family capture callable."""
+    """Capture metadata and rows with session checks before and inside its transaction.
+
+    Check before BEGIN, before execute, and after reading the result, before the
+    transaction ends. A setting changed and restored within the statement is not detected.
+    Transaction exit sends COMMIT or ROLLBACK without another session check on an open
+    connection. A refusal closes the connection, so exit sends neither command, and
+    keeps the connection-error wrapper.
+    """
     import psycopg
 
     try:
-        connection = psycopg.connect(
+        connection = connect_postgres(
             host=settings.gp_host,
             port=settings.gp_port,
             dbname=settings.gp_database,
@@ -154,26 +162,39 @@ def make_postgres_result_query(settings: Settings) -> ResultQuery:
     except psycopg.Error as exc:
         raise ResultCaptureError(f"PostgreSQL connection failed: {_driver_reason(exc)}") from None
 
-    def run(sql: str) -> QueryResult:
+    def check_session() -> None:
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(sql)
-                description = cursor.description
-                if description is None:
-                    raise ResultCaptureError("a reviewed SELECT returned no column metadata")
-                return QueryResult(
-                    columns=tuple(
-                        QueryColumn(
-                            column.name,
-                            column.type_display,
-                            nullable=column.null_ok,
-                        )
-                        for column in description
-                    ),
-                    rows=tuple(tuple(row) for row in cursor.fetchall()),
-                )
+            check_postgres_session(connection)
+        except psycopg.Error as exc:
+            raise ResultCaptureError(
+                f"PostgreSQL connection failed: {_driver_reason(exc)}"
+            ) from None
+
+    def run(sql: str) -> QueryResult:
+        check_session()
+        try:
+            with connection.transaction():
+                check_session()
+                with connection.cursor() as cursor:
+                    cursor.execute(sql)
+                    description = cursor.description
+                    if description is None:
+                        raise ResultCaptureError("a reviewed SELECT returned no column metadata")
+                    result = QueryResult(
+                        columns=tuple(
+                            QueryColumn(
+                                column.name,
+                                column.type_display,
+                                nullable=column.null_ok,
+                            )
+                            for column in description
+                        ),
+                        rows=tuple(tuple(row) for row in cursor.fetchall()),
+                    )
+                check_session()
         except psycopg.Error as exc:
             raise ResultCaptureError(f"PostgreSQL query failed: {_driver_reason(exc)}") from None
+        return result
 
     return run
 

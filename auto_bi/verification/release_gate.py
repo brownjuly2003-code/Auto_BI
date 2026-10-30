@@ -574,7 +574,17 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: path it was reached by: the same files given by another spelling of the paths, or from
 #: another checkout directory, gave another report and run id once an issue named a file,
 #: and a path that is not there, given twice, was two issues.
-VERIFIER_VERSION = "121"
+#: 122 — catalog values preserve backslashes as well as quotes: ClickHouse database
+#: and table names use its string escaping, and PostgreSQL values containing a backslash
+#: use E strings. Gate PostgreSQL connections request and check UTF8 client encoding
+#: and standard_conforming_strings=on before each explicit execute or stream and transaction
+#: start. Capture also checks after reading its result inside its explicit transaction,
+#: detecting local changes still in effect then. Transaction exit has no separate check;
+#: changes restored within a statement are not detected. Earlier sessions could change
+#: characters during encoding or interpret plain-string backslashes; questions could name
+#: another object, gain a condition or fail to parse, changing facts or captured results.
+#: A changed session now refuses the next statement or captured result.
+VERIFIER_VERSION = "122"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

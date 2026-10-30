@@ -92,6 +92,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-30 — T-126: значения каталогов — литералы на CH и PG (`_ch_literal`, `E'…'`); три
+  PG-соединения gate — UTF8 и standard strings on, проверка точных значений при подключении, перед
+  явным execute/stream и транзакцией, capture — ещё и внутри своей транзакции. Verifier 122 / check
+  80; мутанты 31 из 33 (два эквивалентны); Windows 2285, Mac 2284 passed ×3. Ревью Astra: P1, P2 и
+  P3 исправлены; повторное — P1/P2 нет, два P3 исправлены.
 - 2026-10-30 — T-125: issue validation называет файл местом аргумента и именами под ним
   (`$1/notes/x.yaml`), а не текстом пути: шесть написаний одних контрактов — один run id, Windows
   и macOS тоже; непрочитанный путь — один issue. Verifier 121 / check 80; bundle 120 читается.
@@ -101,11 +106,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   `freshness.event_time_zone_unknown`; позже `created_at` — `freshness.event_time_ahead`; прочее —
   unreadable; сверено с живыми CH 24.8 и PG 16. Verifier 120 / check 80; мутанты 38/38 и 3/3;
   Mac gate 7473 passed (1 — perf под нагрузкой). Ревью Astra: P2 и P3, повторное — 3 P3; исправлены.
-- 2026-10-29 — T-123: ответ `decision` validate/verify/evidence/runs и отказ argparse на строке
-  `decision` — по строке на строку: значение извне (имя файла, ключ, detail, версия и caveat
-  bundle, `--expect-digest`, run) — через `_one_line`, `--json` прежний. Verifier 119 / check 79;
-  мутанты 25 из 26 (26-й эквивалентен), argparse 12/12, правок ревью 12/12; Mac gate 7268 passed.
-  Ревью Astra: P1 и P2 исправлены, повторное — P2 и P3 исправлены.
 
 ## Definition of done (фаза/задача)
 
