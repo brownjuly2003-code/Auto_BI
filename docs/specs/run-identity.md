@@ -320,12 +320,19 @@ verifiers derived.
   another product was graded on this product's run. Since verifier 92 the check seals such an
   issue apart and does not grade it
   ([the validation issues a run grades](validation-issue-scope.md)); the run id still moves.
-- A file-level issue of the validation report names its file by the path it was read from. The
-  same contracts read from another directory are then another report, another
-  `contracts.validate` artifact — as before — and another run id. Read from the same relative
-  path, they are one report on every system since verifier 118: the path is written with `/`,
-  and what a directory holds is read in one order
-  ([validation report paths](validation-report-paths.md)).
+- A file-level issue of the validation report names its file. Since verifier 118 the name is
+  written with `/`, and what a directory holds is read in one order, on every system
+  ([validation report paths](validation-report-paths.md)). Since verifier 121 the name is the
+  place of the validated path that read the file and the names below it: the same contracts read
+  from another directory, or by another spelling of the paths, are one report and, where nothing
+  else the run reads differs, one run id, except for an invalid file's subject without a declared
+  id and paths without an identity whose absolute texts differ
+  ([validated path names](validated-path-names.md)). Another argument order can change issue
+  names or issue order, and then the report and run id. With no path-naming issues the report
+  stays the same: product and metric refs are sorted, and product rules follow product id order.
+  Under verifiers 118 to 120 the name was the path the
+  file was read from, and another directory was another report, another `contracts.validate`
+  artifact and another run id.
 - `decision verify` hands the gate the dashboard specs the product pins and the verified assets
   that name one of its metrics. A file outside that selection does not reach the gate and does
   not move the run id.

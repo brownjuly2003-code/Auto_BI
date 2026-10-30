@@ -143,11 +143,11 @@ on a stream that encodes every character of an answer, the answer is printed as 
 ### Scenario: each command answers on a stream that encodes less
 
 - **GIVEN** the fixture under a directory named in Cyrillic and an arrow, and one of: `decision
-  validate` with a path that is not there; `decision verify` of a run that passes; `decision
-  verify` whose base is not there; `decision capture`; `decision capture` whose candidate is
-  not there; `decision investigate`; `decision investigate` whose plan is not there; `decision
-  evidence` over a bundle with a caveat in Cyrillic; `decision evidence` over a path that is
-  not there
+  validate` with a directory holding a file that is no contract, named as that directory is;
+  `decision verify` of a run that passes; `decision verify` whose base is not there; `decision
+  capture`; `decision capture` whose candidate is not there; `decision investigate`; `decision
+  investigate` whose plan is not there; `decision evidence` over a bundle with a caveat in
+  Cyrillic; `decision evidence` over a path that is not there
 - **WHEN** the command runs on streams of ASCII, Latin-1, cp1252, cp1251 or UTF-8
 - **THEN** it exits as it does on streams that take every character — 4, 0, 2, 0, 2, 0, 2, 0
   and 2 — and each stream holds what such a stream holds, with each character it cannot encode
@@ -155,11 +155,13 @@ on a stream that encodes every character of an answer, the answer is printed as 
 - **AND** the run leaves the same files: the bundle, the result file, the four artifacts, or
   none
 - **AND** each of the nine answers holds a character ASCII has no form for: the directory, the
-  caveat, or the section sign of a detail
+  name of that file — `$2/данные→v2.yaml`, the place of the path it was found under and its own
+  name ([validated path names](validated-path-names.md)) — the caveat, or the section sign of a
+  detail
 
 ### Scenario: a JSON answer is the same document on a stream that encodes less
 
-- **GIVEN** the same fixture and `decision validate --json` with a path that is not there,
+- **GIVEN** the same fixture and `decision validate --json` with that directory,
   `decision verify --json` of a run that passes or `decision evidence --json` over the bundle
   with the caveat
 - **WHEN** the command runs on streams of ASCII, Latin-1, cp1252, cp1251 or UTF-8
@@ -178,12 +180,17 @@ on a stream that encodes every character of an answer, the answer is printed as 
 
 ### Scenario: a path with a lone surrogate is named on a stream of UTF-8
 
-- **GIVEN** `decision validate`, with or without `--json`, over the contracts and a path that
-  holds U+DCFF or U+D800
+- **GIVEN** `decision validate`, with or without `--json`, over the contracts and a directory
+  holding a file that is no contract and whose name holds U+DCFF or U+D800, where the
+  filesystem takes such a name
 - **WHEN** it runs on streams of strict UTF-8
-- **THEN** it exits 4 with nothing on standard error; the lines name the path with
+- **THEN** it exits 4 with nothing on standard error; the lines name the file,
+  `$2/no<the character>.yaml`, with
   `\udcff` or `\ud800` for the surrogate, and the JSON answer is ASCII and the same
   document
+- **AND** a validated path that holds U+DCFF or U+D800, not there, is named `$2`: nothing of its
+  text is in the answer, and the answer on a stream of strict UTF-8 is the one on a stream that
+  takes every character ([validated path names](validated-path-names.md))
 
 ### Scenario: an artifact the stream encodes is printed as it is
 
@@ -219,8 +226,8 @@ on a stream that encodes every character of an answer, the answer is printed as 
 
 ### Scenario: a process whose streams encode ASCII exits by the verdict
 
-- **GIVEN** `decision validate` over the contracts and a path that is not there, as a process
-  with `PYTHONIOENCODING=ascii`
+- **GIVEN** `decision validate` over the contracts and the directory holding the file that is no
+  contract, as a process with `PYTHONIOENCODING=ascii`
 - **WHEN** it ends
 - **THEN** its exit code is 4, standard error is empty and standard output holds the lines of
   the report with the escapes

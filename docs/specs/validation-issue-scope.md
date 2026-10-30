@@ -44,7 +44,9 @@ The validation rules answer for one product at a time and write the ref of that 
 `dimension.not_allowed`, `metric.retired`, `metric.draft`, `metric.deprecated` and
 `policy.mismatch`. Nothing the rules say of one product carries the ref of another. An issue of
 loading a file — `contract.unreadable`, `contract.unknown_kind`, `contract.invalid`,
-`contract.duplicate_id` — carries the path of the file as its `source` and is no product's.
+`contract.duplicate_id` — carries the name of the file as its `source`: the place of the
+validated path that reached it and the names below it
+([validated path names](validated-path-names.md)). It is no product's.
 
 An issue of the validation report is *another product's* when the report lists the product under
 verification among its `products`, lists the issue's `source` there as well, and the two refs
@@ -181,7 +183,7 @@ the verified product unless a scenario says otherwise.
   second file defining a metric no product pins (`contract.duplicate_id`)
 - **WHEN** the gate runs
 - **THEN** in each case `contracts.validate` is block with `contracts.issues`, the payload's
-  `issues` is that one issue with the path of the file as its source, `other_product_issues` is
+  `issues` is that one issue with the name of the file as its source, `other_product_issues` is
   empty and the detail has no clause about other products
 
 ### Scenario: a path that does not exist is graded, however it is spelled
@@ -190,7 +192,8 @@ the verified product unless a scenario says otherwise.
   spelled `decision://sales/monthly_margin@1`
 - **WHEN** the gate runs
 - **THEN** `contracts.validate` is block with one issue `contract.unreadable`, in `issues`: its
-  source is the path as the loader writes it, which is not the ref of a product
+  source is `$2`, the place of the path among the paths given, which is never the ref of a
+  product (under verifiers 118 to 120, the path as the loader wrote it)
 
 ### Scenario: the issues keep the report's order on both sides
 

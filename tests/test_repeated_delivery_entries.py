@@ -145,7 +145,7 @@ def test_decision_validate_blocks_on_the_repeat(
     (issue,) = report.issues
     assert issue.severity is Severity.BLOCK
     assert issue.subject == PRODUCT_ID
-    assert issue.source == (case.contracts / "weekly_margin.yaml").as_posix()
+    assert issue.source == "$1/weekly_margin.yaml"
     assert issue.message == REPEATED
     assert report.verdict is Verdict.BLOCK
     assert report.products == []
@@ -204,7 +204,7 @@ def test_verify_refuses_the_product_before_anything_is_written(
     # The refusal names the product and what its schema refused (schema-refused-products).
     named = (
         f"1 decision product(s) failed the schema: '{PRODUCT_ID}' in "
-        f"{(case.contracts / 'weekly_margin.yaml').as_posix()} ({REPEATED})"
+        f"$1/weekly_margin.yaml ({REPEATED})"
     )
 
     assert _refused(case) == f"{NO_PRODUCT}; {named}"

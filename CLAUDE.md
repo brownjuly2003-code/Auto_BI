@@ -92,6 +92,10 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-10-30 — T-125: issue validation называет файл местом аргумента и именами под ним
+  (`$1/notes/x.yaml`), а не текстом пути: шесть написаний одних контрактов — один run id, Windows
+  и macOS тоже; непрочитанный путь — один issue. Verifier 121 / check 80; bundle 120 читается.
+  Мутанты 24/24; Mac gate 7500 passed. Ревью Astra: четыре P2 исправлены, повторное — P3 исправлено.
 - 2026-10-29 — T-124: самое свежее время события — день, часы без зоны или UTC-момент: проба пишет
   мгновение один раз, в UTC с `Z`; день и часы — в единственной зоне метрик (`fold=0`), иначе
   `freshness.event_time_zone_unknown`; позже `created_at` — `freshness.event_time_ahead`; прочее —
@@ -102,11 +106,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   bundle, `--expect-digest`, run) — через `_one_line`, `--json` прежний. Verifier 119 / check 79;
   мутанты 25 из 26 (26-й эквивалентен), argparse 12/12, правок ревью 12/12; Mac gate 7268 passed.
   Ревью Astra: P1 и P2 исправлены, повторное — P2 и P3 исправлены.
-- 2026-10-28 — T-122: symlink в `metrics/` читается как его текст — то, что коммитит git, — а не
-  насквозь: один коммит — один snapshot при `core.symlinks` true и false (клоны на Windows и
-  macOS), и один run id, пока validated paths и verified assets не читают ссылок; hard link —
-  копия. Verifier 119 / check 79; из 14 мутантов 12 ловятся на Windows, два на Mac; полный
-  Windows gate 7161 passed, exit 0. Ревью Astra: два P2 и P3 исправлены, повторное — тоже.
 
 ## Definition of done (фаза/задача)
 

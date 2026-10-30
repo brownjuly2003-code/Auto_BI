@@ -388,9 +388,9 @@ def test_the_issues_keep_the_reports_order_on_both_sides(tmp_path: Path) -> None
         _issue(
             "contract.unreadable",
             "block",
-            notes.as_posix(),
+            f"$1/{notes.name}",
             "contract file must contain a YAML mapping",
-            notes.as_posix(),
+            f"$1/{notes.name}",
         ),
         _undeclared("store", VERIFIED),
     ]
@@ -528,20 +528,20 @@ def test_an_issue_of_loading_a_file_is_graded_whatever_the_file_holds(
     assert detail_of(report, "contracts.validate") == _detail(1, metrics=metrics)
     payload = _payload(case, report)
     assert [(issue["code"], issue["source"]) for issue in payload["issues"]] == [
-        (code, path.as_posix())
+        (code, f"$1/{path.name}")
     ]
     assert payload["other_product_issues"] == []
     assert report.verdict is Verdict.BLOCK
 
 
 def test_a_path_that_does_not_exist_is_graded_however_it_is_spelled(tmp_path: Path) -> None:
+    """A validated path is named by its place, never by its text (validated-path-names): given
+    as the other product's ref word for word, its issue is still graded."""
     case = _two_products(tmp_path)
-    spelled = Path(OTHER)
-    assert spelled.as_posix() != OTHER
 
     report = verify(
         VerifyRequest(
-            contract_paths=[case.contracts, spelled],
+            contract_paths=[case.contracts, OTHER],
             base=case.base,
             candidate=case.candidate,
             evidence_dir=tmp_path / "evidence",
@@ -555,13 +555,7 @@ def test_a_path_that_does_not_exist_is_graded_however_it_is_spelled(tmp_path: Pa
     payload = _payload(case, report)
     assert payload["products"] == [OTHER, VERIFIED]
     assert payload["issues"] == [
-        _issue(
-            "contract.unreadable",
-            "block",
-            spelled.as_posix(),
-            "path does not exist",
-            spelled.as_posix(),
-        )
+        _issue("contract.unreadable", "block", "$2", "path does not exist", "$2")
     ]
     assert payload["other_product_issues"] == []
 

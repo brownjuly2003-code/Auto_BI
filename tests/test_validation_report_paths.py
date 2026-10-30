@@ -8,8 +8,10 @@ without case. The same files read on Windows and on POSIX gave issues in other w
 another order, and of an id two files define the run was handed the other contract: another
 report, another run.
 
-Now the report names a file by its path with `/` between the names, and takes what a validated
-directory holds in the order of its paths, name by name, by code point with case.
+Now the report names a file with `/` between the names, and takes what a validated directory
+holds in the order of its paths, name by name, by code point with case. The names are those of
+docs/specs/validated-path-names.md: the place of the validated path that reached the file, `$1`
+for the first, then the names below it.
 """
 
 from __future__ import annotations
@@ -81,9 +83,13 @@ def test_an_issue_of_a_file_names_it_with_a_slash_between_the_names(
     monkeypatch.chdir(tmp_path)
     _write(Path("contracts", "sub", "x.yaml"), text)
 
-    for given in (Path("contracts"), "contracts", Path("contracts", "sub", "x.yaml")):
+    for given, name in (
+        (Path("contracts"), "$1/sub/x.yaml"),
+        ("contracts", "$1/sub/x.yaml"),
+        (Path("contracts", "sub", "x.yaml"), "$1"),
+    ):
         issues = validate_paths([given]).issues
-        assert [(issue.code, issue.source) for issue in issues] == [(code, "contracts/sub/x.yaml")]
+        assert [(issue.code, issue.source) for issue in issues] == [(code, name)]
 
 
 def test_the_file_that_defines_an_id_again_is_named_with_a_slash(
@@ -95,7 +101,7 @@ def test_the_file_that_defines_an_id_again_is_named_with_a_slash(
 
     issues = validate_paths([Path("contracts")]).issues
     assert [(issue.code, issue.subject, issue.source) for issue in issues] == [
-        ("contract.duplicate_id", METRIC_ID, "contracts/sub/b.yaml")
+        ("contract.duplicate_id", METRIC_ID, "$1/sub/b.yaml")
     ]
 
 
@@ -104,19 +110,15 @@ def test_the_file_that_defines_an_id_again_is_named_with_a_slash(
     [Path("contracts", "sub", "gone.yaml"), "contracts/sub/gone.yaml"],
     ids=["path", "text"],
 )
-def test_a_path_that_is_not_there_is_named_with_a_slash(
+def test_a_path_that_is_not_there_is_named_by_its_place(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, given: Path | str
 ) -> None:
     monkeypatch.chdir(tmp_path)
     [issue] = validate_paths([given]).issues
-    assert (issue.subject, issue.source, issue.message) == (
-        "contracts/sub/gone.yaml",
-        "contracts/sub/gone.yaml",
-        "path does not exist",
-    )
+    assert (issue.subject, issue.source, issue.message) == ("$1", "$1", "path does not exist")
 
 
-def test_a_path_that_may_not_be_looked_at_is_named_with_a_slash(
+def test_a_path_that_may_not_be_looked_at_is_named_by_its_place(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
@@ -126,8 +128,8 @@ def test_a_path_that_may_not_be_looked_at_is_named_with_a_slash(
     [issue] = validate_paths([path]).issues
     assert (issue.code, issue.subject, issue.source, issue.message) == (
         "contract.unreadable",
-        "contracts/sub/x.yaml",
-        "contracts/sub/x.yaml",
+        "$1",
+        "$1",
         "cannot look at path: PermissionError",
     )
 
@@ -141,19 +143,16 @@ def test_a_directory_that_cannot_be_listed_is_named_with_a_slash(
     _deny_listing(monkeypatch, denied)
 
     [issue] = validate_paths([Path("contracts")]).issues
-    assert (issue.subject, issue.source, issue.message) == (
-        "contracts/sub/deep",
-        "contracts/sub/deep",
-        UNLISTED,
-    )
+    assert (issue.subject, issue.source, issue.message) == ("$1/sub/deep", "$1/sub/deep", UNLISTED)
 
 
-def test_an_absolute_path_is_named_with_a_slash_between_its_names(tmp_path: Path) -> None:
-    path = _write(tmp_path / "contracts" / "sub" / "x.yaml", NOPE)
+def test_a_file_under_an_absolute_path_is_named_with_a_slash_between_its_names(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path / "contracts" / "sub" / "x.yaml", NOPE)
 
     [source] = _sources([tmp_path / "contracts"])
-    assert source == path.as_posix()
-    assert "\\" not in source
+    assert source == "$1/sub/x.yaml"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="a name on Windows holds no backslash")
@@ -165,7 +164,7 @@ def test_a_backslash_a_name_holds_is_kept_in_it(
     monkeypatch.chdir(tmp_path)
     _write(Path("contracts", "a\\b.yaml"), NOPE)
 
-    assert _sources([Path("contracts")]) == ["contracts/a\\b.yaml"]
+    assert _sources([Path("contracts")]) == ["$1/a\\b.yaml"]
 
 
 def test_a_product_its_schema_refused_is_named_with_a_slash(
@@ -176,9 +175,9 @@ def test_a_product_its_schema_refused_is_named_with_a_slash(
 
     loaded = load_contracts([Path("contracts")])
     [refused] = loaded.refused_products
-    assert refused.source == "contracts/sub/weekly_margin.yaml"
+    assert refused.source == "$1/sub/weekly_margin.yaml"
     assert [(issue.code, issue.source) for issue in loaded.report.issues] == [
-        ("contract.invalid", "contracts/sub/weekly_margin.yaml")
+        ("contract.invalid", "$1/sub/weekly_margin.yaml")
     ]
 
 
@@ -192,7 +191,7 @@ def test_a_run_that_cannot_find_its_product_names_the_refused_file_with_a_slash(
     case.contracts = Path("contracts")
 
     assert _refused(case, product_id=PRODUCT_ID).endswith(
-        f"'{PRODUCT_ID}' in contracts/sub/weekly_margin.yaml ({REPEATED})"
+        f"'{PRODUCT_ID}' in $1/sub/weekly_margin.yaml ({REPEATED})"
     )
 
 
@@ -203,10 +202,10 @@ def test_decision_validate_prints_the_report_that_names_files_with_a_slash(
     _write(Path("contracts", "sub", "x.yaml"), NOPE)
 
     assert main(["decision", "validate", "contracts"]) == EXIT_ERROR
-    assert f"{'':<8} {UNKNOWN_KIND} [contracts/sub/x.yaml]\n" in capsys.readouterr().out
+    assert f"{'':<8} {UNKNOWN_KIND} [$1/sub/x.yaml]\n" in capsys.readouterr().out
     assert main(["decision", "validate", "contracts", "--json"]) == EXIT_ERROR
     [issue] = json.loads(capsys.readouterr().out)["issues"]
-    assert issue["source"] == "contracts/sub/x.yaml"
+    assert issue["source"] == "$1/sub/x.yaml"
 
 
 # --- what a directory holds, in the order of its paths -------------------------------------
@@ -222,12 +221,12 @@ def test_what_a_directory_holds_is_taken_in_the_order_of_its_paths(
         _write(Path("contracts", name), NOPE)
 
     assert _sources([Path("contracts")]) == [
-        "contracts/B.yaml",
-        "contracts/a.yaml",
-        "contracts/sub/Y.yaml",
-        "contracts/sub/x.yaml",
-        "contracts/sub-x.yaml",
-        "contracts/sub.yaml",
+        "$1/B.yaml",
+        "$1/a.yaml",
+        "$1/sub/Y.yaml",
+        "$1/sub/x.yaml",
+        "$1/sub-x.yaml",
+        "$1/sub.yaml",
     ]
 
 
@@ -243,7 +242,7 @@ def test_names_only_case_tells_apart_stand_by_code_point_where_case_is_kept(
     for name in ("m.yaml", "M.yaml"):
         _write(contracts / name, NOPE)
 
-    assert _sources([contracts]) == ["contracts/M.yaml", "contracts/m.yaml"]
+    assert _sources([contracts]) == ["$1/M.yaml", "$1/m.yaml"]
 
 
 @pytest.mark.parametrize(
@@ -264,7 +263,7 @@ def test_a_name_is_compared_as_it_is_listed_not_as_a_normal_form(
     if name not in os.listdir("contracts"):
         pytest.skip("this filesystem hands back another normal form than was written")
 
-    pair = [f"contracts/{name}", "contracts/f.yaml"]
+    pair = [f"$1/{name}", "$1/f.yaml"]
     assert _sources([Path("contracts")]) == (pair[::-1] if f_first else pair)
 
 
@@ -277,9 +276,9 @@ def test_the_paths_given_keep_their_order_and_each_directory_its_own(
         _write(Path("contracts", name), NOPE)
 
     assert _sources([Path("contracts", "z"), Path("contracts", "a")]) == [
-        "contracts/z/B.yaml",
-        "contracts/z/a.yaml",
-        "contracts/a/x.yaml",
+        "$1/B.yaml",
+        "$1/a.yaml",
+        "$2/x.yaml",
     ]
 
 
@@ -300,7 +299,7 @@ def test_of_an_id_two_files_define_the_one_first_in_that_order_is_kept(
     loaded = load_contracts([Path("contracts")])
     assert loaded.metrics[METRIC_ID].metadata.owner == "team-kept"
     assert [(issue.code, issue.source) for issue in loaded.report.issues] == [
-        ("contract.duplicate_id", f"contracts/{again}")
+        ("contract.duplicate_id", f"$1/{again}")
     ]
 
 
@@ -313,12 +312,7 @@ def test_directories_that_cannot_be_listed_are_named_in_the_order_of_their_paths
         Path("contracts", name).mkdir(parents=True)
     _deny_listing(monkeypatch, *(Path("contracts", name) for name in names))
 
-    assert _sources([Path("contracts")]) == [
-        "contracts/B",
-        "contracts/a",
-        "contracts/sub/deep",
-        "contracts/sub-x",
-    ]
+    assert _sources([Path("contracts")]) == ["$1/B", "$1/a", "$1/sub/deep", "$1/sub-x"]
 
 
 def test_products_its_schema_refused_are_named_in_the_order_of_their_paths(
@@ -329,7 +323,7 @@ def test_products_its_schema_refused_are_named_in_the_order_of_their_paths(
         _write_yaml(Path("contracts", name), _delivering_twice())
 
     refused = load_contracts([Path("contracts")]).refused_products
-    assert [product.source for product in refused] == ["contracts/B.yaml", "contracts/a.yaml"]
+    assert [product.source for product in refused] == ["$1/B.yaml", "$1/a.yaml"]
 
 
 # --- the run ---------------------------------------------------------------------------------
@@ -349,8 +343,8 @@ def test_the_run_seals_the_report_that_names_files_with_a_slash_in_their_order(
     assert status_of(report, "contracts.validate") is CheckStatus.BLOCK
     payload = _check_payload(tmp_path, report, "contracts.validate")
     assert [(issue["code"], issue["source"]) for issue in payload["issues"]] == [
-        ("contract.unknown_kind", "contracts/notes/B.yaml"),
-        ("contract.unknown_kind", "contracts/notes/a.yaml"),
+        ("contract.unknown_kind", "$1/notes/B.yaml"),
+        ("contract.unknown_kind", "$1/notes/a.yaml"),
     ]
 
 

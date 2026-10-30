@@ -165,8 +165,8 @@ def test_validate_names_a_file_it_found_in_one_line(tmp_path: Path, name: str, s
 
     (issue,) = document["issues"]
     assert issue["subject"] == issue["source"]
-    assert issue["subject"].endswith("/" + name)
-    shown = issue["subject"].removesuffix(name) + said
+    assert issue["subject"] == f"$1/{name}"
+    shown = f"$1/{said}"
     assert _lines(out) == [
         f"block    contract.unreadable        {shown}",
         f"         contract file must contain a YAML mapping [{shown}]",
@@ -190,6 +190,7 @@ def test_validate_spells_a_key_that_reads_as_a_verdict(tmp_path: Path) -> None:
 
     (issue,) = document["issues"]
     assert issue["message"] == "x" + FORGED + ": Extra inputs are not permitted"
+    assert issue["source"] == "$1/weekly_margin.yaml"
     assert _lines(out) == [
         "block    contract.invalid           decision://sales/weekly_margin",
         f"         x{FORGED_SAID}: Extra inputs are not permitted [{issue['source']}]",

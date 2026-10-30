@@ -100,7 +100,7 @@ def test_invalid_json_in_directory_is_not_silently_ignored(tmp_path, content, co
     report = validate_paths([root])
     assert report.verdict is Verdict.BLOCK
     assert codes(report) == [code]
-    assert report.issues[0].source == invalid.as_posix()
+    assert report.issues[0].source == f"$1/{invalid.name}"
 
 
 def test_json_duplicate_of_yaml_contract_blocks(tmp_path):

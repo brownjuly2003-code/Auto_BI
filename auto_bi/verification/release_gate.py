@@ -567,7 +567,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: (`freshness.event_time_zone_unknown`) and a reading after `created_at`
 #: (`freshness.event_time_ahead`) are review, and text in none of the forms is
 #: `freshness.unreadable_event_time`.
-VERIFIER_VERSION = "120"
+#: 121 — an issue of the validation report names a file by the place of the validated path
+#: that reached it, `$1` for the first path given, and the names below that path —
+#: `$1/notes/x.yaml` — never by the text of that path; a path that cannot be gone through is
+#: one issue, however many validated paths reach it. Earlier verifiers named the file by the
+#: path it was reached by: the same files given by another spelling of the paths, or from
+#: another checkout directory, gave another report and run id once an issue named a file,
+#: and a path that is not there, given twice, was two issues.
+VERIFIER_VERSION = "121"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

@@ -35,15 +35,20 @@ folds case; a symbolic link to a file, a directory reached through a link, a har
 not told by the text of its path: text that differs can name one file, and text made alike by
 folding `..` can name two.
 
-Two paths of one text — as `pathlib` writes it, `.` and doubled separators dropped, case kept —
-SHALL be one file as well, whether a look gives either an identity or not; and a path that is one
-file with another by identity is one file with every path of its text. A path without an identity
-— not there, refused a look, on a filesystem that reports the file number `0`, or a named stream
-of a file on Windows (`name:stream`), which the filesystem numbers as its file — SHALL be one file
-with a path of its own text only: text in another case is another path even where the filesystem
-folds case, so such a file can be read twice, never two files read once. Two files of equal bytes
-SHALL stay two files: an id they both define is `contract.duplicate_id`, with the path of the one
-read second as its `source`, as before.
+Two paths of one absolute text — the path as `pathlib` writes it, `.` and doubled separators
+dropped, with the working directory or the drive's put before it where it is relative, `..` and
+case kept (since verifier 121; before it, the text as given:
+[validated path names](validated-path-names.md)) — SHALL be one file as well, whether a look gives
+either an identity or not; and a path that is one file with another by identity is one file with
+every path of its absolute text. A path without an identity — not there, refused a look, on a
+filesystem that reports the file number `0`, or a named stream of a file on Windows
+(`name:stream`), which the filesystem numbers as its file — SHALL be one file with a path of its
+own absolute text only: text in another case, or through `..`, is another path even where the
+filesystem folds case or the two lead to one file, so such a file can be read twice, never two
+files read once. Two files of equal bytes SHALL stay two files: an id they both define is
+`contract.duplicate_id`, with the name of the one read second as its `source`, as before.
+This is the file reading order; issues of paths that could not be gone through precede file
+issues, and product rules follow them ([validated path names](validated-path-names.md)).
 
 ### Scenario: a directory and a file in it
 
@@ -83,8 +88,17 @@ read second as its `source`, as before.
 - **GIVEN** the directory of the first scenario and a directory `copy` holding a byte-for-byte
   copy of the metric contract's file
 - **WHEN** both directories are validated
-- **THEN** the report holds one issue, `contract.duplicate_id` with the copy's path as its
-  `source`, and its verdict is `block`
+- **THEN** the report holds one issue, `contract.duplicate_id` with the copy's name,
+  `$2/gross_margin_pct.yaml`, as its `source`, and its verdict is `block`
+
+### Scenario: one file number on two devices
+
+- **GIVEN** two files declaring the same metric contract id, `filesystem.file_identity` giving
+  `(1, 7)` for the first and `(2, 7)` for the second
+- **WHEN** `validate_paths` is given the two files themselves, in that order
+- **THEN** both are read, and the report holds one `contract.duplicate_id` with `source` `$2`
+- **AND** `test_files_with_one_number_on_two_devices_are_both_read` in
+  `tests/test_contract_files_once.py` pins the device in the key used to take files once
 
 ### Scenario: a parent through a link is the parent the link leads to
 
@@ -93,7 +107,7 @@ read second as its `source`, as before.
   metric contract's file
 - **WHEN** the directory's two files are validated with `<directory>/link/../gross_margin_pct.yaml`
 - **THEN** the path names the copy, not the file whose path its text folds to, and the report
-  holds `contract.duplicate_id` with that path as its `source`
+  holds `contract.duplicate_id` with that path's name, `$3`, as its `source`
 
 ### Scenario: the file keeps the first of its paths
 
@@ -102,8 +116,8 @@ read second as its `source`, as before.
 - **WHEN** it is validated given as `<directory>/sub/../gross_margin_pct.yaml` and then the
   directory; and given as the directory and then that spelling
 - **THEN** each report holds one `contract.invalid`, then the product's `metric_ref.unknown`; the
-  `source` of `contract.invalid` is the spelling given first in the first run, and the path the
-  directory's listing gave in the second
+  `source` of `contract.invalid` is `$1`, the spelling given first, in the first run, and
+  `$1/gross_margin_pct.yaml`, the name the directory's listing gave, in the second
 - **AND** a product file whose schema refuses it, given as the directory and as the file, is one
   `contract.invalid` and one decision product the schema refused
 
@@ -117,14 +131,16 @@ read second as its `source`, as before.
 
 ### Scenario: a path without an identity
 
-- **GIVEN** the directory of the first scenario, the filesystem giving no path an identity
-- **WHEN** it is validated alone; with the metric contract's file joined to its path; and with
-  the file spelled relative to the working directory
-- **THEN** the first two reports hold no issue; the third holds `contract.duplicate_id`, the two
-  texts telling two paths
+- **GIVEN** the directory of the first scenario with an empty sub-directory `sub`, the filesystem
+  giving no path an identity
+- **WHEN** it is validated alone; with the metric contract's file joined to its path; with the
+  file spelled relative to the working directory; and with it spelled
+  `<directory>/sub/../gross_margin_pct.yaml`
+- **THEN** the first three reports hold no issue, the relative spelling having the absolute text
+  of the file's path; the fourth holds `contract.duplicate_id` of `$2`, `..` kept in the text
 - **AND** given with, after it, its metric contract's file spelled in capitals, the report holds
-  `contract.duplicate_id` with that spelling as its `source` — where the filesystem folds case, one
-  file read twice; where it does not, a copy in that name
+  `contract.duplicate_id` of `$2` — where the filesystem folds case, one file read twice; where it
+  does not, a copy in that name
 - **AND** `filesystem.file_identity` is the device and the file number `os.stat` reports, of two
   devices with one file number two identities, and `None` for a file number `0`, for a path that
   is not there, one refused a look and one that holds a NUL; on a system other than Windows a
@@ -146,18 +162,22 @@ read second as its `source`, as before.
   stream `gross_margin_pct.yaml:other.yaml` holding the same bytes, the two of one file number
 - **WHEN** the file and the stream are validated
 - **THEN** the stream has no identity, it is read, and the report holds `contract.duplicate_id`
-  with the stream's path as its `source`
+  with the stream's name, `$2`, as its `source`
 
 ## Requirement: the run of such paths is the run of the paths without the repeat
 
 `decision verify` given a directory and a file in it SHALL make the run it makes given the
-directory: the validation report is the same, and with it the run id, the evidence digest and the
-verdict. `decision validate` SHALL print what it prints for the directory and exit as it does.
+directory: the validation report, the run id and the verdict are the same. The evidence digest
+SHALL be the same where `created_at`, the other inputs and the observations are the same
+([validated path names](validated-path-names.md)). `decision validate` SHALL print what it
+prints for the directory and exit as it does.
 
 ### Scenario: a run given a directory and a file in it
 
 - **GIVEN** the contracts, the semantic refs and the dashboard of a gate run that is
   `pass_with_advisory` given the contracts directory
+- **AND** one `created_at` (`CREATED_AT` of `tests/test_decision_verify.py`), the same other
+  inputs and observations in both runs
 - **WHEN** it runs given the directory and the metric contract's file in it, into another
   evidence directory
 - **THEN** `contracts.validate` is pass with `contracts.clean`, and the verdict, the run id and the
@@ -187,9 +207,10 @@ bundles SHALL NOT be rewritten.
   of that text carries — for a path such as `gross_margin_pct.yaml`, `gap.contract_invalid`,
   block ([metrics links](metrics-links.md)). `decision validate` of the same directory passes.
   The run is blocked either way.
-- A path that cannot be gone through is still an issue for each path that names it: a missing
-  path given twice is two `contract.unreadable`, and so is a directory that cannot be listed,
-  given and reached under another path. The verdict was already `block`.
+- Under verifiers 118 to 120 a path that cannot be gone through was an issue for each path that named it:
+  a missing path given twice was two `contract.unreadable`, and so was a directory that cannot be
+  listed, given and reached under another path. Since verifier 121 each is one issue
+  ([validated path names](validated-path-names.md)).
 - Windows folds `..` in the text of a path before the filesystem sees it, so there
   `<directory>\link\..\x` is `<directory>\x`; a POSIX kernel resolves it after the link. Each is
   the file the system opens, and that is the file read.
@@ -198,6 +219,7 @@ bundles SHALL NOT be rewritten.
   mounted beside its original may report its serial, and a file of each may then be read as one.
 - A file given under its stream's name — `x.yaml::$DATA` beside `x.yaml` — is read twice and is
   `contract.duplicate_id`: a named stream is told by its text.
-- The `source` of an issue is the first path that reached the file. The same contracts given in
-  another order or spelling can name another path in a `source`, and the report — with it the run
-  id — then differs by that text, as it did for any spelling of the paths.
+- The `source` of an issue names the file under the first validated path that reached it, by
+  that path's place ([validated path names](validated-path-names.md)). The same contracts given in
+  another order can name the file otherwise in a `source`, and the report — with it the run id —
+  then differs by that name; under verifiers 118 to 120 another spelling of the paths did as well.

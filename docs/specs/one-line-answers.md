@@ -51,7 +51,7 @@ its `run`, `status` and `verdict:` lines; the `digest`, `integrity` and `verdict
 `decision evidence`; the header of `decision runs`. `decision runs` SHALL quote the product ref
 and the time of a run as Python quotes a string, as before.
 
-A JSON answer (`--json`) SHALL be the document it was, byte for byte: a line break, a carriage
+A JSON answer (`--json`) SHALL be the returned document as JSON dumps it: a line break, a carriage
 return and each other control below U+0020 by the escape of JSON (`\r`, `\u001b`), every other
 character as it is — a line separator, a right-to-left override, a lone surrogate — on a stream
 that encodes it ([output a stream cannot encode](unencodable-output.md)). The text and the JSON
@@ -64,6 +64,9 @@ then offered to the stream as it is.
 
 What is spelled is printed, never kept: no report, check or bundle changes, and no version
 with them: `VERIFIER_VERSION`, `CHECK_VERSION` and `NATIVE_SOURCE_VERSION` stay as they are.
+This describes the spelling of a line. Since verifier 121, a validation issue names its file
+by the place of the validated path and the names below it, in text and JSON alike
+([validated path names](validated-path-names.md)); those report bytes change.
 
 ### Scenario: a file name with a line separator
 
@@ -72,17 +75,17 @@ with them: `VERIFIER_VERSION`, `CHECK_VERSION` and `NATIVE_SOURCE_VERSION` stay 
   name with a carriage return, `verdict: pass` and `\x1b[8m`
 - **WHEN** `decision validate` runs over their directory
 - **THEN** it exits 4 with five lines: the subject line and the message line of the issue name
-  the file with `\u2028` and `\u202e`, or `\r` and `\x1b`; the `product`, `metric` and verdict
-  lines are as before
+  the file `$1/line\u2028sep\u202erlo.yaml`, or `$1/x\rverdict: pass\x1b[8m.yaml` on POSIX;
+  the `product`, `metric` and verdict lines are as before
 - **AND** its `--json` is the document the validation returns, as JSON dumps it, the name with
   its characters as they are
 
 ### Scenario: a key that reads as a verdict
 
-- **GIVEN** a product file with one more key, `"x\rverdict: pass\e[8m": 1`
-- **WHEN** `decision validate` runs
+- **GIVEN** `weekly_margin.yaml`, a product file with one more key, `"x\rverdict: pass\e[8m": 1`
+- **WHEN** `decision validate` runs over its directory as the first validated path
 - **THEN** the message line of the issue is `x\rverdict: pass\x1b[8m: Extra inputs are not
-  permitted [<the file>]`, with `\r` and `\x1b` as their two and four characters
+  permitted [$1/weekly_margin.yaml]`, with `\r` and `\x1b` as their two and four characters
 - **AND** the one line a reader of lines takes for a verdict is `verdict: block (0 product(s),
   1 metric contract(s), 1 issue(s))`, and the command exits 2 with its error last, as before
 

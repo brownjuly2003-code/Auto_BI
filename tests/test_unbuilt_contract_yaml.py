@@ -86,8 +86,8 @@ def _unreadable(path: Path) -> dict[str, Any]:
     return {
         "code": "contract.unreadable",
         "severity": "block",
-        "subject": path.as_posix(),
-        "source": path.as_posix(),
+        "subject": f"$1/{path.name}",
+        "source": f"$1/{path.name}",
         "message": UNREAD,
     }
 
@@ -231,8 +231,8 @@ def test_decision_validate_names_the_file_and_exits_by_the_verdict(
     assert main(["decision", "validate", str(case.contracts)]) == 4
     printed = capsys.readouterr().out.splitlines()
     assert printed[:2] == [
-        f"{'block':<8} {'contract.unreadable':<26} {path.as_posix()}",
-        f"{'':<8} {UNREAD} [{path.as_posix()}]",
+        f"{'block':<8} {'contract.unreadable':<26} $1/{path.name}",
+        f"{'':<8} {UNREAD} [$1/{path.name}]",
     ]
     assert printed[-1] == "verdict: block (1 product(s), 1 metric contract(s), 1 issue(s))"
 
@@ -258,7 +258,7 @@ def test_a_contract_whose_metadata_is_not_a_mapping_is_invalid_under_its_file_na
 
     [issue] = report.issues
     assert (issue.code, issue.severity.value) == ("contract.invalid", "block")
-    assert (issue.subject, issue.source) == ("extra.yaml", path.as_posix())
+    assert (issue.subject, issue.source) == ("extra.yaml", f"$1/{path.name}")
     assert issue.message.startswith("metadata: ")
     assert report.products == [VERIFIED]
     assert report.metrics == [PIN]
@@ -287,7 +287,7 @@ def test_an_invalid_contract_is_named_by_the_id_it_declares_or_by_its_file(
     assert (issue.code, issue.subject, issue.source) == (
         "contract.invalid",
         subject,
-        path.as_posix(),
+        f"$1/{path.name}",
     )
 
 
@@ -303,7 +303,7 @@ def test_an_invalid_contract_without_metadata_is_named_by_its_file(tmp_path: Pat
     assert (issue.code, issue.subject, issue.source) == (
         "contract.invalid",
         "extra.yaml",
-        path.as_posix(),
+        f"$1/{path.name}",
     )
 
 

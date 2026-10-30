@@ -30,7 +30,6 @@ from auto_bi.verification.release_gate import (
 from tests.test_decision_cli import _verify_argv
 from tests.test_decision_validate import codes, write_contracts
 from tests.test_decision_verify import CREATED_AT, Case, status_of, summary_of
-from tests.test_unlisted_paths import _deny_listing
 
 METRIC = "metric://sales/gross_margin_pct@3"
 PRODUCT = "decision://sales/weekly_margin@1"
@@ -140,7 +139,7 @@ def test_two_files_of_equal_bytes_are_two_files(tmp_path: Path) -> None:
     shutil.copy(root / "gross_margin_pct.yaml", copy / "gross_margin_pct.yaml")
     report = validate_paths([root, copy])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == (copy / "gross_margin_pct.yaml").as_posix()
+    assert report.issues[0].source == "$2/gross_margin_pct.yaml"
     assert report.issues[0].message == DEFINED_TWICE
     assert report.verdict is Verdict.BLOCK
 
@@ -161,10 +160,55 @@ def test_a_parent_through_a_link_is_the_parent_the_link_leads_to(tmp_path: Path)
     assert not os.path.samefile(other, root / "gross_margin_pct.yaml")
     report = validate_paths([root / "gross_margin_pct.yaml", root / "weekly_margin.yaml", other])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == other.as_posix()
+    assert report.issues[0].source == "$3"
 
 
 # --- the file keeps the first of its paths ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_codes"), [("active", []), ("draft", ["metric.draft", "metric.draft"])]
+)
+def test_argument_order_keeps_a_report_without_path_names(
+    tmp_path: Path, status: str, expected_codes: list[str]
+) -> None:
+    other_product = "decision://sales/daily_margin@1"
+    other_metric = "metric://sales/daily_margin_pct@3"
+
+    def relabel(data: dict[str, Any]) -> None:
+        data["metadata"]["status"] = status
+
+    def relabel_product(data: dict[str, Any]) -> None:
+        data["metadata"]["id"] = "decision://sales/daily_margin"
+        data["scope"]["metrics"] = [other_metric]
+
+    def relabel_metric(data: dict[str, Any]) -> None:
+        relabel(data)
+        data["metadata"]["id"] = "metric://sales/daily_margin_pct"
+
+    root = _contracts(tmp_path, metric=relabel)
+    other = tmp_path / "other"
+    other.mkdir()
+    write_contracts(other, product=relabel_product, metric=relabel_metric)
+    paths = [
+        root / "weekly_margin.yaml",
+        root / "gross_margin_pct.yaml",
+        other / "weekly_margin.yaml",
+        other / "gross_margin_pct.yaml",
+    ]
+    report = validate_paths(paths)
+
+    assert codes(report) == expected_codes
+    assert [(issue.source, issue.subject) for issue in report.issues] == (
+        [(other_product, other_metric), (PRODUCT, METRIC)] if status == "draft" else []
+    )
+    assert all(
+        issue.message == "metric contract is still a draft: its definition is not agreed yet"
+        for issue in report.issues
+    )
+    assert report.products == [other_product, PRODUCT]
+    assert report.metrics == [other_metric, METRIC]
+    assert validate_paths(paths[::-1]).model_dump_json() == report.model_dump_json()
 
 
 def _unknown_status(data: dict[str, Any]) -> None:
@@ -178,11 +222,11 @@ def test_a_file_the_schema_refuses_is_refused_once_under_its_first_path(tmp_path
     assert str(spelled) != str(root / "gross_margin_pct.yaml")
     report = validate_paths([spelled, root])
     assert codes(report) == ["contract.invalid", "metric_ref.unknown"]
-    assert report.issues[0].source == spelled.as_posix()
+    assert report.issues[0].source == "$1"
 
     report = validate_paths([root, spelled])
     assert codes(report) == ["contract.invalid", "metric_ref.unknown"]
-    assert report.issues[0].source == (root / "gross_margin_pct.yaml").as_posix()
+    assert report.issues[0].source == "$1/gross_margin_pct.yaml"
 
 
 def test_the_files_keep_the_order_they_were_found_in(
@@ -206,23 +250,25 @@ def test_a_refused_product_is_named_once(tmp_path: Path) -> None:
     root = _contracts(tmp_path, product=_unknown_status)
     loaded = load_contracts([root, root / "weekly_margin.yaml"])
     assert [issue.code for issue in loaded.report.issues] == ["contract.invalid"]
-    assert [refused.source for refused in loaded.refused_products] == [
-        (root / "weekly_margin.yaml").as_posix()
-    ]
+    assert [refused.source for refused in loaded.refused_products] == ["$1/weekly_margin.yaml"]
 
 
 # --- a path without an identity ---------------------------------------------------------------
 
 
-def test_a_path_without_an_identity_is_told_by_its_text(
+def test_a_path_without_an_identity_is_told_by_its_absolute_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Relative or absolute, one text once made absolute; `..` is not folded into it."""
     root = _contracts(tmp_path)
+    (root / "sub").mkdir()
     monkeypatch.setattr(filesystem, "file_identity", lambda path: None)
     _assert_read_once([root, root / "gross_margin_pct.yaml"])
     monkeypatch.chdir(tmp_path)
-    report = validate_paths([root, Path("contracts") / "gross_margin_pct.yaml"])
+    _assert_read_once([root, Path("contracts") / "gross_margin_pct.yaml"])
+    report = validate_paths([root, root / "sub" / ".." / "gross_margin_pct.yaml"])
     assert codes(report) == ["contract.duplicate_id"]
+    assert report.issues[0].source == "$2"
 
 
 def test_paths_without_an_identity_are_not_one_file(
@@ -244,7 +290,7 @@ def test_a_path_without_an_identity_is_told_by_its_text_with_its_case(
     monkeypatch.setattr(filesystem, "file_identity", lambda path: None)
     report = validate_paths([root, upper])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == upper.as_posix()
+    assert report.issues[0].source == "$2"
 
 
 @pytest.mark.parametrize("first_has_one", [False, True], ids=["then-identity", "then-none"])
@@ -315,12 +361,12 @@ def test_a_named_stream_is_not_its_file(tmp_path: Path) -> None:
     assert filesystem.file_identity(stream) is None
     report = validate_paths([path, stream])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == stream.as_posix()
+    assert report.issues[0].source == "$2"
     # A boundary: the file under its unnamed stream's name is told by its text too.
     unnamed = Path(f"{path}::$DATA")
     report = validate_paths([path, unnamed])
     assert codes(report) == ["contract.duplicate_id"]
-    assert report.issues[0].source == unnamed.as_posix()
+    assert report.issues[0].source == "$2"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="a colon names a stream on Windows")
@@ -329,31 +375,6 @@ def test_a_colon_is_part_of_a_name_beyond_windows(tmp_path: Path) -> None:
     path.write_text("kind: Unknown\n", encoding="utf-8")
     status = os.stat(path)
     assert filesystem.file_identity(path) == (status.st_dev, status.st_ino)
-
-
-def test_a_missing_path_given_twice_is_named_twice(tmp_path: Path) -> None:
-    """A boundary: what could not be gone through is an issue for each path that names it."""
-    root = _contracts(tmp_path)
-    missing = tmp_path / "missing"
-    report = validate_paths([root, missing, missing])
-    assert [(issue.code, issue.subject) for issue in report.issues] == [
-        ("contract.unreadable", missing.as_posix()),
-        ("contract.unreadable", missing.as_posix()),
-    ]
-
-
-def test_a_directory_that_cannot_be_listed_reached_twice_is_named_twice(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = _contracts(tmp_path)
-    archive = root / "archive"
-    archive.mkdir()
-    _deny_listing(monkeypatch, archive)
-    report = validate_paths([root, archive])
-    assert [(issue.code, issue.subject, issue.message) for issue in report.issues] == [
-        ("contract.unreadable", archive.as_posix(), "cannot list directory: PermissionError"),
-        ("contract.unreadable", archive.as_posix(), "cannot list directory: PermissionError"),
-    ]
 
 
 def test_a_semantic_ref_still_reads_a_hard_link_as_a_second_file(tmp_path: Path) -> None:
@@ -403,6 +424,26 @@ def test_the_identity_holds_the_device(monkeypatch: pytest.MonkeyPatch) -> None:
     _answer_stat(monkeypatch, {"<a>": _Status(1, 7), "<b>": _Status(2, 7)})
     assert filesystem.file_identity("<a>") == (1, 7)
     assert filesystem.file_identity("<a>") != filesystem.file_identity("<b>")
+
+
+def test_files_with_one_number_on_two_devices_are_both_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _contracts(tmp_path)
+    first = root / "gross_margin_pct.yaml"
+    second = tmp_path / "copy.yaml"
+    shutil.copy(first, second)
+    identities = {first: (1, 7), second: (2, 7)}
+    monkeypatch.setattr(filesystem, "file_identity", lambda path: identities[Path(path)])
+
+    report = validate_paths([first, second])
+
+    assert codes(report) == ["contract.duplicate_id"]
+    assert report.issues[0].subject == "metric://sales/gross_margin_pct"
+    assert report.issues[0].source == "$2"
+    assert report.issues[0].message == DEFINED_TWICE
+    assert report.metrics == [METRIC]
+    assert report.verdict is Verdict.BLOCK
 
 
 def test_a_filesystem_that_numbers_no_file_gives_no_identity(

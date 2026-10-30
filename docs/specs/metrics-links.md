@@ -227,7 +227,9 @@ project into is the one it was. Historical bundles SHALL NOT be rewritten.
   `contract.duplicate_id`, the hard link a copy there; a clone with the texts written gave
   `contract.duplicate_id` and `contract.unreadable`, `contract file must contain a YAML mapping`.
   The report is part of a run's key: where the reports of two checkouts differ, as they do here,
-  so do their run ids.
+  so do their run ids. Since verifier 121, a file of the link's text under the first validated
+  directory is named `$1/linked.yaml` in `contract.unreadable`
+  ([validated path names](validated-path-names.md)); naming does not change what the link reads.
 - A ref whose `metrics` or `model.yaml` is itself a symbolic link is still two refs by checkout:
   where the link is made it is read through; where its text is written, `metrics` is a file and
   no directory, and the ref is frozen without contracts, and `model.yaml` is a file of the text

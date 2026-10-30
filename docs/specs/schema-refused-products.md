@@ -38,9 +38,11 @@ left out before the three are taken.
 
 The products are named in the order their files were read, which is the order of their
 `contract.invalid` issues in the report. The id is spelled as Python spells a string, as
-`'<id>'` of `--product` is; the file as a diagnostic line spells a path — quoted when it holds a
-control character — so what this names of a product holds no line break. What the paths could
-not read (`; <n> path(s) could not be read: …`, [files a command cannot read](unreadable-inputs.md))
+`'<id>'` of `--product` is; the file by the name its issue carries
+([validated path names](validated-path-names.md)), as a diagnostic line spells a path — quoted
+when it holds a control character — so what this names of a product holds no line break. What
+the paths could not read (`; <n> path(s) could not be read: …`,
+[files a command cannot read](unreadable-inputs.md))
 SHALL follow, as before. The error is printed after `error: ` on standard error, exit 2, nothing
 on standard output and no evidence directory created; it is one line (since T-117 whatever a
 path that could not be read holds: [one-line errors](one-line-errors.md)).

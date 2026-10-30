@@ -17,9 +17,10 @@ is the message, and the two are not interchangeable (§7.7).
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 import yaml
@@ -123,8 +124,8 @@ def load_contracts(paths: Iterable[str | Path]) -> LoadedContracts:
     metrics: dict[str, MetricContract] = {}
     refused: list[RefusedProduct] = []
 
-    for path in _iter_contract_files(paths, issues):
-        _load_contract(path, products, metrics, issues, refused)
+    for path, name in _iter_contract_files(paths, issues):
+        _load_contract(path, name, products, metrics, issues, refused)
 
     for _, product in sorted(products.items()):
         issues.extend(_validate_product(product, metrics))
@@ -147,8 +148,10 @@ def validate_paths(paths: Iterable[str | Path]) -> ValidationReport:
     return load_contracts(paths).report
 
 
-def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIssue]) -> list[Path]:
-    """The contract files under *paths*, and an issue for each path that was not gone through.
+def _iter_contract_files(
+    paths: Iterable[str | Path], issues: list[ValidationIssue]
+) -> list[tuple[Path, str]]:
+    """The contract files under *paths* with their names; an issue for each path not gone through.
 
     The report answers for every file under its paths. A directory the filesystem refuses
     to list is therefore no directory without contracts, and a path it refuses to look at
@@ -156,30 +159,36 @@ def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIss
     each is an issue of its own, and everything that could be listed is still loaded.
 
     The paths are gone through in the order they are given, and what a directory holds in
-    the order of its paths (`_path_order`). A file is read once, however many of the paths
-    reach it (`_each_file_once`).
+    the order of its paths (`_path_order`). A path is taken once, however many of the paths
+    reach it (`_reached_first`): a file is read once, and a path that cannot be gone through
+    is one issue. The report names each path by the validated path that reached it first
+    (`_named`).
     """
-    files: list[Path] = []
-    for raw in paths:
+    seen: set[tuple[str, object]] = set()
+    files: list[tuple[Path, str]] = []
+    for place, raw in enumerate(paths, start=1):
         path = Path(raw)
+        label = f"${place}"
         try:
             is_dir = filesystem.is_dir(path)
             is_file = not is_dir and filesystem.is_file(path)
         except OSError as exc:
-            issues.append(_unread_path(path, f"cannot look at path: {type(exc).__name__}"))
+            if _reached_first(path, seen):
+                issues.append(_unread_path(label, f"cannot look at path: {type(exc).__name__}"))
             continue
         if is_dir:
             refused: list[OSError] = []
-            files.extend(
-                sorted(
-                    (
-                        child
-                        for child in filesystem.paths_under(path, refused)
-                        if _names_a_contract(child)
-                    ),
-                    key=_path_order,
-                )
+            found = sorted(
+                (
+                    child
+                    for child in filesystem.paths_under(path, refused)
+                    if _names_a_contract(child)
+                ),
+                key=_path_order,
             )
+            for child in found:
+                if _reached_first(child, seen):
+                    files.append((child, _named(label, path, child)))
             unlisted = sorted(
                 (
                     (Path(error.filename) if error.filename else path, type(error).__name__)
@@ -187,43 +196,58 @@ def _iter_contract_files(paths: Iterable[str | Path], issues: list[ValidationIss
                 ),
                 key=lambda unread: (_path_order(unread[0]), unread[1]),
             )
-            issues.extend(
-                _unread_path(directory, f"cannot list directory: {refusal}")
-                for directory, refusal in unlisted
-            )
+            for directory, refusal in unlisted:
+                if _reached_first(directory, seen):
+                    issues.append(
+                        _unread_path(
+                            _named(label, path, directory), f"cannot list directory: {refusal}"
+                        )
+                    )
+        elif not _reached_first(path, seen):
+            continue
         elif is_file:
-            files.append(path)
+            files.append((path, label))
         else:
-            issues.append(_unread_path(path, "path does not exist"))
-    return _each_file_once(files)
+            issues.append(_unread_path(label, "path does not exist"))
+    return files
 
 
-def _each_file_once(files: list[Path]) -> list[Path]:
-    """*files* with each file once, under the first of its paths, in the order they were found.
+def _reached_first(path: Path, seen: set[tuple[str, object]]) -> bool:
+    """Whether *path* is no path reached before it; from now on it is one.
 
-    Two of the validated paths can reach one file: a directory and a file in it, one directory
-    given twice, one file spelled two ways. Read twice, the file would be the contract of its
-    id "defined in more than one file", and a contract set that holds every id once would
-    block. A file is told by the filesystem's identity of it (`filesystem.file_identity`), not
-    by the text of its path: text that differs can name one file, and text made alike by
-    folding `..` can name two. Only one text is sure to name one file: the path's own, as
-    `pathlib` writes it — `.` and doubled separators dropped, case kept. Two paths are one file
-    when their identities are one or their texts are; a path without an identity — not there,
-    refused a look, on a filesystem that numbers no file, a named stream — is one file with a
-    path of its text only, and one path is one file whether a look gives it an identity or not.
-    Two files of equal bytes stay two files, and their id is still defined twice.
+    Two of the validated paths can reach one path: a directory and a file in it, one directory
+    given twice, one file spelled two ways. Read twice, a file would be the contract of its id
+    "defined in more than one file", and a contract set that holds every id once would block;
+    a path that cannot be gone through would be an issue for each path that reaches it. A path
+    is told by the filesystem's identity of the file it leads to (`filesystem.file_identity`),
+    not by its text: text that differs can name one file, and text made alike by folding `..`
+    can name two. Only one text is sure to name one path: its absolute text
+    (`_absolute_text`). Two paths are one when their identities are one or their absolute
+    texts are; a path without an identity — not there, refused a look, on a filesystem that
+    numbers no file, a named stream — is one with a path of its absolute text only, and one
+    path is one whether a look gives it an identity or not. Two files of equal bytes stay two
+    files, and their id is still defined twice.
     """
-    seen: set[tuple[str, object]] = set()
-    once: list[Path] = []
-    for path in files:
-        keys: set[tuple[str, object]] = {("path", str(path))}
-        identity = filesystem.file_identity(path)
-        if identity is not None:
-            keys.add(("file", identity))
-        if keys.isdisjoint(seen):
-            once.append(path)
-        seen |= keys
-    return once
+    keys: set[tuple[str, object]] = {("path", _absolute_text(path))}
+    identity = filesystem.file_identity(path)
+    if identity is not None:
+        keys.add(("file", identity))
+    first = keys.isdisjoint(seen)
+    seen |= keys
+    return first
+
+
+def _absolute_text(path: Path) -> str:
+    """The text of *path* made absolute: the working directory, or a drive's, put before it.
+
+    Nothing in it is folded or resolved: `.` and doubled separators are dropped as `pathlib`
+    drops them, `..` and case stay. Where the working directory cannot be told — it was
+    removed — a relative path keeps its own text.
+    """
+    try:
+        return os.fspath(path.absolute())
+    except OSError:
+        return os.fspath(path)
 
 
 def _path_order(path: Path) -> tuple[str, ...]:
@@ -237,13 +261,19 @@ def _path_order(path: Path) -> tuple[str, ...]:
     return path.parts
 
 
-def _spelled(path: Path) -> str:
-    """*path* as the report names it: its names joined by `/`, on every system.
+def _named(label: str, root: PurePath, reached: PurePath) -> str:
+    """*reached*, a path the validated path *root* reached, as the report names it.
 
-    `str` joins them by the separator of the system, so the same files read on Windows and on
-    POSIX were named by two texts, and gave two reports and two runs.
+    *label* — the place of *root* among the validated paths, `$1` for the first — and then the
+    names below *root*, joined by `/` on every system: `$1/sub/x.yaml`, and `$1` for *root*
+    itself. A path found under a validated directory is the directory's path joined with the
+    names it was listed by (`filesystem.paths_under`), each kept as it was listed. Nothing of
+    how *root* was spelled is in the name, and so nothing of where it lies: the same files given
+    relative or absolute, in another checkout directory or on another machine, are named alike.
+    The path a validated path was given as was its name before, and the same files given by
+    two spellings of it were two reports and two runs.
     """
-    return path.as_posix()
+    return "/".join((label, *reached.parts[len(root.parts) :]))
 
 
 def _names_a_contract(path: Path) -> bool:
@@ -261,24 +291,24 @@ def _names_a_contract(path: Path) -> bool:
         return True
 
 
-def _unread_path(path: Path, message: str) -> ValidationIssue:
+def _unread_path(name: str, message: str) -> ValidationIssue:
     return ValidationIssue(
         code="contract.unreadable",
         severity=Severity.BLOCK,
-        subject=_spelled(path),
-        source=_spelled(path),
+        subject=name,
+        source=name,
         message=message,
     )
 
 
 def _load_contract(
     path: Path,
+    source: str,
     products: dict[str, DecisionProductSpec],
     metrics: dict[str, MetricContract],
     issues: list[ValidationIssue],
     refused: list[RefusedProduct],
 ) -> None:
-    source = _spelled(path)
     try:
         raw = load_yaml_document(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
@@ -306,7 +336,7 @@ def _load_contract(
 
     kind = raw.get("kind")
     if kind == "DecisionProduct":
-        refusal = _store(DecisionProductSpec, raw, path, products, issues)
+        refusal = _store(DecisionProductSpec, raw, path, source, products, issues)
         if refusal is not None:
             refused.append(
                 RefusedProduct(
@@ -314,7 +344,7 @@ def _load_contract(
                 )
             )
     elif kind == "MetricContract":
-        _store(MetricContract, raw, path, metrics, issues)
+        _store(MetricContract, raw, path, source, metrics, issues)
     else:
         issues.append(
             ValidationIssue(
@@ -331,11 +361,11 @@ def _store(
     model: type[DecisionProductSpec] | type[MetricContract],
     raw: dict[str, Any],
     path: Path,
+    source: str,
     into: dict[str, Any],
     issues: list[ValidationIssue],
 ) -> ValidationError | None:
     """Keep the contract of *raw* under its id; what its schema refused, if it did."""
-    source = _spelled(path)
     try:
         contract = model.model_validate(raw)
     except ValidationError as exc:

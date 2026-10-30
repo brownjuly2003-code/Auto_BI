@@ -153,11 +153,13 @@ gap or digest means anything new.
 - `decision validate` reads the validated paths as before
   ([contract files once](contract-files-once.md)). Its report names the products and metrics it
   validated by their refs, an issue of a product by the product's ref, and an issue of a file —
-  one that does not load, an id two files define — by the file's path. The run id addresses that
+  one that does not load, an id two files define — by the file's name: since verifier 121 the
+  place of the validated path that reached it and the names below it, never the text of that
+  path ([validated path names](validated-path-names.md)). The run id addresses that
   report and the contracts the run is handed as they are: moving a file that has an issue
   between the validated directories is another report and another run, and of an id two
   validated files define the run is handed the contract read first. A report none of whose
-  issues is of a file holds no path.
+  issues is of a file names no file.
 - The same ref is now one snapshot on every system, and its sealed snapshot artifact one
   artifact. The path an issue of a file names was spelled as the system spells it, and what a
   validated directory holds was read in the order `sorted` gives, so the same contracts read on

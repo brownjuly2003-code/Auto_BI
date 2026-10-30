@@ -372,10 +372,20 @@ metric id, версии, затем digest байтов. Прежде поряд
 ref на другой ОС давали другой snapshot и run id: при прежних source и canonical digest, если
 переставлялись только гэпы, и с другим canonical digest, если узлы одного id
 ([contract read order](specs/contract-read-order.md)). Validation report в run id называет
-файл путём только в issue файла (issue продукта — его ref'ом): где такой issue есть,
-раскладка validated paths по-прежнему даёт другой прогон. ОС — больше нет (verifier 118):
+файл только в issue файла (issue продукта — его ref'ом), а с verifier 121 — местом validated
+path среди переданных и именами под ним (`$1/notes/x.yaml`), не текстом пути. Каталог checkout
+и написание путей не меняют report и run id при прочих равных, кроме двух случаев: `subject`
+у `contract.invalid` без id хранит имя файла как передано, если передан сам файл; путь без
+файловой identity учитывается снова, если его абсолютный текст отличается (`..`, регистр).
+Порядок аргументов и повтор перед другим аргументом могут менять имена или порядок issues,
+а с ними report и run id. Если issues не называют пути, перестановка тех же аргументов report
+не меняет: refs продуктов и метрик отсортированы, правила продуктов идут по id
+([validated path names](specs/validated-path-names.md)). Где issue файла есть, раскладка файлов
+по validated каталогам по-прежнему даёт другой прогон. ОС — больше нет (verifier 118):
 путь пишется через `/`, а то, что держит validated каталог, читается в порядке путей — имя
-за именем, по code point с регистром. Прежде путь писал `str` с разделителем ОС, а порядок
+за именем, по code point с регистром. В report сначала идут ошибки обхода всех validated paths
+в порядке аргументов, внутри одного — в порядке путей; затем ошибки чтения файлов в порядке
+их отбора; затем правила продуктов по id. Прежде путь писал `str` с разделителем ОС, а порядок
 давал `sorted`, на Windows без регистра: те же файлы по тем же относительным путям на
 Windows и на POSIX давали другие issues и, у id из двух файлов, другой контракт прогона
 ([validation report paths](specs/validation-report-paths.md)).
@@ -683,7 +693,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=120`, `CHECK_VERSION=80`.
+`VERIFIER_VERSION=121`, `CHECK_VERSION=80`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1691,8 +1701,10 @@ Cache/reuse key включает actor/tenant/policy context. Cross-tenant resul
   копия с равными байтами — второй файл, и повтор id остаётся `contract.duplicate_id`
   ([contract files once](specs/contract-files-once.md), verifier 116). Переданные paths
   обходятся в данном порядке, а то, что держит каталог, — в порядке путей, имя за именем по
-  code point с регистром, одинаково на любой ОС; issue файла называет его путём через `/`
-  ([validation report paths](specs/validation-report-paths.md), verifier 118).
+  code point с регистром, одинаково на любой ОС. До verifier 121 issue файла называл его путём
+  через `/` ([validation report paths](specs/validation-report-paths.md), verifier 118–120);
+  с verifier 121 — местом validated path и именами под ним
+  ([validated path names](specs/validated-path-names.md)).
   Каталог `metrics/` semantic ref этот обход
   не затрагивает: snapshot по-прежнему читает в нём только `.yaml`/`.yml`, и JSON рядом
   с ними не меняет ни graph, ни digests.
@@ -1904,7 +1916,9 @@ Python, если в нём есть непечатаемый символ.
 и его команд — аргумент, которого команда не берёт, опция, которую нельзя отличить, опция до
 `decision`; над строкой — прежние строки usage, exit 2. Команды v1 — как у argparse. Так же
 записана строка текстового ответа `validate`, `verify`, `evidence` и `runs`, которая называет
-прочитанное ([one-line answers](specs/one-line-answers.md)); `--json` прежний байт в байт.
+прочитанное ([one-line answers](specs/one-line-answers.md)); `--json` передаёт возвращённый
+документ. С verifier 121 имя файла в validation report — место validated path и имена под ним
+в обоих видах ответа (`$1/notes/x.yaml`); экранирование строки само report не меняет.
 `evidence` — чтение уже написанного bundle: пересчёт каждого content address,
 список claim'ов и артефактов, при `--artifact` — сам payload. Для signed bundle
 повторяемый `--trust-key` задаёт out-of-band trust root; без совпавшего public key

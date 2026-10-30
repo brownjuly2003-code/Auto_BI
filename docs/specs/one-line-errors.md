@@ -80,24 +80,31 @@ not be read: <path> (<message>)`. Each `<path>` SHALL be spelled as a diagnostic
 path (`filesystem.display_path`): as it is when every character of it is printable, quoted as
 Python quotes a string otherwise — the way the file of a product its schema refused is spelled
 ([schema-refused products](schema-refused-products.md)). The message, the count, the order, the
-first three and ` (+<k> more)` SHALL stay as they were.
+first three and ` (+<k> more)` SHALL stay as they were for the issues in the report. Since
+verifier 121, the report names paths by their places and names below, and a path reached again
+has one issue ([validated path names](validated-path-names.md)); before verifier 121, an
+unreadable path could be counted once per validated path that reached it.
 
 ### Scenario: a validated path with a line break
 
 - **GIVEN** the run, without its product file, and one more validated path, a file name with a
   line break that is not there
 - **WHEN** `decision verify` runs, with or without `--product`
-- **THEN** the refusal ends `; 1 path(s) could not be read: '<the path>' (path does not exist)`,
-  the path quoted, its line break the two characters `\n`, and its names joined by `/` on every
-  system, as the validation report names a file
-  ([validation report paths](validation-report-paths.md), verifier 118; before it, on Windows,
-  each backslash of the path doubled, as Python spells the path)
+- **THEN** the refusal ends `; 1 path(s) could not be read: $2 (path does not exist)`: the path is
+  named by its place, and none of its text is on the line
+  ([validated path names](validated-path-names.md), verifier 121; under verifiers 118 to 120 the path
+  quoted, its line break the two characters `\n`, its names joined by `/`
+  ([validation report paths](validation-report-paths.md)); before verifier 118, on Windows, each backslash
+  of the path doubled, as Python spells the path)
 - **AND** the command exits 2 with that one line after `error: ` and no evidence directory
+- **AND** a file below a validated path whose name holds a line separator is named by its place
+  and that name, quoted, the separator spelled by its escape
+  ([validated path names](validated-path-names.md))
 
-### Scenario: printable paths read as before
+### Scenario: printable names read as before
 
-- **GIVEN** four paths that could not be read: one printable, one with a line break, one with a
-  tab, one with an escape
+- **GIVEN** four issues of paths that could not be read, named `$1/plain.yaml`,
+  `$1/line<line break>break.yaml`, `$1/tab<tab>dir` and `$1/<escape>[2J.yaml`
 - **WHEN** the refusal names them
 - **THEN** the first is as it is, the next two are quoted, and the fourth is counted in
   ` (+1 more)`
@@ -215,8 +222,8 @@ refuses as it is. Nothing is kept: no report, check or bundle changes, and no ve
   read, and its `--json` is the document it was ([one-line answers](one-line-answers.md)).
 - A backslash is printed as it is, so `\n` on the line is either a line break that was spelled or
   a backslash and an `n` that were there: a Windows path `C:\new` reads as it is where a message
-  writes a path as the system does, and as `C:/new` where it names a file of the validation
-  report ([validation report paths](validation-report-paths.md)). The parts of a
+  writes a path as the system does, and by its place, `$1`, where it names a file of the
+  validation report ([validated path names](validated-path-names.md)). The parts of a
   message keep the spelling they had: the paths that could not be read and the file of a refused
   product are quoted as Python quotes a string when they hold a character that is not printable,
   as is any other path or value a message already spells with `display_path` or `repr`; the rest

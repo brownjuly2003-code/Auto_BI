@@ -347,8 +347,8 @@ def test_a_validated_path_that_reaches_a_link_is_two_runs(tmp_path: Path) -> Non
         (directory / "linked.yaml").write_bytes(b"gross_margin_pct.yaml")
 
     assert [issue.code for issue in validate_paths([linked.contracts]).issues] == []
-    assert [issue.code for issue in validate_paths([written.contracts]).issues] == [
-        "contract.unreadable"
+    assert [(issue.code, issue.source) for issue in validate_paths([written.contracts]).issues] == [
+        ("contract.unreadable", "$1/linked.yaml")
     ]
     assert linked.run().run_id != written.run().run_id
 

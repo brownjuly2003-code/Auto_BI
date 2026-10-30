@@ -188,24 +188,25 @@ def lock() -> Iterator[Lock]:
         directory.chmod(0o755)
 
 
-def _unlisted(directory: Path, refusal: str = "PermissionError") -> dict[str, Any]:
-    """The one issue a directory under the validated paths that cannot be listed gives."""
+def _unlisted(name: str, refusal: str = "PermissionError") -> dict[str, Any]:
+    """The one issue a directory under the validated paths that cannot be listed gives, under
+    the name the report gives it (`$1/archive`: docs/specs/validated-path-names.md)."""
     return {
         "code": "contract.unreadable",
         "severity": "block",
-        "subject": directory.as_posix(),
-        "source": directory.as_posix(),
+        "subject": name,
+        "source": name,
         "message": f"cannot list directory: {refusal}",
     }
 
 
-def _unlooked(path: Path) -> dict[str, Any]:
-    """The one issue a validated path that may not be looked at gives."""
+def _unlooked(name: str) -> dict[str, Any]:
+    """The one issue a validated path that may not be looked at gives, under its name (`$1`)."""
     return {
         "code": "contract.unreadable",
         "severity": "block",
-        "subject": path.as_posix(),
-        "source": path.as_posix(),
+        "subject": name,
+        "source": name,
         "message": "cannot look at path: PermissionError",
     }
 
@@ -610,7 +611,7 @@ def test_a_validated_directory_that_cannot_be_listed_is_an_unreadable_path(
 
     report = validate_paths([case.contracts])
 
-    assert [issue.model_dump(mode="json") for issue in report.issues] == [_unlisted(kept)]
+    assert [issue.model_dump(mode="json") for issue in report.issues] == [_unlisted("$1/archive")]
     assert report.products == [VERIFIED]
     assert report.metrics == [PIN]
     assert report.verdict is Verdict.BLOCK
@@ -624,7 +625,7 @@ def test_the_validated_directory_itself_that_cannot_be_listed_is_an_unreadable_p
 
     report = validate_paths([case.contracts])
 
-    assert [issue.model_dump(mode="json") for issue in report.issues] == [_unlisted(case.contracts)]
+    assert [issue.model_dump(mode="json") for issue in report.issues] == [_unlisted("$1")]
     assert report.products == []
     assert report.metrics == []
     assert report.verdict is Verdict.BLOCK
@@ -647,16 +648,19 @@ def test_unlisted_directories_come_first_in_the_order_of_their_paths(
 
     # The path given first; then the directories of the second in the order of their
     # paths, not in the order the walk came to them; then what the files it read gave.
-    assert issues[:7] == [_unlisted(other), *(_unlisted(directory) for directory in sorted(kept))]
+    assert issues[:7] == [
+        _unlisted("$1"),
+        *(_unlisted(f"$2/{directory.name}") for directory in sorted(kept)),
+    ]
     assert [(issue["code"], issue["source"], issue["message"]) for issue in issues[7:]] == [
-        ("contract.unreadable", broken.as_posix(), "cannot read contract: ParserError")
+        ("contract.unreadable", f"$2/{broken.name}", "cannot read contract: ParserError")
     ]
 
 
 def test_a_validated_path_is_named_as_the_report_names_its_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Given as `.`, the directory under it is named as the files under it are: without it."""
+    """Given as `.`, the directory under it is named as the files under it are: `$1/archive`."""
     case = Case(tmp_path)
     (case.contracts / "archive").mkdir()
     monkeypatch.chdir(case.contracts)
@@ -664,8 +668,7 @@ def test_a_validated_path_is_named_as_the_report_names_its_files(
 
     issues = _issues([Path()])
 
-    assert issues == [_unlisted(Path("archive"))]
-    assert issues[0]["source"] == "archive"
+    assert issues == [_unlisted("$1/archive")]
 
 
 def test_a_refusal_of_a_listing_is_reported_by_its_class(
@@ -676,7 +679,7 @@ def test_a_refusal_of_a_listing_is_reported_by_its_class(
     kept.mkdir()
     _deny_listing(monkeypatch, kept, refusal=OSError, code=errno.EIO)
 
-    assert _issues([case.contracts]) == [_unlisted(kept, "OSError")]
+    assert _issues([case.contracts]) == [_unlisted("$1/archive", "OSError")]
 
 
 def test_a_validated_directory_whose_entries_are_not_told_apart_is_an_unreadable_path(
@@ -689,7 +692,7 @@ def test_a_validated_directory_whose_entries_are_not_told_apart_is_an_unreadable
     _untell(monkeypatch, kept, PermissionError, errno.EACCES)
 
     # What is under `older` was not walked, and the report says of which directory.
-    assert _issues([case.contracts]) == [_unlisted(kept)]
+    assert _issues([case.contracts]) == [_unlisted("$1/archive")]
 
 
 @pytest.mark.parametrize("which", ["a file", "a directory"])
@@ -708,7 +711,7 @@ def test_a_validated_path_that_may_not_be_looked_at_is_an_unreadable_path(
 
     report = validate_paths([denied, product])
 
-    assert report.issues[0].model_dump(mode="json") == _unlooked(denied)
+    assert report.issues[0].model_dump(mode="json") == _unlooked("$1")
     # The product is still loaded and validated: its pin has no contract among what was read.
     assert [issue.code for issue in report.issues] == ["contract.unreadable", "metric_ref.unknown"]
     assert report.products == [VERIFIED]
@@ -725,8 +728,8 @@ def test_a_path_that_is_not_there_is_reported_as_before(tmp_path: Path) -> None:
         {
             "code": "contract.unreadable",
             "severity": "block",
-            "subject": nowhere.as_posix(),
-            "source": nowhere.as_posix(),
+            "subject": "$1",
+            "source": "$1",
             "message": "path does not exist",
         }
     ]
@@ -759,13 +762,13 @@ def test_decision_validate_names_the_directory_and_exits_by_the_verdict(
     assert main(["decision", "validate", str(case.contracts)]) == 4
     printed = capsys.readouterr().out.splitlines()
     assert printed[:2] == [
-        f"{'block':<8} {'contract.unreadable':<26} {kept.as_posix()}",
-        f"{'':<8} cannot list directory: PermissionError [{kept.as_posix()}]",
+        f"{'block':<8} {'contract.unreadable':<26} $1/archive",
+        f"{'':<8} cannot list directory: PermissionError [$1/archive]",
     ]
     assert printed[-1] == "verdict: block (1 product(s), 1 metric contract(s), 1 issue(s))"
 
     assert main(["decision", "validate", str(case.contracts), "--json"]) == 4
-    assert json.loads(capsys.readouterr().out)["issues"] == [_unlisted(kept)]
+    assert json.loads(capsys.readouterr().out)["issues"] == [_unlisted("$1/archive")]
 
 
 def test_decision_validate_without_a_product_shows_what_it_could_not_list(
@@ -777,8 +780,8 @@ def test_decision_validate_without_a_product_shows_what_it_could_not_list(
     assert main(["decision", "validate", str(case.contracts)]) == EXIT_ERROR
 
     assert capsys.readouterr().out.splitlines() == [
-        f"{'block':<8} {'contract.unreadable':<26} {case.contracts.as_posix()}",
-        f"{'':<8} cannot list directory: PermissionError [{case.contracts.as_posix()}]",
+        f"{'block':<8} {'contract.unreadable':<26} $1",
+        f"{'':<8} cannot list directory: PermissionError [$1]",
         "verdict: block (0 product(s), 0 metric contract(s), 1 issue(s))",
         f"error: {NO_PRODUCT}",
     ]
@@ -795,8 +798,8 @@ def test_decision_validate_names_a_path_it_may_not_look_at(
     assert main(["decision", "validate", str(metric), str(product)]) == 4
 
     assert capsys.readouterr().out.splitlines()[:2] == [
-        f"{'block':<8} {'contract.unreadable':<26} {metric.as_posix()}",
-        f"{'':<8} cannot look at path: PermissionError [{metric.as_posix()}]",
+        f"{'block':<8} {'contract.unreadable':<26} $1",
+        f"{'':<8} cannot look at path: PermissionError [$1]",
     ]
 
 
@@ -814,7 +817,9 @@ def test_the_gate_blocks_on_a_validated_directory_that_cannot_be_listed(
     assert report.verdict is Verdict.BLOCK
     assert status_of(report, "contracts.validate") is CheckStatus.BLOCK
     assert summary_of(report, "contracts.validate") == "contracts.issues"
-    assert _check_payload(tmp_path, report, "contracts.validate")["issues"] == [_unlisted(kept)]
+    assert _check_payload(tmp_path, report, "contracts.validate")["issues"] == [
+        _unlisted("$1/archive")
+    ]
 
 
 def test_decision_verify_exits_by_the_verdict_and_writes_the_bundle(
@@ -848,8 +853,7 @@ def test_no_product_names_the_path_that_could_not_be_listed(
     _deny_listing(monkeypatch, case.contracts)
 
     assert _refused(case) == (
-        f"{NO_PRODUCT}; 1 path(s) could not be read: "
-        f"{case.contracts.as_posix()} (cannot list directory: PermissionError)"
+        f"{NO_PRODUCT}; 1 path(s) could not be read: $1 (cannot list directory: PermissionError)"
     )
 
 
@@ -860,7 +864,7 @@ def test_no_product_names_a_contract_file_that_could_not_be_read(tmp_path: Path)
 
     assert _refused(case) == (
         f"{NO_PRODUCT}; 1 path(s) could not be read: "
-        f"{product.as_posix()} (cannot read contract: ParserError)"
+        f"$1/{product.name} (cannot read contract: ParserError)"
     )
 
 
@@ -869,8 +873,7 @@ def test_no_product_names_a_path_that_is_not_there(tmp_path: Path) -> None:
     case.contracts = tmp_path / "no contracts"
 
     assert _refused(case) == (
-        f"{NO_PRODUCT}; 1 path(s) could not be read: {case.contracts.as_posix()} "
-        "(path does not exist)"
+        f"{NO_PRODUCT}; 1 path(s) could not be read: $1 (path does not exist)"
     )
 
 
@@ -887,7 +890,7 @@ def test_an_unknown_product_names_the_paths_that_could_not_be_read(
 
     assert str(caught.value) == (
         f"no decision product 'decision://sales/other' in the given paths ({PRODUCT_ID}); "
-        f"1 path(s) could not be read: {kept.as_posix()} (cannot list directory: PermissionError)"
+        "1 path(s) could not be read: $1/archive (cannot list directory: PermissionError)"
     )
     assert not (case.root / "evidence").exists()
 
@@ -903,7 +906,7 @@ def test_no_product_names_three_paths_and_counts_the_rest(
     _deny_listing(monkeypatch, *kept[:3])
 
     named = ", ".join(
-        f"{directory.as_posix()} (cannot list directory: PermissionError)" for directory in kept[:3]
+        f"$1/{directory.name} (cannot list directory: PermissionError)" for directory in kept[:3]
     )
     assert _refused(case) == f"{NO_PRODUCT}; 3 path(s) could not be read: {named}"
 
@@ -939,7 +942,7 @@ def test_decision_verify_exits_2_and_names_what_it_could_not_list(
     assert captured.out == ""
     assert captured.err == (
         f"error: {NO_PRODUCT}; 1 path(s) could not be read: "
-        f"{case.contracts.as_posix()} (cannot list directory: PermissionError)\n"
+        "$1 (cannot list directory: PermissionError)\n"
     )
     assert not (case.root / "evidence").exists()
 
@@ -1257,7 +1260,7 @@ def test_a_validated_directory_that_may_not_be_listed_is_reported_where_modes_ar
     directory.mkdir(exist_ok=True)
     lock(directory, mode)
 
-    assert _issues([case.contracts]) == [_unlisted(directory)]
+    assert _issues([case.contracts]) == [_unlisted(f"$1/{where}" if where else "$1")]
 
 
 def test_validated_files_under_a_directory_that_may_not_be_searched_are_reported(
@@ -1271,8 +1274,8 @@ def test_validated_files_under_a_directory_that_may_not_be_searched_are_reported
     report = validate_paths([metric, product])
 
     assert [issue.model_dump(mode="json") for issue in report.issues] == [
-        _unlooked(metric),
-        _unlooked(product),
+        _unlooked("$1"),
+        _unlooked("$2"),
     ]
     assert report.products == []
 
@@ -1287,7 +1290,7 @@ def test_a_validated_directory_that_is_listed_and_not_searched_reports_each_file
     report = validate_paths([case.contracts])
 
     assert [(issue.code, issue.source, issue.message) for issue in report.issues] == [
-        ("contract.unreadable", str(case.contracts / name), "cannot read contract: PermissionError")
+        ("contract.unreadable", f"$1/{name}", "cannot read contract: PermissionError")
         for name in ("gross_margin_pct.yaml", "weekly_margin.yaml")
     ]
     assert report.products == []

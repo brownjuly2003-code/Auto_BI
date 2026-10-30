@@ -49,8 +49,9 @@ was raised and nothing of its message, which may quote the file. Running out of 
 interrupt and an exit say nothing about the file and SHALL NOT be converted.
 
 Under the validated paths such a file SHALL give one issue: `contract.unreadable`, block, with
-the path of the file as its subject and its source and the message `cannot read contract:
-ConstructorError`. Among the contracts of a semantic ref it SHALL give one gap:
+the path of the file — the name [validated path names](validated-path-names.md) gives it — as
+its subject and its source and the message `cannot read contract: ConstructorError`. Among the
+contracts of a semantic ref it SHALL give one gap:
 `gap.contract_invalid`, block, with the path `contracts.<file name>`, the reason `metric contract
 cannot be read: ConstructorError` and the digest of the file's bytes as `source_value_ref`. The
 file stays a part of what the snapshot was read from and is no part of the graph. Every other

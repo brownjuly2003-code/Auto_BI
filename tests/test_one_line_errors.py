@@ -85,17 +85,17 @@ def _refused_over(case: Case, *paths: Path, product_id: str = "") -> str:
 
 
 def test_a_path_that_could_not_be_read_is_spelled_on_one_line(tmp_path: Path) -> None:
-    """A path with a line break is quoted as the file of a refused product is."""
+    """A validated path with a line break is named by its place: none of its text is spelled."""
     case = Case(tmp_path)
     (case.contracts / "weekly_margin.yaml").unlink()
     missing = tmp_path / "missing\nline.yaml"
 
     assert _refused_over(case, case.contracts, missing) == (
-        f"{NO_PRODUCT}; 1 path(s) could not be read: {missing.as_posix()!r} (path does not exist)"
+        f"{NO_PRODUCT}; 1 path(s) could not be read: $2 (path does not exist)"
     )
     assert _refused_over(case, case.contracts, missing, product_id=PRODUCT_ID) == (
         f"no decision product '{PRODUCT_ID}' in the given paths (none); "
-        f"1 path(s) could not be read: {missing.as_posix()!r} (path does not exist)"
+        "1 path(s) could not be read: $2 (path does not exist)"
     )
 
 
@@ -112,7 +112,7 @@ def test_the_command_says_it_in_one_line_with_exit_two(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert _one_line_error(captured.err) == (
-        f"{NO_PRODUCT}; 1 path(s) could not be read: {missing.as_posix()!r} (path does not exist)"
+        f"{NO_PRODUCT}; 1 path(s) could not be read: $2 (path does not exist)"
     )
     assert not (tmp_path / "evidence").exists()
 
@@ -120,10 +120,10 @@ def test_the_command_says_it_in_one_line_with_exit_two(
 def test_each_named_path_is_spelled_and_a_printable_one_as_it_is() -> None:
     """No file of a Windows path holds a control character: asked of what was loaded."""
     issues = [
-        _issue("contracts/plain.yaml", "cannot read contract: ParserError"),
-        _issue("contracts/line\nbreak.yaml", "cannot read contract: ParserError"),
-        _issue("contracts/tab\tdir", "cannot list directory: PermissionError"),
-        _issue("contracts/\x1b[2J.yaml", "cannot read contract: ParserError"),
+        _issue("$1/plain.yaml", "cannot read contract: ParserError"),
+        _issue("$1/line\nbreak.yaml", "cannot read contract: ParserError"),
+        _issue("$1/tab\tdir", "cannot list directory: PermissionError"),
+        _issue("$1/\x1b[2J.yaml", "cannot read contract: ParserError"),
     ]
     loaded = LoadedContracts(
         products={},
@@ -136,9 +136,9 @@ def test_each_named_path_is_spelled_and_a_printable_one_as_it_is() -> None:
 
     assert str(caught.value) == (
         f"{NO_PRODUCT}; 4 path(s) could not be read: "
-        "contracts/plain.yaml (cannot read contract: ParserError), "
-        "'contracts/line\\nbreak.yaml' (cannot read contract: ParserError), "
-        "'contracts/tab\\tdir' (cannot list directory: PermissionError) (+1 more)"
+        "$1/plain.yaml (cannot read contract: ParserError), "
+        "'$1/line\\nbreak.yaml' (cannot read contract: ParserError), "
+        "'$1/tab\\tdir' (cannot list directory: PermissionError) (+1 more)"
     )
 
 
@@ -155,7 +155,7 @@ def test_a_key_of_a_refused_product_is_escaped_on_the_line(
     reason = "bad\x1bkey: Extra inputs are not permitted"
     assert _refused(case) == (
         f"{NO_PRODUCT}; 1 decision product(s) failed the schema: '{PRODUCT_ID}' in "
-        f"{path.as_posix()} "
+        f"$1/{path.name} "
         f"({reason})"
     )
 
@@ -164,7 +164,7 @@ def test_a_key_of_a_refused_product_is_escaped_on_the_line(
     assert captured.out == ""
     assert _one_line_error(captured.err) == (
         f"{NO_PRODUCT}; 1 decision product(s) failed the schema: '{PRODUCT_ID}' in "
-        f"{path.as_posix()} "
+        f"$1/{path.name} "
         "(bad\\x1bkey: Extra inputs are not permitted)"
     )
 

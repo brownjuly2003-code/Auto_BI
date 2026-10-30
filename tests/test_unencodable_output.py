@@ -207,6 +207,12 @@ class _Stand:
         self.out = self.home / "out"
         #: A path nothing is at: a command that is refused by it names it.
         self.missing = self.home / "нет"
+        #: A directory with one file that is no contract, named as `HOME` is: `decision
+        #: validate` names the file by the place of the path it was found under and its own
+        #: name, `$2/<HOME>.yaml`, and nothing of the path (validated-path-names).
+        self.notes = self.home / "notes"
+        self.notes.mkdir()
+        (self.notes / f"{HOME}.yaml").write_text("- not a mapping\n", encoding="utf-8")
         self.sealed = _seal(self.home / "sealed")
         monkeypatch.setattr(cli, "_result_capture_target", _Engine().target)
 
@@ -222,7 +228,7 @@ class _Stand:
         return _Answer(code, out, err, wrote)
 
     def validate(self, *extra: str) -> list[str]:
-        return ["decision", "validate", str(self.case.contracts), str(self.missing), *extra]
+        return ["decision", "validate", str(self.case.contracts), str(self.notes), *extra]
 
     def verify(self, *extra: str) -> list[str]:
         return _flag(_verify_argv(self.case, *extra), "--evidence", self.out / "evidence")
@@ -493,16 +499,26 @@ def test_the_directory_is_spelled_as_each_stream_can(
 def test_a_path_with_a_lone_surrogate_is_named_on_a_stream_of_utf8(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, as_json: bool, char: str
 ) -> None:
-    """No encoding has a form for it: UTF-8 refuses it as ASCII refuses a letter."""
+    """No encoding has a form for it: UTF-8 refuses it as ASCII refuses a letter. The path is a
+    file's below a validated directory, named as the directory listed it; a filesystem that
+    takes no such name — a byte that is no UTF-8 on macOS, U+D800 on POSIX — has no such file."""
     stand = _Stand(tmp_path, monkeypatch)
-    argv = ["decision", "validate", str(stand.case.contracts), str(stand.home / ("no" + char))]
+    below = stand.home / "below"
+    below.mkdir()
+    try:
+        (below / f"no{char}.yaml").write_text("- not a mapping\n", encoding="utf-8")
+    except (OSError, UnicodeError) as refused:
+        pytest.skip(f"the filesystem takes no such name: {type(refused).__name__}")
+    argv = ["decision", "validate", str(stand.case.contracts), str(below)]
     argv += ["--json"] if as_json else []
     meant = stand.run(argv)
 
     said = stand.run(argv, "utf-8")
 
+    named = f"$2/no{char}.yaml"
     assert (said.code, said.err) == (4, "")
     if as_json:
+        assert named in [issue["source"] for issue in json.loads(meant.out)["issues"]]
         assert char in meant.out
         assert said.out.isascii()
         assert json.loads(said.out) == json.loads(meant.out)
@@ -511,7 +527,25 @@ def test_a_path_with_a_lone_surrogate_is_named_on_a_stream_of_utf8(
         # (docs/specs/one-line-answers.md), so a stream of any encoding gets the escape.
         assert char not in meant.out
         assert said.out == meant.out
-        assert f"{BS}u{ord(char):04x}" in said.out
+        assert f"$2/no{BS}u{ord(char):04x}.yaml" in said.out
+
+
+@pytest.mark.parametrize("char", [UNDECODED, LONE], ids=["a byte", "a lone surrogate"])
+@pytest.mark.parametrize("as_json", [False, True], ids=["lines", "json"])
+def test_a_validated_path_with_a_lone_surrogate_is_no_part_of_the_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, as_json: bool, char: str
+) -> None:
+    """A validated path is named by its place, `$2`, and nothing of its text is printed."""
+    stand = _Stand(tmp_path, monkeypatch)
+    argv = ["decision", "validate", str(stand.case.contracts), str(stand.home / ("no" + char))]
+    argv += ["--json"] if as_json else []
+    meant = stand.run(argv)
+
+    said = stand.run(argv, "utf-8")
+
+    assert char not in meant.out
+    assert "$2" in meant.out
+    assert (said.code, said.out, said.err) == (4, meant.out, "")
 
 
 # --- one artifact -------------------------------------------------------------------------
