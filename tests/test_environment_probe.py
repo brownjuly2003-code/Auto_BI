@@ -101,7 +101,16 @@ def postgres_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
     answers: dict[str, list[dict[str, Any]]] = {
         "current_user AS name": [{"name": "gate_ro", "superuser": False, "bypassrls": False}],
         "has_table_privilege('dm.sales_daily', 'INSERT')": [
-            {"insert": False, "update": False, "delete": False, "truncate": False}
+            {
+                "insert": False,
+                "update": False,
+                "delete": False,
+                "truncate": False,
+                "owner_name": "mart_owner",
+                "owns_mart": False,
+                "schema_owner_name": "schema_owner",
+                "owns_schema": False,
+            }
         ],
         "pg_tables": [{"tablename": "sales_daily"}],
         "format_type": [

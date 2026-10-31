@@ -125,6 +125,10 @@ class Catalog:
                     "truncate": False,
                     "column_insert": False,
                     "column_update": False,
+                    "owner_name": "mart_owner",
+                    "owns_mart": False,
+                    "schema_owner_name": "schema_owner",
+                    "owns_schema": False,
                 }
             ]
         if "system.tables" in sql or "pg_tables" in sql:
@@ -280,7 +284,7 @@ def test_ordinary_catalog_sql_bytes(engine: str) -> None:
     expected = (
         "a14068adf36a63adcfae83954b08453a8b0bd2c92345f2e947ef17071fcf0ae1"
         if engine == "clickhouse"
-        else "e1c920ce8c4a3d9155413e5153de06f486a85c9dfbcc88c786c8d292a6958c12"
+        else "fe7a23d8ac983230c6b4cb84d9eacdfa0c60679ed7d7b93c0316ca578b411c48"
     )
     assert hashlib.sha256(encoded).hexdigest() == expected
 

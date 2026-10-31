@@ -41,6 +41,7 @@ from tests.test_environment_probe import (
 )
 from tests.test_postgres_column_write_privileges import (
     column_sql,
+    no_table_writes,
     pg_questions,
     role_engine,
     table_sql,
@@ -90,8 +91,14 @@ def reachable_sql(mart: str, roles: list[str]) -> str:
     )
     listed = ", ".join(literal(role) for role in roles)
     return (
-        f"SELECT r.rolname AS name, {privileges}, {columns} "
-        f"FROM pg_roles r WHERE r.rolname IN ({listed}) ORDER BY r.rolname"
+        f"SELECT r.rolname AS name, {privileges}, {columns}, "
+        "pg_get_userbyid(c.relowner) AS owner_name, "
+        "pg_has_role(r.oid, c.relowner, 'USAGE') AS owns_mart, "
+        "pg_get_userbyid(n.nspowner) AS schema_owner_name, "
+        "pg_has_role(r.oid, n.nspowner, 'USAGE') AS owns_schema "
+        f"FROM pg_roles r LEFT JOIN pg_class c ON c.oid = to_regclass({literal(mart)}) "
+        "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
+        f"WHERE r.rolname IN ({listed}) ORDER BY r.rolname"
     )
 
 
@@ -108,6 +115,7 @@ def reachable_on(
 def role_row(name: str, **grants: bool) -> dict[str, Any]:
     """A per-role answer row: every write question false unless a test turns one on."""
     row: dict[str, Any] = {
+        **no_table_writes(),
         "name": name,
         "insert": False,
         "update": False,
@@ -122,7 +130,7 @@ def role_row(name: str, **grants: bool) -> dict[str, Any]:
 
 def none_granted() -> list[dict[str, Any]]:
     """The current role's own table-level answer when it holds nothing."""
-    return [dict.fromkeys(("insert", "update", "delete", "truncate"), False)]
+    return [no_table_writes()]
 
 
 def second_mart(scope: EnvironmentQuestions, table: str = "dm.stores") -> EnvironmentQuestions:
@@ -468,7 +476,10 @@ def test_a_refused_reachable_role_privilege_question_never_establishes_read_only
         scope,
         with_runtime(scope),
         "unreported write privileges of colwriter, writer on "
-        f"{MART}, so read-only access is not established",
+        f"{MART}; ownership of {MART} for SET ROLE colwriter; "
+        f"schema ownership of {MART} for SET ROLE colwriter; "
+        f"ownership of {MART} for SET ROLE writer; "
+        f"schema ownership of {MART} for SET ROLE writer, so read-only access is not established",
     )
 
 
@@ -485,7 +496,9 @@ def test_a_reachable_role_omitted_from_a_privilege_answer_never_establishes_read
         engine,
         scope,
         with_runtime(scope),
-        f"unreported write privileges of writer on {MART}, so read-only access is not established",
+        f"unreported write privileges of writer on {MART}; "
+        f"ownership of {MART} for SET ROLE writer; "
+        f"schema ownership of {MART} for SET ROLE writer, so read-only access is not established",
     )
 
 
@@ -504,7 +517,9 @@ def test_a_null_named_privilege_row_stands_for_no_requested_role() -> None:
         engine,
         scope,
         with_runtime(scope),
-        f"unreported write privileges of None on {MART}, so read-only access is not established",
+        f"unreported write privileges of None on {MART}; "
+        f"ownership of {MART} for SET ROLE None; "
+        f"schema ownership of {MART} for SET ROLE None, so read-only access is not established",
     )
 
 

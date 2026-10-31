@@ -266,12 +266,20 @@ class TableFacts(StrictModel):
     #: and nothing else, so `row_policies` is the whole answer there.
     #: `None` also on a kernel that predates row-level security.
     row_security_enabled: bool | None = None
+    #: Current role holds the mart owner's privileges and FORCE is off. Independent of
+    #: the role-wide row-security exemption (superuser or BYPASSRLS); None when unanswered
+    #: or on a kernel without row security.
+    #: For a view mart this concerns only its own policies, which a view does not have;
+    #: the policies of its base tables are not asked about.
+    owner_bypasses_row_security: bool | None = None
     #: Policies the engine reports on this mart. `None` is "not reported" — a role that
     #: cannot read the access catalog has not established that there are none.
     #: `[]` on a present mart on a kernel that predates row-level security.
     row_policies: list[RowPolicyFacts] | None = None
 
     def applying_policies(self) -> list[RowPolicyFacts]:
+        if self.row_security_enabled is False or self.owner_bypasses_row_security is True:
+            return []
         return [policy for policy in self.row_policies or () if policy.applies_to_session]
 
 
@@ -941,7 +949,11 @@ def denies_all_rows(table: TableFacts, role: RoleFacts) -> bool:
     restrictive-only policy, which filters there instead of denying), so the switch — not the
     policy list — is the condition.
     """
-    if table.row_security_enabled is not True or role.bypasses_row_security is True:
+    if (
+        table.row_security_enabled is not True
+        or role.bypasses_row_security is True
+        or table.owner_bypasses_row_security is True
+    ):
         return False
     if table.row_policies is None:
         return False
@@ -1015,18 +1027,25 @@ def _row_policy_findings(
         return []
     applying = table.applying_policies()
 
-    if policies and facts.role.bypasses_row_security is True:
+    if (
+        policies
+        and table.row_security_enabled is not False
+        and (facts.role.bypasses_row_security is True or table.owner_bypasses_row_security is True)
+    ):
+        exemptions = []
+        if facts.role.bypasses_row_security is True:
+            exemptions.append("the role-wide row-security exemption (SUPERUSER or BYPASSRLS)")
+        if table.owner_bypasses_row_security is True:
+            exemptions.append("the mart owner's privileges with FORCE ROW LEVEL SECURITY off")
         return [
             EnvironmentFinding(
                 code="security.row_security_bypassed",
                 severity=Severity.REVIEW,
                 subject=question.table,
                 detail=(
-                    f"{question.table} on {facts.target} is governed by "
-                    f"{_policy_names(policies)}, and none of it reaches {facts.role.name}, "
-                    "which bypasses row security; the gate read rows the product's consumers "
-                    "do not get, so this is a verification of a wider table than the one that "
-                    "gets delivered"
+                    f"{question.table} on {facts.target} reports {_policy_names(policies)}; "
+                    f"current role {facts.role.name} holds {' and '.join(exemptions)}; "
+                    "the reported policies do not filter what this session read"
                 ),
             )
         ]

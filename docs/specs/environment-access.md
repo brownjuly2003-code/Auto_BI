@@ -87,13 +87,158 @@ escaped: `role_name IN ('wri\ter')` returned no row although that role held `ALT
 the mutation ran after `SET ROLE` to it, `'tail\'` was a syntax error, and `'wri\\ter'`,
 `'tail\\'` and `'odd''name'` named their roles.
 
+A mart's owner writes without any DML grant, and so does the owner of its schema. PostgreSQL
+16.15 and the PostgreSQL 9.4.26 kernel, the kernel of Greenplum 6 and Greengage 6 (live,
+throwaway clusters, 2026-10-31; every experiment ran in a transaction that was rolled back):
+the owner of `dm.mart`, with its own `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`
+and `TRIGGER` privileges revoked, was refused an `INSERT` (`42501`), then granted itself
+`INSERT` and wrote. The owner, an inheriting member of the owner role, a `NOINHERIT` member
+after `SET ROLE` to the owner role and a `NOINHERIT` member of an inheriting member after
+`SET ROLE` to that member each added a column to the mart, dropped it, and granted `INSERT`
+to the role it acted as and wrote; without `SET ROLE` the `NOINHERIT` member was refused the
+`ALTER TABLE` (`42501`). A session whose role default parks it on a select-only role altered
+and dropped a mart its session user owns after `SET ROLE NONE`. The owner of the schema `dm`,
+an inheriting member of it and a `NOINHERIT` member after `SET ROLE` each dropped `dm.mart`
+and the view `dm.mart_view`, neither of which they own, and a parked session dropped a mart
+in its session user's schema after `SET ROLE NONE`. The view's owner changed the view's
+`security_barrier` option, and a role holding only `SELECT` was refused `DROP TABLE` and
+`INSERT` (`42501`).
+
+On 16.15 (the same run) the owner was exempt from row security unless it was forced. With row
+security on and one permissive policy admitting one of the two rows, the owner and its
+inheriting member read both rows, and one of a mart with the same policy and
+`FORCE ROW LEVEL SECURITY`; with row security on and no policy they read both. The two
+`NOINHERIT` members without `SET ROLE`, the schema owner and a plain reader read one, one and
+none, and a `BYPASSRLS` role read both rows in all three cases. On a mart whose row security
+was never enabled, a permissive policy admitting one of the two rows filtered none of the
+reader, the owner and the `BYPASSRLS` role: each read both. `CREATE POLICY` on a view and
+`ALTER TABLE … ENABLE ROW LEVEL SECURITY` on a view were refused (`42809`). On the 9.4.26
+kernel, which has no row security, every one of those sessions read both rows. No Greenplum
+or Greengage stand was run.
+
+The collector of 788e184 and this one were run over the same 21 sessions on each kernel. The
+collector of 788e184 answered `read_only` true for every one. This one answers false for the
+14 that own the mart or its schema or reach an owner through `SET ROLE` or behind a role
+default, with evidence naming the ownership and how it is held, and true for the reader and
+the `BYPASSRLS` role. On 16.15 the owner and its inheriting member on `dm.mart` and the
+`BYPASSRLS` role get `security.row_security_bypassed` naming their exemption, where 788e184
+gave the two owners `security.row_filtered`; the owner of the mart with no policy gets no
+row-security finding, where 788e184 gave it `security.row_policy_denies_all`; and on the mart
+whose row security was never enabled no session gets a row-security finding, where 788e184
+gave the reader and the owner `security.row_filtered` and the `BYPASSRLS` role
+`security.row_security_bypassed` saying that the gate read rows the product's consumers do not
+get. The remaining row-security findings — `security.row_filtered` for the `NOINHERIT` members,
+the schema owner and its members, the reader and the owners of the forced mart, and
+`security.row_policy_denies_all` for the reader of the mart with no policy — are the same with
+both collectors; on the 9.4.26 kernel neither gives a row-security finding. An injected NULL
+ownership answer gives `read_only` false here and true at 788e184; an empty answer gives false
+with both.
+
 Known boundaries, not covered here: a `SECURITY DEFINER` function the role may execute writes
 with its owner's privileges; whether a role reachable through `SET ROLE` bypasses row security,
 reads further columns or meets other row policies is not asked; role-administration powers
 (`CREATEROLE`, `ADMIN OPTION`, on ClickHouse `ROLE ADMIN`), with which a role can change
 memberships, are not asked about; and the ClickHouse `readonly=1/2` rule rests on the pinned
 24.8.14.39 behaviour above, and a version that applies a role's settings on a role switch was
-not checked.
+not checked. Ownership checks cover only the in-scope mart and its schema; they do not
+ask about ownership, DML grants or row security of a view mart's base tables, a mart's
+partitions or its inheritance children. The powers available by changing memberships
+are not asked about either. For a view mart the owner-bypass fact means only that the
+current role holds the view owner's privileges with FORCE off. It concerns the view's
+own policies, which a view does not have; its base tables' policies are not asked about.
+Schema ownership and ownership available only after SET ROLE do not establish a current
+table-owner row-security bypass. The ownership answer contract is pinned by
+`tests/test_postgres_mart_ownership.py`; the live ownership results are recorded above.
+
+## Requirement: mart ownership prevents read-only evidence without a DML grant
+
+For each in-scope PostgreSQL-family mart, including a view, the collector SHALL include
+`pg_class.relowner` and `pg_namespace.nspowner` ownership in the existing table-write
+question and the existing per-mart question for roles reachable through SET ROLE.
+`pg_has_role(current_user, owner_oid, 'USAGE')`, or `pg_has_role(r.oid, owner_oid, 'USAGE')`
+for a reached role, SHALL test privileges held, including inheritance. An affirmative
+answer SHALL set `read_only` false even when every DML answer is false. Evidence SHALL name
+the mart, owning role, and holder: the current role or the role reached through SET ROLE,
+with `USAGE`. Owner names SHALL come from `pg_get_userbyid`.
+
+A refused or empty ownership answer, a missing or NULL flag, or a missing or empty owner
+name SHALL NOT establish read-only access. An absent mart SHALL keep its existing absence
+fact. Ownership questions SHALL use catalogs present on the 9.4 kernel and SHALL NOT read
+`relforcerowsecurity` there.
+
+The existing row-security question on kernels with RLS SHALL read
+`pg_has_role(current_user, c.relowner, 'USAGE') AND NOT c.relforcerowsecurity` as a separate
+per-mart `owner_bypasses_row_security` fact. A missing or NULL answer SHALL remain null;
+the fact SHALL also be null on the 9.4 path. A true fact SHALL prevent findings that call
+the mart filtered or empty because of its policies, and SHALL make its applying policy
+list empty. Reported policies SHALL instead produce `security.row_security_bypassed`
+only when `row_security_enabled` is not false. The detail SHALL name the established
+exemption: the role-wide row-security exemption (superuser or BYPASSRLS), the mart owner's
+privileges held by the current role with FORCE ROW LEVEL SECURITY off, or both. It SHALL
+state that the reported policies do not filter what this session read, without claiming
+a difference of rows from the sessions to which the policies apply.
+`RoleFacts.bypasses_row_security` SHALL retain its role-wide meaning.
+
+For every session, `row_security_enabled` false SHALL make `applying_policies()` empty
+and SHALL prevent `security.row_filtered`, `security.row_policy_denies_all` and
+`security.row_security_bypassed`. These policies SHALL NOT count as a restriction for
+classification checks. A null switch SHALL retain the existing policy handling.
+
+### Scenario: ownership with revoked writes
+
+- **WHEN** all DML answers are false but the current role owns the mart, inherits its
+  owner's privileges, or reaches such privileges through SET ROLE (including the session
+  user behind a role default)
+- **THEN** access blocks with `access.role_writable` and ownership evidence, and the exact
+  runtime query is withheld
+
+### Scenario: schema ownership
+
+- **WHEN** only schema ownership is affirmative, directly, by inheritance or through SET ROLE
+- **THEN** access blocks with evidence naming schema ownership, its owner and the mart;
+  that ownership does not bypass the mart's policies for the current role
+
+### Scenario: unanswered ownership
+
+- **WHEN** the ownership question is refused or empty, an ownership field is absent or NULL,
+  or an owner name is empty, for the current role or a reached role
+- **THEN** the role is not established read-only, with unreported evidence
+
+### Scenario: a select-only role owns nothing
+
+- **WHEN** every write and ownership answer is false and role reachability is answered
+- **THEN** the role stays read-only, including on the 9.4 kernel
+
+### Scenario: owner and FORCE
+
+- **WHEN** the current role holds the mart owner's privileges and FORCE is off
+- **THEN** neither a restrictive reading policy nor the absence of a permissive policy
+  produces a filtered or empty-policy finding for that mart
+- **WHEN** FORCE is on, or the current role does not hold that ownership
+- **THEN** the existing policy findings apply; a schema owner or a role that could own the
+  mart only after SET ROLE gains no current owner bypass
+
+### Scenario: ownership is per mart
+
+- **WHEN** one mart reports the owner's bypass and another does not
+- **THEN** only the first mart's policy findings change; the role-wide row-security
+  exemption (superuser or BYPASSRLS) is unchanged
+
+### Scenario: reported policies with row security switched off
+
+- **WHEN** row security is false and a permissive or restrictive-only policy names the
+  session, whether it is a plain reader, a current owner or a session with the role-wide
+  row-security exemption (superuser or BYPASSRLS)
+- **THEN** no policy applies and no filtered, denies-all or bypassed finding is produced
+- **AND** if the model declares the mart sensitive and every relevant column is readable,
+  `security.unenforced_classification` is produced
+
+### Scenario: bypass evidence does not establish a difference of rows
+
+- **WHEN** row security is true or null, policies are reported, and the current role holds
+  the owner's exemption, the role-wide row-security exemption (superuser or BYPASSRLS), or both
+- **THEN** the bypassed finding names those exemptions even if the policy does not name
+  this session or its expression is `true`; the detail makes no claim that rows differ
 
 ## Requirement: an unanswered role identity cannot establish read-only access
 

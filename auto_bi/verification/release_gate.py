@@ -584,7 +584,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: characters during encoding or interpret plain-string backslashes; questions could name
 #: another object, gain a condition or fail to parse, changing facts or captured results.
 #: A changed session now refuses the next statement or captured result.
-VERIFIER_VERSION = "122"
+#: 123 — PostgreSQL mart and schema ownership, including inherited and SET ROLE
+#: privileges, prevents read-only evidence after DML revocation. Per-mart facts carry
+#: the current owner's row-security bypass together with FORCE.
+#: Reports also ignore policies when the mart's row-security switch is false and
+#: describe established bypass exemptions without claiming a difference of rows.
+VERIFIER_VERSION = "123"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -869,7 +874,12 @@ VERIFIER_VERSION = "122"
 #: created_at freshness.event_time_ahead, both review, where rule 79 graded the age. Text in
 #: none of the three forms — a week, `YYYYMMDD`, a blank for `T`, an offset — is
 #: freshness.unreadable_event_time, where rule 79 read what `datetime.fromisoformat` read.
-CHECK_VERSION = "80"
+#: 81 — row-security findings and policy applicability respect the per-mart owner
+#: bypass: an owner without FORCE is neither filtered nor denied all rows by policies.
+#: A false row-security switch makes reported policies inapplicable to every session,
+#: including classification checks, and suppresses bypass findings. Bypass details name
+#: the established exemptions without claiming that consumers receive different rows.
+CHECK_VERSION = "81"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and

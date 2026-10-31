@@ -31,10 +31,29 @@ OUTSIDE = "dm.outside_scope"
 
 
 def table_sql(mart: str) -> str:
-    return "SELECT " + ", ".join(
+    privileges = ", ".join(
         f"has_table_privilege('{mart}', '{privilege}') AS {privilege.lower()}"
         for privilege in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")
     )
+    return (
+        f"SELECT {privileges}, pg_get_userbyid(c.relowner) AS owner_name, "
+        "pg_has_role(current_user, c.relowner, 'USAGE') AS owns_mart, "
+        "pg_get_userbyid(n.nspowner) AS schema_owner_name, "
+        "pg_has_role(current_user, n.nspowner, 'USAGE') AS owns_schema "
+        f"FROM (SELECT to_regclass('{mart}') AS oid) mart "
+        "LEFT JOIN pg_class c ON c.oid = mart.oid "
+        "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace"
+    )
+
+
+def no_table_writes() -> dict[str, object]:
+    return {
+        **dict.fromkeys(("insert", "update", "delete", "truncate"), False),
+        "owner_name": "mart_owner",
+        "owns_mart": False,
+        "schema_owner_name": "schema_owner",
+        "owns_schema": False,
+    }
 
 
 def column_sql(mart: str) -> str:
@@ -48,7 +67,7 @@ def role_engine(*, insert: bool = False, update: bool = False) -> FakeEngine:
     # Longest markers beat the fixture's permissive has_any_column_privilege default.
     return postgres_engine(
         **{
-            table_sql(MART): [dict.fromkeys(("insert", "update", "delete", "truncate"), False)],
+            table_sql(MART): [no_table_writes()],
             column_sql(MART): [{"column_insert": insert, "column_update": update}],
             column_sql(OUTSIDE): [{"column_insert": True, "column_update": True}],
         }
@@ -171,9 +190,7 @@ def test_read_only_evidence_names_table_and_column_write_privileges() -> None:
 def test_second_in_scope_mart_column_write_blocks_and_outside_is_not_asked() -> None:
     engine = role_engine()
     second = "dm.sales_monthly"
-    engine.answers[table_sql(second)] = [
-        dict.fromkeys(("insert", "update", "delete", "truncate"), False)
-    ]
+    engine.answers[table_sql(second)] = [no_table_writes()]
     engine.answers[column_sql(second)] = [{"column_insert": False, "column_update": True}]
     scope = pg_questions()
     scope.tables.append(TableQuestion(table=second, event_time_column="date"))

@@ -346,6 +346,7 @@ def test_clean_wording_uses_only_attributed_layout_readings(reverse: bool) -> No
 # Digests pin the complete SELECT replay, including T-33 column-write questions and
 # the T-34 reachability question (one per PostgreSQL-family collection), and the
 # T-39 identity question reading the current role's superuser flag from pg_roles.
+# T-127 adds mart/schema ownership columns and joins, plus the owner/FORCE RLS answer.
 REPLAYS = [
     (
         "clickhouse",
@@ -373,28 +374,28 @@ REPLAYS = [
         "made",
         {},
         20,
-        "02111db96176068fc61713f53d863927815c9c1a75e90c7889093732c6b543bd",
+        "69ab7531943f63cdfbcbefdd17066a543a0695232de2f3667272dfa3a8fcd584",
     ),
     (
         "greengage",
         "absent",
         {"pg_tables": []},
         8,
-        "73242c23e85155c00a0a8611b7a07d8617b3ea14d074d5854af52277b496cecc",
+        "31c2948d8f6b8c40a0111e8c9f8434f036dfb89d865909086eacd1d20e9e2d6d",
     ),
     (
         "greengage",
         "no_privilege",
         {"has_any_column_privilege": [{"ok": False}]},
         16,
-        "6d386c42a59eb5c87b9ff1f0fa2d09233c20714a8be9e799d8536846f7f07783",
+        "d28d9f04cc6b74a05e76b91902bf96ffaa76683f70716c592d6015515138857a",
     ),
     (
         "greengage",
         "refused",
         {"count(*)": []},
         18,
-        "14dce274564634ddebc1fdd86d5a5cca0a4e405cae3c67bdce7e1794ba7b98d5",
+        "ce537cc3a1a579c91616f708256c64bc55c3689549ad7937ed240645d569599f",
     ),
 ]
 

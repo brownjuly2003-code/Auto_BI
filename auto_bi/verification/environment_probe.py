@@ -23,8 +23,9 @@ InvalidName before a presence fact, including for an absent mart under a non-sup
 engine's own answer, because an INSERT "just to see" is a write to somebody's warehouse, and
 a gate that mutates the thing it verifies has already failed invariant 3.
 
-Each engine is asked the question that is true *for it*, and both forms were checked on
-stands of the pinned versions:
+Each engine is asked the question that is true *for it*, and the forms below were checked on
+stands: of the pinned versions, and for ownership PostgreSQL 16.15 and the PostgreSQL 9.4.26
+kernel (throwaway clusters, 2026-10-31):
 
 * **ClickHouse 24.8.14.39** — a user declared in `users.xml` holds `GRANT INSERT, ALTER,
   DROP … ON *.*` even when its profile sets `readonly=1`, and it is the profile that makes
@@ -41,14 +42,20 @@ stands of the pinned versions:
   that leaves a backslash alone names another role or none.
 * **PostgreSQL 14.24** (the `numeric`/privilege behaviour Greenplum and Greengage inherit) —
   `transaction_read_only` is `off` for a SELECT-only role, so the session GUC says nothing;
-  `has_table_privilege` per in-scope mart is the answer, and a superuser is writable
+  write privileges and ownership per in-scope mart are asked, and a superuser is writable
   whatever the grants say, because privileges do not apply to it. `max()` over no rows is
   NULL here, which the fact model already allows for.
   `has_table_privilege` alone misses a column-level write grant, which
   `has_any_column_privilege` reports for effective privileges (inherited groups and PUBLIC
   included). The privilege functions answer for `current_user` only, so the roles the
   session user can `SET ROLE` to (including itself behind a role default) are asked the
-  same write questions, and a reachable superuser is writable.
+  same write and ownership questions, and a reachable superuser is writable.
+  Ownership is read through `pg_has_role(..., 'USAGE')` for the mart and its schema,
+  including inherited privileges, independently of table and column DML grants: on both
+  ownership stands an owner whose own DML grants were revoked, an inheriting member of the
+  owner role and `NOINHERIT` members after `SET ROLE` altered and dropped the mart and
+  granted `INSERT` to the role they acted as, and the schema's owner dropped a mart and a
+  view it does not own.
 
 Column types come from each engine's own catalog in the spelling the model was written in —
 `system.columns.type` on ClickHouse, `format_type(atttypid, atttypmod)` on the Postgres
@@ -64,7 +71,8 @@ facts unreported, and `check_physical` compares nothing rather than guessing at 
 
 The security half asks what this role may reach, and here the two engines disagree about
 almost every mechanism. All of it was established on the same stands, none of it by reading
-documentation:
+documentation; the owner's exemption, the switched-off policy and the view were added on the
+PostgreSQL 16.15 ownership stand:
 
 * **columns.** ClickHouse enforces `GRANT SELECT(col)` and *hides* what it does not grant:
   `system.columns` returned five of six columns to a role granted five, so an out-of-reach
@@ -82,15 +90,25 @@ documentation:
   (600 → 30 rows on the stand). PostgreSQL is the reverse: with `relrowsecurity` on, a row
   must pass at least one *permissive* policy, so a mart whose policies are all restrictive —
   or name other roles — answers an empty set with no error at all. That silent empty answer
-  is why the switch is read as a fact instead of inferred from a row count.
+  is why the switch is read as a fact instead of inferred from a row count. With the switch
+  off the policies apply to nobody: a reader, the owner and a `BYPASSRLS` role each read both
+  rows of a mart whose only policy admits one of the two.
 * **who a policy names.** Both engines attach policies to roles as well as users
   (`apply_to_list` on ClickHouse, `polroles` including `public` on PostgreSQL), so the
   session's enabled roles decide membership, not its user name. A policy attached to a role
   the session holds was verified to filter it.
 * **who escapes.** A PostgreSQL superuser or `BYPASSRLS` role is not filtered at all, and the
-  fact carries that. A table's *owner* also escapes its policies unless they are `FORCE`d,
-  and that case is deliberately not modelled: owning a mart carries `INSERT` on it, so
-  `access.role_writable` has already blocked the run before row security matters.
+  role fact carries that. The per-mart `owner_bypasses_row_security` fact reads current
+  ownership (including inherited privileges) together with `NOT relforcerowsecurity`: the
+  owner and an inheriting member read both rows of a mart whose policy admits one, and one
+  of a mart with the same policy and `FORCE ROW LEVEL SECURITY`.
+  It prevents filtered or empty-policy findings for that owner even when access blocks.
+  Ownership is independent of INSERT: a revoked DML grant does not establish read-only
+  access. Schema ownership and ownership available only after SET ROLE do not set this
+  per-mart bypass for the current role: the schema's owner and `NOINHERIT` members of the
+  owner role without `SET ROLE` read one row. A view takes neither a policy nor the switch
+  (`42809`), so for a view mart the fact concerns no policy of its own; the policies of its
+  base tables are not asked about.
 
 **Scanned rows are asked as a plan, never inferred from a run.** `EXPLAIN ESTIMATE` on
 ClickHouse and `EXPLAIN` without `ANALYZE` on the Postgres family answer without executing
@@ -899,14 +917,22 @@ def _postgres_role(
 
     writable: list[str] = []
     unreported: list[str] = []
+    ownership_answers: list[tuple[dict[str, Any], str, str]] = []
     for question in questions.tables:
         privileges = ", ".join(
             f"has_table_privilege({_literal(question.table)}, {_literal(privilege)}) AS "
             f"{privilege.lower()}"
             for privilege in _PG_WRITE_PRIVILEGES
         )
-        granted = _ask(run_query, f"SELECT {privileges}")
+        granted = _ask(
+            run_query,
+            f"SELECT {privileges}, {_pg_ownership_sql('current_user')} "
+            f"FROM (SELECT to_regclass({_literal(question.table)}) AS oid) mart "
+            "LEFT JOIN pg_class c ON c.oid = mart.oid "
+            "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace",
+        )
         table_grants = granted[0] if granted else {}
+        ownership_answers.append((table_grants, question.table, f"current role {name}"))
         missing_table = [p for p in _PG_WRITE_PRIVILEGES if table_grants.get(p.lower()) is None]
         if missing_table:
             unreported.append(f"table {'/'.join(missing_table)} privileges on {question.table}")
@@ -932,7 +958,11 @@ def _postgres_role(
                 column_grants.get(f"column_{privilege.lower()}")
             ):
                 writable.append(f"{privilege} on columns of {question.table}")
-    reach_clause = _pg_set_role_write_privileges(run_query, questions, writable, unreported)
+    reach_clause = _pg_set_role_write_privileges(
+        run_query, questions, writable, unreported, ownership_answers
+    )
+    for answer, mart, holder in ownership_answers:
+        _pg_ownership_evidence(answer, mart, holder, writable, unreported)
     return RoleFacts(
         name=name,
         read_only=not writable and not unreported,
@@ -953,7 +983,11 @@ def _postgres_role(
 
 
 def _pg_set_role_write_privileges(
-    run_query: RunQuery, questions: EnvironmentQuestions, writable: list[str], unreported: list[str]
+    run_query: RunQuery,
+    questions: EnvironmentQuestions,
+    writable: list[str],
+    unreported: list[str],
+    ownership_answers: list[tuple[dict[str, Any], str, str]],
 ) -> str:
     """Ask the roles `SET ROLE` reaches the same write questions, and report them.
 
@@ -998,6 +1032,7 @@ def _pg_set_role_write_privileges(
             answer = _ask(run_query, _pg_reachable_privilege_sql(mart, names))
             if answer is None:
                 unreported.append(f"write privileges of {', '.join(names)} on {mart}")
+                ownership_answers.extend(({}, mart, f"SET ROLE {role}") for role in names)
                 continue
             rows: dict[str, dict[str, Any]] = {}
             for row in answer:
@@ -1010,6 +1045,7 @@ def _pg_set_role_write_privileges(
                 rows.setdefault(str(value), row)
             for role in names:
                 answer_row = rows.get(role)
+                ownership_answers.append((answer_row or {}, mart, f"SET ROLE {role}"))
                 if answer_row is None:
                     unreported.append(f"write privileges of {role} on {mart}")
                     continue
@@ -1051,6 +1087,33 @@ def _pg_set_role_write_privileges(
     return f", for this role or any role SET ROLE reaches ({', '.join(names)})"
 
 
+def _pg_ownership_sql(role: str) -> str:
+    """Ownership by privileges held, including inheritance; catalogs available on 9.4."""
+    return (
+        "pg_get_userbyid(c.relowner) AS owner_name, "
+        f"pg_has_role({role}, c.relowner, 'USAGE') AS owns_mart, "
+        "pg_get_userbyid(n.nspowner) AS schema_owner_name, "
+        f"pg_has_role({role}, n.nspowner, 'USAGE') AS owns_schema"
+    )
+
+
+def _pg_ownership_evidence(
+    row: dict[str, Any], mart: str, holder: str, writable: list[str], unreported: list[str]
+) -> None:
+    for flag, owner_key, kind in (
+        ("owns_mart", "owner_name", "ownership"),
+        ("owns_schema", "schema_owner_name", "schema ownership"),
+    ):
+        answer = row.get(flag)
+        owner = row.get(owner_key)
+        if answer is None or not owner:
+            unreported.append(f"{kind} of {mart} for {holder}")
+        if _truthy(answer):
+            writable.append(
+                f"{kind} of {mart} by {owner or 'unknown'}, held through {holder} (USAGE)"
+            )
+
+
 def _pg_reachable_privilege_sql(mart: str, roles: list[str]) -> str:
     """The current role's write questions, asked of other roles by oid in one question."""
     privileges = ", ".join(
@@ -1065,8 +1128,10 @@ def _pg_reachable_privilege_sql(mart: str, roles: list[str]) -> str:
     )
     listed = ", ".join(_literal(role) for role in roles)
     return (
-        f"SELECT r.rolname AS name, {privileges}, {columns} "
-        f"FROM pg_roles r WHERE r.rolname IN ({listed}) ORDER BY r.rolname"
+        f"SELECT r.rolname AS name, {privileges}, {columns}, {_pg_ownership_sql('r.oid')} "
+        f"FROM pg_roles r LEFT JOIN pg_class c ON c.oid = to_regclass({_literal(mart)}) "
+        "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
+        f"WHERE r.rolname IN ({listed}) ORDER BY r.rolname"
     )
 
 
@@ -1090,7 +1155,7 @@ def _postgres_table(
     # A kernel that predates row-level security has neither `pg_policy` nor
     # `pg_class.relrowsecurity`: no policy can exist on the mart and there is no switch.
     policies = _pg_policies(run_query, table) if row_security else []
-    security = _pg_row_security(run_query, table) if row_security else None
+    security, owner_bypass = _pg_row_security(run_query, table) if row_security else (None, None)
     # Column grants alone make `has_table_privilege(…, 'SELECT')` false while the role reads
     # the mart perfectly well; the narrower question would block a release over a mart the
     # gate is about to read. Which columns are out of reach is `check_security`'s finding.
@@ -1105,6 +1170,7 @@ def _postgres_table(
             readable=False,
             column_reads=reads,
             row_security_enabled=security,
+            owner_bypasses_row_security=owner_bypass,
             row_policies=policies,
         )
     reading = _ask(
@@ -1120,6 +1186,7 @@ def _postgres_table(
             readable=False,
             column_reads=reads,
             row_security_enabled=security,
+            owner_bypasses_row_security=owner_bypass,
             row_policies=policies,
         )
     columns = {
@@ -1144,6 +1211,7 @@ def _postgres_table(
         layout=None,
         column_reads=reads,
         row_security_enabled=security,
+        owner_bypasses_row_security=owner_bypass,
         row_policies=policies,
     )
 
@@ -1198,16 +1266,25 @@ def _pg_policies(run_query: RunQuery, table: str) -> list[RowPolicyFacts] | None
     ]
 
 
-def _pg_row_security(run_query: RunQuery, table: str) -> bool | None:
-    """Whether row security is switched on for the mart (`relrowsecurity`)."""
+def _pg_row_security(run_query: RunQuery, table: str) -> tuple[bool | None, bool | None]:
+    """The mart's switch and current owner's bypass, together with FORCE (9.5+).
+
+    For a view mart the fact concerns only its own policies, which a view does not
+    have; the policies of its base tables are not asked about.
+    """
     rows = _ask(
         run_query,
-        "SELECT c.relrowsecurity AS enabled FROM pg_class c WHERE c.oid = "
+        "SELECT c.relrowsecurity AS enabled, "
+        "(pg_has_role(current_user, c.relowner, 'USAGE') AND NOT c.relforcerowsecurity) "
+        "AS owner_bypasses FROM pg_class c WHERE c.oid = "
         f"to_regclass({_literal(table)})",
     )
     if not rows:
-        return None
-    return _truthy(rows[0].get("enabled"))
+        return None, None
+    owner_bypasses = rows[0].get("owner_bypasses")
+    return _truthy(rows[0].get("enabled")), (
+        None if owner_bypasses is None else _truthy(owner_bypasses)
+    )
 
 
 # --- shared -------------------------------------------------------------------
@@ -1223,6 +1300,7 @@ def _reading(
     layout: LayoutFacts | None = None,
     column_reads: dict[str, bool] | None = None,
     row_security_enabled: bool | None = None,
+    owner_bypasses_row_security: bool | None = None,
     row_policies: list[RowPolicyFacts] | None = None,
 ) -> TableFacts:
     rows_seen = int(row.get("rows_seen") or 0)
@@ -1239,6 +1317,7 @@ def _reading(
         layout=layout,
         column_reads=column_reads,
         row_security_enabled=row_security_enabled,
+        owner_bypasses_row_security=owner_bypasses_row_security,
         row_policies=row_policies,
     )
 

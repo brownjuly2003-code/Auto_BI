@@ -46,7 +46,14 @@ TABLE_WRITE = (
     "SELECT has_table_privilege('dm.sales_daily', 'INSERT') AS insert, "
     "has_table_privilege('dm.sales_daily', 'UPDATE') AS update, "
     "has_table_privilege('dm.sales_daily', 'DELETE') AS delete, "
-    "has_table_privilege('dm.sales_daily', 'TRUNCATE') AS truncate"
+    "has_table_privilege('dm.sales_daily', 'TRUNCATE') AS truncate, "
+    "pg_get_userbyid(c.relowner) AS owner_name, "
+    "pg_has_role(current_user, c.relowner, 'USAGE') AS owns_mart, "
+    "pg_get_userbyid(n.nspowner) AS schema_owner_name, "
+    "pg_has_role(current_user, n.nspowner, 'USAGE') AS owns_schema "
+    "FROM (SELECT to_regclass('dm.sales_daily') AS oid) mart "
+    "LEFT JOIN pg_class c ON c.oid = mart.oid "
+    "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace"
 )
 COLUMN_WRITE = (
     "SELECT has_any_column_privilege('dm.sales_daily', 'INSERT') AS column_insert, "

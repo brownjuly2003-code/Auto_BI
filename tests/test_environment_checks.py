@@ -672,7 +672,7 @@ def test_a_restrictive_policy_on_an_engine_without_the_switch_filters(tmp_path: 
     assert denies_all_rows(filtered, facts(filtered).role) is False
 
 
-def test_a_session_that_bypasses_row_security_read_more_than_the_consumers(
+def test_a_session_exempt_from_row_security_reports_the_bypass(
     tmp_path: Path,
 ) -> None:
     questions = questions_for(product(), snapshot_of(tmp_path))

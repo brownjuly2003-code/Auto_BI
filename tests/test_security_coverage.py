@@ -232,3 +232,6 @@ def test_security_findings_keep_their_details(
     findings = _check_payload(tmp_path, report, "dwh.security")["findings"]
     assert [item["code"] for item in findings] == [code]
     assert check.detail == findings[0]["detail"]
+    if scenario == "bypassed":
+        assert "the role-wide row-security exemption (SUPERUSER or BYPASSRLS)" in check.detail
+        assert check.detail.endswith("the reported policies do not filter what this session read")
