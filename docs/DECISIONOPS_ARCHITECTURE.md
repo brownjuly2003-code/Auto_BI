@@ -693,7 +693,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=124`, `CHECK_VERSION=81`.
+`VERIFIER_VERSION=125`, `CHECK_VERSION=81`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1401,6 +1401,10 @@ change при этом не исчезает: его по-прежнему на�
   проверка завершается `needs_review` или `block`, а не случайной сортировкой.
 - Integer/decimal сравниваются точно; float допускается только с metric-specific
   absolute/relative tolerance.
+  При загрузке контракта `float_absolute` и `float_relative` должны быть неотрицательными:
+  отрицательное значение — ошибка валидации с именем поля и значением, до сравнения.
+  `0` и положительные значения разрешены; `NaN`, бесконечности и `-0` уже отвергаются
+  типом `DecimalString`.
   Float сравнивается как binary64-значение: точная разность против точного объявленного
   допуска, без приближения разности, отношения или допуска в binary64.
   Нечисловое значение сравнивается по виду: бесконечность равна бесконечности того же
@@ -1419,6 +1423,15 @@ change при этом не исчезает: его по-прежнему на�
 - Bounded/truncated result не может доказывать полную числовую эквивалентность.
 - Aggregates получают metamorphic checks: partition conservation, share sum,
   ratio reconstruction и additive decomposition.
+
+Граница supplied results: `ResultSet` проверяет форму таблицы, но не соответствие каждой
+ячейки типу и `nullable` колонки. В integer-колонке `nullable: false` вне объявленного
+business key принимается `NULL`; при сравнении такого результата с собой исход —
+`equivalent`. Так же принимается строка `not-an-integer` в этой integer-колонке и при
+сравнении с собой даёт `equivalent`.
+Поэтому `result.equivalent` не подтверждает соответствие значений объявленным ограничениям
+колонок. Native capture отдельно отвергает `NULL` в non-nullable колонке. Строгая проверка
+значений supplied results требует отдельного изменения контракта и в T-129 не вводится.
 
 Metamorphic checks объявляются явно в `tolerance.aggregate_checks`; comparator не выводит
 роль колонки из её имени. Доступны четыре tagged-контракта:
@@ -2095,7 +2108,18 @@ Python, если в нём есть непечатаемый символ.
 документ. С verifier 121 имя файла в validation report — место validated path и имена под ним
 в обоих видах ответа (`$1/notes/x.yaml`); экранирование строки само report не меняет.
 `evidence` — чтение уже написанного bundle: пересчёт каждого content address,
-список claim'ов и артефактов, при `--artifact` — сам payload. Для signed bundle
+список claim'ов и артефактов, при `--artifact` — сам payload. Оба пути используют одну
+проверку корневого manifest: модель, привязка `run_id`, канонические байты и подпись.
+Если manifest называет другой run, `--artifact` возвращает ошибку `evidence.run_id_mismatch`
+с обоими ID, код `2` и пустой stdout, даже при подлинной подписи и совпавшем digest;
+обычная инспекция сохраняет finding `evidence.run_id_mismatch` уровня `review`.
+Та же привязка действует для unsigned bundle и чтения без expected digest. Отказы по
+findings привязки run и подписи: `<code>: <detail>` для каждого, соединённые `; `;
+CLI пишет `error: <message>` в stderr, возвращает `2` с пустым stdout.
+Неканоническое написание manifest допускает выдачу payload с expected digest или без него
+после проверки модели, привязки run, подписи и переданного digest, не снимая иных
+отказов корневого manifest; обычная инспекция по-прежнему сообщает
+`evidence.manifest_not_canonical`. Для signed bundle
 повторяемый `--trust-key` задаёт out-of-band trust root; без совпавшего public key
 inspection блокируется, а artifact не выдаётся. Его вердикт про целостность и
 аутентичность, а не про релиз: целый bundle с вердиктом `block` внутри — это рабочий

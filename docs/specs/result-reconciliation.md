@@ -175,6 +175,41 @@ SHALL keep their written form. A detail SHALL name a key as its own result write
 - **WHEN** the two results are compared
 - **THEN** `row.missing` names `0.4120` and `row.added` names `0.412`, as before
 
+## Requirement: float tolerances are nonnegative at contract load
+
+The system SHALL refuse a negative `float_absolute` or `float_relative` through ordinary
+contract validation, before comparing results. The validation error SHALL name the field
+and its value. Zero and positive decimal strings SHALL remain accepted. `DecimalString`
+already refuses NaN, infinities and negative zero; these values SHALL NOT reach comparison
+as tolerances.
+
+### Scenario: a negative tolerance is an invalid verified asset
+
+- **GIVEN** a verified asset with `float_absolute` or `float_relative` set to `-1`, `-0.01`,
+  or `-0.` followed by 400 zeros and `1` (accepted by `DecimalString`)
+- **WHEN** the asset is loaded
+- **THEN** validation fails at `tolerance.<field>`, naming the field and value
+
+### Scenario: the CLI reports a negative tolerance as an invalid asset
+
+- **GIVEN** an asset file with either float tolerance set to `-1`
+- **WHEN** `decision verify` or `decision capture` loads that file
+- **THEN** the command exits `2`, naming the invalid asset, field and value, with no stdout,
+  evidence bundle or captured result
+
+### Scenario: zero allows equal values and detects a change
+
+- **GIVEN** business key `id`, float column `m` and either float tolerance set to `0`
+- **WHEN** `1.0` is compared with `1.0`, then with `1.0000000000000002`
+- **THEN** the first outcome is `equivalent`; the second is `different` with `value.changed`
+
+### Scenario: values outside decimal-string syntax are refused
+
+- **GIVEN** either float tolerance set to `NaN`, `nan`, `sNaN`, `Infinity`, `-Infinity`,
+  `inf`, `+inf`, `-0` or `-0.0`
+- **WHEN** the tolerance is loaded
+- **THEN** validation fails at that field; no comparison takes place
+
 ## Requirement: a float value is within its tolerance only when its exact difference is
 
 A value of a `float` column denotes the binary64 number its written form rounds to, as the engine
@@ -310,3 +345,30 @@ say.
 - **WHEN** the two results are compared
 - **THEN** the outcome is `different` with two compared rows, `value.changed`
   `west.m: '1' -> '2'` and `value.expected_nan` on `east.m`
+
+## Known boundaries
+
+`ResultSet` validates table shape, not each supplied cell against its column type and
+`nullable` declaration. An `equivalent` comparison, and hence a `result.equivalent` claim,
+does not prove that the cells meet those declarations. Strict validation of supplied cell
+values is a separate contract change, outside T-129. Native capture has its own value checks.
+
+### Scenario: a supplied NULL in a non-nullable column compares equal to itself
+
+- **GIVEN** a supplied result with string key `id`, integer column `m` with `nullable: false`
+  outside the business key, and row `east`, NULL
+- **WHEN** it is loaded and compared with itself under business key `id`
+- **THEN** it is accepted and the outcome is `equivalent`, with one compared row and no
+  differences
+
+### Scenario: an integer cell may hold a supplied string that is not an integer
+
+- **GIVEN** the same schema with row `east`, `not-an-integer`
+- **WHEN** it is loaded and compared with itself
+- **THEN** it is accepted and the outcome is `equivalent`, with no differences
+
+### Scenario: native capture refuses NULL for a non-nullable column
+
+- **GIVEN** a reviewed asset whose `region` column is non-nullable
+- **WHEN** native capture reads a query row with NULL in `region`
+- **THEN** it raises `ResultCaptureError` naming NULL and the non-nullable column

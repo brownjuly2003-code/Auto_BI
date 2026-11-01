@@ -22,8 +22,6 @@ Two refusals are deliberate:
 
 from __future__ import annotations
 
-import json
-
 from pydantic import Field, model_validator
 
 from auto_bi import filesystem
@@ -33,7 +31,7 @@ from auto_bi.evidence.manifest import (
     BundleProblem,
     read_bundle,
     verify_bundle,
-    verify_bundle_signature,
+    verify_root_manifest,
 )
 from auto_bi.evidence.model import (
     API_VERSION,
@@ -218,16 +216,18 @@ def read_artifact(
         raise EvidenceDigestError(
             f"manifest hashes to {manifest_digest}, the caller expected {expected_digest}"
         )
-    try:
-        bundle = EvidenceBundle.model_validate(json.loads(raw.decode("utf-8")))
-    except (ValueError, RecursionError) as exc:
+    bundle, problems, parse_error = verify_root_manifest(
+        raw, run_id, verifier=verifier, parse_errors=(ValueError, RecursionError)
+    )
+    if bundle is None:
         raise EvidenceReadError(
             f"run {run_id!r} has no readable {MANIFEST_PATH}, so nothing can be read out of it"
-        ) from exc
-
-    signature_problem = verify_bundle_signature(bundle, verifier)
-    if signature_problem is not None:
-        raise EvidenceReadError(signature_problem.detail)
+        ) from parse_error
+    # A different spelling cannot change the selected payload after the model, run binding,
+    # signature and any expected digest are checked. Inspection still reports that spelling.
+    problems = [item for item in problems if item.code != "evidence.manifest_not_canonical"]
+    if problems:
+        raise EvidenceReadError("; ".join(f"{item.code}: {item.detail}" for item in problems))
 
     artifact = next(
         (item for item in bundle.artifacts if item.artifact_id == artifact_id),

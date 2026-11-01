@@ -302,6 +302,63 @@ verifiers derived.
 - **WHEN** its versions are read
 - **THEN** `VERIFIER_VERSION` is `91` and `CHECK_VERSION` is `66`
 
+## Requirement: an artifact is bound to the requested run
+
+Artifact reads and ordinary inspection SHALL use one root-manifest check for the bundle
+model, run binding, canonical bytes and signature. A valid signature and an expected digest
+SHALL NOT allow an artifact to be read under a run id other than the manifest's `run_id`.
+The same binding SHALL apply to unsigned bundles and reads without an expected digest.
+The refusal SHALL name both ids and return no payload. Ordinary inspection SHALL keep
+reporting this mismatch as `evidence.run_id_mismatch` with severity `review`. Artifact reads
+SHALL accept a noncanonical spelling with or without an expected digest, after the model, run
+binding, signature and any supplied digest are checked; ordinary inspection SHALL still report
+`evidence.manifest_not_canonical`. A noncanonical spelling SHALL NOT remove any other root refusal.
+Run-binding and signature findings SHALL refuse the read with `<code>: <detail>` for each, joined
+with `; `. The CLI SHALL exit `2`, print `error: ` followed by
+that message on standard error, and leave standard output empty.
+
+### Scenario: a genuine signed bundle is filed under another run
+
+- **GIVEN** a genuine signed bundle of `run-original`, with its payload copied under
+  `run-swapped`, and the matching public trust root and manifest digest
+- **WHEN** `read_artifact` or `evidence --artifact` is asked for its artifact under `run-swapped`
+- **THEN** it refuses with `evidence.run_id_mismatch` naming `run-original` and `run-swapped`;
+  no payload is read; the CLI exits `2` with empty stdout
+- **THEN** the same refusal holds for an unsigned bundle and, signed or unsigned, without
+  an expected digest; standard error names both ids in the stated format
+- **WHEN** ordinary inspection reads the same store
+- **THEN** it reports `evidence.run_id_mismatch`, verdict `needs_review`, and a verified signature
+  for a signed bundle
+
+### Scenario: the requested run matches the signed manifest
+
+- **GIVEN** the same bundle under `run-original`, the matching trust root and expected digest
+- **WHEN** its artifact is requested through the API or CLI
+- **THEN** the original payload is returned; the CLI exits `0`
+
+### Scenario: a noncanonical spelling preserves the selected artifact
+
+- **GIVEN** a signed or unsigned manifest with a space prepended to its canonical bytes
+- **WHEN** it is inspected or an artifact is requested with or without the digest of those stored bytes
+- **THEN** inspection reports `evidence.manifest_not_canonical`; the artifact read returns
+  the original payload, with the signature checked for a signed bundle
+- **WHEN** the noncanonical manifest is instead filed under another run, signed or unsigned,
+  or its product ref is modified in a signed bundle with the matching public trust root
+- **THEN** with or without an expected digest, the API and CLI refuse with only
+  `evidence.run_id_mismatch: <detail>` or `evidence.signature_invalid: <detail>`, respectively;
+  no payload is read; the CLI exits `2`, writes `error: <message>` to standard error and no
+  standard output; inspection reports both that code and `evidence.manifest_not_canonical`
+
+### Scenario: signature refusals keep the root-finding format
+
+- **GIVEN** a signed bundle without a trust root, or with a modified product ref and the
+  matching public key; the modified bundle may also be filed under another run
+- **WHEN** its artifact is requested through the API or CLI
+- **THEN** the refusal is `evidence.signature_untrusted: <detail>` or
+  `evidence.signature_invalid: <detail>`; when the run also differs, the message starts with
+  `evidence.run_id_mismatch: <detail>; `; no payload is read
+- **THEN** the CLI exits `2`, writes `error: <message>` to standard error and no standard output
+
 ## Known boundaries
 
 - Observations of a moment are outside the key by decision (§7.6). A second run with other

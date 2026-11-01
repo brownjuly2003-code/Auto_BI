@@ -11,9 +11,26 @@ Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поя�
 human/design-partner outcome не измеряется — по решению владельца 2026-10-28 он не входит в
 цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md))
 
-**Версии evidence:** `VERIFIER_VERSION=124`, `CHECK_VERSION=81`
+**Версии evidence:** `VERIFIER_VERSION=125`, `CHECK_VERSION=81`
 
-**Последний срез (T-128, 2026-11-01):** capture исполняет reviewed SELECT только в read-only сессии, у
+**Последний срез (T-129, 2026-11-01):** artifact read привязан к своему run. На `3307bcf`
+`read_artifact` выдавал artifact подлинного signed bundle, положенного под чужой run; теперь artifact
+read и инспекция используют одну проверку корневого manifest (модель, run, канонические байты, подпись),
+и manifest другого run — signed или unsigned, с expected digest или без — отказан до чтения payload,
+отказ называет оба ID; инспекция сообщает несовпадение уровнем review. Неканоническое написание
+по-прежнему выдаёт artifact (с digest и без) и других отказов не снимает; инспекция его сообщает. Отказы
+привязки run и подписи — `<code>: <detail>` через `; `, CLI — stderr, код 2, пустой stdout.
+Отрицательные `float_absolute` и `float_relative` (и `-0.` с 400 нулями перед `1`) отказаны при загрузке
+asset. Граница supplied results (§8.4, [spec](specs/result-reconciliation.md)): `NULL` и
+`not-an-integer` в integer-колонке `nullable: false` вне business key принимаются и с собой дают
+`equivalent`; native capture такой `NULL` отвергает. Verifier 125, check 81.
+[Spec](specs/run-identity.md). Тесты: два новых модуля, 137 случаев, на `3307bcf` 31 failed; мутанты 17
+из 17. Windows: 75 модулей — 4060 passed, после второго раунда правок четыре модуля — 109; Mac — 4134
+passed, 23 skipped на 3.13, 3.12 и 3.14, затем 109 на каждой. Ревью synthetic Astra xhigh: P2 и три P3
+первого и P3 второго исправлены. Отдельный `3307bcf` перед срезом исправил 8 ошибок `mypy --strict`,
+внесённых T-128; mypy как в CI — без замечаний.
+
+**Предыдущий срез (T-128, 2026-11-01):** capture исполняет reviewed SELECT только в read-only сессии, у
 capture и вопросов каталога — собственные пределы. На `7480548` PostgreSQL capture шёл в транзакции без
 READ ONLY, и `nextval`/`setval` двигали sequence; ClickHouse capture не задавал `readonly`; ответ
 читался целиком, `COUNT`/`MAX` каталога шли без таймаута. Теперь PostgreSQL capture и runtime задают

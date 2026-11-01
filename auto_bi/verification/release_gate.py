@@ -602,7 +602,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: their transactions. Preparation errors are separate; ClickHouse timeout requires code 159.
 #: PostgreSQL rollback exit requires INTRANS for a savepoint and IDLE for the outer transaction.
 #: Check grading is unchanged; CHECK_VERSION remains 81.
-VERIFIER_VERSION = "124"
+#: 125 — shared root-manifest checks bind artifact reads to the requested run;
+#: inspection still reports noncanonical bytes. Negative float tolerances fail asset load,
+#: before result comparison or check grading. Supplied cell validation is unchanged.
+#: CHECK_VERSION remains 81: no check's grading rule changes.
+VERIFIER_VERSION = "125"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

@@ -261,6 +261,59 @@ def read_bundle(store: ArtifactStore, run_id: str, *, raw: bytes | None = None) 
     return EvidenceBundle.model_validate(json.loads(raw.decode("utf-8")))
 
 
+def verify_root_manifest(
+    raw: bytes,
+    run_id: str,
+    *,
+    verifier: EvidenceVerifier | None = None,
+    parse_errors: tuple[type[Exception], ...] = (Exception,),
+) -> tuple[EvidenceBundle | None, list[BundleProblem], Exception | None]:
+    """Check the manifest model, run binding, canonical bytes and signature."""
+    try:  # The caller selects which parse errors become findings.
+        bundle = EvidenceBundle.model_validate(json.loads(raw.decode("utf-8")))
+    except parse_errors as exc:  # json or schema failure
+        return (
+            None,
+            [
+                BundleProblem(
+                    code="evidence.manifest_invalid",
+                    severity=Severity.BLOCK,
+                    detail=(
+                        f"{MANIFEST_PATH} does not parse as an evidence bundle: "
+                        f"{type(exc).__name__}"
+                    ),
+                ),
+            ],
+            exc,
+        )
+
+    problems: list[BundleProblem] = []
+    # Copied evidence stays internally consistent — the manifest is canonical and every
+    # artifact still hashes — so only its location lies. Ordinary inspection reports review:
+    # the bundle is readable, but nothing proves it belongs to the run it was filed under.
+    # An artifact read refuses the mismatch because the caller named the run.
+    if bundle.run_id != run_id:
+        problems.append(
+            BundleProblem(
+                code="evidence.run_id_mismatch",
+                severity=Severity.REVIEW,
+                detail=f"the manifest names run {bundle.run_id!r}, but it is stored as {run_id!r}",
+            )
+        )
+    if bundle.canonical_bytes() != raw:
+        problems.append(
+            BundleProblem(
+                code="evidence.manifest_not_canonical",
+                severity=Severity.BLOCK,
+                detail="stored manifest is not the canonical form of its own content",
+            )
+        )
+    signature_problem = verify_bundle_signature(bundle, verifier)
+    if signature_problem is not None:
+        problems.append(signature_problem)
+    return bundle, problems, None
+
+
 def verify_bundle(
     store: ArtifactStore,
     run_id: str,
@@ -274,7 +327,6 @@ def verify_bundle(
     a manifest or an artifact that may not be looked at or read is not one that is missing.
     The store's `ArtifactRefusalError` is raised then, and nothing is graded.
     """
-    problems: list[BundleProblem] = []
     if raw is None:
         try:
             raw = store.get(run_id, MANIFEST_PATH)
@@ -289,44 +341,9 @@ def verify_bundle(
                 )
             ]
 
-    try:
-        bundle = read_bundle(store, run_id, raw=raw)
-    except Exception as exc:  # json or schema failure — both mean "not a bundle"
-        return [
-            BundleProblem(
-                code="evidence.manifest_invalid",
-                severity=Severity.BLOCK,
-                detail=(
-                    f"{MANIFEST_PATH} does not parse as an evidence bundle: "
-                    f"{type(exc).__name__}"
-                ),
-            )
-        ]
-
-    if bundle.run_id != run_id:
-        # Copied evidence stays internally consistent — the manifest is canonical and every
-        # artifact still hashes — so only its location lies. Review, not block: the bundle is
-        # readable, but nothing here proves it belongs to the run it was filed under.
-        problems.append(
-            BundleProblem(
-                code="evidence.run_id_mismatch",
-                severity=Severity.REVIEW,
-                detail=f"the manifest names run {bundle.run_id!r}, but it is stored as {run_id!r}",
-            )
-        )
-
-    if bundle.canonical_bytes() != raw:
-        problems.append(
-            BundleProblem(
-                code="evidence.manifest_not_canonical",
-                severity=Severity.BLOCK,
-                detail="stored manifest is not the canonical form of its own content",
-            )
-        )
-
-    signature_problem = verify_bundle_signature(bundle, verifier)
-    if signature_problem is not None:
-        problems.append(signature_problem)
+    bundle, problems, _ = verify_root_manifest(raw, run_id, verifier=verifier)
+    if bundle is None:
+        return problems
 
     for artifact in bundle.artifacts:
         try:
@@ -399,4 +416,5 @@ __all__ = [
     "read_bundle",
     "verify_bundle",
     "verify_bundle_signature",
+    "verify_root_manifest",
 ]

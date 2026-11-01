@@ -40,7 +40,7 @@ from fractions import Fraction
 from math import isfinite, isnan
 from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 
 from auto_bi.scalars import DecimalString, NonBlankText
 from auto_bi.strict import StrictModel
@@ -190,6 +190,13 @@ class ResultTolerance(StrictModel):
     ordered: bool = False
     #: Explicit aggregate invariants; never inferred from column names.
     aggregate_checks: list[AggregateCheck] = Field(default_factory=list)
+
+    @field_validator("float_absolute", "float_relative")
+    @classmethod
+    def _check_float_tolerance(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is not None and Decimal(value) < 0:
+            raise ValueError(f"{info.field_name} must be non-negative, got {value!r}")
+        return value
 
     def has_float_tolerance(self) -> bool:
         return self.float_absolute is not None or self.float_relative is not None
