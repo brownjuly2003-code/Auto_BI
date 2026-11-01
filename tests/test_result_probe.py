@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -24,6 +25,22 @@ from auto_bi.verification.result_probe import (
 ASSET_ID = "asset://sales/weekly_margin_by_region"
 CANDIDATE_DIGEST = "sha256:" + "1" * 64
 CAPTURED_AT = "2026-09-11T14:30:00Z"
+
+
+def _stream_client(query):
+    from tests.test_probe_safety import SimpleStream
+
+    @contextmanager
+    def stream(sql, **kwargs):
+        result = query(sql, tz_mode=kwargs["tz_mode"])
+        yield SimpleStream(result, iter(result.result_rows))
+
+    return SimpleNamespace(
+        command=lambda sql, **kwargs: (
+            [2, 0] + ["throw"] * (sql.count("getSetting") - 2) if "max_execution_time" in sql else 2
+        ),
+        query_rows_stream=stream,
+    )
 
 
 def _asset(
@@ -113,7 +130,7 @@ def test_clickhouse_query_requests_timezone_aware_datetimes(
             result_rows=((datetime(2026, 9, 11, 13, 14, 15, tzinfo=UTC),),),
         )
 
-    client = SimpleNamespace(query=query)
+    client = _stream_client(query)
     monkeypatch.setattr(clickhouse_connect, "get_client", lambda **_kwargs: client)
 
     run_query = make_clickhouse_result_query(Settings(_env_file=None))
@@ -139,7 +156,7 @@ def test_clickhouse_empty_result_uses_a_read_only_metadata_probe(
         calls.append((sql, tz_mode))
         return responses.pop(0)
 
-    client = SimpleNamespace(query=query)
+    client = _stream_client(query)
     monkeypatch.setattr(clickhouse_connect, "get_client", lambda **_kwargs: client)
 
     run_query = make_clickhouse_result_query(Settings(_env_file=None))
@@ -147,7 +164,10 @@ def test_clickhouse_empty_result_uses_a_read_only_metadata_probe(
 
     assert calls == [
         ("SELECT 'sample' AS label WHERE 0;", "aware"),
-        ("SELECT * FROM (SELECT 'sample' AS label WHERE 0) LIMIT 0", "aware"),
+        (
+            "SELECT * FROM (\nSELECT 'sample' AS label WHERE 0\n) AS capture_metadata LIMIT 0",
+            "aware",
+        ),
     ]
     assert result == QueryResult(
         columns=(QueryColumn("label", "String", nullable=False),),
@@ -165,7 +185,7 @@ def test_clickhouse_query_failure_is_a_result_capture_error(
     monkeypatch.setattr(
         clickhouse_connect,
         "get_client",
-        lambda **_kwargs: SimpleNamespace(query=query),
+        lambda **_kwargs: _stream_client(query),
     )
 
     run_query = make_clickhouse_result_query(Settings(_env_file=None))

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from psycopg.pq import TransactionStatus
 
 from auto_bi.semantic.metric_contract import MetricBudget
 from auto_bi.verification import runtime_probe
@@ -41,9 +42,15 @@ class FakeClickHouse:
         self.query_calls += 1
         return self._execute(sql, settings)
 
-    def command(self, sql: str, *, settings: dict[str, Any]) -> Any:
+    def command(self, sql: str, *, settings: dict[str, Any] | None = None) -> Any:
+        if "getSetting('max_execution_time')" in sql:
+            return [0, 0] + ["throw"] * (sql.count("getSetting") - 2)
+        if sql == "SET readonly = 2":
+            return None
+        if sql == "SELECT getSetting('readonly')":
+            return 2
         self.command_calls += 1
-        return self._execute(sql, settings)
+        return self._execute(sql, settings or {})
 
     def _execute(self, sql: str, settings: dict[str, Any]) -> Any:
         self.calls.append((sql, settings))
@@ -66,6 +73,7 @@ def test_clickhouse_runs_the_exact_select_with_a_null_sink_and_engine_limits() -
     sql, settings = client.calls[0]
     assert sql == f"{SQL}\nFORMAT Null"
     assert settings == {
+        **runtime_probe.clickhouse_query_settings(2500),
         "max_bytes_to_read": 50_000,
         "read_overflow_mode": "throw",
         "max_execution_time": 2.5,
@@ -176,6 +184,9 @@ class FakeCursor:
     def execute(self, sql: str) -> None:
         self.statements.append(sql)
 
+    def fetchone(self):
+        return ("on",)
+
     def stream(self, sql: str, *, size: int = 1) -> Any:
         self.statements.append(sql)
         self.stream_size = size
@@ -196,15 +207,16 @@ class FakeTransaction:
 class FakePostgres:
     def __init__(self, *, error: Exception | None = None) -> None:
         self.info = SimpleNamespace(
+            transaction_status=TransactionStatus.IDLE,
             parameter_status={
                 "client_encoding": "UTF8",
                 "standard_conforming_strings": "on",
-            }.get
+            }.get,
         )
         self.cursor_value = FakeCursor(error=error)
         self.transactions = 0
 
-    def transaction(self) -> FakeTransaction:
+    def transaction(self, *, force_rollback=False) -> FakeTransaction:
         self.transactions += 1
         return FakeTransaction()
 
@@ -225,6 +237,7 @@ def test_postgres_streams_the_exact_select_under_a_transaction_local_timeout(
     assert connection.cursor_value.statements == [
         "SET TRANSACTION READ ONLY",
         "SET LOCAL statement_timeout = 250",
+        "SHOW transaction_read_only",
         SQL,
     ]
     assert connection.cursor_value.stream_size == 1

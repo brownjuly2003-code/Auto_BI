@@ -859,6 +859,16 @@ def _clickhouse_setting_items(root: exp.Expr) -> tuple[exp.Expression, ...]:
     )
 
 
+def clickhouse_setting_names(sql: str) -> frozenset[str]:
+    """Case-folded SETTINGS names from every branch of the guard's SELECT parse."""
+    root = _parse_one_select(sql, dialect="clickhouse")
+    return frozenset(
+        item.this.name.casefold()
+        for item in _clickhouse_setting_items(root)
+        if isinstance(item, exp.EQ) and isinstance(item.this, exp.Column)
+    )
+
+
 def _clickhouse_opaque_settings(root: exp.Expression) -> frozenset[str]:
     """SETTINGS whose SQL-text value can add a table row filter outside this AST."""
     names: set[str] = set()

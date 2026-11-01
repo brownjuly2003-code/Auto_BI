@@ -230,6 +230,7 @@ def test_environment_probe_wires_the_runtime_cost_driver(
         ch_database="dm",
         ch_user="gate_ro",
         ch_password="secret",
+        environment_query_timeout_ms=30_000,
     )
 
     def catalog_query(_sql: str) -> list[object]:
@@ -239,7 +240,7 @@ def test_environment_probe_wires_the_runtime_cost_driver(
         return None
 
     monkeypatch.setattr(config, "get_settings", lambda: settings)
-    monkeypatch.setattr(clickhouse, "make_run_query", lambda configured: catalog_query)
+    monkeypatch.setattr(clickhouse, "make_run_query", lambda configured, **kwargs: catalog_query)
     monkeypatch.setattr(
         runtime_probe, "make_clickhouse_runtime_probe", lambda configured: cost_query
     )

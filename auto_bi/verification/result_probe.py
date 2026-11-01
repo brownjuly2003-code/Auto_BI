@@ -9,7 +9,8 @@ normalises native values into the string representation used by ``ResultSet``.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -17,9 +18,21 @@ from typing import TYPE_CHECKING, Any
 
 from auto_bi.agent.sql_guard import guard_sql
 from auto_bi.engine import CLICKHOUSE, GREENPLUM, sqlglot_dialect
-from auto_bi.postgres import check_postgres_session, connect_postgres
+from auto_bi.postgres import (
+    check_postgres_rollback,
+    check_postgres_session,
+    connect_postgres,
+    prepare_postgres_readonly,
+)
 from auto_bi.scalars import Sha256Digest, Timestamp
 from auto_bi.verification.provenance import ResultAttestation, ResultOrigin
+from auto_bi.verification.query_limits import (
+    clickhouse_session_limits,
+    clickhouse_timed_out,
+    prepare_clickhouse_readonly,
+    read_clickhouse_session,
+    reviewed_clickhouse_settings,
+)
 from auto_bi.verification.reconcile import ColumnSchema, ColumnType, ResultSet
 from auto_bi.verification.release_gate import RecordedResult
 from auto_bi.verification.repository import ExpectationKind, VerifiedAsset
@@ -58,6 +71,7 @@ class QueryResult:
 
 
 ResultQuery = Callable[[str], QueryResult]
+_CAPTURE_SAVEPOINT = "capture_query"
 
 
 def capture(
@@ -114,27 +128,74 @@ def make_clickhouse_result_query(settings: Settings) -> ResultQuery:
     except (ClickHouseError, StreamFailureError) as exc:
         raise ResultCaptureError(f"ClickHouse connection failed: {_driver_reason(exc)}") from None
 
-    def run(sql: str) -> QueryResult:
+    def prepare():
         try:
-            result = client.query(sql, tz_mode="aware")
-            if not result.column_names:
-                statement = sql.strip().rstrip(";").strip()
-                result = client.query(
-                    f"SELECT * FROM ({statement}) LIMIT 0",
-                    tz_mode="aware",
-                )
-            # result_rows consumes the driver's lazy stream: it can fail after query returned.
-            return QueryResult(
-                columns=tuple(
-                    QueryColumn(name, column_type.name, nullable=column_type.nullable)
-                    for name, column_type in zip(
-                        result.column_names, result.column_types, strict=True
-                    )
-                ),
-                rows=tuple(tuple(row) for row in result.result_rows),
+            session = read_clickhouse_session(client)
+            limits = clickhouse_session_limits(
+                session,
+                settings.capture_timeout_ms,
+                limit_name="capture_timeout_ms",
+                client=client,
             )
+            prepare_clickhouse_readonly(client, session)
+            options = {"settings": limits} if limits else {}
+            return session, options
         except (ClickHouseError, StreamFailureError) as exc:
+            raise ResultCaptureError(
+                f"ClickHouse session preparation failed: {_driver_reason(exc)}"
+            ) from None
+
+    @contextmanager
+    def query_errors(session):
+        try:
+            yield
+        except (ClickHouseError, StreamFailureError) as exc:
+            if clickhouse_timed_out(exc):
+                if session.readonly == "1":
+                    raise ResultCaptureError(
+                        f"ClickHouse session max_execution_time={session.max_execution_time:g} s "
+                        f"exceeded; configured capture_timeout_ms={settings.capture_timeout_ms}"
+                    ) from None
+                raise ResultCaptureError(
+                    f"capture_timeout_ms={settings.capture_timeout_ms} exceeded (ClickHouse)"
+                ) from None
             raise ResultCaptureError(f"ClickHouse query failed: {_driver_reason(exc)}") from None
+
+    def run(sql: str) -> QueryResult:
+        forbidden = reviewed_clickhouse_settings(sql)
+        if forbidden:
+            raise ResultCaptureError(
+                f"ClickHouse reviewed SETTINGS names protected setting {', '.join(forbidden)}"
+            )
+        session, options = prepare()
+        with (
+            query_errors(session),
+            client.query_rows_stream(sql, tz_mode="aware", **options) as stream,
+        ):
+            result = stream.source
+            rows = _bounded_rows(stream, settings)
+            columns = tuple(
+                QueryColumn(name, column_type.name, nullable=column_type.nullable)
+                for name, column_type in zip(result.column_names, result.column_types, strict=True)
+            )
+        if not columns:
+            statement = sql.strip().rstrip(";").strip()
+            session, options = prepare()
+            with (
+                query_errors(session),
+                client.query_rows_stream(
+                    f"SELECT * FROM (\n{statement}\n) AS capture_metadata LIMIT 0",
+                    tz_mode="aware",
+                    **options,
+                ) as stream,
+            ):
+                result = stream.source
+                _bounded_rows(stream, settings)
+                columns = tuple(
+                    QueryColumn(name, kind.name, nullable=kind.nullable)
+                    for name, kind in zip(result.column_names, result.column_types, strict=True)
+                )
+        return QueryResult(columns=columns, rows=rows)
 
     return run
 
@@ -143,10 +204,14 @@ def make_postgres_result_query(settings: Settings) -> ResultQuery:
     """Capture metadata and rows with session checks before and inside its transaction.
 
     Check before BEGIN, before execute, and after reading the result, before the
-    transaction ends. A setting changed and restored within the statement is not detected.
-    Transaction exit sends COMMIT or ROLLBACK without another session check on an open
-    connection. A refusal closes the connection, so exit sends neither command, and
-    keeps the connection-error wrapper.
+    plain-SQL savepoint rolls back. psycopg counts a nested transaction before sending its
+    SAVEPOINT and keeps that count if the command fails, so capture uses cursor SQL instead.
+    SAVEPOINT or ROLLBACK TO SAVEPOINT failure answers through the session preparation
+    handler: PostgreSQL session preparation failed: <class>: <reason>.
+    Metadata runs after that rollback and a session check. The outer
+    transaction also always rolls back. A setting changed and restored within the statement
+    is not detected. Transaction exit has no separate session check. A refusal in check_session
+    closes the connection, so exit sends no command and keeps the connection-error wrapper.
     """
     import psycopg
 
@@ -170,14 +235,42 @@ def make_postgres_result_query(settings: Settings) -> ResultQuery:
                 f"PostgreSQL connection failed: {_driver_reason(exc)}"
             ) from None
 
+    @contextmanager
+    def query_errors():
+        try:
+            yield
+        except psycopg.Error as exc:
+            if isinstance(exc, psycopg.errors.QueryCanceled) and "statement timeout" in str(exc):
+                raise ResultCaptureError(
+                    f"capture_timeout_ms={settings.capture_timeout_ms} exceeded (PostgreSQL)"
+                ) from None
+            raise ResultCaptureError(f"PostgreSQL query failed: {_driver_reason(exc)}") from None
+
     def run(sql: str) -> QueryResult:
         check_session()
         try:
-            with connection.transaction():
+            with connection.transaction(force_rollback=True):
                 check_session()
                 with connection.cursor() as cursor:
-                    cursor.execute(sql)
-                    description = cursor.description
+                    prepare_postgres_readonly(connection, cursor, settings.capture_timeout_ms)
+                    check_session()
+                    cursor.execute(f"SAVEPOINT {_CAPTURE_SAVEPOINT}")
+                    check_session()
+                    with query_errors():
+                        with closing(cursor.stream(sql, size=1)) as stream:
+                            rows = _bounded_rows(stream, settings)
+                        description = cursor.description
+                    check_session()
+                    cursor.execute(f"ROLLBACK TO SAVEPOINT {_CAPTURE_SAVEPOINT}")
+                    check_postgres_rollback(connection, nested=True)
+                    if description is None and not rows:
+                        check_session()
+                        statement = sql.strip().rstrip(";").strip()
+                        with query_errors():
+                            cursor.execute(
+                                f"SELECT * FROM (\n{statement}\n) AS capture_metadata LIMIT 0"
+                            )
+                            description = cursor.description
                     if description is None:
                         raise ResultCaptureError("a reviewed SELECT returned no column metadata")
                     result = QueryResult(
@@ -189,14 +282,30 @@ def make_postgres_result_query(settings: Settings) -> ResultQuery:
                             )
                             for column in description
                         ),
-                        rows=tuple(tuple(row) for row in cursor.fetchall()),
+                        rows=rows,
                     )
                 check_session()
+            check_postgres_rollback(connection)
         except psycopg.Error as exc:
-            raise ResultCaptureError(f"PostgreSQL query failed: {_driver_reason(exc)}") from None
+            raise ResultCaptureError(
+                f"PostgreSQL session preparation failed: {_driver_reason(exc)}"
+            ) from None
         return result
 
     return run
+
+
+def _bounded_rows(rows: Iterable[Sequence[Any]], settings: Settings) -> tuple[tuple[Any, ...], ...]:
+    captured: list[tuple[Any, ...]] = []
+    total_bytes = 0
+    for row in rows:
+        if len(captured) >= settings.capture_max_rows:
+            raise ResultCaptureError(f"capture_max_rows={settings.capture_max_rows} exceeded")
+        total_bytes += sum(len(str(value).encode("utf-8")) for value in row if value is not None)
+        if total_bytes > settings.capture_max_bytes:
+            raise ResultCaptureError(f"capture_max_bytes={settings.capture_max_bytes} exceeded")
+        captured.append(tuple(row))
+    return tuple(captured)
 
 
 def _checked_columns(

@@ -589,7 +589,20 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: the current owner's row-security bypass together with FORCE.
 #: Reports also ignore policies when the mart's row-security switch is false and
 #: describe established bypass exemptions without claiming a difference of rows.
-VERIFIER_VERSION = "123"
+#: 124 — capture and runtime require checked read-only sessions. Capture streams under
+#: positive row, text-byte and server-time limits; catalog/statistics questions have
+#: their own server timeout. Capture size excess returns no result; an environment query
+#: timeout ends collection rather than becoming an access or freshness fact.
+#: ClickHouse mode 1 capture/catalog requires a positive session timeout no greater than
+#: the configured limit and throw mode; runtime leaves its bounds unmeasured in mode 1.
+#: Reviewed SETTINGS cannot replace protected limits. Empty metadata wraps SQL on new lines.
+#: All eleven ClickHouse overflow modes require throw; per-query limit/offset are zero,
+#: mode 1 also requires unchanged zero limit/offset, and reviewed profiles are refused.
+#: PostgreSQL capture rolls back its savepoint before metadata; capture/runtime roll back
+#: their transactions. Preparation errors are separate; ClickHouse timeout requires code 159.
+#: PostgreSQL rollback exit requires INTRANS for a savepoint and IDLE for the outer transaction.
+#: Check grading is unchanged; CHECK_VERSION remains 81.
+VERIFIER_VERSION = "124"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

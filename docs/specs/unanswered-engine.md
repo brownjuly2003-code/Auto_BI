@@ -265,9 +265,10 @@ verification and other command paths SHALL retain their behavior.
 
 A local `ProgrammingError` with the exact message `Setting <name> is unknown or readonly`
 for a setting passed by this runtime command leaves all declared runtime bounds unmeasured.
-The four possible names are `max_execution_time`, `timeout_overflow_mode`,
-`max_bytes_to_read`, and `read_overflow_mode`; the byte settings are passed only when a
-byte ceiling is declared. The fact carries no counters, checked bounds or exceeded bound.
+The runtime command passes `max_execution_time`, `limit=0`, `offset=0`, and `throw` for
+all eleven overflow modes listed in `probe-execution-safety.md` with each query it
+executes; only `max_bytes_to_read` is added when a byte ceiling is declared. The fact
+carries no counters, checked bounds or exceeded bound.
 The existing grader emits `cost.not_measured` (review) for each declared runtime ceiling;
 catalog facts remain available. The query is not retried without limits.
 

@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-10-31
+**Обновлено:** 2026-11-01
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -11,9 +11,33 @@ Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поя�
 human/design-partner outcome не измеряется — по решению владельца 2026-10-28 он не входит в
 цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md))
 
-**Версии evidence:** `VERIFIER_VERSION=123`, `CHECK_VERSION=81`
+**Версии evidence:** `VERIFIER_VERSION=124`, `CHECK_VERSION=81`
 
-**Последний срез (T-127, 2026-10-31):** владение PostgreSQL-витриной и её схемой — право записи при
+**Последний срез (T-128, 2026-11-01):** capture исполняет reviewed SELECT только в read-only сессии, у
+capture и вопросов каталога — собственные пределы. На `7480548` PostgreSQL capture шёл в транзакции без
+READ ONLY, и `nextval`/`setval` двигали sequence; ClickHouse capture не задавал `readonly`; ответ
+читался целиком, `COUNT`/`MAX` каталога шли без таймаута. Теперь PostgreSQL capture и runtime задают
+`SET TRANSACTION READ ONLY` и `SET LOCAL statement_timeout` и требуют `on` от `SHOW
+transaction_read_only`; capture исполняет текст в `SAVEPOINT capture_query` (обычный SQL, не вложенная
+транзакция psycopg) и откатывается к нему до вопроса метаданных; внешняя транзакция всегда кончается
+ROLLBACK. ClickHouse: SETTINGS текста с настройками времени, overflow modes или `profile` (у runtime — и
+чтения байтов) отказаны до вопросов сессии; режим 0 переводится в 2 с подтверждением, режим 2
+подтверждается, в обоих с вопросом идут `max_execution_time`, `limit=0`, `offset=0` и `throw` для
+одиннадцати overflow modes; режим 1 — только с собственным пределом не выше настроенного, `throw` везде
+и `limit`/`offset` 0 с changed=0; таймаут — только код 159. Capture читает потоком: первое превышение
+`capture_max_rows` или `capture_max_bytes` — отказ без частичного ответа; вопросы каталога — под
+`environment_query_timeout_ms`. Подготовка сессии отвечает отдельно от исхода запроса. Живые PG 16.15,
+9.4.26 и ClickHouse 24.8.14.39: у HEAD capture сдвигал sequence, у среза — отказ read-only; пределы 50
+мс — 56–61 мс у PG, 157 и 128 мс у ClickHouse (HEAD — 2108 и 2103 мс); 8000 capture под таймаутом 1 мс и
+внешними отменами — без ошибки вложенности psycopg; Greenplum и Greengage не запускались. Verifier 124,
+check 81. [Spec](specs/probe-execution-safety.md). Windows: 76 модулей — 4025 passed до четвёртого
+раунда, затем семь затронутых — 405, после пятого раунда пять — 260 (единственный отказ — ссылка на ещё
+не добавленный spec; с файлами среза в git `test_docs_as_code` — 25 passed); Mac: 76 модулей — 4061
+passed на 3.13, 3.12 и 3.14 (после четвёртого — 4067, после пятого — 4122); мутанты 48 из 48. Ревью
+synthetic Astra xhigh: P1, три P2 и два P3 первого, P2 и два P3 второго исправлены; третье — P1/P2 нет,
+P3 (перечень runtime-настроек в `unanswered-engine.md`) исправлен.
+
+**Предыдущий срез (T-127, 2026-10-31):** владение PostgreSQL-витриной и её схемой — право записи при
 любых DML grants. На `788e184` владелец витрины с отозванными у себя DML-правами получал `read_only`
 true, хотя выдаёт себе `INSERT`, меняет и удаляет витрину; владелец схемы удаляет витрину и view в ней.
 Теперь вопросы записи текущей роли и ролей, достижимых через `SET ROLE`, читают владельцев витрины и

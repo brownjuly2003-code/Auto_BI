@@ -126,7 +126,7 @@ def _answered_by(monkeypatch: pytest.MonkeyPatch, engine: str, run_query: RunQue
     """Have *run_query* answer the catalog of *engine*; the list holds each session built."""
     built: list[str] = []
 
-    def session(_settings: Settings) -> RunQuery:
+    def session(_settings: Settings, **kwargs: Any) -> RunQuery:
         built.append(_family(engine))
         return run_query
 

@@ -16,8 +16,20 @@ from time import perf_counter_ns
 from typing import TYPE_CHECKING, Any
 
 from auto_bi.agent.sql_guard import guard_sql
-from auto_bi.postgres import check_postgres_session, connect_postgres
+from auto_bi.postgres import (
+    check_postgres_rollback,
+    check_postgres_session,
+    connect_postgres,
+    prepare_postgres_readonly,
+)
 from auto_bi.verification.environment import CostBound, ExecutionFacts, PlanQuestion
+from auto_bi.verification.query_limits import (
+    clickhouse_error_code,
+    clickhouse_query_settings,
+    prepare_clickhouse_readonly,
+    read_clickhouse_session,
+    reviewed_clickhouse_settings,
+)
 
 if TYPE_CHECKING:
     from auto_bi.config import Settings
@@ -88,24 +100,41 @@ def _clickhouse_execution(
     client: Any, question: PlanQuestion, *, error_type: type[Exception]
 ) -> ExecutionFacts:
     """Execute one SELECT with a server-side null output sink and final query summary."""
-    from clickhouse_connect.driver.exceptions import ProgrammingError
+    from clickhouse_connect.driver.exceptions import ProgrammingError, StreamFailureError
 
     guard_sql(question.sql, dialect="clickhouse")
+    forbidden = reviewed_clickhouse_settings(question.sql, runtime=True)
+    if forbidden:
+        return ExecutionFacts(
+            metric_ref=question.metric_ref,
+            evidence=(
+                f"ClickHouse reviewed SETTINGS names protected setting {', '.join(forbidden)}; "
+                "no declared runtime bound was measured"
+            ),
+        )
     timeout_cap_ms, timeout_is_contract = _timeout_cap(question.budgets.timeout_ms)
-    query_settings: dict[str, Any] = {
-        "max_execution_time": timeout_cap_ms / 1000,
-        "timeout_overflow_mode": "throw",
-    }
+    query_settings = clickhouse_query_settings(timeout_cap_ms)
     byte_limit = question.budgets.max_scanned_bytes
     if byte_limit is not None:
         # ClickHouse interprets zero as unlimited, while the contract means exactly zero.
         query_settings["max_bytes_to_read"] = max(1, byte_limit)
         query_settings["read_overflow_mode"] = "throw"
 
+    session = read_clickhouse_session(client)
+    if session.readonly == "1":
+        return ExecutionFacts(
+            metric_ref=question.metric_ref,
+            evidence=(
+                f"ClickHouse session {session.describe()} "
+                "cannot accept runtime per-query settings; "
+                "no declared runtime bound was measured"
+            ),
+        )
+    prepare_clickhouse_readonly(client, session)
     try:
         # query() appends FORMAT Native itself; command() preserves the explicit Null sink.
         result = client.command(_null_output(question.sql), settings=query_settings)
-    except error_type as exc:
+    except (error_type, StreamFailureError) as exc:
         message = str(exc)
         if isinstance(exc, ProgrammingError):
             for setting in query_settings:
@@ -120,11 +149,7 @@ def _clickhouse_execution(
             raise
         # Newer drivers carry the server code separately. Older ones include a Code line.
         # A setting name alone does not establish that a query ran or exceeded any limit.
-        code = getattr(exc, "code", None)
-        if code is None:
-            match = re.search(r"(?:\A|\n|server response: )\s*Code:\s*(\d+)\.", message)
-            if match is not None:
-                code = int(match[1])
+        code = clickhouse_error_code(exc)
         # TOO_MANY_BYTES must concern reading, not e.g. an environment result-size limit.
         if code == 307 and _CH_BYTES_EXCEEDED.search(message):
             if byte_limit is not None:
@@ -159,7 +184,7 @@ def _clickhouse_execution(
     query_id = summary.get("query_id") or getattr(result, "query_id", None)
     readings = [
         "exact ClickHouse SELECT completed with FORMAT Null",
-        f"read_bytes={scanned_bytes}" if scanned_bytes is not None else "read_bytes not reported",
+        (f"read_bytes={scanned_bytes}" if scanned_bytes is not None else "read_bytes not reported"),
         f"elapsed_ms={elapsed_ms}" if elapsed_ms is not None else "elapsed_ns not reported",
     ]
     if query_id:
@@ -190,27 +215,29 @@ def _postgres_execution(
     guard_sql(question.sql, dialect="postgres")
     timeout_cap_ms, timeout_is_contract = _timeout_cap(timeout)
     started = perf_counter_ns()
-    try:
+    check_postgres_session(connection)
+    outcome = None
+    with connection.transaction(force_rollback=True), connection.cursor() as cursor:
+        prepare_postgres_readonly(connection, cursor, timeout_cap_ms)
         check_postgres_session(connection)
-        with connection.transaction(), connection.cursor() as cursor:
-            check_postgres_session(connection)
-            cursor.execute("SET TRANSACTION READ ONLY")
-            check_postgres_session(connection)
-            cursor.execute(f"SET LOCAL statement_timeout = {timeout_cap_ms}")
-            check_postgres_session(connection)
+        try:
             for _row in cursor.stream(question.sql, size=1):
                 pass
-    except cancelled_error as exc:
-        if "statement timeout" not in str(exc).lower():
-            raise
-        if timeout_is_contract:
-            return _exceeded(
-                question,
-                CostBound.TIMEOUT,
-                "PostgreSQL",
-                engine_limit=timeout_cap_ms,
-            )
-        return _safety_timeout(question, "PostgreSQL")
+        except cancelled_error as exc:
+            if "statement timeout" not in str(exc).lower():
+                raise
+            if timeout_is_contract:
+                outcome = _exceeded(
+                    question,
+                    CostBound.TIMEOUT,
+                    "PostgreSQL",
+                    engine_limit=timeout_cap_ms,
+                )
+            else:
+                outcome = _safety_timeout(question, "PostgreSQL")
+    check_postgres_rollback(connection)
+    if outcome is not None:
+        return outcome
 
     elapsed_ms = ceil((perf_counter_ns() - started) / 1_000_000)
     evidence = (

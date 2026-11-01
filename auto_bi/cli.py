@@ -638,7 +638,9 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
 
         from auto_bi.introspect.greenplum import make_run_query_pg
 
-        connect = make_run_query_pg
+        def connect(configured: "Settings") -> "RunQuery":
+            return make_run_query_pg(configured, timeout_ms=configured.environment_query_timeout_ms)
+
         run_cost = make_postgres_runtime_probe(settings)
         driver_errors = (psycopg.Error,)
         target = f"{settings.gp_host}:{settings.gp_port}/{settings.gp_database}"
@@ -649,7 +651,9 @@ def _environment_probe(engine: str) -> "EnvironmentProbe | None":
 
         from auto_bi.introspect.clickhouse import make_run_query
 
-        connect = make_run_query
+        def connect(configured: "Settings") -> "RunQuery":
+            return make_run_query(configured, timeout_ms=configured.environment_query_timeout_ms)
+
         run_cost = make_clickhouse_runtime_probe(settings)
         # A result the engine stopped sending midway is raised outside the driver's hierarchy.
         driver_errors = (ClickHouseError, StreamFailureError)

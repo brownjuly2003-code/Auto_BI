@@ -167,7 +167,7 @@ def test_guard_handler_does_not_cover_the_connection_factory(
     _configure(monkeypatch, 8123)
     error = SQLGuardError("unexpected factory failure")
 
-    def broken(_settings: Any) -> Any:
+    def broken(_settings: Any, **kwargs: Any) -> Any:
         raise error
 
     module, name = (

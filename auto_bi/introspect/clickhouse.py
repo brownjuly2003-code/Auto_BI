@@ -198,7 +198,7 @@ class ClickHouseIntrospector:
             col.top_values = sanitize_samples([str(r["v"]) for r in result if r["v"] is not None])
 
 
-def make_run_query(settings: Settings) -> RunQuery:
+def make_run_query(settings: Settings, *, timeout_ms: int | None = None) -> RunQuery:
     """Real clickhouse-connect client behind the RunQuery seam (read-only role)."""
     import clickhouse_connect
 
@@ -208,8 +208,44 @@ def make_run_query(settings: Settings) -> RunQuery:
         username=settings.ch_user,
         password=settings.ch_password,
     )
+    query_options: dict[str, Any] | None = None
+    session = None
 
     def run(sql: str) -> list[dict[str, Any]]:
-        return list(client.query(sql).named_results())
+        nonlocal query_options, session
+        if timeout_ms is None:
+            return list(client.query(sql).named_results())
+        from clickhouse_connect.driver.exceptions import (
+            ClickHouseError,
+            OperationalError,
+            StreamFailureError,
+        )
+
+        from auto_bi.verification.query_limits import (
+            clickhouse_session_limits,
+            clickhouse_timed_out,
+            read_clickhouse_session,
+        )
+
+        if query_options is None:
+            if session is None:
+                session = read_clickhouse_session(client)
+            limits = clickhouse_session_limits(
+                session, timeout_ms, limit_name="environment_query_timeout_ms", client=client
+            )
+            query_options = {"settings": limits} if limits else {}
+        try:
+            return list(client.query(sql, **query_options).named_results())
+        except (ClickHouseError, StreamFailureError) as exc:
+            if clickhouse_timed_out(exc):
+                if session.readonly == "1":
+                    raise OperationalError(
+                        f"ClickHouse session max_execution_time={session.max_execution_time:g} s "
+                        f"exceeded; configured environment_query_timeout_ms={timeout_ms}"
+                    ) from exc
+                raise OperationalError(
+                    f"environment_query_timeout_ms={timeout_ms} exceeded (ClickHouse)"
+                ) from exc
+            raise
 
     return run

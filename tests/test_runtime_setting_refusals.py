@@ -9,6 +9,7 @@ from clickhouse_connect.driver.exceptions import ClickHouseError, DatabaseError,
 from auto_bi import cli
 from auto_bi.config import Settings
 from auto_bi.verification.environment import CostBound
+from auto_bi.verification.query_limits import clickhouse_query_settings
 from auto_bi.verification.release_gate import CHECK_VERSION, VERIFIER_VERSION, CheckStatus
 from auto_bi.verification.runtime_probe import _clickhouse_execution
 from tests.test_decision_verify import Case, _check_payload, budgeted_contract, status_of
@@ -16,12 +17,7 @@ from tests.test_environment_probe import clickhouse_engine
 from tests.test_runtime_probe import FakeClickHouse, question
 from tests.test_unanswered_engine import _answered_by
 
-SETTINGS = (
-    "max_execution_time",
-    "timeout_overflow_mode",
-    "max_bytes_to_read",
-    "read_overflow_mode",
-)
+SETTINGS = (*clickhouse_query_settings(1), "max_bytes_to_read")
 
 
 @pytest.mark.parametrize("setting", SETTINGS)
@@ -45,7 +41,7 @@ def test_a_required_setting_refusal_leaves_every_runtime_bound_unmeasured(
     assert "safety timeout" not in fact.evidence
     assert client.command_calls == 1
     assert client.query_calls == 0
-    assert set(client.calls[0][1]) == set(SETTINGS)
+    assert set(client.calls[0][1]) == set(clickhouse_query_settings(1)) | {"max_bytes_to_read"}
 
 
 @pytest.mark.parametrize(

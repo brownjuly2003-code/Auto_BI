@@ -19,6 +19,25 @@ from tests.test_runtime_probe import question
 
 FACTORIES = [make_run_query_pg, make_postgres_runtime_probe, make_postgres_result_query]
 SESSION = {"client_encoding": "UTF8", "standard_conforming_strings": "on"}
+CAPTURE_SETUP = [
+    "SET TRANSACTION READ ONLY",
+    "SET LOCAL statement_timeout = 30000",
+    "SHOW transaction_read_only",
+]
+CHECKS = ["check " + setting for setting in SESSION]
+SAVEPOINT = "SAVEPOINT capture_query"
+RESTORE = "ROLLBACK TO SAVEPOINT capture_query"
+CAPTURE_START = [
+    *CHECKS,
+    *CHECKS,
+    "begin",
+    *CHECKS,
+    *([*CHECKS, "execute"] * 3),
+    *CHECKS,
+    "savepoint",
+    *CHECKS,
+]
+CAPTURE_END = [*CHECKS, "rollback to savepoint", *CHECKS, "rollback"]
 
 
 class Connection:
@@ -32,12 +51,16 @@ class Connection:
         self.autocommit = True
         self.in_transaction = False
         self.local_settings: dict[str, str | None] = {}
+        self.savepoint_settings: tuple[dict, dict] | None = None
         self.statement_settings: dict[str, list[tuple[str, str, bool]]] = {}
         self.statement_errors: dict[str, psycopg.Error] = {}
         self.end_errors: dict[str, psycopg.Error] = {}
         self.close_on_end_error = False
         self.events: list[str] = []
-        self.info = SimpleNamespace(parameter_status=self.parameter_status)
+        self.info = SimpleNamespace(
+            parameter_status=self.parameter_status,
+            transaction_status=psycopg.pq.TransactionStatus.IDLE,
+        )
 
     def parameter_status(self, name: str) -> str | None:
         self.checked.append(name)
@@ -50,11 +73,16 @@ class Connection:
         self.closed = True
 
     @contextmanager
-    def transaction(self):
-        assert not self.closed and not self.in_transaction
+    def transaction(self, *, force_rollback=False):
+        assert not self.closed
+        assert not self.in_transaction
+        saved = dict(self.reported)
+        saved_local = dict(self.local_settings)
         self.transactions += 1
         self.in_transaction = True
+        self.info.transaction_status = psycopg.pq.TransactionStatus.INTRANS
         self.events.append("begin")
+        rollback = "rollback"
         try:
             yield
         except Exception:
@@ -62,7 +90,7 @@ class Connection:
                 self.events.append("closed")
             else:
                 try:
-                    self.finish("rollback")
+                    self.finish(rollback)
                 except Exception as error:
                     logging.getLogger("psycopg").warning("error ignored in rollback: %s", error)
             raise
@@ -70,10 +98,14 @@ class Connection:
             if self.closed:
                 self.events.append("closed")
             else:
-                self.finish("commit")
+                self.finish(rollback if force_rollback else "commit")
         finally:
+            if force_rollback:
+                self.reported = saved
+                self.local_settings = saved_local
             self.end_transaction()
             self.in_transaction = False
+            self.info.transaction_status = psycopg.pq.TransactionStatus.IDLE
 
     def finish(self, command: str) -> None:
         self.events.append(command)
@@ -96,11 +128,21 @@ class Connection:
                 stream=self.stream,
                 description=[SimpleNamespace(name="value", type_display="text", null_ok=None)],
                 fetchall=self.fetchall,
+                fetchone=lambda: ("on",),
             )
         )
 
     def execute(self, sql: str):
         self.statements.append(sql)
+        if sql == SAVEPOINT:
+            self.events.append("savepoint")
+            self.savepoint_settings = (dict(self.reported), dict(self.local_settings))
+            return
+        if sql == RESTORE:
+            self.finish("rollback to savepoint")
+            assert self.savepoint_settings is not None
+            self.reported, self.local_settings = self.savepoint_settings
+            return
         self.events.append("execute")
         if sql in self.statement_errors:
             raise self.statement_errors[sql]
@@ -118,7 +160,7 @@ class Connection:
     def stream(self, sql: str, *, size: int):
         assert size == 1
         self.execute(sql)
-        return iter([(1,)])
+        yield from self.fetchall()
 
 
 def invoke(factory, run):
@@ -171,9 +213,19 @@ def test_factory_requests_and_checks_session(monkeypatch, factory, password):
     assert not connection.used_before_checks
     assert not connection.closed
     statements = (
-        ["SET TRANSACTION READ ONLY", "SET LOCAL statement_timeout = 50", question().sql] * 2
+        [
+            "SET TRANSACTION READ ONLY",
+            "SET LOCAL statement_timeout = 50",
+            "SHOW transaction_read_only",
+            question().sql,
+        ]
+        * 2
         if factory is make_postgres_runtime_probe
-        else ["SELECT 'value'"] * 2
+        else (
+            [*CAPTURE_SETUP, SAVEPOINT, "SELECT 'value'", RESTORE] * 2
+            if factory is make_postgres_result_query
+            else ["SELECT 'value'"] * 2
+        )
     )
     assert connection.statements == statements
 
@@ -220,7 +272,7 @@ def test_capture_refuses_transaction_local_setting(monkeypatch, setting, value):
     with pytest.raises(ResultCaptureError) as caught:
         run(sql)
     assert_session_refusal(caught, make_postgres_result_query, setting, value)
-    assert connection.statements == [sql]
+    assert connection.statements == [*CAPTURE_SETUP, SAVEPOINT, sql]
     assert connection.transactions == 1
     assert connection.closed
     assert connection.reported == SESSION
@@ -240,10 +292,7 @@ def test_capture_checks_inside_transaction(monkeypatch, restore_inside_statement
         ]
     monkeypatch.setattr(psycopg, "connect", lambda **kwargs: connection)
     result = make_postgres_result_query(Settings(_env_file=None))(sql)
-    checks = ["check " + setting for setting in SESSION]
-    assert connection.events == (
-        checks + checks + ["begin"] + checks + ["execute", "fetchall"] + checks + ["commit"]
-    )
+    assert connection.events == ([*CAPTURE_START, "execute", "fetchall", *CAPTURE_END])
     assert result.rows == (("value",),)
     assert result.columns[0].name == "value"
     assert connection.reported == SESSION
@@ -252,32 +301,28 @@ def test_capture_checks_inside_transaction(monkeypatch, restore_inside_statement
 
 
 @pytest.mark.parametrize("close_connection", [False, True])
-def test_capture_wraps_failed_commit(monkeypatch, close_connection):
+def test_capture_wraps_failed_transaction_exit(monkeypatch, close_connection):
     connection = Connection(SESSION)
     error = (
-        psycopg.OperationalError("connection lost at commit")
+        psycopg.OperationalError("connection lost at rollback")
         if close_connection
-        else psycopg.errors.SerializationFailure("commit rejected")
+        else psycopg.errors.SerializationFailure("rollback rejected")
     )
-    connection.end_errors["commit"] = error
+    connection.end_errors["rollback"] = error
     connection.close_on_end_error = close_connection
     monkeypatch.setattr(psycopg, "connect", lambda **kwargs: connection)
     run = make_postgres_result_query(Settings(_env_file=None))
     with pytest.raises(ResultCaptureError) as caught:
         run("SELECT 'value'")
-    assert str(caught.value) == f"PostgreSQL query failed: {type(error).__name__}: {error}"
-    assert caught.value.__context__ is error
-    checks = ["check " + setting for setting in SESSION]
-    assert connection.events == (
-        checks
-        + checks
-        + ["begin"]
-        + checks
-        + ["execute", "fetchall"]
-        + checks
-        + ["commit", "commit failed"]
+    assert (
+        str(caught.value)
+        == f"PostgreSQL session preparation failed: {type(error).__name__}: {error}"
     )
-    assert connection.statements == ["SELECT 'value'"]
+    assert caught.value.__context__ is error
+    assert connection.events == (
+        [*CAPTURE_START, "execute", "fetchall", *CAPTURE_END, "rollback failed"]
+    )
+    assert connection.statements == [*CAPTURE_SETUP, SAVEPOINT, "SELECT 'value'", RESTORE]
     assert connection.transactions == 1
     assert connection.closed is close_connection
     assert not connection.in_transaction
@@ -285,6 +330,7 @@ def test_capture_wraps_failed_commit(monkeypatch, close_connection):
 
 @pytest.mark.parametrize("rollback_fails", [False, True])
 def test_capture_keeps_statement_error_after_rollback(monkeypatch, caplog, rollback_fails):
+    # Only the outer rollback can warn after a text error; no savepoint SQL follows it.
     connection = Connection(SESSION)
     sql = "SELECT 'value'"
     error = psycopg.DataError("statement rejected")
@@ -298,21 +344,15 @@ def test_capture_keeps_statement_error_after_rollback(monkeypatch, caplog, rollb
         run(sql)
     assert str(caught.value) == "PostgreSQL query failed: DataError: statement rejected"
     assert caught.value.__context__ is error
-    checks = ["check " + setting for setting in SESSION]
     assert connection.events == (
-        checks
-        + checks
-        + ["begin"]
-        + checks
-        + ["execute", "rollback"]
-        + (["rollback failed"] if rollback_fails else [])
+        CAPTURE_START + ["execute", "rollback"] + (["rollback failed"] if rollback_fails else [])
     )
     assert caplog.record_tuples == (
         [("psycopg", logging.WARNING, "error ignored in rollback: connection lost at rollback")]
         if rollback_fails
         else []
     )
-    assert connection.statements == [sql]
+    assert connection.statements == [*CAPTURE_SETUP, SAVEPOINT, sql]
     assert connection.transactions == 1
     assert connection.closed is rollback_fails
     assert not connection.in_transaction
@@ -339,9 +379,7 @@ def test_capture_does_not_reconnect_after_session_refusal(monkeypatch, setting, 
     assert_session_refusal(caught, make_postgres_result_query, setting, value)
     checks = ["check " + name for name in SESSION]
     final_checks = checks[: checks.index("check " + setting) + 1]
-    assert connection.events == (
-        checks + checks + ["begin"] + checks + ["execute", "fetchall"] + final_checks + ["closed"]
-    )
+    assert connection.events == [*CAPTURE_START, "execute", "fetchall", *final_checks, "closed"]
     assert connection.closed
     for name in SESSION:
         with pytest.raises(psycopg.OperationalError, match=r"^the connection is closed$"):
@@ -353,7 +391,7 @@ def test_capture_does_not_reconnect_after_session_refusal(monkeypatch, setting, 
         "PostgreSQL connection failed: OperationalError: the connection is closed"
     )
     assert connection.events == [*events, "check client_encoding"]
-    assert connection.statements == [sql]
+    assert connection.statements == [*CAPTURE_SETUP, SAVEPOINT, sql]
     assert connection.transactions == 1
     assert connection.closed
     assert not connection.in_transaction
@@ -441,6 +479,11 @@ def test_query_setting_change_refuses_following_question(monkeypatch, factory, s
     monkeypatch.setattr(psycopg, "connect", lambda **kwargs: connection)
     run = factory(Settings(_env_file=None))
     invoke(factory, run)
+    if factory is make_postgres_runtime_probe:
+        assert connection.reported == SESSION
+        invoke(factory, run)
+        assert connection.events.count("rollback") == 2
+        return
     assert connection.reported[setting] == value
     sent = list(connection.statements)
     transactions = connection.transactions
@@ -481,7 +524,8 @@ def test_capture_refuses_settings_changed_during_statement(monkeypatch, phase, s
 
     def change_setting(*args):
         result = original(*args)
-        connection.reported[setting] = value
+        if phase == "fetchall" or args == ("SELECT 'value'",):
+            connection.reported[setting] = value
         return result
 
     monkeypatch.setattr(connection, phase, change_setting)
@@ -490,5 +534,5 @@ def test_capture_refuses_settings_changed_during_statement(monkeypatch, phase, s
     with pytest.raises(ResultCaptureError) as caught:
         run("SELECT 'value'")
     assert_session_refusal(caught, make_postgres_result_query, setting, value)
-    assert connection.statements == ["SELECT 'value'"]
+    assert connection.statements == [*CAPTURE_SETUP, SAVEPOINT, "SELECT 'value'"]
     assert connection.closed

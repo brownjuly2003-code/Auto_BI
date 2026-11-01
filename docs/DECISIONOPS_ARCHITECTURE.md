@@ -693,7 +693,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=123`, `CHECK_VERSION=81`.
+`VERIFIER_VERSION=124`, `CHECK_VERSION=81`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1034,6 +1034,21 @@ Gate выполняет шаги в фиксированном порядке:
   утверждением, что gate прочитал строки, которых не получают потребители). Остальные
   row-security findings у двух коллекторов совпадают, на ядре 9.4.26 их нет ни у одного.
   Стенды Greenplum и Greengage не запускались.
+  Каждый catalog/statistics-вопрос штатной пробы, включая полный `COUNT`/`MAX`, получает
+  серверный таймаут `environment_query_timeout_ms` (по умолчанию 30 000 мс, строго больше
+  нуля): PostgreSQL заново задаёт `statement_timeout` перед вопросом, ClickHouse передаёт
+  per-query `max_execution_time`, `limit=0`, `offset=0` и `throw` для всех одиннадцати
+  overflow modes в режимах 0 и 2. Перед первым вопросом bounded catalog callable одним
+  запросом читает 13 значений: readonly, max_execution_time и все overflow modes, без
+  per-query settings; readonly не меняет. В режиме 1, как у capture (§8.4.1), требуется
+  собственный положительный конечный max_execution_time не выше
+  environment_query_timeout_ms / 1000 и throw у каждого overflow mode. Дополнительный
+  вопрос к system.settings проверяет по одной строке limit и offset с value='0' и
+  changed=0; запросы каталога затем идут без per-query settings. Отказ остаётся
+  ClickHouseError, не признаком отсутствия прав.
+  Без timeout_ms сохраняется прежний режим фабрики. Превышение называет настройку и
+  значение; оно остаётся ошибкой исполнения, не фактом отсутствия доступа. Таймаут runtime
+  не покрывает эти вопросы. Внедрённый `RunQuery` отвечает за собственные ограничения.
   Границы — `SECURITY DEFINER`-функции, BYPASSRLS достижимой роли,
   `CREATEROLE`/`ADMIN OPTION`/`ROLE ADMIN`. Пустая витрина —
   `freshness.unknown`, потому что `max(Date)` по нулю строк в ClickHouse равен `1970-01-01`,
@@ -1096,11 +1111,23 @@ Gate выполняет шаги в фиксированном порядке:
   нулевая граница без соответствующего counter остаётся неизмеренной. Точный локальный
   `ProgrammingError: Setting <name> is unknown or readonly` для переданной runtime-настройки
   оставляет все объявленные runtime-границы неизмеренными (`cost.not_measured`, **review**).
-  Запрос без лимитов не повторяется. Сам `readonly=1` не отключает пробу: драйвер допускает
-  уже равное запрошенному значение. Превышение времени требует server code 159; превышение
+  Запрос без лимитов не повторяется. До вопросов сессии runtime отказывает тексту с SETTINGS
+  времени или чтения байтов, включая leaf-варианты, а также со всеми overflow modes и
+  profile; проверяет вложенные ветви и имена без учёта регистра (§8.4.1). Затем одним
+  запросом читает 13 значений: readonly, max_execution_time и все одиннадцать overflow
+  modes, без per-query settings. Режим 0 переводит в 2, режим 2 только подтверждает;
+  режим 1 оставляет без исполнения
+  и checked bounds, evidence называет причину и заканчивается
+  `no declared runtime bound was measured`. Иной режим или неподтверждённое значение
+  не разрешают запуск текста. Каждый исполняемый runtime-запрос получает per-query
+  max_execution_time, limit=0, offset=0 и throw для всех одиннадцати overflow modes;
+  при объявленном max_scanned_bytes также max_bytes_to_read=max(1, max_scanned_bytes).
+  Превышение времени
+  самого reviewed-запроса требует server code 159; превышение
   scanned bytes — code 307 и сообщения о превышении лимита чтения байтов, не строк или
   размера результата. Остальные driver errors сохраняют usage-error границу. PostgreSQL выполняет
-  SELECT в read-only транзакции, применяет transaction-local `statement_timeout` и
+  SELECT в read-only транзакции, проверяет `SHOW transaction_read_only = on` до текста,
+  применяет transaction-local `statement_timeout` и
   отбрасывает строки через потоковый cursor; честного exact-query `scanned_bytes` PostgreSQL
   не отдаёт. Это проверено по native API PostgreSQL 14–18: `EXPLAIN (ANALYZE, BUFFERS)`
   показывает non-distinct buffer accesses, `pg_stat_get_xact_blocks_fetched` — block read
@@ -1422,18 +1449,94 @@ Metamorphic checks объявляются явно в `tolerance.aggregate_check
 
 Штатная IO-команда `auto_bi decision capture` создаёт эту декларацию вместе с числом. Она
 выбирает один positive asset, повторно пропускает его reviewed SQL через SELECT-only guard,
-исполняет точный текст read-only драйвером, сверяет имена, порядок, типы и nullable-границу
+исполняет точный текст в сессии с проверенным режимом read-only, сверяет имена, порядок, типы и nullable-границу
 ответа с ожидаемым `ResultSet`, затем пишет новый (без overwrite) recorded-results YAML.
 Значения канонизируются до строкового контракта `ResultSet`; attestation получает digest
 кандидатного semantic snapshot'а, среды и reviewed-запроса. Сам release gate остаётся pure и
 читает этот файл как обычный вход.
 
+PostgreSQL capture начинает явную транзакцию, задаёт `SET TRANSACTION READ ONLY` и
+`SET LOCAL statement_timeout`, затем требует точный ответ `on` от
+`SHOW transaction_read_only` на том же соединении. ClickHouse сначала одним вопросом без
+per-query settings читает readonly, max_execution_time и все одиннадцать overflow modes. Режим 0
+переводит в 2; режим 2 только подтверждает через getSetting тем же клиентом. Их запросы
+получают max_execution_time, все overflow modes=throw, limit=0 и offset=0. В режиме 1 SET и per-query settings не отправляются:
+capture требует собственный положительный конечный max_execution_time не выше
+capture_timeout_ms / 1000 и throw у каждого overflow mode. Дополнительный вопрос читает
+name, value, changed для limit/offset из system.settings: нужны обе строки, value='0' и
+changed=0. getSetting и value показывают ноль даже при пользовательском limit/offset,
+поэтому changed=1 вызывает отказ с именем настройки: readonly=1 не может её снять.
+Нет строки, повтор или иная форма ответа — отказ. Режимы 0/2 этого вопроса не задают.
+Отказ называет настроенный предел и значения сессии;
+таймаут принятого режима 1 называет оба предела. Иной или неподтверждённый режим —
+`ResultCaptureError`, reviewed-текст не отправляется. Проверки строковых параметров
+PostgreSQL из T-126 сохраняются. Capture посылает обычный SQL на своём курсоре:
+SAVEPOINT capture_query, текст, чтение строк и description, check_session,
+ROLLBACK TO SAVEPOINT capture_query. Причина: psycopg увеличивает счётчик вложенных
+транзакций до отправки SAVEPOINT и сохраняет это увеличение при ошибке команды.
+Обе команды savepoint находятся вне query_errors(); ошибка любой из них даёт
+`PostgreSQL session preparation failed: <class>: <reason>`, внешний ROLLBACK остаётся.
+При ошибке текста, отказе проверки сессии или превышении предела capture откат к savepoint
+не отправляется; исходный ответ сохраняется, в том числе connection-error при закрытии
+соединения проверкой сессии.
+Вопрос метаданных идёт после отката и проверки сессии, без нового SET; search_path и
+statement_timeout снова имеют значения до текста. Внешняя транзакция capture и
+транзакция runtime тоже используют force_rollback=True и заканчиваются ROLLBACK;
+изменения set_config(..., false) не переходят к следующему вопросу.
+После savepoint capture требует статус INTRANS, после внешнего отката capture/runtime —
+IDLE. Иной статус закрывает соединение и даёт OperationalError подготовки; это проверяет
+состояние и после подавленной psycopg ошибки rollback.
+
+До вопросов сессии capture отказывает reviewed SETTINGS с max_execution_time,
+timeout_overflow_mode, их leaf-вариантами, всеми overflow modes и profile: имена сравниваются без учёта регистра во всех
+ветвях, включая подзапросы, через разбор guard. Сам guard такие SETTINGS по-прежнему
+принимает. Runtime также запрещает max_bytes_to_read, read_overflow_mode и их leaf-варианты;
+отказ называет настройку, checked bounds пусты. Метаданные пустого ответа обоих движков
+читаются через `SELECT * FROM (\n{statement}\n) AS capture_metadata LIMIT 0`: завершающий
+строчный комментарий не поглощает скобку. Для ClickHouse действует то же правило сессии.
+SETTINGS limit/offset остаются разрешены как часть смысла текста, подобно LIMIT/OFFSET;
+profile запрещён, поскольку может заменить защищённые настройки.
+
+`Settings` задаёт положительные `capture_timeout_ms=30000`, `capture_max_rows=10000` и
+`capture_max_bytes=16777216`. PostgreSQL читает через `cursor.stream(size=1)`, ClickHouse —
+`query_rows_stream`; проверка размера идёт перед сохранением каждой строки. Байты — сумма
+UTF-8 представлений `str(value)` ненулевых значений, не размер YAML или всей памяти процесса.
+Первая строка сверх предела вызывает `ResultCaptureError` с именем и значением лимита;
+частичный результат не возвращается, файл не создаётся. Предел времени применяется к
+каждому SQL, включая запрос метаданных пустого ответа. Это не общий предел времени команды
+и не предел памяти одного значения или блока драйвера. Поведение драйверов закреплено
+подстановками в `tests/test_probe_safety.py`, `tests/test_clickhouse_session_limits.py`,
+`tests/test_probe_completion.py` и `tests/test_postgres_savepoint.py`.
+ClickHouse проверяет max_execution_time при обработке блоков, а не как жёсткий срок: в
+записанных прогонах предел 50 мс срабатывал через 0,10–0,78 с по счёту сервера, а клиент
+получал ответ вплоть до 3446 мс. В живом прогоне ниже COUNT/MAX с sleepEachRow над numbers(20),
+max_block_size=1 назвал environment_query_timeout_ms=50 через 157 мс (HEAD завершил его за
+2108 мс), capture без агрегата назвал capture_timeout_ms=50 через 128 мс (HEAD вернул 20
+строк за 2103 мс). PostgreSQL распознаёт timeout по QueryCanceled и
+английскому тексту `statement timeout`; иной текст остаётся ошибкой драйвера.
+ClickHouse использует code драйвера, иначе Code: N. в начале сообщения, после перевода
+строки или server response: ; только 159 означает таймаут. Имя таблицы TIMEOUT_EXCEEDED
+не меняет другой код. Подготовка сессии и savepoint не входят в обработчик исхода SQL:
+capture называет session preparation failed и причину драйвера, catalog/runtime сохраняют
+ошибку драйвера без bounds или safety-timeout. Отказ check_session сохраняет connection failed.
+Catalog с timeout_ms применяет те же условия readonly=1; таймаут называет собственный
+max_execution_time и configured environment_query_timeout_ms. Без timeout_ms путь прежний.
+Настройки смысла вопроса, например additional_table_filters и additional_result_filter,
+принадлежат настроенной роли и здесь не проверяются. Нарушение profile constraints даёт
+452 либо клиентский отказ драйвера.
+Живой прогон T-128 на временных PostgreSQL 16.15, PostgreSQL 9.4.26 (ядро Greenplum 6 и
+Greengage 6) и ClickHouse 24.8.14.39 записал ответы, перечисленные в известных границах
+[контракта](specs/probe-execution-safety.md): отказы read-only транзакции, пределы времени и
+размера, колонки пустого ответа, search_path, режимы сессий ClickHouse и коды ошибок. 8000
+capture на обоих ядрах под statement timeout 1 мс или случайными внешними отменами не дали
+ошибки вложенности транзакций psycopg. Greenplum и Greengage не запускались.
+
 Ошибка драйвера при соединении, запросе или чтении ответа — `ResultCaptureError` адаптера:
 `ClickHouseError` и `StreamFailureError` у ClickHouse, `psycopg.Error` у PostgreSQL-семейства.
-Граница включает metadata fallback и ленивое чтение `result_rows`: обрыв после первого блока
+Граница включает metadata fallback и потоковое чтение строк: обрыв после первого блока
 не публикует частичный результат и не повторяет запрос. CLI отвечает exit 2, без stdout и
 файла результата, одной строкой `cannot capture <asset id>: <ClickHouse|PostgreSQL>
-<connection|query> failed: <класс>: <текст>`. Пробельные последовательности текста сжимаются
+<connection|query|session preparation> failed: <класс>: <текст>`. Пробельные последовательности текста сжимаются
 до одного пробела; пустое сообщение представлено классом. Произвольные исключения в новый
 перехват не входят ([контракт](specs/unanswered-engine.md)).
 
@@ -1689,8 +1792,8 @@ PostgreSQL `_literal` выбирает `E'…'` с обоими удвоения
 проверяются при подключении, перед каждым явным `execute` или `stream` и перед началом
 каждой транзакции. Capture читает результат внутри явной транзакции и там же повторяет
 проверку: обнаруживает и локальное изменение, если оно ещё действует после чтения результата.
-Результат возвращается после завершения транзакции. Её завершающие COMMIT или ROLLBACK
-не имеют отдельной проверки; после закрытия соединения при отказе они не отправляются,
+Результат возвращается после ROLLBACK внешней транзакции и проверки состояния IDLE.
+Перед этим ROLLBACK нет отдельной проверки строковых параметров; при закрытом соединении он не отправляется,
 ошибка отказа сохраняется. Изменение, внесённое и отменённое внутри одного SQL, не обнаруживается.
 Несоответствие закрывает соединение и поднимает ошибку драйвера: следующий явный SQL
 не отправляется, результат capture не возвращается; оболочка `ResultCaptureError` прежняя.

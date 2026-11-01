@@ -40,7 +40,7 @@ FAILURES = (
     ]
     + [
         pytest.param("postgres", psycopg.OperationalError, stage, id=f"pg-{stage}")
-        for stage in ("connection", "query", "rows", "commit")
+        for stage in ("connection", "query", "metadata", "rows", "rollback")
     ]
     + [
         pytest.param("postgres", psycopg.errors.DataCorrupted, "rows", id="pg-data-corrupted"),
@@ -74,7 +74,8 @@ def _driver(
             if stage == "metadata":
                 return DriverResult(result_set=[], column_names=())
         else:
-            assert sql == f"SELECT * FROM ({REFERENCE_SQL.strip().rstrip(';')}) LIMIT 0"
+            statement = REFERENCE_SQL.strip().rstrip(";")
+            assert sql == f"SELECT * FROM (\n{statement}\n) AS capture_metadata LIMIT 0"
             fail_at("metadata")
         return DriverResult(
             column_names=("region", "gross_margin_pct"),
@@ -86,26 +87,65 @@ def _driver(
         )
 
     def execute(sql: str) -> None:
+        if sql.startswith(("SET ", "SHOW ")):
+            return
+        if sql == "SAVEPOINT capture_query":
+            fail_at("savepoint")
+            return
+        if sql == "ROLLBACK TO SAVEPOINT capture_query":
+            fail_at("rollback to savepoint")
+            return
+        if stage == "metadata":
+            statement = REFERENCE_SQL.strip().rstrip(";")
+            if sql == f"SELECT * FROM (\n{statement}\n) AS capture_metadata LIMIT 0":
+                fail_at("metadata")
+                return
         assert sql == REFERENCE_SQL
         fail_at("query")
 
     def fetchall() -> list[tuple[str, Decimal]]:
         fail_at("rows")
+        if stage == "metadata":
+            return []
         return [("Москва", Decimal("0.412"))]
+
+    def stream(sql, *, size):
+        assert size == 1
+        execute(sql)
+        yield from fetchall()
+
+    def ch_stream(sql, **kwargs):
+        return ch_query(sql, tz_mode=kwargs["tz_mode"]).rows_stream
 
     @contextmanager
     def cursor() -> Iterator[SimpleNamespace]:
         yield SimpleNamespace(
             execute=execute,
             description=(
-                SimpleNamespace(name="region", type_display="text", null_ok=None),
-                SimpleNamespace(name="gross_margin_pct", type_display="numeric", null_ok=None),
+                None
+                if stage == "metadata"
+                else (
+                    SimpleNamespace(name="region", type_display="text", null_ok=None),
+                    SimpleNamespace(name="gross_margin_pct", type_display="numeric", null_ok=None),
+                )
             ),
             fetchall=fetchall,
+            fetchone=lambda: ("on",),
+            stream=stream,
         )
 
+    depth = 0
+    info = SimpleNamespace(
+        parameter_status={"client_encoding": "UTF8", "standard_conforming_strings": "on"}.get,
+        transaction_status=psycopg.pq.TransactionStatus.IDLE,
+    )
+
     @contextmanager
-    def transaction() -> Iterator[None]:
+    def transaction(*, force_rollback=False) -> Iterator[None]:
+        nonlocal depth
+        assert depth == 0
+        depth += 1
+        info.transaction_status = psycopg.pq.TransactionStatus.INTRANS
         calls.append("begin")
         try:
             yield
@@ -113,20 +153,24 @@ def _driver(
             calls.append("rollback")
             raise
         else:
-            fail_at("commit")
+            fail_at("rollback" if force_rollback else "commit")
+        finally:
+            depth -= 1
+            info.transaction_status = psycopg.pq.TransactionStatus.IDLE
 
     def connect(**_kwargs: Any) -> SimpleNamespace:
         fail_at("connection")
         return SimpleNamespace(
             query=ch_query,
+            query_rows_stream=ch_stream,
+            command=lambda sql, **kwargs: (
+                [2, 0] + ["throw"] * (sql.count("getSetting") - 2)
+                if "max_execution_time" in sql
+                else 2
+            ),
             cursor=cursor,
             transaction=transaction,
-            info=SimpleNamespace(
-                parameter_status={
-                    "client_encoding": "UTF8",
-                    "standard_conforming_strings": "on",
-                }.get
-            ),
+            info=info,
         )
 
     settings = Settings(_env_file=None)
@@ -180,7 +224,11 @@ def test_capture_driver_failure_is_one_line_without_a_partial_file(
 
     captured = capsys.readouterr()
     family = "ClickHouse" if engine == "clickhouse" else "PostgreSQL"
-    operation = "connection" if stage == "connection" else "query"
+    operation = (
+        "connection"
+        if stage == "connection"
+        else "session preparation" if stage == "rollback" else "query"
+    )
     detail = error_type.__name__ + (": connection closed by server" if message.strip() else "")
     assert captured.out == ""
     assert (
@@ -190,19 +238,27 @@ def test_capture_driver_failure_is_one_line_without_a_partial_file(
     expected_calls = ["connection"]
     if stage != "connection":
         if engine != "clickhouse":
-            expected_calls.append("begin")
+            expected_calls.extend(["begin", "savepoint"])
         expected_calls.append("query")
+    if engine != "clickhouse" and stage == "metadata":
+        expected_calls.extend(["rows", "rollback to savepoint"])
     if stage in {"metadata", "rows"}:
         expected_calls.append(stage)
-    if stage == "commit":
-        expected_calls.extend(["rows", "commit"])
+    if stage == "rollback":
+        expected_calls.extend(["rows", "rollback to savepoint", "rollback"])
     elif engine != "clickhouse" and stage != "connection":
         expected_calls.append("rollback")
     assert calls == expected_calls  # no retry, including after a partial stream
 
 
 @pytest.mark.parametrize(
-    "engine,stage", [("clickhouse", "rows"), ("postgres", "rows"), ("postgres", "commit")]
+    "engine,stage",
+    [
+        ("clickhouse", "rows"),
+        ("postgres", "rows"),
+        ("postgres", "metadata"),
+        ("postgres", "rollback"),
+    ],
 )
 def test_adapter_reports_a_port_error_before_the_use_case_sees_it(
     monkeypatch: pytest.MonkeyPatch, engine: str, stage: str
@@ -220,7 +276,10 @@ def test_adapter_reports_a_port_error_before_the_use_case_sees_it(
         run_query(REFERENCE_SQL)
 
     family = "ClickHouse" if engine == "clickhouse" else "PostgreSQL"
-    assert str(raised.value) == f"{family} query failed: {type(error).__name__}: lost response"
+    operation = "session preparation" if stage == "rollback" else "query"
+    assert (
+        str(raised.value) == f"{family} {operation} failed: {type(error).__name__}: lost response"
+    )
 
 
 @pytest.mark.parametrize(
@@ -230,7 +289,7 @@ def test_adapter_reports_a_port_error_before_the_use_case_sees_it(
         for engine in ("clickhouse", "postgres")
         for stage in ("connection", "query", "rows")
     ]
-    + [("clickhouse", "metadata")],
+    + [("clickhouse", "metadata"), ("postgres", "metadata")],
 )
 def test_non_driver_failure_still_propagates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, engine: str, stage: str
@@ -261,5 +320,13 @@ def test_answered_capture_keeps_its_canonical_result(
     assert calls == (
         ["connection", "query", "rows"]
         if engine == "clickhouse"
-        else ["connection", "begin", "query", "rows", "commit"]
+        else [
+            "connection",
+            "begin",
+            "savepoint",
+            "query",
+            "rows",
+            "rollback to savepoint",
+            "rollback",
+        ]
     )

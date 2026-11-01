@@ -110,7 +110,7 @@ def test_identifier_handler_does_not_cover_the_connection_factory(
 ) -> None:
     error = UnsafeIdentifierError("factory error")
 
-    def broken(_settings: Any) -> Any:
+    def broken(_settings: Any, **kwargs: Any) -> Any:
         raise error
 
     _configure(monkeypatch, 8123)
