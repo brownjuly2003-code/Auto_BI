@@ -238,6 +238,7 @@ def make_run_query(settings: Settings, *, timeout_ms: int | None = None) -> RunQ
             return list(client.query(sql, **query_options).named_results())
         except (ClickHouseError, StreamFailureError) as exc:
             if clickhouse_timed_out(exc):
+                assert session is not None  # read before query_options is first set
                 if session.readonly == "1":
                     raise OperationalError(
                         f"ClickHouse session max_execution_time={session.max_execution_time:g} s "

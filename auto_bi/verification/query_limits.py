@@ -166,7 +166,7 @@ def prepare_clickhouse_readonly(client: Any, session: ClickHouseSession) -> None
 
 
 def clickhouse_error_code(error: Exception) -> int | None:
-    code = getattr(error, "code", None)
+    code: int | None = getattr(error, "code", None)
     if code is not None:
         return code
     match = re.search(r"(?:\A|\n|server response: )\s*Code:\s*(\d+)\.", str(error))

@@ -9,7 +9,7 @@ normalises native values into the string representation used by ``ResultSet``.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -27,6 +27,7 @@ from auto_bi.postgres import (
 from auto_bi.scalars import Sha256Digest, Timestamp
 from auto_bi.verification.provenance import ResultAttestation, ResultOrigin
 from auto_bi.verification.query_limits import (
+    ClickHouseSession,
     clickhouse_session_limits,
     clickhouse_timed_out,
     prepare_clickhouse_readonly,
@@ -128,7 +129,7 @@ def make_clickhouse_result_query(settings: Settings) -> ResultQuery:
     except (ClickHouseError, StreamFailureError) as exc:
         raise ResultCaptureError(f"ClickHouse connection failed: {_driver_reason(exc)}") from None
 
-    def prepare():
+    def prepare() -> tuple[ClickHouseSession, dict[str, Any]]:
         try:
             session = read_clickhouse_session(client)
             limits = clickhouse_session_limits(
@@ -146,7 +147,7 @@ def make_clickhouse_result_query(settings: Settings) -> ResultQuery:
             ) from None
 
     @contextmanager
-    def query_errors(session):
+    def query_errors(session: ClickHouseSession) -> Iterator[None]:
         try:
             yield
         except (ClickHouseError, StreamFailureError) as exc:
@@ -236,7 +237,7 @@ def make_postgres_result_query(settings: Settings) -> ResultQuery:
             ) from None
 
     @contextmanager
-    def query_errors():
+    def query_errors() -> Iterator[None]:
         try:
             yield
         except psycopg.Error as exc:
