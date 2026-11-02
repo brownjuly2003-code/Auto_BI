@@ -606,7 +606,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: inspection still reports noncanonical bytes. Negative float tolerances fail asset load,
 #: before result comparison or check grading. Supplied cell validation is unchanged.
 #: CHECK_VERSION remains 81: no check's grading rule changes.
-VERIFIER_VERSION = "125"
+#: 126 — generated SQL preserves ClickHouse identifier backslashes and writes PostgreSQL
+#: string values containing backslashes as E literals. NUL and surrogates are refused.
+#: Reference SQL records sql.compile_refused as advisory and omits the refused query.
+#: Compiled SQL and BI payload evidence can change; check grading remains at version 81.
+VERIFIER_VERSION = "126"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

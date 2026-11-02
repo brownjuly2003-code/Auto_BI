@@ -10,6 +10,53 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-11-02 — T-130: генерируемый SQL сохраняет имена и значения, отказ метрики остаётся evidence
+
+Срез исправляет G1 и G2 (оба P1) synthetic-ревью генерируемого SQL. Исполнитель — Codex `gpt-6-astra`
+xhigh (профиль cw): срез и один раунд правок. Claude гонял Windows, Mac, мутанты и живые серверы и до
+ревью нашёл два пробела, вошедших в раунд правок: K1 — NUL в grain key или агрегатной колонке метрики
+ронял `run_gate` (bundle не писался) и вопросы плана environment; K2 — SHA-корпус не закреплял байты
+значений без backslash.
+
+G1. sqlglot 30.14.0 читает quoted identifier ClickHouse с backslash-escape, как и ClickHouse, но его
+генератор удваивал только `"`: label `x\" FROM db.mart WHERE 1=1 --` как alias выходил
+`"x\"" FROM db.mart WHERE 1=1 --"` и читался с действующими FROM и WHERE. G2. Строки PostgreSQL
+писались обычным `'…'` и читались так же только при `standard_conforming_strings = on`; сгенерированный
+SQL исполняют и BI-инструменты на своих соединениях, где gate эту настройку не задаёт.
+
+Теперь `auto_bi/sql_render.py` (`render_sql`, `quote_identifier`): идентификатор ClickHouse удваивает
+каждый backslash до удвоения кавычки; строка PostgreSQL с backslash пишется `E'…'` с удвоенными
+backslash и одинарной кавычкой (`''`, не `\'`), остальные литералы — как прежде; NUL и суррогаты в
+именах и значениях — `SQLRenderRefusal` (подкласс `ValueError`) до выдачи SQL. Через него идут пять
+builders `agent/sqlgen.py`, reference-запрос метрики `verification/sql_contract.py`, SQL-фрагменты
+Superset (ClickHouse; heatmap LPAD на `640d36b` писал имя без экранирования) и внешний SELECT
+масштабирования DataLens (диалект — движок витрины). Отказ в компиляторе метрик — advisory
+`sql.compile_refused` с ref метрики, без её запроса: остальные метрики компилируются, gate пишет bundle,
+у бюджетированной метрики plan question с пустыми dialect и SQL; BI-путь, как и прежде, —
+`bi.compile_refused` уровня block. Verifier 126 (compiled SQL и BI payload evidence меняются), check 81.
+Spec — `docs/specs/generated-sql.md`.
+
+Тесты: три новых модуля — `test_generated_sql_escaping.py` (911 случаев), `test_generated_sql_bytes.py`
+(172), `test_sql_compile_refusal.py` (19). 1416 SHA-256 пинов SQL посчитаны на `640d36b`: обычные имена и
+значения и имена и значения фильтров с кавычками, backtick, LF, TAB и не-ASCII без backslash, оба
+диалекта, все места; 79 намеренно изменённых форм имён закреплены байтами среза и digest HEAD; 90
+E-литералов PostgreSQL со `\` и `'`. На `640d36b` байтовые случаи — 169 failed; на дереве до раунда
+правок 16 случаев K1 падали с исключением. Мутанты M01–M20 — 20 из 20 после зелёного прогона 1102
+случаев на неизменённом дереве. Windows: 68 модулей — до правок 1 failed (spec не в индексе), 4057
+passed; после — 4249 passed, 56 skipped. Mac: mypy как в CI (linux, linux `--strict`, win32 `--strict`)
+— без замечаний на 126 файлах; полный 3.13 — 9965 passed, 45 skipped; 68 модулей на 3.12 и 3.14 — по
+4284 passed. Живые ClickHouse 24.8.14.39, PostgreSQL 16.15 и 9.4.26 (ядро Greenplum 6): 10 враждебных
+значений как имена в 8 местах и как значения фильтров в 6 (ClickHouse — ещё 5 фрагментов Superset), три
+значения со `\` и `'` — в фильтрах PostgreSQL; PostgreSQL при `standard_conforming_strings` on/off и
+`backslash_quote` safe_encoding/off. Срез — 0 расхождений (ClickHouse 190 случаев, каждый PostgreSQL
+632); `640d36b` — ClickHouse 79 (во всех 13 местах имён), каждый PostgreSQL 94 (все — значения при off).
+Greengage сам не запускался; кодировка соединения BI и пределы длины имён — вне проверки.
+
+Ревью synthetic Astra xhigh: P1/P2 нет; P3 (E-литерал, пишущий `'` как `\'`, проходил тесты и
+отказывался бы при `backslash_quote = off`) исправлен точными байтами, мутантом M20 и живым вариантом
+`backslash_quote = off` без нового ревью; направление K1 ревью подтвердило, K2 уточнило (heatmap-имя с
+`"` меняется намеренно).
+
 ## 2026-11-01 — T-129: artifact привязан к своему run, отрицательные float-допуски отказаны, граница supplied results записана
 
 Срез исправляет F5, F6 и F7 (все P2) финального synthetic-ревью gate (`.tmp/land/final/review.out`).

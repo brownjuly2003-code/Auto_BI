@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-01
+**Обновлено:** 2026-11-02
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -11,9 +11,23 @@ Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поя�
 human/design-partner outcome не измеряется — по решению владельца 2026-10-28 он не входит в
 цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md))
 
-**Версии evidence:** `VERIFIER_VERSION=125`, `CHECK_VERSION=81`
+**Версии evidence:** `VERIFIER_VERSION=126`, `CHECK_VERSION=81`
 
-**Последний срез (T-129, 2026-11-01):** artifact read привязан к своему run. На `3307bcf`
+**Последний срез (T-130, 2026-11-02):** генерируемый SQL сохраняет имена и значения. На `640d36b`
+quoted identifier ClickHouse не экранировал backslash (label `x\" FROM … --` как alias читался с
+действующими FROM и WHERE), строки PostgreSQL были обычными `'…'`, верными только при
+`standard_conforming_strings = on`. Теперь общий `sql_render.py`: ClickHouse удваивает backslash в
+идентификаторах, строка PostgreSQL с backslash — `E'…'` с удвоенными backslash и `''`; NUL и суррогаты —
+`SQLRenderRefusal`. Через него идут builders `sqlgen`, reference-запрос метрики, фрагменты Superset и
+масштабирование DataLens. Отказ метрики — advisory `sql.compile_refused` без её запроса (bundle
+пишется, plan question с пустым SQL), BI — `bi.compile_refused` / block. Verifier 126, check 81.
+[Spec](specs/generated-sql.md). 1416 SHA-пинов `640d36b`, 79 изменённых форм имён, 90 E-литералов;
+мутанты 20 из 20. Windows: 68 модулей — 4249 passed; Mac: полный 3.13 — 9965 passed, модули 3.12 и 3.14
+— 4284; mypy как в CI — без замечаний. Живые ClickHouse 24.8, PostgreSQL 16.15 и 9.4.26 (scs и
+`backslash_quote` on/off): срез — 0 расхождений, `640d36b` — 79 и по 94. Ревью Astra xhigh: P1/P2 нет,
+P3 исправлен.
+
+**Предыдущий срез (T-129, 2026-11-01):** artifact read привязан к своему run. На `3307bcf`
 `read_artifact` выдавал artifact подлинного signed bundle, положенного под чужой run; теперь artifact
 read и инспекция используют одну проверку корневого manifest (модель, run, канонические байты, подпись),
 и manifest другого run — signed или unsigned, с expected digest или без — отказан до чтения payload,

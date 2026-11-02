@@ -77,6 +77,7 @@ from auto_bi.semantic.gateway import MetricNode, SemanticSnapshot, TableNode
 from auto_bi.semantic.metric_contract import FormulaKind, MetricTerm
 from auto_bi.semantic.model import Aggregation
 from auto_bi.severity import Severity
+from auto_bi.sql_render import SQLRenderRefusal, render_sql
 from auto_bi.strict import StrictModel
 
 #: Formula kinds whose definition lives outside this contract kernel.
@@ -244,7 +245,18 @@ def _compile_one(
             return
     else:
         measure = aggregate_expr(terms[0][1].agg, exp.column(terms[0][1].column, quoted=True))
-    sql = _render(node, measure, dialect)
+    try:
+        sql = _render(node, measure, dialect)
+    except SQLRenderRefusal as exc:
+        findings.append(
+            SQLFinding(
+                code="sql.compile_refused",
+                severity=Severity.ADVISORY,
+                subject=ref,
+                detail=str(exc),
+            )
+        )
+        return
     queries.append(
         CompiledQuery(
             metric_ref=ref,
@@ -495,7 +507,7 @@ def _render(node: MetricNode, measure: exp.Expression, dialect: str) -> str:
     select = exp.select(*[key.copy() for key in keys], aliased).from_(
         exp.to_table(node.grain.table)
     )
-    return select.group_by(*[key.copy() for key in keys]).sql(dialect=dialect, identify=True)
+    return render_sql(select.group_by(*[key.copy() for key in keys]), dialect=dialect)
 
 
 __all__ = [

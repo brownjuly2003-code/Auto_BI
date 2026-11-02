@@ -693,7 +693,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=125`, `CHECK_VERSION=81`.
+`VERIFIER_VERSION=126`, `CHECK_VERSION=81`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -836,6 +836,18 @@ Gate выполняет шаги в фиксированном порядке:
   определение на её же grain, без окна, фильтра и top-N (это принадлежит продукту и
   прогону, не метрике). Граница узкая намеренно: typed aggregate компилируется
   (`SUM(col)` по сгруппированной витрине значит одно и то же в обоих движках).
+  Сериализация AST общая с chart/source SQL: `sql_render.py`. Идентификаторы
+  ClickHouse удваивают обратную косую черту до обработки кавычек; строки PostgreSQL
+  с обратной косой чертой получают `E'…'` с удвоением её и одинарной кавычки.
+  Через тот же модуль проходят имена в SQL-фрагментах Superset и внешнем SELECT
+  масштабирования DataLens. SQL закреплены 1416 SHA-256 значениями: набор
+  chart/source/reference/adapter и golden fixtures на двух диалектах
+  с кавычками, backtick, LF, TAB и Unicode без обратной косой черты
+  (`tests/test_generated_sql_escaping.py`, `tests/fixtures/generated_sql_sha256.json`).
+  Отказ renderer становится advisory `sql.compile_refused` с ref метрики и
+  экранированным текстом причины; её запрос отсутствует, остальные компилируются.
+  Бюджетированная метрика без запроса сохраняет plan question с пустыми dialect и SQL
+  (`tests/test_sql_compile_refusal.py`).
   Governed ratio компилируется **на двух семействах движков, чьё десятичное деление
   проверено на живом движке**, и на каждом — своей формой; вывести одну из другой нельзя,
   поэтому незнакомый семье движок получает названный гэп (`sql.ratio_unverified`), а не
@@ -1796,6 +1808,19 @@ Custom facets получают versioned immutable schema URL и префикс 
 подменяют стандартные поля.
 
 ## 10. Security и governance
+
+T-130 распространяет экранирование на генерируемые chart/source/reference SQL и
+SQL-фрагменты адаптеров. Тесты проверяют сохранение имён, строк и структуры AST
+после чтения sqlglot и приём текста SQL guard; отдельный reader строк проверяет
+PostgreSQL при `standard_conforming_strings=on` и `off`. Имена и строки с NUL или
+суррогатами отказаны с `SQLRenderRefusal`, подклассом `ValueError`: SQL-шаг сохраняет
+advisory `sql.compile_refused`, BI-шаг — `bi.compile_refused` со статусом block.
+Точные байты PostgreSQL E-строк с обратной косой чертой и одинарной кавычкой закреплены
+в `tests/test_generated_sql_bytes.py`; кавычка записывается как `''`.
+Это offline-свидетельство; настройки кодировки
+собственного BI-соединения и ограничения длины имён серверов в него не входят.
+Superset-фрагменты здесь относятся к существующему ClickHouse-пути.
+Точный набор и границы — [generated SQL](specs/generated-sql.md).
 
 Значения в запросах к каталогам `environment_probe.py` записываются строковыми литералами:
 ClickHouse удваивает обратные косые черты и одинарные кавычки через `_ch_literal`,
