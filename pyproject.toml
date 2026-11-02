@@ -5,7 +5,7 @@ description = "Agent: text / field layout -> dashboard in selected BI on top of 
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Julia Edomskikh" }]
+authors = [{ name = "brownjuly2003-code" }]
 keywords = ["bi", "dashboard", "superset", "datalens", "clickhouse", "llm", "agent"]
 classifiers = [
     "Development Status :: 4 - Beta",
