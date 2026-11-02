@@ -394,8 +394,9 @@ that message on standard error, and leave standard output empty.
   that name one of its metrics. A file outside that selection does not reach the gate and does
   not move the run id.
 - A valid dashboard spec whose compiled payload cannot be canonicalized — a non-finite filter
-  value, an integer beyond the range of a double, a lone surrogate in a title — still stops the
-  run in `bi.contract` with `CanonicalizationError`, as under verifier 90. Deriving the key
-  adds no stop of its own; whether such a spec is graded instead is outside this capability.
+  value, an integer beyond the range of a double, a lone surrogate in a title — SHALL produce
+  `bi.compile_refused` with status `block` in `bi.contract`. The run SHALL write its bundle;
+  the check evidence SHALL name the dashboard and the `CanonicalizationError` refusal, with
+  no compiled payload for that dashboard (`tests/test_bi_canonical_refusal.py`).
 - The identity text is private to the key. Evidence stays RFC 8785; no artifact is written in
   the identity text and no digest of it appears in the bundle.

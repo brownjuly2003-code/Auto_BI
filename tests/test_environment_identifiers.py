@@ -22,7 +22,7 @@ BAD_IDENTIFIERS = [
     pytest.param("event_time", "event\n\tstamp\u2028x", "event\n\tstamp\u2028x", id="line-breaks"),
     pytest.param("table", "bad schema.sales_daily", "bad schema", id="schema-space"),
     pytest.param("table", "dm.sales-daily", "sales-daily", id="table-hyphen"),
-    pytest.param("table", "dm..sales_daily", "", id="empty-table-component"),
+    pytest.param("table", "dm..sales_daily", ".sales_daily", id="table-leading-dot"),
 ]
 
 

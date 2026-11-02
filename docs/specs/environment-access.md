@@ -150,6 +150,76 @@ Schema ownership and ownership available only after SET ROLE do not establish a 
 table-owner row-security bypass. The ownership answer contract is pinned by
 `tests/test_postgres_mart_ownership.py`; the live ownership results are recorded above.
 
+## Requirement: every PostgreSQL mart question names one relation
+
+For each in-scope mart, the collector SHALL preserve the exact schema and table name in
+every PostgreSQL relation argument. Both engines SHALL split the mart name at its first
+dot into two parts. Presence SHALL compare these parts as catalog values; COUNT/MAX SHALL
+validate and quote each part whole. Table and column write privileges,
+ownership for the current role and roles reachable through SET ROLE, readability, column
+reads and types, policies and owner bypass SHALL pass the same double-quoted schema and
+table inside a string literal to the PostgreSQL name-input functions. Thus `dm.Sales`
+SHALL name `"dm"."Sales"`, and `DM.sales` SHALL name `"DM"."sales"`.
+The relation literal SHALL have no explicit text cast, including for `to_regclass` whose
+9.4 argument is `cstring`. The 9.4 path SHALL omit row-security catalogs as before.
+For a name without a dot (`sales`), both engines SHALL ask presence for (`sales`, `""`)
+and, if absent, report `exists=False` and `readable=False` without sending `AS rows_seen`
+(`test_name_without_dot_keeps_absence`).
+
+### Scenario: two table names differ only by case
+
+- **WHEN** `dm.sales` and `dm."Sales"` coexist, the role only reads the first and owns
+  the second with its DML grants revoked, and the mart is `dm.Sales`
+- **THEN** access blocks with ownership evidence for the second, also when that ownership
+  is held only by a role reachable through SET ROLE
+- **AND** column reads, column types, policies and owner bypass describe the second
+
+### Scenario: two schema names differ only by case
+
+- **WHEN** `dm.sales` and `"DM".sales` coexist and the mart is `DM.sales`
+- **THEN** every relation argument preserves `DM`; write grants and mart or schema ownership
+  of that relation block, including through SET ROLE
+
+### Scenario: the exact relation grants SELECT only
+
+- **WHEN** the role has no write grant or ownership on the mixed-case mart, but can write
+  or owns the lower-case relation
+- **THEN** the lower-case relation does not make the role writable for this mart
+- **AND** refused column-read, policy or owner-bypass answers remain unreported
+
+### Scenario: a mart name contains more than one dot
+
+- **WHEN** the current PostgreSQL database is `a`, both `a."b.c"` and `b.c` exist with
+  different owners, grants and row counts, the session reads the first and owns the second
+  with its DML grants revoked, and the mart is `a.b.c`
+- **THEN** presence names schema `a` and table `b.c`, and every relation literal is
+  `'"a"."b.c"'`, including questions for roles reachable through SET ROLE
+- **AND** after presence and readability succeed, COUNT/MAX refuses the whole part `b.c`
+  with `UnsafeIdentifierError` before sending any `AS rows_seen` question
+- **AND** ClickHouse uses database `a` and table `b.c` for presence and refuses the same
+  part before COUNT/MAX when that table is present
+
+### Scenario: a name part contains a double quote
+
+- **WHEN** the mart is `dm.Sa"les`
+- **THEN** PostgreSQL relation literals contain `'"dm"."Sa""les"'`
+- **AND** if collection reaches COUNT/MAX, both engines refuse the whole part `Sa"les`
+  with `UnsafeIdentifierError` before sending the reading
+
+These scenarios are pinned by `tests/test_postgres_relation_identity.py`. Ordinary names
+retain their answers; their catalog SQL now includes double quotes, pinned by
+`test_ordinary_catalog_sql_bytes` in `tests/test_catalog_literals.py`. Relation quoting
+does not expand COUNT/MAX's identifier rule (`test_present_mart_retains_identifier_refusal`).
+More than one dot does not introduce a database qualifier for PostgreSQL: later dots stay
+inside the second part. Catalog questions name that exact two-part relation even when a
+part has characters outside the COUNT/MAX identifier rule. If collection reaches COUNT/MAX,
+such a part follows the existing [unsupported-identifier boundary](environment-readings.md#scenario-a-present-mart-needs-an-unsupported-identifier):
+`UnsafeIdentifierError`; `decision verify` writes no bundle. Absence and PostgreSQL
+unreadability remain earlier answers when the preceding catalog questions succeed.
+The identity is a schema/name pair, not a catalog snapshot: these questions do not lock
+the relation against concurrent DDL. The tests model a fixed catalog. ClickHouse continues
+to compare database and table values exactly and its ordinary catalog SQL bytes are unchanged.
+
 ## Requirement: mart ownership prevents read-only evidence without a DML grant
 
 For each in-scope PostgreSQL-family mart, including a view, the collector SHALL include

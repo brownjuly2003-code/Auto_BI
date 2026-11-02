@@ -693,7 +693,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=126`, `CHECK_VERSION=81`.
+`VERIFIER_VERSION=127`, `CHECK_VERSION=81`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1009,6 +1009,18 @@ Gate выполняет шаги в фиксированном порядке:
   а для достижимых ролей принимает их oid. Владение даёт `read_only=false` независимо
   от DML grants; evidence называет витрину, владельца и текущую роль либо `SET ROLE`.
   NULL, пустое имя владельца или неотвеченное владение не устанавливает read-only.
+  Все PostgreSQL-вопросы витрины сохраняют регистр схемы и таблицы: наличие сравнивает
+  точные значения каталога, COUNT/MAX заключает обе части в двойные кавычки, а функции
+  привилегий и `to_regclass` получают это же имя внутри строкового литерала, например
+  `'"dm"."Sales"'` или `'"DM"."sales"'`. Это относится и к SET ROLE, типам и чтению колонок,
+  политикам и обходу RLS владельцем. Literal без cast подходит аргументу `cstring`
+  у `to_regclass` ядра 9.4; RLS-вопросы там по-прежнему не задаются. Оба движка делят имя
+  по первой точке на две части: `a.b.c` означает схему/базу `a` и таблицу `b.c`.
+  COUNT/MAX проверяет каждую часть целиком; точка внутри второй части или двойная кавычка
+  дают `UnsafeIdentifierError` до чтения. Отсутствие и нечитаемость PostgreSQL сообщаются
+  раньше; отказ COUNT/MAX следует [существующей границе без bundle](specs/environment-readings.md#scenario-a-present-mart-needs-an-unsupported-identifier).
+  Контракт ответов —
+  `tests/test_postgres_relation_identity.py`, байты обычных вопросов — `tests/test_catalog_literals.py`.
   Отдельный факт витрины
   `owner_bypasses_row_security` читает владение текущей роли вместе с
   `NOT relforcerowsecurity`: при true политики не дают выводов о фильтрации или пустом

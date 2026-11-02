@@ -484,7 +484,7 @@ def test_view_ownership_uses_pg_class_without_table_kind_filter() -> None:
     engine = OwnershipEngine(owns=True)
     engine.inner.answers["pg_tables"] = [{"tablename": "sales_daily"}]
 
-    def ask(sql: str):
+    def ask(sql: str) -> list[dict[str, Any]]:
         rows = engine(sql)
         if "relrowsecurity" in sql:
             rows[0]["enabled"] = False
@@ -506,7 +506,7 @@ def test_view_ownership_uses_pg_class_without_table_kind_filter() -> None:
     )
     for sql in engine.asked:
         if "has_table_privilege" in sql or "relrowsecurity" in sql or "pg_policy" in sql:
-            assert f"to_regclass('{MART}')" in sql
+            assert 'to_regclass(\'"dm"."sales_daily"\')' in sql
 
 
 def test_absent_mart_keeps_absence_fact() -> None:
@@ -522,8 +522,8 @@ def test_owner_bypass_is_per_mart() -> None:
     scope = pg_questions()
     scope.tables.append(TableQuestion(table="dm.other", event_time_column="date"))
 
-    def ask(sql: str):
-        return OwnershipEngine()(sql) if "dm.other" in sql else engine(sql)
+    def ask(sql: str) -> list[dict[str, Any]]:
+        return OwnershipEngine()(sql) if '"dm"."other"' in sql else engine(sql)
 
     facts = collect(ask, scope, engine="postgres", target="ownership-test")
     assert facts.tables[0].owner_bypasses_row_security is True

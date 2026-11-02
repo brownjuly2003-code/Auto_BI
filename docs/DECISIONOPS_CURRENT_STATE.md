@@ -11,9 +11,25 @@ Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поя�
 human/design-partner outcome не измеряется — по решению владельца 2026-10-28 он не входит в
 цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md))
 
-**Версии evidence:** `VERIFIER_VERSION=126`, `CHECK_VERSION=81`
+**Версии evidence:** `VERIFIER_VERSION=127`, `CHECK_VERSION=81`
 
-**Последний срез (T-130, 2026-11-02):** генерируемый SQL сохраняет имена и значения. На `640d36b`
+**Последний срез (T-131, 2026-11-02):** все PostgreSQL-вопросы витрины называют одно отношение. На
+`d817a17` наличие и COUNT/MAX читали `dm."Sales"`, а права и каталоги получали `'dm.Sales'`, которую
+PostgreSQL приводит к `dm.sales`: при обеих таблицах владелец `dm."Sales"` выходил read-only, а типы,
+политики и RLS описывали `dm.sales`; так же — регистр схемы и SET ROLE. Теперь relation-аргумент —
+`'"dm"."Sales"'` во всех 11 местах, литерал без cast (`to_regclass(cstring)` ядра 9.4). Оба движка делят
+имя по первой точке на две части для наличия, каталога и COUNT/MAX; часть с точкой или `"` отказана
+`UnsafeIdentifierError` до чтения, после ранних ответов об отсутствии и нечитаемости. R2-2/R2-3: specs —
+`bi.compile_refused` / block с bundle, ошибка внешнего ROLLBACK capture — граница подготовки сессии.
+Verifier 127, check 81. [Spec](specs/environment-access.md). Восемь обычных PostgreSQL-вопросов имеют
+новые байты при равных фактах, ClickHouse прежний. Тесты: 165 новых случаев, на `d817a17` 147 failed;
+мутанты 16 из 16. Windows: 85 модулей — 5421 passed; Mac: полный 3.13 — 10130 passed, модули 3.12 и 3.14
+— 5456; mypy как в CI — без замечаний. Живые PostgreSQL 16.15 и 9.4.26: 24 случая на дерево и ядро —
+срез сообщает владельца `dm."Sales"` writable, `d817a17` — read-only; `postgres.b.c`: `d817a17` читает
+`b.c`, срез отказывает до чтения. Ревью Astra xhigh: P1 первого раунда исправлен, во втором P1/P2 нет,
+P3 исправлен.
+
+**Предыдущий срез (T-130, 2026-11-02):** генерируемый SQL сохраняет имена и значения. На `640d36b`
 quoted identifier ClickHouse не экранировал backslash (label `x\" FROM … --` как alias читался с
 действующими FROM и WHERE), строки PostgreSQL были обычными `'…'`, верными только при
 `standard_conforming_strings = on`. Теперь общий `sql_render.py`: ClickHouse удваивает backslash в

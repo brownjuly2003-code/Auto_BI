@@ -92,6 +92,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-11-02 — T-131: PostgreSQL-вопросы витрины — `'"dm"."Sales"'` во всех 11 местах (права, владение,
+  SET ROLE, колонки, RLS); имя делится по первой точке на две части для наличия, каталога и COUNT/MAX, часть
+  с точкой или `"` отказана до чтения; specs R2-2/R2-3. Verifier 127 / check 81; 165 случаев, на HEAD 147
+  failed; мутанты 16/16; Windows 5421, Mac 10130 passed; живые PG 16.15/9.4.26. Ревью Astra: P1 исправлен,
+  затем P1/P2 нет, P3 исправлен.
 - 2026-11-02 — T-130: генерируемый SQL через общий `sql_render.py`: backslash в идентификаторах ClickHouse,
   `E'…'` для строк PostgreSQL с backslash; NUL/суррогат — advisory `sql.compile_refused` (bundle пишется).
   Verifier 126 / check 81; 1416 SHA-пинов `640d36b`; мутанты 20/20; Windows 4249, Mac 9965 passed; живые
@@ -102,11 +107,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   но других отказов не снимает; отрицательные float-допуски отказаны при загрузке; граница supplied
   NULL записана. Verifier 125 / check 81; на HEAD 31 failed; мутанты 17/17; Windows 4060, Mac 4134
   passed ×3. Ревью Astra: P2 и три P3, затем P3 исправлены; `3307bcf` — mypy T-128.
-- 2026-11-01 — T-128: capture — только read-only: PG — READ ONLY с проверкой, текст в savepoint (откат
-  до вопроса метаданных); ClickHouse — readonly 2 или режим 1 со своими пределами, SETTINGS текста не
-  снимают пределы; лимиты строк и байтов capture, таймауты каталога. Verifier 124 / check 81; мутанты
-  48/48; живые PG 16.15, 9.4.26 и CH 24.8: у HEAD capture двигал sequence; Mac 4122 passed ×3. Ревью
-  Astra: P1, три P2 и два P3, затем P2 и два P3 исправлены; третье — P1/P2 нет, P3 исправлен.
 
 ## Definition of done (фаза/задача)
 

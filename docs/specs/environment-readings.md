@@ -61,12 +61,19 @@ wrapper. These checks SHALL issue no SQL.
 
 ### Scenario: capture cannot complete its transaction
 
-- **WHEN** COMMIT raises a driver error after capture has read its result
-- **THEN** capture raises `ResultCaptureError` with `PostgreSQL query failed:`, the driver
+- **WHEN** the outer ROLLBACK raises a driver error after capture has read its result
+- **THEN** capture raises `ResultCaptureError` with `PostgreSQL session preparation failed:`, the driver
   error type and its text, without returning the result
 - **WHEN** the statement raises a driver error and its ROLLBACK succeeds or also fails
 - **THEN** capture raises the same query-error wrapper for the statement's error, without
   returning a result; a failed ROLLBACK does not replace that error
+
+Capture ends its transaction with ROLLBACK, including after a successful read, as required
+by [probe execution safety](probe-execution-safety.md). These outcomes are pinned by
+`test_capture_wraps_failed_transaction_exit` and
+`test_capture_keeps_statement_error_after_rollback` in `tests/test_postgres_sessions.py`,
+and the successful command order by `test_capture_sql_savepoint_order` in
+`tests/test_postgres_savepoint.py`.
 
 ### Scenario: the same capture callable is used after a session refusal
 
@@ -106,14 +113,17 @@ wrapper. These checks SHALL issue no SQL.
 - Literal escaping does not expand the identifier rule. Tests of later catalog questions
   substitute only the COUNT/MAX table identifier to reach those questions with hostile names;
   separate tests keep the real rule and its refusal order.
-- PostgreSQL `has_table_privilege(text, …)`, `has_any_column_privilege(text, …)` and
-  `to_regclass(text)` parse their relation-name argument after reading the literal.
-  On recorded PostgreSQL 16.15 and 9.4.26 runs, the two privilege functions raised
+- PostgreSQL privilege functions and `to_regclass` parse their relation-name argument after
+  reading the literal (`cstring` for `to_regclass` on 9.4). Since verifier 127 the collector
+  quotes the exact schema and table inside that literal; case is preserved, as required by
+  [environment access](environment-access.md). COUNT/MAX retains its identifier rule.
+  On the recorded verifier 122 PostgreSQL 16.15 and 9.4.26 runs, before that quoting,
+  the two privilege functions raised
   `InvalidName` (SQLSTATE 42602) for `public.mart\' OR 1=1 --`; `to_regclass` returned NULL
-  on 16.15 and raised `InvalidName` on 9.4.26. The collector does not treat 42602 as an
-  access refusal. A non-superuser's write-privilege questions precede presence, so such
-  an error can end collection before an absence fact. Superuser sessions skip those
-  questions; for the present mart the recorded collector reached readability and raised
+  on 16.15 and raised `InvalidName` on 9.4.26. The collector still does not treat 42602 as an
+  access refusal (`test_relation_name_error_precedes_absence` in
+  `tests/test_catalog_literals.py` injects that driver error). Superuser sessions skipped
+  those questions; for the present mart the recorded collector reached readability and raised
   `InvalidName` on PostgreSQL, and raised `UnsafeIdentifierError` on ClickHouse.
 - Recorded macOS runs before the connection changes used ClickHouse 24.8.14.39,
   PostgreSQL 16.15 and the PostgreSQL 9.4.26 kernel, with PostgreSQL standard strings

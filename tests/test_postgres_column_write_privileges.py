@@ -31,6 +31,7 @@ OUTSIDE = "dm.outside_scope"
 
 
 def table_sql(mart: str) -> str:
+    mart = '"' + mart.replace(".", '"."') + '"'
     privileges = ", ".join(
         f"has_table_privilege('{mart}', '{privilege}') AS {privilege.lower()}"
         for privilege in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")
@@ -57,6 +58,7 @@ def no_table_writes() -> dict[str, object]:
 
 
 def column_sql(mart: str) -> str:
+    mart = '"' + mart.replace(".", '"."') + '"'
     return "SELECT " + ", ".join(
         f"has_any_column_privilege('{mart}', '{privilege}') AS column_{privilege.lower()}"
         for privilege in ("INSERT", "UPDATE")
@@ -170,7 +172,9 @@ def test_select_only_controls_remain_read_only_and_readable(grants: str) -> None
     )
     assert_access(scope, facts, False)
     assert_questions(engine)
-    assert f"SELECT has_any_column_privilege('{MART}', 'SELECT') AS ok" in engine.asked
+    assert (
+        "SELECT has_any_column_privilege('\"dm\".\"sales_daily\"', 'SELECT') AS ok" in engine.asked
+    )
 
 
 def test_read_only_evidence_names_table_and_column_write_privileges() -> None:

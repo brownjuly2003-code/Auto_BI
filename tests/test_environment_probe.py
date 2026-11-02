@@ -100,7 +100,7 @@ def clickhouse_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
 def postgres_engine(**overrides: list[dict[str, Any]]) -> FakeEngine:
     answers: dict[str, list[dict[str, Any]]] = {
         "current_user AS name": [{"name": "gate_ro", "superuser": False, "bypassrls": False}],
-        "has_table_privilege('dm.sales_daily', 'INSERT')": [
+        "has_table_privilege('\"dm\".\"sales_daily\"', 'INSERT')": [
             {
                 "insert": False,
                 "update": False,
@@ -254,7 +254,7 @@ def test_postgres_reads_read_only_from_the_privileges() -> None:
 def test_a_postgres_role_that_may_write_one_in_scope_mart_is_writable() -> None:
     engine = postgres_engine(
         **{
-            "has_table_privilege('dm.sales_daily', 'INSERT')": [
+            "has_table_privilege('\"dm\".\"sales_daily\"', 'INSERT')": [
                 {"insert": True, "update": False, "delete": False, "truncate": False}
             ]
         }
@@ -629,7 +629,7 @@ def test_postgres_reads_a_mart_it_only_holds_column_grants_on() -> None:
     release over a mart the gate had just read."""
     engine = postgres_engine(
         **{
-            "has_table_privilege('dm.sales_daily', 'SELECT')": [{"ok": False}],
+            "has_table_privilege('\"dm\".\"sales_daily\"', 'SELECT')": [{"ok": False}],
             "has_any_column_privilege": [{"ok": True}],
             "has_column_privilege(a.attrelid": [
                 {"name": "date", "ok": True},

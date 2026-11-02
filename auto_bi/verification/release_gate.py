@@ -610,7 +610,11 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: string values containing backslashes as E literals. NUL and surrogates are refused.
 #: Reference SQL records sql.compile_refused as advisory and omits the refused query.
 #: Compiled SQL and BI payload evidence can change; check grading remains at version 81.
-VERIFIER_VERSION = "126"
+#: 127 — PostgreSQL mart questions preserve schema and table case in relation-name
+#: arguments for privileges, ownership, columns and row security. Both engines use the
+#: same two-part mart name for presence and COUNT/MAX. Collected facts and
+#: resulting reports can change; check grading is unchanged and CHECK_VERSION stays 81.
+VERIFIER_VERSION = "127"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

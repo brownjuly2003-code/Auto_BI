@@ -43,21 +43,21 @@ OLD_IDENTITY = (
     "AS superuser"
 )
 TABLE_WRITE = (
-    "SELECT has_table_privilege('dm.sales_daily', 'INSERT') AS insert, "
-    "has_table_privilege('dm.sales_daily', 'UPDATE') AS update, "
-    "has_table_privilege('dm.sales_daily', 'DELETE') AS delete, "
-    "has_table_privilege('dm.sales_daily', 'TRUNCATE') AS truncate, "
+    "SELECT has_table_privilege('\"dm\".\"sales_daily\"', 'INSERT') AS insert, "
+    "has_table_privilege('\"dm\".\"sales_daily\"', 'UPDATE') AS update, "
+    "has_table_privilege('\"dm\".\"sales_daily\"', 'DELETE') AS delete, "
+    "has_table_privilege('\"dm\".\"sales_daily\"', 'TRUNCATE') AS truncate, "
     "pg_get_userbyid(c.relowner) AS owner_name, "
     "pg_has_role(current_user, c.relowner, 'USAGE') AS owns_mart, "
     "pg_get_userbyid(n.nspowner) AS schema_owner_name, "
     "pg_has_role(current_user, n.nspowner, 'USAGE') AS owns_schema "
-    "FROM (SELECT to_regclass('dm.sales_daily') AS oid) mart "
+    'FROM (SELECT to_regclass(\'"dm"."sales_daily"\') AS oid) mart '
     "LEFT JOIN pg_class c ON c.oid = mart.oid "
     "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace"
 )
 COLUMN_WRITE = (
-    "SELECT has_any_column_privilege('dm.sales_daily', 'INSERT') AS column_insert, "
-    "has_any_column_privilege('dm.sales_daily', 'UPDATE') AS column_update"
+    "SELECT has_any_column_privilege('\"dm\".\"sales_daily\"', 'INSERT') AS column_insert, "
+    "has_any_column_privilege('\"dm\".\"sales_daily\"', 'UPDATE') AS column_update"
 )
 REACH = (
     "SELECT r.rolname AS name, r.rolsuper AS superuser FROM pg_roles r "
@@ -70,12 +70,12 @@ MART_QUESTIONS = [
     "SELECT tablename FROM pg_tables WHERE schemaname = 'dm' AND tablename = 'sales_daily' "
     "UNION ALL SELECT viewname FROM pg_views WHERE schemaname = 'dm' AND viewname = 'sales_daily'",
     "SELECT a.attname AS name, has_column_privilege(a.attrelid, a.attnum, 'SELECT') AS ok "
-    "FROM pg_attribute a WHERE a.attrelid = to_regclass('dm.sales_daily') "
+    'FROM pg_attribute a WHERE a.attrelid = to_regclass(\'"dm"."sales_daily"\') '
     "AND a.attnum > 0 AND NOT a.attisdropped AND a.attname IN ('date', 'revenue')",
-    "SELECT has_any_column_privilege('dm.sales_daily', 'SELECT') AS ok",
+    "SELECT has_any_column_privilege('\"dm\".\"sales_daily\"', 'SELECT') AS ok",
     'SELECT count(*) AS rows_seen, max("date") AS max_event_time FROM "dm"."sales_daily"',
     "SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type "
-    "FROM pg_attribute a WHERE a.attrelid = to_regclass('dm.sales_daily') "
+    'FROM pg_attribute a WHERE a.attrelid = to_regclass(\'"dm"."sales_daily"\') '
     "AND a.attnum > 0 AND NOT a.attisdropped",
 ]
 PLAN = "EXPLAIN (FORMAT JSON) SELECT sum(revenue) FROM dm.sales_daily"
@@ -346,7 +346,7 @@ def test_all_mart_return_paths(engine_name: str, path: str) -> None:
         engine.inner.answers["pg_tables"] = []
     elif path == "unreadable":
         engine.inner.answers[
-            "SELECT has_any_column_privilege('dm.sales_daily', 'SELECT') AS ok"
+            "SELECT has_any_column_privilege('\"dm\".\"sales_daily\"', 'SELECT') AS ok"
         ] = [{"ok": False}]
     elif path == "unanswered_reading":
         engine.inner.answers["count(*)"] = []

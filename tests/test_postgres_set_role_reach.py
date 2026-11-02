@@ -80,6 +80,7 @@ def reach_sql() -> str:
 
 def reachable_sql(mart: str, roles: list[str]) -> str:
     """The per-mart write question for the roles `SET ROLE` reaches, in their order."""
+    mart = '"' + mart.replace(".", '"."') + '"'
     privileges = ", ".join(
         f"has_table_privilege(r.oid, {literal(mart)}, {literal(privilege)}) AS {privilege.lower()}"
         for privilege in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")

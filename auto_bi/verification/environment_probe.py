@@ -8,16 +8,20 @@ normalises and hands typed facts back for the pure rules to grade.
 
 Catalog values are string literals, separate from COUNT/MAX identifiers. ClickHouse
 doubles backslashes and quotes; PostgreSQL uses E strings with both doubled when a value
-contains a backslash, and ordinary quoted strings otherwise. Catalog SQL for ordinary
-names keeps its bytes. Gate PostgreSQL connections request UTF8 client encoding and
+contains a backslash, and ordinary quoted strings otherwise. PostgreSQL relation arguments
+quote schema and table separately inside that literal, preserving their case in every
+privilege, ownership, column and row-security question, as presence and COUNT/MAX do.
+Both engines split a mart name at its first dot into exactly two parts. COUNT/MAX
+validates each part whole, so a further dot or an inner double quote is refused.
+Gate PostgreSQL connections request UTF8 client encoding and
 standard_conforming_strings=on and check both before each explicit execute or stream and
 transaction start; result capture also checks after reading its result inside its transaction.
 Transaction exit has no separate check. Literal preservation assumes those settings and a value
 representable in the database encoding; callers supplying their own RunQuery must provide
 its settings. Absence and PostgreSQL unreadability precede COUNT/MAX identifier quoting
-when the earlier catalog questions
-succeed. PostgreSQL privilege functions also parse relation-name text and can raise
-InvalidName before a presence fact, including for an absent mart under a non-superuser.
+when the earlier catalog questions succeed. Relation quoting does not expand the
+COUNT/MAX identifier rule. The question and answer contract is pinned by
+`tests/test_postgres_relation_identity.py` and `tests/test_catalog_literals.py`.
 
 **The gate never probes by writing.** Whether the session could write is read out of the
 engine's own answer, because an INSERT "just to see" is a write to somebody's warehouse, and
@@ -661,7 +665,7 @@ def _clickhouse_table(
     run_query: RunQuery, question: TableQuestion, session: _ChSession
 ) -> TableFacts:
     table = question.table
-    database, _, name = table.partition(".")
+    database, name = _table_parts(table)
     present = _ask(
         run_query,
         "SELECT engine, sorting_key, partition_key FROM system.tables WHERE database = "
@@ -677,7 +681,7 @@ def _clickhouse_table(
     reading = _ask(
         run_query,
         f"SELECT count() AS rows_seen, max({_ident(question.event_time_column)}) AS "
-        f"max_event_time FROM {_qualified(table)}",
+        f"max_event_time FROM {_qualified(database, name)}",
     )
     reads = _ch_column_reads(session, database, name, question.columns)
     policies = _ch_policies(run_query, session, database, name)
@@ -920,14 +924,14 @@ def _postgres_role(
     ownership_answers: list[tuple[dict[str, Any], str, str]] = []
     for question in questions.tables:
         privileges = ", ".join(
-            f"has_table_privilege({_literal(question.table)}, {_literal(privilege)}) AS "
-            f"{privilege.lower()}"
+            f"has_table_privilege({_pg_relation_literal(question.table)}, "
+            f"{_literal(privilege)}) AS {privilege.lower()}"
             for privilege in _PG_WRITE_PRIVILEGES
         )
         granted = _ask(
             run_query,
             f"SELECT {privileges}, {_pg_ownership_sql('current_user')} "
-            f"FROM (SELECT to_regclass({_literal(question.table)}) AS oid) mart "
+            f"FROM (SELECT to_regclass({_pg_relation_literal(question.table)}) AS oid) mart "
             "LEFT JOIN pg_class c ON c.oid = mart.oid "
             "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace",
         )
@@ -940,8 +944,8 @@ def _postgres_role(
             if _truthy(table_grants.get(privilege.lower())):
                 writable.append(f"{privilege} on {question.table}")
         column_privileges = ", ".join(
-            f"has_any_column_privilege({_literal(question.table)}, {_literal(privilege)}) AS "
-            f"column_{privilege.lower()}"
+            f"has_any_column_privilege({_pg_relation_literal(question.table)}, "
+            f"{_literal(privilege)}) AS column_{privilege.lower()}"
             for privilege in _PG_COLUMN_WRITE_PRIVILEGES
         )
         column_granted = _ask(run_query, f"SELECT {column_privileges}")
@@ -1117,19 +1121,20 @@ def _pg_ownership_evidence(
 def _pg_reachable_privilege_sql(mart: str, roles: list[str]) -> str:
     """The current role's write questions, asked of other roles by oid in one question."""
     privileges = ", ".join(
-        f"has_table_privilege(r.oid, {_literal(mart)}, {_literal(privilege)}) AS "
+        f"has_table_privilege(r.oid, {_pg_relation_literal(mart)}, {_literal(privilege)}) AS "
         f"{privilege.lower()}"
         for privilege in _PG_WRITE_PRIVILEGES
     )
     columns = ", ".join(
-        f"has_any_column_privilege(r.oid, {_literal(mart)}, {_literal(privilege)}) AS "
+        f"has_any_column_privilege(r.oid, {_pg_relation_literal(mart)}, {_literal(privilege)}) AS "
         f"column_{privilege.lower()}"
         for privilege in _PG_COLUMN_WRITE_PRIVILEGES
     )
     listed = ", ".join(_literal(role) for role in roles)
     return (
         f"SELECT r.rolname AS name, {privileges}, {columns}, {_pg_ownership_sql('r.oid')} "
-        f"FROM pg_roles r LEFT JOIN pg_class c ON c.oid = to_regclass({_literal(mart)}) "
+        "FROM pg_roles r LEFT JOIN pg_class c ON c.oid = "
+        f"to_regclass({_pg_relation_literal(mart)}) "
         "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
         f"WHERE r.rolname IN ({listed}) ORDER BY r.rolname"
     )
@@ -1139,7 +1144,7 @@ def _postgres_table(
     run_query: RunQuery, question: TableQuestion, *, row_security: bool
 ) -> TableFacts:
     table = question.table
-    schema, _, name = table.partition(".")
+    schema, name = _table_parts(table)
     present = _ask(
         run_query,
         "SELECT tablename FROM pg_tables WHERE schemaname = "
@@ -1160,7 +1165,7 @@ def _postgres_table(
     # the mart perfectly well; the narrower question would block a release over a mart the
     # gate is about to read. Which columns are out of reach is `check_security`'s finding.
     readable = _ask(
-        run_query, f"SELECT has_any_column_privilege({_literal(table)}, 'SELECT') AS ok"
+        run_query, f"SELECT has_any_column_privilege({_pg_relation_literal(table)}, 'SELECT') AS ok"
     )
     if not readable or not _truthy(readable[0].get("ok")):
         return TableFacts(
@@ -1176,7 +1181,7 @@ def _postgres_table(
     reading = _ask(
         run_query,
         f"SELECT count(*) AS rows_seen, max({_ident(question.event_time_column)}) AS "
-        f"max_event_time FROM {_qualified(table)}",
+        f"max_event_time FROM {_qualified(schema, name)}",
     )
     if not reading:
         return TableFacts(
@@ -1195,7 +1200,7 @@ def _postgres_table(
             run_query,
             "SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type "
             "FROM pg_attribute a WHERE a.attrelid = "
-            f"to_regclass({_literal(table)}) AND a.attnum > 0 AND NOT a.attisdropped",
+            f"to_regclass({_pg_relation_literal(table)}) AND a.attnum > 0 AND NOT a.attisdropped",
         )
         or []
     }
@@ -1230,7 +1235,7 @@ def _pg_column_reads(
     rows = _ask(
         run_query,
         "SELECT a.attname AS name, has_column_privilege(a.attrelid, a.attnum, 'SELECT') AS ok "
-        f"FROM pg_attribute a WHERE a.attrelid = to_regclass({_literal(table)}) "
+        f"FROM pg_attribute a WHERE a.attrelid = to_regclass({_pg_relation_literal(table)}) "
         f"AND a.attnum > 0 AND NOT a.attisdropped AND a.attname IN ({wanted})",
     )
     if rows is None:
@@ -1250,7 +1255,7 @@ def _pg_policies(run_query: RunQuery, table: str) -> list[RowPolicyFacts] | None
         "pg_get_expr(p.polqual, p.polrelid) AS expression, "
         "(0 = ANY(p.polroles) OR EXISTS (SELECT 1 FROM pg_roles r WHERE r.oid = "
         "ANY(p.polroles) AND pg_has_role(current_user, r.oid, 'USAGE'))) AS applies "
-        f"FROM pg_policy p WHERE p.polrelid = to_regclass({_literal(table)}) "
+        f"FROM pg_policy p WHERE p.polrelid = to_regclass({_pg_relation_literal(table)}) "
         "AND p.polcmd::text IN ('r', '*')",
     )
     if rows is None:
@@ -1277,7 +1282,7 @@ def _pg_row_security(run_query: RunQuery, table: str) -> tuple[bool | None, bool
         "SELECT c.relrowsecurity AS enabled, "
         "(pg_has_role(current_user, c.relowner, 'USAGE') AND NOT c.relforcerowsecurity) "
         "AS owner_bypasses FROM pg_class c WHERE c.oid = "
-        f"to_regclass({_literal(table)})",
+        f"to_regclass({_pg_relation_literal(table)})",
     )
     if not rows:
         return None, None
@@ -1429,14 +1434,30 @@ def _ch_literal(value: str) -> str:
     return f"'{escaped}'"
 
 
+def _table_parts(table: str) -> tuple[str, str]:
+    namespace, _, name = table.partition(".")
+    return namespace, name
+
+
+def _pg_relation_literal(table: str) -> str:
+    """One exact schema/name pair for PostgreSQL's relation-name input functions.
+
+    Keep this separate from COUNT/MAX validation so absence and unreadability can
+    still be reported for names outside that identifier rule. An untyped literal
+    also fits to_regclass(cstring) on the 9.4 kernel.
+    """
+    schema, name = _table_parts(table)
+    return _literal(".".join('"' + part.replace('"', '""') + '"' for part in (schema, name)))
+
+
 def _ident(name: str) -> str:
     if not name.replace("_", "").isalnum():
         raise UnsafeIdentifierError(f"unsafe identifier: {name!r}")
     return f'"{name}"'
 
 
-def _qualified(table: str) -> str:
-    return ".".join(_ident(part) for part in table.split("."))
+def _qualified(schema: str, name: str) -> str:
+    return ".".join(_ident(part) for part in (schema, name))
 
 
 __all__ = ["CLICKHOUSE", "UnsafeIdentifierError", "collect"]

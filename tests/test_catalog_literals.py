@@ -209,7 +209,7 @@ def test_catalog_values_and_sql_structure(
     # The real identifier guard refuses punctuation before the later catalog questions.
     # Replace only the COUNT/MAX table identifier here to exercise those later literals;
     # separate tests below retain the guard and pin the actual collection order.
-    monkeypatch.setattr(probe, "_qualified", lambda _: '"db_1"."mart_1"')
+    monkeypatch.setattr(probe, "_qualified", lambda _schema, _name: '"db_1"."mart_1"')
     baseline, base_questions = collect_case(engine, slot, "marker_1")
     actual, questions = collect_case(engine, slot, value)
     ask(baseline, base_questions)
@@ -284,7 +284,7 @@ def test_ordinary_catalog_sql_bytes(engine: str) -> None:
     expected = (
         "a14068adf36a63adcfae83954b08453a8b0bd2c92345f2e947ef17071fcf0ae1"
         if engine == "clickhouse"
-        else "fe7a23d8ac983230c6b4cb84d9eacdfa0c60679ed7d7b93c0316ca578b411c48"
+        else "43ca7d18b65d73dfefbfe315bfb0fc8f429986e6ef27002b990636c2440bcccb"
     )
     assert hashlib.sha256(encoded).hexdigest() == expected
 
