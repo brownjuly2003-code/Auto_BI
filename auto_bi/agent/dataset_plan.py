@@ -14,7 +14,7 @@ The plan splits a spec in two:
 - OWN — the chart's measures cannot be expressed as a BI-side aggregate
   (window transform, scalar period-compare, raw_sql hatch, histogram binning);
   it keeps today's per-chart aggregated dataset with the baked default period,
-  and the preview marks it "the filter does not affect this chart" (Julia's
+  and the preview marks it "the filter does not affect this chart" (the owner's
   gate decision 2026-07-20: honest badge, never a lying control).
 
 Deterministic and model-free by design: the verdict is read off IR features
@@ -300,7 +300,7 @@ def own_filter_alias_mismatch(
 def filter_preview_notes(spec: DashboardSpec, model: SemanticModel | None = None) -> list[str]:
     """Honest preview badges for charts a dashboard filter cannot move.
 
-    Julia's gate decision (2026-07-20): inexpressible charts keep their own dataset
+    Owner's gate decision (2026-07-20): inexpressible charts keep their own dataset
     and the interactive control does not move them — so the preview must say so,
     never leave a lying control. Also surfaces the joined-alias trap: OWN charts
     whose grain matches a joined filter column but whose dataset alias differs from
