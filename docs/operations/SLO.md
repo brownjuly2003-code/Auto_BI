@@ -44,15 +44,92 @@ CI installs `mutmut==3.6.0` and mutates the cumulative ordered scope
 `tests/test_property_quality.py`, `tests/test_ir_validate.py`,
 `tests/test_x5_raw_sql.py`, `tests/test_p1_6_governance.py`,
 `tests/test_query_plan.py`, `tests/test_dataset_plan.py`,
-`tests/test_native_filters.py`, `tests/test_pipeline.py`, and
-`tests/test_cli_prune.py`. The cumulative four-target run in a separate Linux
-workspace with its own `.venv` (mutmut 3.6.0) produced 1034/1034 effective kills
-with no surviving, uncovered, skipped, suspicious, interrupted, crashed, or
-timed-out mutants, and completed in 34 seconds wall-clock (mutmut: 42.62
-mutations/second), comfortably inside the existing 8-minute CI timeout.
-`scripts/check_mutation_stats.py` rejects surviving, uncovered, skipped, suspicious,
-interrupted, and crashed mutants. Timed-out mutants count toward effective kills;
-`killed + timeout` must equal `total`.
+`tests/test_native_filters.py`, `tests/test_pipeline.py`,
+`tests/test_cli_prune.py`,
+`tests/test_adapter_contract.py`,
+`tests/test_adapter_factory.py`,
+`tests/test_auth.py`,
+`tests/test_autospec.py`,
+`tests/test_bi_canonical_refusal.py`,
+`tests/test_bi_compile_refusal.py`,
+`tests/test_bi_contract_validation.py`,
+`tests/test_build_attempt_reconciliation.py`,
+`tests/test_capture_driver_failures.py`,
+`tests/test_clickhouse_session_limits.py`,
+`tests/test_datalens_chart.py`,
+`tests/test_decision_chart_impact.py`,
+`tests/test_decision_chart_impact_dashboard_scope.py`,
+`tests/test_decision_chart_impact_dictionary.py`,
+`tests/test_decision_chart_impact_join_get.py`,
+`tests/test_environment_sql_guard.py`,
+`tests/test_generated_sql_bytes.py`,
+`tests/test_label_joins.py`,
+`tests/test_lifecycle_close.py`,
+`tests/test_machine.py`,
+`tests/test_postgres_sessions.py`,
+`tests/test_probe_completion.py`,
+`tests/test_probe_safety.py`,
+`tests/test_propose.py`,
+`tests/test_result_capture.py`,
+`tests/test_result_probe.py`,
+`tests/test_result_provenance.py`,
+`tests/test_result_reconcile_column_order.py`,
+`tests/test_result_tolerance_contract.py`,
+`tests/test_runtime_probe.py`,
+`tests/test_runtime_setting_refusals.py`,
+`tests/test_safe_error.py`,
+`tests/test_sql_guard_clickhouse_array_join_paren.py`,
+`tests/test_sql_guard_clickhouse_columns_reachability.py`,
+`tests/test_sql_guard_clickhouse_cte_case.py`,
+`tests/test_sql_guard_clickhouse_in_table.py`,
+`tests/test_sql_guard_clickhouse_inline_alias.py`,
+`tests/test_sql_guard_clickhouse_join_using_reachability.py`,
+`tests/test_sql_guard_clickhouse_settings.py`,
+`tests/test_sql_guard_clickhouse_star_reachability.py`,
+`tests/test_sql_guard_clickhouse_table_cte_case.py`,
+`tests/test_sql_guard_count_star.py`,
+`tests/test_sql_guard_cte_visibility.py`,
+`tests/test_sql_guard_having_qualify.py`,
+`tests/test_sql_guard_parse_depth.py`,
+`tests/test_sql_guard_postgres_cast_output.py`,
+`tests/test_sql_guard_postgres_group_by.py`,
+`tests/test_sql_guard_postgres_order_by.py`,
+`tests/test_sql_guard_postgres_root_parenthesized.py`,
+`tests/test_sql_guard_postgres_table_column_alias.py`,
+`tests/test_sqlgen.py`,
+`tests/test_sqlgen_compare.py`,
+`tests/test_sqlgen_grain.py`,
+`tests/test_sqlgen_histogram.py`,
+`tests/test_sqlgen_lag.py`,
+`tests/test_sqlgen_ratio.py`,
+`tests/test_sqlgen_running_share.py`,
+`tests/test_sqlgen_transforms.py`,
+`tests/test_sqlgen_yoy.py`,
+`tests/test_superset_adapter.py`,
+`tests/test_verified_assets.py`, and
+`tests/test_x3_retention.py`. The 71-module selection measured on 2026-11-03 on
+Mac with 4 cores, Python 3.13, mutmut 3.6.0 (`mutmut run --max-children 4`) produced
+3011 mutants: 2614 killed, 2 timeout, 356 survived, and 39 no_tests, in
+1553 seconds wall-clock (mutmut: 2.08 mutations/second). All weak mutants are in
+44 functions of `sql_guard.py`; the other three targets have none. Survivors take
+54% of run time because each runs all tests mapped to its function (8.6 seconds
+on average versus 0.9 seconds for a killed mutant). Even with zero survivors,
+the run would take about 11 minutes. The 45-minute CI timeout allows for the
+Linux container with 3 CPUs. Later slices kill survivors and lower both the
+baseline and the timeout.
+
+`scripts/check_mutation_stats.py` rejects unchecked, skipped, suspicious,
+type-check-caught, interrupted, and crashed mutants. Unknown exit codes are
+suspicious. Timed-out mutants count toward effective kills;
+`killed + timeout + survived + no_tests` must equal `total`. The gate reads
+per-mutant outcomes from `mutants/**/*.meta` and rejects missing or malformed
+inputs, empty runs, and any disagreement with `mutants/mutmut-cicd-stats.json`.
+The ratchet in `scripts/mutation_baseline.json` limits `survived` and `no_tests`
+separately for each function. A function absent from the baseline is allowed zero
+weak mutants. Counts at or below the baseline pass; an increase fails with the
+function, kind, actual count, and allowed count. The baseline must be lowered in
+the same change when a count falls: the gate prints each lower count and also
+reports baseline functions that produced no mutants.
 
 ## Mypy package-wide strict gate
 

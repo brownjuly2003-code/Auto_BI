@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Fail CI unless a completed mutmut smoke run has no weak outcomes."""
+"""Fail CI unless mutmut results agree with stats and stay within the function baseline."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 COUNT_FIELDS = (
@@ -19,14 +21,135 @@ COUNT_FIELDS = (
     "check_was_interrupted_by_user",
     "segfault",
 )
-REJECT_FIELDS = (
-    "survived",
-    "no_tests",
-    "skipped",
-    "suspicious",
-    "check_was_interrupted_by_user",
-    "segfault",
-)
+OPTIONAL_COUNT_FIELDS = ("not_checked", "caught_by_type_check")
+WEAK_KINDS = ("survived", "no_tests")
+EXIT_STATUSES = {
+    1: "killed",
+    3: "killed",
+    0: "survived",
+    5: "no_tests",
+    33: "no_tests",
+    2: "check_was_interrupted_by_user",
+    None: "not_checked",
+    34: "skipped",
+    35: "suspicious",
+    36: "timeout",
+    37: "caught_by_type_check",
+    -24: "timeout",
+    24: "timeout",
+    152: "timeout",
+    255: "timeout",
+    -11: "segfault",
+    -9: "segfault",
+}
+FUNCTION_NAME = re.compile(r"(?:[a-zA-Z_]\w*\.)+x(?:_\w+|ǁ\w+ǁ\w+)")
+MUTANT_NAME = re.compile(FUNCTION_NAME.pattern + r"__mutmut_[0-9]+")
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _read_json(path: Path) -> object:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"cannot read {path}: {exc}") from exc
+
+
+def _baseline(path: Path) -> dict[str, dict[str, int]]:
+    payload = _read_json(path)
+    if not isinstance(payload, dict) or set(payload) != {"measured", "functions"}:
+        raise ValueError(f"{path}: baseline must contain measured and functions")
+    measured = payload["measured"]
+    if not isinstance(measured, str) or not measured.strip():
+        raise ValueError(f"{path}: baseline measured must be a non-empty string")
+    functions = payload["functions"]
+    if not isinstance(functions, dict):
+        raise ValueError(f"{path}: baseline functions must be a JSON object")
+    for function, counts in functions.items():
+        if not FUNCTION_NAME.fullmatch(function) or "__mutmut_" in function:
+            raise ValueError(f"{path}: invalid baseline function: {function}")
+        if not isinstance(counts, dict) or not counts or set(counts) - set(WEAK_KINDS):
+            raise ValueError(
+                f"{path}: {function}: baseline requires survived and/or no_tests counts"
+            )
+        for kind, count in counts.items():
+            if type(count) is not int or count <= 0:
+                raise ValueError(f"{path}: {function}: baseline {kind} must be a positive integer")
+    return functions
+
+
+def _mutant_results(directory: Path) -> dict[str, str]:
+    if not directory.is_dir():
+        raise ValueError(f"mutants directory missing or not a directory: {directory}")
+    paths = sorted(directory.rglob("*.meta"))
+    if not paths:
+        raise ValueError(f"{directory}: no .meta files found")
+    results: dict[str, str] = {}
+    for path in paths:
+        payload = _read_json(path)
+        if not isinstance(payload, dict) or not isinstance(payload.get("exit_code_by_key"), dict):
+            raise ValueError(f"{path}: exit_code_by_key must be a JSON object")
+        for mutant, code in payload["exit_code_by_key"].items():
+            if not MUTANT_NAME.fullmatch(mutant):
+                raise ValueError(f"{path}: invalid mutant name: {mutant}")
+            if mutant in results:
+                raise ValueError(f"{path}: duplicate mutant: {mutant}")
+            if code is not None and type(code) is not int:
+                raise ValueError(f"{path}: {mutant}: exit code must be an integer or null")
+            results[mutant] = EXIT_STATUSES.get(code, "suspicious")
+    return results
+
+
+def _function(mutant: str) -> str:
+    return mutant.rsplit("__mutmut_", 1)[0]
+
+
+def validate_stats(
+    payload: object,
+    results: dict[str, str],
+    baseline: dict[str, dict[str, int]],
+) -> tuple[list[str], list[str], int, int]:
+    counts, errors = _counts(payload)
+    actual = Counter(results.values())
+    actual["total"] = len(results)
+    total = actual["total"]
+    effective_kills = actual["killed"] + actual["timeout"]
+    if total == 0:
+        errors.append("total=0: empty mutation run")
+    for field, count in counts.items():
+        if count != actual[field]:
+            errors.append(
+                f"stats {field}={count} does not match per-mutant {field}={actual[field]}"
+            )
+
+    by_function: dict[str, Counter[str]] = {}
+    for mutant, status in sorted(results.items()):
+        by_function.setdefault(_function(mutant), Counter())[status] += 1
+        if status not in ("killed", "timeout", *WEAK_KINDS):
+            errors.append(f"{mutant}: rejected status {status}")
+
+    notices: list[str] = []
+    for function in sorted(by_function.keys() | baseline.keys()):
+        if function not in by_function:
+            notices.append(f"{function}: produced no mutants; review the baseline entry")
+        for kind in WEAK_KINDS:
+            count = by_function.get(function, Counter())[kind]
+            allowed = baseline.get(function, {}).get(kind, 0)
+            if count > allowed:
+                errors.append(f"{function}: {kind}={count} exceeds baseline={allowed}")
+            elif count < allowed:
+                notices.append(
+                    f"{function}: {kind}={count} below baseline={allowed}; "
+                    "baseline must be lowered in the same change"
+                )
+    return errors, notices, effective_kills, total
 
 
 def _counts(payload: object) -> tuple[dict[str, int], list[str]]:
@@ -34,7 +157,9 @@ def _counts(payload: object) -> tuple[dict[str, int], list[str]]:
         return {}, ["stats payload must be a JSON object"]
     counts: dict[str, int] = {}
     errors: list[str] = []
-    for field in COUNT_FIELDS:
+    for field in (*COUNT_FIELDS, *OPTIONAL_COUNT_FIELDS):
+        if field in OPTIONAL_COUNT_FIELDS and field not in payload:
+            continue
         value = payload.get(field)
         if type(value) is not int or value < 0:
             errors.append(f"{field} must be a non-negative integer")
@@ -43,37 +168,28 @@ def _counts(payload: object) -> tuple[dict[str, int], list[str]]:
     return counts, errors
 
 
-def validate_stats(payload: object) -> tuple[list[str], int, int]:
-    counts, errors = _counts(payload)
-    if errors:
-        return errors, 0, 0
-
-    total = counts["total"]
-    effective_kills = counts["killed"] + counts["timeout"]
-    if total == 0:
-        errors.append("total=0")
-    errors.extend(f"{field}={counts[field]}" for field in REJECT_FIELDS if counts[field])
-    if effective_kills != total:
-        errors.append(f"effective_kills={effective_kills} does not match total={total}")
-    return errors, effective_kills, total
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stats", type=Path)
+    parser.add_argument("--mutants-dir", type=Path, required=True)
+    parser.add_argument("--baseline", type=Path, required=True)
     args = parser.parse_args(argv)
 
     try:
-        payload = json.loads(args.stats.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"mutation gate: cannot read {args.stats}: {exc}", file=sys.stderr)
+        payload = _read_json(args.stats)
+        baseline = _baseline(args.baseline)
+        results = _mutant_results(args.mutants_dir)
+    except (OSError, ValueError) as exc:
+        print(f"mutation gate: {exc}", file=sys.stderr)
         return 1
 
-    errors, effective_kills, total = validate_stats(payload)
+    errors, notices, effective_kills, total = validate_stats(payload, results, baseline)
     if errors:
-        print(f"mutation gate failed: {', '.join(errors)}", file=sys.stderr)
+        print(f"mutation gate failed ({args.stats}):\n" + "\n".join(errors), file=sys.stderr)
         return 1
-    print(f"mutation gate: {effective_kills}/{total} effective kills, no weak outcomes")
+    print(f"mutation gate: {effective_kills}/{total} effective kills, within baseline")
+    for notice in notices:
+        print(notice)
     return 0
 
 
