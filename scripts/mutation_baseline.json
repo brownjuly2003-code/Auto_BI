@@ -6,14 +6,11 @@
     "auto_bi.agent.sql_guard.x__attribute_column": {
       "survived": 1
     },
-    "auto_bi.agent.sql_guard.x__clickhouse_alias_ref": {
-      "survived": 4
-    },
     "auto_bi.agent.sql_guard.x__clickhouse_aliases": {
-      "survived": 22
+      "survived": 8
     },
     "auto_bi.agent.sql_guard.x__column_as_table": {
-      "survived": 13
+      "survived": 3
     },
     "auto_bi.agent.sql_guard.x__column_leftmost_name": {
       "survived": 1
@@ -28,7 +25,7 @@
       "survived": 11
     },
     "auto_bi.agent.sql_guard.x__inside": {
-      "survived": 4
+      "survived": 1
     },
     "auto_bi.agent.sql_guard.x__is_clickhouse_setting_column": {
       "survived": 1
@@ -37,7 +34,7 @@
       "survived": 1
     },
     "auto_bi.agent.sql_guard.x__mark_cyclic": {
-      "survived": 4
+      "survived": 1
     },
     "auto_bi.agent.sql_guard.x__normalize_clickhouse_array_join_item": {
       "survived": 3
@@ -82,10 +79,7 @@
       "survived": 12
     },
     "auto_bi.agent.sql_guard.x__select_alias_graph": {
-      "survived": 9
-    },
-    "auto_bi.agent.sql_guard.x__select_aliases_on_cycle": {
-      "survived": 7
+      "survived": 3
     },
     "auto_bi.agent.sql_guard.x__select_aliases_reached_from_with": {
       "survived": 2
@@ -94,7 +88,7 @@
       "survived": 3
     },
     "auto_bi.agent.sql_guard.x__strongly_connected_multi": {
-      "survived": 3
+      "survived": 2
     },
     "auto_bi.agent.sql_guard.x__unread_alias_ref": {
       "survived": 1
@@ -118,5 +112,5 @@
       "survived": 10
     }
   },
-  "measured": "2026-11-03; Mac 4 cores; Python 3.13; mutmut 3.6.0 run --max-children 4; 73 test modules; mutmut-only warning filters; 1114 s; functions with unchanged tests keep the max of this run, the previous Mac run and the Linux CI container run"
+  "measured": "2026-11-03; Mac 4 cores; Python 3.13; mutmut 3.6.0 run --max-children 4; 74 test modules; mutmut-only warning filters; PYTHONHASHSEED=0; 1024 s; functions with unchanged tests keep the max of this run, the two previous Mac runs and the Linux CI container run"
 }

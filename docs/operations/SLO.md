@@ -91,6 +91,7 @@ CI installs `mutmut==3.6.0` and mutates the cumulative ordered scope
 `tests/test_sql_guard_cte_visibility.py`,
 `tests/test_sql_guard_having_qualify.py`,
 `tests/test_sql_guard_mutation_alias_reads.py`,
+`tests/test_sql_guard_mutation_clickhouse_aliases.py`,
 `tests/test_sql_guard_mutation_cte_gates.py`,
 `tests/test_sql_guard_parse_depth.py`,
 `tests/test_sql_guard_postgres_cast_output.py`,
@@ -109,7 +110,7 @@ CI installs `mutmut==3.6.0` and mutates the cumulative ordered scope
 `tests/test_sqlgen_yoy.py`,
 `tests/test_superset_adapter.py`,
 `tests/test_verified_assets.py`, and
-`tests/test_x3_retention.py`. The selection now contains 73 modules. The preceding
+`tests/test_x3_retention.py`. The selection now contains 74 modules. The preceding
 71-module selection measured on 2026-11-03 on
 Mac with 4 cores, Python 3.13, mutmut 3.6.0 (`mutmut run --max-children 4`) produced
 3011 mutants: 2614 killed, 2 timeout, 356 survived, and 39 no_tests, in
@@ -141,10 +142,21 @@ in 1327 seconds; weak mutants remain in 43 functions of `sql_guard.py`. The
 Linux CI container measured the same tree at 2733 killed, 4 timeout, 259 survived,
 and 15 no_tests, in 1896 seconds. After the 73rd module, the same Mac produced
 3011 mutants: 2830 killed, 3 timeout, 178 survived, and 0 no_tests, in 1114
-seconds; weak mutants remain in 39 functions, and the committed baseline holds
-these per-function counts. Whether a slow mutant times out or survives depends on
+seconds. After the 74th module, with `PYTHONHASHSEED=0`, it produced 3011 mutants:
+2878 killed, 3 timeout, 130 survived, and 0 no_tests, in 1024 seconds; weak
+mutants remain in 37 functions, and the committed baseline holds these
+per-function counts. Whether a slow mutant times out or survives depends on
 the machine, so where Mac and the Linux CI container measure different counts for
 a function, the baseline keeps the larger one.
+
+Python randomizes string hashes per process. Mutmut forks mutant runs from one
+parent, so they share its hash seed, while a new run can change set/frozenset
+iteration order. `_select_alias_graph` mutant `__mutmut_49` was killed in two
+runs and survived in a third with the same 25 tests: replacing `continue` with
+`break` could drop a later edge depending on alias-name order. The mutation
+step fixes `PYTHONHASHSEED: "0"` to keep this variation from tripping the
+per-function ratchet. Local measurements must also set `PYTHONHASHSEED=0`
+before starting mutmut to compare with CI.
 
 Only mutmut's `pytest_add_cli_args` adds `-W` with
 `ignore:unclosed scandir iterator:ResourceWarning` and `-W` with

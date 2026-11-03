@@ -170,6 +170,7 @@ pytest_add_cli_args_test_selection = [
     "tests/test_sql_guard_cte_visibility.py",
     "tests/test_sql_guard_having_qualify.py",
     "tests/test_sql_guard_mutation_alias_reads.py",
+    "tests/test_sql_guard_mutation_clickhouse_aliases.py",
     "tests/test_sql_guard_mutation_cte_gates.py",
     "tests/test_sql_guard_parse_depth.py",
     "tests/test_sql_guard_postgres_cast_output.py",

@@ -168,6 +168,7 @@ def test_mutmut_scope_is_pinned_and_bounded() -> None:
         "tests/test_sql_guard_cte_visibility.py",
         "tests/test_sql_guard_having_qualify.py",
         "tests/test_sql_guard_mutation_alias_reads.py",
+        "tests/test_sql_guard_mutation_clickhouse_aliases.py",
         "tests/test_sql_guard_mutation_cte_gates.py",
         "tests/test_sql_guard_parse_depth.py",
         "tests/test_sql_guard_postgres_cast_output.py",
@@ -204,6 +205,7 @@ def test_slo_mutation_smoke_test_selection_matches_mutmut_config() -> None:
     assert match is not None
     documented = re.findall(r"`(tests/test_[^`]+\.py)`", match.group(1))
     assert documented == expected
+    assert f"The selection now contains {len(expected)} modules." in match.group(1)
 
 
 def test_slo_mutation_smoke_production_targets_match_mutmut_config() -> None:
@@ -267,6 +269,7 @@ def test_slo_mutation_smoke_documents_timeout_as_effective_kill() -> None:
         "54% of run time",
         "3011 mutants: 2733 killed, 3 timeout, 260 survived, and 15 no_tests",
         "3011 mutants: 2830 killed, 3 timeout, 178 survived, and 0 no_tests",
+        "2878 killed, 3 timeout, 130 survived, and 0 no_tests",
         "the baseline keeps the larger one",
         "scripts/mutation_baseline.json",
         "A function absent from the baseline is allowed zero weak mutants.",
@@ -287,6 +290,17 @@ def test_primary_quality_job_runs_pinned_mutation_gate() -> None:
         "--mutants-dir mutants --baseline scripts/mutation_baseline.json"
     ) in workflow
     assert re.search(r"Mutation smoke \(bounded core\)\n\s+timeout-minutes: 60\n", workflow)
+    step = re.search(
+        r"^      - name: Mutation smoke \(bounded core\)\n(.*?)(?=^      - |\Z)",
+        workflow,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert step is not None
+    assert re.search(
+        r'^        env:\n(?:^          #[^\n]*\n)*^          PYTHONHASHSEED: "0"$',
+        step.group(1),
+        flags=re.MULTILINE,
+    )
 
 
 def test_mutation_stats_accept_killed_and_timeout_mutants(tmp_path: Path) -> None:

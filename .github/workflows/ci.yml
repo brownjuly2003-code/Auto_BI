@@ -87,6 +87,9 @@ jobs:
       # both the baseline and this timeout.
       - name: Mutation smoke (bounded core)
         timeout-minutes: 60
+        env:
+          # Fix string-set iteration order so hash-sensitive mutants cannot flip the ratchet.
+          PYTHONHASHSEED: "0"
         run: |
           uv run --with mutmut==3.6.0 mutmut run --max-children 4
           uv run --with mutmut==3.6.0 mutmut export-cicd-stats
