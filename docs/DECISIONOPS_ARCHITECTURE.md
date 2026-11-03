@@ -1855,11 +1855,17 @@ PostgreSQL `_literal` выбирает `E'…'` с обоими удвоения
 чужие строки `pg_tables`. Capture с локальной сменой (`set_config(…, true)`) в тех же
 прогонах отказывал с ошибкой сессии, называющей настройку, а EUC_JP-база сама отвергла
 LATIN1 (0A000); на `40052f9` и при проверке после autocommit-оператора capture возвращал
-строки: `off` и, в UTF8-базе, `é` вместо литерала `Ã©`. Обычные имена сохраняют байты SQL. Правило идентификаторов
+строки: `off` и, в UTF8-базе, `é` вместо литерала `Ã©`. Экранирование литералов T-126
+не меняет SQL вопросов для имён из букв, цифр и подчёркиваний. С verifier 127 PostgreSQL
+заключает обе части имени в relation-аргументах в двойные кавычки, поэтому байты
+каталожного SQL обычных имён изменились, а ответы — нет; это закрепляет
+`test_ordinary_catalog_sql_bytes` в `tests/test_catalog_literals.py`. Каталожный SQL ClickHouse
+для обычных имён не изменился. Правило идентификаторов
 COUNT/MAX прежнее; факт отсутствия или отказа чтения возможен только после успешных ранних
 вопросов. PostgreSQL разбирает текстовые relation-аргументы функций привилегий отдельно:
 `InvalidName` у роли без superuser может возникнуть до вопроса о наличии витрины
-([environment readings](specs/environment-readings.md), `test_catalog_literals.py`,
+([environment readings](specs/environment-readings.md),
+[environment access](specs/environment-access.md), `test_catalog_literals.py`,
 `test_postgres_sessions.py`, `test_environment_identifiers.py`).
 
 ### 10.1 Actor и policy context

@@ -21,8 +21,12 @@ values without a backslash SHALL retain their ordinary single-quoted form with q
 doubled. In the gate's checked PostgreSQL session (`client_encoding=UTF8`,
 `standard_conforming_strings=on`), reading each representable NUL-free literal SHALL
 recover the supplied value and SHALL NOT add a SQL condition. The same value and structure
-requirements apply to ClickHouse catalog literals. Questions for names consisting of
-letters, digits and underscores SHALL retain their SQL bytes.
+requirements apply to ClickHouse catalog literals. T-126 literal escaping SHALL NOT change
+the SQL bytes of questions for names consisting of letters, digits and underscores. Since
+verifier 127, PostgreSQL relation arguments quote both name parts, so ordinary names retain
+their answers but their catalog SQL bytes have changed, pinned by
+`test_ordinary_catalog_sql_bytes` in `tests/test_catalog_literals.py`. ClickHouse catalog SQL
+bytes for ordinary names remain unchanged; see [environment access](environment-access.md).
 
 `make_run_query_pg`, `make_postgres_runtime_probe` and `make_postgres_result_query` SHALL
 request UTF8 through the driver and standard strings on through its connection options.

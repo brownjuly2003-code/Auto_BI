@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-02
+**Обновлено:** 2026-11-03
 
 **Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
 impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
@@ -9,9 +9,20 @@ impact доведён до чарта; происхождение кандида
 opt-in Ed25519 authentication; единый signed R3 owner-пакет выпущен на Mac;
 Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
 human/design-partner outcome не измеряется — по решению владельца 2026-10-28 он не входит в
-цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md))
+цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)); этап hardening закрыт
+финальным synthetic-ревью Astra xhigh всего gate (2026-11-03, `9b534b6`): P1/P2 нет, остальные
+границы задокументированы
 
 **Версии evidence:** `VERIFIER_VERSION=127`, `CHECK_VERSION=81`
+
+**Итог этапа hardening (2026-11-03):** три финальных synthetic-ревью Astra xhigh всего gate. Первое
+(`40052f9`) — F1–F7, ревью генерируемого SQL — G1/G2, закрыты T-126…T-130; второе (`d817a17`) —
+R2-1…R2-3, закрыты T-131; третье (`9b534b6`) — P1/P2 нет, P3 (байты SQL обычных имён) исправлен в
+документах. Полный Windows gate — 10074 passed, покрытие 96.43%, mypy в четырёх режимах чисто;
+`ci_local` (впервые на форке) — FAIL в трёх шагах вне диффа этапа: мутационный smoke v1-ядра (97
+survived, 1818 без тестов из 3011), CVE в залоченных filelock, urllib3 и virtualenv, занятое имя
+контейнера demo-image; открыто. Остальные границы — в specs, «Что ещё не реализовано» и §17/§18
+ARCHITECTURE. Synthetic review, не human acceptance и не production certification.
 
 **Последний срез (T-131, 2026-11-02):** все PostgreSQL-вопросы витрины называют одно отношение. На
 `d817a17` наличие и COUNT/MAX читали `dm."Sales"`, а права и каталоги получали `'dm.Sales'`, которую
