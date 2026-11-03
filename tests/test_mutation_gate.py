@@ -145,6 +145,7 @@ def test_mutmut_scope_is_pinned_and_bounded() -> None:
         "tests/test_sql_guard_count_star.py",
         "tests/test_sql_guard_cte_visibility.py",
         "tests/test_sql_guard_having_qualify.py",
+        "tests/test_sql_guard_mutation_cte_gates.py",
         "tests/test_sql_guard_parse_depth.py",
         "tests/test_sql_guard_postgres_cast_output.py",
         "tests/test_sql_guard_postgres_group_by.py",

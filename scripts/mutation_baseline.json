@@ -52,7 +52,7 @@
       "survived": 4
     },
     "auto_bi.agent.sql_guard.x__open_cte_gates": {
-      "survived": 62
+      "survived": 9
     },
     "auto_bi.agent.sql_guard.x__outermost_nested_queries": {
       "survived": 2
@@ -100,7 +100,7 @@
       "survived": 9
     },
     "auto_bi.agent.sql_guard.x__select_aliases_reached_from_with": {
-      "survived": 31
+      "survived": 2
     },
     "auto_bi.agent.sql_guard.x__star_subquery_from": {
       "survived": 3
