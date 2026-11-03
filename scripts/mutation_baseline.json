@@ -1,16 +1,16 @@
 {
   "functions": {
     "auto_bi.agent.sql_guard.x__ambiguous_ref": {
-      "survived": 2
+      "survived": 1
     },
     "auto_bi.agent.sql_guard.x__attribute_column": {
-      "survived": 3
+      "survived": 2
     },
     "auto_bi.agent.sql_guard.x__clickhouse_alias_ref": {
-      "survived": 5
+      "survived": 4
     },
     "auto_bi.agent.sql_guard.x__clickhouse_aliases": {
-      "survived": 20
+      "survived": 23
     },
     "auto_bi.agent.sql_guard.x__column_as_table": {
       "survived": 13
@@ -25,10 +25,10 @@
       "survived": 1
     },
     "auto_bi.agent.sql_guard.x__grade_columns": {
-      "survived": 41
+      "survived": 45
     },
     "auto_bi.agent.sql_guard.x__grade_nested_query": {
-      "no_tests": 24
+      "survived": 1
     },
     "auto_bi.agent.sql_guard.x__inside": {
       "survived": 4
@@ -38,9 +38,6 @@
     },
     "auto_bi.agent.sql_guard.x__is_cte_ref": {
       "survived": 1
-    },
-    "auto_bi.agent.sql_guard.x__loose_columns": {
-      "survived": 2
     },
     "auto_bi.agent.sql_guard.x__mark_cyclic": {
       "survived": 11
@@ -58,7 +55,7 @@
       "survived": 2
     },
     "auto_bi.agent.sql_guard.x__owner_key": {
-      "survived": 3
+      "survived": 1
     },
     "auto_bi.agent.sql_guard.x__parse_one_select": {
       "survived": 2
@@ -76,7 +73,7 @@
       "survived": 3
     },
     "auto_bi.agent.sql_guard.x__postgres_sort_token_info": {
-      "survived": 8
+      "survived": 9
     },
     "auto_bi.agent.sql_guard.x__postgres_table_alias_matches": {
       "survived": 1
@@ -85,19 +82,19 @@
       "survived": 2
     },
     "auto_bi.agent.sql_guard.x__read_through_alias": {
-      "survived": 51
+      "survived": 36
     },
     "auto_bi.agent.sql_guard.x__rewrite_clickhouse_in_tables": {
-      "survived": 5
+      "survived": 6
     },
     "auto_bi.agent.sql_guard.x__rewrite_postgres_parenthesized_orders": {
-      "survived": 11
+      "survived": 12
     },
     "auto_bi.agent.sql_guard.x__select_alias_graph": {
-      "survived": 9
+      "survived": 8
     },
     "auto_bi.agent.sql_guard.x__select_aliases_on_cycle": {
-      "survived": 9
+      "survived": 7
     },
     "auto_bi.agent.sql_guard.x__select_aliases_reached_from_with": {
       "survived": 2
@@ -106,7 +103,7 @@
       "survived": 3
     },
     "auto_bi.agent.sql_guard.x__strongly_connected_multi": {
-      "survived": 5
+      "survived": 3
     },
     "auto_bi.agent.sql_guard.x__unread_alias_ref": {
       "no_tests": 15
@@ -127,11 +124,11 @@
       "survived": 2
     },
     "auto_bi.agent.sql_guard.x_extract_column_refs": {
-      "survived": 8
+      "survived": 10
     },
     "auto_bi.agent.sql_guard.x\u01c1_ReadThroughState\u01c1__init__": {
       "survived": 1
     }
   },
-  "measured": "2026-11-03; Mac 4 cores; Python 3.13; mutmut 3.6.0 run --max-children 4; 71 test modules; 1553 s"
+  "measured": "2026-11-03; Mac 4 cores; Python 3.13; mutmut 3.6.0 run --max-children 4; 72 test modules; mutmut-only warning filters; 1327 s"
 }

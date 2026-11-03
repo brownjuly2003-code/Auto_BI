@@ -264,6 +264,8 @@ def test_slo_mutation_smoke_documents_timeout_as_effective_kill() -> None:
         "ignore:(rm_rf) error removing:pytest.PytestWarning",
         BASELINE_PROPOSAL_MARKER,
         "54% of run time",
+        "3011 mutants: 2733 killed, 3 timeout, 260 survived, and 15 no_tests",
+        "the baseline keeps the larger one",
         "scripts/mutation_baseline.json",
         "A function absent from the baseline is allowed zero weak mutants.",
         "The baseline must be lowered in the same change",

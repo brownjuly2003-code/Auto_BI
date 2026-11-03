@@ -134,6 +134,13 @@ still yielded 25 Mac-only kills, each after 9–32 seconds versus a 0.43-second
 median kill. Repeating those mutants without the fix killed a different five;
 with the two filters all 25 survived and the log had no warnings.
 
+With the filters, the 72-module selection measured on 2026-11-03 on the same
+Mac produced 3011 mutants: 2733 killed, 3 timeout, 260 survived, and 15 no_tests,
+in 1327 seconds; weak mutants remain in 43 functions of `sql_guard.py`. The
+committed baseline holds these per-function counts. Whether a slow mutant times
+out or survives depends on the machine, so where Mac and the Linux CI container
+measure different counts for a function, the baseline keeps the larger one.
+
 Only mutmut's `pytest_add_cli_args` adds `-W` with
 `ignore:unclosed scandir iterator:ResourceWarning` and `-W` with
 `ignore:(rm_rf) error removing:pytest.PytestWarning`. The regular suite keeps its
