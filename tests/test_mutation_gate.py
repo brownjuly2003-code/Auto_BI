@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FUNCTION = "auto_bi.agent.sql_guard.x__grade_columns"
 METHOD = "auto_bi.agent.sql_guard.x\u01c1_ReadThroughState\u01c1__init__"
 OTHER_FUNCTION = "auto_bi.ir.validate.x_validate"
+BASELINE_PROPOSAL_MARKER = "mutation gate: baseline proposal:"
 
 
 def _run_stats_check(tmp_path: Path) -> subprocess.CompletedProcess[str]:
@@ -81,6 +82,21 @@ def _write_run(
     )
 
 
+def _assert_baseline_proposal(
+    result: subprocess.CompletedProcess[str], functions: dict[str, dict[str, int]]
+) -> str:
+    assert result.stdout.count(BASELINE_PROPOSAL_MARKER) == 1
+    _, marker, proposal_text = result.stdout.partition(BASELINE_PROPOSAL_MARKER + "\n")
+    assert marker
+    expected = {
+        "measured": "TODO: fill in measurement date and environment",
+        "functions": functions,
+    }
+    assert json.loads(proposal_text) == expected
+    assert proposal_text == json.dumps(expected, indent=2, sort_keys=True) + "\n"
+    return proposal_text
+
+
 def test_mutmut_scope_is_pinned_and_bounded() -> None:
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     mutmut = config["tool"]["mutmut"]
@@ -90,6 +106,12 @@ def test_mutmut_scope_is_pinned_and_bounded() -> None:
         "auto_bi/ir/validate.py",
         "auto_bi/agent/dataset_plan.py",
         "auto_bi/agent/cleanup.py",
+    ]
+    assert mutmut["pytest_add_cli_args"] == [
+        "-W",
+        "ignore:unclosed scandir iterator:ResourceWarning",
+        "-W",
+        "ignore:(rm_rf) error removing:pytest.PytestWarning",
     ]
     assert mutmut["pytest_add_cli_args_test_selection"] == [
         "tests/test_property_quality.py",
@@ -234,7 +256,13 @@ def test_slo_mutation_smoke_documents_timeout_as_effective_kill() -> None:
         "3011 mutants: 2614 killed, 2 timeout, 356 survived, and 39 no_tests",
         "1553 seconds wall-clock",
         "2.08 mutations/second",
-        "45-minute CI timeout",
+        "60-minute CI timeout",
+        "3011 mutants: 2586 killed, 9 timeout, 377 survived, and 39 no_tests",
+        "2265 seconds",
+        "Python 3.13.17",
+        "ignore:unclosed scandir iterator:ResourceWarning",
+        "ignore:(rm_rf) error removing:pytest.PytestWarning",
+        BASELINE_PROPOSAL_MARKER,
         "54% of run time",
         "scripts/mutation_baseline.json",
         "A function absent from the baseline is allowed zero weak mutants.",
@@ -254,7 +282,7 @@ def test_primary_quality_job_runs_pinned_mutation_gate() -> None:
         "scripts/check_mutation_stats.py mutants/mutmut-cicd-stats.json "
         "--mutants-dir mutants --baseline scripts/mutation_baseline.json"
     ) in workflow
-    assert re.search(r"Mutation smoke \(bounded core\)\n\s+timeout-minutes: 45\n", workflow)
+    assert re.search(r"Mutation smoke \(bounded core\)\n\s+timeout-minutes: 60\n", workflow)
 
 
 def test_mutation_stats_accept_killed_and_timeout_mutants(tmp_path: Path) -> None:
@@ -262,6 +290,7 @@ def test_mutation_stats_accept_killed_and_timeout_mutants(tmp_path: Path) -> Non
     result = _run_stats_check(tmp_path)
     assert result.returncode == 0, result.stderr
     assert "2/2 effective kills" in result.stdout
+    assert BASELINE_PROPOSAL_MARKER not in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -306,6 +335,45 @@ def test_mutation_ratchet_accepts_equal_baseline(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "3/8 effective kills" in result.stdout
     assert "must be lowered" not in result.stdout
+    assert BASELINE_PROPOSAL_MARKER not in result.stdout
+
+
+@pytest.mark.parametrize(("code", "kind"), [(0, "survived"), (5, "no_tests"), (33, "no_tests")])
+@pytest.mark.parametrize("allowed", [0, 1, 3])
+def test_mutation_ratchet_prints_complete_baseline_proposal(
+    tmp_path: Path, code: int, kind: str, allowed: int
+) -> None:
+    baseline = {METHOD: {"survived": 1, "no_tests": 1}}
+    if allowed:
+        baseline[FUNCTION] = {kind: allowed}
+    counts = {"killed": 1, "survived": 1, "no_tests": 1}
+    counts[kind] += 2
+    _write_run(
+        tmp_path,
+        {OTHER_FUNCTION: [1], METHOD: [0, 5], FUNCTION: [code, code]},
+        _stats(**counts),
+        baseline,
+    )
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == (1 if allowed < 2 else 0), result.stderr
+    proposal_text = _assert_baseline_proposal(
+        result, {METHOD: {"survived": 1, "no_tests": 1}, FUNCTION: {kind: 2}}
+    )
+
+    # The complete proposal is accepted unchanged as the next baseline.
+    (tmp_path / "baseline.json").write_text(proposal_text, encoding="utf-8")
+    rechecked = _run_stats_check(tmp_path)
+    assert rechecked.returncode == 0, rechecked.stderr
+    assert BASELINE_PROPOSAL_MARKER not in rechecked.stdout
+
+
+def test_mutation_ratchet_proposes_empty_baseline_when_all_weak_counts_fall_to_zero(
+    tmp_path: Path,
+) -> None:
+    _write_run(tmp_path, baseline={FUNCTION: {"survived": 1, "no_tests": 1}})
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 0, result.stderr
+    _assert_baseline_proposal(result, {})
 
 
 @pytest.mark.parametrize(("code", "kind"), [(0, "survived"), (5, "no_tests"), (33, "no_tests")])
@@ -348,6 +416,7 @@ def test_mutation_ratchet_reports_lower_counts_and_absent_functions(tmp_path: Pa
     assert f"{OTHER_FUNCTION}: produced no mutants" in result.stdout
     assert f"{OTHER_FUNCTION}: survived=0 below baseline=3" in result.stdout
     assert "baseline must be lowered in the same change" in result.stdout
+    _assert_baseline_proposal(result, {FUNCTION: {"survived": 1}})
 
 
 @pytest.mark.parametrize("field", list(_stats()))

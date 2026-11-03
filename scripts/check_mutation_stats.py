@@ -186,11 +186,29 @@ def main(argv: list[str] | None = None) -> int:
     errors, notices, effective_kills, total = validate_stats(payload, results, baseline)
     if errors:
         print(f"mutation gate failed ({args.stats}):\n" + "\n".join(errors), file=sys.stderr)
-        return 1
-    print(f"mutation gate: {effective_kills}/{total} effective kills, within baseline")
-    for notice in notices:
-        print(notice)
-    return 0
+    else:
+        print(f"mutation gate: {effective_kills}/{total} effective kills, within baseline")
+        for notice in notices:
+            print(notice)
+
+    measured: dict[str, dict[str, int]] = {}
+    for mutant, status in results.items():
+        if status in WEAK_KINDS:
+            counts = measured.setdefault(_function(mutant), {})
+            counts[status] = counts.get(status, 0) + 1
+    if measured != baseline:
+        print("mutation gate: baseline proposal:")
+        print(
+            json.dumps(
+                {
+                    "measured": "TODO: fill in measurement date and environment",
+                    "functions": measured,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

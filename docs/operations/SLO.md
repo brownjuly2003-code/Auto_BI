@@ -116,9 +116,29 @@ Mac with 4 cores, Python 3.13, mutmut 3.6.0 (`mutmut run --max-children 4`) prod
 44 functions of `sql_guard.py`; the other three targets have none. Survivors take
 54% of run time because each runs all tests mapped to its function (8.6 seconds
 on average versus 0.9 seconds for a killed mutant). Even with zero survivors,
-the run would take about 11 minutes. The 45-minute CI timeout allows for the
-Linux container with 3 CPUs. Later slices kill survivors and lower both the
-baseline and the timeout.
+the run would take about 11 minutes. These measurements precede the false-kill
+fix below. On 2026-11-03 the Linux CI container with 3 CPUs and Python 3.13.17
+produced 3011 mutants: 2586 killed, 9 timeout, 377 survived, and 39 no_tests,
+in 2265 seconds. The 60-minute CI timeout allows for the additional survivors
+after the fix: each survivor runs all tests mapped to its function. Later slices
+kill survivors and lower both the baseline and the timeout.
+
+Parallel mutmut children share pytest's `/tmp/pytest-of-<user>` root. Session-end
+cleanup of old numbered directories races between children: `cleanup_numbered_dir`
+calls `try_cleanup` and `rm_rf`, raising `ResourceWarning: unclosed scandir iterator`
+(reported as `PytestUnraisableExceptionWarning`) and
+`PytestWarning: (rm_rf) error removing`. With warnings treated as errors, tests
+that all pass can exit 1 and falsely count as killed. On 2026-11-03 identical
+test-to-function mappings on Mac (Python 3.13.13) and Linux (Python 3.13.17)
+still yielded 25 Mac-only kills, each after 9–32 seconds versus a 0.43-second
+median kill. Repeating those mutants without the fix killed a different five;
+with the two filters all 25 survived and the log had no warnings.
+
+Only mutmut's `pytest_add_cli_args` adds `-W` with
+`ignore:unclosed scandir iterator:ResourceWarning` and `-W` with
+`ignore:(rm_rf) error removing:pytest.PytestWarning`. The regular suite keeps its
+existing `filterwarnings` unchanged. The iterator warning comes from pytest's
+cleanup; application filesystem code already closes its scandir iterators.
 
 `scripts/check_mutation_stats.py` rejects unchecked, skipped, suspicious,
 type-check-caught, interrupted, and crashed mutants. Unknown exit codes are
@@ -132,6 +152,14 @@ weak mutants. Counts at or below the baseline pass; an increase fails with the
 function, kind, actual count, and allowed count. The baseline must be lowered in
 the same change when a count falls: the gate prints each lower count and also
 reports baseline functions that produced no mutants.
+Whenever any function's `survived` or `no_tests` differs from the baseline in
+either direction, the gate also prints `mutation gate: baseline proposal:` on
+its own line, followed by a complete JSON baseline proposal with sorted keys
+and two-space indentation. Its `functions` block contains all measured positive
+weak counts, omitting zero counts and functions with no weak mutants; `measured`
+is `TODO: fill in measurement date and environment`. Copy the JSON from the CI
+log and fill in that field when updating the baseline. Equal counts produce no
+proposal; pass/fail rules and existing diagnostics are unchanged.
 
 ## Mypy package-wide strict gate
 

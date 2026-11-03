@@ -109,6 +109,12 @@ only_mutate = [
     "auto_bi/agent/dataset_plan.py",
     "auto_bi/agent/cleanup.py",
 ]
+# Parallel pytest temp-root cleanup races turn warnings into false kills.
+# 2026-11-03: these filters made all 25 Mac-only kills survive, with no warnings.
+pytest_add_cli_args = [
+    "-W", "ignore:unclosed scandir iterator:ResourceWarning",
+    "-W", "ignore:(rm_rf) error removing:pytest.PytestWarning",
+]
 pytest_add_cli_args_test_selection = [
     "tests/test_property_quality.py",
     "tests/test_ir_validate.py",

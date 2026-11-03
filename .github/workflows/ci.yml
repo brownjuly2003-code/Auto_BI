@@ -76,16 +76,17 @@ jobs:
       - name: Pytest + coverage
         run: uv run --with pytest-cov --with duckdb pytest -q --cov=auto_bi --cov-report=term-missing --cov-fail-under=90
 
-      # 2026-11-03: 71 test modules, Mac/4 cores, Python 3.13, mutmut 3.6.0:
-      # 3011 mutants (2614 killed, 2 timeout, 356 survived, 39 no_tests), 1553 s,
-      # 2.08 mutations/s. Survivors take 54% of run time: each runs all tests mapped
-      # to its function (8.6 s average versus 0.9 s for a kill). Even zero survivors
-      # would take about 11 minutes. Allow 45 minutes for the Linux CI container/3 CPUs.
+      # 2026-11-03: Linux CI container/3 CPUs, Python 3.13.17, mutmut 3.6.0:
+      # 3011 mutants (2586 killed, 9 timeout, 377 survived, 39 no_tests), 2265 s.
+      # Parallel pytest temp-root cleanup warnings caused false kills; mutmut-only
+      # warning filters fix them (all 25 Mac-only kills survived on retest).
+      # Allow 60 minutes: removing false kills adds survivors, each of which runs
+      # all tests mapped to its function; the Linux measurement predates the fix.
       # mutmut exits zero with survivors; reconcile stats with .meta results and
       # enforce a per-function baseline. Later slices kill survivors and lower
       # both the baseline and this timeout.
       - name: Mutation smoke (bounded core)
-        timeout-minutes: 45
+        timeout-minutes: 60
         run: |
           uv run --with mutmut==3.6.0 mutmut run --max-children 4
           uv run --with mutmut==3.6.0 mutmut export-cicd-stats
