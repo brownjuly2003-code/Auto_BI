@@ -1,0 +1,1290 @@
+{
+ "enums": {
+  "AggregationType": [
+   "sum",
+   "min",
+   "max",
+   "count_distinct",
+   "sum_boolean",
+   "average",
+   "percentile",
+   "median",
+   "count"
+  ],
+  "ConversionCalculationType": [
+   "conversions",
+   "conversion_rate"
+  ],
+  "DataType": [
+   "string",
+   "integer",
+   "decimal",
+   "float",
+   "boolean",
+   "date",
+   "time",
+   "datetime",
+   "datetime_tz",
+   "opaque"
+  ],
+  "DatePart": [
+   "year",
+   "quarter",
+   "month",
+   "day",
+   "dow",
+   "doy"
+  ],
+  "DimensionType": [
+   "categorical",
+   "time"
+  ],
+  "EntityType": [
+   "foreign",
+   "natural",
+   "primary",
+   "unique"
+  ],
+  "ExportDestinationType": [
+   "table",
+   "view"
+  ],
+  "MetricType": [
+   "simple",
+   "ratio",
+   "cumulative",
+   "derived",
+   "conversion"
+  ],
+  "PeriodAggregation": [
+   "first",
+   "last",
+   "average"
+  ],
+  "SemanticManifestNodeType": [
+   "metric",
+   "saved_query",
+   "semantic_model",
+   "time_spine"
+  ],
+  "TimeGranularity": [
+   "nanosecond",
+   "microsecond",
+   "millisecond",
+   "second",
+   "minute",
+   "hour",
+   "day",
+   "week",
+   "month",
+   "quarter",
+   "year"
+  ]
+ },
+ "models": {
+  "PydanticConstantPropertyInput": {
+   "__extra__": "Extra.ignore",
+   "base_property": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "conversion_property": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticConversionTypeParams": {
+   "__extra__": "Extra.ignore",
+   "base_measure": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricInputMeasure'>"
+   },
+   "base_metric": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricInput'>"
+   },
+   "calculation": {
+    "alias": null,
+    "allow_none": false,
+    "default": "<ConversionCalculationType.CONVERSION_RATE: 'conversion_rate'>",
+    "required": false,
+    "type": "<enum 'ConversionCalculationType'>"
+   },
+   "constant_properties": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.metric.PydanticConstantPropertyInput]"
+   },
+   "conversion_measure": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricInputMeasure'>"
+   },
+   "conversion_metric": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricInput'>"
+   },
+   "entity": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "window": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricTimeWindow'>"
+   }
+  },
+  "PydanticCumulativeTypeParams": {
+   "__extra__": "Extra.ignore",
+   "grain_to_date": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "metric": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricInput'>"
+   },
+   "period_agg": {
+    "alias": null,
+    "allow_none": false,
+    "default": "<PeriodAggregation.FIRST: 'first'>",
+    "required": false,
+    "type": "<enum 'PeriodAggregation'>"
+   },
+   "window": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricTimeWindow'>"
+   }
+  },
+  "PydanticDimension": {
+   "__extra__": "Extra.ignore",
+   "config": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.element_config.PydanticSemanticLayerElementConfig'>"
+   },
+   "datatype": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<enum 'DataType'>"
+   },
+   "description": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "expr": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "is_partition": {
+    "alias": null,
+    "allow_none": false,
+    "default": "False",
+    "required": false,
+    "type": "<class 'bool'>"
+   },
+   "label": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "metadata": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metadata.PydanticMetadata'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "type": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<enum 'DimensionType'>"
+   },
+   "type_params": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.elements.dimension.PydanticDimensionTypeParams'>"
+   }
+  },
+  "PydanticDimensionTypeParams": {
+   "__extra__": "Extra.ignore",
+   "time_granularity": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<enum 'TimeGranularity'>"
+   },
+   "validity_params": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.elements.dimension.PydanticDimensionValidityParams'>"
+   }
+  },
+  "PydanticDimensionValidityParams": {
+   "__extra__": "Extra.ignore",
+   "is_end": {
+    "alias": null,
+    "allow_none": false,
+    "default": "False",
+    "required": false,
+    "type": "<class 'bool'>"
+   },
+   "is_start": {
+    "alias": null,
+    "allow_none": false,
+    "default": "False",
+    "required": false,
+    "type": "<class 'bool'>"
+   }
+  },
+  "PydanticEntity": {
+   "__extra__": "Extra.ignore",
+   "config": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.element_config.PydanticSemanticLayerElementConfig'>"
+   },
+   "description": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "expr": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "label": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "metadata": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metadata.PydanticMetadata'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "role": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "type": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<enum 'EntityType'>"
+   }
+  },
+  "PydanticExport": {
+   "__extra__": "Extra.ignore",
+   "config": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.export.PydanticExportConfig'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticExportConfig": {
+   "__extra__": "None",
+   "alias": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "export_as": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<enum 'ExportDestinationType'>"
+   },
+   "schema_name": {
+    "alias": "schema",
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticFileSlice": {
+   "__extra__": "Extra.ignore",
+   "content": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "end_line_number": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'int'>"
+   },
+   "filename": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "start_line_number": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'int'>"
+   }
+  },
+  "PydanticMeasure": {
+   "__extra__": "Extra.ignore",
+   "agg": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<enum 'AggregationType'>"
+   },
+   "agg_params": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.elements.measure.PydanticMeasureAggregationParameters'>"
+   },
+   "agg_time_dimension": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "config": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.element_config.PydanticSemanticLayerElementConfig'>"
+   },
+   "create_metric": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'bool'>"
+   },
+   "description": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "expr": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "label": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "metadata": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metadata.PydanticMetadata'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "non_additive_dimension": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.elements.measure.PydanticNonAdditiveDimensionParameters'>"
+   }
+  },
+  "PydanticMeasureAggregationParameters": {
+   "__extra__": "Extra.ignore",
+   "percentile": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'float'>"
+   },
+   "use_approximate_percentile": {
+    "alias": null,
+    "allow_none": false,
+    "default": "False",
+    "required": false,
+    "type": "<class 'bool'>"
+   },
+   "use_discrete_percentile": {
+    "alias": null,
+    "allow_none": false,
+    "default": "False",
+    "required": false,
+    "type": "<class 'bool'>"
+   }
+  },
+  "PydanticMetadata": {
+   "__extra__": "Extra.ignore",
+   "file_slice": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metadata.PydanticFileSlice'>"
+   },
+   "repo_file_path": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticMetric": {
+   "__extra__": "Extra.ignore",
+   "config": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.element_config.PydanticSemanticLayerElementConfig'>"
+   },
+   "datatype": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<enum 'DataType'>"
+   },
+   "description": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "filter": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.filters.where_filter.PydanticWhereFilterIntersection'>"
+   },
+   "label": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "metadata": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metadata.PydanticMetadata'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "time_granularity": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "type": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<enum 'MetricType'>"
+   },
+   "type_params": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricTypeParams'>"
+   }
+  },
+  "PydanticMetricAggregationParams": {
+   "__extra__": "Extra.ignore",
+   "agg": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<enum 'AggregationType'>"
+   },
+   "agg_params": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.elements.measure.PydanticMeasureAggregationParameters'>"
+   },
+   "agg_time_dimension": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "non_additive_dimension": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.elements.measure.PydanticNonAdditiveDimensionParameters'>"
+   },
+   "semantic_model": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticMetricInput": {
+   "__extra__": "Extra.ignore",
+   "alias": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "filter": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.filters.where_filter.PydanticWhereFilterIntersection'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "offset_to_grain": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "offset_window": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricTimeWindow'>"
+   }
+  },
+  "PydanticMetricInputMeasure": {
+   "__extra__": "Extra.ignore",
+   "alias": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "fill_nulls_with": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'int'>"
+   },
+   "filter": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.filters.where_filter.PydanticWhereFilterIntersection'>"
+   },
+   "join_to_timespine": {
+    "alias": null,
+    "allow_none": false,
+    "default": "False",
+    "required": false,
+    "type": "<class 'bool'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticMetricTimeWindow": {
+   "__extra__": "Extra.ignore",
+   "count": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'int'>"
+   },
+   "granularity": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticMetricTypeParams": {
+   "__extra__": "Extra.ignore",
+   "conversion_type_params": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticConversionTypeParams'>"
+   },
+   "cumulative_type_params": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticCumulativeTypeParams'>"
+   },
+   "denominator": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricInput'>"
+   },
+   "expr": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "fill_nulls_with": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'int'>"
+   },
+   "grain_to_date": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<enum 'TimeGranularity'>"
+   },
+   "input_measures": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.metric.PydanticMetricInputMeasure]"
+   },
+   "is_private": {
+    "alias": null,
+    "allow_none": true,
+    "default": "False",
+    "required": false,
+    "type": "<class 'bool'>"
+   },
+   "join_to_timespine": {
+    "alias": null,
+    "allow_none": false,
+    "default": "False",
+    "required": false,
+    "type": "<class 'bool'>"
+   },
+   "measure": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricInputMeasure'>"
+   },
+   "metric_aggregation_params": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricAggregationParams'>"
+   },
+   "metrics": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.metric.PydanticMetricInput]"
+   },
+   "numerator": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricInput'>"
+   },
+   "window": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metric.PydanticMetricTimeWindow'>"
+   }
+  },
+  "PydanticNodeRelation": {
+   "__extra__": "Extra.ignore",
+   "alias": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "database": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "relation_name": {
+    "alias": null,
+    "allow_none": false,
+    "default": "''",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "schema_name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticNonAdditiveDimensionParameters": {
+   "__extra__": "Extra.ignore",
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "window_choice": {
+    "alias": null,
+    "allow_none": false,
+    "default": "<AggregationType.MIN: 'min'>",
+    "required": false,
+    "type": "<enum 'AggregationType'>"
+   },
+   "window_groupings": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[str]"
+   }
+  },
+  "PydanticProjectConfiguration": {
+   "__extra__": "Extra.ignore",
+   "dsi_package_version": {
+    "alias": null,
+    "allow_none": false,
+    "default": "PydanticSemanticVersion(major_version='0', minor_version='0', patch_version='0')",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.semantic_version.PydanticSemanticVersion'>"
+   },
+   "metadata": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metadata.PydanticMetadata'>"
+   },
+   "time_spine_table_configurations": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.time_spine_table_configuration.PydanticTimeSpineTableConfiguration]"
+   },
+   "time_spines": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.time_spine.PydanticTimeSpine]"
+   }
+  },
+  "PydanticSavedQuery": {
+   "__extra__": "Extra.ignore",
+   "description": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "exports": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.export.PydanticExport]"
+   },
+   "label": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "metadata": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metadata.PydanticMetadata'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "query_params": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.saved_query.PydanticSavedQueryQueryParams'>"
+   },
+   "tags": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.Union[str, typing.List[str]]"
+   }
+  },
+  "PydanticSavedQueryQueryParams": {
+   "__extra__": "Extra.ignore",
+   "group_by": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[str]"
+   },
+   "limit": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'int'>"
+   },
+   "metrics": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "typing.List[str]"
+   },
+   "order_by": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[str]"
+   },
+   "where": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.filters.where_filter.PydanticWhereFilterIntersection'>"
+   }
+  },
+  "PydanticSemanticLayerElementConfig": {
+   "__extra__": "Extra.ignore",
+   "meta": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.Dict[str, typing.Any]"
+   }
+  },
+  "PydanticSemanticManifest": {
+   "__extra__": "Extra.ignore",
+   "metrics": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.metric.PydanticMetric]"
+   },
+   "project_configuration": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.project_configuration.PydanticProjectConfiguration'>"
+   },
+   "saved_queries": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.saved_query.PydanticSavedQuery]"
+   },
+   "semantic_models": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.semantic_model.PydanticSemanticModel]"
+   }
+  },
+  "PydanticSemanticModel": {
+   "__extra__": "Extra.ignore",
+   "config": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.element_config.PydanticSemanticLayerElementConfig'>"
+   },
+   "defaults": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.semantic_model.PydanticSemanticModelDefaults'>"
+   },
+   "description": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "dimensions": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.Sequence[metricflow_semantic_interfaces.implementations.elements.dimension.PydanticDimension]"
+   },
+   "entities": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.Sequence[metricflow_semantic_interfaces.implementations.elements.entity.PydanticEntity]"
+   },
+   "label": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "measures": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.Sequence[metricflow_semantic_interfaces.implementations.elements.measure.PydanticMeasure]"
+   },
+   "metadata": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.metadata.PydanticMetadata'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "node_relation": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.node_relation.PydanticNodeRelation'>"
+   },
+   "primary_entity": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticSemanticModelDefaults": {
+   "__extra__": "Extra.ignore",
+   "agg_time_dimension": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticSemanticVersion": {
+   "__extra__": "Extra.ignore",
+   "major_version": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "minor_version": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "patch_version": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticTimeSpine": {
+   "__extra__": "Extra.ignore",
+   "custom_granularities": {
+    "alias": null,
+    "allow_none": false,
+    "default": "None",
+    "required": false,
+    "type": "typing.Sequence[metricflow_semantic_interfaces.implementations.time_spine.PydanticTimeSpineCustomGranularityColumn]"
+   },
+   "node_relation": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.node_relation.PydanticNodeRelation'>"
+   },
+   "primary_column": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'metricflow_semantic_interfaces.implementations.time_spine.PydanticTimeSpinePrimaryColumn'>"
+   }
+  },
+  "PydanticTimeSpineCustomGranularityColumn": {
+   "__extra__": "Extra.ignore",
+   "column_name": {
+    "alias": null,
+    "allow_none": true,
+    "default": "None",
+    "required": false,
+    "type": "<class 'str'>"
+   },
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticTimeSpinePrimaryColumn": {
+   "__extra__": "Extra.ignore",
+   "name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "time_granularity": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<enum 'TimeGranularity'>"
+   }
+  },
+  "PydanticTimeSpineTableConfiguration": {
+   "__extra__": "Extra.ignore",
+   "column_name": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   },
+   "grain": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<enum 'TimeGranularity'>"
+   },
+   "location": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticWhereFilter": {
+   "__extra__": "Extra.ignore",
+   "where_sql_template": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "<class 'str'>"
+   }
+  },
+  "PydanticWhereFilterIntersection": {
+   "__extra__": "Extra.ignore",
+   "where_filters": {
+    "alias": null,
+    "allow_none": false,
+    "default": null,
+    "required": true,
+    "type": "typing.List[metricflow_semantic_interfaces.implementations.filters.where_filter.PydanticWhereFilter]"
+   }
+  }
+ }
+}

@@ -76,16 +76,29 @@ Conversion- и private-метрик и natural entities в корпусе нет
    digest сам и сравнивает с пином; несовпадение — block `gap.external_revision_mismatch` с
    обоими digest. Правка вне включённых объектов пин не сдвигает; правка внутри включённого
    объекта сдвигает, даже если она касается другой метрики (например, чужой measure той же
-   legacy semantic model). Тег или коммит dbt-проекта как пин этого источника не принимается:
-   по артефакту его не проверить. Значение для пина печатает CLI. Digest байтов всего
-   артефакта — отдельная величина, он входит в source digest snapshot.
+   legacy semantic model). `filter` на метрике замыкания или на любом её входе (measure,
+   `input_measures`, numerator/denominator, `metrics[]`, метрика cumulative), как и
+   conversion-метрика в замыкании, делает замыканием все метрики и все semantic models
+   артефакта: шаблон фильтра может назвать измерения и метрики любой semantic model,
+   conversion соединяет через entity, а эти зависимости reader не разбирает. Saved queries в
+   замыкание не входят. Пин адресует определение формулы, а не результат произвольного
+   grouped-запроса MetricFlow: joins и группировку задаёт native-контракт (п. 2), и правка
+   entity другой semantic model пин не сдвигает. Списки внутри объектов идут в порядке
+   артефакта: их перестановка сдвигает пин, даже если смысла не меняет. Тег или коммит
+   dbt-проекта как пин этого источника не принимается: по артефакту его не проверить.
+   Значение для пина печатает CLI. Digest байтов всего артефакта — отдельная величина, он
+   входит в source digest snapshot.
 5. **Канонизация.** Замыкание канонизирует `auto_bi/evidence/canonical.py` (RFC 8785) с
    `allow_float=True`: это внешний JSON, float в нём законен. До канонизации reader отвергает
-   повторяющиеся ключи, `NaN`/`Infinity` и целые за пределами `2**53 - 1` — это block
-   `gap.external_artifact_invalid`, а не молчаливое приведение к double.
+   повторяющиеся ключи, `NaN`/`Infinity`, целые за пределами `2**53 - 1`, BOM и строки или
+   ключи с одиночным суррогатом — это block `gap.external_artifact_invalid`, а не молчаливое
+   приведение. Числа — binary64, как в RFC 8785: `1`, `1.0` и `1e0`, как и `0` и `-0`, дают
+   один пин.
 6. **Версия схемы.** `project_configuration.dsi_package_version` (`major_version`,
    `minor_version`, `patch_version`) сверяется с явным списком проверенных версий; первая —
-   0.213.0. Это маркер совместимости пакета, а не гарантия стабильной схемы. Другая версия —
+   0.213.0. Компоненты — строки из 1–9 цифр; другой компонент или `null` вместо версии —
+   `gap.external_artifact_invalid`, отсутствующая версия — pydantic-умолчание 0.0.0, его в
+   списке нет. Это маркер совместимости пакета, а не гарантия стабильной схемы. Другая версия —
    block `gap.external_schema_unsupported` без попытки разбора; он касается формул, которые
    ссылаются на этот артефакт, а не native-формул. Новая версия добавляется отдельной задачей с
    contract-тестами на артефактах этой версии dbt, как версии стендов в инварианте 7.
@@ -112,15 +125,26 @@ Conversion- и private-метрик и natural entities в корпусе нет
    `model.yaml`).
 8. **Всё остальное — именованный гэп, а не тихий проход.** Выражение не из одной колонки,
    фильтр метрики или входа, cumulative, derived, conversion, percentile/median/sum_boolean,
-   `non_additive_dimension`, offset, alias, `fill_nulls_with`, `join_to_timespine: true`
-   дают review `gap.external_construct_unsupported` с путём конструкции; формула узла остаётся
-   `external_ref`, как сейчас. Severity review — та же, что у сегодняшнего opaque external
-   formula: этап не делает ни один ответ хуже текущего и не превращает непонятое в ok.
+   `non_additive_dimension`, offset, alias, `fill_nulls_with`, `join_to_timespine: true`,
+   `time_granularity` метрики не `null` дают review `gap.external_construct_unsupported` с
+   путём конструкции; формула узла остаётся `external_ref`, как сейчас. Severity review — та
+   же, что у сегодняшнего opaque external formula: этап не делает ни один ответ хуже текущего
+   и не превращает непонятое в ok.
    Block: нет артефакта при контракте, который на него ссылается
    (`gap.external_source_missing`); артефакт не читается, не соответствует своей версии схемы,
-   держит два объекта с одним именем или ссылку на отсутствующий объект
-   (`gap.external_artifact_invalid`); метрики `ref` в нём нет (`gap.external_ref_missing`);
-   relation, время, пин и версия — п. 3, 4, 6.
+   держит два объекта с одним именем, метрику, которая зависит от себя, или ссылку на
+   отсутствующий объект из тех, что reader разрешает (`gap.external_artifact_invalid`);
+   метрики `ref` в нём нет (`gap.external_ref_missing`); relation, время, пин и версия —
+   п. 3, 4, 6. Reader разрешает входные метрики и measures метрики,
+   `metric_aggregation_params.semantic_model` с его `agg_time_dimension` и `agg_time_dimension`
+   semantic model и её measures. Не разрешает: `entity` и `constant_properties` conversion,
+   `non_additive_dimension`, гранулярности `time_granularity`, offset, окон и `grain_to_date`,
+   `primary_entity` (dbt пишет и виртуальную entity), шаблоны фильтров, saved queries. Каждая
+   из этих конструкций в формуле — review выше; saved queries в формулу не входят.
+   Для S2: V2-артефакт dbt 1.12.6 пишет `fill_nulls_with: null` при `fill_nulls_with: 0` в
+   YAML и `type_params: null` у time dimension (гранулярности в артефакте нет). S2 читает
+   артефакт, а не YAML: заполнения в нём нет, а гранулярность time dimension V2 не доказать —
+   review п. 3.
 9. **Без ложной эквивалентности.** Узел метрики несёт binding: source, ref, revision и digest
    замыкания. Любое изменение определения в dbt — поддержанное или нет — сдвигает canonical
    digest, и diff его называет. Неподдержанная конструкция никогда не сводится к типизированной
@@ -176,7 +200,8 @@ S0 на тех же проектах:
 - Этап режется на срезы:
   - S1 — строгий reader (оба диалекта, список версий, повторяющиеся ключи и имена, числа,
     битые ссылки), канонизация и замыкание; fixtures из S0 и новые — `count`, `min`, `max`,
-    `average`, measure без `expr`, private, conversion;
+    `average`, measure без `expr`, private, conversion, custom granularity, `create_metric`,
+    saved query с export; дамп pydantic-моделей metricflow 0.213.0 как эталон схемы;
   - S2 — разрешение поддержанного и гэпы неподдержанного вместе, проверки совместимости
     (п. 3), матрица паритета на Mac;
   - S3 — binding в узле, сверка с validated-контрактом по объявлению, diff и инвалидация
