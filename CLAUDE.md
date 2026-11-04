@@ -92,6 +92,11 @@ GraceKelly (локальный сервис, должен быть запуще�
 три последних среза, каждый не длиннее пяти строк; с новой записью нижняя убирается.
 Состояние и открытые решения — `docs/DECISIONOPS_CURRENT_STATE.md`.
 
+- 2026-11-03 — мутационный smoke: T-132 ratchet по функциям (`scripts/mutation_baseline.json`); T-133 убрал
+  ложные kill от гонки `/tmp/pytest-of-<user>`; K1–K3 — 94 теста `sql_guard`, survived + без тестов 356+39 → 130+0,
+  `PYTHONHASHSEED=0`; T-134 сверяет результаты с инвентарём мутированных исходников. CVE в uv.lock обновлены,
+  `demo` удаляется после прогона. Ревью Astra: P1 → P1/P2 → P2 → P1/P2 нет, P3 исправлен. `ci_local` на
+  `87d8b48`: INCOMPLETE, 53 PASS, 0 FAIL, мутации 2881/3011 в пределах baseline.
 - 2026-11-03 — этап hardening закрыт: финальное ревью Astra xhigh всего gate на `9b534b6` — P1/P2 нет;
   P3 (обещание неизменных байтов SQL обычных имён) исправлен в §10 ARCHITECTURE и environment-readings.
   Verifier 127 / check 81 прежние. Windows gate: 10074 passed, покрытие 96.43%, mypy ×4 чисто. `ci_local`
@@ -101,11 +106,6 @@ GraceKelly (локальный сервис, должен быть запуще�
   с точкой или `"` отказана до чтения; specs R2-2/R2-3. Verifier 127 / check 81; 165 случаев, на HEAD 147
   failed; мутанты 16/16; Windows 5421, Mac 10130 passed; живые PG 16.15/9.4.26. Ревью Astra: P1 исправлен,
   затем P1/P2 нет, P3 исправлен.
-- 2026-11-02 — T-130: генерируемый SQL через общий `sql_render.py`: backslash в идентификаторах ClickHouse,
-  `E'…'` для строк PostgreSQL с backslash; NUL/суррогат — advisory `sql.compile_refused` (bundle пишется).
-  Verifier 126 / check 81; 1416 SHA-пинов `640d36b`; мутанты 20/20; Windows 4249, Mac 9965 passed; живые
-  CH 24.8, PG 16.15/9.4.26 (scs и backslash_quote on/off): срез 0 расхождений, HEAD 79 и по 94. Ревью
-  Astra: P1/P2 нет, P3 исправлен.
 
 ## Definition of done (фаза/задача)
 

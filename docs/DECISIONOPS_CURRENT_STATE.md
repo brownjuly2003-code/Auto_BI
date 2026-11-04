@@ -11,7 +11,7 @@ Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поя�
 human/design-partner outcome не измеряется — по решению владельца 2026-10-28 он не входит в
 цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)); этап hardening закрыт
 финальным synthetic-ревью Astra xhigh всего gate (2026-11-03, `9b534b6`): P1/P2 нет, остальные
-границы задокументированы
+границы задокументированы; мутационный smoke v1-ядра держит ratchet по функциям, `ci_local` без FAIL
 
 **Версии evidence:** `VERIFIER_VERSION=127`, `CHECK_VERSION=81`
 
@@ -21,8 +21,24 @@ R2-1…R2-3, закрыты T-131; третье (`9b534b6`) — P1/P2 нет, P3
 документах. Полный Windows gate — 10074 passed, покрытие 96.43%, mypy в четырёх режимах чисто;
 `ci_local` (впервые на форке) — FAIL в трёх шагах вне диффа этапа: мутационный smoke v1-ядра (97
 survived, 1818 без тестов из 3011), CVE в залоченных filelock, urllib3 и virtualenv, занятое имя
-контейнера demo-image; открыто. Остальные границы — в specs, «Что ещё не реализовано» и §17/§18
-ARCHITECTURE. Synthetic review, не human acceptance и не production certification.
+контейнера demo-image; закрыто этапом мутационного smoke (ниже). Остальные границы — в specs, «Что ещё
+не реализовано» и §17/§18 ARCHITECTURE. Synthetic review, не human acceptance и не production
+certification.
+
+**Этап мутационного smoke (2026-11-03):** три падения первого `ci_local` закрыты. CVE — залоченные
+пакеты обновлены (`b8c9d48`), pip-audit чисто. Мутации — T-132: выборка из 71 офлайн-модуля и ratchet
+по функциям против `scripts/mutation_baseline.json` (рост — FAIL с именем функции, снижение — notice и
+готовое предложение baseline); T-133: ложные kill от гонки очистки `/tmp/pytest-of-<user>` между детьми
+mutmut убраны двумя узкими `-W` только в `[tool.mutmut]`; K1–K3 — 94 теста `sql_guard` убили мутанты CTE-
+и alias-проверок: baseline 356 survived + 39 без тестов в 44 функциях → 130 + 0 в 37; оставшиеся в
+функциях K1 и K3 (11 и 18) разобраны как эквивалентные, остальные не разбирались. Порядок обхода
+зависел от hash seed — шаг CI и локальные замеры идут с `PYTHONHASHSEED=0`. T-134: ожидаемые мутанты берутся из мутированных исходников целей `only_mutate`, и
+каждому нужен ровно один результат в `.meta` своей цели; неполный набор — FAIL без предложения
+baseline. Ревью Astra xhigh: этапа — P1 (неполный набор проходил), затем три раунда по T-134 — P1 и P2,
+P2, затем P1/P2 нет; P3 исправлены. `ci_local` на `87d8b48` — INCOMPLETE: 53 шага PASS, 0 FAIL, не покрыты
+windows-cli-smoke и коммит бейджа (push); мутации 2881/3011 в пределах baseline, Linux и Mac совпали.
+Контейнер `demo` создаётся каждым прогоном demo-image и удаляется после него. Коммиты локальные.
+[SLO](operations/SLO.md) «Mutation smoke».
 
 **Последний срез (T-131, 2026-11-02):** все PostgreSQL-вопросы витрины называют одно отношение. На
 `d817a17` наличие и COUNT/MAX читали `dm."Sales"`, а права и каталоги получали `'dm.Sales'`, которую

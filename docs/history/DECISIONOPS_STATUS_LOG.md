@@ -10,6 +10,102 @@
 > Новая запись среза добавляется сверху, полным текстом. В `CLAUDE.md` остаются короткие
 > записи трёх последних срезов.
 
+## 2026-11-03 — мутационный smoke: ratchet по функциям, ложные kill убраны, K1–K3, сверка с инвентарём
+
+Решения владельца по трём падениям первого `ci_local`: CVE — «Обновить сейчас»; мутации — «Сначала
+замер», затем «Ratchet + 2–3 среза»; контейнер `demo` — «Удали контейнер сам». Исполнитель — Codex
+`gpt-6-astra` xhigh (профиль cw); Claude гонял Windows, Mac, mutmut и `ci_local`.
+
+Зависимости (`b8c9d48`): uv.lock — filelock 4.2.7, urllib3 2.8.0, virtualenv 21.15.2 и транзитивные;
+anyio закреплён 4.14.2 (4.15+ предупреждает о BlockingPortal, который импортирует TestClient starlette
+1.3.1, а `filterwarnings = error` роняет сбор). pip-audit чисто; Windows gate — 10074 passed, 96.43%.
+
+T-132 (`58082e4`): выборка mutmut — 71 офлайн-модуль, достающий четыре мутируемых файла (было девять
+модулей v1). `check_mutation_stats.py` читает исходы из `mutants/**/*.meta`, сверяет их со статистикой,
+отклоняет всё, кроме killed/timeout/survived/no_tests, и держит ratchet по функциям
+`scripts/mutation_baseline.json`: рост — FAIL с именем функции, снижение — notice «lower in the same
+change». Timeout шага 8 → 45 мин. 13 неверных версий проверки падают на тестах.
+
+Находка: `ci_local` на `58082e4` упал на Linux — 25 мутантов, «убитых» на Mac, выжили. Все с кодом 1 после
+почти полного прогона (9–32 с против медианы 0.43 с). Причина — гонка очистки общего
+`/tmp/pytest-of-<user>` между детьми mutmut: `ResourceWarning: unclosed scandir iterator` и
+`PytestWarning: (rm_rf) error removing` при `filterwarnings = error` превращают зелёный прогон в kill.
+T-133 (`97c9abd`): два узких `-W ignore:` только в `[tool.mutmut] pytest_add_cli_args` (обычный suite не
+тронут); проверка печатает готовый baseline после `mutation gate: baseline proposal:`, если счётчик
+отличается; timeout 60 мин. 5 неверных версий печати падают на тестах.
+
+K1 (`bb046ea`): `tests/test_sql_guard_mutation_cte_gates.py`, 44 теста — `_open_cte_gates` 62 → 9,
+`_select_aliases_reached_from_with` 31 → 2; 11 оставшихся эквивалентны (три недостижимые ветки, шесть
+маскируются соседней проверкой/перезаписью/порядком, два — повтор кеша). Baseline (`e46e2ca`) —
+предложение полного Mac-прогона с фильтрами: 3011 мутантов, 2733 killed, 3 timeout, 260 survived,
+15 no_tests, 1327 с.
+
+`ci_local` на `e46e2ca` (Linux, Python 3.13.17): FAIL нет — 61 шаг PASS, 12 jobs OK; windows-cli-smoke не
+покрыт, codeql/gitleaks — только GitHub, «Commit coverage badge» пропущен (push). Mutation PASS за
+1896 с: 2733 killed, 4 timeout, 259 survived, 15 no_tests — Mac и Linux совпали, кроме одного мутанта
+(timeout на Linux). Локальный оркестратор останавливался харнессом по памяти Windows, удалённый прогон
+дошёл до конца; штампа нет. Контейнер `demo` создаётся каждым прогоном demo-image — удалён после каждого.
+
+K2 (`b1e7591`): `tests/test_sql_guard_mutation_alias_reads.py`, 28 случаев (глубину и бюджет
+read-through снижает monkeypatch) — `_grade_columns` 45 → 11, `_read_through_alias` 36 → 0,
+`_unread_alias_ref` 15 no_tests → 1 survived. Mac-замер с 73 модулями: 2830 killed, 3 timeout,
+178 survived, 0 no_tests, 1114 с. Находка — hash seed: мутант 49 `_select_alias_graph` (`continue` →
+`break` в обходе frozenset строк) убит в двух прогонах и выжил в третьем при тех же 25 тестах; mutmut
+форкает детей от одного родителя, seed общий на прогон и меняется между прогонами. Правило baseline:
+функция с неизменным набором тестов берёт максимум по всем прогонам, иначе — новый замер.
+
+K3 (`93f926d`): `tests/test_sql_guard_mutation_clickhouse_aliases.py`, 22 случая —
+`_clickhouse_aliases` 22 → 8, `_column_as_table` 13 → 3, `_select_alias_graph` 9 → 3, остальные пять
+функций — до 0–2; 18 оставшихся эквивалентны (недостижимые ветки Alias/Column, равнозначные
+False/None/умолчания, лишние рёбра графа, сдвиги индекса Tarjan). Мутант 49 убит парой запросов с
+переставленными ролями — `break` теряет нужное ребро при любом порядке; проверено шестью
+`PYTHONHASHSEED`. Шаг CI выставляет `PYTHONHASHSEED: "0"`, SLO требует того же от локальных замеров.
+Mac-замер с 74 модулями и seed 0: 2878 killed, 3 timeout, 130 survived, 0 no_tests, 1024 с. Итог этапа:
+baseline 356 survived + 39 no_tests в 44 функциях (`58082e4`, до K1 и с ложными kill) → 130 + 0 в 37;
+предсказания Codex «убит/эквивалентный» совпали с mutmut во всех трёх срезах.
+
+`ci_local` на `93f926d` (Linux-контейнер): INCOMPLETE — 53 шага PASS, 0 FAIL; не покрыты
+windows-cli-smoke (windows-latest) и «Commit coverage badge» (push), codeql/gitleaks — только GitHub;
+штамп записан. Mutation PASS за 1444 с: 2871 killed, 10 timeout, 130 survived, 0 no_tests — по
+функциям ровно baseline (предложения нет), killed + timeout = 2881, как на Mac. Контейнер `demo`
+удалён после прогона.
+
+Ревью этапа (synthetic, Astra xhigh, `93f926d`, ADR 0006): **P1** — согласованно неполный набор
+результатов проходил: проверка брала ожидаемых мутантов из найденных `.meta`, и уцелевший мутант,
+удалённый из `.meta` вместе с поправкой stats, давал exit 0. P3 — notices печатались только при
+успехе; P3 — фильтры `-W` совпадают по категории и тексту, не по происхождению. P2 нет; ложных
+отказов, иных обходов и спорных эквивалентностей в выборке не найдено.
+
+T-134 (`e273ada`): цели — из `[tool.mutmut] only_mutate` (новый обязательный `--pyproject`), ожидаемые
+мутанты — определения `x.+__mutmut_<n>` любой вложенности в мутированном исходнике, который mutmut
+пишет до тестов; каждому — ровно один результат в `.meta` своей цели, лишний результат или чужой
+`.meta` — ошибка по имени. На реальном K3-каталоге Mac (3011) инвентарь совпал с ключами всех четырёх
+`.meta`, проверка — 2881/3011; удалённый survivor со сниженной stats — FAIL «missing result» (проверка
+HEAD пропускала). Notices печатаются и при ошибке; SLO описывает настоящую область фильтров (фильтры
+прежние). 14 новых тестов, 5 неверных версий проверки падают.
+
+Повторное ревью `e273ada` (r2): P1 — ожидаемые `.meta` читались только через `rglob` (ссылка на каталог или ошибка
+обхода — survivor не проверен) и Windows-цели `\x.py`/`C:x.py` проходили на Linux; P2 — glob в
+`only_mutate` давал ложный отказ; P3 — потерянный результат выглядел как снижение (notice и proposal
+с нулём); P3 — нет `async def`. `8c62dbb`: `.meta` цели читается по пути, обход ищет только чужие;
+anchor POSIX/Windows, `..` и выход из `mutants/` отказаны; шаблоны отказаны при разборе (SLO: только
+литеральные пути); при missing result — «baseline proposal withheld because results are incomplete»
+без notice. Ревью r3: P1 нет; P2 — `Path.rglob` сам глотает `PermissionError` от `os.scandir`, фраза
+SLO «ошибка обхода валит gate» была неверна (тест подменял `rglob`); P3 — нечитаемый исходник
+оставлял модуль «измеренным». `0b9771a`: `Path.walk(on_error=…)`, тест через отказ `os.scandir` при
+настоящем обходе; модуль с недоступным inventory — неполный. Проверено: gate-тесты Windows 3.13 и Mac
+3.12.13/3.13.13 (131), mypy `--strict` вкл. `--python-version 3.12`; на реальном K3-каталоге Mac —
+2881/3011 exit 0, потерянный survivor — exit 1 с withheld; 17 неверных версий проверки падают на
+тестах (drive-relative — только на POSIX, там и проверен). Ревью r4 (`e273ada..0b9771a`): **P1/P2
+нет**; P3 — SLO обещал строку withheld безусловно, а неразборный вход обрывает проверку раньше (вердикт
+верный). `87d8b48`: SLO перечисляет входы, ошибка которых печатает только её саму; пять тестов входов
+требуют пустой stdout. Синтетическое ревью по ADR 0006 — не human acceptance.
+
+`ci_local` на `87d8b48` (Linux-контейнер): INCOMPLETE — 53 шага PASS, 0 FAIL; не покрыты те же
+windows-cli-smoke и «Commit coverage badge», codeql/gitleaks — только GitHub; штамп записан. Mutation
+PASS за 1594 с: `mutation gate: 2881/3011 effective kills, within baseline` — проверка с инвентарём на
+Linux сошлась с Mac. Контейнер `demo` удалён после прогона. Все коммиты этапа локальные, push не было.
+
 ## 2026-11-03 — этап hardening закрыт: финальное ревью всего gate без P1/P2
 
 Решение владельца 2026-10-28 о финише: приземлить T-122, answer-lines, engine-times и run-paths, затем
