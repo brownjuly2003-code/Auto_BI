@@ -211,7 +211,12 @@ proposal is printed; the gate prints one line instead:
 `mutation gate: baseline proposal withheld because results are incomplete`.
 Restore the unavailable sources or missing results before updating the baseline;
 incomplete results are not a measured improvement. Complete runs keep the same
-verdicts and diagnostics.
+verdicts and diagnostics. Notices, the proposal and the withheld line need the
+inputs to load: the gate prints only one error and exits 1 when the stats or the
+baseline cannot be read or is not valid JSON, the baseline has the wrong shape,
+the `--pyproject` file or its `only_mutate` cannot be read or is malformed, the
+mutants directory is missing, or an existing target `.meta` is not valid JSON or
+has the wrong shape.
 
 ## Mypy package-wide strict gate
 

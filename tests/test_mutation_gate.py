@@ -815,6 +815,7 @@ def test_mutation_inventory_rejects_malformed_pyproject(tmp_path: Path, contents
     assert result.returncode == 1
     assert "pyproject.toml" in result.stderr
     assert "Traceback" not in result.stderr
+    assert result.stdout == ""
 
 
 @pytest.mark.parametrize(
@@ -897,6 +898,9 @@ def test_mutation_stats_reject_missing_inputs(tmp_path: Path, missing: str) -> N
     result = _run_stats_check(tmp_path)
     assert result.returncode == 1
     assert missing in result.stderr
+    if missing != "meta":
+        # A missing target .meta is an inventory error, reported with the withheld line.
+        assert result.stdout == ""
 
 
 @pytest.mark.parametrize("filename", ["baseline.json", "mutmut-cicd-stats.json", "meta"])
@@ -913,6 +917,9 @@ def test_mutation_stats_reject_malformed_inputs(
     assert result.returncode == 1
     assert filename in result.stderr
     assert "Traceback" not in result.stderr
+    if filename != "mutmut-cicd-stats.json" or contents in (b"{", b"\xff"):
+        # Valid JSON stats of the wrong shape fail later, in the stats reconciliation.
+        assert result.stdout == ""
 
 
 @pytest.mark.parametrize(
@@ -936,6 +943,7 @@ def test_mutation_stats_reject_malformed_baseline_counts(tmp_path: Path, counts:
     result = _run_stats_check(tmp_path)
     assert result.returncode == 1
     assert "baseline" in result.stderr
+    assert result.stdout == ""
 
 
 @pytest.mark.parametrize("value", [-1, True, 1.5, "1", None])
@@ -966,6 +974,7 @@ def test_mutation_stats_reject_malformed_meta_results(tmp_path: Path, results: o
     result = _run_stats_check(tmp_path)
     assert result.returncode == 1
     assert ".meta" in result.stderr
+    assert result.stdout == ""
 
 
 def test_mutation_stats_reject_duplicate_mutants_across_meta_files(tmp_path: Path) -> None:
