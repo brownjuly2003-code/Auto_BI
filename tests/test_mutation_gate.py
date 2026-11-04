@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -532,6 +533,7 @@ def test_mutation_inventory_requires_every_target_file(tmp_path: Path, suffix: s
     assert result.returncode == 1
     assert str(path) in result.stderr
     assert "Traceback" not in result.stderr
+    assert "baseline proposal withheld because results are incomplete" in result.stdout
     if suffix == ".py.meta":
         assert f"missing result: {OTHER_FUNCTION}__mutmut_1" in result.stderr
 
@@ -542,7 +544,9 @@ def test_mutation_inventory_reads_target_meta_omitted_by_walk(
 ) -> None:
     _write_run(tmp_path, {FUNCTION: [1], OTHER_FUNCTION: [code]}, _stats(killed=1 + code))
     visible = tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta"
-    monkeypatch.setattr(Path, "rglob", lambda self, pattern: iter([visible]))
+    monkeypatch.setattr(
+        Path, "walk", lambda self, **kwargs: iter([(visible.parent, [], [visible.name])])
+    )
     result = _run_stats_check(tmp_path, in_process=True)
     assert result.returncode == (1 if code == 0 else 0), result.stderr
     if code == 0:
@@ -552,20 +556,31 @@ def test_mutation_inventory_reads_target_meta_omitted_by_walk(
         assert "2/2 effective kills, within baseline" in result.stdout
 
 
+@pytest.mark.parametrize("code", [0, 1])
 def test_mutation_inventory_reads_target_meta_despite_walk_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int
 ) -> None:
-    _write_run(tmp_path, {FUNCTION: [1], OTHER_FUNCTION: [0]}, _stats(killed=1))
+    _write_run(
+        tmp_path,
+        {FUNCTION: [1], OTHER_FUNCTION: [code]},
+        _stats(killed=1 + code, survived=1 - code),
+    )
+    unreadable = tmp_path / "mutants/auto_bi/ir"
+    original_scandir = os.scandir
 
-    def broken_walk(self: Path, pattern: str):
-        yield tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta"
-        raise PermissionError("synthetic enumeration error")
+    def scandir(path):
+        if Path(path) == unreadable:
+            raise PermissionError(13, "synthetic enumeration error", str(path))
+        return original_scandir(path)
 
-    monkeypatch.setattr(Path, "rglob", broken_walk)
+    monkeypatch.setattr(os, "scandir", scandir)
     result = _run_stats_check(tmp_path, in_process=True)
     assert result.returncode == 1
-    assert f"{OTHER_FUNCTION}: survived=1 exceeds baseline=0" in result.stderr
+    if code == 0:
+        assert f"{OTHER_FUNCTION}: survived=1 exceeds baseline=0" in result.stderr
+    assert "cannot enumerate .meta files" in result.stderr
     assert "synthetic enumeration error" in result.stderr
+    assert "within baseline" not in result.stdout
     assert "Traceback" not in result.stderr
 
 
@@ -703,6 +718,44 @@ def test_mutation_inventory_withholds_incomplete_baseline(
     assert f"{FUNCTION}: survived=0 below baseline" not in result.stdout
     assert f"{FUNCTION}: no_tests=0 below baseline" not in result.stdout
     assert f"{METHOD}: survived=1 below baseline=2" in result.stdout
+    assert f"{OTHER_FUNCTION}: no_tests=0 below baseline=1" in result.stdout
+
+
+@pytest.mark.parametrize("source_state", ["missing", "unparsable"])
+@pytest.mark.parametrize("keep_result", [False, True])
+def test_mutation_inventory_withholds_unavailable_inventory_baseline(
+    tmp_path: Path, source_state: str, keep_result: bool
+) -> None:
+    _write_run(
+        tmp_path,
+        {FUNCTION: [1] if keep_result else [], OTHER_FUNCTION: [1]},
+        _stats(killed=1 + keep_result),
+        {
+            FUNCTION: {"survived": 1, "no_tests": 1},
+            METHOD: {"survived": 1},
+            OTHER_FUNCTION: {"no_tests": 1},
+        },
+    )
+    source = tmp_path / "mutants/auto_bi/agent/sql_guard.py"
+    if source_state == "missing":
+        source.unlink()
+    else:
+        source.write_text("def broken(:", encoding="utf-8")
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert f"cannot read {source}" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert BASELINE_PROPOSAL_MARKER not in result.stdout
+    assert (
+        result.stdout.count(
+            "mutation gate: baseline proposal withheld because results are incomplete"
+        )
+        == 1
+    )
+    for function in (FUNCTION, METHOD):
+        assert f"{function}: produced no mutants" not in result.stdout
+        assert f"{function}: survived=0 below baseline" not in result.stdout
+        assert f"{function}: no_tests=0 below baseline" not in result.stdout
     assert f"{OTHER_FUNCTION}: no_tests=0 below baseline=1" in result.stdout
 
 

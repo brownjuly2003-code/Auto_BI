@@ -133,12 +133,13 @@ def _mutant_inventory(source: Path, module: str) -> set[str]:
 
 def _mutant_results(
     directory: Path, targets: list[Path]
-) -> tuple[dict[str, str], list[str], set[str]]:
+) -> tuple[dict[str, str], list[str], set[str], set[str]]:
     if not directory.is_dir():
         raise ValueError(f"mutants directory missing or not a directory: {directory}")
     root = directory.resolve()
     errors: list[str] = []
     incomplete_functions: set[str] = set()
+    incomplete_modules: set[str] = set()
     inventories: dict[Path, set[str]] = {}
     for target in targets:
         source = directory / target
@@ -153,10 +154,12 @@ def _mutant_results(
             inventories[meta] = set()
         else:
             errors.append(f"{meta}: target .meta missing or not a file")
+        module = ".".join(target.with_suffix("").parts)
         try:
-            inventory = _mutant_inventory(source, ".".join(target.with_suffix("").parts))
+            inventory = _mutant_inventory(source, module)
         except ValueError as exc:
             errors.append(str(exc))
+            incomplete_modules.add(module)
             continue
         if not inventory:
             errors.append(f"{source}: empty mutant inventory")
@@ -185,13 +188,23 @@ def _mutant_results(
             incomplete_functions.add(_function(mutant))
         for mutant in sorted(actual - expected):
             errors.append(f"{path}: unexpected result: {mutant}")
+
+    def on_error(error: OSError) -> None:
+        raise error
+
     try:
-        for path in sorted(directory.rglob("*.meta")):
+        meta_paths = (
+            parent / name
+            for parent, _, filenames in directory.walk(on_error=on_error)
+            for name in filenames
+            if Path(name).match("*.meta")
+        )
+        for path in sorted(meta_paths):
             if path not in inventories:
                 errors.append(f"{path}: .meta does not belong to a target")
     except OSError as exc:
         errors.append(f"cannot enumerate .meta files in {directory}: {exc}")
-    return results, errors, incomplete_functions
+    return results, errors, incomplete_functions, incomplete_modules
 
 
 def _function(mutant: str) -> str:
@@ -203,6 +216,7 @@ def validate_stats(
     results: dict[str, str],
     baseline: dict[str, dict[str, int]],
     incomplete_functions: set[str],
+    incomplete_modules: set[str],
 ) -> tuple[list[str], list[str], int, int]:
     counts, errors = _counts(payload)
     actual = Counter(results.values())
@@ -225,14 +239,17 @@ def validate_stats(
 
     notices: list[str] = []
     for function in sorted(by_function.keys() | baseline.keys()):
-        if function not in by_function and function not in incomplete_functions:
+        incomplete = (
+            function in incomplete_functions or function.rsplit(".", 1)[0] in incomplete_modules
+        )
+        if function not in by_function and not incomplete:
             notices.append(f"{function}: produced no mutants; review the baseline entry")
         for kind in WEAK_KINDS:
             count = by_function.get(function, Counter())[kind]
             allowed = baseline.get(function, {}).get(kind, 0)
             if count > allowed:
                 errors.append(f"{function}: {kind}={count} exceeds baseline={allowed}")
-            elif count < allowed and function not in incomplete_functions:
+            elif count < allowed and not incomplete:
                 notices.append(
                     f"{function}: {kind}={count} below baseline={allowed}; "
                     "baseline must be lowered in the same change"
@@ -268,13 +285,15 @@ def main(argv: list[str] | None = None) -> int:
         payload = _read_json(args.stats)
         baseline = _baseline(args.baseline)
         targets = _mutation_targets(args.pyproject)
-        results, inventory_errors, incomplete_functions = _mutant_results(args.mutants_dir, targets)
+        results, inventory_errors, incomplete_functions, incomplete_modules = _mutant_results(
+            args.mutants_dir, targets
+        )
     except (OSError, ValueError) as exc:
         print(f"mutation gate: {exc}", file=sys.stderr)
         return 1
 
     errors, notices, effective_kills, total = validate_stats(
-        payload, results, baseline, incomplete_functions
+        payload, results, baseline, incomplete_functions, incomplete_modules
     )
     errors = inventory_errors + errors
     if errors:
@@ -289,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         if status in WEAK_KINDS:
             counts = measured.setdefault(_function(mutant), {})
             counts[status] = counts.get(status, 0) + 1
-    if incomplete_functions:
+    if incomplete_functions or incomplete_modules:
         print("mutation gate: baseline proposal withheld because results are incomplete")
     elif measured != baseline:
         print("mutation gate: baseline proposal:")
