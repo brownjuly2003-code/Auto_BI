@@ -10,7 +10,7 @@ import re
 import sys
 import tomllib
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 COUNT_FIELDS = (
     "killed",
@@ -100,8 +100,17 @@ def _mutation_targets(path: Path) -> list[Path]:
     for target in targets:
         if not isinstance(target, str):
             raise ValueError(f"{path}: invalid only_mutate target: {target!r}")
+        if any(character in target for character in "*?["):
+            raise ValueError(f"{path}: only_mutate patterns are not supported: {target}")
         source = Path(target)
-        if source.is_absolute() or ".." in source.parts or source.suffix != ".py":
+        windows_source = PureWindowsPath(target)
+        if (
+            source.anchor
+            or windows_source.anchor
+            or ".." in source.parts
+            or ".." in windows_source.parts
+            or source.suffix != ".py"
+        ):
             raise ValueError(f"{path}: only_mutate target must be a relative .py file: {target}")
         if source in paths:
             raise ValueError(f"{path}: duplicate only_mutate target: {target}")
@@ -122,20 +131,27 @@ def _mutant_inventory(source: Path, module: str) -> set[str]:
     }
 
 
-def _mutant_results(directory: Path, targets: list[Path]) -> tuple[dict[str, str], list[str]]:
+def _mutant_results(
+    directory: Path, targets: list[Path]
+) -> tuple[dict[str, str], list[str], set[str]]:
     if not directory.is_dir():
         raise ValueError(f"mutants directory missing or not a directory: {directory}")
-    paths = sorted(directory.rglob("*.meta"))
+    root = directory.resolve()
     errors: list[str] = []
-    if not paths:
-        errors.append(f"{directory}: no .meta files found")
+    incomplete_functions: set[str] = set()
     inventories: dict[Path, set[str]] = {}
     for target in targets:
         source = directory / target
         meta = source.with_suffix(source.suffix + ".meta")
-        inventories[meta] = set()
+        for path in (source, meta):
+            if not path.resolve().is_relative_to(root):
+                raise ValueError(
+                    f"{path}: target path must stay inside mutants directory: {directory}"
+                )
         meta_exists = meta.is_file()
-        if not meta_exists:
+        if meta_exists:
+            inventories[meta] = set()
+        else:
             errors.append(f"{meta}: target .meta missing or not a file")
         try:
             inventory = _mutant_inventory(source, ".".join(target.with_suffix("").parts))
@@ -147,11 +163,11 @@ def _mutant_results(directory: Path, targets: list[Path]) -> tuple[dict[str, str
         if not meta_exists:
             for mutant in sorted(inventory):
                 errors.append(f"{meta}: missing result: {mutant}")
-        inventories[meta] = inventory
+                incomplete_functions.add(_function(mutant))
+        else:
+            inventories[meta] = inventory
     results: dict[str, str] = {}
-    for path in paths:
-        if path not in inventories:
-            errors.append(f"{path}: .meta does not belong to a target")
+    for path, expected in inventories.items():
         payload = _read_json(path)
         if not isinstance(payload, dict) or not isinstance(payload.get("exit_code_by_key"), dict):
             raise ValueError(f"{path}: exit_code_by_key must be a JSON object")
@@ -163,14 +179,19 @@ def _mutant_results(directory: Path, targets: list[Path]) -> tuple[dict[str, str
             if code is not None and type(code) is not int:
                 raise ValueError(f"{path}: {mutant}: exit code must be an integer or null")
             results[mutant] = EXIT_STATUSES.get(code, "suspicious")
-        if path in inventories:
-            expected = inventories[path]
-            actual = set(payload["exit_code_by_key"])
-            for mutant in sorted(expected - actual):
-                errors.append(f"{path}: missing result: {mutant}")
-            for mutant in sorted(actual - expected):
-                errors.append(f"{path}: unexpected result: {mutant}")
-    return results, errors
+        actual = set(payload["exit_code_by_key"])
+        for mutant in sorted(expected - actual):
+            errors.append(f"{path}: missing result: {mutant}")
+            incomplete_functions.add(_function(mutant))
+        for mutant in sorted(actual - expected):
+            errors.append(f"{path}: unexpected result: {mutant}")
+    try:
+        for path in sorted(directory.rglob("*.meta")):
+            if path not in inventories:
+                errors.append(f"{path}: .meta does not belong to a target")
+    except OSError as exc:
+        errors.append(f"cannot enumerate .meta files in {directory}: {exc}")
+    return results, errors, incomplete_functions
 
 
 def _function(mutant: str) -> str:
@@ -181,6 +202,7 @@ def validate_stats(
     payload: object,
     results: dict[str, str],
     baseline: dict[str, dict[str, int]],
+    incomplete_functions: set[str],
 ) -> tuple[list[str], list[str], int, int]:
     counts, errors = _counts(payload)
     actual = Counter(results.values())
@@ -203,14 +225,14 @@ def validate_stats(
 
     notices: list[str] = []
     for function in sorted(by_function.keys() | baseline.keys()):
-        if function not in by_function:
+        if function not in by_function and function not in incomplete_functions:
             notices.append(f"{function}: produced no mutants; review the baseline entry")
         for kind in WEAK_KINDS:
             count = by_function.get(function, Counter())[kind]
             allowed = baseline.get(function, {}).get(kind, 0)
             if count > allowed:
                 errors.append(f"{function}: {kind}={count} exceeds baseline={allowed}")
-            elif count < allowed:
+            elif count < allowed and function not in incomplete_functions:
                 notices.append(
                     f"{function}: {kind}={count} below baseline={allowed}; "
                     "baseline must be lowered in the same change"
@@ -246,12 +268,14 @@ def main(argv: list[str] | None = None) -> int:
         payload = _read_json(args.stats)
         baseline = _baseline(args.baseline)
         targets = _mutation_targets(args.pyproject)
-        results, inventory_errors = _mutant_results(args.mutants_dir, targets)
+        results, inventory_errors, incomplete_functions = _mutant_results(args.mutants_dir, targets)
     except (OSError, ValueError) as exc:
         print(f"mutation gate: {exc}", file=sys.stderr)
         return 1
 
-    errors, notices, effective_kills, total = validate_stats(payload, results, baseline)
+    errors, notices, effective_kills, total = validate_stats(
+        payload, results, baseline, incomplete_functions
+    )
     errors = inventory_errors + errors
     if errors:
         print(f"mutation gate failed ({args.stats}):\n" + "\n".join(errors), file=sys.stderr)
@@ -265,7 +289,9 @@ def main(argv: list[str] | None = None) -> int:
         if status in WEAK_KINDS:
             counts = measured.setdefault(_function(mutant), {})
             counts[status] = counts.get(status, 0) + 1
-    if measured != baseline:
+    if incomplete_functions:
+        print("mutation gate: baseline proposal withheld because results are incomplete")
+    elif measured != baseline:
         print("mutation gate: baseline proposal:")
         print(
             json.dumps(

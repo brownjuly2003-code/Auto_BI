@@ -172,10 +172,16 @@ rather than being killed, so it counts against the ratchet.
 type-check-caught, interrupted, and crashed mutants. Unknown exit codes are
 suspicious. Timed-out mutants count toward effective kills;
 `killed + timeout + survived + no_tests` must equal `total`. The gate reads targets
-from `[tool.mutmut] only_mutate` in the file passed with `--pyproject`, mutant
-definitions from each generated source under `mutants/`, and per-mutant outcomes
-from its `.meta`. Mutmut writes these sources before any tests run. The independent
-inventory collects function definitions at any depth whose names fully match
+from `[tool.mutmut] only_mutate` in the file passed with `--pyproject`. Targets must
+be literal relative `.py` paths: patterns containing `*`, `?`, or `[` are not
+supported and are rejected with the target name. Rooted and drive-relative paths
+are also rejected; each source and its `.meta` must resolve inside `mutants/`.
+The gate reads mutant definitions from each generated source and per-mutant
+outcomes directly from each target's `.meta`, independently of directory
+enumeration. The directory walk only detects stray `.meta` files; an enumeration
+error fails the gate without skipping the expected files. Mutmut writes these
+sources before any tests run. The independent inventory collects `def` and
+`async def` definitions at any depth whose names fully match
 `x.+__mutmut_[0-9]+`, qualified with the target's dotted module path; methods count,
 `__mutmut_orig` and registry references do not. Every target must have both files
 and a non-empty inventory. The gate rejects stray `.meta` files and requires exactly
@@ -186,16 +192,22 @@ The ratchet in `scripts/mutation_baseline.json` limits `survived` and `no_tests`
 separately for each function. A function absent from the baseline is allowed zero
 weak mutants. Counts at or below the baseline pass; an increase fails with the
 function, kind, actual count, and allowed count. The baseline must be lowered in
-the same change when a count falls: the gate prints each lower count and also
-reports baseline functions that produced no mutants.
-Whenever any function's `survived` or `no_tests` differs from the baseline in
-either direction, the gate also prints `mutation gate: baseline proposal:` on
+the same change when a measured count falls: the gate prints each lower count and
+also reports baseline functions that produced no mutants. A function with any
+missing result gets neither a lower-count notice nor a no-mutants notice;
+notices for fully measured functions remain.
+With no missing results, whenever any function's `survived` or `no_tests` differs
+from the baseline in either direction, the gate also prints `mutation gate: baseline proposal:` on
 its own line, followed by a complete JSON baseline proposal with sorted keys
 and two-space indentation. Its `functions` block contains all measured positive
 weak counts, omitting zero counts and functions with no weak mutants; `measured`
 is `TODO: fill in measurement date and environment`. Copy the JSON from the CI
 log and fill in that field when updating the baseline. Equal counts produce no
-proposal; pass/fail rules and existing diagnostics are unchanged.
+proposal. If the inventory reports any missing result, no JSON proposal is printed;
+the gate prints one line instead:
+`mutation gate: baseline proposal withheld because results are incomplete`.
+Restore the missing results before updating the baseline; incomplete results are
+not a measured improvement. Complete runs keep the same verdicts and diagnostics.
 
 ## Mypy package-wide strict gate
 

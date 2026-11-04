@@ -7,9 +7,13 @@ import re
 import subprocess
 import sys
 import tomllib
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 import pytest
+
+from scripts import check_mutation_stats
 
 ROOT = Path(__file__).resolve().parents[1]
 FUNCTION = "auto_bi.agent.sql_guard.x__grade_columns"
@@ -18,19 +22,27 @@ OTHER_FUNCTION = "auto_bi.ir.validate.x_validate"
 BASELINE_PROPOSAL_MARKER = "mutation gate: baseline proposal:"
 
 
-def _run_stats_check(tmp_path: Path) -> subprocess.CompletedProcess[str]:
+def _run_stats_check(
+    tmp_path: Path, *, in_process: bool = False
+) -> subprocess.CompletedProcess[str]:
+    args = [
+        sys.executable,
+        str(ROOT / "scripts" / "check_mutation_stats.py"),
+        str(tmp_path / "mutmut-cicd-stats.json"),
+        "--mutants-dir",
+        str(tmp_path / "mutants"),
+        "--baseline",
+        str(tmp_path / "baseline.json"),
+        "--pyproject",
+        str(tmp_path / "pyproject.toml"),
+    ]
+    if in_process:
+        stdout, stderr = StringIO(), StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            returncode = check_mutation_stats.main(args[2:])
+        return subprocess.CompletedProcess(args, returncode, stdout.getvalue(), stderr.getvalue())
     return subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "check_mutation_stats.py"),
-            str(tmp_path / "mutmut-cicd-stats.json"),
-            "--mutants-dir",
-            str(tmp_path / "mutants"),
-            "--baseline",
-            str(tmp_path / "baseline.json"),
-            "--pyproject",
-            str(tmp_path / "pyproject.toml"),
-        ],
+        args,
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -524,6 +536,60 @@ def test_mutation_inventory_requires_every_target_file(tmp_path: Path, suffix: s
         assert f"missing result: {OTHER_FUNCTION}__mutmut_1" in result.stderr
 
 
+@pytest.mark.parametrize("code", [0, 1])
+def test_mutation_inventory_reads_target_meta_omitted_by_walk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    _write_run(tmp_path, {FUNCTION: [1], OTHER_FUNCTION: [code]}, _stats(killed=1 + code))
+    visible = tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta"
+    monkeypatch.setattr(Path, "rglob", lambda self, pattern: iter([visible]))
+    result = _run_stats_check(tmp_path, in_process=True)
+    assert result.returncode == (1 if code == 0 else 0), result.stderr
+    if code == 0:
+        assert f"{OTHER_FUNCTION}: survived=1 exceeds baseline=0" in result.stderr
+        assert "within baseline" not in result.stdout
+    else:
+        assert "2/2 effective kills, within baseline" in result.stdout
+
+
+def test_mutation_inventory_reads_target_meta_despite_walk_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_run(tmp_path, {FUNCTION: [1], OTHER_FUNCTION: [0]}, _stats(killed=1))
+
+    def broken_walk(self: Path, pattern: str):
+        yield tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta"
+        raise PermissionError("synthetic enumeration error")
+
+    monkeypatch.setattr(Path, "rglob", broken_walk)
+    result = _run_stats_check(tmp_path, in_process=True)
+    assert result.returncode == 1
+    assert f"{OTHER_FUNCTION}: survived=1 exceeds baseline=0" in result.stderr
+    assert "synthetic enumeration error" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("suffix", [".py", ".py.meta"])
+def test_mutation_inventory_rejects_target_resolving_outside_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    _write_run(tmp_path)
+    escaped = tmp_path / "mutants" / ("auto_bi/agent/sql_guard" + suffix)
+    original_resolve = Path.resolve
+
+    def resolve(self: Path, *args, **kwargs) -> Path:
+        if self == escaped:
+            return tmp_path / "mutants-outside" / escaped.name
+        return original_resolve(self, *args, **kwargs)
+
+    # Model a symlink/junction without requiring Windows symlink privileges.
+    monkeypatch.setattr(Path, "resolve", resolve)
+    result = _run_stats_check(tmp_path, in_process=True)
+    assert result.returncode == 1
+    assert f"{escaped}: target path must stay inside mutants directory" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_mutation_inventory_rejects_stray_meta(tmp_path: Path) -> None:
     _write_run(tmp_path)
     path = tmp_path / "mutants/stray.py.meta"
@@ -570,6 +636,74 @@ def test_mutation_inventory_accepts_nested_definitions(tmp_path: Path) -> None:
     )
     result = _run_stats_check(tmp_path)
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("remove_result", [False, True])
+def test_mutation_inventory_checks_async_definitions(tmp_path: Path, remove_result: bool) -> None:
+    _write_run(tmp_path, {FUNCTION: [1, 1]}, _stats(killed=2))
+    source = tmp_path / "mutants/auto_bi/agent/sql_guard.py"
+    name = FUNCTION.rsplit(".", 1)[1]
+    source.write_text(
+        source.read_text(encoding="utf-8").replace(
+            f"def {name}__mutmut_2", f"async def {name}__mutmut_2"
+        ),
+        encoding="utf-8",
+    )
+    if remove_result:
+        source.with_suffix(".py.meta").write_text(
+            json.dumps({"exit_code_by_key": {f"{FUNCTION}__mutmut_1": 1}}), encoding="utf-8"
+        )
+        (tmp_path / "mutmut-cicd-stats.json").write_text(
+            json.dumps(_stats(killed=1)), encoding="utf-8"
+        )
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == (1 if remove_result else 0), result.stderr
+    if remove_result:
+        assert f"missing result: {FUNCTION}__mutmut_2" in result.stderr
+        assert "within baseline" not in result.stdout
+    else:
+        assert "2/2 effective kills, within baseline" in result.stdout
+
+
+@pytest.mark.parametrize("keep_result", [False, True])
+def test_mutation_inventory_withholds_incomplete_baseline(
+    tmp_path: Path, keep_result: bool
+) -> None:
+    _write_run(
+        tmp_path,
+        {FUNCTION: [1, 0, 5], METHOD: [0], OTHER_FUNCTION: [1]},
+        _stats(killed=2, survived=2, no_tests=1),
+        {
+            FUNCTION: {"survived": 2, "no_tests": 2},
+            METHOD: {"survived": 2},
+            OTHER_FUNCTION: {"no_tests": 1},
+        },
+    )
+    results = {f"{METHOD}__mutmut_1": 0}
+    if keep_result:
+        results[f"{FUNCTION}__mutmut_1"] = 1
+    (tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta").write_text(
+        json.dumps({"exit_code_by_key": results}), encoding="utf-8"
+    )
+    (tmp_path / "mutmut-cicd-stats.json").write_text(
+        json.dumps(_stats(killed=1 + keep_result, survived=1)), encoding="utf-8"
+    )
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert f"missing result: {FUNCTION}__mutmut_2" in result.stderr
+    assert f"missing result: {FUNCTION}__mutmut_3" in result.stderr
+    assert BASELINE_PROPOSAL_MARKER not in result.stdout
+    assert (
+        result.stdout.count(
+            "mutation gate: baseline proposal withheld because results are incomplete"
+        )
+        == 1
+    )
+    assert f"{FUNCTION}: produced no mutants" not in result.stdout
+    assert f"{FUNCTION}: survived=0 below baseline" not in result.stdout
+    assert f"{FUNCTION}: no_tests=0 below baseline" not in result.stdout
+    assert f"{METHOD}: survived=1 below baseline=2" in result.stdout
+    assert f"{OTHER_FUNCTION}: no_tests=0 below baseline=1" in result.stdout
 
 
 def test_mutation_inventory_ignores_orig_and_registry_references(tmp_path: Path) -> None:
@@ -627,6 +761,44 @@ def test_mutation_inventory_rejects_malformed_pyproject(tmp_path: Path, contents
     result = _run_stats_check(tmp_path)
     assert result.returncode == 1
     assert "pyproject.toml" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        r"\outside.py",
+        "C:outside.py",
+        "C:/outside.py",
+        "/outside.py",
+        r"\\server\share\outside.py",
+        r"..\outside.py",
+    ],
+)
+def test_mutation_inventory_rejects_rooted_or_drive_relative_target(
+    tmp_path: Path, target: str
+) -> None:
+    _write_run(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.mutmut]\nonly_mutate = " + json.dumps([target]) + "\n", encoding="utf-8"
+    )
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert f"only_mutate target must be a relative .py file: {target}" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("target", ["pkg/*.py", "pkg/?.py", "pkg/[ab].py"])
+def test_mutation_inventory_rejects_target_patterns(tmp_path: Path, target: str) -> None:
+    _write_run(tmp_path, {"pkg.a.x_run": [1]}, _stats(killed=1))
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.mutmut]\nonly_mutate = " + json.dumps([target]) + "\n", encoding="utf-8"
+    )
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert f"only_mutate patterns are not supported: {target}" in result.stderr
+    assert "missing" not in result.stderr
+    assert "does not belong to a target" not in result.stderr
     assert "Traceback" not in result.stderr
 
 
