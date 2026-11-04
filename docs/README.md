@@ -34,6 +34,7 @@ package identity или remote.
 | [ADR 0005](adr/0005-ed25519-evidence-trust-root.md) | Ed25519 trust root для evidence manifest | decision |
 | [ADR 0006](adr/0006-modelled-review-development-gate.md) | Продолжение разработки через моделирование на Astra xhigh | decision |
 | [ADR 0007](adr/0007-human-outcome-out-of-scope.md) | Человеческий owner outcome не входит в цели проекта | decision |
+| [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md) | Первый внешний источник формул метрик — dbt `semantic_manifest.json` | decision |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome не измеряется |
 | [Implementation history](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md) | Подробный хронологический журнал реализации | archive |
 | [Status log](history/DECISIONOPS_STATUS_LOG.md) | Запись каждого среза, сверху новые; пополняется | history |

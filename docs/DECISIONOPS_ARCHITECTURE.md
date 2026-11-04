@@ -207,7 +207,7 @@ auto_bi/
     metric_contract.py   governed metric definition
     gateway.py           source protocols, snapshot, gaps
     diff.py              semantic and impact diff
-    metricflow.py        bounded dbt/MetricFlow import
+    metricflow.py        dbt semantic_manifest formula resolver (ADR 0008)
     ossie.py             pinned Apache Ossie compatibility adapter
   verification/
     model.py             CheckResult, verdict and policy
@@ -402,7 +402,10 @@ verified assets читают ссылку насквозь. Жёсткая сс�
 прежде ([metrics links](specs/metrics-links.md)).
 
 Native `model.yaml` — первый source adapter. Текущий `dbt_import.py` остаётся
-enrichment helper и не объявляется полноценным MetricFlow importer. Apache
+enrichment helper и не объявляется полноценным MetricFlow importer. Первый внешний
+источник — формулы метрик из dbt `semantic_manifest.json`, которые resolver подставляет в
+native snapshot; схему по-прежнему задаёт `model.yaml`, а `osi_document.json` источником
+формул не служит ([ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)). Apache
 Ossie (бывший OSI) используется через adapter, pinned на tag или commit;
 неизвестные `custom_extensions` сохраняются для round-trip, но не получают
 выдуманную внутреннюю семантику.
@@ -2538,16 +2541,15 @@ owner/design-partner outcome не измеряется и не входит в �
 соответствующей фазы:
 
 1. Первый pilot workflow и named owner.
-2. Первый внешний semantic source: direct dbt/MetricFlow или Apache Ossie
-   artifact после native source.
-3. Нужен ли отдельный distribution/package name до `v0.6.0`.
-4. Где будет новый remote repository.
-5. Нужен ли PostgreSQL в pilot или filesystem/SQLite достаточно.
-6. Какой BI contract требует live result reconciliation первым.
-7. Какой managed key custody/KMS заменит Mac file key перед production-контуром.
+2. Нужен ли отдельный distribution/package name до `v0.6.0`.
+3. Где будет новый remote repository.
+4. Нужен ли PostgreSQL в pilot или filesystem/SQLite достаточно.
+5. Какой BI contract требует live result reconciliation первым.
+6. Какой managed key custody/KMS заменит Mac file key перед production-контуром.
 
 Подпись evidence и bootstrap trust root выбраны в
-[ADR 0005](adr/0005-ed25519-evidence-trust-root.md); этот вопрос больше не открыт.
+[ADR 0005](adr/0005-ed25519-evidence-trust-root.md); этот вопрос больше не открыт. Первый
+внешний semantic source выбран в [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md).
 
 ## 19. Bootstrap acceptance
 

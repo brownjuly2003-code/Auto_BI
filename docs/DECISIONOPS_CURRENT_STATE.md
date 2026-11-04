@@ -299,7 +299,8 @@ reviewed capture, provenance/governance, все пять live DWH checks и sign
   ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Proxy- и Astra-review не заменяют
   время и подтверждение понятности от живого владельца, и такие утверждения не делаются.
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
-  **Ossie**, **MetricFlow** и **column-level lineage** не реализованы; проверка колонок
+  **Ossie**, **MetricFlow** и **column-level lineage** не реализованы (дизайн первого
+  внешнего источника формул — [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)); проверка колонок
   reviewed-запроса — это governance («объявлено ли поле»), а не lineage («откуда значение
   пришло через преобразования»). Offline brief
   остаётся `exploratory` и не является human acceptance evidence.
@@ -376,8 +377,11 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 
 ## Что делать дальше
 
-Открытых задач нет: следующий срез выбирает владелец, содержательное ревью — Astra xhigh
-по [ADR 0006](adr/0006-modelled-review-development-gate.md) и [AGENTS.md](../AGENTS.md).
+Открыт один этап — внешний источник формул метрик (решение владельца 2026-11-04,
+[ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)): срезы S1–S5 перечислены в его «Последствиях», следующий — S1, строгий
+reader `semantic_manifest.json`. Другие срезы владелец выбирает сам, содержательное ревью —
+Astra xhigh по [ADR 0006](adr/0006-modelled-review-development-gate.md) и
+[AGENTS.md](../AGENTS.md).
 Записи закрытых срезов — [журнал статуса](history/DECISIONOPS_STATUS_LOG.md); прежние
 абзацы этого файла о срезах и перечень закрытого —
 [история состояния по срезам](history/DECISIONOPS_SLICE_STATE_HISTORY.md).
