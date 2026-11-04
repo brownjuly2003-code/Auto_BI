@@ -36,6 +36,8 @@ package identity или remote.
 | [ADR 0007](adr/0007-human-outcome-out-of-scope.md) | Человеческий owner outcome не входит в цели проекта | decision |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome не измеряется |
 | [Implementation history](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md) | Подробный хронологический журнал реализации | archive |
+| [Status log](history/DECISIONOPS_STATUS_LOG.md) | Запись каждого среза, сверху новые; пополняется | history |
+| [Slice state history](history/DECISIONOPS_SLICE_STATE_HISTORY.md) | Прежние абзацы CURRENT_STATE о срезах до 2026-11-04 | archive |
 | [Strategy snapshot](history/DECISIONOPS_STRATEGY_2026-08-21.md) | Исследование и шестимесячная концепция на 2026-08-21 | archive |
 | [Typed investigation MVP](history/TYPED_INVESTIGATION_MVP.md) | Журнал закрытого среза offline investigation alpha | archive; закрыт |
 | [Chart-level impact](history/CHART_LEVEL_IMPACT.md) | Журнал закрытого среза «impact до плитки» | archive; закрыт |
