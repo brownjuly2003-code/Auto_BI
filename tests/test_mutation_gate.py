@@ -28,6 +28,8 @@ def _run_stats_check(tmp_path: Path) -> subprocess.CompletedProcess[str]:
             str(tmp_path / "mutants"),
             "--baseline",
             str(tmp_path / "baseline.json"),
+            "--pyproject",
+            str(tmp_path / "pyproject.toml"),
         ],
         cwd=ROOT,
         capture_output=True,
@@ -53,6 +55,18 @@ def _stats(**counts: int) -> dict[str, int]:
     return stats
 
 
+def _write_source(path: Path, mutants: dict[str, int | None]) -> None:
+    definitions: list[str] = []
+    for mutant in mutants:
+        name = mutant.rsplit(".", 1)[1]
+        if "\u01c1" in name:
+            class_name = name.split("\u01c1")[1]
+            definitions.append(f"class {class_name}:\n    def {name}(self):\n        pass\n")
+        else:
+            definitions.append(f"def {name}():\n    pass\n")
+    path.write_text("\n".join(definitions), encoding="utf-8", newline="\n")
+
+
 def _write_run(
     tmp_path: Path,
     outcomes: dict[str, list[int | None]] | None = None,
@@ -75,6 +89,11 @@ def _write_run(
         meta_path = mutants_dir / (module.replace(".", "/") + ".py.meta")
         meta_path.parent.mkdir(parents=True, exist_ok=True)
         meta_path.write_text(json.dumps({"exit_code_by_key": results}), encoding="utf-8")
+        _write_source(meta_path.with_suffix(""), results)
+    targets = [module.replace(".", "/") + ".py" for module in by_module]
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.mutmut]\nonly_mutate = " + json.dumps(targets) + "\n", encoding="utf-8"
+    )
     (tmp_path / "mutmut-cicd-stats.json").write_text(json.dumps(stats), encoding="utf-8")
     (tmp_path / "baseline.json").write_text(
         json.dumps({"measured": "synthetic test fixture", "functions": baseline or {}}),
@@ -287,7 +306,8 @@ def test_primary_quality_job_runs_pinned_mutation_gate() -> None:
     assert "uv run --with mutmut==3.6.0 mutmut export-cicd-stats" in workflow
     assert (
         "scripts/check_mutation_stats.py mutants/mutmut-cicd-stats.json "
-        "--mutants-dir mutants --baseline scripts/mutation_baseline.json"
+        "--mutants-dir mutants --baseline scripts/mutation_baseline.json "
+        "--pyproject pyproject.toml"
     ) in workflow
     assert re.search(r"Mutation smoke \(bounded core\)\n\s+timeout-minutes: 60\n", workflow)
     step = re.search(
@@ -437,6 +457,189 @@ def test_mutation_ratchet_reports_lower_counts_and_absent_functions(tmp_path: Pa
     _assert_baseline_proposal(result, {FUNCTION: {"survived": 1}})
 
 
+def test_mutation_ratchet_prints_notices_alongside_errors(tmp_path: Path) -> None:
+    _write_run(
+        tmp_path,
+        {FUNCTION: [0, 1], METHOD: [0]},
+        _stats(killed=1, survived=2),
+        {FUNCTION: {"survived": 2}, OTHER_FUNCTION: {"survived": 3}},
+    )
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert f"{METHOD}: survived=1 exceeds baseline=0" in result.stderr
+    assert f"{FUNCTION}: survived=1 below baseline=2" in result.stdout
+    assert f"{OTHER_FUNCTION}: produced no mutants" in result.stdout
+    assert "below baseline" not in result.stderr
+    assert "produced no mutants" not in result.stderr
+    _assert_baseline_proposal(result, {FUNCTION: {"survived": 1}, METHOD: {"survived": 1}})
+
+
+def test_mutation_inventory_rejects_lost_survivor_with_matching_stats(tmp_path: Path) -> None:
+    _write_run(tmp_path, {FUNCTION: [1, 0]}, _stats(killed=1, survived=1))
+    before = _run_stats_check(tmp_path)
+    assert before.returncode == 1
+    assert f"{FUNCTION}: survived=1 exceeds baseline=0" in before.stderr
+    meta = tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta"
+    meta.write_text(
+        json.dumps({"exit_code_by_key": {f"{FUNCTION}__mutmut_1": 1}}), encoding="utf-8"
+    )
+    (tmp_path / "mutmut-cicd-stats.json").write_text(json.dumps(_stats(killed=1)), encoding="utf-8")
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert f"missing result: {FUNCTION}__mutmut_2" in result.stderr
+    assert "within baseline" not in result.stdout
+
+
+def test_mutation_inventory_rejects_results_without_definitions(tmp_path: Path) -> None:
+    _write_run(tmp_path, {FUNCTION: [1, 1, 1]}, _stats(killed=3))
+    _write_source(tmp_path / "mutants/auto_bi/agent/sql_guard.py", {f"{FUNCTION}__mutmut_1": 1})
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    for number in (2, 3):
+        assert f"unexpected result: {FUNCTION}__mutmut_{number}" in result.stderr
+
+
+def test_mutation_inventory_rejects_definitions_without_results(tmp_path: Path) -> None:
+    _write_run(tmp_path, {FUNCTION: [1]}, _stats(killed=1))
+    _write_source(
+        tmp_path / "mutants/auto_bi/agent/sql_guard.py",
+        {f"{FUNCTION}__mutmut_{number}": 1 for number in (1, 2, 3)},
+    )
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    for number in (2, 3):
+        assert f"missing result: {FUNCTION}__mutmut_{number}" in result.stderr
+
+
+@pytest.mark.parametrize("suffix", [".py", ".py.meta"])
+def test_mutation_inventory_requires_every_target_file(tmp_path: Path, suffix: str) -> None:
+    _write_run(tmp_path, {FUNCTION: [1], OTHER_FUNCTION: [1]}, _stats(killed=2))
+    path = tmp_path / "mutants" / ("auto_bi/ir/validate" + suffix)
+    path.unlink()
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert str(path) in result.stderr
+    assert "Traceback" not in result.stderr
+    if suffix == ".py.meta":
+        assert f"missing result: {OTHER_FUNCTION}__mutmut_1" in result.stderr
+
+
+def test_mutation_inventory_rejects_stray_meta(tmp_path: Path) -> None:
+    _write_run(tmp_path)
+    path = tmp_path / "mutants/stray.py.meta"
+    path.write_text('{"exit_code_by_key": {}}', encoding="utf-8")
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert f"{path}: .meta does not belong to a target" in result.stderr
+
+
+def test_mutation_inventory_rejects_results_in_wrong_target_meta(tmp_path: Path) -> None:
+    _write_run(tmp_path, {FUNCTION: [1], OTHER_FUNCTION: [1]}, _stats(killed=2))
+    first = tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta"
+    second = tmp_path / "mutants/auto_bi/ir/validate.py.meta"
+    first_bytes, second_bytes = first.read_bytes(), second.read_bytes()
+    first.write_bytes(second_bytes)
+    second.write_bytes(first_bytes)
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    for path, expected, unexpected in (
+        (first, FUNCTION, OTHER_FUNCTION),
+        (second, OTHER_FUNCTION, FUNCTION),
+    ):
+        assert f"{path}: missing result: {expected}__mutmut_1" in result.stderr
+        assert f"{path}: unexpected result: {unexpected}__mutmut_1" in result.stderr
+
+
+def test_mutation_inventory_accepts_method_with_ascii_escaped_meta(tmp_path: Path) -> None:
+    _write_run(tmp_path, {FUNCTION: [1], METHOD: [1]}, _stats(killed=2))
+    meta = tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta"
+    assert "\\u01c1" in meta.read_text(encoding="utf-8")
+    assert "\u01c1" in meta.with_suffix("").read_text(encoding="utf-8")
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "2/2 effective kills" in result.stdout
+
+
+def test_mutation_inventory_accepts_nested_definitions(tmp_path: Path) -> None:
+    _write_run(tmp_path, {FUNCTION: [1]}, _stats(killed=1))
+    source = tmp_path / "mutants/auto_bi/agent/sql_guard.py"
+    definition = source.read_text(encoding="utf-8")
+    source.write_text(
+        "def wrapper():\n" + "\n".join("    " + line for line in definition.splitlines()) + "\n",
+        encoding="utf-8",
+    )
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_mutation_inventory_ignores_orig_and_registry_references(tmp_path: Path) -> None:
+    _write_run(tmp_path, {FUNCTION: [1]}, _stats(killed=1))
+    source = tmp_path / "mutants/auto_bi/agent/sql_guard.py"
+    name = FUNCTION.rsplit(".", 1)[1]
+    source.write_text(
+        source.read_text(encoding="utf-8")
+        + f"\ndef {name}__mutmut_orig():\n    pass\n"
+        + f"\ndef {name}__mutmut_2_suffix():\n    pass\n"
+        + f"\nmutants_{name}__mutmut['{name}__mutmut_99'] = {name}__mutmut_99\n",
+        encoding="utf-8",
+    )
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "1/1 effective kills" in result.stdout
+
+
+def test_mutation_inventory_rejects_empty_target_among_nonempty_targets(tmp_path: Path) -> None:
+    _write_run(tmp_path, {FUNCTION: [1], OTHER_FUNCTION: []}, _stats(killed=1))
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    source = tmp_path / "mutants/auto_bi/ir/validate.py"
+    assert f"{source}: empty mutant inventory" in result.stderr
+
+
+@pytest.mark.parametrize("contents", [b"def broken(:", b"\xff"])
+def test_mutation_inventory_rejects_malformed_source(tmp_path: Path, contents: bytes) -> None:
+    _write_run(tmp_path)
+    source = tmp_path / "mutants/auto_bi/agent/sql_guard.py"
+    source.write_bytes(contents)
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert str(source) in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        b"[",
+        b"\xff",
+        b"[tool.mutmut]\n",
+        b'[tool.mutmut]\nonly_mutate = "auto_bi/agent/sql_guard.py"\n',
+        b"[tool.mutmut]\nonly_mutate = []\n",
+        b"[tool.mutmut]\nonly_mutate = [1]\n",
+        b'[tool.mutmut]\nonly_mutate = ["../outside.py"]\n',
+        b'[tool.mutmut]\nonly_mutate = ["auto_bi"]\n',
+        b'[tool.mutmut]\nonly_mutate = ["same.py", "same.py"]\n',
+    ],
+)
+def test_mutation_inventory_rejects_malformed_pyproject(tmp_path: Path, contents: bytes) -> None:
+    _write_run(tmp_path)
+    (tmp_path / "pyproject.toml").write_bytes(contents)
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert "pyproject.toml" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_mutation_inventory_rejects_duplicate_result_in_target_meta(tmp_path: Path) -> None:
+    _write_run(tmp_path, {FUNCTION: [1]}, _stats(killed=1))
+    meta = tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta"
+    key = f'"{FUNCTION}__mutmut_1": 1'
+    meta.write_text('{"exit_code_by_key": {' + key + ", " + key + "}}", encoding="utf-8")
+    result = _run_stats_check(tmp_path)
+    assert result.returncode == 1
+    assert f"duplicate JSON key: {FUNCTION}__mutmut_1" in result.stderr
+
+
 @pytest.mark.parametrize("field", list(_stats()))
 def test_mutation_stats_reject_disagreement(tmp_path: Path, field: str) -> None:
     stats = _stats(killed=1, timeout=1)
@@ -455,7 +658,9 @@ def test_mutation_stats_reject_empty_run(tmp_path: Path) -> None:
     assert "total=0" in result.stderr
 
 
-@pytest.mark.parametrize("missing", ["mutants", "baseline.json", "mutmut-cicd-stats.json", "meta"])
+@pytest.mark.parametrize(
+    "missing", ["mutants", "baseline.json", "mutmut-cicd-stats.json", "meta", "pyproject.toml"]
+)
 def test_mutation_stats_reject_missing_inputs(tmp_path: Path, missing: str) -> None:
     _write_run(tmp_path)
     if missing == "mutants":
@@ -539,9 +744,9 @@ def test_mutation_stats_reject_malformed_meta_results(tmp_path: Path, results: o
 
 
 def test_mutation_stats_reject_duplicate_mutants_across_meta_files(tmp_path: Path) -> None:
-    _write_run(tmp_path, {FUNCTION: [1]}, _stats(killed=2))
-    meta = next((tmp_path / "mutants").rglob("*.meta"))
-    (tmp_path / "mutants" / "duplicate.py.meta").write_bytes(meta.read_bytes())
+    _write_run(tmp_path, {FUNCTION: [1], OTHER_FUNCTION: [1]}, _stats(killed=2))
+    meta = tmp_path / "mutants/auto_bi/agent/sql_guard.py.meta"
+    (tmp_path / "mutants/auto_bi/ir/validate.py.meta").write_bytes(meta.read_bytes())
     result = _run_stats_check(tmp_path)
     assert result.returncode == 1
     assert "duplicate mutant" in result.stderr

@@ -93,7 +93,7 @@ jobs:
         run: |
           uv run --with mutmut==3.6.0 mutmut run --max-children 4
           uv run --with mutmut==3.6.0 mutmut export-cicd-stats
-          uv run python scripts/check_mutation_stats.py mutants/mutmut-cicd-stats.json --mutants-dir mutants --baseline scripts/mutation_baseline.json
+          uv run python scripts/check_mutation_stats.py mutants/mutmut-cicd-stats.json --mutants-dir mutants --baseline scripts/mutation_baseline.json --pyproject pyproject.toml
 
       # The advisor eval suite is deterministic (rule-pack findings, no LLM/stand) —
       # running it in CI machinizes part of invariant 8 (don't ship a prompt/advisor

@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import sys
+import tomllib
 from collections import Counter
 from pathlib import Path
 
@@ -44,6 +46,7 @@ EXIT_STATUSES = {
 }
 FUNCTION_NAME = re.compile(r"(?:[a-zA-Z_]\w*\.)+x(?:_\w+|ǁ\w+ǁ\w+)")
 MUTANT_NAME = re.compile(FUNCTION_NAME.pattern + r"__mutmut_[0-9]+")
+MUTANT_DEFINITION = re.compile(r"x.+__mutmut_[0-9]+")
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -85,14 +88,70 @@ def _baseline(path: Path) -> dict[str, dict[str, int]]:
     return functions
 
 
-def _mutant_results(directory: Path) -> dict[str, str]:
+def _mutation_targets(path: Path) -> list[Path]:
+    try:
+        config = tomllib.loads(path.read_text(encoding="utf-8"))
+        targets = config["tool"]["mutmut"]["only_mutate"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ValueError(f"cannot read {path}: {exc}") from exc
+    if not isinstance(targets, list) or not targets:
+        raise ValueError(f"{path}: only_mutate must be a non-empty list of target files")
+    paths: list[Path] = []
+    for target in targets:
+        if not isinstance(target, str):
+            raise ValueError(f"{path}: invalid only_mutate target: {target!r}")
+        source = Path(target)
+        if source.is_absolute() or ".." in source.parts or source.suffix != ".py":
+            raise ValueError(f"{path}: only_mutate target must be a relative .py file: {target}")
+        if source in paths:
+            raise ValueError(f"{path}: duplicate only_mutate target: {target}")
+        paths.append(source)
+    return paths
+
+
+def _mutant_inventory(source: Path, module: str) -> set[str]:
+    try:
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    except (OSError, ValueError, SyntaxError) as exc:
+        raise ValueError(f"cannot read {source}: {exc}") from exc
+    return {
+        f"{module}.{node.name}"
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and MUTANT_DEFINITION.fullmatch(node.name)
+    }
+
+
+def _mutant_results(directory: Path, targets: list[Path]) -> tuple[dict[str, str], list[str]]:
     if not directory.is_dir():
         raise ValueError(f"mutants directory missing or not a directory: {directory}")
     paths = sorted(directory.rglob("*.meta"))
+    errors: list[str] = []
     if not paths:
-        raise ValueError(f"{directory}: no .meta files found")
+        errors.append(f"{directory}: no .meta files found")
+    inventories: dict[Path, set[str]] = {}
+    for target in targets:
+        source = directory / target
+        meta = source.with_suffix(source.suffix + ".meta")
+        inventories[meta] = set()
+        meta_exists = meta.is_file()
+        if not meta_exists:
+            errors.append(f"{meta}: target .meta missing or not a file")
+        try:
+            inventory = _mutant_inventory(source, ".".join(target.with_suffix("").parts))
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if not inventory:
+            errors.append(f"{source}: empty mutant inventory")
+        if not meta_exists:
+            for mutant in sorted(inventory):
+                errors.append(f"{meta}: missing result: {mutant}")
+        inventories[meta] = inventory
     results: dict[str, str] = {}
     for path in paths:
+        if path not in inventories:
+            errors.append(f"{path}: .meta does not belong to a target")
         payload = _read_json(path)
         if not isinstance(payload, dict) or not isinstance(payload.get("exit_code_by_key"), dict):
             raise ValueError(f"{path}: exit_code_by_key must be a JSON object")
@@ -104,7 +163,14 @@ def _mutant_results(directory: Path) -> dict[str, str]:
             if code is not None and type(code) is not int:
                 raise ValueError(f"{path}: {mutant}: exit code must be an integer or null")
             results[mutant] = EXIT_STATUSES.get(code, "suspicious")
-    return results
+        if path in inventories:
+            expected = inventories[path]
+            actual = set(payload["exit_code_by_key"])
+            for mutant in sorted(expected - actual):
+                errors.append(f"{path}: missing result: {mutant}")
+            for mutant in sorted(actual - expected):
+                errors.append(f"{path}: unexpected result: {mutant}")
+    return results, errors
 
 
 def _function(mutant: str) -> str:
@@ -173,23 +239,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("stats", type=Path)
     parser.add_argument("--mutants-dir", type=Path, required=True)
     parser.add_argument("--baseline", type=Path, required=True)
+    parser.add_argument("--pyproject", type=Path, required=True)
     args = parser.parse_args(argv)
 
     try:
         payload = _read_json(args.stats)
         baseline = _baseline(args.baseline)
-        results = _mutant_results(args.mutants_dir)
+        targets = _mutation_targets(args.pyproject)
+        results, inventory_errors = _mutant_results(args.mutants_dir, targets)
     except (OSError, ValueError) as exc:
         print(f"mutation gate: {exc}", file=sys.stderr)
         return 1
 
     errors, notices, effective_kills, total = validate_stats(payload, results, baseline)
+    errors = inventory_errors + errors
     if errors:
         print(f"mutation gate failed ({args.stats}):\n" + "\n".join(errors), file=sys.stderr)
     else:
         print(f"mutation gate: {effective_kills}/{total} effective kills, within baseline")
-        for notice in notices:
-            print(notice)
+    for notice in notices:
+        print(notice)
 
     measured: dict[str, dict[str, int]] = {}
     for mutant, status in results.items():

@@ -160,16 +160,28 @@ before starting mutmut to compare with CI.
 
 Only mutmut's `pytest_add_cli_args` adds `-W` with
 `ignore:unclosed scandir iterator:ResourceWarning` and `-W` with
-`ignore:(rm_rf) error removing:pytest.PytestWarning`. The regular suite keeps its
-existing `filterwarnings` unchanged. The iterator warning comes from pytest's
-cleanup; application filesystem code already closes its scandir iterators.
+`ignore:(rm_rf) error removing:pytest.PytestWarning`. These filters match warning
+category and message, not origin: under mutmut an unclosed scandir iterator from
+any module, including `auto_bi`, is ignored. The `(rm_rf) error removing` message
+is pytest's own text. The regular suite keeps its existing `filterwarnings`
+unchanged and turns such a warning into an error, so a real leak fails the ordinary
+pytest step. Under mutmut a mutant whose only effect is such a leak survives
+rather than being killed, so it counts against the ratchet.
 
 `scripts/check_mutation_stats.py` rejects unchecked, skipped, suspicious,
 type-check-caught, interrupted, and crashed mutants. Unknown exit codes are
 suspicious. Timed-out mutants count toward effective kills;
-`killed + timeout + survived + no_tests` must equal `total`. The gate reads
-per-mutant outcomes from `mutants/**/*.meta` and rejects missing or malformed
-inputs, empty runs, and any disagreement with `mutants/mutmut-cicd-stats.json`.
+`killed + timeout + survived + no_tests` must equal `total`. The gate reads targets
+from `[tool.mutmut] only_mutate` in the file passed with `--pyproject`, mutant
+definitions from each generated source under `mutants/`, and per-mutant outcomes
+from its `.meta`. Mutmut writes these sources before any tests run. The independent
+inventory collects function definitions at any depth whose names fully match
+`x.+__mutmut_[0-9]+`, qualified with the target's dotted module path; methods count,
+`__mutmut_orig` and registry references do not. Every target must have both files
+and a non-empty inventory. The gate rejects stray `.meta` files and requires exactly
+one result per expected mutant in its target's `.meta`, reporting every missing or
+unexpected result by mutant name. It also rejects missing or malformed inputs,
+empty runs, and any disagreement with `mutants/mutmut-cicd-stats.json`.
 The ratchet in `scripts/mutation_baseline.json` limits `survived` and `no_tests`
 separately for each function. A function absent from the baseline is allowed zero
 weak mutants. Counts at or below the baseline pass; an increase fails with the
