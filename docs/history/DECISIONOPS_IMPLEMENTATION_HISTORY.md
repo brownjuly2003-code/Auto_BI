@@ -13,7 +13,7 @@ evidence bundle → отчёт владельцу → чтение bundle. **Ш�
 `dwh.security` и `dwh.cost`, — без него честно говорит `check.not_configured`. Ничего в
 гейте больше не отвечает `check.not_implemented`.
 Bootstrap tasks 2–7 закрыты. **Task 8 (pilot): проведена репетиция на локальном стенде** —
-[`DECISIONOPS_PILOT_2026-08-25.md`](../DECISIONOPS_PILOT_2026-08-25.md): четыре прогона против
+[`DECISIONOPS_PILOT_2026-08-25.md`](../reviews/DECISIONOPS_PILOT_2026-08-25.md): четыре прогона против
 живого ClickHouse на графе из ДВУХ governed-продуктов, гейт ~1.6 с и детерминирован, все
 четыре bundle лежат в `docs/pilot/` и перепроверяются оттуда. **Репетиция нашла и починила
 три дефекта** (грейдился весь дифф, а не дошедшее до продукта; assets брались чужие; один
@@ -782,7 +782,7 @@ escaping (независимый оракул, 20k случайных double + �
 
 ### Репетиция пилота и два дефекта, которые она нашла (2026-08-25)
 
-Полная запись — [`DECISIONOPS_PILOT_2026-08-25.md`](../DECISIONOPS_PILOT_2026-08-25.md); входы и
+Полная запись — [`DECISIONOPS_PILOT_2026-08-25.md`](../reviews/DECISIONOPS_PILOT_2026-08-25.md); входы и
 evidence всех прогонов лежат в `docs/pilot/2026-08-25-ch-*/` и перепроверяются оттуда. Здесь —
 только то, что меняет код и что нельзя узнать, не прогнав гейт на графе больше одного продукта.
 
@@ -904,7 +904,7 @@ uv run auto_bi decision verify /tmp/stand-run/contracts \
 `cost.over_budget`), `dwh.freshness` review, если витрину не пересеивали сегодня, и
 `results.reconcile` — `result.equivalent`. Вердикт прогона — `needs_review` (exit 3) ровно
 из-за свежести. Полная матрица «какой change что даёт» —
-[`DECISIONOPS_PILOT_2026-08-25.md`](../DECISIONOPS_PILOT_2026-08-25.md), а её входы и evidence
+[`DECISIONOPS_PILOT_2026-08-25.md`](../reviews/DECISIONOPS_PILOT_2026-08-25.md), а её входы и evidence
 лежат в `docs/pilot/2026-08-25-ch-*/` и перепроверяются без стенда вообще.
 
 То же самое на PostgreSQL: `greenplum` вторым аргументом, `AUTO_BI_GP_*` вместо
@@ -925,7 +925,7 @@ uv run auto_bi decision verify /tmp/stand-run/contracts \
   verified-asset SQL. Content digest доказывает неизменность переданных чисел, но не то, что
   именно DWH произвёл их; provenance этого результата пока остаётся внешним evidence;
 - **измеренного owner outcome нет** — задача 8 открыта. Репетиция
-  ([`DECISIONOPS_PILOT_2026-08-25.md`](../DECISIONOPS_PILOT_2026-08-25.md)) и Mac v6 pilot
+  ([`DECISIONOPS_PILOT_2026-08-25.md`](../reviews/DECISIONOPS_PILOT_2026-08-25.md)) и Mac v6 pilot
   подтвердили технический контур, но не могут измерить то, что меряет только владелец:
   сколько он читает отчёт и понятен ли тот;
 - typed investigations, certified brief, scheduler, PostgreSQL, MCP, actions, Ossie,
@@ -1012,7 +1012,7 @@ verifier 6 повторять без нового входа не нужно: п
 2. [DecisionOps architecture](../DECISIONOPS_ARCHITECTURE.md) — дизайн и его обоснования.
 3. [ADR 0003](../adr/0003-decisionops-additive-control-plane.md).
 4. [Implementation plan](DECISIONOPS_BOOTSTRAP.md).
-5. [Запись репетиции пилота](../DECISIONOPS_PILOT_2026-08-25.md) — что гейт делает на живом
+5. [Запись репетиции пилота](../reviews/DECISIONOPS_PILOT_2026-08-25.md) — что гейт делает на живом
    движке, что он при этом НЕ доказывает, и входы/evidence в `docs/pilot/`.
 6. Для унаследованного v1 runtime — [ARCHITECTURE.md](../ARCHITECTURE.md) и
    [CURRENT_STATE.md](../CURRENT_STATE.md).

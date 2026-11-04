@@ -8,7 +8,7 @@ Procedural human gate для продолжения разработки зам�
 **Дата:** 2026-09-04
 **Связано:** [текущее состояние](../DECISIONOPS_CURRENT_STATE.md),
 [целевая архитектура](../DECISIONOPS_ARCHITECTURE.md),
-[симуляция owner-gate](../DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md)
+[симуляция owner-gate](../reviews/DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md)
 
 ## Context
 

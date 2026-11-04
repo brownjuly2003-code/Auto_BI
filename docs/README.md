@@ -27,8 +27,8 @@ package identity или remote.
 |---|---|---|
 | [DECISIONOPS_CURRENT_STATE.md](DECISIONOPS_CURRENT_STATE.md) | Короткая актуальная сводка, остаток pilot и решения владельца | current |
 | [DECISIONOPS_ARCHITECTURE.md](DECISIONOPS_ARCHITECTURE.md) | Нормативная целевая архитектура и инварианты | current |
-| [DECISIONOPS_PILOT_2026-08-25.md](DECISIONOPS_PILOT_2026-08-25.md) | Воспроизводимая репетиция gate на ClickHouse | evidence record |
-| [Owner-gate simulation 2026-09-12](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md) | Synthetic owner review и статус findings R1–R4 | proxy evidence; human outcome не измеряется |
+| [DECISIONOPS_PILOT_2026-08-25.md](reviews/DECISIONOPS_PILOT_2026-08-25.md) | Воспроизводимая репетиция gate на ClickHouse | evidence record |
+| [Owner-gate simulation 2026-09-12](reviews/DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md) | Synthetic owner review и статус findings R1–R4 | proxy evidence; human outcome не измеряется |
 | [ADR 0003](adr/0003-decisionops-additive-control-plane.md) | Почему DecisionOps добавлен как отдельный control plane | decision |
 | [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) | Граница synthetic proxy и offline investigation alpha | decision |
 | [ADR 0005](adr/0005-ed25519-evidence-trust-root.md) | Ed25519 trust root для evidence manifest | decision |
@@ -39,6 +39,7 @@ package identity или remote.
 | [Strategy snapshot](history/DECISIONOPS_STRATEGY_2026-08-21.md) | Исследование и шестимесячная концепция на 2026-08-21 | archive |
 | [Typed investigation MVP](history/TYPED_INVESTIGATION_MVP.md) | Журнал закрытого среза offline investigation alpha | archive; закрыт |
 | [Chart-level impact](history/CHART_LEVEL_IMPACT.md) | Журнал закрытого среза «impact до плитки» | archive; закрыт |
+| [Записи ревью и проверок](reviews/) | Ревью, проверки и pilot-записи отдельных срезов `DECISIONOPS_*` | archive |
 
 Директории `docs/pilot/` содержат tracked входы и evidence репетиции, включая
 [chart-impact overlay 2026-09-12](pilot/2026-09-12-owner-review-chart-impact/README.md).

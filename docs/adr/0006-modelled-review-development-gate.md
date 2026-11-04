@@ -27,5 +27,5 @@ scheduler, REST/MCP, notifications или actions: сначала конкрет
 WSL, Docker и аналогичные среды на Windows запрещены; стенды выполнять на Mac.
 Владелец отменил для проекта обязательную проверку локального proxy в `AGENTS.md`.
 Его недоступность больше не блокирует запуск агентов. Astra xhigh выполнила
-[synthetic review signed R3 и R4](../DECISIONOPS_ASTRA_REVIEW_2026-09-12.md)
+[synthetic review signed R3 и R4](../reviews/DECISIONOPS_ASTRA_REVIEW_2026-09-12.md)
 и выбрала ограниченный срез: объяснение гарантий evidence в owner-summary.

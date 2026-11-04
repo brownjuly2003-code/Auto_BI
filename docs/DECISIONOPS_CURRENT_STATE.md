@@ -504,8 +504,8 @@ T-111.
 win32) чистые в обеих средах. 86 проверок POSIX modes и отказов доступа и 1 named pipe,
 которые Windows пропускает (там 91 skipped), исполнены; для тестов T-98…T-109 это первый
 прогон вне Windows. Код и версии 109/74 прежние; Linux 3.13/3.14 и live DWH не проверялись.
-Команды, среда и границы: [Mac](DECISIONOPS_MAC_CHECKS_2026-10-24.md),
-[Linux](DECISIONOPS_LINUX_CHECKS_2026-10-24.md).
+Команды, среда и границы: [Mac](reviews/DECISIONOPS_MAC_CHECKS_2026-10-24.md),
+[Linux](reviews/DECISIONOPS_LINUX_CHECKS_2026-10-24.md).
 
 **Предыдущий срез (T-109, 2026-10-23):** обход каталогов в `decision validate` и
 `decision verify` находит контракты `.json` рядом с `.yaml`/`.yml`, в том числе во
@@ -545,7 +545,7 @@ T-104 прошёл: Python 3.13.7, DuckDB, 6786 passed, 118 skipped, 38 deselect
 coverage 96.15%, exit 0. Ruff/Black и mypy (Linux, strict Linux, strict win32) чистые.
 Один pytest, без перезапуска; код и тесты прежние, версии 108/73 сохранены.
 Это Windows offline verification, не весь CI, не Mac/Linux runtime или live DWH.
-[Команды, среда и границы](DECISIONOPS_WINDOWS_CHECKS_2026-10-23.md).
+[Команды, среда и границы](reviews/DECISIONOPS_WINDOWS_CHECKS_2026-10-23.md).
 
 **Предыдущий срез (T-104, 2026-10-23):** пути в четырёх invalid-key сообщениях Ed25519
 выводятся безопасно. Читаемый файл с U+2028 в имени больше не добавляет строку в
@@ -605,7 +605,7 @@ Windows: 395 investigation-тестов прошли, Ruff/Black чистые. S
 **6813 passed, 17 skipped, 38 deselected**, exit 0, coverage **95.93%**.
 Ruff/Black и mypy (обычный Linux, strict Linux, strict win32) чистые.
 Код и тесты прежние; Linux 3.13/3.14 и live DWH не проверялись.
-[Команды, среда и границы](DECISIONOPS_LINUX_CHECKS_2026-10-23.md).
+[Команды, среда и границы](reviews/DECISIONOPS_LINUX_CHECKS_2026-10-23.md).
 
 **Полная offline-проверка после T-97 (2026-10-23):** Mac, Python 3.12/3.13/3.14 с
 DuckDB, код и тесты T-97 до правки теста по ревью (дерево `69c7118`): каждый прогон —
@@ -615,8 +615,8 @@ strict Linux, strict win32) чистые. Итоговые код и тесты 
 под тремя интерпретаторами — **11 passed**. Windows: все investigation-модули —
 **386 passed**. Последний полный прогон Windows — T-95: 9 failed от среды при нехватке
 памяти, их модули отдельно 170 passed. Live DWH не проверялись; Linux 3.12 проверен отдельно выше.
-[Проверки и границы](DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md); предыдущая
-полная проверка — T-96, [команды и границы](DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
+[Проверки и границы](reviews/DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md); предыдущая
+полная проверка — T-96, [команды и границы](reviews/DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
 
 **Предыдущий срез (T-97, 2026-10-23):** step id в заголовке GAP investigation `brief.md`
 выводится буквально. Допустимый step id с `-_x_-` больше не показывается курсивом без
@@ -626,7 +626,7 @@ strict Linux, strict win32) чистые. Итоговые код и тесты 
 Реализация — Claude Opus 5.5. Финальное synthetic Astra xhigh: 1 P2 (тесты не закрепляли
 байты заголовка для `-` и `.`) исправлено, повторного ревью не было; не human/production
 acceptance.
-[Проверки и границы](DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md).
+[Проверки и границы](reviews/DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md).
 
 **Предыдущий срез (T-96, 2026-10-23):** тесты T-74, T-75 и T-82 проходят на macOS.
 Три теста T-82 — reader, CLI и приоритет digest pin — строят manifest с вложенностью
@@ -636,7 +636,7 @@ acceptance.
 (`EILSEQ`, APFS). Продуктовый код, evidence и версии 108/73 не менялись.
 Реализация — Claude Opus 5.5. Финальное synthetic Astra xhigh: 1 P2 (тест pin тоже брал
 вложенность 3000) исправлено, повторного ревью не было; не human/production acceptance.
-[Проверки и границы](DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
+[Проверки и границы](reviews/DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
 
 **Предыдущий срез (T-95, 2026-10-23):** ref продукта в заголовке summary и refs
 метрик и дашбордов в строках impact выводятся буквально. Валидный ref с `-_x_-`
@@ -646,7 +646,7 @@ acceptance.
 полный набор на T-93 и T-94 был красным. Реализация — Claude Opus 5.5.
 Финальное synthetic Astra xhigh: 1 P2 (описание test helper) исправлено формулировкой,
 повторного ревью не было; не human/production acceptance.
-[Проверки и границы](DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
+[Проверки и границы](reviews/DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
 
 **Предыдущий срез (T-94, 2026-10-22):** весь `ProductImpact.subject` в summary
 выводится буквально. Имя governed-поля больше не добавляет ложные Verdict/Owner
@@ -655,7 +655,7 @@ action; raw subject, привязки impact и grading сохранены. Veri
 Смежный набор: 354 passed; Ruff/Black и strict mypy Linux/Windows чистые.
 Docs/new tests: 31 passed. Финальное synthetic Astra xhigh: 0 actionable findings,
 не human/production acceptance.
-[Проверки и границы](DECISIONOPS_SUMMARY_IMPACT_SUBJECTS_CHECKS_2026-10-22.md).
+[Проверки и границы](reviews/DECISIONOPS_SUMMARY_IMPACT_SUBJECTS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-93, 2026-10-22):** все `CheckResult.detail` в summary
 выводятся буквально: списки findings/undone, таблица и Product scope intro.
@@ -664,7 +664,7 @@ raw findings и grading сохранены. Verifier 106, check 73; новые r
 Смежный набор: 348 passed; Ruff/Black и strict mypy Linux/Windows чистые.
 Docs/new tests: 59 passed. Финальное synthetic Astra xhigh: 0 actionable findings,
 не human/production acceptance.
-Полный baseline относится к T-86. [Проверки и границы](DECISIONOPS_SUMMARY_CHECK_DETAILS_CHECKS_2026-10-22.md).
+Полный baseline относится к T-86. [Проверки и границы](reviews/DECISIONOPS_SUMMARY_CHECK_DETAILS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-92, 2026-10-22):** весь `ChartImpact.detail` в summary
 выводится буквально. Label меры больше не добавляет ложные Verdict/Owner action;
@@ -672,7 +672,7 @@ raw detail, relations и grading сохранены. Verifier 105, check 73; н�
 меняются. Смежный набор: 314 passed; strict mypy Linux/Windows чистый.
 Ruff/Black чистые; docs/new tests: 36 passed. Финальное synthetic Astra xhigh:
 0 actionable findings, не human/production acceptance.
-Полный baseline относится к T-86. [Проверки и границы](DECISIONOPS_SUMMARY_CHART_DETAILS_CHECKS_2026-10-22.md).
+Полный baseline относится к T-86. [Проверки и границы](reviews/DECISIONOPS_SUMMARY_CHART_DETAILS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-91, 2026-10-22):** весь `ProductImpact.detail` в summary
 выводится буквально. Timezone/calendar метрики больше не добавляют ложные
@@ -680,7 +680,7 @@ Verdict/Owner action; raw detail и grading сохранены. Verifier 104, ch
 новые run IDs меняются. Смежный набор: 303 passed; strict mypy Linux/Windows чистый.
 Ruff/Black чистые; docs/new tests: 32 passed. Финальное synthetic Astra xhigh:
 0 actionable findings, не human/production acceptance.
-Полный baseline относится к T-86. [Проверки и границы](DECISIONOPS_SUMMARY_IMPACT_DETAILS_CHECKS_2026-10-22.md).
+Полный baseline относится к T-86. [Проверки и границы](reviews/DECISIONOPS_SUMMARY_IMPACT_DETAILS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-90, 2026-10-22):** весь `ChartGap.detail` в impact summary
 выводится буквально. Quoted SQL-имя больше не добавляет ложные Verdict/Owner action
@@ -689,7 +689,7 @@ Verifier 103, check 73; новые run IDs меняются. Смежный на
 Ruff/Black и strict mypy Linux/Windows чистые. Полный baseline относится к T-86.
 Docs-as-code: 25 passed. Synthetic Astra xhigh: 0 actionable findings,
 не human/production acceptance.
-[Проверки и границы](DECISIONOPS_SUMMARY_GAP_DETAILS_CHECKS_2026-10-22.md).
+[Проверки и границы](reviews/DECISIONOPS_SUMMARY_GAP_DETAILS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-89, 2026-10-22):** chart refs и subjects пробелов анализа
 в impact summary выводятся буквально. Допустимый chart ID больше не добавляет
@@ -698,7 +698,7 @@ Verifier 102, check 73; новые run IDs меняются. Смежный на
 Ruff/Black и strict mypy Linux/Windows чистые. Финальные docs/new tests: 32 passed.
 Synthetic Astra xhigh: 0 actionable findings, не human/production acceptance.
 Полный baseline относится к T-86.
-[Проверки и границы](DECISIONOPS_SUMMARY_CHART_REFS_CHECKS_2026-10-22.md).
+[Проверки и границы](reviews/DECISIONOPS_SUMMARY_CHART_REFS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-88, 2026-10-22):** владельцы в разделе impact summary
 выводятся буквально и не добавляют ложные Verdict/Owner action. Порядок списка,
@@ -706,7 +706,7 @@ raw owner в impact payload и grading сохранены; остальные п
 Verifier 101, check 73; новые run IDs меняются. Смежный набор: 211 passed;
 Ruff/Black и strict mypy Linux/Windows чистые. Полный baseline относится к T-86.
 Synthetic Astra xhigh: 0 actionable findings, не human/production acceptance.
-[Проверки и границы](DECISIONOPS_SUMMARY_OWNERS_CHECKS_2026-10-22.md).
+[Проверки и границы](reviews/DECISIONOPS_SUMMARY_OWNERS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-87, 2026-10-22):** имя среды в заголовке summary и весь detail
 `results.provenance` выводятся буквально, включая среду из attestation. Они больше
@@ -715,14 +715,14 @@ JSON payload и grading прежние; другие свободные поля
 Verifier 100, check 73; новые run IDs меняются. Смежный набор: 342 passed;
 strict mypy Linux/Windows чистый. Полный baseline выше относится к T-86.
 Финальное synthetic Astra xhigh review: 0 actionable findings, не human acceptance.
-[Проверки и границы](DECISIONOPS_SUMMARY_ENVIRONMENT_CHECKS_2026-10-22.md).
+[Проверки и границы](reviews/DECISIONOPS_SUMMARY_ENVIRONMENT_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-86, 2026-10-22):** store отвергает symlink/junction самого
 каталога run до чтения и записи; configured root остаётся доверенным. Отказ ОС
 сохраняется отдельно от отсутствия. Версии 99/73 и байты корректных bundles прежние.
 Профиль: 194 passed, 76 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
 Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance. Полный набор T-86
-завершён успешно; результаты выше. [Проверки и границы](DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
+завершён успешно; результаты выше. [Проверки и границы](reviews/DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-85, 2026-10-22):** сводка отдельно называет проблемы других
 продуктов из `other_product_issues` и поясняет, что они не меняют текущий verdict.
@@ -730,7 +730,7 @@ Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance. Полный �
 Verifier 99, check 73; grading и payload прежние, новые run IDs меняются.
 Профиль: 134 passed; полный набор выше включает T-85. Ruff/Black и strict mypy
 Linux/Windows чистые. Synthetic Astra xhigh: 0 открытых P1/P2,
-не human/production acceptance. [Проверки T-85](DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
+не human/production acceptance. [Проверки T-85](reviews/DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
 
 **Предыдущий срез (T-84, 2026-10-22):** неизвестный ключ recorded results даёт
 usage error/exit 2 до probe/evidence. Проверка использует полный asset repository;
@@ -738,7 +738,7 @@ usage error/exit 2 до probe/evidence. Проверка использует п
 ошибки схемы прежние. В срезе версии 98/73 сохранены; полный baseline выше включает T-84.
 Профиль: 422 passed, 1 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
 Synthetic Astra xhigh: 0 открытых P1/P2, не human/production acceptance.
-[Проверки и границы T-84](DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).
+[Проверки и границы T-84](reviews/DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-83, 2026-10-22):** одиночные Unicode-суррогаты в `Claim.unit`
 и `Claim.caveats` отвергаются схемой до canonicalization. Полная evidence inspection
@@ -746,7 +746,7 @@ Synthetic Astra xhigh: 0 открытых P1/P2, не human/production acceptanc
 сохранены; версии 98/73 прежние. Evidence: 232 passed, 67 skipped; финальные Unicode
 регрессии: 21 passed. Synthetic Astra xhigh: 0 открытых P1/P2, не human acceptance.
 Полный offline baseline выше включает T-82/T-83.
-[Проверки и границы T-83](DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
+[Проверки и границы T-83](reviews/DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-82, 2026-10-22):** слишком глубокий JSON manifest у
 `decision evidence --artifact` даёт управляемый отказ: exit 2, одна строка stderr,
@@ -754,7 +754,7 @@ Synthetic Astra xhigh: 0 открытых P1/P2, не human/production acceptanc
 версии 98/73 прежние. Профиль evidence: 190 passed, 67 skipped; семь регрессий прошли.
 Synthetic Astra xhigh review: 0 открытых P1/P2, не human/production acceptance.
 Полный offline baseline выше включает T-82.
-[Проверки и границы T-82](DECISIONOPS_MANIFEST_DEPTH_CHECKS_2026-10-22.md).
+[Проверки и границы T-82](reviews/DECISIONOPS_MANIFEST_DEPTH_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-81, 2026-10-22):** `concentration_shift` проверяет отрицательность
 исходных строк: компенсация положительным значением той же категории больше не
@@ -763,7 +763,7 @@ concentration claims; variance/contribution и приоритет прежних
 Skill version 2, verifier/check 98/73 прежние; четыре обычных payload побайтно прежние,
 исторические brief читаются. Investigation: 375 passed. Synthetic Astra xhigh:
 0 открытых P1/P2, не human/production acceptance.
-[Проверки и границы T-81](DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
+[Проверки и границы T-81](reviews/DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-80, 2026-10-22):** `SQLGuardError` из environment collector
 у `decision verify --dwh` даёт exit 2, одну строку без SQL при обычном CLI logging и пустой stdout,
@@ -771,7 +771,7 @@ evidence не создаётся. Guard, прямые вызовы и верси
 Смежный набор: 448 passed; четыре completed runs с fake DWH сохраняют каждый
 файл bundle побайтно. Воспроизведение — через `PlanQuestion`, не обычный input
 typed compiler. Synthetic Astra xhigh review: 0 открытых P1/P2; не human/production acceptance.
-[Проверки и review T-80](DECISIONOPS_ENVIRONMENT_SQL_GUARD_CHECKS_2026-10-22.md).
+[Проверки и review T-80](reviews/DECISIONOPS_ENVIRONMENT_SQL_GUARD_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-79, 2026-10-22):** detail аналитического GAP компилятора
 отображается буквальным текстом в Markdown, включая свободное имя dimension.
@@ -780,7 +780,7 @@ Raw body, evidence, JSON/digests и causal policy сохранены; верси
 Экранируется весь detail, поэтому Markdown GAP с обычной пунктуацией тоже меняется.
 Профильный набор: 348 passed; четыре payload обычного fixture побайтно сохранены.
 Synthetic Astra xhigh: 0 открытых P1/P2, не human/production acceptance.
-[Проверки и границы T-79](DECISIONOPS_INVESTIGATION_GAP_MARKDOWN_CHECKS_2026-10-22.md).
+[Проверки и границы T-79](reviews/DECISIONOPS_INVESTIGATION_GAP_MARKDOWN_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-78, 2026-10-22):** category/unit больше не добавляют разметку
 в Markdown variance/contribution-блоков компилятора. Экранирование выполняется
@@ -790,7 +790,7 @@ fixture сохранён побайтно; версии 98/73. Synthetic Astra x
 с исходным шаблоном; custom prose не санитизируется. Полный offline-набор с duckdb:
 6436 passed, 109 skipped, 38 deselected, exit 0. Прежний SQLite timing failure
 не воспроизведён профилем (0.390s) и полным набором; причина скачка не установлена.
-[Проверки и границы T-78](DECISIONOPS_INVESTIGATION_MARKDOWN_CHECKS_2026-10-22.md).
+[Проверки и границы T-78](reviews/DECISIONOPS_INVESTIGATION_MARKDOWN_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-77, 2026-10-22):** нарушение causal-wording policy при подстановке
 category/unit в brief даёт управляемый отказ: CLI exit 2, одна строка без входных
@@ -799,7 +799,7 @@ category/unit в brief даёт управляемый отказ: CLI exit 2, �
 381 passed (305 профильных, 76 документационных/контрактных).
 Успешные четыре payload сохранены побайтно. Synthetic Astra xhigh: 0 P1/P2,
 не human/production acceptance.
-[Проверки и границы T-77](DECISIONOPS_INVESTIGATION_POLICY_CHECKS_2026-10-22.md).
+[Проверки и границы T-77](reviews/DECISIONOPS_INVESTIGATION_POLICY_CHECKS_2026-10-22.md).
 
 Полный baseline, начатый до T-77: 6401 passed, 109 skipped, 38 deselected и один
 отказ SQLite performance budget (25.66s вместо <5s); отдельно тот же тест прошёл.
@@ -812,7 +812,7 @@ canonical пары; Markdown явно называет шаг и метрику.
 меняются, прежний JSON читается; plan/results и версии 98/73 прежние.
 Профильный набор: 296 passed. Synthetic Astra xhigh: 0 открытых P1/P2,
 не human/production acceptance. Полный набор прерван без итоговой сводки.
-[Проверки и совместимость T-76](DECISIONOPS_INVESTIGATION_IDENTITY_CHECKS_2026-10-22.md).
+[Проверки и совместимость T-76](reviews/DECISIONOPS_INVESTIGATION_IDENTITY_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-75, 2026-10-22):** отказ кодирования output-пути у
 `decision investigate` даёт exit 2 и проходит очистку временного каталога. Диагностика
@@ -820,7 +820,7 @@ canonical пары; Markdown явно называет шаг и метрику.
 непечатаемые символы пути. Существующий output и байты успешной записи сохранены.
 Версии 98/73 прежние; профильный набор: 278 passed. Synthetic Astra xhigh: LF/CR исправлено,
 финально 0 открытых P1/P2; не human/production acceptance. Полный набор финального
-кода не проверен. [Проверки и границы T-75](DECISIONOPS_INVESTIGATION_OUTPUT_PATH_CHECKS_2026-10-22.md).
+кода не проверен. [Проверки и границы T-75](reviews/DECISIONOPS_INVESTIGATION_OUTPUT_PATH_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-74, 2026-10-22):** отказ кодирования имени plan/result у
 `decision investigate` даёт одну строку с `UnicodeEncodeError` и exit 2 без traceback.
@@ -829,7 +829,7 @@ canonical пары; Markdown явно называет шаг и метрику.
 Профильные проверки: 258 passed; Ruff, Black и strict mypy Linux/Windows чистые.
 Выбор и review кода, тестов и контракта — synthetic Astra xhigh: 0 P1/P2,
 не human/production acceptance. Полный baseline прерван, итогового результата нет.
-[Проверки и границы T-74](DECISIONOPS_INVESTIGATION_PATH_CHECKS_2026-10-22.md).
+[Проверки и границы T-74](reviews/DECISIONOPS_INVESTIGATION_PATH_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-73, 2026-10-22):** две устаревшие границы capture в спецификациях
 [stated-run-facts](specs/stated-run-facts.md) и [unreadable-inputs](specs/unreadable-inputs.md)
@@ -846,7 +846,7 @@ traceback при strict stderr. Usage/errors/version сохраняют форм
 Версии 98/73. Red: 27 failed, 69 passed; green: 96 passed; смежный набор: 282 passed.
 Ruff, Black, strict mypy Linux/Windows чистые; документационные проверки: 32 passed.
 Выбор и review — synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
-[Проверки и границы T-72](DECISIONOPS_PARSER_DIAGNOSTICS_CHECKS_2026-10-22.md).
+[Проверки и границы T-72](reviews/DECISIONOPS_PARSER_DIAGNOSTICS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-71, 2026-10-22):** верхняя и вложенная CLI-справка печатаются
 под ASCII/Latin-1 с escape неподдерживаемых символов и exit 0. Защита ограничена
@@ -855,7 +855,7 @@ Ruff, Black, strict mypy Linux/Windows чистые; документацион�
 47 passed; финальный смежный набор: 244 passed. Исправлен устаревший список helper'ов
 в проверке вывода T-60; его падение отдельно подтверждено на HEAD. Synthetic Astra
 xhigh: 0 P1/P2; дополнительный тест явного потока пройден. Не human acceptance.
-[Проверки и границы T-71](DECISIONOPS_HELP_ENCODING_CHECKS_2026-10-22.md).
+[Проверки и границы T-71](reviews/DECISIONOPS_HELP_ENCODING_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-70, 2026-10-22):** отказ обязательной runtime-настройки ClickHouse
 оставляет объявленные потолки неизмеренными (`cost.not_measured`, review), без ложного
@@ -864,7 +864,7 @@ xhigh: 0 P1/P2; дополнительный тест явного потока 
 Mac ClickHouse 24.8.14.39 подтвердил исправление `readonly=1`, успешный `readonly=2`
 и оба настоящих превышения. Версии 98/73; смежные проверки: 368 passed.
 Synthetic Astra xhigh: 0 P1/P2, не human/production acceptance.
-[Проверки и границы T-70](DECISIONOPS_RUNTIME_SETTINGS_CHECKS_2026-10-22.md).
+[Проверки и границы T-70](reviews/DECISIONOPS_RUNTIME_SETTINGS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-69, 2026-10-22):** локальный отказ quoting в `decision verify --dwh`
 даёт exit 2 и одну строку `cannot build environment query: unsafe identifier: …`.
@@ -874,7 +874,7 @@ SELECT, evidence не создаётся. Соединение и catalog querie
 вокруг `collect`; драйверные и неожиданные ошибки сохраняют свои границы. Grading и
 версии 97/72 не менялись. Red: 20 failed, 8 passed; green: 42 passed; смежный набор:
 406 passed. Codex реализовал срез; synthetic Astra xhigh: 0 P1/P2, не human/production
-acceptance. [Проверки и границы T-69](DECISIONOPS_ENVIRONMENT_IDENTIFIER_CHECKS_2026-10-22.md).
+acceptance. [Проверки и границы T-69](reviews/DECISIONOPS_ENVIRONMENT_IDENTIFIER_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-68, 2026-10-22):** ошибки загрузки настроек у `decision verify --dwh`
 и `decision capture` дают exit 2 и одну строку без значений настроек. Валидация называет
@@ -882,7 +882,7 @@ acceptance. [Проверки и границы T-69](DECISIONOPS_ENVIRONMENT_ID
 DWH-фабрики, соединения и записи. Offline verify и v1 сохраняют поведение; версии
 97/72 не менялись. Новый модуль: 32 red → 35 green; смежный набор: 506 passed,
 1 skipped. Codex реализовал срез; synthetic Astra xhigh: 0 P1/P2, не human/production
-acceptance. [Проверки и границы T-68](DECISIONOPS_SETTINGS_CHECKS_2026-10-22.md).
+acceptance. [Проверки и границы T-68](reviews/DECISIONOPS_SETTINGS_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-67, 2026-10-22):** `decision capture` обрабатывает ошибки драйвера
 одной строкой с классом исключения и exit 2. ClickHouse-перехват включает `StreamFailureError`,
@@ -890,7 +890,7 @@ metadata fallback и ленивое чтение `result_rows`; частичны
 и не повторяет запрос. Сообщения PostgreSQL-семейства также нормализованы. Версии 97/72
 сохранены. Codex реализовал срез; synthetic Astra xhigh выбрала его и проверила код, тесты
 и контракт: 0 P1/P2, не human/production acceptance. Проверки и границы —
-[T-67](DECISIONOPS_CAPTURE_DRIVER_CHECKS_2026-10-22.md).
+[T-67](reviews/DECISIONOPS_CAPTURE_DRIVER_CHECKS_2026-10-22.md).
 
 **Предыдущий срез (T-66, 2026-10-19):** пакет снова проходит mypy так, как его запускает CI, —
 на Linux. Срез T-63 достигал Windows-API (`ctypes.WinDLL`, `ctypes.get_last_error`,
@@ -910,7 +910,7 @@ gate с duckdb: 6211 passed, 7 skipped, 38 deselected, exit 0 на 3.13, 3.12 и
 10/10 совпал с HEAD. Версии 97/72 не менялись. Выполнено Claude Opus 5.5 напрямую;
 модельного ревью (Astra xhigh, ADR 0006) не было — только проверки автора, не human
 acceptance. Границы: Windows не прогонялся; тест — эвристика над перечисленными именами, гейт
-остаётся за mypy. [Проверки и границы](DECISIONOPS_PLATFORM_GUARDS_CHECKS_2026-10-19.md).
+остаётся за mypy. [Проверки и границы](reviews/DECISIONOPS_PLATFORM_GUARDS_CHECKS_2026-10-19.md).
 
 **Предыдущий срез (T-65, 2026-10-19):** `decision verify --dwh`, чей движок не ответил,
 кончается usage error в одну строку вместо traceback драйвера. Проба движка больше не
@@ -933,7 +933,7 @@ acceptance. Границы: traceback у сбоя самой пробы и у н
 ClickHouse `readonly=1` теперь usage error (по коду драйвера, не на живом движке); `capture`
 печатает отказ psycopg двумя строками и не ловит `StreamFailureError`.
 [Контракт](specs/unanswered-engine.md),
-[проверки и границы](DECISIONOPS_UNANSWERED_ENGINE_CHECKS_2026-10-19.md).
+[проверки и границы](reviews/DECISIONOPS_UNANSWERED_ENGINE_CHECKS_2026-10-19.md).
 
 **Предыдущий срез (T-64, 2026-10-08):** `NativeModelSource.snapshot` валидирует YAML-документ
 без подмены ложных значений на `{}`. Пустой файл, комментарии, null, false, число, список
@@ -1052,7 +1052,7 @@ error в одну строку, 8 — `block` за то, чего нет, traceb
 38 deselected, exit 0 на 3.13; те же числа и exit 0 на 3.12 и 3.14.
 Black/Ruff/strict mypy чистые.
 Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_REFUSED_EVIDENCE_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_REFUSED_EVIDENCE_CHECKS_2026-10-05.md),
 [спека](specs/unreadable-inputs.md).
 
 **Предыдущий срез (2026-10-05):** decision-команда отвечает в любой поток. Команда печатает
@@ -1106,7 +1106,7 @@ investigate` над планом с U+D800 в пути кончается `Unico
 38 deselected, exit 0 на 3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy
 чистые.
 Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_UNENCODABLE_OUTPUT_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_UNENCODABLE_OUTPUT_CHECKS_2026-10-05.md),
 [спека](specs/unencodable-output.md).
 
 **Предыдущий срез (2026-10-05):** то, что командная строка заявляет о прогоне, проверяется до
@@ -1160,7 +1160,7 @@ tracked pilot-пакетах: 10 прогонов, вердикт, каждая 
 bundle как на HEAD. Полный offline gate с duckdb: 5810 passed, 4 skipped, 38 deselected,
 exit 0 на 3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
 Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_STATED_RUN_FACTS_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_STATED_RUN_FACTS_CHECKS_2026-10-05.md),
 [спека](specs/stated-run-facts.md).
 
 **Предыдущий срез (2026-10-05):** то, что модель объявляет больше одного раза, — один узел
@@ -1232,7 +1232,7 @@ Superset-дашборде. `decision capture` gaps не грейдит (проб
 каждая проверка как на HEAD. Полный offline gate с duckdb: 5673 passed, 4 skipped,
 38 deselected, exit 0 на 3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy
 чистые. Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_REPEATED_DECLARATIONS_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_REPEATED_DECLARATIONS_CHECKS_2026-10-05.md),
 [спека](specs/model-declarations-snapshot.md).
 
 **Предыдущий срез (2026-10-05):** дашборд, который компиляция отвергла, назван, а не брошен.
@@ -1285,7 +1285,7 @@ HEAD завершался, прежний; historical bundles не перепи�
 10 прогонов, вердикт и каждая проверка как на HEAD. Полный offline gate с duckdb:
 5450 passed, 4 skipped, 38 deselected, exit 0 на 3.13, столько же passed на 3.12 и
 3.14; Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_BI_COMPILE_REFUSAL_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_BI_COMPILE_REFUSAL_CHECKS_2026-10-05.md),
 [спека](specs/bi-contract-validation.md).
 
 **Предыдущий срез (2026-10-05):** таблица, объявленная без имени, — gap, а не таблица графа.
@@ -1330,7 +1330,7 @@ bundles не переписаны.
 как на HEAD. Полный offline gate с duckdb: 5387 passed, 4 skipped, 38 deselected,
 exit 0 на 3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
 Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_UNNAMED_TABLE_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_UNNAMED_TABLE_CHECKS_2026-10-05.md),
 [спека](specs/model-declarations-snapshot.md).
 
 **Предыдущий срез (2026-10-05):** escape, называющий суррогат, делает YAML-файл нечитаемым.
@@ -1400,7 +1400,7 @@ verify`): ответа `cannot load semantic ref` не даёт ни одно, �
 tracked pilot-пакетах: 10 прогонов, вердикт и каждая проверка как на HEAD. Полный offline
 gate с duckdb: 5352 passed, 4 skipped, 38 deselected, exit 0 на 3.13, столько же passed на
 3.12 и 3.14; Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_SURROGATE_ESCAPES_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_SURROGATE_ESCAPES_CHECKS_2026-10-05.md),
 [спека](specs/unreadable-inputs.md).
 
 **Предыдущий срез (2026-10-05):** отказ схемы для входа прогона гейта говорится одной
@@ -1458,7 +1458,7 @@ ADR 0006 (Astra xhigh) не проводилось — проверки сдел
 вердикт, каждая проверка, `run_id` и каждый файл каждого bundle как на HEAD. Полный offline
 gate с duckdb: 5258 passed, 4 skipped, 38 deselected, exit 0 на 3.13, столько же passed на
 3.12 и 3.14; Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_RUN_INPUT_SCHEMA_REFUSALS_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_RUN_INPUT_SCHEMA_REFUSALS_CHECKS_2026-10-05.md),
 [спека](specs/unreadable-inputs.md).
 
 **Предыдущий срез (2026-10-05):** вход `decision investigate`, который команда не может
@@ -1511,7 +1511,7 @@ verify` и `decision capture` печатают модель, spec, asset и resu
 файл каждого bundle как на HEAD. Полный offline gate с duckdb: 5183 passed, 4 skipped,
 38 deselected, exit 0 на 3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy
 чистые. Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_INVESTIGATION_INPUTS_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_INVESTIGATION_INPUTS_CHECKS_2026-10-05.md),
 [спека](specs/unreadable-inputs.md).
 
 **Предыдущий срез (2026-10-05):** то, что файловая система отказалась перечислить или показать,
@@ -1563,7 +1563,7 @@ investigate` не тронуты.
 Полный offline gate с duckdb: 5069 passed, 4 skipped, 38 deselected, exit 0 на 3.13,
 столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
 Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_UNLISTED_PATHS_CHECKS_2026-10-05.md),
+[Проверки и границы](reviews/DECISIONOPS_UNLISTED_PATHS_CHECKS_2026-10-05.md),
 [спека](specs/unreadable-inputs.md).
 
 **Предыдущий срез (2026-10-04):** вход прогона, который команда не может прочитать, — usage
@@ -1609,7 +1609,7 @@ ADR 0006 (Astra xhigh) не проводилось — проверки сдел
 assets `ValidationError` схемы, которая стала cause `VerifiedAssetFileError`; тест обновлён.
 Полный offline gate с duckdb: 4946 passed, 4 skipped, 38 deselected, exit 0;
 Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_UNREADABLE_RUN_INPUTS_CHECKS_2026-10-04.md),
+[Проверки и границы](reviews/DECISIONOPS_UNREADABLE_RUN_INPUTS_CHECKS_2026-10-04.md),
 [спека](specs/unreadable-inputs.md).
 
 **Предыдущий срез (2026-10-04):** файл контракта, который PyYAML не может построить, — finding,
@@ -1643,7 +1643,7 @@ ADR 0006 (Astra xhigh) не проводилось — проверки сдел
 на tracked pilot-пакетах: 10 прогонов, каждый файл каждого bundle байт в байт как на HEAD.
 Полный offline gate с duckdb: 4765 passed, 4 skipped, 38 deselected, exit 0;
 Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_UNBUILT_CONTRACT_YAML_CHECKS_2026-10-04.md),
+[Проверки и границы](reviews/DECISIONOPS_UNBUILT_CONTRACT_YAML_CHECKS_2026-10-04.md),
 [спека](specs/unreadable-inputs.md).
 
 **Предыдущий срез (2026-10-04):** тест линейности обхода CTE-гейтов не зависит от часов.
@@ -1696,7 +1696,7 @@ issue с `source` вне `products` — тоже. Validation report, `decision v
 на tracked pilot-пакетах: 10 прогонов, вердикт и каждая проверка как на HEAD, отложенных
 issues нет. Полный offline gate с duckdb: 4665 passed, 4 skipped, 38 deselected, exit 0;
 Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_VALIDATION_ISSUE_SCOPE_CHECKS_2026-10-04.md).
+[Проверки и границы](reviews/DECISIONOPS_VALIDATION_ISSUE_SCOPE_CHECKS_2026-10-04.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-04):** `run_id` различает прогоны по каждому статическому входу
@@ -1725,7 +1725,7 @@ contract set вне idempotency key), Astra-выбора по ADR 0006 для н
 91 passed. Контроль на tracked pilot-пакетах: 10 прогонов, исходы всех проверок как на
 HEAD, повторы детерминированы, `run_id` на Mac и Windows совпадают. Полный offline gate
 с duckdb: 4635 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_RUN_IDENTITY_CHECKS_2026-10-04.md).
+[Проверки и границы](reviews/DECISIONOPS_RUN_IDENTITY_CHECKS_2026-10-04.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-04):** `contracts.validate` отвечает на три validation rules,
@@ -1749,7 +1749,7 @@ MyFlow-исполнителей; модельное ревью по ADR 0006 (As
 29 passed; новый модуль: 46 passed. Контроль ложных отказов: пять pilot-пакетов,
 9 продуктов, 0 rule issues. Полный offline gate с duckdb: 4545 passed, 4 skipped,
 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_PIN_RULES_CHECKS_2026-10-04.md).
+[Проверки и границы](reviews/DECISIONOPS_PIN_RULES_CHECKS_2026-10-04.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-04):** `contracts.validate` сравнивает validated-контракт
@@ -1768,7 +1768,7 @@ T-43, и границей спеки T-40; консультацию после �
 `sol-high`: GLM-5.3 был в недельном лимите z.ai. Red на HEAD: 38 failed / 15 passed;
 новый модуль: 53 passed. Synthetic Astra xhigh review: 0 findings. Полный offline gate с
 duckdb: 4502 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_PIN_CONTENTS_REVIEW_2026-10-04.md).
+[Проверки и границы](reviews/DECISIONOPS_PIN_CONTENTS_REVIEW_2026-10-04.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-04):** investigation skills считают supplied decimal strings
@@ -1788,7 +1788,7 @@ freshness не обрывают команду на лимите преобра�
 на копии HEAD с одними поднятыми версиями skill: 45 failed / 44 passed; новый
 модуль: 89 passed. Synthetic Astra xhigh review: 0 findings. Полный offline gate
 с duckdb: 4449 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_INVESTIGATION_EXACT_ARITHMETIC_REVIEW_2026-10-04.md).
+[Проверки и границы](reviews/DECISIONOPS_INVESTIGATION_EXACT_ARITHMETIC_REVIEW_2026-10-04.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-04):** `assets.invalidated` резолвит каждый metric pin
@@ -1804,7 +1804,7 @@ Payload несёт `metric_pins`, clean detail считает совпавшие
 лимите z.ai. Red на HEAD: 23 failed / 1 passed; новый модуль: 24 passed.
 Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb:
 4360 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_ASSET_METRIC_PINS_REVIEW_2026-10-04.md).
+[Проверки и границы](reviews/DECISIONOPS_ASSET_METRIC_PINS_REVIEW_2026-10-04.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-04):** ClickHouse own-grant строка без `access_type`
@@ -1823,7 +1823,7 @@ facts, typed answers, отказ grants-вопроса, вопросы и их �
 лимите z.ai. Red на HEAD: 15 failed / 8 passed; новый модуль: 23 passed.
 Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb:
 4336 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_UNTYPED_GRANTS_REVIEW_2026-10-04.md).
+[Проверки и границы](reviews/DECISIONOPS_UNTYPED_GRANTS_REVIEW_2026-10-04.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-03):** PostgreSQL-family ядро без row-level security
@@ -1844,7 +1844,7 @@ MyFlow `sol-high`: GLM-5.3 был в недельном лимите z.ai. Red �
 12 passed; новый модуль: 163 passed. Synthetic Astra xhigh review: 0 findings.
 Полный offline gate с duckdb: 4313 passed, 4 skipped, 38 deselected, exit 0;
 Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_KERNEL_ROW_SECURITY_REVIEW_2026-10-03.md).
+[Проверки и границы](reviews/DECISIONOPS_KERNEL_ROW_SECURITY_REVIEW_2026-10-03.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-03):** `contracts.validate` резолвит каждый metric pin
@@ -1864,7 +1864,7 @@ impact и reference SQL сохраняют свои правила. Версии
 Red на HEAD: 19 failed / 0 passed; новый модуль: 19 passed. Synthetic Astra xhigh
 review: 0 findings. Полный offline gate с duckdb: 4150 passed, 4 skipped,
 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_METRIC_PINS_REVIEW_2026-10-03.md).
+[Проверки и границы](reviews/DECISIONOPS_METRIC_PINS_REVIEW_2026-10-03.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-03):** PostgreSQL-family identity-вопрос читает
@@ -1882,7 +1882,7 @@ evidence и block без privilege-вопросов и runtime SQL. Отказ, 
 лимите z.ai. Red на HEAD: 24 failed / 20 passed; новый модуль: 44 passed.
 Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb:
 4131 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-[Проверки и границы](DECISIONOPS_NOLOGIN_IDENTITY_REVIEW_2026-10-03.md).
+[Проверки и границы](reviews/DECISIONOPS_NOLOGIN_IDENTITY_REVIEW_2026-10-03.md).
 Human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-03):** ClickHouse role probe спрашивает роли, которые
@@ -1911,7 +1911,7 @@ T-37. Живые факты сняты на ClickHouse 24.8.14.39 на Mac (од
 закончил `gpt-6.1-sol` medium через `sol-high`. Synthetic Astra xhigh review:
 0 findings. Полный offline gate с duckdb: 4087 passed, 4 skipped, 38 deselected,
 exit 0; Black/Ruff/strict mypy чистые. Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_CLICKHOUSE_SET_ROLE_REVIEW_2026-10-03.md).
+[Проверки и границы](reviews/DECISIONOPS_CLICKHOUSE_SET_ROLE_REVIEW_2026-10-03.md).
 
 **Предыдущий срез (2026-10-02):** canonical metric node несёт объявленные `join_paths`:
 отсортированы, одинаковые объявления один раз; висячий endpoint —
@@ -1928,7 +1928,7 @@ Native projection version 2 → 3 перемещает canonical digest кажд
 Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb: 4052 passed,
 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
 Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_METRIC_JOIN_PATHS_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_METRIC_JOIN_PATHS_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** canonical metric node несёт объявленную
 `freshness`: `max_age` как записан в контракте, quality preconditions отсортированы
@@ -1949,7 +1949,7 @@ Synthetic Astra xhigh review: F-T-36-1 и F-T-36-3 воспроизведены 
 третий проход — 0 новых findings. Полный offline gate с duckdb: 4023 passed,
 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
 Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_METRIC_FRESHNESS_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_METRIC_FRESHNESS_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** перед компиляцией поставляемого дашборда
 `bi.contract` валидирует spec против candidate-модели тем же `validate_spec`,
@@ -1963,7 +1963,7 @@ spec — review с `bi.spec_missing`; `impact.products` читает specs ка�
 `sol-high`. Synthetic Astra xhigh review: 0 findings. Полный offline gate
 с duckdb: 3975 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict
 mypy чистые. Human/production acceptance не заявляется.
-[Проверки и границы](DECISIONOPS_BI_SPEC_VALIDATION_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_BI_SPEC_VALIDATION_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** PostgreSQL-family role probe одним вопросом находит
 роли, в которые session user может переключиться через `SET ROLE` (PostgreSQL 16 —
@@ -1985,7 +1985,7 @@ xhigh review: F-T-34-1 (наследуемая superuser-группа выпад
 findings. Полный offline gate с duckdb: 3955 passed, 4 skipped, 38 deselected,
 exit 0; Black/Ruff/strict mypy чистые. Human/production acceptance
 не заявляется.
-[Проверки и границы](DECISIONOPS_SET_ROLE_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_SET_ROLE_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** отсутствующая readable-витрина не считается
 доступной для датировки. Без допустимых вопросов чистый код `dwh.freshness` —
@@ -1996,7 +1996,7 @@ human/production acceptance не заявляется. Профильный на
 Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh review:
 0 substantive findings. Полный offline gate: 3911 passed, 5 skipped,
 38 deselected, exit 0.
-[Проверки и границы](DECISIONOPS_FRESHNESS_OUTCOME_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_FRESHNESS_OUTCOME_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** при нуле фактических security-наблюдений чистый
 код `dwh.security` — `security.not_run`, поэтому проверка появляется в
@@ -2006,7 +2006,7 @@ Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh revi
 не заявляется. Профильный набор: 224 passed; Black/Ruff/strict mypy чистые.
 Итоговое synthetic Astra xhigh review: 0 substantive findings. Полный offline gate:
 3899 passed, 5 skipped, 38 deselected, exit 0.
-[Проверки и границы](DECISIONOPS_SECURITY_OUTCOME_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_SECURITY_OUTCOME_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** при нуле сравнений объявленных типов и свойств
 layout чистый код `dwh.physical` — `physical.not_run`, поэтому проверка появляется
@@ -2016,7 +2016,7 @@ layout чистый код `dwh.physical` — `physical.not_run`, поэтому
 не заявляется. Профильный набор: 247 passed; Black/Ruff/strict mypy чистые.
 Итоговое synthetic Astra xhigh review: 0 substantive findings. Полный offline gate:
 3887 passed, 5 skipped, 38 deselected, exit 0.
-[Проверки и границы](DECISIONOPS_PHYSICAL_OUTCOME_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_PHYSICAL_OUTCOME_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** чистый код `dwh.cost` учитывает только вопросы,
 которые проверка действительно могла оценить. При нуле допустимых сравнений
@@ -2026,7 +2026,7 @@ bounds. Проверка попадает в `What was not done`; частичн
 Выбор — synthetic Astra xhigh, реализация Codex; human/production acceptance
 не заявляется. Полный offline gate: 3871 passed, 5 skipped, 38 deselected,
 exit 0; Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh review:
-0 substantive findings. [Проверки и границы](DECISIONOPS_COST_OUTCOME_REVIEW_2026-10-02.md).
+0 substantive findings. [Проверки и границы](reviews/DECISIONOPS_COST_OUTCOME_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** чистая сводка `dwh.cost` считает проверенные
 потолки строк из планов и байтов/времени из exact-query runtime evidence.
@@ -2037,7 +2037,7 @@ Astra xhigh, реализация Codex; human/production acceptance не зая
 Полный offline gate: 3821 passed, 5 skipped, 38 deselected, exit 0;
 docs-as-code: 24 passed; Black/Ruff/strict mypy чистые. Итоговое synthetic
 Astra xhigh review: 0 substantive findings.
-[Проверки и границы](DECISIONOPS_COST_COVERAGE_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_COST_COVERAGE_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** чистая сводка `dwh.security` сообщает число
 подтверждённых прав чтения запрошенных колонок и ответов о row policies.
@@ -2048,7 +2048,7 @@ codes, severity и verdict прежние. Выбор среза — synthetic A
 Профильный набор: 306 passed; docs-as-code: 24 passed; Black/Ruff/strict mypy чистые.
 Итоговое synthetic Astra xhigh review: 0 substantive findings. Полный offline gate:
 3790 passed, 5 skipped, 38 deselected, exit 0.
-[Проверки и границы](DECISIONOPS_SECURITY_COVERAGE_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_SECURITY_COVERAGE_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** чистая сводка `dwh.freshness` сообщает число
 сравнённых вопросов (витрина, колонка времени) и полноту покрытия. Свежая часть
@@ -2058,7 +2058,7 @@ severity и verdict прежние. Выбор среза и ревью — synt
 Профильный набор: 225 passed; docs-as-code: 24 passed; Black/Ruff/strict mypy чистые.
 Итоговое synthetic Astra xhigh review: 0 substantive findings. Полный offline gate:
 3763 passed, 5 skipped, 38 deselected, exit 0; timing benchmarks в этом запуске прошли.
-[Проверки и границы](DECISIONOPS_FRESHNESS_COVERAGE_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_FRESHNESS_COVERAGE_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** `dwh.physical` описывает только выполненные сравнения:
 число отвеченных типов колонок и заявленных свойств layout по каждому вопросу
@@ -2070,7 +2070,7 @@ human/production acceptance не заявляется.
 Итоговое synthetic Astra review: 0 незакрытых substantive findings.
 Полный offline gate: 3741 passed, 1 failed — SQLite timing benchmark (9401,3 мс
 при лимите 5000 мс); отдельно он прошёл за 1,25 с. Полный gate не объявляется зелёным.
-[Проверки и границы](DECISIONOPS_PHYSICAL_COVERAGE_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_PHYSICAL_COVERAGE_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** canonical ClickHouse grants `ALTER ...`, `CREATE ...`,
 `DROP ...` и `ALL` блокируют grant-based read-only и exact runtime SQL. Конкретные
@@ -2080,7 +2080,7 @@ revokes и PostgreSQL сохраняют правила. Выбор — syntheti
 Codex; human/production acceptance не заявляется.
 Полный offline pytest с duckdb: 3723 passed, 5 skipped, 38 deselected, exit 0;
 Ruff, Black и strict mypy чистые. Итоговое synthetic Astra review: 0 substantive findings.
-[Проверки и границы](DECISIONOPS_WRITE_GRANTS_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_WRITE_GRANTS_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** неизвестный или неполный список ClickHouse enabled
 roles не подтверждает grant-based read-only. Без профиля `readonly=1/2` доступ
@@ -2092,7 +2092,7 @@ evidence. Column reach и применимость непустого policy cat
 реализация Codex; human/production acceptance не заявляется.
 Полный offline pytest с duckdb: 3679 passed, 5 skipped, 38 deselected, exit 0;
 Ruff, Black и strict mypy чистые. Итоговое synthetic Astra review: 0 substantive findings.
-[Проверки и границы](DECISIONOPS_ENABLED_ROLES_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_ENABLED_ROLES_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** частичные/NULL ответы PostgreSQL-family write-privilege
 вопросов не подтверждают read-only. Evidence называет неотвеченные табличные
@@ -2102,7 +2102,7 @@ INSERT/UPDATE/DELETE/TRUNCATE или колоночные INSERT/UPDATE и ви�
 synthetic review — Astra xhigh, реализация Codex; human/production acceptance
 не заявляется. Полный offline pytest с duckdb: 3645 passed, 5 skipped,
 38 deselected; Ruff, Black и strict mypy чистые. Итоговое review: 0 substantive findings.
-[Проверки и границы](DECISIONOPS_PARTIAL_PRIVILEGES_REVIEW_2026-10-02.md).
+[Проверки и границы](reviews/DECISIONOPS_PARTIAL_PRIVILEGES_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** частичный PostgreSQL-family identity-ответ,
 NULL в identity-поле или пустое имя не подтверждают read-only. Известное имя и
@@ -2119,7 +2119,7 @@ Red identity: 40 failed / 40 passed; связанная группа до про
 Red quoted-name controls: 20 failed / 130 deselected. Итоговый полный offline pytest
 с duckdb: 3567 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
 Итоговое synthetic Astra xhigh review: 0 substantive findings; не human/production acceptance.
-[Synthetic review и границы](DECISIONOPS_PARTIAL_IDENTITY_REVIEW_2026-10-02.md).
+[Synthetic review и границы](reviews/DECISIONOPS_PARTIAL_IDENTITY_REVIEW_2026-10-02.md).
 
 **Предыдущий срез (2026-10-02):** отказ или пустой ответ PostgreSQL-family
 identity-вопроса блокирует доступ: роль — `unknown`, superuser и `BYPASSRLS` не
@@ -2131,7 +2131,7 @@ SQL не выполняются. `dwh.access` сохраняет код `access.
 по ADR 0006; реализация Codex. Red: 16 failed / 16 passed; связанная группа:
 305 passed. Полный offline pytest с duckdb: 3499 passed, 5 skipped, 38 deselected;
 Ruff, Black и strict mypy чистые.
-[Итоговое synthetic Astra review](DECISIONOPS_ROLE_IDENTITY_REVIEW_2026-10-02.md):
+[Итоговое synthetic Astra review](reviews/DECISIONOPS_ROLE_IDENTITY_REVIEW_2026-10-02.md):
 0 substantive findings; human/production acceptance не заявляется.
 
 **Предыдущий срез (2026-10-02):** отказ или пустой ответ табличного PostgreSQL-family
@@ -2143,7 +2143,7 @@ superuser и ClickHouse без изменений. `VERIFIER_VERSION` 64 → 65,
 44 → 45; исторические bundles не переписаны. Срез выбран Astra xhigh по ADR 0006.
 Red: 2 failed / 4 passed; связанная группа — 188 passed. Полный offline pytest
 с duckdb — 3467 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
-[Synthetic Astra xhigh review](DECISIONOPS_TABLE_PRIVILEGES_REVIEW_2026-10-02.md):
+[Synthetic Astra xhigh review](reviews/DECISIONOPS_TABLE_PRIVILEGES_REVIEW_2026-10-02.md):
 0 substantive findings; не human/production acceptance.
 
 **Предыдущий срез (2026-10-02):** PostgreSQL-family probe проверяет колоночные
@@ -2158,7 +2158,7 @@ ClickHouse без изменений. `VERIFIER_VERSION` 63 → 64, `CHECK_VERSI
 исторические bundles не переписаны. Граница `NOINHERIT` / `SET ROLE` в пишущую
 группу остаётся вне этого среза (T-33). Полный offline pytest с duckdb:
 3461 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
-[Synthetic Astra xhigh review](DECISIONOPS_COLUMN_PRIVILEGES_REVIEW_2026-10-02.md):
+[Synthetic Astra xhigh review](reviews/DECISIONOPS_COLUMN_PRIVILEGES_REVIEW_2026-10-02.md):
 P1 исправлен, итог 0 substantive findings; не human/production acceptance.
 
 **Предыдущий срез (2026-10-01):** `results.reconcile` сравнивает нечисловые значения
@@ -2772,10 +2772,10 @@ Remote и package identity fork не настроены; `autobi-agent==0.5.0` �
 | Continuous platform | конкретные срезы через Astra-review по ADR 0006; human outcome не измеряется (ADR 0007) |
 
 Четыре tracked pilot-сценария и найденные дефекты описаны в
-[pilot rehearsal](DECISIONOPS_PILOT_2026-08-25.md) и `docs/pilot/`; сохранённые там bundles
+[pilot rehearsal](reviews/DECISIONOPS_PILOT_2026-08-25.md) и `docs/pilot/`; сохранённые там bundles
 выпущены verifier 2 и сохраняют ожидаемые verdict и integrity `pass`. Отдельные Mac verifier 7 runs
-описаны в [симуляции owner-gate 2026-09-04](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md),
-но их bundles в Git нет. [Новая proxy-симуляция](DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md)
+описаны в [симуляции owner-gate 2026-09-04](reviews/DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md),
+но их bundles в Git нет. [Новая proxy-симуляция](reviews/DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md)
 подтвердила scope/actionability свежих verifier 14 отчётов. Её пробел R2 закрыт отдельным
 [tracked chart-impact overlay](pilot/2026-09-12-owner-review-chart-impact/README.md): affected
 report содержит один `computes_metric` chart и один именованный `chart.opaque_sql` gap.
@@ -2988,7 +2988,7 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 
 Разрешённый срез подписи закрыт [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
 Техническая часть R3 закрыта tracked live package. Выполнено
-[Astra xhigh review R3/R4](DECISIONOPS_ASTRA_REVIEW_2026-09-12.md): выбран ограниченный
+[Astra xhigh review R3/R4](reviews/DECISIONOPS_ASTRA_REVIEW_2026-09-12.md): выбран ограниченный
 срез пояснений гарантий в owner-summary реализован Luna xhigh. Раздел
 `How to read this evidence` отделяет reconciliation от semantic approval, attestation
 от execution proof, cost compiled reference SQL от capture SQL и подпись от sign-off.
@@ -3016,10 +3016,10 @@ identity-ответа; доказанный superuser сохраняет пре�
 Закрыто выпадение объявленной freshness метрики из canonical snapshot и semantic diff (T-36, verifier 81 / check 57).
 Закрыто выпадение объявленных join paths метрики из canonical snapshot и semantic diff (T-37, verifier 82 / check 58).
 Следующий выявленный Astra-срез закрыт:
-[`--artifact` больше не обходит manifest pin](DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
+[`--artifact` больше не обходит manifest pin](reviews/DECISIONOPS_ARTIFACT_PIN_REVIEW_2026-09-12.md).
 Неверный `--expect-digest` даёт exit `4` и пустой stdout; правильный сохраняет проверки
 подписи, classification и выбранного payload. Версии evidence не менялись.
-Также устранено [смешение manifest версий при полной inspection](DECISIONOPS_MANIFEST_SNAPSHOT_REVIEW_2026-09-12.md):
+Также устранено [смешение manifest версий при полной inspection](reviews/DECISIONOPS_MANIFEST_SNAPSHOT_REVIEW_2026-09-12.md):
 digest, pin, подпись и возвращённый bundle используют одни прочитанные manifest bytes.
 Это snapshot manifest в памяти, не атомарный snapshot всего каталога.
 Правила закреплены в [AGENTS.md](../AGENTS.md) и

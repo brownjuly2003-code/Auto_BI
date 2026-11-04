@@ -1028,7 +1028,7 @@
   печатает и плитки, и гэпы.
 
 - **Репетиция пилота release gate на локальном стенде** —
-  `docs/DECISIONOPS_PILOT_2026-08-25.md` и
+  `docs/reviews/DECISIONOPS_PILOT_2026-08-25.md` и
   `docs/pilot/2026-08-25-ch-{control,tz-margin,tz-revenue,result-drift}/` (входы +
   evidence всех четырёх прогонов, перепроверяемые `auto_bi decision evidence`). Против живого
   ClickHouse 24.8.14.39 ролью `gate_ro`, на графе из двух governed-продуктов на одной

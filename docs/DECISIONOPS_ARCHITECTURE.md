@@ -2203,7 +2203,7 @@ claims; приоритет прежних input/additivity/group gaps сохра
 по-прежнему допускают отрицательные значения. Версия skill остаётся 2: формулы,
 округление и outputs на входах в допустимом домене метода не менялись. Сохранённые
 outputs читаются как раньше; новые результаты для ранее ошибочно принятого входа
-меняются. Проверки — [T-81](DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
+меняются. Проверки — [T-81](reviews/DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
 
 Evidence ID в brief — `result-<hex>`, где `<hex>` — полный SHA-256 canonical JSON
 массива `[step_id, metric_ref]`. Границы сегментов metric ref, его версия и граница

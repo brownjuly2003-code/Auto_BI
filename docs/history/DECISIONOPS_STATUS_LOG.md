@@ -250,7 +250,7 @@ artifact, а обычная инспекция того же хранилища 
 модель, запрошенный run, канонические байты и подпись. Artifact read отказывает manifest другого run —
 signed и unsigned, с expected digest и без — до чтения payload и называет оба ID; инспекция по-прежнему
 сообщает несовпадение уровнем review. Валидный manifest в неканоническом написании, как и прежде
-(`docs/DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md`), выдаёт artifact — с expected digest и без —
+(`docs/reviews/DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md`), выдаёт artifact — с expected digest и без —
 после проверки модели, привязки run, подписи и переданного digest и не снимает других отказов корневого
 manifest; инспекция сообщает `evidence.manifest_not_canonical`. Findings привязки run и подписи
 отказывают чтению в виде `<code>: <detail>` через `; `; CLI пишет `error: <message>` в stderr и
@@ -1497,8 +1497,8 @@ Mac-проверки). От непривилегированного польз�
 удалён, профиль остановлен.
 Исполнитель — Claude Opus 5.5, без модельного ревью: изменена только документация.
 Код и версии 109/74 прежние; Linux 3.13/3.14 и live DWH не запускались. Отчёты с
-командами и средой: [Mac](../DECISIONOPS_MAC_CHECKS_2026-10-24.md),
-[Linux](../DECISIONOPS_LINUX_CHECKS_2026-10-24.md).
+командами и средой: [Mac](../reviews/DECISIONOPS_MAC_CHECKS_2026-10-24.md),
+[Linux](../reviews/DECISIONOPS_LINUX_CHECKS_2026-10-24.md).
 
 ## 2026-10-23 — T-109: JSON-контракты при обходе validated каталогов
 
@@ -1630,7 +1630,7 @@ coverage 96.15%, exit 0, 931.48 s. Один запуск; дополнитель
 118 skips обусловлены Windows symlink/POSIX доступом, named pipe, отсутствующим
 Playwright и проверками отсутствующего SDK; 38 deselected — integration/e2e.
 Это не полный CI и не проверка runtime Mac/Linux или live DWH.
-[Отчёт с командами и средой](../DECISIONOPS_WINDOWS_CHECKS_2026-10-23.md).
+[Отчёт с командами и средой](../reviews/DECISIONOPS_WINDOWS_CHECKS_2026-10-23.md).
 Synthetic Astra xhigh selection/review: 0 actionable findings, не human acceptance.
 Docs-as-code после добавления отчёта в индекс: 25 passed; первоначальный отказ
 касался ссылок на ещё untracked отчёт. Исполнение — Codex.
@@ -1806,7 +1806,7 @@ Claude Opus 5.5; финальное synthetic Astra xhigh: 1 P2 — тесты �
 заголовка для `-` и `.`, мутант с экранированием одного `_` проходил. Исправлено тестом
 точных строк заголовка, мутант ловится; итоговые код и тесты: gate 3.13 — 6811 passed, 19 skipped, exit 0.
 Не human/production acceptance.
-[Проверки и границы](../DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md).
+[Проверки и границы](../reviews/DECISIONOPS_INVESTIGATION_GAP_TITLES_CHECKS_2026-10-23.md).
 
 ## 2026-10-23 — T-96: тесты T-74, T-75 и T-82 на macOS
 
@@ -1822,7 +1822,7 @@ Claude Opus 5.5; финальное synthetic Astra xhigh: 1 P2 — тесты �
 Продуктовый код и версии 108/73 прежние. Реализация — Claude Opus 5.5; финальное
 synthetic Astra xhigh: 1 P2 (тест pin тоже брал 3000) исправлено, не human/production
 acceptance.
-[Проверки и границы](../DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
+[Проверки и границы](../reviews/DECISIONOPS_TEST_PORTABILITY_CHECKS_2026-10-23.md).
 
 ## 2026-10-23 — полный прогон T-95 на Mac
 
@@ -1833,7 +1833,7 @@ acceptance.
 только на Windows. APFS не принимает имя с байтом вне UTF-8, а вложенность 3000
 превышает C-лимит JSON-декодера только на Windows; продуктовые ответы на macOS
 управляемые. Код и тесты не менялись. Live DWH не запускался.
-[Проверки и границы](../DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
 
 ## 2026-10-23 — T-95: буквальные refs продукта, метрик и дашбордов в summary
 
@@ -1848,7 +1848,7 @@ run IDs меняются. Red: 5 failed, 1 passed. Отдельный комми
 отдельно 170 passed. Ruff/Black и strict mypy Linux/Windows чистые. Реализация —
 Claude Opus 5.5; финальное synthetic Astra xhigh: 1 P2 (описание test helper)
 исправлено формулировкой, не human/production acceptance.
-[Проверки и границы](../DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_REFS_CHECKS_2026-10-23.md).
 
 ## 2026-10-22 — T-94: буквальные subjects semantic impact в summary
 
@@ -1860,7 +1860,7 @@ Verifier 106 → 107, check 73; новые run IDs меняются. Подтв�
 docs/new tests: 31 passed. Реализация Codex при недоступной `gpt-5.6-luna`;
 выбор и финальное ревью — synthetic Astra xhigh: 0 actionable findings,
 не human/production acceptance.
-[Проверки и границы](../DECISIONOPS_SUMMARY_IMPACT_SUBJECTS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_IMPACT_SUBJECTS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-93: буквальные пояснения всех проверок в summary
 
@@ -1872,7 +1872,7 @@ Red: 24 failed, 10 passed; смежный green: 348 passed. Ruff/Black и stric
 Linux/Windows чистые; docs/new tests: 59 passed. Реализация Codex при недоступной
 `gpt-5.6-luna`; выбор и финальное ревью — synthetic Astra xhigh:
 0 actionable findings, не human/production acceptance.
-[Проверки и границы](../DECISIONOPS_SUMMARY_CHECK_DETAILS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_CHECK_DETAILS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-92: буквальные пояснения chart impact в summary
 
@@ -1884,7 +1884,7 @@ Verifier 104 → 105, check 73; новые run IDs меняются. Red: 7 fail
 Ruff/Black чистые; финальные docs/new tests: 36 passed.
 Реализация Codex при недоступной `gpt-5.6-luna`; выбор и финальное ревью — synthetic
 Astra xhigh: 0 actionable findings, не human/production acceptance.
-[Проверки и границы](../DECISIONOPS_SUMMARY_CHART_DETAILS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_CHART_DETAILS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-91: буквальные пояснения semantic impact в summary
 
@@ -1896,7 +1896,7 @@ Verifier 103 → 104, check 73; новые run IDs меняются. Red: 5 fail
 Ruff/Black чистые; финальные docs/new tests: 32 passed.
 Реализация Codex при недоступной `gpt-5.6-luna`; выбор и финальное ревью — synthetic
 Astra xhigh: 0 actionable findings, не human/production acceptance.
-[Проверки и границы](../DECISIONOPS_SUMMARY_IMPACT_DETAILS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_IMPACT_DETAILS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-90: буквальные пояснения пробелов анализа в summary
 
@@ -1908,7 +1908,7 @@ Quoted SQL-имя попадало через reads.unattributed в ChartGap.det
 Ruff/Black и strict mypy Linux/Windows чистые; docs-as-code: 25 passed.
 Выбор и финальное ревью — synthetic Astra xhigh: 0 actionable findings,
 не human/production acceptance. Реализовал Codex при недоступной `gpt-5.6-luna`.
-[Проверки и границы](../DECISIONOPS_SUMMARY_GAP_DETAILS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_GAP_DETAILS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-89: буквальные ссылки на чарты в summary
 
@@ -1921,7 +1921,7 @@ Verifier 101 → 102, check 73; новые run IDs меняются. Red: 7 fail
 Финальные Ruff/Black чистые; после форматирования docs/new tests: 32 passed.
 Выбор среза и финальное ревью — synthetic Astra xhigh: 0 actionable findings,
 не human/production acceptance. Реализовал Codex при недоступной `gpt-5.6-luna`.
-[Проверки и границы](../DECISIONOPS_SUMMARY_CHART_REFS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_CHART_REFS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-88: буквальное отображение владельцев в summary
 
@@ -1933,7 +1933,7 @@ Red: 4 failed, 2 passed; смежный green: 211 passed. Ruff/Black и strict 
 Linux/Windows чистые. Выбор среза и финальное ревью кода/тестов — synthetic Astra xhigh:
 0 actionable findings, не human/production acceptance.
 Реализовал Codex при недоступной `gpt-5.6-luna`.
-[Проверки и границы](../DECISIONOPS_SUMMARY_OWNERS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_OWNERS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-87: буквальное отображение среды в summary
 
@@ -1949,7 +1949,7 @@ Red заголовка: 5 failed, 2 passed; отдельный red provenance: 3
 не human/production acceptance. После форматирования/документации: 35 passed;
 Ruff/Black и diff check чистые.
 Реализовал Codex при недоступной `gpt-5.6-luna`.
-[Проверки и границы](../DECISIONOPS_SUMMARY_ENVIRONMENT_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_SUMMARY_ENVIRONMENT_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-86: запрет перенаправленного каталога evidence run
 
@@ -1965,7 +1965,7 @@ Ruff/Black и strict mypy Linux/Windows чистые. Synthetic Astra xhigh: 0 P
 Результаты не суммируются. Код не менялся. Native POSIX и live DWH/Mac не проверялись;
 Windows junction проверены, девять новых symlink-сценариев пропущены из-за
 привилегии Windows. Модельный выбор не является human/production acceptance.
-[Проверки и границы](../DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_RUN_ROOT_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-85: проблемы других продуктов в сводке
 
@@ -1978,7 +1978,7 @@ Verifier 99, check 73; historical bundles сохранены. Red: 7 failed; п�
 Codex реализовал при недоступной `gpt-5.6-luna`.
 Полный offline на финальном коде: 6584 passed, 109 skipped, 38 deselected in 538.85s,
 exit 0. Ruff/Black, strict mypy Linux/Windows чистые. Review документации: 0 P1/P2.
-[Проверки и границы](../DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_OTHER_PRODUCT_SUMMARY_2026-10-22.md).
 
 ## 2026-10-22 — T-84: проверка ключей recorded results
 
@@ -1991,7 +1991,7 @@ Codex реализовал при недоступной `gpt-5.6-luna`; вер�
 Red: 12 failed, 7 passed. После исправления P2 однострочной диагностики:
 422 passed, 1 skipped; Ruff/Black и strict mypy Linux/Windows чистые.
 Второе Astra review: 0 открытых P1/P2; полный offline/live gate не повторялся.
-[Проверки и границы](../DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_RESULT_KEYS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — полный offline-baseline после T-83
 
@@ -1999,7 +1999,7 @@ Red: 12 failed, 7 passed. После исправления P2 одностро�
 38 deselected in 527.35s, exit 0. Один полный прогон; код, тесты и версии 98/73
 не менялись. Synthetic Astra xhigh подтвердила выбор задачи; это не
 human/production acceptance. Live DWH/Mac и отдельные lint/type-check gates
-не запускались. [Команда и границы](../DECISIONOPS_OFFLINE_T83_VERIFICATION_2026-10-22.md).
+не запускались. [Команда и границы](../reviews/DECISIONOPS_OFFLINE_T83_VERIFICATION_2026-10-22.md).
 
 ## 2026-10-22 — T-83: Unicode-суррогаты в тексте evidence claim
 
@@ -2014,7 +2014,7 @@ Red: 14 failed, 5 passed; evidence: 232 passed, 67 skipped; investigation и
 Выбор и review production diff с исходными 19 cases — synthetic Astra xhigh:
 0 открытых P1/P2, не human/production acceptance. Codex реализовал срез при
 недоступной `gpt-5.6-luna`; два положительных roundtrip добавлены после review.
-[Проверки и границы](../DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_CLAIM_UNICODE_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-82: управляемый отказ глубоко вложенного JSON manifest
 
@@ -2028,7 +2028,7 @@ Red: 6 failed, 1 passed; профиль: 190 passed, 67 skipped; после ут
 реализация — Codex при недоступной `gpt-5.6-luna`. Synthetic Astra xhigh review:
 0 открытых P1/P2, не human/production acceptance.
 Полный offline suite финального кода и live DWH/Mac не запускались.
-[Проверки и границы](../DECISIONOPS_MANIFEST_DEPTH_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_MANIFEST_DEPTH_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — полная offline-проверка после T-81
 
@@ -2039,7 +2039,7 @@ production-код и тесты не менялись, нового функци
 Ограниченное synthetic Astra xhigh review investigation не выявило подтверждённого
 следующего дефекта и подтвердило выбор verification-only этапа.
 Live DWH/Mac не запускались; это не human/production acceptance.
-[Подробности и границы](../DECISIONOPS_OFFLINE_VERIFICATION_2026-10-22.md).
+[Подробности и границы](../reviews/DECISIONOPS_OFFLINE_VERIFICATION_2026-10-22.md).
 
 ## 2026-10-22 — T-81: неотрицательность исходных строк концентрации
 
@@ -2057,7 +2057,7 @@ Ruff/Black и strict mypy Linux чистые. Четыре payload обычно�
 совпали с исходной функцией. Astra независимо повторила профиль и сравнение:
 0 открытых P1/P2. Полный offline suite и live DWH не запускались;
 не human/production acceptance.
-Проверки и границы — [T-81](../DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
+Проверки и границы — [T-81](../reviews/DECISIONOPS_CONCENTRATION_DOMAIN_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-80: управляемый отказ environment SQL guard
 
@@ -2077,7 +2077,7 @@ Red: 12 failed, 18 passed; green: 30 passed; финальный смежный �
 Ruff/Black и strict mypy Linux/Windows чистые. Четыре completed runs с fake DWH
 сохранили по 20 файлов bundle побайтно относительно исходного HEAD.
 Полный offline suite и live DWH не запускались; не human/production acceptance.
-Проверки и финальное review — [T-80](../DECISIONOPS_ENVIRONMENT_SQL_GUARD_CHECKS_2026-10-22.md).
+Проверки и финальное review — [T-80](../reviews/DECISIONOPS_ENVIRONMENT_SQL_GUARD_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-79: буквальный detail GAP в Markdown investigation
 
@@ -2095,7 +2095,7 @@ Red: 8 failed, 10 passed; Markdown-модуль: 43 passed; investigation: 348 p
 Ruff/Black и package-wide strict mypy Linux чистые. Четыре payload обычного fixture
 побайтно сохранены; brief JSON/digest пяти GAP-входов совпали с исходным HEAD.
 Полный offline-набор на T-79 не повторялся; последний полный green — T-78.
-Подробные проверки — [T-79](../DECISIONOPS_INVESTIGATION_GAP_MARKDOWN_CHECKS_2026-10-22.md).
+Подробные проверки — [T-79](../reviews/DECISIONOPS_INVESTIGATION_GAP_MARKDOWN_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-78: буквальные category/unit в Markdown investigation
 
@@ -2115,7 +2115,7 @@ compatibility cases. Четыре обычных payload и шесть brief JSO
 offline-набор с duckdb на финальном Python-коде: 6436 passed, 109 skipped,
 38 deselected in 1282.17s, exit 0; все 25 новых cases прошли. SQLite budget прошёл;
 два медленных теста после faulthandler-диагностики также завершились успешно.
-Подробные проверки — [T-78](../DECISIONOPS_INVESTIGATION_MARKDOWN_CHECKS_2026-10-22.md).
+Подробные проверки — [T-78](../reviews/DECISIONOPS_INVESTIGATION_MARKDOWN_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-77: управляемый отказ causal-wording policy investigation
 
@@ -2133,7 +2133,7 @@ investigation и смежные проверки: 381 passed (305 + 76). Усп�
 Полный baseline, начатый до правки: 6401 passed, 109 skipped, 38 deselected,
 1 failed (SQLite write budget, 25.66s при лимите 5s). Отдельная диагностика —
 1 passed, call 0.84s; полного green gate финального кода нет.
-Подробные проверки — [T-77](../DECISIONOPS_INVESTIGATION_POLICY_CHECKS_2026-10-22.md).
+Подробные проверки — [T-77](../reviews/DECISIONOPS_INVESTIGATION_POLICY_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-76: различимая идентичность evidence investigation
 
@@ -2147,7 +2147,7 @@ plan/results и skill-output digests сохранены. Версии verifier 9
 и выполнила два прохода review: P2 о читаемости Markdown исправлен; 0 открытых P1/P2.
 Это не human/production acceptance. Финальный investigation-набор: 296 passed,
 Ruff и Black чистые. Red/green, совместимость и границы —
-[в отчёте T-76](../DECISIONOPS_INVESTIGATION_IDENTITY_CHECKS_2026-10-22.md).
+[в отчёте T-76](../reviews/DECISIONOPS_INVESTIGATION_IDENTITY_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-75: отказ кодирования output-пути investigation
 
@@ -2162,7 +2162,7 @@ Ruff и Black чистые. Red/green, совместимость и грани�
 Это не human/production acceptance. Полный offline-прогон начат до последней правки
 диагностики и остановлен примерно на 9%; полного результата на финальном коде нет.
 Профильные проверки, red/green и команды —
-[в отчёте T-75](../DECISIONOPS_INVESTIGATION_OUTPUT_PATH_CHECKS_2026-10-22.md).
+[в отчёте T-75](../reviews/DECISIONOPS_INVESTIGATION_OUTPUT_PATH_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-74: некодируемое имя входа investigation
 
@@ -2179,7 +2179,7 @@ Ruff, Black и package-wide strict mypy Linux/Windows чистые.
 Записи статуса и отчёт проверены Codex; это не human/production acceptance.
 Полный baseline на исходном HEAD намеренно прерван до правки, итогового результата нет.
 Mac-проба подтверждает только отказ stdlib на Python 3.9.6, не запуск проекта.
-[Проверки и границы](../DECISIONOPS_INVESTIGATION_PATH_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_INVESTIGATION_PATH_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-73: согласованы границы ошибок capture
 
@@ -2209,7 +2209,7 @@ Ruff, Black и strict mypy для Linux/Windows чистые. Реализова
 Ревьюер независимо проверил пять сценариев повторной записи и выбора потока;
 документационные проверки: 32 passed.
 Не human/production acceptance.
-[Проверки и границы](../DECISIONOPS_PARSER_DIAGNOSTICS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_PARSER_DIAGNOSTICS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-71: справка CLI на потоке с ограниченной кодировкой
 
@@ -2228,7 +2228,7 @@ assertion о запрете прямой печати сохранён. Ruff, Bl
 документационные проверки: 32 passed. Реализовал Codex при недоступной `gpt-5.6-luna`;
 выбор и review — synthetic Astra xhigh: 0 P1/P2, дополнительный acceptance явного
 потока закрыт тестами. Это не human/production acceptance.
-[Проверки и границы](../DECISIONOPS_HELP_ENCODING_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_HELP_ENCODING_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-70: отказ runtime-настройки не доказывает превышение бюджета
 
@@ -2244,7 +2244,7 @@ assertion о запрете прямой печати сохранён. Ruff, Bl
 Ruff, Black, strict mypy Linux/Windows чистые. Реализовал Codex при недоступной
 `gpt-5.6-luna`; synthetic Astra xhigh выбрала срез и проверила итог: 0 P1/P2,
 не human/production acceptance.
-[Проверки и границы](../DECISIONOPS_RUNTIME_SETTINGS_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_RUNTIME_SETTINGS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-69: однострочный отказ quoting environment probe
 
@@ -2257,7 +2257,7 @@ Ruff, Black, strict mypy Linux/Windows чистые. Реализовал Codex 
 Red: 20 failed, 8 passed; green: 42 passed; смежные проверки: 406 passed.
 Synthetic Astra xhigh выбрала срез и проверила код, тесты и контракт: 0 P1/P2,
 не human/production acceptance. Codex реализовал срез при недоступной `gpt-5.6-luna`.
-[Проверки и границы](../DECISIONOPS_ENVIRONMENT_IDENTIFIER_CHECKS_2026-10-22.md).
+[Проверки и границы](../reviews/DECISIONOPS_ENVIRONMENT_IDENTIFIER_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-68: безопасные ошибки загрузки настроек
 
@@ -2270,7 +2270,7 @@ stdout, DWH-фабрик и выходных файлов. Валидация н
 97/72 сохранены. Red: 32 failed, 3 passed; green: 35 passed; смежные проверки:
 506 passed, 1 skipped. Synthetic Astra xhigh выбрала срез и проверила код, тесты и
 контракт: 0 P1/P2, не human/production acceptance. Codex реализовал срез при
-недоступной `gpt-5.6-luna`. [Проверки и границы](../DECISIONOPS_SETTINGS_CHECKS_2026-10-22.md).
+недоступной `gpt-5.6-luna`. [Проверки и границы](../reviews/DECISIONOPS_SETTINGS_CHECKS_2026-10-22.md).
 
 ## 2026-10-22 — T-67: однострочная ошибка драйвера при capture
 
@@ -2283,7 +2283,7 @@ verifier 97 / check 72 сохранены. Новые regression-тесты да
 тесты и контракт прошли synthetic Astra xhigh review: 0 P1/P2, не human/production
 acceptance. Реализовал Codex: указанная `gpt-5.6-luna` недоступна. Свежие команды,
 результаты, уточнение сетевых тестов для `ConnectionTimeout` и границы —
-[проверки T-67](../DECISIONOPS_CAPTURE_DRIVER_CHECKS_2026-10-22.md).
+[проверки T-67](../reviews/DECISIONOPS_CAPTURE_DRIVER_CHECKS_2026-10-22.md).
 
 - 2026-10-19 — T-66: Windows-only код за проверкой, которую читает mypy. CI проверяет типы на
   Linux (`mypy auto_bi` и `mypy --strict auto_bi` в джобах `quality` и `quality-py-latest`
@@ -2315,7 +2315,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   human/production acceptance. Границы: Windows не прогонялся; тест — эвристика над
   перечисленным (не алиасы импорта, не `import *`, не определения глубже верхнего уровня),
   гейт остаётся за mypy.
-  [Проверки и границы](../DECISIONOPS_PLATFORM_GUARDS_CHECKS_2026-10-19.md).
+  [Проверки и границы](../reviews/DECISIONOPS_PLATFORM_GUARDS_CHECKS_2026-10-19.md).
 - 2026-10-19 — T-65: движок, до которого `decision verify --dwh` не дотянулся. На HEAD проба
   движка соединялась при построении, до вызова use case, а то, что поднимал драйвер, уходило
   наверх как есть. Процессами над закрытым портом loopback и над слушателем, который сразу
@@ -2343,7 +2343,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   human/production acceptance. Границы: сбой самой пробы и нечитаемые настройки — traceback;
   ClickHouse `readonly=1` — usage error (по коду драйвера); `capture` печатает отказ psycopg
   двумя строками и не ловит `StreamFailureError`; живой движок и Windows не прогонялись.
-  [Проверки и границы](../DECISIONOPS_UNANSWERED_ENGINE_CHECKS_2026-10-19.md).
+  [Проверки и границы](../reviews/DECISIONOPS_UNANSWERED_ENGINE_CHECKS_2026-10-19.md).
 - 2026-10-08 — T-64: `NativeModelSource.snapshot` больше не заменяет ложное YAML-значение
   на `{}`. До исправления base принимал пустой `model.yaml` как пустую модель, candidate
   получал отказ при повторном чтении, а capture доходил до query factory. Теперь документ
@@ -2449,7 +2449,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   10 прогонов; вердикты, проверки, run ID и каждый байт bundle совпали с HEAD.
   Полный offline gate с duckdb: 6085 passed, 4 skipped, 38 deselected, exit 0 на 3.13,
   те же числа и exit 0 на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_REFUSED_EVIDENCE_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_REFUSED_EVIDENCE_CHECKS_2026-10-05.md).
 - 2026-10-05 — decision-команда печатала прямо в поток, и символ ответа, которого кодировка
   потока не знает, кончал её `UnicodeEncodeError`: traceback и exit 1 — после вынесенного
   вердикта, записанного bundle или записанных файлов. Командами как процессами на HEAD, с
@@ -2486,7 +2486,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Контроль на tracked pilot-пакетах: 10 прогонов, каждый файл каждого bundle байт в байт как
   на HEAD. Полный offline gate с duckdb: 5929 passed, 4 skipped, 38 deselected, exit 0 на
   3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_UNENCODABLE_OUTPUT_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_UNENCODABLE_OUTPUT_CHECKS_2026-10-05.md).
 - 2026-10-05 — момент и окружение, которые заявляет командная строка, прежде не проверялись
   до использования. `decision verify --created-at`, который manifest не берёт, кончал прогон
   исключением, когда все входы уже загружены и все проверки оценены; `decision capture
@@ -2525,7 +2525,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   тест). Контроль на tracked pilot-пакетах: 10 прогонов, каждый файл каждого bundle байт в
   байт как на HEAD. Полный offline gate с duckdb: 5810 passed, 4 skipped, 38 deselected,
   exit 0 на 3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_STATED_RUN_FACTS_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_STATED_RUN_FACTS_CHECKS_2026-10-05.md).
 - 2026-10-05 — таблица, колонка или join, которые `model.yaml` объявляет больше одного раза,
   прежде давали canonical graph по узлу на объявление: схема модели (v1) берёт имя таблицы,
   имя колонки и концы join'а сколько угодно раз. Читатели такого графа отвечали врозь:
@@ -2574,7 +2574,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   вердикт и каждая проверка как на HEAD. Полный offline gate с duckdb: 5673 passed,
   4 skipped, 38 deselected, exit 0 на 3.13, столько же passed на 3.12 и 3.14;
   Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_REPEATED_DECLARATIONS_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_REPEATED_DECLARATIONS_CHECKS_2026-10-05.md).
 
 - 2026-10-05 — поставляемый дашборд, чей spec прошёл валидатор, а компиляция отвергла,
   прежде кончал `decision verify` traceback: `bi.contract` компилирует теми же builders, что
@@ -2612,7 +2612,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   tracked pilot-пакетах: 10 прогонов, вердикт и каждая проверка как на HEAD. Полный offline
   gate с duckdb: 5450 passed, 4 skipped, 38 deselected, exit 0 на 3.13, столько же
   passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_BI_COMPILE_REFUSAL_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_BI_COMPILE_REFUSAL_CHECKS_2026-10-05.md).
 
 - 2026-10-05 — таблица, которую `model.yaml` объявляет с пустым именем, прежде входила в
   canonical graph как таблица с пустым id и полями `.<колонка>`: схема модели (v1) берёт
@@ -2646,7 +2646,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   10 прогонов, вердикт и каждая проверка как на HEAD. Полный offline gate с duckdb:
   5387 passed, 4 skipped, 38 deselected, exit 0 на 3.13, столько же passed на 3.12
   и 3.14; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_UNNAMED_TABLE_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_UNNAMED_TABLE_CHECKS_2026-10-05.md).
 
 - 2026-10-05 — YAML-файл, чей double-quoted scalar называет escape-последовательностью
   суррогат (U+D800–U+DFFF), прежде читался: сканер PyYAML строит из такого escape строку, у
@@ -2690,7 +2690,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   21, убиты все. Контроль на tracked pilot-пакетах: 10 прогонов, вердикт и каждая проверка
   как на HEAD. Полный offline gate с duckdb: 5352 passed, 4 skipped, 38 deselected, exit 0
   на 3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_SURROGATE_ESCAPES_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_SURROGATE_ESCAPES_CHECKS_2026-10-05.md).
 
 - 2026-10-05 — вход `decision verify` и `decision capture`, который прочитан и не принят
   своей схемой, прежде назывался, а дальше печатался перечнем pydantic: строка счёта и на
@@ -2724,7 +2724,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Контроль на tracked pilot-пакетах: 10 прогонов, каждый файл каждого bundle байт в байт как
   на HEAD. Полный offline gate с duckdb: 5258 passed, 4 skipped, 38 deselected, exit 0 на
   3.13, столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_RUN_INPUT_SCHEMA_REFUSALS_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_RUN_INPUT_SCHEMA_REFUSALS_CHECKS_2026-10-05.md).
 
 - 2026-10-05 — вход `decision investigate`, который команда не может прочитать или принять,
   прежде кончал её traceback или отказом в несколько строк без имени файла: оба вида входа
@@ -2760,7 +2760,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   10 прогонов, каждый файл каждого bundle байт в байт как на HEAD. Полный offline gate с
   duckdb: 5183 passed, 4 skipped, 38 deselected, exit 0 на 3.13, столько же passed на 3.12
   и 3.14; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_INVESTIGATION_INPUTS_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_INVESTIGATION_INPUTS_CHECKS_2026-10-05.md).
 
 - 2026-10-05 — каталог, который команда не может перечислить, прежде читался как пустой, а
   путь, на который ей нельзя посмотреть, кончал её traceback или читался как отсутствующий.
@@ -2797,7 +2797,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Контроль на tracked pilot-пакетах: 10 прогонов, вердикт и каждая проверка как на HEAD.
   Полный offline gate с duckdb: 5069 passed, 4 skipped, 38 deselected, exit 0 на 3.13,
   столько же passed на 3.12 и 3.14; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_UNLISTED_PATHS_CHECKS_2026-10-05.md).
+  [Проверки и границы](../reviews/DECISIONOPS_UNLISTED_PATHS_CHECKS_2026-10-05.md).
 
 - 2026-10-04 — вход прогона, который команда не может прочитать, прежде обрывал
   `decision verify` и `decision capture` traceback с exit 1: `model.yaml` base или candidate
@@ -2831,7 +2831,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   (2 failed): он ждал от репозитория assets `ValidationError` схемы, которая стала cause
   `VerifiedAssetFileError`; тест обновлён. Полный offline gate с duckdb: 4946 passed,
   4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_UNREADABLE_RUN_INPUTS_CHECKS_2026-10-04.md).
+  [Проверки и границы](../reviews/DECISIONOPS_UNREADABLE_RUN_INPUTS_CHECKS_2026-10-04.md).
 
 - 2026-10-04 — файл контракта, который PyYAML разбирает, но не может построить, прежде
   обрывал `decision validate` и `decision verify` traceback с exit 1: `as_of: 2026-02-30`,
@@ -2856,7 +2856,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   мутантов убиты. Контроль на tracked pilot-пакетах: 10 прогонов, каждый файл каждого
   bundle байт в байт как на HEAD. Полный offline gate с duckdb: 4765 passed, 4 skipped,
   38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_UNBUILT_CONTRACT_YAML_CHECKS_2026-10-04.md).
+  [Проверки и границы](../reviews/DECISIONOPS_UNBUILT_CONTRACT_YAML_CHECKS_2026-10-04.md).
 
 - 2026-10-04 — `test_cte_gate_walk_on_a_long_chain_stays_linear` больше не меряет время:
   работа обхода CTE-гейтов считается в строках собственного кода пакета (`sys.settrace`,
@@ -2900,7 +2900,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   19 ручных мутантов правила убиты. Контроль на tracked pilot-пакетах: 10 прогонов,
   вердикт и каждая проверка как на HEAD, отложенных issues нет. Полный offline gate с
   duckdb: 4665 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_VALIDATION_ISSUE_SCOPE_CHECKS_2026-10-04.md).
+  [Проверки и границы](../reviews/DECISIONOPS_VALIDATION_ISSUE_SCOPE_CHECKS_2026-10-04.md).
 
 - 2026-10-04 — `run_id` прежде не различал прогоны, отличавшиеся статическим входом
   гейта вне продукта и canonical digests двух snapshots: validated-контракт `active`
@@ -2928,7 +2928,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   pilot-пакетах: 10 прогонов, исходы всех проверок как на HEAD, повторы
   детерминированы, `run_id` на Mac и Windows совпадают. Полный offline gate с duckdb:
   4635 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_RUN_IDENTITY_CHECKS_2026-10-04.md).
+  [Проверки и границы](../reviews/DECISIONOPS_RUN_IDENTITY_CHECKS_2026-10-04.md).
 
 - 2026-10-04 — `contracts.validate` прежде пропускал с advisory запинненную метрику,
   которую candidate вернул в `draft` или отдал под governing policy, под которой
@@ -2952,7 +2952,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   29 passed; новый модуль: 46 passed. Контроль ложных отказов: пять pilot-пакетов,
   9 продуктов, 0 rule issues. Полный offline gate с duckdb: 4545 passed, 4 skipped,
   38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_PIN_RULES_CHECKS_2026-10-04.md).
+  [Проверки и границы](../reviews/DECISIONOPS_PIN_RULES_CHECKS_2026-10-04.md).
 
 - 2026-10-04 — `contracts.validate` прежде пропускал как `contracts.clean`
   validated-контракт active с dimensions `region`, `category` и numerator
@@ -2976,7 +2976,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   новый модуль: 53 passed. Synthetic Astra xhigh review: 0 findings. Полный offline gate
   с duckdb: 4502 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy
   чистые.
-  [Проверки и границы](../DECISIONOPS_PIN_CONTENTS_REVIEW_2026-10-04.md).
+  [Проверки и границы](../reviews/DECISIONOPS_PIN_CONTENTS_REVIEW_2026-10-04.md).
 
 - 2026-10-04 — числовые investigation skills (`period_variance`,
   `contribution_decomposition`, `concentration_shift`) прежде теряли цифры после
@@ -3002,7 +3002,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   на копии HEAD с одними поднятыми версиями skill: 45 failed / 44 passed; новый
   модуль: 89 passed. Synthetic Astra xhigh review: 0 findings. Полный offline gate
   с duckdb: 4449 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_INVESTIGATION_EXACT_ARITHMETIC_REVIEW_2026-10-04.md).
+  [Проверки и границы](../reviews/DECISIONOPS_INVESTIGATION_EXACT_ARITHMETIC_REVIEW_2026-10-04.md).
 
 - 2026-10-04 — `assets.invalidated` прежде пропускал metric pin verified asset
   на другой версии, несколько контрактов или отсутствие метрики как `assets.valid`.
@@ -3020,7 +3020,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   новый модуль: 24 passed. Synthetic Astra xhigh review: 0 findings.
   Полный offline gate с duckdb: 4360 passed, 4 skipped, 38 deselected, exit 0;
   Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_ASSET_METRIC_PINS_REVIEW_2026-10-04.md).
+  [Проверки и границы](../reviews/DECISIONOPS_ASSET_METRIC_PINS_REVIEW_2026-10-04.md).
 
 - 2026-10-04 — ClickHouse own-grant строка без `access_type` больше не читается
   как «не write grant» и «не SELECT»: прежде роль становилась read-only по grants,
@@ -3041,7 +3041,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   лимите z.ai. Red на HEAD: 15 failed / 8 passed; новый модуль: 23 passed.
   Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb:
   4336 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_UNTYPED_GRANTS_REVIEW_2026-10-04.md).
+  [Проверки и границы](../reviews/DECISIONOPS_UNTYPED_GRANTS_REVIEW_2026-10-04.md).
 
 - 2026-10-03 — гейт больше не падает на identity-вопросе ядра 9.4 из-за
   отсутствующего `pg_roles.rolbypassrls`. Только после undefined column (`42703`)
@@ -3059,7 +3059,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   12 passed; новый модуль: 163 passed. Synthetic Astra xhigh review: 0 findings.
   Полный offline gate с duckdb: 4313 passed, 4 skipped, 38 deselected, exit 0;
   Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_KERNEL_ROW_SECURITY_REVIEW_2026-10-03.md).
+  [Проверки и границы](../reviews/DECISIONOPS_KERNEL_ROW_SECURITY_REVIEW_2026-10-03.md).
 
 - 2026-10-03 — `contracts.validate` резолвит каждый metric pin продукта в
   candidate snapshot: ровно один контракт на запинненной версии. Другая версия,
@@ -3078,7 +3078,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   z.ai. Red на HEAD: 19 failed / 0 passed; новый модуль: 19 passed. Synthetic
   Astra xhigh review: 0 findings. Полный offline gate с duckdb: 4150 passed,
   4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_METRIC_PINS_REVIEW_2026-10-03.md).
+  [Проверки и границы](../reviews/DECISIONOPS_METRIC_PINS_REVIEW_2026-10-03.md).
 
 - 2026-10-03 — PostgreSQL-family identity-вопрос читает superuser-флаг текущей
   роли из `pg_roles.rolsuper`: у current role без LOGIN нет строки в `pg_user`,
@@ -3096,7 +3096,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   20 passed; новый модуль: 44 passed. Synthetic Astra xhigh review: 0 findings.
   Полный offline gate с duckdb: 4131 passed, 4 skipped, 38 deselected, exit 0;
   Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_NOLOGIN_IDENTITY_REVIEW_2026-10-03.md).
+  [Проверки и границы](../reviews/DECISIONOPS_NOLOGIN_IDENTITY_REVIEW_2026-10-03.md).
 
 - 2026-10-03 — ClickHouse role probe спрашивает роли, которые сессия может включить:
   выданная, но не включённая роль (`SET DEFAULT ROLE NONE`) отсутствует в
@@ -3123,7 +3123,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   10 passed; новый модуль: 35 passed. Synthetic Astra xhigh review: 0 findings.
   Полный offline gate с duckdb: 4087 passed, 4 skipped, 38 deselected, exit 0;
   Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_CLICKHOUSE_SET_ROLE_REVIEW_2026-10-03.md).
+  [Проверки и границы](../reviews/DECISIONOPS_CLICKHOUSE_SET_ROLE_REVIEW_2026-10-03.md).
 
 - 2026-10-02 — canonical metric node несёт объявленные `join_paths`, отсортированные
   без одинаковых объявлений; висячий endpoint — `gap.metric_join_dangling`, несколько
@@ -3139,7 +3139,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Red на HEAD: 21 failed / 8 passed; профильный набор: 392 passed. Synthetic Astra
   xhigh review: 0 findings. Полный offline gate с duckdb: 4052 passed, 4 skipped,
   38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_METRIC_JOIN_PATHS_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_METRIC_JOIN_PATHS_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — metric node canonical snapshot несёт объявленную `freshness`:
   `max_age` как объявлен, quality preconditions отсортированы без повторов.
@@ -3159,7 +3159,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   предела одного `int()`) воспроизведены и исправлены, третий проход — 0 новых
   findings. Полный offline gate с duckdb: 4023 passed, 4 skipped, 38 deselected,
   exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_METRIC_FRESHNESS_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_METRIC_FRESHNESS_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — `bi.contract` перед компиляцией валидирует поставляемый spec
   против candidate-модели тем же `validate_spec`, что и build path перед
@@ -3173,7 +3173,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   оркестратор. Red на HEAD: 20 failed; профильный набор: 310 passed.
   Synthetic Astra xhigh review: 0 findings. Полный offline gate с duckdb:
   3975 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict mypy чистые.
-  [Проверки и границы](../DECISIONOPS_BI_SPEC_VALIDATION_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_BI_SPEC_VALIDATION_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — PostgreSQL-family role probe одним вопросом находит роли, в которые
   session user может переключиться через `SET ROLE` (PostgreSQL 16 — опция `SET`,
@@ -3194,7 +3194,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   superuser-группа выпадала из вопроса) воспроизведена на PostgreSQL 16.15
   и исправлена, второй проход — 0 новых findings. Полный offline gate
   с duckdb: 3955 passed, 4 skipped, 38 deselected, exit 0; Black/Ruff/strict
-  mypy чистые. [Проверки и границы](../DECISIONOPS_SET_ROLE_REVIEW_2026-10-02.md).
+  mypy чистые. [Проверки и границы](../reviews/DECISIONOPS_SET_ROLE_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — отсутствующая readable-витрина не считается допустимой для
   датировки: без допустимых вопросов чистый код `dwh.freshness` —
@@ -3204,7 +3204,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Профильный набор: 218 passed; Black/Ruff/strict mypy чистые.
   Итоговое synthetic Astra xhigh review: 0 substantive findings.
   Полный offline gate: 3911 passed, 5 skipped, 38 deselected, exit 0.
-  [Проверки и границы](../DECISIONOPS_FRESHNESS_OUTCOME_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_FRESHNESS_OUTCOME_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — при нуле фактических security-наблюдений чистый код —
   `security.not_run`, поэтому проверка появляется в `What was not done`.
@@ -3214,7 +3214,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh review:
   0 substantive findings. Полный offline gate: 3899 passed, 5 skipped,
   38 deselected, exit 0.
-  [Проверки и границы](../DECISIONOPS_SECURITY_OUTCOME_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_SECURITY_OUTCOME_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — при нуле фактических физических сравнений clean code —
   `physical.not_run`, поэтому проверка появляется в `What was not done`.
@@ -3224,7 +3224,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh review:
   0 substantive findings. Полный offline gate: 3887 passed, 5 skipped,
   38 deselected, exit 0.
-  [Проверки и границы](../DECISIONOPS_PHYSICAL_OUTCOME_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_PHYSICAL_OUTCOME_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — при нулевом числе допустимых cost-сравнений clean code —
   `cost.not_run`, поэтому проверка появляется в `What was not done`.
@@ -3234,7 +3234,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Полный offline gate: 3871 passed, 5 skipped, 38 deselected, exit 0;
   Black/Ruff/strict mypy чистые. Итоговое synthetic Astra xhigh review:
   0 substantive findings.
-  [Проверки и границы](../DECISIONOPS_COST_OUTCOME_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_COST_OUTCOME_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — чистая сводка `dwh.cost` сообщает фактическое покрытие объявленных
   потолков: строки из планов, байты/время из exact-query runtime evidence.
@@ -3243,7 +3243,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Полный offline gate: 3821 passed, 5 skipped, 38 deselected, exit 0;
   docs-as-code: 24 passed. Black/Ruff/strict mypy чистые. Итоговое synthetic
   Astra xhigh review: 0 substantive findings.
-  [Проверки и границы](../DECISIONOPS_COST_COVERAGE_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_COST_COVERAGE_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — чистая сводка `dwh.security` считает подтверждённые права чтения
   запрошенных колонок и ответы о row policies по вопросам (витрина, колонка времени).
@@ -3252,7 +3252,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Профильный набор: 306 passed; полный offline gate: 3790 passed, 5 skipped,
   38 deselected, exit 0; docs-as-code: 24 passed. Black/Ruff/strict mypy чистые.
   Итоговое synthetic Astra xhigh review: 0 substantive findings.
-  [Проверки и границы](../DECISIONOPS_SECURITY_COVERAGE_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_SECURITY_COVERAGE_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — чистая сводка `dwh.freshness` считает сравнения по вопросам
   (витрина, колонка времени) и явно называет неполное покрытие. Положительный вывод
@@ -3261,7 +3261,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Полный offline gate: 3763 passed, 5 skipped, 38 deselected, exit 0;
   docs-as-code: 24 passed; Black/Ruff/strict mypy чистые. Выбор и итоговое review —
   synthetic Astra xhigh (0 substantive findings), реализация Codex.
-  [Проверки и границы](../DECISIONOPS_FRESHNESS_COVERAGE_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_FRESHNESS_COVERAGE_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — `dwh.physical` считает фактически сравненные типы колонок и заявленные
   свойства layout по каждому вопросу (витрина, колонка времени). Неполное и нулевое
@@ -3271,7 +3271,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Профильный набор 204 passed, docs-as-code 24 passed; Black/Ruff/strict mypy чистые.
   Итог Astra: 0 незакрытых substantive findings. Полный offline gate: 3741 passed,
   1 failed (SQLite timing budget); изолированная диагностика: 1 passed за 1,25 с.
-  [Проверки и границы](../DECISIONOPS_PHYSICAL_COVERAGE_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_PHYSICAL_COVERAGE_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — составные canonical ClickHouse write grants (`ALTER ...`,
   `CREATE ...`, `DROP ...`) и `ALL` блокируют grant-based read-only и runtime SQL.
@@ -3281,7 +3281,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Red: 26 failed / 15 passed, отдельно ALL — 2 failed. Полный offline pytest:
   3723 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
   Итоговое synthetic Astra review: 0 substantive findings.
-  [Проверки и границы](../DECISIONOPS_WRITE_GRANTS_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_WRITE_GRANTS_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — неполный/неотвеченный список ClickHouse enabled roles не подтверждает
   grant-based read-only и effective column/policy reach. Профиль `readonly=1/2`
@@ -3291,7 +3291,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Red: 23 failed / 11 passed. Human/production acceptance не заявляется.
   Полный offline pytest с duckdb: 3679 passed, 5 skipped, 38 deselected, exit 0;
   Ruff, Black и strict mypy чистые. Итоговое synthetic Astra review: 0 substantive findings.
-  [Проверки и границы](../DECISIONOPS_ENABLED_ROLES_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_ENABLED_ROLES_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — missing/NULL поля PostgreSQL-family write-privilege ответов не
   подтверждают read-only. `dwh.access` — BLOCK, exact runtime SQL не выполняется;
@@ -3300,7 +3300,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   реализация Codex. Red: 74 failed / 4 passed; связанная группа — 451 passed.
   Ruff, Black и strict mypy чистые; итоговое review — 0 substantive findings.
   Полный offline pytest с duckdb: 3645 passed, 5 skipped, 38 deselected, exit 0.
-  [Проверки и границы](../DECISIONOPS_PARTIAL_PRIVILEGES_REVIEW_2026-10-02.md).
+  [Проверки и границы](../reviews/DECISIONOPS_PARTIAL_PRIVILEGES_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — частичный PostgreSQL-family identity-ответ, NULL в поле или пустое имя
   не подтверждают read-only. Известные имя и положительные superuser/BYPASSRLS
@@ -3315,7 +3315,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   связанная группа до quoted-name поправки — 353 passed; quoted-name red — 20 failed.
   Итоговый полный offline pytest с duckdb: 3567 passed, 5 skipped, 38 deselected;
   Ruff, Black и strict mypy чистые. Synthetic Astra xhigh review — 0 substantive findings:
-  [review и границы](../DECISIONOPS_PARTIAL_IDENTITY_REVIEW_2026-10-02.md).
+  [review и границы](../reviews/DECISIONOPS_PARTIAL_IDENTITY_REVIEW_2026-10-02.md).
 
 - 2026-10-02 — отказ и пустой ответ PostgreSQL-family identity-вопроса:
   роль `unknown`, `read_only=false`, `bypasses_row_security=null`; write-privilege
@@ -3326,7 +3326,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Выбор — synthetic Astra xhigh по ADR 0006, реализация Codex. Red:
   16 failed / 16 passed; связанная группа — 305 passed. Полный offline pytest
   с duckdb: 3499 passed, 5 skipped, 38 deselected; Ruff, Black и strict mypy чистые.
-  [Итоговое synthetic Astra review](../DECISIONOPS_ROLE_IDENTITY_REVIEW_2026-10-02.md):
+  [Итоговое synthetic Astra review](../reviews/DECISIONOPS_ROLE_IDENTITY_REVIEW_2026-10-02.md):
   0 substantive findings; human/production acceptance не заявляется.
 
 - 2026-10-02 — отказ или пустой ответ PostgreSQL-family табличного write-privilege
@@ -3338,7 +3338,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   Выбор среза — synthetic Astra xhigh по ADR 0006, реализация Codex.
   Red: 2 failed / 4 passed; связанная группа — 188 passed. Полный offline pytest
   с duckdb — 3467 passed, 5 skipped, 38 deselected; Ruff, Black и package-wide
-  strict mypy чистые. [Synthetic Astra xhigh review](../DECISIONOPS_TABLE_PRIVILEGES_REVIEW_2026-10-02.md):
+  strict mypy чистые. [Synthetic Astra xhigh review](../reviews/DECISIONOPS_TABLE_PRIVILEGES_REVIEW_2026-10-02.md):
   0 substantive findings; не human/production acceptance.
 
 - 2026-10-02 — PostgreSQL-family role probe спрашивает колоночные INSERT/UPDATE
@@ -3354,7 +3354,7 @@ acceptance. Реализовал Codex: указанная `gpt-5.6-luna` нед
   MyFlow `sol-high` (T-33), завершено и независимо проверено Codex.
   Новые refused/empty регрессии: red 3 failed / 1 passed; полный offline pytest
   с duckdb — 3461 passed, 5 skipped, 38 deselected. Ruff, Black и package-wide
-  strict mypy чистые. [Synthetic Astra xhigh review](../DECISIONOPS_COLUMN_PRIVILEGES_REVIEW_2026-10-02.md):
+  strict mypy чистые. [Synthetic Astra xhigh review](../reviews/DECISIONOPS_COLUMN_PRIVILEGES_REVIEW_2026-10-02.md):
   P1 исправлен, итог 0 substantive findings; не human/production acceptance.
 
 - 2026-10-01 — `results.reconcile` сравнивает нечисловое значение по виду:

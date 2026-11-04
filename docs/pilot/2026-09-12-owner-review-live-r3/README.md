@@ -1,7 +1,7 @@
 # Live owner-review package R3 — 2026-09-12
 
 Этот tracked пакет закрывает техническую часть R3 из
-[`DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md`](../../DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md):
+[`DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md`](../../reviews/DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md):
 один пример связывает reviewed SQL, live capture, governance, runtime cost и
 аутентифицированный evidence bundle. Он не содержит решения реального владельца и не
 закрывает human/design-partner gate или R4.

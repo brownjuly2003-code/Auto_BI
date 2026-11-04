@@ -1,7 +1,7 @@
 # Owner-review chart-impact overlay — 2026-09-12
 
 Этот tracked offline overlay закрывает демонстрационный пробел R2 из
-[`DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md`](../../DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md).
+[`DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md`](../../reviews/DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md).
 Исторические входы `2026-08-25-ch-tz-margin` не изменены: overlay заменяет только
 dashboard spec и повторно использует его contracts, semantic snapshots, asset и recorded result.
 
