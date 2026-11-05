@@ -301,7 +301,8 @@ reviewed capture, provenance/governance, все пять live DWH checks и sign
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
   **Ossie**, **MetricFlow** и **column-level lineage** не реализованы (дизайн первого
   внешнего источника формул — [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md);
-  его строгий reader `semantic_manifest.json` есть, но ещё ни к чему не подключён); проверка колонок
+  его строгий reader `semantic_manifest.json` и разрешение поддержанных формул в
+  `typed_aggregate`/`typed_ratio` с матрицей паритета есть, но ещё ни к чему не подключены); проверка колонок
   reviewed-запроса — это governance («объявлено ли поле»), а не lineage («откуда значение
   пришло через преобразования»). Offline brief
   остаётся `exploratory` и не является human acceptance evidence.
@@ -380,9 +381,11 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 
 Открыт один этап — внешний источник формул метрик (решение владельца 2026-11-04,
 [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)): срезы S1–S5 перечислены в его «Последствиях»; S1, строгий
-reader `semantic_manifest.json` (`auto_bi/semantic/metricflow.py`), сделан, следующий — S2:
-разрешение поддержанных формул, именованные гэпы, проверки совместимости и матрица паритета на
-Mac. Другие срезы владелец выбирает сам, содержательное ревью —
+reader `semantic_manifest.json` (`auto_bi/semantic/metricflow.py`), и S2, разрешение
+поддержанных формул с именованными гэпами и матрицей паритета
+(`auto_bi/semantic/metricflow_formula.py`), сделаны, следующий — S3: binding в узле, сверка с
+validated-контрактом по объявлению, diff и инвалидация verified assets, версии source, verifier
+и check, совместимость сериализации. Другие срезы владелец выбирает сам, содержательное ревью —
 Astra xhigh по [ADR 0006](adr/0006-modelled-review-development-gate.md) и
 [AGENTS.md](../AGENTS.md).
 Записи закрытых срезов — [журнал статуса](history/DECISIONOPS_STATUS_LOG.md); прежние

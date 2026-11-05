@@ -10,6 +10,72 @@
 > Новая запись среза добавляется сверху, полным текстом. С 2026-11-04 это единственное место
 > записи о срезе: ни `CLAUDE.md`, ни `DECISIONOPS_CURRENT_STATE.md` её не дублируют.
 
+## 2026-11-04 — S2 этапа «внешний источник формул»: формула из `semantic_manifest.json`, гэпы, матрица паритета
+
+Решение владельца: «продолжи S2». Исполнитель — Claude; ревью — Astra xhigh (профиль cw),
+synthetic, не human acceptance.
+
+`auto_bi/semantic/metricflow_formula.py`: `resolve_formula` разрешает формулу контракта
+`external_ref` (`external.source: dbt_semantic_manifest`) в `typed_aggregate` или `typed_ratio`
+либо отвечает именованными гэпами — никогда тем и другим. Шаги, и гэп шага — последний ответ:
+артефакт (нет — block `gap.external_source_missing`; отказ reader — его problems, block; нет
+метрики — block `gap.external_ref_missing`); пин (другой digest замыкания — block
+`gap.external_revision_mismatch`); контракт и поддержанное подмножество — все гэпы сразу:
+relation и database (block при известном противоречии, review при недоказанном совпадении),
+время агрегации (measure раньше `defaults`, у V2 без fallback; выражение; гранулярность `day`),
+ratio над двумя моделями или временами, additivity, private, конструкции вне подмножества (review
+по JSON-пути); паритет. `auto_bi/semantic/metricflow.py` получил только аксессоры путей.
+
+Строка матрицы паритета — `<движок>.<событийное время>:<форма>`: движок и класс типа событийного
+времени из нативной модели (`DeclaredTable`; `outside_grain`, если событийное время не ключ
+grain), форма называет агрегат, диалект и класс типа колонки (`decimal`, `integer`, `float`,
+`date`, иначе `unclassified`/`undeclared`) или ratio-форму над двумя термами. Формула, чья строка
+не в `PROVEN_PARITY`, остаётся `external_ref` с review `gap.external_parity_unproven`.
+
+Матрица (`scripts/metricflow_parity.py`, `scripts/metricflow_parity_sql.py`; Mac, PostgreSQL
+16.15, metricflow 0.213.0): 217 метрик — 165 pass, 52 no_reference_sql (ratio с термом
+`average`), 0 fail; шесть контрольных пар разошлись (3, 3, 2, 3, 6, 3); 1485 значений; доказаны
+164 строки, все в `postgres.date`. Агрегат — точное равенство, ratio — double MetricFlow в
+интервале значений, которые отсекаются на точности контракта до reference. Результат и артефакт —
+fixtures с digest рецепта прогона; отчёт —
+[DECISIONOPS_METRICFLOW_PARITY_CHECKS_2026-11-04.md](../reviews/DECISIONOPS_METRICFLOW_PARITY_CHECKS_2026-11-04.md).
+Первый прогон этой версии нашёл: у ratio метрики на саму себя dbt пишет `input_measures` с мерой
+один раз — резолвер исправлен (ADR 0008, п. 8). ADR 0008: п. 3, 7, 8.
+
+Ревью Astra: первое — P1 (`PROVEN_PARITY` без движка, класса типа и дневной группировки
+оправдывал формулы над ClickHouse, date/text, float-ratio и `timestamp`-временем), два P2
+(тесты не связывали записанный результат с данными, группировкой, контрольными парами и мостом
+MetricFlow; «ratio над float всегда без reference SQL» ложно для `count`/`count_distinct`) и P3
+(компаратор ratio описан как равенство отсечений). Правка: контекст и классы в ключе строки,
+digest рецепта, тесты данных, группировки и моста на заглушках, float-термы `count` и
+`count_distinct` в матрице, перепрогон. Второе — два P1 (класс типа брался до первой `(`,
+и `numeric(18,2)[]` получал доказанный `decimal`; доказанные строки отбрасывались один проход,
+и при падении `qty_sum` `legacy.metric_expr` оставался доказанным), два P2 (`run()` без тестов:
+не ловились сравнение reference SQL с самим собой, мост без PostgreSQL-рендерера, дедупликация
+`input_measures` по двум метрикам над одной мерой; рецепт не удостоверял фактические файлы
+проекта и строки таблицы) и P3 (docstring шага 3, допуск без `+ 1e-300`). Правка: тип — имя и
+необязательный модификатор по fullmatch, иначе `unclassified`; отбрасывание до неподвижной
+точки; `run()` сверяет файлы проекта и строки таблицы с рецептом до разрешения; тесты `run()` на
+заглушке `subprocess.run`, отвечающей записанным прогоном (воспроизводит `result.json`, падение
+метрики с каскадом, совпавший контроль, отказ на чужих входах). Записанный прогон не изменился.
+Третье — P1 (`run()` не сверял физические типы колонок: значения рецепта в `qty numeric`
+доказали бы строки `integer`) и два P2 (заглушка не отличала reference SQL от `SELECT 0`; допуск
+double без различающего случая). Правка: `run()` сверяет колонки и типы `dm.sales` по
+`pg_attribute`/`format_type` с объявленными; заглушка требует reference SQL, скомпилированный в
+тесте из записанной формулы; граничные случаи `|mf| · 1e-15`. Матрица прогнана повторно с новой
+сверкой — артефакт и `result.json` совпали байт в байт. Четвёртое — без P1 и P2; необязательные
+пожелания: отдельные случаи на объединение ключей в `_values`, на отказ каждого флага
+`agg_params` и на `sum_boolean`.
+
+Проверка: 159 мутантов утверждений модуля, скрипта и моста — все убиты; Mac (Python 3.13): mypy
+`--platform linux`, `--platform linux --strict`, `--platform win32 --strict`, `ruff check .`,
+`black --check` — чисто; `tests/test_metricflow_formula.py`, `tests/test_metricflow_manifest.py`
+и `tests/test_docs_as_code.py` — 388 passed; полный набор — 10721 passed, 29 skipped
+(`--with duckdb`).
+
+Дальше — S3: binding в узле, сверка с validated-контрактом по объявлению, diff и инвалидация
+verified assets, версии source, verifier и check, совместимость сериализации.
+
 ## 2026-11-04 — S1 этапа «внешний источник формул»: строгий reader `semantic_manifest.json`
 
 Решение владельца: «да» — закоммитить ADR 0008 и браться за S1. Исполнитель — Claude; ревью —

@@ -2,7 +2,7 @@
 
 `dbt parse` writes `target/semantic_manifest.json`, the typed model MetricFlow itself reads.
 This module reads that artifact strictly and computes the closure a metric's pin addresses;
-resolving a formula from it is a later slice.
+`metricflow_formula` resolves a contract's formula from what it read.
 
 Strict means four things, checked in this order, and a failure at one step is the answer:
 
@@ -491,21 +491,31 @@ def read_semantic_manifest(raw: bytes) -> ManifestRead:
 class SemanticManifest:
     """A `semantic_manifest.json` that passed every check of :func:`read_semantic_manifest`.
 
-    :meth:`metric` and :meth:`closure` return copies: changing what they return changes
-    neither later results nor :meth:`closure_digest`.
+    :meth:`metric`, :meth:`semantic_model`, :meth:`measure` and :meth:`closure` return copies:
+    changing what they return changes neither later results nor :meth:`closure_digest`. The
+    `*_path` methods give the JSON path of an object in the artifact.
     """
 
     def __init__(self, data: JsonObject, schema_version: str) -> None:
         self._data = data
         self.schema_version = schema_version
         self._metrics: dict[str, JsonObject] = {m["name"]: m for m in data["metrics"]}
+        self._metric_at: dict[str, int] = {
+            metric["name"]: index for index, metric in enumerate(data["metrics"])
+        }
         self._semantic_models: dict[str, JsonObject] = {
             model["name"]: model for model in data["semantic_models"]
         }
-        self._measure_model: dict[str, str] = {
-            measure["name"]: model["name"]
+        self._model_at: dict[str, int] = {
+            model["name"]: index for index, model in enumerate(data["semantic_models"])
+        }
+        self._measure_at: dict[str, tuple[str, int]] = {
+            measure["name"]: (model["name"], position)
             for model in data["semantic_models"]
-            for measure in model.get("measures") or []
+            for position, measure in enumerate(model.get("measures") or [])
+        }
+        self._measure_model: dict[str, str] = {
+            name: model for name, (model, _) in self._measure_at.items()
         }
 
     def metric_names(self) -> list[str]:
@@ -517,6 +527,25 @@ class SemanticManifest:
     def metric(self, name: str) -> JsonObject:
         """The metric object as the artifact has it; `KeyError` if there is none."""
         return copy.deepcopy(self._metrics[name])
+
+    def metric_path(self, name: str) -> str:
+        return f"$.metrics[{self._metric_at[name]}]"
+
+    def semantic_model(self, name: str) -> JsonObject:
+        """The semantic model as the artifact has it; `KeyError` if there is none."""
+        return copy.deepcopy(self._semantic_models[name])
+
+    def semantic_model_path(self, name: str) -> str:
+        return f"$.semantic_models[{self._model_at[name]}]"
+
+    def measure(self, name: str) -> tuple[str, JsonObject]:
+        """`(semantic model name, measure)` as the artifact has it; `KeyError` if none."""
+        model, position = self._measure_at[name]
+        return model, copy.deepcopy(self._semantic_models[model]["measures"][position])
+
+    def measure_path(self, name: str) -> str:
+        model, position = self._measure_at[name]
+        return f"{self.semantic_model_path(model)}.measures[{position}]"
 
     def closure(self, metric: str) -> JsonObject:
         """What the pin of `metric` addresses (module docstring); `KeyError` if no such metric."""

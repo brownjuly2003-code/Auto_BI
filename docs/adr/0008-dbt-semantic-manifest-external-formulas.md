@@ -58,16 +58,20 @@ Conversion- и private-метрик и natural entities в корпусе нет
    - **Время.** Действующий `agg_time_dimension` (V2 — `metric_aggregation_params`; legacy —
      у measure, иначе `defaults` semantic model) ведёт к dimension, а та — к колонке (`expr`
      dimension, без него — её имя). Колонка, не равная `time.event_time_column`, — block
-     `gap.external_time_mismatch`. `expr` dimension не из одной колонки или гранулярность не
-     `day` — review: контракт гранулярность не объявляет, совпадение не доказать.
-   - **Ratio.** Входы из разных semantic models или с разным временем агрегации — review:
-     `typed_ratio` с одной grain-таблицей их не выражает.
+     `gap.external_time_mismatch`. Review `gap.external_time_unproven`: `agg_time_dimension`
+     не задан, dimension не `time`, её `expr` не из одной колонки, гранулярность не `day` или
+     в артефакте её нет — контракт гранулярность не объявляет, совпадение не доказать. V2
+     берёт время только из `metric_aggregation_params`: `null` там — review, `defaults`
+     semantic model не подставляются (как MetricFlow заполняет его для V2, S2 не проверял).
+   - **Ratio.** Входы из разных semantic models или с разным временем агрегации — review
+     `gap.external_ratio_unproven`: `typed_ratio` с одной grain-таблицей их не выражает.
    - **Additivity.** Агрегат, который не складывается суммой (`count_distinct`, `min`, `max`,
-     `average`), под `additivity: additive` — review `gap.external_additivity_unproven`: ни
-     принять, ни отвергнуть это сочетание автоматически нельзя.
-   - **Private.** Метрика контракта с `is_private: true` — review. Private-вход публичного
-     ratio допустим и входит в замыкание. Private здесь — видимость метрики в dbt, не
-     классификация данных.
+     `average`), и любой ratio под `additivity: additive` — review
+     `gap.external_additivity_unproven`: ни принять, ни отвергнуть это сочетание автоматически
+     нельзя.
+   - **Private.** Метрика контракта с `is_private: true` — review
+     `gap.external_private_metric`. Private-вход публичного ratio допустим и входит в
+     замыкание. Private здесь — видимость метрики в dbt, не классификация данных.
 4. **Пин.** `external.source_revision` для этого источника — `sha256:<hex>` канонического JSON
    замыкания определения метрики: версия схемы, `project_configuration` целиком (в нём
    `time_spines`), сама метрика, её входные метрики по всей глубине, measures и semantic
@@ -110,19 +114,51 @@ Conversion- и private-метрик и natural entities в корпусе нет
    - ratio, где числитель и знаменатель — такие simple-метрики, а входы без `filter`, `alias`,
      `offset_window`, `offset_to_grain` → `typed_ratio`.
 
-   Гарантия — структурный перевод: агрегат, колонка, таблица, числитель и знаменатель. Что
-   MetricFlow и reference SQL контракта дают одно число, проверяет матрица паритета (S2): на
-   одних строках сравниваются nullable-колонка под `count`, пустые и целиком NULL группы, нулевой
-   и NULL знаменатель, даты без строк (time spine). Агрегат или форма ratio получают
-   типизированную формулу только после своей строки матрицы; до того — review. Точность
-   `unit.precision` — свойство native-контракта, матрица сравнивает значения до неё. Ratio
-   наследует ограничения reference SQL: вход, для которого он даёт advisory
-   `sql.ratio_inexact_term` (avg, float), остаётся с этим advisory. Measure без `expr` — review,
-   пока fixture не покажет, что dbt пишет для него в артефакт.
+   Колонка legacy-метрики — `expr` measure; у measure без `expr` dbt пишет `expr: null`, и
+   колонкой MetricFlow читает имя measure. `expr` legacy-метрики (dbt пишет его для
+   `create_metric`) принимается, только если говорит то же, что measure.
 
-   Результат проходит те же проверки, что native typed formula: валидатор `MetricFormula` и
-   проверки узла (`gap.metric_field_missing` для колонки или таблицы, которых нет в
-   `model.yaml`).
+   Гарантия — структурный перевод: агрегат, колонка, таблица, числитель и знаменатель. Что
+   MetricFlow и reference SQL контракта дают одно число, проверяет матрица паритета (S2,
+   `scripts/metricflow_parity.py`). Строка матрицы — один способ разрешения в своём контексте:
+   `<движок>.<событийное время>:<форма>`. Движок — тот, что нативная модель объявляет для
+   grain-таблицы; событийное время — класс типа его колонки, если она ключ grain (иначе
+   `outside_grain`): MetricFlow группирует по дню времени агрегации, reference SQL — по ключам
+   grain, и строки у них одни, только когда колонка — ключ, хранящий дни. Форма — агрегат
+   диалекта над классом типа колонки (`legacy.sum.decimal`; классы PostgreSQL — `decimal`,
+   `integer`, `float`, `date`, прочие типы — `unclassified`, нет типа — `undeclared`), ratio из
+   двух таких (`ratio.legacy.sum.decimal/legacy.count.integer`), колонка по имени measure
+   (`legacy.measure_without_expr`), `expr` метрики (`legacy.metric_expr`). Формула опирается на
+   строки своих термов, формы и способа назвать колонку; строка, которой нет в доказанных
+   (`PROVEN_PARITY` в `auto_bi/semantic/metricflow_formula.py`), — review
+   `gap.external_parity_unproven`, формулы нет. Этот шаг последний: он спрашивается только у
+   формулы без других гэпов. Строка доказана, если каждая построенная для неё метрика (и для
+   строк, на которые та ещё опирается) дала на одних данных одни ключи grain и по каждому
+   ключу одно число: агрегат — равенство; ratio — double MetricFlow лежит, в пределах ошибки
+   double, среди значений, которые при отсечении на `unit.precision` дают значение reference
+   (зеркально ниже нуля). Паритет — равенство определений, а не точность double: на
+   2026-01-04, store 1, reference даёт `142857142857.142857`, MetricFlow —
+   `142857142857.14285`, и это совпадение. В данных — nullable-колонка под `count`, группы,
+   где колонка целиком NULL, нулевой и NULL знаменатель, отрицательные значения, большой
+   числитель, повторы под `count_distinct` и дата без строк (time spine не участвует: оба
+   запроса её не дают); контрольные пары разных агрегатов и форм обязаны разойтись. Колонки —
+   `numeric(18,2)`, `bigint`, `double precision`; ratio — над любой их парой, включая одну и ту
+   же колонку. Ratio наследует ограничения reference SQL: терм `average` и float-терм под
+   `sum`, `min` или `max` дают advisory `sql.ratio_inexact_term` без SQL, а `count` и
+   `count_distinct` над float-колонкой — SQL. Поэтому float-терм ratio в матрице — только
+   `count` и `count_distinct`, а формы ratio с `average` в ней есть и не доказаны. Доказано
+   164 строки, все в контексте `postgres.date`: ClickHouse, Greenplum, событийное время
+   `timestamp` или вне ключей grain, колонки `text` и `date` под агрегатом матрицей не
+   проверены. V2 в матрицу не входит: dbt-core 1.12.6 не пишет гранулярность time dimension V2
+   (п. 8), и ни одна V2-метрика не разрешается. Прогон 2026-11-04 (PostgreSQL 16.15,
+   metricflow 0.213.0) и его границы — [отчёт](../reviews/DECISIONOPS_METRICFLOW_PARITY_CHECKS_2026-11-04.md);
+   результат с digest рецепта (файлы проекта, данные, grain обеих сторон, контракты, контроли)
+   и артефакт — fixtures, тесты сверяют с ними `PROVEN_PARITY`, рецепт и нынешнее разрешение.
+
+   Результат проходит те же проверки, что native typed formula: валидатор `MetricFormula`
+   (отказ — review `gap.external_construct_unsupported` на пути метрики, например grain-таблица
+   не в нижнем регистре) и проверки узла (`gap.metric_field_missing` для колонки или таблицы,
+   которых нет в `model.yaml`).
 8. **Всё остальное — именованный гэп, а не тихий проход.** Выражение не из одной колонки,
    фильтр метрики или входа, cumulative, derived, conversion, percentile/median/sum_boolean,
    `non_additive_dimension`, offset, alias, `fill_nulls_with`, `join_to_timespine: true`,
@@ -144,7 +180,9 @@ Conversion- и private-метрик и natural entities в корпусе нет
    Для S2: V2-артефакт dbt 1.12.6 пишет `fill_nulls_with: null` при `fill_nulls_with: 0` в
    YAML и `type_params: null` у time dimension (гранулярности в артефакте нет). S2 читает
    артефакт, а не YAML: заполнения в нём нет, а гранулярность time dimension V2 не доказать —
-   review п. 3.
+   review п. 3. `input_measures` ratio dbt пишет как меры числителя, затем знаменателя, каждую
+   один раз: у ratio одной метрики на саму себя мера одна (прогон матрицы); иной список —
+   review конструкции.
 9. **Без ложной эквивалентности.** Узел метрики несёт binding: source, ref, revision и digest
    замыкания. Любое изменение определения в dbt — поддержанное или нет — сдвигает canonical
    digest, и diff его называет. Неподдержанная конструкция никогда не сводится к типизированной
