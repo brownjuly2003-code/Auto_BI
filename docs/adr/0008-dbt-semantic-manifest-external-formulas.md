@@ -187,6 +187,16 @@ Conversion- и private-метрик и natural entities в корпусе нет
    замыкания. Любое изменение определения в dbt — поддержанное или нет — сдвигает canonical
    digest, и diff его называет. Неподдержанная конструкция никогда не сводится к типизированной
    формуле, которая её не видит: это ровно та ошибка, которую S0 нашёл в OSI.
+   Реализация (S3): `MetricNode.binding` — `FormulaBinding` с `source`, `ref` и
+   `source_revision` объявления и `closure_digest` — digest замыкания в прочитанном артефакте,
+   `null`, если артефакт его не дал (не передан, отвергнут, метрики `ref` в нём нет); заданный,
+   от пина он отличается ровно при `gap.external_revision_mismatch`. Гэпы резолвера snapshot пишет с
+   путём `metrics.<id>.formula`, а при пути в артефакте — `metrics.<id>.formula:<JSON path>`;
+   значение гэпа — digest замыкания. Любой сдвиг binding diff называет review
+   `metric.binding_changed` с impact метрики — и через него инвалидирует её verified assets;
+   detail говорит, что сдвинулось: пин, замыкание (`not read` для `null`) или то, что формулу
+   стал или перестал определять dbt. Так называется и правка, которую типизированная формула не
+   показывает (описание semantic model), и правка конструкции, оставившей формулу `external_ref`.
 10. **Snapshot: объявление отдельно от разрешения.** Разрешённая формула кладётся в
     `MetricNode.formula`: impact (`auto_bi/decision/impact.py`) и reference SQL
     (`sql_contract.py`) читают формулу из узла, поэтому типизированный путь работает для них
@@ -197,6 +207,16 @@ Conversion- и private-метрик и natural entities в корпусе нет
     ложный block `metric_ref.candidate_content_mismatch`. Форма графа меняется:
     `NATIVE_SOURCE_VERSION` 3 → 4, версии verifier и check поднимаются в срезе, который меняет
     граф.
+    Реализация (S3): `declared_node(node)` — связанный узел в объявленной форме: формула —
+    `external_ref` с пином, поля — ключи grain и event time, binding нет; это ровно
+    `metric_node(contract)`. `_content_differences` сравнивает в этой форме и кандидата, и
+    base. Узел без binding пишется без этого ключа, поэтому граф без связанных метрик и его
+    canonical digest — те же, что в версии 3, и payload версии 3 читаются; сам snapshot несёт
+    `source_version` 4, как любой snapshot этого источника. Артефакт и dbt
+    database принимает `NativeModelSource(semantic_manifest=, dbt_database=)`; байты артефакта
+    целиком входят в source digest под ключом `dbt_semantic_manifest`. Контекст строки паритета
+    (п. 7) — движок и типы grain-таблицы, как их держит граф: поле, объявленное дважды и
+    по-разному, в граф не входит и даёт `undeclared`. Версии: source 4, verifier 128, check 82.
 11. **Capture, verify и evidence.** Capture и verify загружают артефакт одним загрузчиком;
     CLI требует его для обеих команд, если контракты на него ссылаются. Расхождение `canonical_digest`
     кандидатного графа уже даёт review `provenance.other_snapshot`; расхождение только
@@ -255,4 +275,7 @@ S0 на тех же проектах:
   меняет.
 - dbt и MetricFlow gate не запускает: он читает уже собранный артефакт. Jinja-шаблоны
   фильтров и SQL-выражения не разбираются.
-- Native-формулы, CLI без артефакта и уже записанные evidence не меняются.
+- Native-формулы, граф и canonical digest прогонов без контракта на `dbt_semantic_manifest` и
+  уже записанные evidence не меняются; новый прогон несёт source version 4 и новые версии
+  verifier и check, поэтому его run id другой, как при любом их подъёме. Между S3 и S4 CLI артефакт не передаёт: прогон с таким контрактом получает
+  block `gap.external_source_missing` рядом с прежним review opaque — как требует п. 8.

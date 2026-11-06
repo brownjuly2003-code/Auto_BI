@@ -437,4 +437,4 @@ def test_the_gate_that_refuses_them_is_a_new_verifier_with_a_new_check_rule() ->
     """A contract that passed now blocks: the verdict of the same input moved (§7.6)."""
     assert int(VERIFIER_VERSION) >= 115
     assert int(CHECK_VERSION) >= 78
-    assert NATIVE_SOURCE_VERSION == "3"
+    assert int(NATIVE_SOURCE_VERSION) >= 3

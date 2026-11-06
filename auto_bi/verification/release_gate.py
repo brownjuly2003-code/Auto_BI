@@ -57,7 +57,13 @@ from auto_bi.ir.validate import validate_spec
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import NonBlankText, Sha256Digest, Slug, Timestamp
 from auto_bi.semantic.diff import SemanticChange, SemanticDiff, diff_snapshots, metric_changes
-from auto_bi.semantic.gateway import MetricNode, SemanticGap, SemanticSnapshot, metric_node
+from auto_bi.semantic.gateway import (
+    MetricNode,
+    SemanticGap,
+    SemanticSnapshot,
+    declared_node,
+    metric_node,
+)
 from auto_bi.semantic.metric_contract import MetricContract
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.severity import Severity
@@ -614,7 +620,13 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: arguments for privileges, ownership, columns and row security. Both engines use the
 #: same two-part mart name for presence and COUNT/MAX. Collected facts and
 #: resulting reports can change; check grading is unchanged and CHECK_VERSION stays 81.
-VERIFIER_VERSION = "127"
+#: 128 — native source version 4 (ADR 0008, slice S3): the node of a metric whose formula a dbt
+#: semantic manifest defines carries its binding and, where the formula resolves from the
+#: artifact the snapshot read, the typed formula, which impact and reference SQL then read;
+#: without the artifact, or where it does not resolve, the formula stays `external_ref` and
+#: the resolution's gaps join `gap.opaque_metric_formula`. Snapshots, the diff and every check
+#: over a bound metric can change; a snapshot without one keeps its digest.
+VERIFIER_VERSION = "128"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -904,7 +916,14 @@ VERIFIER_VERSION = "127"
 #: A false row-security switch makes reported policies inapplicable to every session,
 #: including classification checks, and suppresses bypass findings. Bypass details name
 #: the established exemptions without claiming that consumers receive different rows.
-CHECK_VERSION = "81"
+#: 82 — semantic.gaps grades the gaps of a formula a dbt semantic manifest defines (block where
+#: the artifact is missing or refused, the metric is missing from it, the pin, the relation or
+#: the time contradicts it; review where the match is unproven or the construct unsupported),
+#: where rule 81 graded every such formula `gap.opaque_metric_formula` alone; semantic.diff
+#: names a changed binding `metric.binding_changed` (review), which reaches the metric's
+#: products and verified assets; contracts.validate compares a bound metric's declaration and
+#: pin with the validated contract, not the formula resolved from the artifact.
+CHECK_VERSION = "82"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and
@@ -1575,16 +1594,22 @@ def _content_differences(
     at the pinned version), when the two are one definition, and when the base holds the
     validated definition: the difference is then the change under review, which
     `semantic.diff` names and `impact.products` grades.
+
+    A snapshot's node is read as its contract declares it (`declared_node`): of a metric whose
+    formula a dbt semantic manifest defines, the declaration and its pin are compared, not the
+    formula resolved from the artifact, which the contract does not write (ADR 0008, item 10).
     """
     contract = inputs.validated_metrics.get(metric_id)
     if contract is None or contract.metadata.version != pinned:
         return []
     validated = metric_node(contract)
-    candidate = next(node for node in inputs.candidate.graph.metrics if node.id == metric_id)
+    candidate = declared_node(
+        next(node for node in inputs.candidate.graph.metrics if node.id == metric_id)
+    )
     changes = metric_changes(validated, candidate)
     if not changes:
         return []
-    base = [node for node in inputs.base.graph.metrics if node.id == metric_id]
+    base = [declared_node(node) for node in inputs.base.graph.metrics if node.id == metric_id]
     if len(base) == 1 and not metric_changes(validated, base[0]):
         return []
     return changes

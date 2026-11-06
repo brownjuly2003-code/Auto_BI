@@ -13,7 +13,7 @@ human/design-partner outcome не измеряется — по решению �
 финальным synthetic-ревью Astra xhigh всего gate (2026-11-03, `9b534b6`): P1/P2 нет, остальные
 границы задокументированы; мутационный smoke v1-ядра держит ratchet по функциям, `ci_local` без FAIL
 
-**Версии evidence:** `VERIFIER_VERSION=127`, `CHECK_VERSION=81`
+**Версии evidence:** `VERIFIER_VERSION=128`, `CHECK_VERSION=82`
 
 **Итог этапа hardening (2026-11-03):** три финальных synthetic-ревью Astra xhigh всего gate. Первое
 (`40052f9`) — F1–F7, ревью генерируемого SQL — G1/G2, закрыты T-126…T-130; второе (`d817a17`) —
@@ -301,8 +301,10 @@ reviewed capture, provenance/governance, все пять live DWH checks и sign
 - Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
   **Ossie**, **MetricFlow** и **column-level lineage** не реализованы (дизайн первого
   внешнего источника формул — [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md);
-  его строгий reader `semantic_manifest.json` и разрешение поддержанных формул в
-  `typed_aggregate`/`typed_ratio` с матрицей паритета есть, но ещё ни к чему не подключены); проверка колонок
+  его строгий reader `semantic_manifest.json`, разрешение поддержанных формул в
+  `typed_aggregate`/`typed_ratio` с матрицей паритета и binding в узле метрики есть, но CLI,
+  capture и verify артефакт ещё не передают — до S4 прогон с контрактом на
+  `dbt_semantic_manifest` получает block `gap.external_source_missing`); проверка колонок
   reviewed-запроса — это governance («объявлено ли поле»), а не lineage («откуда значение
   пришло через преобразования»). Offline brief
   остаётся `exploratory` и не является human acceptance evidence.
@@ -383,9 +385,10 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)): срезы S1–S5 перечислены в его «Последствиях»; S1, строгий
 reader `semantic_manifest.json` (`auto_bi/semantic/metricflow.py`), и S2, разрешение
 поддержанных формул с именованными гэпами и матрицей паритета
-(`auto_bi/semantic/metricflow_formula.py`), сделаны, следующий — S3: binding в узле, сверка с
-validated-контрактом по объявлению, diff и инвалидация verified assets, версии source, verifier
-и check, совместимость сериализации. Другие срезы владелец выбирает сам, содержательное ревью —
+(`auto_bi/semantic/metricflow_formula.py`), и S3, binding в узле метрики со сверкой по
+объявлению и `metric.binding_changed` (`auto_bi/semantic/gateway.py`), сделаны, следующий — S4:
+CLI (артефакт и database каждой стороны, печать пина), capture и verify, замыкания в evidence,
+pilot-сценарий. Другие срезы владелец выбирает сам, содержательное ревью —
 Astra xhigh по [ADR 0006](adr/0006-modelled-review-development-gate.md) и
 [AGENTS.md](../AGENTS.md).
 Записи закрытых срезов — [журнал статуса](history/DECISIONOPS_STATUS_LOG.md); прежние

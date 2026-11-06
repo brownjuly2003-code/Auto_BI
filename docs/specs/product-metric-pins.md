@@ -289,6 +289,13 @@ order the diff lists them. Two definitions with no such change are one definitio
 governing policies written in another order, a join path or a quality precondition declared
 twice, or the keys of the file in another order do not separate them.
 
+A node whose formula a dbt semantic manifest defines (ADR 0008, item 10) SHALL be compared as
+its contract declares it, on the candidate side and the base side alike: its formula the
+`external_ref` with the pin, its fields the grain keys and the event time column, and no
+binding — the canonical node of that contract. The typed formula the snapshot resolved from the
+artifact the contract pins is therefore no difference from the contract; a node that pins
+another closure differs from it by `metric.formula_changed`.
+
 | the candidate node, against the validated definition | the base snapshot | outcome | issue |
 |---|---|---|---|
 | no differences | not read | `match` | none |
@@ -432,6 +439,26 @@ issue — and the third requirement adds the review the product's rules give the
 - **WHEN** the gate runs
 - **THEN** in each case `contracts.validate` is pass with `contracts.clean`, no issue and the
   entry `match` with exactly the three keys
+
+### Scenario: a formula resolved from the pinned artifact is the declared formula
+
+- **GIVEN** a validated contract whose formula is the `dbt_semantic_manifest` metric
+  `gross_margin_pct` pinned to its closure, and base and candidate refs holding that contract
+  with the artifact, so that each snapshot's node holds the typed ratio and the binding
+- **WHEN** the gate runs
+- **THEN** the entry is `match` with exactly the three keys, `contracts.validate` has no issue,
+  and `semantic.gaps` and `semantic.diff` pass
+
+### Scenario: a re-pinned candidate is the change under review, a re-pinned pair is not
+
+- **GIVEN** the same validated contract and an artifact in which the description of the
+  semantic model `sales_daily` was edited, so that the closure moved; first a base ref as above
+  and a candidate ref pinned to the new closure, then base and candidate refs both pinned to it
+- **WHEN** the gate runs
+- **THEN** in the first case the entry is `match` and `semantic.diff` is review with
+  `metric.binding_changed`; in the second `contracts.validate` is block with one issue
+  `metric_ref.candidate_content_mismatch` (block) and `differences` is
+  `[metric.formula_changed]`
 
 ### Scenario: a base that does not hold the validated definition accounts for nothing
 

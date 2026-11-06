@@ -339,4 +339,4 @@ def test_an_invalid_file_given_itself_is_the_subject_by_the_name_it_was_given(
 def test_the_versions() -> None:
     assert int(VERIFIER_VERSION) >= 121
     assert int(CHECK_VERSION) >= 80
-    assert NATIVE_SOURCE_VERSION == "3"
+    assert int(NATIVE_SOURCE_VERSION) >= 3

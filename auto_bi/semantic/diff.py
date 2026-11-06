@@ -23,6 +23,7 @@ from pydantic import Field
 from auto_bi.scalars import Sha256Digest, duration_seconds
 from auto_bi.semantic.gateway import (
     FieldNode,
+    FormulaBinding,
     MetricNode,
     SemanticGraph,
     SemanticSnapshot,
@@ -365,6 +366,17 @@ def _diff_metric_attrs(
                     impact,
                 )
             )
+    if old.binding != new.binding:
+        changes.append(
+            _change(
+                "metric.binding_changed",
+                ChangeKind.MODIFIED,
+                Severity.REVIEW,
+                new.id,
+                _binding_detail(old.binding, new.binding),
+                impact,
+            )
+        )
     if (old.additivity, old.non_additive_axes) != (new.additivity, new.non_additive_axes):
         changes.append(
             _change(
@@ -479,6 +491,38 @@ def _diff_metric_attrs(
     changes.extend(_budget_change(old, new, impact))
     changes.extend(_freshness_change(old, new, impact))
     return changes
+
+
+#: The parts of a formula binding, in the order a reader expects them, with the words a
+#: finding uses for each.
+_BINDING_PARTS = (
+    ("source", "source"),
+    ("ref", "ref"),
+    ("source_revision", "pin"),
+    ("closure_digest", "closure"),
+)
+
+
+def _binding_detail(old: FormulaBinding | None, new: FormulaBinding | None) -> str:
+    """What moved in where a metric's formula is defined (ADR 0008, item 9).
+
+    Review whichever way it moved, as `metric.formula_changed` is: the closure digest moves
+    with any change of the definition in dbt — one the typed formula shows or not, and one in
+    a construct that leaves the formula `external_ref` — so the change is named even where the
+    formula reads the same, and a formula that came to be or stopped being defined in dbt is a
+    change of what defines the number even where the typed formula is one.
+    """
+    if old is None and new is not None:
+        return f"formula now defined by {new.source} metric {new.ref}"
+    if new is None and old is not None:
+        return f"formula no longer defined by {old.source} metric {old.ref}"
+    # A closure no artifact gave is "not read": no artifact, a refused one, or no such metric.
+    parts = [
+        f"{label} {getattr(old, attr) or 'not read'} -> {getattr(new, attr) or 'not read'}"
+        for attr, label in _BINDING_PARTS
+        if getattr(old, attr) != getattr(new, attr)
+    ]
+    return f"external definition changed: {', '.join(parts)}"
 
 
 def _join_paths_change(

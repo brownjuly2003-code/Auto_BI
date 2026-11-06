@@ -696,7 +696,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=127`, `CHECK_VERSION=81`.
+`VERIFIER_VERSION=128`, `CHECK_VERSION=82`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1250,6 +1250,7 @@ Gate выполняет шаги в фиксированном порядке:
 | Description/label only | advisory |
 | Добавлена необязательная dimension | pass/advisory |
 | Formula, numerator/denominator, grain или additivity | review/block по impact |
+| Где определена формула: пин, замыкание во внешнем артефакте, начало или конец привязки | review |
 | Timezone/calendar/null policy | block для affected verified assets |
 | Freshness/data-quality preconditions метрики | ослаблены (длиннее окно, неупорядочиваемое окно, снят precondition) — review; ужесточены или то же окно записано иначе — advisory |
 | Join path метрики | удалён — block; изменена cardinality — review; добавлен — advisory |
@@ -1263,6 +1264,10 @@ Gate выполняет шаги в фиксированном порядке:
 `dwh.freshness` по-прежнему грейдит витрины против `freshness_max_age` продукта.
 Изменения join paths метрики названы `metric.join_path_removed` / `metric.join_path_changed` /
 `metric.join_path_added`; модельные `joins` сохраняют собственные правила `join.*`.
+Сдвиг binding метрики, чью формулу определяет dbt `semantic_manifest.json`, назван
+`metric.binding_changed` — и тогда, когда типизированная формула читается так же: правка
+описания в dbt или конструкции, оставившей формулу `external_ref`, сдвигает замыкание
+([ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md), п. 9).
 
 Impact graph строится по stable refs:
 

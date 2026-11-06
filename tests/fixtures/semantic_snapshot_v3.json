@@ -1,0 +1,350 @@
+{
+ "native": {
+  "source_kind": "native_model_yaml",
+  "source_version": "3",
+  "source_revision": "",
+  "capabilities": [
+   "fields",
+   "joins",
+   "metric_contracts",
+   "physical_keys"
+  ],
+  "source_digest": "sha256:680a816d3020bf5a99a562cc4a6e28674b7778505e121e83d96cea10801d5c2b",
+  "canonical_digest": "sha256:902666feb4781c1278c8ffc70050a63d7641c2db7ebaf8a4f3f5c81de908a03b",
+  "graph": {
+   "tables": [
+    {
+     "id": "dm.sales_daily",
+     "grain": [
+      "date",
+      "store_id"
+     ],
+     "classification": "internal",
+     "description": "",
+     "engine": "postgres",
+     "table_engine": "",
+     "sorting_key": [],
+     "distribution_key": [],
+     "partition_key": ""
+    }
+   ],
+   "fields": [
+    {
+     "id": "dm.sales_daily.category",
+     "table": "dm.sales_daily",
+     "column": "category",
+     "type": "text",
+     "role": "dimension",
+     "classification": "internal",
+     "agg": null,
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.date",
+     "table": "dm.sales_daily",
+     "column": "date",
+     "type": "date",
+     "role": "time",
+     "classification": "internal",
+     "agg": null,
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.gross_margin",
+     "table": "dm.sales_daily",
+     "column": "gross_margin",
+     "type": "numeric(18,2)",
+     "role": "measure",
+     "classification": "internal",
+     "agg": "sum",
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.region",
+     "table": "dm.sales_daily",
+     "column": "region",
+     "type": "text",
+     "role": "dimension",
+     "classification": "internal",
+     "agg": null,
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.revenue",
+     "table": "dm.sales_daily",
+     "column": "revenue",
+     "type": "numeric(18,2)",
+     "role": "measure",
+     "classification": "internal",
+     "agg": "sum",
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.store_id",
+     "table": "dm.sales_daily",
+     "column": "store_id",
+     "type": "integer",
+     "role": "dimension",
+     "classification": "internal",
+     "agg": null,
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    }
+   ],
+   "joins": [],
+   "metrics": [
+    {
+     "id": "metric://sales/gross_margin_pct",
+     "version": 3,
+     "owner": "commercial-analytics",
+     "status": "active",
+     "description": "",
+     "formula": {
+      "kind": "typed_ratio",
+      "external": null,
+      "aggregate": null,
+      "numerator": {
+       "table": "dm.sales_daily",
+       "column": "gross_margin",
+       "agg": "sum"
+      },
+      "denominator": {
+       "table": "dm.sales_daily",
+       "column": "revenue",
+       "agg": "sum"
+      },
+      "sql": "",
+      "review": null
+     },
+     "grain": {
+      "table": "dm.sales_daily",
+      "keys": [
+       "date",
+       "store_id"
+      ]
+     },
+     "time": {
+      "event_time_column": "date",
+      "timezone": "Europe/Moscow",
+      "calendar": "gregorian"
+     },
+     "unit": {
+      "unit": "ratio",
+      "precision": 6,
+      "null_semantics": "null_is_missing",
+      "zero_semantics": "zero_is_value"
+     },
+     "additivity": "non_additive",
+     "non_additive_axes": [],
+     "dimensions": [
+      "region",
+      "category"
+     ],
+     "join_paths": [],
+     "classification": "internal",
+     "policy_refs": [
+      "policy://release/default@1"
+     ],
+     "fields": [
+      "dm.sales_daily.date",
+      "dm.sales_daily.gross_margin",
+      "dm.sales_daily.revenue",
+      "dm.sales_daily.store_id"
+     ],
+     "budgets": null,
+     "freshness": {
+      "max_age": "PT6H",
+      "quality_preconditions": []
+     }
+    }
+   ]
+  },
+  "gaps": []
+ },
+ "other_source": {
+  "source_kind": "native_model_yaml",
+  "source_version": "3",
+  "source_revision": "",
+  "capabilities": [
+   "fields",
+   "joins",
+   "metric_contracts",
+   "physical_keys"
+  ],
+  "source_digest": "sha256:2d77c25a2f68653e2947e64fd69b035ddbd416b9d81f30a151bd69c3a7d27d60",
+  "canonical_digest": "sha256:5c16c18ac68fe0b6929e613e1615067c1ee41f10a2a42d76e614123ed057d96e",
+  "graph": {
+   "tables": [
+    {
+     "id": "dm.sales_daily",
+     "grain": [
+      "date",
+      "store_id"
+     ],
+     "classification": "internal",
+     "description": "",
+     "engine": "postgres",
+     "table_engine": "",
+     "sorting_key": [],
+     "distribution_key": [],
+     "partition_key": ""
+    }
+   ],
+   "fields": [
+    {
+     "id": "dm.sales_daily.category",
+     "table": "dm.sales_daily",
+     "column": "category",
+     "type": "text",
+     "role": "dimension",
+     "classification": "internal",
+     "agg": null,
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.date",
+     "table": "dm.sales_daily",
+     "column": "date",
+     "type": "date",
+     "role": "time",
+     "classification": "internal",
+     "agg": null,
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.gross_margin",
+     "table": "dm.sales_daily",
+     "column": "gross_margin",
+     "type": "numeric(18,2)",
+     "role": "measure",
+     "classification": "internal",
+     "agg": "sum",
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.region",
+     "table": "dm.sales_daily",
+     "column": "region",
+     "type": "text",
+     "role": "dimension",
+     "classification": "internal",
+     "agg": null,
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.revenue",
+     "table": "dm.sales_daily",
+     "column": "revenue",
+     "type": "numeric(18,2)",
+     "role": "measure",
+     "classification": "internal",
+     "agg": "sum",
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    },
+    {
+     "id": "dm.sales_daily.store_id",
+     "table": "dm.sales_daily",
+     "column": "store_id",
+     "type": "integer",
+     "role": "dimension",
+     "classification": "internal",
+     "agg": null,
+     "additivity": null,
+     "fk": "",
+     "description": ""
+    }
+   ],
+   "joins": [],
+   "metrics": [
+    {
+     "id": "metric://sales/gross_margin_pct",
+     "version": 3,
+     "owner": "commercial-analytics",
+     "status": "active",
+     "description": "",
+     "formula": {
+      "kind": "external_ref",
+      "external": {
+       "source": "ossie",
+       "ref": "gross_margin_pct",
+       "source_revision": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "aggregate": null,
+      "numerator": null,
+      "denominator": null,
+      "sql": "",
+      "review": null
+     },
+     "grain": {
+      "table": "dm.sales_daily",
+      "keys": [
+       "date",
+       "store_id"
+      ]
+     },
+     "time": {
+      "event_time_column": "date",
+      "timezone": "Europe/Moscow",
+      "calendar": "gregorian"
+     },
+     "unit": {
+      "unit": "ratio",
+      "precision": 6,
+      "null_semantics": "null_is_missing",
+      "zero_semantics": "zero_is_value"
+     },
+     "additivity": "non_additive",
+     "non_additive_axes": [],
+     "dimensions": [
+      "region",
+      "category"
+     ],
+     "join_paths": [],
+     "classification": "internal",
+     "policy_refs": [
+      "policy://release/default@1"
+     ],
+     "fields": [
+      "dm.sales_daily.date",
+      "dm.sales_daily.store_id"
+     ],
+     "budgets": null,
+     "freshness": {
+      "max_age": "PT6H",
+      "quality_preconditions": []
+     }
+    }
+   ]
+  },
+  "gaps": [
+   {
+    "code": "gap.opaque_metric_formula",
+    "severity": "review",
+    "path": "metrics.metric://sales/gross_margin_pct.formula",
+    "reason": "external_ref formula is not structurally comparable; field-level impact cannot be derived from it",
+    "source_value_ref": "sha256:29d1c29fd10f2f239104fc097ea5250b4cb6120530b2f15ef07cc043dc7ed760"
+   }
+  ]
+ }
+}

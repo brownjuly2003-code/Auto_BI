@@ -309,4 +309,4 @@ def test_generated_sql_verifier_version() -> None:
     from auto_bi.verification.release_gate import CHECK_VERSION, VERIFIER_VERSION
 
     assert int(VERIFIER_VERSION) >= 126
-    assert CHECK_VERSION == "81"
+    assert int(CHECK_VERSION) >= 81

@@ -10,6 +10,61 @@
 > Новая запись среза добавляется сверху, полным текстом. С 2026-11-04 это единственное место
 > записи о срезе: ни `CLAUDE.md`, ни `DECISIONOPS_CURRENT_STATE.md` её не дублируют.
 
+## 2026-11-06 — S3 этапа «внешний источник формул»: binding в узле метрики, сверка по объявлению, `metric.binding_changed`
+
+Решение владельца: «продолжи доработку» (следующий срез по ADR 0008 — S3). Исполнитель — Claude;
+ревью — Astra xhigh (профиль cw), synthetic, не human acceptance.
+
+`auto_bi/semantic/gateway.py`: `NativeModelSource(..., semantic_manifest=, dbt_database=)` читает
+артефакт строгим reader S1, и `_build_graph` разрешает формулу каждого контракта
+`external_ref` с `external.source: dbt_semantic_manifest` через `resolve_formula` S2. Контекст строки
+паритета — движок и типы grain-таблицы, как их держит граф: поле, объявленное дважды и по-разному, —
+`undeclared`. Узел такой метрики несёт `binding` (`FormulaBinding`: `source`, `ref`,
+`source_revision` объявления и `closure_digest` — замыкание из прочитанного артефакта, `null`, если
+его не дал артефакт). Разрешённая формула кладётся в `formula`, поля узла следуют её термам, opaque-гэпа
+нет; неразрешённая остаётся `external_ref` с opaque review и гэпами резолвера по пути
+`metrics.<id>.formula[:<JSON path>]` со значением digest замыкания. Без артефакта — block
+`gap.external_source_missing` (ADR 0008, п. 8). Узел без binding пишется без этого ключа: граф без
+связанных метрик и его canonical digest — те же, что в версии 3 (fixture
+`tests/fixtures/semantic_snapshot_v3.json`, записанный кодом `f904584`), и payload версии 3
+читаются; сам snapshot несёт `source_version` 4. Байты
+артефакта — в source digest под ключом `dbt_semantic_manifest`. `NATIVE_SOURCE_VERSION` 3 → 4.
+
+`declared_node(node)` возвращает связанный узел в объявленной форме — это `metric_node(contract)`;
+`release_gate._content_differences` сравнивает в ней и кандидата, и base, так что формула, разрешённая
+из запиненного артефакта, не расходится с validated-контрактом (ADR 0008, п. 10). `auto_bi/semantic/diff.py`:
+любой сдвиг binding — review `metric.binding_changed` с impact метрики (а через него — инвалидация её
+verified assets); detail называет пин, замыкание (`not read` для `null`) или начало/конец привязки к
+dbt. Так называется и правка, которую типизированная формула не показывает (описание semantic model),
+и правка конструкции, оставившей формулу `external_ref`. `VERIFIER_VERSION` 127 → 128,
+`CHECK_VERSION` 81 → 82. До S4 CLI артефакт не передаёт: прогон с dbt-контрактом получает block
+`gap.external_source_missing` рядом с прежним opaque review.
+
+Доки: ADR 0008 п. 9, 10 и «Последствия»; `docs/specs/product-metric-pins.md` (сверка связанной
+метрики по объявлению, два сценария); `DECISIONOPS_ARCHITECTURE.md` §8.3 и строка версий;
+CURRENT_STATE (версии, «Что ещё не реализовано», «Что делать дальше» → S4).
+
+Ревью Astra xhigh, synthetic. R1: «P1» — snapshot без связанных метрик тоже несёт `source_version` 4;
+оставлено по правилу версий (версия источника — версия адаптера, записавшего snapshot, как в прежних
+bump'ах), обещания сужены: граф и canonical digest — те же, что в версии 3, payload версии 3 читаются,
+у нового прогона другой run id. P2: `closure_digest` отличается от пина ровно при
+`gap.external_revision_mismatch` (docstring, ADR п. 9); совместимость сверяется с payload, записанным
+кодом версии 3, а не с самим собой; reference SQL и chart impact читают разрешённую формулу (тесты);
+контрактный файл с именем артефакта сохраняет оба digest. P3: detail при смене `ref`. R2: P2 — сверка
+с fixture зависела от переводов строк платформы (CRLF на Windows): helper пишет YAML LF-байтами;
+на macOS с плагином, пишущим model CRLF, тест проходит, без LF-нормализации — падает; P3 — unbound
+snapshot проверяется на `source_version` 4. R3: P1/P2/P3 нет.
+
+Проверка: 34 мутанта утверждений среза (`.tmp/s3/config_s3.py`) — все убиты; Mac (Python 3.13): mypy
+`--platform linux`, `--platform linux --strict`, `--platform win32 --strict`, `ruff check .`,
+`black --check` — чисто; полный набор — 10769 passed, 29 skipped, 1 failed (`--with duckdb`):
+`test_perf_baseline.py::test_sqlite_session_write_and_backup_budgets` (запись store 20,9 с при
+бюджете 5 с, на машине шёл посторонний pytest), отдельно — 3 прогона `tests/test_perf_baseline.py`,
+все passed.
+
+Дальше — S4: CLI (артефакт и database каждой стороны, печать пина), capture и verify, замыкания в
+evidence, pilot-сценарий.
+
 ## 2026-11-04 — S2 этапа «внешний источник формул»: формула из `semantic_manifest.json`, гэпы, матрица паритета
 
 Решение владельца: «продолжи S2». Исполнитель — Claude; ревью — Astra xhigh (профиль cw),

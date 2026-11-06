@@ -279,8 +279,8 @@ def test_unanswered_exact_fact_remains_unreported(site: str, field: str) -> None
 
 
 def test_relation_identity_version() -> None:
-    assert VERIFIER_VERSION == "127"
-    assert CHECK_VERSION == "81"
+    assert int(VERIFIER_VERSION) >= 127
+    assert int(CHECK_VERSION) >= 81
 
 
 PART_NAMES = [

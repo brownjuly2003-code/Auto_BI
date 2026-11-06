@@ -655,4 +655,4 @@ def test_the_gate_that_reads_them_so_is_a_new_verifier_with_a_new_check_rule() -
     """The probe seals another text and the rule grades a day and a clock anew (§7.6)."""
     assert int(VERIFIER_VERSION) >= 120
     assert int(CHECK_VERSION) >= 80
-    assert NATIVE_SOURCE_VERSION == "3"
+    assert int(NATIVE_SOURCE_VERSION) >= 3

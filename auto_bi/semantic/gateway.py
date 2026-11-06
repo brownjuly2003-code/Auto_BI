@@ -12,6 +12,15 @@ SQL metric in `model.yaml` is opaque to a structural diff; recording it as a gap
 out loud, whereas dropping it would let a formula change through unnoticed. Gaps carry a
 digest of the unrepresentable value, never the value itself (§10.2).
 
+A formula a dbt semantic manifest defines (ADR 0008) is resolved from the artifact the source
+is given (`metricflow_formula.resolve_formula`). Where it resolves, the node holds the typed
+formula and the fields it reads, so impact and reference SQL read it as they read a native
+one; where it does not, the node keeps the declared `external_ref` and the resolution's gaps
+say why. Either way the node carries a :class:`FormulaBinding` — the declaration and the
+digest of the closure the artifact gave — so a change of the definition in dbt moves the
+canonical digest whether the typed formula shows it or not, and a comparison with the
+contract reads the declaration (:func:`declared_node`).
+
 Physical statistics (`rows`, `bytes`, `cardinality`, `captured_at`) are deliberately not in
 the graph: they change with every load and would make an unchanged model produce a new
 digest every day. Keys and partitioning — the parts the physical gate reasons about — are,
@@ -37,6 +46,7 @@ from auto_bi import filesystem
 from auto_bi.evidence.canonical import digest_bytes, sha256_digest
 from auto_bi.scalars import Sha256Digest
 from auto_bi.semantic.metric_contract import (
+    ExternalFormula,
     FormulaKind,
     MetricBudget,
     MetricContract,
@@ -46,6 +56,14 @@ from auto_bi.semantic.metric_contract import (
     MetricLifecycle,
     MetricTime,
     MetricUnit,
+)
+from auto_bi.semantic.metricflow import SOURCE as DBT_SOURCE
+from auto_bi.semantic.metricflow import ManifestRead, read_semantic_manifest
+from auto_bi.semantic.metricflow_formula import (
+    DeclaredTable,
+    FormulaResolution,
+    is_dbt_formula,
+    resolve_formula,
 )
 from auto_bi.semantic.model import (
     Additivity,
@@ -65,7 +83,12 @@ from auto_bi.yaml_document import load_yaml_document
 #: snapshot with metrics; a snapshot without metrics keeps its digest.
 #: 3 — metric nodes now carry their declared join paths, moving the canonical digest of
 #: every native snapshot with metrics; a snapshot without metrics keeps its digest.
-NATIVE_SOURCE_VERSION = "3"
+#: 4 — the node of a metric whose formula a dbt semantic manifest defines (ADR 0008) carries
+#: its binding and, where the formula resolves, the typed formula in place of `external_ref`.
+#: A node without a binding is written as version 3 wrote it, so the graph of a snapshot
+#: without such a metric, and its canonical digest, are the ones version 3 gave; the snapshot
+#: says version 4, as every snapshot this source writes does.
+NATIVE_SOURCE_VERSION = "4"
 
 NATIVE_CAPABILITIES = ["fields", "joins", "metric_contracts", "physical_keys"]
 
@@ -122,13 +145,41 @@ class TableNode(StrictModel):
     partition_key: str = ""
 
 
+class FormulaBinding(ExternalFormula):
+    """Where the formula of a metric is defined, when a dbt semantic manifest defines it.
+
+    `source`, `ref` and `source_revision` are the contract's declaration, as its `external_ref`
+    formula states them. `closure_digest` is the digest of the metric's closure in the artifact
+    the snapshot read — `None` where no artifact gave one: none was given, the reader refused
+    it, or it holds no such metric. Set, it differs from the pin exactly when the snapshot
+    carries `gap.external_revision_mismatch`.
+    """
+
+    closure_digest: Sha256Digest | None = None
+
+    def declared(self) -> MetricFormula:
+        """The formula as the contract declares it."""
+        return MetricFormula(
+            kind=FormulaKind.EXTERNAL_REF,
+            external=ExternalFormula(
+                source=self.source, ref=self.ref, source_revision=self.source_revision
+            ),
+        )
+
+
 class MetricNode(StrictModel):
     id: str
     version: int = Field(ge=1)
     owner: str
     status: MetricLifecycle
     description: str = ""
+    #: The formula the metric's number is computed by: the contract's own, or, for a bound
+    #: metric whose formula resolved, the typed formula resolved from the artifact.
     formula: MetricFormula
+    #: Set exactly when a dbt semantic manifest defines the formula (ADR 0008, items 9 and
+    #: 10). Absent, it is not written at all: the node of any other metric is the one source
+    #: version 3 wrote, and so is the canonical digest of a snapshot without a bound metric.
+    binding: FormulaBinding | None = Field(default=None, exclude_if=lambda value: value is None)
     grain: MetricGrain
     time: MetricTime
     unit: MetricUnit
@@ -218,9 +269,22 @@ class NativeModelSource:
 
     kind = SourceKind.NATIVE_MODEL_YAML
 
-    def __init__(self, model_path: str | Path, contracts_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        model_path: str | Path,
+        contracts_path: str | Path | None = None,
+        *,
+        semantic_manifest: str | Path | None = None,
+        dbt_database: str | None = None,
+    ) -> None:
+        """`semantic_manifest` is the dbt artifact the formulas of `dbt_semantic_manifest`
+        contracts are resolved from, and `dbt_database` the dbt database declared with it —
+        empty for an engine with two-part names, `None` when none is declared (ADR 0008,
+        item 3). Without an artifact such a formula is `gap.external_source_missing`."""
         self._model_path = Path(model_path)
         self._contracts_path = Path(contracts_path) if contracts_path is not None else None
+        self._manifest_path = Path(semantic_manifest) if semantic_manifest is not None else None
+        self._dbt_database = dbt_database
 
     def snapshot(self, revision: str = "") -> SemanticSnapshot:
         gaps: list[SemanticGap] = []
@@ -228,6 +292,13 @@ class NativeModelSource:
         model = SemanticModel.model_validate(load_yaml_document(model_bytes.decode("utf-8")))
 
         read: dict[str, list[str]] = {"model": [digest_bytes(model_bytes)]}
+        manifest: ManifestRead | None = None
+        if self._manifest_path is not None:
+            # The bytes of the artifact as a whole are what the snapshot was read from, so they
+            # are in the source digest; a formula's pin addresses only its closure (ADR 0008,
+            # item 4). An artifact the reader refuses is still bytes the snapshot read.
+            manifest = read_semantic_manifest(self._manifest_path.read_bytes())
+            read[DBT_SOURCE] = [manifest.artifact_digest]
         files: list[tuple[str, str, Path, bytes]] = []
         for path in self._contract_files():
             raw = self._held_bytes(path)
@@ -249,7 +320,7 @@ class NativeModelSource:
                 loaded.append((contract.metadata.id, contract.metadata.version, digest, contract))
         contracts = [contract for *_, contract in sorted(loaded, key=lambda item: item[:3])]
 
-        graph = _build_graph(model, contracts, gaps)
+        graph = _build_graph(model, contracts, gaps, manifest, self._dbt_database)
         return SemanticSnapshot(
             source_kind=self.kind,
             source_version=NATIVE_SOURCE_VERSION,
@@ -326,9 +397,10 @@ def _link_text(text: str) -> str:
 def _source_digest(read: dict[str, list[str]]) -> str:
     """Content address of the bytes a snapshot was read from, every file of them kept.
 
-    The model's digest is kept under `model` and a contract's under its file name alone, not
-    under the directory below the contracts path that holds it, so a contract moved between
-    those directories leaves this digest as it was. Two files can then share a name —
+    The model's digest is kept under `model`, a dbt semantic manifest's under
+    `dbt_semantic_manifest` (none given, none kept), and a contract's under its file name
+    alone, not under the directory below the contracts path that holds it, so a contract moved
+    between those directories leaves this digest as it was. Two files can then share a name —
     `a/margin.yaml` and `b/margin.yaml`, or the model and a contracts path that is one file
     named `model` — and the name keeps the digest of each: sorted, because which of the
     directories holds which file is no more a part of this digest than the directory of a
@@ -382,7 +454,11 @@ def _parse_contract(path: Path, raw: bytes, gaps: list[SemanticGap]) -> MetricCo
 
 
 def _build_graph(
-    model: SemanticModel, contracts: list[MetricContract], gaps: list[SemanticGap]
+    model: SemanticModel,
+    contracts: list[MetricContract],
+    gaps: list[SemanticGap],
+    manifest: ManifestRead | None = None,
+    dbt_database: str | None = None,
 ) -> SemanticGraph:
     tables: list[TableNode] = []
     declared: list[FieldNode] = []
@@ -478,8 +554,7 @@ def _build_graph(
                     severity=Severity.ADVISORY,
                     path=f"fields.{field_id}",
                     reason=(
-                        f"field is declared {len(same_field)} times, alike: "
-                        "the graph holds it once"
+                        f"field is declared {len(same_field)} times, alike: the graph holds it once"
                     ),
                 )
             )
@@ -526,8 +601,7 @@ def _build_graph(
                     severity=Severity.ADVISORY,
                     path=f"joins.{join_id}",
                     reason=(
-                        f"join is declared {len(same_join)} times, alike: "
-                        "the graph holds it once"
+                        f"join is declared {len(same_join)} times, alike: the graph holds it once"
                     ),
                 )
             )
@@ -544,7 +618,12 @@ def _build_graph(
             )
         )
 
-    metrics = [_metric_node(contract, known, gaps) for contract in contracts]
+    metrics = [
+        _metric_node(
+            contract, known, gaps, _resolution(contract, manifest, dbt_database, tables, fields)
+        )
+        for contract in contracts
+    ]
 
     # Two contracts of one metric id are two definitions of the metric, and the ref does not
     # say which of them it means: a diff keeps the last node of an id and the gate reads the
@@ -634,25 +713,92 @@ def _table_says(table: Table) -> tuple[str, bool, tuple[str, ...]]:
 
 
 def metric_node(contract: MetricContract) -> MetricNode:
-    """The node a snapshot holds for this contract.
+    """The node of this contract's definition, as the contract declares it.
 
-    The node is the contract's definition alone. What the model does not declare is a gap
-    of a snapshot, and no snapshot is built here.
+    It holds the formula the contract writes and no binding: the form :func:`declared_node`
+    gives a snapshot's node, so the two compare whatever artifact the snapshot resolved a
+    formula from. What the model does not declare is a gap of a snapshot, and no snapshot is
+    built here.
     """
-    return _metric_node(contract, set(), [])
+    return _metric_node(contract, set(), [], None)
 
 
-def _metric_node(contract: MetricContract, known: set[str], gaps: list[SemanticGap]) -> MetricNode:
+def declared_node(node: MetricNode) -> MetricNode:
+    """*node* as its contract declares it (ADR 0008, item 10).
+
+    A bound node gets the declared ``external_ref`` back as its formula, the fields that
+    declaration reads — the grain keys and the event time — and no binding; any other node is
+    returned as it is. A snapshot's node in this form is :func:`metric_node` of the contract it
+    was built from: a formula resolved from the artifact the contract pins is not a difference
+    from that contract.
+    """
+    if node.binding is None:
+        return node
+    formula = node.binding.declared()
+    return node.model_copy(
+        update={
+            "formula": formula,
+            "binding": None,
+            "fields": _dependencies(node.grain, node.time, formula),
+        }
+    )
+
+
+def _dependencies(grain: MetricGrain, time: MetricTime, formula: MetricFormula) -> list[str]:
+    """The fields a metric's value depends on: its grain keys, event time and formula terms."""
+    found = {f"{grain.table}.{key}" for key in grain.keys}
+    found.add(f"{grain.table}.{time.event_time_column}")
+    for term in (formula.aggregate, formula.numerator, formula.denominator):
+        if term is not None:
+            found.add(f"{term.table}.{term.column}")
+    return sorted(found)
+
+
+def _resolution(
+    contract: MetricContract,
+    manifest: ManifestRead | None,
+    dbt_database: str | None,
+    tables: list[TableNode],
+    fields: list[FieldNode],
+) -> FormulaResolution | None:
+    """The contract's formula resolved from *manifest*, when a dbt semantic manifest defines it.
+
+    The grain table is read as the graph holds it — its engine and the type of each of its
+    fields — so a table or a field the model declares in conflict, which the graph does not
+    hold, is no context a parity row is proven in.
+    """
+    if not is_dbt_formula(contract):
+        return None
+    table = contract.grain.table
+    declared = DeclaredTable(
+        engine=next((node.engine for node in tables if node.id == table), ""),
+        column_types={node.column: node.type for node in fields if node.table == table},
+    )
+    return resolve_formula(contract, manifest, database=dbt_database, declared=declared)
+
+
+def _metric_node(
+    contract: MetricContract,
+    known: set[str],
+    gaps: list[SemanticGap],
+    resolution: FormulaResolution | None,
+) -> MetricNode:
     identifier = contract.metadata.id
     grain_table = contract.grain.table
-    dependencies: set[str] = {f"{grain_table}.{key}" for key in contract.grain.keys}
-    dependencies.add(f"{grain_table}.{contract.time.event_time_column}")
 
     formula = contract.formula
-    terms = [formula.aggregate, formula.numerator, formula.denominator]
-    for term in terms:
-        if term is not None:
-            dependencies.add(f"{term.table}.{term.column}")
+    binding: FormulaBinding | None = None
+    external = contract.formula.external
+    if resolution is not None and external is not None:
+        binding = FormulaBinding(
+            source=external.source,
+            ref=external.ref,
+            source_revision=external.source_revision,
+            closure_digest=resolution.closure_digest or None,
+        )
+        if resolution.formula is not None:
+            formula = resolution.formula
+    dependencies = _dependencies(contract.grain, contract.time, formula)
     if formula.kind in (FormulaKind.EXTERNAL_REF, FormulaKind.REVIEWED_SQL):
         gaps.append(
             SemanticGap(
@@ -666,8 +812,21 @@ def _metric_node(contract: MetricContract, known: set[str], gaps: list[SemanticG
                 source_value_ref=sha256_digest(formula.model_dump(mode="json")),
             )
         )
+    if resolution is not None:
+        # Why a bound formula stays `external_ref`, each at the place in the artifact it is
+        # about; the value it carries is the closure the artifact gave, never its text.
+        for found in resolution.gaps:
+            gaps.append(
+                SemanticGap(
+                    code=found.code,
+                    severity=found.severity,
+                    path=f"metrics.{identifier}.formula" + (f":{found.path}" if found.path else ""),
+                    reason=found.reason,
+                    source_value_ref=resolution.closure_digest,
+                )
+            )
 
-    for reference in sorted(dependencies | {f"{grain_table}.{d}" for d in contract.dimensions}):
+    for reference in sorted({*dependencies, *(f"{grain_table}.{d}" for d in contract.dimensions)}):
         if reference not in known:
             gaps.append(
                 SemanticGap(
@@ -722,6 +881,7 @@ def _metric_node(contract: MetricContract, known: set[str], gaps: list[SemanticG
         status=contract.metadata.status,
         description=contract.metadata.description,
         formula=formula,
+        binding=binding,
         grain=contract.grain,
         time=contract.time,
         unit=contract.unit,
@@ -731,7 +891,7 @@ def _metric_node(contract: MetricContract, known: set[str], gaps: list[SemanticG
         join_paths=join_paths,
         classification=contract.classification,
         policy_refs=list(contract.policy_refs),
-        fields=sorted(dependencies),
+        fields=dependencies,
         budgets=contract.budgets,
         freshness=MetricFreshness(
             max_age=contract.freshness.max_age,
