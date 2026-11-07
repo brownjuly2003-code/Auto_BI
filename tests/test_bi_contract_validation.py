@@ -11,6 +11,7 @@ import pytest
 from auto_bi.decision.spec import DashboardDelivery
 from auto_bi.decision.validate import load_contracts
 from auto_bi.evidence.canonical import digest_bytes, sha256_digest
+from auto_bi.evidence.ids import slugify
 from auto_bi.evidence.manifest import read_bundle
 from auto_bi.evidence.store import ArtifactStoreError
 from auto_bi.ir.spec import DashboardSpec
@@ -171,7 +172,7 @@ def assert_check(
     assert [item["dashboard"] for item in payload["compiled"]] == compiled
     artifacts = read_bundle(store, report.run_id).artifacts
     for item in invalid:
-        prefix = "bi-" + release_gate._slugify(item["dashboard"]) + "-"
+        prefix = "bi-" + slugify(item["dashboard"]) + "-"
         assert not any(
             artifact.kind.value == "bi_contract" and artifact.artifact_id.startswith(prefix)
             for artifact in artifacts

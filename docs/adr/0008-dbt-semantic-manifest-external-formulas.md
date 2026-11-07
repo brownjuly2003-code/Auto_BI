@@ -226,6 +226,29 @@ Conversion- и private-метрик и natural entities в корпусе нет
     равен digest в binding сохранённого snapshot. Повторный вывод всего snapshot из исходников
     offline не обещается — как и для native сегодня: verifier проверяет наличие, hash и размер
     артефактов, а snapshot не пересобирает.
+    Реализация (S4): `NativeModelSource.read()` возвращает `SnapshotRead` — snapshot и
+    замыкания по dbt ref каждого binding с `closure_digest`, из одного чтения байтов
+    артефакта; `snapshot()` — его snapshot. `decision verify` берёт артефакт и базу каждой
+    стороны (`--base-semantic-manifest`, `--base-dbt-database`, `--candidate-…`), `decision
+    capture` — кандидата. Сторона, чей контракт берёт формулу из dbt, без артефакта —
+    usage error (exit 2) до gate и до запроса к движку: ошибка называет метрики и опцию.
+    База без артефакта — тоже usage error; артефакт без dbt-контрактов допустим.
+    `decision pin <artifact> [<metric>…] [--json]` печатает пин — значение
+    `external.source_revision` — тем же строгим reader. `GateInputs.base_closures` и
+    `candidate_closures` — ровно замыкания refs, которые связывает snapshot стороны, и
+    каждое хешируется в свой `closure_digest`; иное `GateInputs` отвергает. В идентичность
+    прогона они не входят: snapshot адресует их digest. Bundle хранит каждое как
+    `closure-<сторона>-<slug>-<hex>` (kind `formula_closure`, хеш массива `[dbt ref]`), байты
+    — RFC 8785-форма. `verify_bundle` (а с ним `evidence.bundle` и `decision evidence`)
+    сверяет их со snapshot, прочитанным как JSON: block `evidence.closure_missing`,
+    `evidence.closure_mismatch`, `evidence.closure_unbound` и
+    `evidence.closure_unverified` (snapshot цел, но binding в нём не прочесть — замыкания
+    стороны не проверены). Classification замыкания — `internal`, как у snapshot; при
+    `filter` или conversion замыкание по п. 4 — весь семантический проект артефакта без
+    saved queries (ARCHITECTURE §9.2). Версии: verifier 129, check 83 — смысл
+    `evidence.bundle` расширился. Pilot —
+    [`docs/pilot/2026-11-06-dbt-formula-pin`](../pilot/2026-11-06-dbt-formula-pin/README.md):
+    перепин изменения dbt, тот же dbt без перепина и контроль.
 
 ## Почему не `osi_document.json`
 
@@ -277,5 +300,8 @@ S0 на тех же проектах:
   фильтров и SQL-выражения не разбираются.
 - Native-формулы, граф и canonical digest прогонов без контракта на `dbt_semantic_manifest` и
   уже записанные evidence не меняются; новый прогон несёт source version 4 и новые версии
-  verifier и check, поэтому его run id другой, как при любом их подъёме. Между S3 и S4 CLI артефакт не передаёт: прогон с таким контрактом получает
-  block `gap.external_source_missing` рядом с прежним review opaque — как требует п. 8.
+  verifier и check, поэтому его run id другой, как при любом их подъёме. Записанные bundle
+  verifier перечитывает как прежде: замыканий в них нет, а binding их snapshot не несут. С S4
+  CLI передаёт артефакт каждой стороны, и прогон с dbt-контрактом без артефакта
+  останавливается usage error до gate. `NativeModelSource` без артефакта по-прежнему даёт
+  block `gap.external_source_missing` рядом с review opaque — как требует п. 8.

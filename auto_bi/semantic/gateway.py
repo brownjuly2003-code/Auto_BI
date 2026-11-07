@@ -34,7 +34,8 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
@@ -58,7 +59,7 @@ from auto_bi.semantic.metric_contract import (
     MetricUnit,
 )
 from auto_bi.semantic.metricflow import SOURCE as DBT_SOURCE
-from auto_bi.semantic.metricflow import ManifestRead, read_semantic_manifest
+from auto_bi.semantic.metricflow import JsonObject, ManifestRead, read_semantic_manifest
 from auto_bi.semantic.metricflow_formula import (
     DeclaredTable,
     FormulaResolution,
@@ -264,6 +265,20 @@ class SemanticSource(Protocol):
     def snapshot(self, revision: str = "") -> SemanticSnapshot: ...
 
 
+@dataclass(frozen=True)
+class SnapshotRead:
+    """A snapshot and the closures behind its bound formulas, from one reading of the source.
+
+    `closures` holds, under the dbt ref of each binding whose `closure_digest` is set, the
+    closure the artifact gave for that ref — the definition evidence keeps beside the snapshot
+    (ADR 0008, item 11) — in the order of refs. Both come from one reading of the artifact, so
+    each closure hashes to the digest its bindings carry.
+    """
+
+    snapshot: SemanticSnapshot
+    closures: Mapping[str, JsonObject]
+
+
 class NativeModelSource:
     """First source adapter: this project's own `model.yaml` plus metric contracts."""
 
@@ -287,6 +302,10 @@ class NativeModelSource:
         self._dbt_database = dbt_database
 
     def snapshot(self, revision: str = "") -> SemanticSnapshot:
+        return self.read(revision).snapshot
+
+    def read(self, revision: str = "") -> SnapshotRead:
+        """The snapshot and, from the same bytes of the artifact, its closures."""
         gaps: list[SemanticGap] = []
         model_bytes = self._model_path.read_bytes()
         model = SemanticModel.model_validate(load_yaml_document(model_bytes.decode("utf-8")))
@@ -321,7 +340,7 @@ class NativeModelSource:
         contracts = [contract for *_, contract in sorted(loaded, key=lambda item: item[:3])]
 
         graph = _build_graph(model, contracts, gaps, manifest, self._dbt_database)
-        return SemanticSnapshot(
+        snapshot = SemanticSnapshot(
             source_kind=self.kind,
             source_version=NATIVE_SOURCE_VERSION,
             source_revision=revision,
@@ -331,6 +350,7 @@ class NativeModelSource:
             graph=graph,
             gaps=gaps,
         )
+        return SnapshotRead(snapshot, _closures(graph, manifest))
 
     def _contract_files(self) -> list[Path]:
         """The contract files of the ref — or what kept one of them from being found.
@@ -392,6 +412,22 @@ def _link_text(text: str) -> str:
             return "//" + text.removeprefix("//?/UNC/")
         return text.removeprefix("//?/")
     return text
+
+
+def _closures(graph: SemanticGraph, manifest: ManifestRead | None) -> dict[str, JsonObject]:
+    """The closure of each ref a binding of *graph* has a closure digest of, by ref.
+
+    A digest is set only where the artifact was read and holds the ref, so each ref named here
+    has its closure; two bindings of one ref share it.
+    """
+    if manifest is None or manifest.manifest is None:
+        return {}
+    refs = {
+        node.binding.ref
+        for node in graph.metrics
+        if node.binding is not None and node.binding.closure_digest is not None
+    }
+    return {ref: manifest.manifest.closure(ref) for ref in sorted(refs)}
 
 
 def _source_digest(read: dict[str, list[str]]) -> str:

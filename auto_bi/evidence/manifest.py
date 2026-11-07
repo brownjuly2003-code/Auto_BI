@@ -13,15 +13,18 @@ Two properties the tests pin down:
   public manifest carries only its digest, size and classification (§10.2).
 
 `verify_bundle` is the other half. Evidence read back from disk is only evidence if every
-artifact is present and still hashes to what the manifest says.
+artifact is present and still hashes to what the manifest says — and if the closures of dbt
+formulas it keeps are the ones its snapshots bind (ADR 0008, item 11).
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, TypeGuard
 
 from auto_bi.evidence.canonical import canonical_bytes, digest_bytes
+from auto_bi.evidence.ids import ref_id
 from auto_bi.evidence.model import (
     ArtifactKind,
     Claim,
@@ -325,7 +328,9 @@ def verify_bundle(
 
     A problem is a finding about the bundle. What the filesystem refuses the store is none:
     a manifest or an artifact that may not be looked at or read is not one that is missing.
-    The store's `ArtifactRefusalError` is raised then, and nothing is graded.
+    The store's `ArtifactRefusalError` is raised then, and nothing is graded. Of the
+    payloads only the snapshots of the run are held past their hash: the closures the
+    bundle keeps are checked against their bindings.
     """
     if raw is None:
         try:
@@ -345,6 +350,7 @@ def verify_bundle(
     if bundle is None:
         return problems
 
+    intact: dict[str, bytes] = {}
     for artifact in bundle.artifacts:
         try:
             payload = store.get(run_id, artifact.path)
@@ -379,7 +385,141 @@ def verify_bundle(
                     detail=f"{artifact.artifact_id}: size {len(payload)} != {artifact.size_bytes}",
                 )
             )
+        elif artifact.artifact_id in _SNAPSHOT_IDS:
+            intact[artifact.artifact_id] = payload
+    problems.extend(_closure_problems(bundle, intact))
     return problems
+
+
+#: The sides of a run whose snapshots a bundle keeps, each as `snapshot-<side>`.
+CLOSURE_SIDES = ("base", "candidate")
+
+#: The ids of those snapshots: the only payloads `verify_bundle` holds past their hash.
+_SNAPSHOT_IDS = frozenset(f"snapshot-{side}" for side in CLOSURE_SIDES)
+
+
+def closure_artifact_id(side: str, ref: str) -> str:
+    """The id of the closure of dbt metric *ref* a run keeps for *side* (ADR 0008, item 11)."""
+    return ref_id(f"closure-{side}", ref)
+
+
+def _closure_problems(bundle: EvidenceBundle, intact: Mapping[str, bytes]) -> list[BundleProblem]:
+    """The closures a bundle keeps, against the bindings of the snapshots it keeps.
+
+    A side's closures are exactly the ones the bindings of its snapshot name a closure digest
+    for, each under :func:`closure_artifact_id` and hashing to that digest — the bytes of a
+    closure are the RFC 8785 form the digest addresses. *intact* holds the snapshots that hash
+    to their address. The snapshot of a side that is not among them is a problem already, and
+    the closures of that side are not checked; one that holds no graph of metrics leaves them
+    unchecked, and says so. The snapshot is read as JSON, not rebuilt or validated: what it
+    says beyond its bindings is not this check's.
+    """
+    problems: list[BundleProblem] = []
+    listed = {artifact.artifact_id: artifact for artifact in bundle.artifacts}
+    expected: dict[str, tuple[str, set[str]]] = {}
+    unchecked: set[str] = set()
+    for side in CLOSURE_SIDES:
+        snapshot = listed.get(f"snapshot-{side}")
+        if snapshot is None or snapshot.kind is not ArtifactKind.SEMANTIC_SNAPSHOT:
+            continue
+        raw = intact.get(snapshot.artifact_id)
+        bindings = None if raw is None else _bindings(raw)
+        if bindings is None:
+            unchecked.add(side)
+            if raw is not None:
+                problems.append(
+                    BundleProblem(
+                        code="evidence.closure_unverified",
+                        severity=Severity.BLOCK,
+                        detail=(
+                            f"{snapshot.artifact_id} holds no graph of metrics, so the "
+                            f"closures of the {side} side are not checked"
+                        ),
+                    )
+                )
+            continue
+        for ref, digest in bindings:
+            expected.setdefault(closure_artifact_id(side, ref), (ref, set()))[1].add(digest)
+
+    for artifact in bundle.artifacts:
+        if artifact.kind is not ArtifactKind.FORMULA_CLOSURE:
+            continue
+        if any(artifact.artifact_id.startswith(f"closure-{side}-") for side in unchecked):
+            continue
+        found = expected.pop(artifact.artifact_id, None)
+        if found is None:
+            problems.append(
+                BundleProblem(
+                    code="evidence.closure_unbound",
+                    severity=Severity.BLOCK,
+                    detail=f"{artifact.artifact_id}: no binding of a snapshot names this closure",
+                )
+            )
+        elif found[1] != {artifact.digest}:
+            bound = ", ".join(sorted(found[1]))
+            problems.append(
+                BundleProblem(
+                    code="evidence.closure_mismatch",
+                    severity=Severity.BLOCK,
+                    detail=(
+                        f"{artifact.artifact_id}: the closure of {found[0]!r} hashes to "
+                        f"{artifact.digest}, its bindings name {bound}"
+                    ),
+                )
+            )
+    for artifact_id, (ref, digests) in sorted(expected.items()):
+        problems.append(
+            BundleProblem(
+                code="evidence.closure_missing",
+                severity=Severity.BLOCK,
+                detail=(
+                    f"{artifact_id}: a binding names the closure {', '.join(sorted(digests))} "
+                    f"of {ref!r}, and the bundle keeps none"
+                ),
+            )
+        )
+    return problems
+
+
+def _bindings(raw: bytes) -> list[tuple[str, str]] | None:
+    """`(ref, closure digest)` of each binding of a stored snapshot that names a closure.
+
+    `None` when the payload is no JSON object with a list of metric objects under `graph`, or a
+    binding there is no object with a text ref and a text or `null` closure digest. Text is a
+    string with no lone surrogate: JSON reads `"\\ud800"` as one, and no id is derived from it.
+    """
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return None
+    graph = data.get("graph") if isinstance(data, dict) else None
+    metrics = graph.get("metrics") if isinstance(graph, dict) else None
+    if not isinstance(metrics, list) or not all(isinstance(node, dict) for node in metrics):
+        return None
+    found: list[tuple[str, str]] = []
+    for node in metrics:
+        binding = node.get("binding")
+        if binding is None:
+            continue
+        if not isinstance(binding, dict):
+            return None
+        ref, digest = binding.get("ref"), binding.get("closure_digest")
+        if not _text(ref) or not (digest is None or _text(digest)):
+            return None
+        if digest is not None:
+            found.append((ref, digest))
+    return found
+
+
+def _text(value: object) -> TypeGuard[str]:
+    """Whether *value* is a string UTF-8 can encode, as RFC 8785 hashes one."""
+    if not isinstance(value, str):
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def verify_bundle_signature(
@@ -409,10 +549,12 @@ def verify_bundle_signature(
 
 
 __all__ = [
+    "CLOSURE_SIDES",
     "MANIFEST_PATH",
     "BundleProblem",
     "BundleWriter",
     "WrittenBundle",
+    "closure_artifact_id",
     "read_bundle",
     "verify_bundle",
     "verify_bundle_signature",

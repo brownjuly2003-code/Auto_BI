@@ -48,7 +48,8 @@ from auto_bi.decision.impact import ImpactReport, ProductImpact, resolve_impact
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import ValidationIssue, ValidationReport, product_rule_issues
 from auto_bi.evidence.canonical import canonical_bytes, digest_bytes, sha256_digest
-from auto_bi.evidence.manifest import BundleWriter, verify_bundle
+from auto_bi.evidence.ids import ref_id as _ref_id
+from auto_bi.evidence.manifest import BundleWriter, closure_artifact_id, verify_bundle
 from auto_bi.evidence.model import ArtifactKind, ClaimType, EvidenceClassification
 from auto_bi.evidence.signing import EvidenceSigner
 from auto_bi.evidence.store import ArtifactRefusalError, ArtifactStore
@@ -65,6 +66,7 @@ from auto_bi.semantic.gateway import (
     metric_node,
 )
 from auto_bi.semantic.metric_contract import MetricContract
+from auto_bi.semantic.metricflow import JsonObject
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
@@ -626,7 +628,12 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: without the artifact, or where it does not resolve, the formula stays `external_ref` and
 #: the resolution's gaps join `gap.opaque_metric_formula`. Snapshots, the diff and every check
 #: over a bound metric can change; a snapshot without one keeps its digest.
-VERIFIER_VERSION = "128"
+#: 129 — a bundle keeps, beside each snapshot, the canonical closure of every dbt metric a
+#: binding of that snapshot names a closure digest for (ADR 0008, slice S4), and re-verifying
+#: a bundle checks those closures against the bindings: `evidence.closure_missing`,
+#: `evidence.closure_mismatch`, `evidence.closure_unbound`, `evidence.closure_unverified`. A run
+#: without a bound metric keeps no closure.
+VERIFIER_VERSION = "129"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -923,7 +930,10 @@ VERIFIER_VERSION = "128"
 #: names a changed binding `metric.binding_changed` (review), which reaches the metric's
 #: products and verified assets; contracts.validate compares a bound metric's declaration and
 #: pin with the validated contract, not the formula resolved from the artifact.
-CHECK_VERSION = "82"
+#: 83 — evidence.bundle also checks the closures of dbt formulas a bundle keeps against the
+#: bindings of its snapshots (ADR 0008, item 11): a closure missing, mismatched, unbound or
+#: left unverified blocks, where rule 82 checked the presence, hash and size of artifacts.
+CHECK_VERSION = "83"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and
@@ -1110,7 +1120,8 @@ class GateInputs:
     """Everything §8.1 lists as gate input, already loaded and parsed.
 
     Every field is part of the run identity (`idempotency_key`) except the two that hold
-    what was observed when the run was made: `results` and `environment`.
+    what was observed when the run was made, `results` and `environment`, and the closures,
+    which the snapshots address by digest.
     """
 
     product: DecisionProductSpec
@@ -1134,6 +1145,30 @@ class GateInputs:
     #: Metric id (without the version) -> the contract the validation report was graded on;
     #: empty means the gate was given nothing to compare a pin's contents with.
     validated_metrics: Mapping[str, MetricContract] = field(default_factory=dict)
+    #: dbt ref -> the closure the artifact of each side gave for it (`SnapshotRead.closures`),
+    #: kept in evidence beside the snapshot (ADR 0008, item 11). Exactly the refs whose closure
+    #: digest the snapshot's bindings carry, each hashing to it; the snapshot addresses them,
+    #: so they are no part of the run identity of their own.
+    base_closures: Mapping[str, JsonObject] = field(default_factory=dict)
+    candidate_closures: Mapping[str, JsonObject] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for side, snapshot, closures in (
+            ("base", self.base, self.base_closures),
+            ("candidate", self.candidate, self.candidate_closures),
+        ):
+            bound: dict[str, set[str]] = {}
+            for node in snapshot.graph.metrics:
+                if node.binding is not None and node.binding.closure_digest is not None:
+                    bound.setdefault(node.binding.ref, set()).add(node.binding.closure_digest)
+            if set(closures) != set(bound):
+                raise ValueError(
+                    f"the {side} closures are not those of the refs its snapshot binds: "
+                    f"given {sorted(closures)}, bound {sorted(bound)}"
+                )
+            for ref, closure in closures.items():
+                if bound[ref] != {sha256_digest(closure, allow_float=True)}:
+                    raise ValueError(f"the {side} closure of {ref!r} is not the one bound")
 
 
 def identity_text(value: object) -> str:
@@ -1618,14 +1653,28 @@ def _content_differences(
 def _check_gaps(
     writer: BundleWriter, inputs: GateInputs, product_ref: str
 ) -> tuple[CheckResult, list[SemanticGap]]:
-    """Freeze both snapshots into evidence and grade what they could not represent."""
-    for name, snapshot in (("base", inputs.base), ("candidate", inputs.candidate)):
+    """Freeze both snapshots into evidence and grade what they could not represent.
+
+    Beside each snapshot go the closures its bindings name, in the order of refs: the bytes
+    are the RFC 8785 form the closure digest addresses, so each blob's digest is that digest.
+    """
+    for name, snapshot, closures in (
+        ("base", inputs.base, inputs.base_closures),
+        ("candidate", inputs.candidate, inputs.candidate_closures),
+    ):
         writer.add_blob(
             f"snapshot-{name}",
             kind=ArtifactKind.SEMANTIC_SNAPSHOT,
             payload=snapshot.model_dump(mode="json"),
             media_type="application/json",
         )
+        for ref in sorted(closures):
+            writer.add_blob(
+                closure_artifact_id(name, ref),
+                kind=ArtifactKind.FORMULA_CLOSURE,
+                payload=canonical_bytes(closures[ref], allow_float=True),
+                media_type="application/json",
+            )
     gaps = [*inputs.base.gaps, *inputs.candidate.gaps]
     blocking = [gap for gap in gaps if gap.severity is Severity.BLOCK]
     untrustworthy = [gap for gap in gaps if gap.code in UNTRUSTWORTHY_GAPS]
@@ -2559,22 +2608,3 @@ def _skipped(check_id: str, category: CheckCategory, product_ref: str, reason: s
         summary_code="check.not_run",
         detail=reason,
     )
-
-
-def _ref_id(kind: str, ref: str, *parts: str) -> str:
-    """The id of an artifact or claim about *ref*: a slug to read, then the hash it is told by.
-
-    The slug folds `_`, `-`, `/`, `:` and `@` alike, so `asset://sales/weekly_margin_by_region`
-    and `asset://sales/weekly-margin-by-region` share one, and a bundle holds an id once. The
-    full SHA-256 of the canonical array `[ref, *parts]` keeps every segment and separator, the
-    pin and the boundary between the ref and its parts; it does not depend on the payload or on
-    any other ref of the run.
-    """
-    identity = sha256_digest([ref, *parts]).removeprefix("sha256:")
-    return "-".join([kind, _slugify(ref), *parts, identity])
-
-
-def _slugify(ref: str) -> str:
-    """A ref (`decision://sales/weekly_margin@1`) as the readable part of an id; lossy."""
-    out = "".join(char if char.isalnum() else "-" for char in ref.lower())
-    return "-".join(part for part in out.split("-") if part) or "ref"

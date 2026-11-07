@@ -10,6 +10,80 @@
 > Новая запись среза добавляется сверху, полным текстом. С 2026-11-04 это единственное место
 > записи о срезе: ни `CLAUDE.md`, ни `DECISIONOPS_CURRENT_STATE.md` её не дублируют.
 
+## 2026-11-06 — S4 этапа «внешний источник формул»: артефакт dbt в CLI, `decision pin`, замыкания в evidence, pilot
+
+Решение владельца: «продолжи работу» (следующий срез по ADR 0008 — S4). Исполнитель — Claude;
+ревью — Astra xhigh (профиль cw), synthetic, не human acceptance.
+
+`auto_bi/semantic/gateway.py`: `NativeModelSource.read()` возвращает `SnapshotRead` — snapshot и
+замыкание каждого dbt ref, чей binding несёт `closure_digest`, из одного чтения байтов артефакта;
+`snapshot()` — его snapshot. `auto_bi/decision/use_cases.py`: `DbtArtifact(path, database)`,
+`VerifyRequest.base_dbt`/`candidate_dbt`, `CaptureRequest.candidate_dbt`; обе команды читают
+сторону одним загрузчиком `_snapshot`. Сторона, в snapshot которой есть связанная метрика, а
+артефакт не дан, — `VerifyError` до gate и до запроса к движку: ошибка называет метрики и
+опцию. Путь артефакта, где нет файла, — тоже `VerifyError`; артефакт, который reader отверг, —
+байты snapshot, его проблемы — гэпы gate, как в S3.
+
+`auto_bi/cli.py`: у `decision verify` — `--base-semantic-manifest`, `--base-dbt-database`,
+`--candidate-semantic-manifest`, `--candidate-dbt-database`, у `decision capture` — опции
+кандидата; база без артефакта — usage error. `decision pin <artifact> [<metric>…] [--json]`
+печатает пин — `sha256:` RFC 8785-формы замыкания, значение `external.source_revision` — тем же
+строгим reader: без имён — все метрики по имени, повтор имени печатается один раз; отвергнутый
+артефакт (каждая проблема), метрика, которой в нём нет, и нечитаемый файл — exit 2. `--json`
+печатает `artifact_digest`, `schema_version` и `pins`.
+
+`auto_bi/verification/release_gate.py`: `GateInputs.base_closures`/`candidate_closures` — ровно
+замыкания refs, которые связывает snapshot стороны, и каждое хешируется в свой `closure_digest`;
+иное `__post_init__` отвергает. В идентичность прогона они не входят: snapshot адресует их digest.
+Bundle хранит каждое как `closure-<сторона>-<slug>-<hex>` (kind `formula_closure`, хеш массива
+`[dbt ref]`), байты — RFC 8785-форма, так что digest артефакта равен `closure_digest`.
+`auto_bi/evidence/ids.py`: `ref_id`/`slugify` вынесены из gate; slug теперь берёт только латинские
+буквы и цифры ASCII, и символ вне ASCII становится `-` до перевода в нижний регистр — для
+ASCII-ref slug прежний. `auto_bi/evidence/manifest.py`: `verify_bundle`
+после проверки hash и размера сверяет замыкания со snapshot своей стороны, прочитанным как JSON:
+block `evidence.closure_missing`, `evidence.closure_mismatch`, `evidence.closure_unbound`,
+`evidence.closure_unverified` (snapshot цел, но binding в нём не прочесть). Сторону со
+`evidence.digest_mismatch` проверка пропускает. Записанные bundle замыканий не хранят и binding
+не несут — проверка в них ничего не находит (тест на всех `docs/pilot/*/evidence/run-*`).
+`VERIFIER_VERSION` 128 → 129, `CHECK_VERSION` 82 → 83: смысл `evidence.bundle` расширился.
+Classification замыкания — `internal`, как у snapshot; при `filter` или conversion замыкание —
+весь семантический проект артефакта без saved queries (ARCHITECTURE §9.2).
+
+Pilot [`docs/pilot/2026-11-06-dbt-formula-pin`](../pilot/2026-11-06-dbt-formula-pin/README.md):
+`dbt parse` проекта S0 (base байт в байт — fixture `legacy`) и того же проекта, где measure
+`revenue` читает новую колонку `net_revenue`. Три прогона, verifier 129: `repinned` — block
+(review `metric.formula_changed` и `metric.binding_changed`, поднятые `impact.products` для
+governed-продукта), `drift` — block (`gap.external_revision_mismatch`), `control` —
+`pass_with_advisory` с `sql.compiled`. Каждый bundle хранит замыкания обеих сторон;
+`tests/test_dbt_formula_evidence.py` повторяет прогоны и сравнивает bundle байт в байт.
+
+Доки: ADR 0008 п. 11 («Реализация (S4)») и «Последствия»; `DECISIONOPS_ARCHITECTURE.md` §9.2
+(замыкания, коды `evidence.closure_*`, ASCII slug), §12.1 (CLI, таблица входов) и строка версий;
+CURRENT_STATE (версии, «Что ещё не реализовано», «Что делать дальше» → S5).
+
+Ревью Astra xhigh, synthetic. R1: P1 нет. P2: binding с одиночным суррогатом в ref валил
+`verify_bundle` `CanonicalizationError` — ref и digest теперь берутся только как текст, который
+кодирует UTF-8, иначе сторона `evidence.closure_unverified`; `CHECK_VERSION` 82 → 83, раз смысл
+`evidence.bundle` расширился; classification и объём хранимого замыкания записаны (§9.2, ADR п. 11);
+тесты — два binding одного ref с разными digest, одно чтение артефакта, отказ verify без артефакта
+до вопроса к движку, ref без dbt-формулы при данном артефакте, artifact другого kind под id snapshot,
+повтор неизвестной метрики в `decision pin`. P3: slug переводит символ вне ASCII в `-` до нижнего
+регистра (знак кельвина). R2: P2 — `verify_bundle` держал до конца проверки байты каждого artifact;
+теперь после hash держит только `snapshot-base` и `snapshot-candidate` (тест на ключи, которые
+получает сверка замыканий); P3 — конфликт двух binding одного ref проверяется в обоих порядках.
+Отсутствие отдельной политики для SQL-текста R2 сочло заявленной границей, не блокером S4. R3:
+P1/P2/P3 нет.
+
+Проверка: 44 мутанта утверждений среза (`.tmp/s4/config_s4.py`) — 43 убиты тестами; мутант
+«closures of a refused artifact» (`_closures` в gateway без проверки `manifest.manifest is None`)
+тесты не отличают: у отвергнутого артефакта ни один binding не несёт `closure_digest`, и замыкание
+не читается, — его отвергает `mypy --strict` (`union-attr`). Mac (Python 3.13), дерево `2f4ba35`:
+mypy `--platform linux`, `--platform linux --strict`, `--platform win32 --strict`, `ruff check .`,
+`black --check` — чисто; полный набор — 10838 passed, 29 skipped (`--with duckdb`). Pilot
+перегнан на Mac после правок R1: bundle байт в байт те же, digest и run id трёх прогонов прежние.
+
+Дальше — S5: расширение корпуса, инвентарь неподдержанных конструкций, финальное ревью.
+
 ## 2026-11-06 — S3 этапа «внешний источник формул»: binding в узле метрики, сверка по объявлению, `metric.binding_changed`
 
 Решение владельца: «продолжи доработку» (следующий срез по ADR 0008 — S3). Исполнитель — Claude;

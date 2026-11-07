@@ -369,7 +369,7 @@ def test_the_refusal_of_another_schema_is_said_of_the_ref_with_that_schema(
 ) -> None:
     """The places are places of what that schema describes, which is no file of the ref."""
     case = _case(tmp_path)
-    monkeypatch.setattr(NativeModelSource, "snapshot", _raising(_refusal_of_another_schema()))
+    monkeypatch.setattr(NativeModelSource, "read", _raising(_refusal_of_another_schema()))
 
     assert _refused(case) == (
         f"cannot load semantic ref {case.base}: not a valid _Gap: reason: {REQUIRED}"
@@ -384,7 +384,7 @@ def test_what_else_keeps_a_ref_from_being_frozen_is_said_in_one_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raised: Exception, said: str
 ) -> None:
     case = _case(tmp_path)
-    monkeypatch.setattr(NativeModelSource, "snapshot", _raising(raised))
+    monkeypatch.setattr(NativeModelSource, "read", _raising(raised))
 
     assert _refused(case) == f"cannot load semantic ref {case.base}: {said}"
     assert _capture_refused(case) == f"cannot load semantic ref {case.candidate}: {said}"

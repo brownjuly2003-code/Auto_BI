@@ -631,9 +631,9 @@ def test_no_decision_command_prints_past_the_one_function() -> None:
         if isinstance(node, ast.FunctionDef) and node.name.startswith("_decision_")
     }
 
-    # The settings helper introduced by T-68 and the run catalogue introduced by T-106
-    # follow the same output boundary.
-    assert set(prints) == COMMANDS | {"_decision_settings", "_decision_runs"}
+    # The settings helper introduced by T-68, the run catalogue introduced by T-106 and the
+    # pins of a dbt artifact (ADR 0008, slice S4) follow the same output boundary.
+    assert set(prints) == COMMANDS | {"_decision_settings", "_decision_runs", "_decision_pin"}
     # The one payload of an artifact, which is printed as it is or not at all.
     assert {name: calls for name, calls in prints.items() if calls} == {
         "_decision_evidence": ["print(text)"]

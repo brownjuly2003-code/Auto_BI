@@ -483,7 +483,14 @@ def test_an_argument_a_decision_command_does_not_take_is_spelled(
 
 @pytest.mark.parametrize(
     ("command", "prefix", "matches"),
-    [("verify", "--d", "--dashboards, --dwh"), ("capture", "--c", "--candidate, --captured-at")],
+    [
+        ("verify", "--d", "--dashboards, --dwh"),
+        (
+            "capture",
+            "--c",
+            "--candidate, --candidate-semantic-manifest, --candidate-dbt-database, --captured-at",
+        ),
+    ],
 )
 def test_an_option_that_could_be_two_is_spelled(
     monkeypatch: pytest.MonkeyPatch, command: str, prefix: str, matches: str

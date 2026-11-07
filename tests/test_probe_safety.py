@@ -322,8 +322,8 @@ def test_capture_limit_reaches_use_case_before_any_write(monkeypatch, engine, li
     monkeypatch.setattr(
         use_cases,
         "_snapshot",
-        lambda path: SimpleNamespace(
-            canonical_digest="sha256:" + "1" * 64,
+        lambda path, dbt, option: SimpleNamespace(
+            snapshot=SimpleNamespace(canonical_digest="sha256:" + "1" * 64),
         ),
     )
     writes = []

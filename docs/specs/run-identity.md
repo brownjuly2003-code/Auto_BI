@@ -48,7 +48,10 @@ verified assets — together with the policy, the environment ref, the evidence-
 and the verifier version, as before. Two runs that differ in any of these SHALL have different
 idempotency keys and different run ids, whether or not the difference reaches a check. Two runs
 that are handed equal inputs SHALL share the key: the order in which the validated contracts,
-the dashboard specs or the verified assets are handed does not move it.
+the dashboard specs or the verified assets are handed does not move it. The closures of dbt
+formulas (`base_closures`, `candidate_closures`) SHALL NOT be keyed of their own: `GateInputs`
+takes only the closures the bindings of its snapshots address by digest, so the snapshots
+the key covers whole already fix them (ADR 0008, item 11).
 
 ### Scenario: a validated contract that changed is another run
 
@@ -131,13 +134,14 @@ the dashboard specs or the verified assets are handed does not move it.
   source digest, and a ref in which no two contracts share a file name keeps the source digest
   verifier 109 gave it
 
-### Scenario: every field of the gate inputs is either in the key or an observation
+### Scenario: every field of the gate inputs is in the key, an observation or a closure
 
 - **GIVEN** the fields of `GateInputs`
 - **WHEN** one field is replaced by a different value and the key is computed again
 - **THEN** for `product`, `validation`, `validated_metrics`, `base`, `candidate`,
   `candidate_model`, `dashboards`, `assets` and `environment_ref` the key differs; for `results`
-  and `environment` it is the same; and `GateInputs` has no other field
+  and `environment` it is the same; for `base_closures` and `candidate_closures`, set past the
+  check of `GateInputs`, it is the same; and `GateInputs` has no other field
 
 ### Scenario: the order inputs are handed in does not move the key
 

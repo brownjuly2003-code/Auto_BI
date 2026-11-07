@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from auto_bi.agent.machine import AgentTurn
     from auto_bi.config import Settings
-    from auto_bi.decision.use_cases import EnvironmentProbe, ResultQueryFactory
+    from auto_bi.decision.use_cases import DbtArtifact, EnvironmentProbe, ResultQueryFactory
     from auto_bi.introspect.base import RunQuery
     from auto_bi.store import Store
 
@@ -208,6 +208,7 @@ def main(argv: list[str] | None = None) -> int:
     capture.add_argument(
         "--candidate", required=True, help="Candidate semantic ref: a directory holding model.yaml"
     )
+    _dbt_arguments(capture, "candidate")
     capture.add_argument(
         "--asset", default="", help="Asset id, required when the repository holds several"
     )
@@ -240,6 +241,8 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument(
         "--candidate", required=True, help="Candidate semantic ref: a directory holding model.yaml"
     )
+    _dbt_arguments(verify, "base")
+    _dbt_arguments(verify, "candidate")
     verify.add_argument(
         "--evidence", required=True, help="Directory the evidence bundle is written to"
     )
@@ -295,6 +298,15 @@ def main(argv: list[str] | None = None) -> int:
     evidence.add_argument(
         "--json", action="store_true", help="Emit the inspection as JSON and nothing else"
     )
+
+    pin = decision_sub.add_parser(
+        "pin",
+        help="Print the pin of each dbt metric of a semantic_manifest.json "
+        "(external.source_revision of a dbt_semantic_manifest formula)",
+    )
+    pin.add_argument("manifest", help="dbt semantic_manifest.json")
+    pin.add_argument("metrics", nargs="*", help="dbt metric names (default: every metric)")
+    pin.add_argument("--json", action="store_true", help="Emit the pins as JSON and nothing else")
 
     runs = decision_sub.add_parser(
         "runs", help="List local runs without checking evidence integrity"
@@ -362,6 +374,8 @@ def main(argv: list[str] | None = None) -> int:
             return _decision_verify(args)
         if args.decision_command == "evidence":
             return _decision_evidence(args)
+        if args.decision_command == "pin":
+            return _decision_pin(args)
         if args.decision_command == "investigate":
             return _decision_investigate(args)
         return _decision_validate(args.paths, args.json)
@@ -447,6 +461,80 @@ def _say_json(document: Any) -> None:
         print(json.dumps(document, ensure_ascii=False, indent=2))
     except UnicodeEncodeError:
         print(json.dumps(document, ensure_ascii=True, indent=2))
+
+
+def _dbt_arguments(command: argparse.ArgumentParser, side: str) -> None:
+    """The dbt artifact the *side* ref's formulas are resolved from (ADR 0008, item 11)."""
+    command.add_argument(
+        f"--{side}-semantic-manifest",
+        default=None,
+        help=f"dbt semantic_manifest.json the {side} ref's dbt_semantic_manifest formulas "
+        "are resolved from; required when its contracts have one",
+    )
+    command.add_argument(
+        f"--{side}-dbt-database",
+        default=None,
+        help=f"dbt database of the {side} artifact's relations, empty for two-part names "
+        f"(with --{side}-semantic-manifest)",
+    )
+
+
+def _dbt_artifact(args: argparse.Namespace, side: str) -> "DbtArtifact | None":
+    """The *side* artifact the command line names, or a usage error for a database alone."""
+    from auto_bi.decision.use_cases import DbtArtifact, VerifyError
+
+    path = getattr(args, f"{side}_semantic_manifest")
+    database = getattr(args, f"{side}_dbt_database")
+    if path is None:
+        if database is not None:
+            raise VerifyError(f"--{side}-dbt-database is given without --{side}-semantic-manifest")
+        return None
+    return DbtArtifact(path, database)
+
+
+def _decision_pin(args: argparse.Namespace) -> int:
+    """`auto_bi decision pin` — the pin a contract writes for a dbt metric (ADR 0008, item 4).
+
+    Each line is the pin of a metric — `sha256:` of the RFC 8785 form of its closure, the
+    value of `external.source_revision` — and its name, every metric of the artifact in name
+    order when none is named. The artifact is read as the gate reads it: one it refuses is said
+    problem by problem, and it and a metric it does not hold exit 2.
+    """
+    from pathlib import Path
+
+    from auto_bi.semantic.metricflow import read_semantic_manifest
+    from auto_bi.verification.model import EXIT_ERROR
+    from auto_bi.yaml_document import unread_reason
+
+    path = Path(args.manifest)
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        _say_error(f"cannot read {path}: {unread_reason(exc)}")
+        return EXIT_ERROR
+    read = read_semantic_manifest(raw)
+    if read.manifest is None:
+        for problem in read.problems:
+            _say_error(f"{path}: {problem.code} at {problem.path}: {problem.reason}")
+        return EXIT_ERROR
+    names = list(dict.fromkeys(args.metrics)) or read.manifest.metric_names()
+    unknown = [name for name in names if not read.manifest.has_metric(name)]
+    if unknown:
+        _say_error(f"{path} holds no metric {', '.join(repr(name) for name in unknown)}")
+        return EXIT_ERROR
+    pins = {name: read.manifest.closure_digest(name) for name in names}
+    if args.json:
+        _say_json(
+            {
+                "artifact_digest": read.artifact_digest,
+                "schema_version": read.schema_version,
+                "pins": pins,
+            }
+        )
+    else:
+        for name, pin in pins.items():
+            _say_one_line(f"{pin}  {name}")
+    return 0
 
 
 def _decision_validate(paths: list[str], as_json: bool) -> int:
@@ -576,6 +664,7 @@ def _decision_capture(args: argparse.Namespace) -> int:
 
     captured_at = args.captured_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
+        candidate_dbt = _dbt_artifact(args, "candidate")
         query_factory, configured_environment, executed_by = _result_capture_target(args.dwh)
         report = capture_result(
             CaptureRequest(
@@ -588,6 +677,7 @@ def _decision_capture(args: argparse.Namespace) -> int:
                 captured_at=captured_at,
                 query_factory=query_factory,
                 asset_id=args.asset,
+                candidate_dbt=candidate_dbt,
             )
         )
     except VerifyError as exc:
@@ -707,6 +797,8 @@ def _decision_verify(args: argparse.Namespace) -> int:
                 product_id=args.product,
                 probe=_environment_probe(args.dwh),
                 signer=signer,
+                base_dbt=_dbt_artifact(args, "base"),
+                candidate_dbt=_dbt_artifact(args, "candidate"),
             )
         )
     except (VerifyError, EvidenceSignatureError) as exc:

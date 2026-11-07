@@ -1,0 +1,1 @@
+{"api_version":"auto-bi.io/v2alpha1","candidate_pins":[{"candidate_versions":[3],"outcome":"match","ref":"metric://sales/gross_margin_pct@3"}],"issues":[],"kind":"DecisionValidationReport","metrics":["metric://sales/gross_margin_pct@3"],"other_product_issues":[],"products":["decision://sales/weekly_margin@1"],"verdict":"pass"}

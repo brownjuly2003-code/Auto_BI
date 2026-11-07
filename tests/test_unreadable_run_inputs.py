@@ -381,7 +381,7 @@ def test_a_refusal_that_names_no_file_is_said_of_the_model(
     def refuse(self: NativeModelSource, revision: str = "") -> Any:
         raise OSError("the device is gone")
 
-    monkeypatch.setattr(NativeModelSource, "snapshot", refuse)
+    monkeypatch.setattr(NativeModelSource, "read", refuse)
 
     assert _refused(case) == f"cannot read {case.base / 'model.yaml'}: OSError"
 

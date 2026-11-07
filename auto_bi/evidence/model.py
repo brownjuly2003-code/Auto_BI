@@ -77,6 +77,8 @@ class ArtifactKind(StrEnum):
     QUERY_RESULT = "query_result"
     QUERY_PLAN = "query_plan"
     SEMANTIC_SNAPSHOT = "semantic_snapshot"
+    #: The canonical closure a dbt-bound formula was resolved from (ADR 0008, item 11).
+    FORMULA_CLOSURE = "formula_closure"
     BI_CONTRACT = "bi_contract"
     REPORT = "report"
     RAW_PAYLOAD = "raw_payload"

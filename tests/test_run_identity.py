@@ -452,8 +452,25 @@ MOMENT: dict[str, Callable[[GateInputs], Any]] = {
 }
 
 
-def test_the_gate_inputs_have_no_field_outside_the_two_kinds() -> None:
-    assert {field.name for field in dataclasses.fields(GateInputs)} == {*STATIC, *MOMENT}
+#: Fields the key does not read of their own: the closures of dbt formulas, which `GateInputs`
+#: takes only as the ones the bindings of its snapshots address by digest (ADR 0008, item 11).
+ADDRESSED = ("base_closures", "candidate_closures")
+
+
+def test_the_gate_inputs_have_no_field_outside_the_three_kinds() -> None:
+    fields = {field.name for field in dataclasses.fields(GateInputs)}
+    assert fields == {*STATIC, *MOMENT, *ADDRESSED}
+
+
+@pytest.mark.parametrize("name", ADDRESSED)
+def test_the_closures_do_not_move_the_key_of_their_own(tmp_path: Path, name: str) -> None:
+    inputs = _inputs(tmp_path)
+    other = dataclasses.replace(inputs)
+    # Set past `GateInputs.__post_init__`, which refuses closures no snapshot addresses: the
+    # key is the snapshots', and they carry the digest of every closure the run keeps.
+    object.__setattr__(other, name, {"gross_margin_pct": {"metrics": []}})
+
+    assert idempotency_key(other) == idempotency_key(inputs)
 
 
 @pytest.mark.parametrize("name", sorted(STATIC))

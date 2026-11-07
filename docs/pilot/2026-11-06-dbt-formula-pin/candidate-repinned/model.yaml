@@ -1,0 +1,36 @@
+tables:
+- name: dm.sales_daily
+  description: Дневные продажи
+  grain:
+  - date
+  - store_id
+  columns:
+  - name: date
+    type: date
+    role: time
+  - name: store_id
+    type: integer
+    role: dimension
+  - name: region
+    type: text
+    role: dimension
+  - name: category
+    type: text
+    role: dimension
+  - name: revenue
+    type: numeric(18,2)
+    role: measure
+    description: Выручка, руб
+    agg: sum
+  - name: net_revenue
+    type: numeric(18,2)
+    role: measure
+    description: Выручка без возвратов, руб
+    agg: sum
+  - name: gross_margin
+    type: numeric(18,2)
+    role: measure
+    agg: sum
+  physical:
+    engine: postgres
+  classification: internal

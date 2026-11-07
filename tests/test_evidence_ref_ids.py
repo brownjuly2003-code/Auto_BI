@@ -201,7 +201,7 @@ def test_the_ids_are_a_slug_to_read_then_the_full_hash(tmp_path: Path) -> None:
 def test_the_hash_tells_apart_what_the_slug_folds(
     ref: str, parts: tuple[str, ...], other: str, other_parts: tuple[str, ...]
 ) -> None:
-    from auto_bi.verification.release_gate import _ref_id
+    from auto_bi.evidence.ids import ref_id as _ref_id
 
     first, second = _ref_id("bi", ref, *parts), _ref_id("bi", other, *other_parts)
     assert _HEX.sub("", first) == _HEX.sub("", second)

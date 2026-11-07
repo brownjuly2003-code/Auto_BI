@@ -20,6 +20,11 @@ A **semantic ref** is a directory holding `model.yaml`, with metric contracts in
 optional `metrics/` beside it. A **dashboard spec** is named after the ref that pins it —
 `weekly_margin@7.yaml` for `dashboard://weekly_margin@7` — so a product pinned to version 7
 cannot silently load version 8's layout. A missing one is a finding, not a guess.
+
+A ref whose contracts take a formula from a dbt `semantic_manifest.json` is read with that
+artifact (`DbtArtifact`), and without it is refused: `decision verify` names one for each
+side, `decision capture` one for the candidate, and both read it with one loader
+(ADR 0008, item 11).
 """
 
 from __future__ import annotations
@@ -48,7 +53,7 @@ from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import Timestamp
-from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot
+from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot, SnapshotRead
 from auto_bi.semantic.model import SemanticModel
 from auto_bi.verification.environment import (
     EnvironmentFacts,
@@ -95,6 +100,8 @@ _MOMENT: TypeAdapter[str] = TypeAdapter(Timestamp)
 #: Where the environment and the actor of a capture come from, for the refusal of either.
 _CAPTURE_ENVIRONMENT = "--environment, or the configured host:port/database it defaults to,"
 _CAPTURE_ACTOR = "the configured DWH user"
+_BASE_DBT = "--base-semantic-manifest"
+_CANDIDATE_DBT = "--candidate-semantic-manifest"
 
 
 class VerifyError(Exception):
@@ -132,6 +139,18 @@ ResultQueryFactory = Callable[[], ResultQuery]
 
 
 @dataclass(frozen=True)
+class DbtArtifact:
+    """The dbt `semantic_manifest.json` the formulas of one semantic ref are resolved from.
+
+    `database` is the dbt database declared with it: empty for an engine with two-part names,
+    `None` when none is declared (ADR 0008, item 3).
+    """
+
+    path: str | Path
+    database: str | None = None
+
+
+@dataclass(frozen=True)
 class VerifyRequest:
     contract_paths: Sequence[str | Path]
     base: str | Path
@@ -150,6 +169,9 @@ class VerifyRequest:
     probe: EnvironmentProbe | None = None
     #: Optional private-key port. Key bytes stay outside the request and evidence bundle.
     signer: EvidenceSigner | None = None
+    #: The dbt artifact of each side; required for a side whose contracts take a formula from one.
+    base_dbt: DbtArtifact | None = None
+    candidate_dbt: DbtArtifact | None = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +187,8 @@ class CaptureRequest:
     captured_at: str
     query_factory: ResultQueryFactory
     asset_id: str = ""
+    #: The candidate's dbt artifact, read as `decision verify` reads it for the candidate.
+    candidate_dbt: DbtArtifact | None = None
 
 
 @dataclass(frozen=True)
@@ -188,9 +212,9 @@ def verify(request: VerifyRequest) -> GateReport:
     loaded = load_contracts(request.contract_paths)
     product = _select_product(loaded, request.product_id)
 
-    base = _snapshot(Path(request.base))
+    base = _snapshot(Path(request.base), request.base_dbt, _BASE_DBT)
     candidate_root = Path(request.candidate)
-    candidate = _snapshot(candidate_root)
+    candidate = _snapshot(candidate_root, request.candidate_dbt, _CANDIDATE_DBT)
     candidate_model = _load_model(candidate_root / MODEL_FILE)
 
     dashboards = _load_dashboards(request.dashboards_dir, product)
@@ -204,15 +228,17 @@ def verify(request: VerifyRequest) -> GateReport:
         product=product,
         validation=loaded.report,
         validated_metrics=loaded.metrics,
-        base=base,
-        candidate=candidate,
+        base=base.snapshot,
+        candidate=candidate.snapshot,
+        base_closures=base.closures,
+        candidate_closures=candidate.closures,
         candidate_model=candidate_model,
         dashboards=dashboards,
         assets=_load_assets(repository, product),
         results=_load_results(request.results_file, repository),
         environment_ref=request.environment_ref,
         # Asked last: a run refused for any input above opens no session with the engine.
-        environment=_probe(request.probe, product, candidate),
+        environment=_probe(request.probe, product, candidate.snapshot),
     )
     store = FilesystemArtifactStore(request.evidence_dir)
     try:
@@ -262,7 +288,7 @@ def capture_result(request: CaptureRequest) -> CaptureReport:
     repository = _asset_repository(Path(request.assets))
     asset = _select_asset(repository, request.asset_id, Path(request.assets))
     _check_capture_contract(asset, request.engine)
-    candidate = _snapshot(Path(request.candidate))
+    candidate = _snapshot(Path(request.candidate), request.candidate_dbt, _CANDIDATE_DBT).snapshot
 
     try:
         recorded = capture_live_result(
@@ -441,8 +467,8 @@ def _check_capture_contract(asset: VerifiedAsset, engine: str) -> None:
         )
 
 
-def _snapshot(root: Path) -> SemanticSnapshot:
-    """One semantic ref, frozen — or the file that kept it from being read.
+def _snapshot(root: Path, dbt: DbtArtifact | None, option: str) -> SnapshotRead:
+    """One semantic ref, frozen with its dbt artifact — or the file that kept it from being read.
 
     A metric contract of the ref that is read and is no contract is a gap of the snapshot
     and the gate grades it. A `model.yaml` that cannot be read or is no model leaves nothing
@@ -450,18 +476,32 @@ def _snapshot(root: Path) -> SemanticSnapshot:
     no bytes of it for the snapshot to say what it was read from. Nor can a ref be frozen
     whose files are read and accepted and hold a value its graph cannot be addressed with.
     Each of these is said in one line.
+
+    The dbt artifact is read once, for the snapshot and the closures evidence keeps. An
+    artifact the reader refuses is bytes the snapshot read, and its problems are the gate's
+    gaps; a path that holds no file is said here. A ref whose contracts take a formula from a
+    dbt artifact, read without one, is refused with the *option* that gives it: a snapshot that
+    could not resolve the formula is no input the run was meant to have (ADR 0008, item 11).
     """
     model_path = root / MODEL_FILE
+    manifest = None if dbt is None else Path(dbt.path)
     try:
         if not filesystem.is_file(model_path):
             raise VerifyError(f"semantic ref {root} has no {MODEL_FILE}")
+        if manifest is not None and not filesystem.is_file(manifest):
+            raise VerifyError(f"dbt semantic manifest not found: {manifest}")
         metrics = root / METRICS_DIR
-        source = NativeModelSource(model_path, metrics if filesystem.is_dir(metrics) else None)
-        return source.snapshot()
+        source = NativeModelSource(
+            model_path,
+            metrics if filesystem.is_dir(metrics) else None,
+            semantic_manifest=manifest,
+            dbt_database=None if dbt is None else dbt.database,
+        )
+        read = source.read()
     except OSError as exc:
-        # The model, its metrics directory, a directory under it or a contract in one,
-        # refused when looked at, when listed or when opened: the error knows which path
-        # it was.
+        # The model, its metrics directory, a directory under it, a contract in one or the
+        # dbt artifact, refused when looked at, when listed or when opened: the error knows
+        # which path it was.
         unread = exc.filename or model_path
         raise VerifyError(f"cannot read {unread}: {unread_reason(exc)}") from None
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
@@ -481,6 +521,15 @@ def _snapshot(root: Path) -> SemanticSnapshot:
         raise VerifyError(
             f"cannot load semantic ref {root}: not a valid {exc.title}: {schema_reason(exc)}"
         ) from None
+    if dbt is None:
+        nodes = read.snapshot.graph.metrics
+        bound = sorted({node.id for node in nodes if node.binding is not None})
+        if bound:
+            raise VerifyError(
+                f"semantic ref {root} takes the formula of {', '.join(bound)} from a dbt "
+                f"semantic manifest; give the artifact with {option}"
+            )
+    return read
 
 
 def _load_model(path: Path) -> SemanticModel:

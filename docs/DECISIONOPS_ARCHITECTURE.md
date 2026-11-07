@@ -696,7 +696,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=128`, `CHECK_VERSION=82`.
+`VERIFIER_VERSION=129`, `CHECK_VERSION=83`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -1740,7 +1740,7 @@ ID двух видов записей bundle выводятся из ref. Claim 
 (`results.reconcile`, §8.4) — `claim-<slug>-<hex>`, где `<hex>` — полный SHA-256 canonical JSON
 массива `[asset id]`; скомпилированный BI payload (§8.5) — `bi-<slug>-<payload id>-<hex>`, где
 `<hex>` — тот же хеш массива `[dashboard ref, payload id]`. Slug — ref в нижнем регистре, в котором
-каждый символ, кроме букв и цифр, стал одним `-`; он стоит впереди для чтения в `decision
+каждый символ, кроме латинских букв и цифр ASCII, стал одним `-`; он стоит впереди для чтения в `decision
 evidence` (claim иначе не называет свой asset), а различает ID хеш. До verifier 113 ID был одним
 slug: claim эквивалентных результатов assets `asset://sales/weekly_margin_by_region` и
 `asset://sales/weekly-margin-by-region` или payload скомпилированных дашбордов
@@ -1752,6 +1752,39 @@ slug: claim эквивалентных результатов assets `asset://sa
 `report-summary-md`) не выводятся из ref и не менялись; bundle прежних версий читаются со своими
 slug-ID. Повтор одного ref в `delivery.dashboards`, чей spec компилируется, давал один ID дважды:
 хеш не отличит ref от него самого. С verifier 114 такой повтор отвергает схема продукта (§7.2).
+
+С verifier 129 из ref выводится и третий вид — замыкание формулы dbt ([ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md),
+п. 11). Рядом со `snapshot-<сторона>` bundle хранит каноническое замыкание каждой метрики dbt,
+digest замыкания которой называет binding узла snapshot этой стороны: ID
+`closure-<сторона>-<slug>-<hex>` с хешем массива `[dbt ref]`, kind `formula_closure`. Байты —
+RFC 8785-форма замыкания, поэтому digest артефакта равен `closure_digest` binding. Две метрики
+одного dbt ref делят одно замыкание, одинаковые замыкания двух сторон — один content address.
+Артефакт целиком в bundle не кладётся, только замыкание — объекты, которые определяют формулу
+(ADR 0008, п. 4). Но замыкание метрики с `filter` или conversion по п. 4 — все метрики и все
+semantic models артефакта, то есть весь семантический проект dbt без saved queries. Замыкание —
+определение семантического слоя: выражения measures и dimensions, шаблоны фильтров, описания;
+строк данных в нём нет. Его classification — `internal`, как у snapshot и BI-payload, и его
+отдаёт `decision evidence --artifact` тому, кто читает bundle. Отдельной retention- и
+classification-политики для SQL-текста (§10.2) пока нет ни у одного artifact gate; замыкание её не
+вводит, а когда она появится, замыкание — её предмет наравне со snapshot. В идентичность прогона
+замыкания не входят: snapshot уже адресует их digest. `verify_bundle` — а с ним `evidence.bundle`
+(check 83) и `decision evidence` — после проверки hash и размера сверяет замыкания со snapshot
+своей стороны. Snapshot читается как JSON и не пересобирается. Все находки — block:
+
+- `evidence.closure_missing` — binding называет замыкание, а bundle его не хранит;
+- `evidence.closure_mismatch` — хранимое замыкание хешируется не в тот digest, который
+  называют bindings;
+- `evidence.closure_unbound` — хранимое замыкание не называет ни один binding;
+- `evidence.closure_unverified` — snapshot стороны цел по hash, но в нём нет читаемого
+  `graph.metrics` с binding (ref и digest — строки без одиночных суррогатов); замыкания этой
+  стороны тогда не проверяются.
+
+Сторону, чей snapshot не прошёл hash, проверка замыканий пропускает: там уже есть
+`evidence.digest_mismatch`. Bundle прежних версий замыканий не хранят, их snapshot binding не
+несут, и проверка ничего в них не находит. Slug берёт только латинские буквы и цифры ASCII:
+имя метрики dbt может содержать букву другого алфавита, а ID bundle — нет. Символ вне ASCII
+становится `-` до перевода в нижний регистр, поэтому знак кельвина `K` не превращается в `k`.
+Для ASCII-ref slug прежний.
 
 `reports/summary.md` пишет `verification/summary.py` — единственный артефакт в
 layout, написанный для человека, а не для машины. «Derived» здесь контракт, а не
@@ -2123,7 +2156,10 @@ read <файл>: SurrogateEscapeError at line <n>, column <m>` для входа
 auto_bi decision validate <paths…> [--json]
 auto_bi decision capture <assets> --candidate <ref> --dwh <engine> --output <new-file>
         [--asset <id>] [--environment <ref>] [--captured-at <ts>]
+        [--candidate-semantic-manifest <json> [--candidate-dbt-database <name>]]
 auto_bi decision verify <paths…> --base <ref> --candidate <ref> --evidence <dir>
+        [--base-semantic-manifest <json> [--base-dbt-database <name>]]
+        [--candidate-semantic-manifest <json> [--candidate-dbt-database <name>]]
         [--dashboards <dir>] [--assets <path>] [--results <file>]
         [--product <id>] [--environment <ref>] [--created-at <ts>]
         [--signing-key <private.pem>] [--json]
@@ -2131,6 +2167,7 @@ auto_bi decision evidence <run-or-path> [--run <id>] [--artifact <id>]
         [--expect-digest <sha256:…>] [--trust-key <public.pem>]... [--json]
 auto_bi decision investigate <plan.yaml> --results <result.yaml> [<result.yaml> ...]
         --output <new-dir>
+auto_bi decision pin <semantic_manifest.json> [<dbt metric> ...] [--json]
 ```
 
 `validate` — offline cross-contract проверка (продукты ↔ metric contracts).
@@ -2138,6 +2175,17 @@ auto_bi decision investigate <plan.yaml> --results <result.yaml> [<result.yaml> 
 asset'а и создаёт новый gate-ready result с attestation; существующий output не
 перезаписывается. Ошибка контракта, подключения или запроса завершается операционным кодом
 `2`, а не становится verdict гейта.
+Артефакт dbt (`--<сторона>-semantic-manifest`) и его база (`--<сторона>-dbt-database`) —
+у каждой стороны свои ([ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md), п. 11).
+`capture` и `verify` читают сторону одним загрузчиком: snapshot и замыкания — из одного
+чтения байтов артефакта. Когда контракт стороны берёт формулу из dbt, а артефакт не дан,
+команда останавливается usage error (exit 2) до gate и до запроса к движку; ошибка называет
+метрики и опцию. База без артефакта — тоже usage error. Артефакт без dbt-контрактов
+допустим: его байты входят в source digest, граф тот же. `pin` печатает пин каждой метрики
+артефакта, которую назвали (без имён — всех, по имени): `sha256:` RFC 8785-формы её
+замыкания, то есть значение `external.source_revision`. Артефакт читается тем же строгим
+reader, что у gate. Каждая проблема отвергнутого артефакта и метрика, которой в нём нет,
+дают exit 2. `--json` печатает `artifact_digest`, `schema_version` и `pins`.
 `verify` — полный гейт §8.2 для ОДНОГО продукта: один run = один продукт, потому
 что и idempotency key, и evidence bundle называют один `product_ref`. Когда в путях нет
 продукта, который прогон должен взять, usage error (exit 2) говорит и почему, насколько это
@@ -2313,6 +2361,7 @@ valid <kind>: <место>: <причина>; …` — файл прочитан
 | Вход | Форма |
 |---|---|
 | semantic ref (`--base`/`--candidate`) | каталог с `model.yaml` и необязательным `metrics/` |
+| артефакт dbt (`--base-semantic-manifest`/`--candidate-semantic-manifest`) | `semantic_manifest.json`, который пишет `dbt parse` (ADR 0008) |
 | dashboard spec | `<segment>/…/<segment>@<version>.yaml` — каждый сегмент ref, кроме последнего, — каталог, имя файла несёт последний сегмент и пин |
 | verified assets | файл или каталог YAML (`VerifiedAsset`) |
 | recorded results | `{asset id: ResultSet}` **или** `{asset id: {result, attestation}}` |

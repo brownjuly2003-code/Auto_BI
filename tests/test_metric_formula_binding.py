@@ -829,6 +829,8 @@ def _gate(
             validation=loaded.report,
             base=base,
             candidate=candidate,
+            base_closures=_closures(tmp_path / "base", base),
+            candidate_closures=_closures(tmp_path / "candidate", candidate),
             candidate_model=_model(),
             dashboards={REF: spec()},
             validated_metrics=loaded.metrics,
@@ -837,6 +839,14 @@ def _gate(
         created_at="2026-11-06T00:00:00Z",
     )
     return report, _check_payload(tmp_path, report, "contracts.validate")
+
+
+def _closures(folder: Path, snapshot: SemanticSnapshot) -> dict[str, Any]:
+    """The closures *snapshot* binds, from the artifact `_snapshot` wrote beside it."""
+    read = read_semantic_manifest((folder / "semantic_manifest.json").read_bytes())
+    assert read.manifest is not None
+    bound = {node.binding.ref for node in snapshot.graph.metrics if node.binding is not None}
+    return {ref: read.manifest.closure(ref) for ref in sorted(bound)}
 
 
 def test_a_resolved_formula_matches_the_contract_that_pins_it(tmp_path: Path) -> None:
