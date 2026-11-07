@@ -115,13 +115,14 @@ _NOT_SUMMABLE = frozenset(
 
 #: Where the native model declares no engine or no type for a column.
 UNDECLARED = "undeclared"
-#: A declared type outside the classes below; an engine other than PostgreSQL has no classes.
+#: A declared type outside the classes below; an engine other than PostgreSQL and ClickHouse
+#: has no classes.
 UNCLASSIFIED = "unclassified"
 #: The event time column of a contract whose grain keys do not hold it.
 OUTSIDE_GRAIN = "outside_grain"
 
 #: Declared engine -> the engine a parity row names.
-_ENGINES = {"postgres": "postgres", "postgresql": "postgres"}
+_ENGINES = {"postgres": "postgres", "postgresql": "postgres", "clickhouse": "clickhouse"}
 
 #: PostgreSQL types -> the class a parity row names: what an aggregate over the column is
 #: computed in, and what the day of a time column is.
@@ -146,8 +147,23 @@ _PG_CLASSES = {
 #: them — an array or another suffix is a type the classes do not hold.
 _PG_TYPE = re.compile(r"([a-z][a-z0-9 ]*?)\s*(?:\(\s*\d+\s*(?:,\s*\d+\s*)?\))?")
 
-#: The context of the recorded run: PostgreSQL, a `date` event time column among the grain keys.
-_RUN = "postgres.date"
+#: ClickHouse types, spelled as the engine writes them in `system.columns`, -> the class a
+#: parity row names. A member computes the matrix's aggregates in the types the run's column
+#: of its class computes them in — `sum` over `Int8` … `Int64` in `Int64`, over
+#: `Decimal(P, 2)` in `Decimal(38, 2)`, `avg` in `Float64` — and the run records them. Any
+#: other type or spelling is unclassified: `sum` over `UInt8` … `UInt64` is a `UInt64`, and
+#: the reference SQL reads a type by its spelling. `Nullable(T)` is `T`'s class for an
+#: aggregated column, not for the event time.
+CLICKHOUSE_CLASSES: Mapping[str, str] = {
+    **{name: "integer" for name in ("Int8", "Int16", "Int32", "Int64")},
+    **{f"Decimal({precision}, 2)": "decimal" for precision in range(2, 39)},
+    "Float64": "float",
+    "Date": "date",
+}
+
+#: The contexts of the recorded run: PostgreSQL and ClickHouse, a `date` event time column
+#: among the grain keys.
+_RUNS = ("postgres.date", "clickhouse.date")
 #: Ratio terms the run compared: a float term under `sum`, `min`, `max` or `average`, and any
 #: term under `average`, have no reference SQL (`sql.ratio_inexact_term`).
 _RATIO_TERMS = (
@@ -161,20 +177,22 @@ _RATIO_TERMS = (
 )
 
 #: Rows of the parity matrix a run has shown MetricFlow and the reference SQL to agree on:
-#: `scripts/metricflow_parity.py` on PostgreSQL 16.15 with metricflow 0.213.0, its result
-#: `tests/fixtures/dbt_semantic_manifest/parity/result.json`. No V2 metric resolves, and no
-#: V2 row is here.
+#: `scripts/metricflow_parity.py` on PostgreSQL 16.15 and ClickHouse 24.8.14.39 with
+#: metricflow 0.213.0, its result `tests/fixtures/dbt_semantic_manifest/parity/result.json`.
+#: No V2 metric resolves, and no V2 row is here.
 PROVEN_PARITY: frozenset[str] = frozenset(
-    {
+    row
+    for run in _RUNS
+    for row in (
         *(
-            f"{_RUN}:legacy.{agg}.{kind}"
+            f"{run}:legacy.{agg}.{kind}"
             for agg in ("sum", "count", "count_distinct", "min", "max", "average")
             for kind in ("decimal", "integer", "float")
         ),
-        f"{_RUN}:legacy.measure_without_expr",
-        f"{_RUN}:legacy.metric_expr",
-        *(f"{_RUN}:ratio.{top}/{bottom}" for top in _RATIO_TERMS for bottom in _RATIO_TERMS),
-    }
+        f"{run}:legacy.measure_without_expr",
+        f"{run}:legacy.metric_expr",
+        *(f"{run}:ratio.{top}/{bottom}" for top in _RATIO_TERMS for bottom in _RATIO_TERMS),
+    )
 )
 
 #: A column a typed term may name: one lower-case identifier. Case folding differs between
@@ -372,17 +390,30 @@ def _engine(declared: DeclaredTable) -> str:
     return _ENGINES.get(engine, engine) or UNDECLARED
 
 
-def _type_class(declared: DeclaredTable, column: str) -> str:
-    """The class of the column's declared type a parity row names."""
+def _type_class(declared: DeclaredTable, column: str, *, nullable: bool = True) -> str:
+    """The class of the column's declared type a parity row names; `nullable` False where
+    the run's column held no NULL, and a type saying it may is not the run's."""
     kind = declared.column_types.get(column)
     if not kind:
         return UNDECLARED
-    if _engine(declared) != "postgres":
+    engine = _engine(declared)
+    if engine == "clickhouse":
+        return _clickhouse_class(kind, nullable=nullable)
+    if engine != "postgres":
         return UNCLASSIFIED
     found = _PG_TYPE.fullmatch(kind.strip().lower())
     if found is None:
         return UNCLASSIFIED
     return _PG_CLASSES.get(" ".join(found.group(1).split()), UNCLASSIFIED)
+
+
+def _clickhouse_class(kind: str, *, nullable: bool) -> str:
+    """`CLICKHOUSE_CLASSES` of the type as written: `Nullable(T)` is `T`'s class where the
+    column may hold NULL, and nothing else is unwrapped or respelled."""
+    wrapper = "Nullable("
+    if nullable and kind.startswith(wrapper) and kind.endswith(")"):
+        kind = kind[len(wrapper) : -1]
+    return CLICKHOUSE_CLASSES.get(kind, UNCLASSIFIED)
 
 
 def _context(contract: MetricContract, declared: DeclaredTable) -> str:
@@ -392,7 +423,10 @@ def _context(contract: MetricContract, declared: DeclaredTable) -> str:
     keys; the two rows are one only where the event time column is a grain key holding days.
     """
     event_time = contract.time.event_time_column
-    time = _type_class(declared, event_time) if event_time in contract.grain.keys else OUTSIDE_GRAIN
+    if event_time not in contract.grain.keys:
+        return f"{_engine(declared)}.{OUTSIDE_GRAIN}"
+    # the run's event time column held no NULL day to group by
+    time = _type_class(declared, event_time, nullable=False)
     return f"{_engine(declared)}.{time}"
 
 

@@ -3,21 +3,25 @@
 Fixtures are the artifacts of `test_metricflow_manifest.py` (`dbt parse`, dbt-core 1.12.6,
 metricflow 0.213.0), changed in memory and pinned again where a test needs a construct they do
 not carry, and `parity/`: the artifact and the result of the parity matrix
-(`scripts/metricflow_parity.py`) on PostgreSQL 16.15.
+(`scripts/metricflow_parity.py`) on PostgreSQL 16.15 and ClickHouse 24.8.14.39.
 """
 
 from __future__ import annotations
 
 import copy
+import functools
 import importlib.util
 import io
 import json
 import re
 import sys
+import tempfile
+from collections import Counter
 from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
-from itertools import pairwise
+from fractions import Fraction
+from itertools import pairwise, permutations
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -25,7 +29,7 @@ from typing import Any
 import pytest
 import yaml
 
-from auto_bi.evidence.canonical import digest_bytes
+from auto_bi.evidence.canonical import digest_bytes, sha256_digest
 from auto_bi.semantic.gateway import NativeModelSource
 from auto_bi.semantic.metric_contract import MetricContract, MetricFormula
 from auto_bi.semantic.metricflow import ManifestRead, read_semantic_manifest
@@ -37,6 +41,7 @@ from auto_bi.semantic.metricflow_formula import (
     _RATIO_PARAMS,
     _SIMPLE_PARAMS,
     ADDITIVITY_UNPROVEN,
+    CLICKHOUSE_CLASSES,
     CONSTRUCT_UNSUPPORTED,
     OUTSIDE_GRAIN,
     PARITY_UNPROVEN,
@@ -57,7 +62,12 @@ from auto_bi.semantic.metricflow_formula import (
     is_dbt_formula,
     resolve_formula,
 )
-from auto_bi.verification.sql_contract import compile_metric_queries
+from auto_bi.verification.sql_contract import (
+    _CLICKHOUSE_DIALECT,
+    _Exactness,
+    _exactness,
+    compile_metric_queries,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).parent / "fixtures" / "dbt_semantic_manifest"
@@ -1146,6 +1156,98 @@ def test_parity_row_names_the_class_of_the_column_type(kind: str | None, expecte
     assert (run.formula is not None) is (expected in ("decimal", "integer", "float"))
 
 
+#: A ClickHouse type of an aggregated column, as it may be written, and its class: as the
+#: engine writes it in `system.columns`, and nothing else.
+CLICKHOUSE_SPELLINGS = [
+    *((kind, "integer") for kind in ("Int8", "Int16", "Int32", "Int64", "Nullable(Int64)")),
+    *(
+        (kind, "decimal")
+        for kind in (
+            "Decimal(2, 2)",
+            "Decimal(18, 2)",
+            "Decimal(38, 2)",
+            "Nullable(Decimal(18, 2))",
+        )
+    ),
+    ("Float64", "float"),
+    ("Nullable(Float64)", "float"),
+    ("Date", "date"),
+    ("Nullable(Date)", "date"),
+    *(
+        (kind, UNCLASSIFIED)
+        for kind in (
+            "Decimal(39, 2)",
+            "Decimal(18,2)",
+            "Decimal(18, 3)",
+            "Decimal(1, 2)",
+            "Decimal64(2)",
+            "Nullable( Int64 )",
+            "Nullable (Int64)",
+            "Nullable(Int64",
+            "Nullable(Int64 ",
+            "Nullable(Int64))",
+            " Int64",
+            "int64",
+            "BIGINT",
+            "UInt8",
+            "UInt64",
+            "Nullable(UInt64)",
+            "Int128",
+            "Float32",
+            "LowCardinality(Int64)",
+            "LowCardinality(Nullable(Int64))",
+            "Nullable(LowCardinality(Int64))",
+            "Nullable(Nullable(Int64))",
+            "Date32",
+            "String",
+        )
+    ),
+    ("", UNDECLARED),
+    (None, UNDECLARED),
+]
+
+
+def _clickhouse_table(**types: str | None) -> DeclaredTable:
+    """The grain table on ClickHouse: `types` over its default columns, None leaving one out."""
+    found: dict[str, str | None] = {
+        "date": "Date",
+        "store_id": "Int32",
+        "revenue": "Nullable(Decimal(18, 2))",
+        "gross_margin": "Decimal(18, 2)",
+        **types,
+    }
+    return DeclaredTable(
+        "clickhouse", {name: kind for name, kind in found.items() if kind is not None}
+    )
+
+
+@pytest.mark.parametrize(("kind", "expected"), CLICKHOUSE_SPELLINGS)
+def test_clickhouse_class_is_the_type_as_the_engine_writes_it(
+    kind: str | None, expected: str
+) -> None:
+    declared = _clickhouse_table(revenue=kind)
+    resolution = _resolve(_data("legacy"), "revenue", declared=declared)
+    assert resolution.parity_rows == {f"clickhouse.date:legacy.sum.{expected}"}
+    run = _resolve(_data("legacy"), "revenue", declared=declared, proven=PROVEN_PARITY)
+    assert (run.formula is not None) is (expected in ("decimal", "integer", "float"))
+
+
+def test_clickhouse_class_is_how_the_reference_sql_reads_the_column() -> None:
+    # the reference SQL of a ratio reads a term as exact by its type, and as nullable where
+    # the type holds `Nullable(` anywhere: for a member of a class and a member in `Nullable`,
+    # it reads what the class says, and the class says it of no other spelling
+    exact = {"decimal": _Exactness.DECIMAL, "integer": _Exactness.INTEGRAL, "float": None}
+    members = {kind: found for kind, found in CLICKHOUSE_CLASSES.items() if found != "date"}
+    assert set(members.values()) == set(exact)
+    spelled = {**members, **{f"Nullable({kind})": found for kind, found in members.items()}}
+    for kind, found in spelled.items():
+        assert _exactness(_CLICKHOUSE_DIALECT, kind) is exact[found], kind
+        assert ("Nullable(" in kind) is kind.startswith("Nullable("), kind
+    for kind, found in CLICKHOUSE_SPELLINGS:
+        if found in exact:
+            assert kind in spelled, kind
+
+
 @pytest.mark.parametrize(
     ("engine", "event_time_type", "keys", "context"),
     [
@@ -1155,7 +1257,15 @@ def test_parity_row_names_the_class_of_the_column_type(kind: str | None, expecte
         ("postgres", "timestamp", ("date", "store_id"), f"postgres.{UNCLASSIFIED}"),
         ("postgres", None, ("date", "store_id"), f"postgres.{UNDECLARED}"),
         ("postgres", "date", ("store_id",), f"postgres.{OUTSIDE_GRAIN}"),
-        ("clickhouse", "Date", ("date", "store_id"), f"clickhouse.{UNCLASSIFIED}"),
+        ("clickhouse", "Date", ("date", "store_id"), "clickhouse.date"),
+        ("ClickHouse", "Date", ("store_id", "date"), "clickhouse.date"),
+        # the run's event time held no NULL: a nullable one is not its class
+        ("clickhouse", "Nullable(Date)", ("date", "store_id"), f"clickhouse.{UNCLASSIFIED}"),
+        ("clickhouse", "Date32", ("date", "store_id"), f"clickhouse.{UNCLASSIFIED}"),
+        ("clickhouse", "DateTime", ("date", "store_id"), f"clickhouse.{UNCLASSIFIED}"),
+        ("clickhouse", "date", ("date", "store_id"), f"clickhouse.{UNCLASSIFIED}"),
+        ("clickhouse", None, ("date", "store_id"), f"clickhouse.{UNDECLARED}"),
+        ("clickhouse", "Date", ("store_id",), f"clickhouse.{OUTSIDE_GRAIN}"),
         ("greenplum", "date", ("date", "store_id"), f"greenplum.{UNCLASSIFIED}"),
         ("", "date", ("date", "store_id"), f"{UNDECLARED}.{UNCLASSIFIED}"),
     ],
@@ -1164,17 +1274,20 @@ def test_parity_row_holds_in_the_engine_and_event_time_of_the_table(
     engine: str, event_time_type: str | None, keys: tuple[str, ...], context: str
 ) -> None:
     data = _data("legacy")
-    types = {name: value for name, value in SALES.column_types.items() if name != "date"}
+    on_clickhouse = engine.lower() == "clickhouse"
+    table = _clickhouse_table() if on_clickhouse else SALES
+    types = {name: value for name, value in table.column_types.items() if name != "date"}
     if event_time_type is not None:
         types["date"] = event_time_type
     declared = DeclaredTable(engine, types)
-    kind = "decimal" if context.startswith("postgres.") else UNCLASSIFIED
+    # the column is `numeric(18,2)` on PostgreSQL and `Nullable(Decimal(18, 2))` on ClickHouse
+    kind = "decimal" if context.startswith(("postgres.", "clickhouse.")) else UNCLASSIFIED
     row = f"{context}:legacy.sum.{kind}"
     resolution = _resolve(data, "revenue", declared=declared, keys=keys)
     assert resolution.parity_rows == {row}
-    # what the recorded run proved holds in its own context only
+    # what the recorded run proved holds in its own contexts only
     default = _resolve(data, "revenue", declared=declared, keys=keys, proven=PROVEN_PARITY)
-    if context == "postgres.date":
+    if context in ("postgres.date", "clickhouse.date"):
         assert (default.formula, default.gaps) == (_aggregate("revenue", "sum"), ())
     else:
         assert default.formula is None
@@ -1210,7 +1323,13 @@ def _script() -> ModuleType:
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # a dataclass looks its module up by name while the module runs; each test takes a module
+    # of its own, and none stays behind
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        del sys.modules[spec.name]
     return module
 
 
@@ -1219,96 +1338,223 @@ def _result() -> dict[str, Any]:
     return result
 
 
+def _sides(values: list[list[Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """A metric's recorded values as the rows of each side: the reference's, MetricFlow's."""
+    ours = [{"k1": day, "k2": int(store), "v": ref} for day, store, ref, _ in values]
+    theirs = [{"k1": day, "k2": int(store), "v": mf} for day, store, _, mf in values]
+    return ours, theirs
+
+
 def test_proven_parity_is_the_recorded_run() -> None:
-    result = _result()
+    script, result = _script(), _result()
     raw = (PARITY / "semantic_manifest.json").read_bytes()
     assert result["artifact_digest"] == digest_bytes(raw)
     assert result["versions"]["metricflow"] == "0.213.0"
-    assert result["versions"]["server"].startswith("PostgreSQL 16.15 ")
+    assert result["versions"]["postgres"].startswith("PostgreSQL 16.15 ")
+    assert result["versions"]["clickhouse"] == "24.8.14.39"
+    assert result["clickhouse_settings"] == script.CLICKHOUSE_SETTINGS
     assert frozenset(result["proven"]) == PROVEN_PARITY
+    # the numbers ADR 0008 states for the run
+    counts = Counter(row.split(":", 1)[0] for row in PROVEN_PARITY)
+    assert counts == {"postgres.date": 164, "clickhouse.date": 164}
+
+
+def test_recorded_types_are_those_a_class_computes_in() -> None:
+    script = _script()
+    types = _result()["clickhouse_types"]
+    assert set(types) == set(script.PROBED_TYPES)
+    assert all(set(found) == set(script.PROBED_AGGREGATES) for found in types.values())
+    # the run's column of each class, NOT NULL: the type the members are held to
+    declared = script.DECLARED["clickhouse.date"].column_types
+    run = {script.CLASSES[twin]: declared[twin] for twin in script.TWINS.values()}
+    assert run == {"decimal": "Decimal(18, 2)", "integer": "Int64", "float": "Float64"}
+    assert {kind: types[kind]["sum"] for kind in run.values()} == {
+        "Decimal(18, 2)": "Decimal(38, 2)",
+        "Int64": "Int64",
+        "Float64": "Float64",
+    }
+    for kind, found in CLICKHOUSE_CLASSES.items():
+        if found == "date":
+            continue
+        # a member sums and averages as its class's run type does, its min and max are its own
+        assert types[kind]["sum"] == types[run[found]]["sum"], kind
+        assert types[kind]["avg"] == types[run[found]]["avg"] == "Float64", kind
+        assert types[kind]["min"] == types[kind]["max"] == kind, kind
+    # an unsigned integer sums in an unsigned type: no class holds it
+    for kind in ("UInt8", "UInt16", "UInt32", "UInt64"):
+        assert types[kind]["sum"] == "UInt64"
+        assert kind not in CLICKHOUSE_CLASSES
 
 
 def test_recorded_run_is_its_own_proof() -> None:
     script, result = _script(), _result()
     read = read_semantic_manifest((PARITY / "semantic_manifest.json").read_bytes())
     assert read.manifest is not None
-    assert sorted(script.subjects()) == read.manifest.metric_names() == sorted(result["metrics"])
-    assert script._proven(result["metrics"]) == set(result["proven"])
-    outcomes = {case["outcome"] for case in result["metrics"].values()}
-    assert outcomes == {"pass", "no_reference_sql"}
-    for name, case in result["metrics"].items():
-        assert case["subject"] == script.subjects()[name]
-        if case["outcome"] == "no_reference_sql":
-            # only a ratio with an average term goes without reference SQL
-            terms = (case["formula"]["numerator"], case["formula"]["denominator"])
-            assert "avg" in {term["agg"] for term in terms}, name
-            continue
-        values = case["values"]
-        assert values and case["mismatches"] == []
-        ours = [{"k1": day, "k2": int(store), "v": ref} for day, store, ref, _ in values]
-        theirs = [{"k1": day, "k2": int(store), "v": mf} for day, store, _, mf in values]
-        ratio = case["formula"]["kind"] == "typed_ratio"
-        assert script._compare(ours, theirs, ratio=ratio) == [], name
-    assert result["controls"] and all(control["mismatches"] > 0 for control in result["controls"])
+    assert sorted(result["contexts"]) == sorted(script.CONTEXTS)
+    proven: set[str] = set()
+    for context, found in result["contexts"].items():
+        cases = found["metrics"]
+        subjects = script.subjects(context)
+        assert sorted(subjects) == read.manifest.metric_names() == sorted(cases)
+        assert script._proven(cases) == set(found["proven"])
+        assert all(row.startswith(f"{context}:") for row in found["proven"])
+        proven |= set(found["proven"])
+        assert {case["outcome"] for case in cases.values()} == {"pass", "no_reference_sql"}
+        for name, case in cases.items():
+            assert case["subject"] == subjects[name]
+            assert case["rule"] == script.rule(context, case["formula"]), name
+            if case["outcome"] == "no_reference_sql":
+                # only a ratio with an average term goes without reference SQL
+                terms = (case["formula"]["numerator"], case["formula"]["denominator"])
+                assert "avg" in {term["agg"] for term in terms}, name
+                continue
+            assert case["values"] and case["mismatches"] == []
+            ours, theirs = _sides(case["values"])
+            assert script._compare(ours, theirs, rule=case["rule"]) == [], (context, name)
+        # each control as its recorded values give it: the reference's rows of one metric
+        # against MetricFlow's of the other, by the rule of the reference's
+        assert found["controls"]
+        for control in found["controls"]:
+            ours, _ = _sides(cases[control["reference"]]["values"])
+            _, theirs = _sides(cases[control["metricflow"]]["values"])
+            rule = cases[control["reference"]]["rule"]
+            assert control["mismatches"] == len(script._compare(ours, theirs, rule=rule))
+            assert control["numeric"] == script._numeric(ours, theirs, rule=rule) > 0, control
+    assert proven == set(result["proven"])
+
+
+def test_metricflow_side_is_one_query_in_every_context() -> None:
+    contexts = _result()["contexts"]
+    compared: dict[str, list[list[tuple[str, str, str | None]]]] = {}
+    for found in contexts.values():
+        for name, case in found["metrics"].items():
+            if "values" in case:
+                mf = [(day, store, value) for day, store, _, value in case["values"]]
+                compared.setdefault(name, []).append(mf)
+    # every metric compared in one context is compared in the other, with MetricFlow's
+    # values as one query gave them
+    assert compared
+    for name, sides in compared.items():
+        assert len(sides) == len(contexts), name
+        assert all(side == sides[0] for side in sides), name
+
+
+def test_an_average_on_clickhouse_is_compared_as_a_double() -> None:
+    script = _script()
+    contexts = _result()["contexts"]
+    for context, found in contexts.items():
+        for name, case in found["metrics"].items():
+            average = case["formula"].get("aggregate", {}).get("agg") == "avg"
+            on_clickhouse = context == "clickhouse.date"
+            assert (case["rule"] == "double") is (average and on_clickhouse), (context, name)
+    # the rule is needed: ClickHouse's mean of a decimal and of an integer column is, on some
+    # key, not the numeric MetricFlow's PostgreSQL gives (itself rounded at its scale: not the
+    # exact mean either), and lies within the rule
+    cases = contexts["clickhouse.date"]["metrics"]
+    for name in ("amount_average", "qty_average", "amount_nn_average", "qty_nn_average"):
+        inexact = [
+            (ours, theirs)
+            for _, _, ours, theirs in cases[name]["values"]
+            if ours is not None and Decimal(ours) != Decimal(theirs)
+        ]
+        assert inexact, name
+        for ours, theirs in inexact:
+            assert script._same(ours, theirs, rule="double"), name
+            assert not script._same(ours, theirs, rule="equal"), name
 
 
 def test_recorded_formulas_are_what_resolution_gives_now() -> None:
     script, result = _script(), _result()
     read = read_semantic_manifest((PARITY / "semantic_manifest.json").read_bytes())
     assert read.manifest is not None
-    every = frozenset(script.subjects().values())
-    for name, case in result["metrics"].items():
-        contract = script.metric_contract(read.manifest, name)
-        assert contract.additivity.value == (
-            "additive"
-            if case["formula"].get("aggregate", {}).get("agg") in ("sum", "count")
-            else "non_additive"
-        ), name
-        resolution = resolve_formula(
-            contract, read, database=script.DATABASE, declared=script.DECLARED, proven=every
-        )
-        assert resolution.formula is not None, name
-        assert resolution.formula.model_dump(mode="json", exclude_none=True) == case["formula"]
-        assert sorted(resolution.parity_rows) == case["rows"]
-        assert case["subject"] in case["rows"]
+    for context, found in result["contexts"].items():
+        every = frozenset(script.subjects(context).values())
+        for name, case in found["metrics"].items():
+            contract = script.metric_contract(read.manifest, name)
+            assert contract.additivity.value == (
+                "additive"
+                if case["formula"].get("aggregate", {}).get("agg") in ("sum", "count")
+                else "non_additive"
+            ), name
+            resolution = resolve_formula(
+                contract,
+                read,
+                database=script.DATABASE,
+                declared=script.DECLARED[context],
+                proven=every,
+            )
+            assert resolution.formula is not None, (context, name)
+            assert resolution.formula.model_dump(mode="json", exclude_none=True) == case["formula"]
+            assert sorted(resolution.parity_rows) == case["rows"]
+            assert case["subject"] in case["rows"]
+            assert all(row.startswith(f"{context}:") for row in case["rows"])
+
+
+def test_recorded_reference_sql_is_what_the_compiler_writes_now() -> None:
+    # the record holds the digest of the reference SQL each metric ran: SQL the compiler writes
+    # otherwise now is not what the run proved, and the record must be run again
+    for context, found in _result()["contexts"].items():
+        bodies = _reference_bodies(context)
+        cases = found["metrics"]
+        ran = {name for name, case in cases.items() if "reference_sql" in case}
+        passed = {name for name, case in cases.items() if case["outcome"] == "pass"}
+        assert ran == set(bodies) == passed, context
+        for name in ran:
+            assert cases[name]["reference_sql"] == sha256_digest(bodies[name]), (context, name)
 
 
 @pytest.mark.parametrize(
-    ("reference", "metricflow", "ratio", "same"),
+    ("reference", "metricflow", "rule", "same"),
     [
-        ("1.50", "1.5", False, True),
-        ("1.50", "1.51", False, False),
-        (None, None, False, True),
-        (None, "0", False, False),
-        ("0", None, True, False),
-        ("0.333333", "0.3333333333333333", True, True),
-        ("0.333333", "0.3333341", True, False),
-        ("0.333333", "0.3333329", True, False),
-        ("-0.333333", "-0.3333333333333333", True, True),
-        ("-0.333333", "-0.3333343", True, False),
-        ("-0.333333", "-0.3333329", True, False),
-        ("0.000000", "3.00000000000003E-12", True, True),
-        ("0.000000", "-3E-7", True, True),
-        ("0.000000", "-0.0000011", True, False),
-        ("0.000000", "0.0000011", True, False),
+        ("1.50", "1.5", "equal", True),
+        ("1.50", "1.51", "equal", False),
+        (None, None, "equal", True),
+        (None, "0", "equal", False),
+        ("1", "1.000000000000001", "equal", False),
+        ("0", None, "ratio", False),
+        ("0.333333", "0.3333333333333333", "ratio", True),
+        ("0.333333", "0.3333341", "ratio", False),
+        ("0.333333", "0.3333329", "ratio", False),
+        ("-0.333333", "-0.3333333333333333", "ratio", True),
+        ("-0.333333", "-0.3333343", "ratio", False),
+        ("-0.333333", "-0.3333329", "ratio", False),
+        ("0.000000", "3.00000000000003E-12", "ratio", True),
+        ("0.000000", "-3E-7", "ratio", True),
+        ("0.000000", "-0.0000011", "ratio", False),
+        ("0.000000", "0.0000011", "ratio", False),
         # the error of a double is |mf| * 1e-15: within it a value agrees, beyond it not
-        ("1.000000", "0.9999999999999995", True, True),
-        ("1.000000", "0.999999999999995", True, False),
-        ("1.000000", "1.0000010000000005", True, True),
-        ("1.000000", "1.000001000000005", True, False),
+        ("1.000000", "0.9999999999999995", "ratio", True),
+        ("1.000000", "0.999999999999995", "ratio", False),
+        ("1.000000", "1.0000010000000005", "ratio", True),
+        ("1.000000", "1.000001000000005", "ratio", False),
+        # and mirrored below zero, at both ends of the values truncating to the reference
+        ("-1.000000", "-0.9999999999999995", "ratio", True),
+        ("-1.000000", "-0.999999999999995", "ratio", False),
+        ("-1.000000", "-1.0000010000000005", "ratio", True),
+        ("-1.000000", "-1.000001000000005", "ratio", False),
         # a double keeps about sixteen digits: the rest is its error, not another quotient
-        ("142857142857.142857", "142857142857.14285", True, True),
-        ("142857142857.142857", "142857142857.14", True, False),
+        ("142857142857.142857", "142857142857.14285", "ratio", True),
+        ("142857142857.142857", "142857142857.14", "ratio", False),
+        # an average on ClickHouse: the reference, a double, within 1e-15 of its own value
+        # from MetricFlow's, and within 1e-300 of zero
+        ("1", "1.000000000000001", "double", True),
+        ("1", "1.0000000000000011", "double", False),
+        ("1", "0.999999999999999", "double", True),
+        ("-1", "-1.000000000000001", "double", True),
+        ("-1", "-1.0000000000000011", "double", False),
+        ("0", "1E-300", "double", True),
+        ("0", "2E-300", "double", False),
+        (None, None, "double", True),
+        ("1", None, "double", False),
+        (None, "0", "double", False),
     ],
 )
-def test_parity_rule(
-    reference: str | None, metricflow: str | None, ratio: bool, same: bool
-) -> None:
+def test_parity_rule(reference: str | None, metricflow: str | None, rule: str, same: bool) -> None:
     def as_number(text: str | None) -> Decimal | None:
         return None if text is None else Decimal(text)
 
     script = _script()
-    assert script._same(as_number(reference), as_number(metricflow), ratio=ratio) is same
+    assert script._same(as_number(reference), as_number(metricflow), rule=rule) is same
 
 
 def test_proven_rows_need_their_metrics_and_the_rows_those_rely_on() -> None:
@@ -1337,8 +1583,8 @@ def test_keys_on_one_side_are_mismatches() -> None:
     script = _script()
     ours = [{"k1": "2026-01-01", "k2": 1, "v": "1"}, {"k1": "2026-01-02", "k2": 1, "v": "2"}]
     theirs = [{"k1": "2026-01-01", "k2": 1, "v": "1"}, {"k1": "2026-01-03", "k2": 1, "v": "2"}]
-    assert len(script._compare(ours, theirs, ratio=False)) == 2
-    assert script._compare(ours, ours, ratio=False) == []
+    assert len(script._compare(ours, theirs, rule="equal")) == 2
+    assert script._compare(ours, ours, rule="equal") == []
 
 
 def test_recorded_values_hold_the_keys_of_either_side() -> None:
@@ -1369,40 +1615,134 @@ def test_recorded_values_hold_the_keys_of_either_side() -> None:
 def test_recorded_run_is_the_run_of_the_recipe() -> None:
     script, result = _script(), _result()
     assert result["recipe"] == script.recipe()
-    recorded = [(control["reference"], control["metricflow"]) for control in result["controls"]]
-    assert recorded == list(script.CONTROLS)
+    for found in result["contexts"].values():
+        recorded = [(control["reference"], control["metricflow"]) for control in found["controls"]]
+        assert recorded == list(script.CONTROLS)
+
+
+def test_controls_the_adr_names_differ_as_it_says() -> None:
+    # an average against the average of its NOT NULL twin: a NULL read as zero shows, on
+    # 2026-01-01, store 1, as 13.5 against 10.125; and a ratio truncated at the precision
+    # agrees with a double holding fewer digits, on 2026-01-04, store 1
+    def value(case: dict[str, Any], key: tuple[str, str], side: int) -> Decimal:
+        row = next(row for row in case["values"] if (row[0], row[1]) == key)
+        return Decimal(row[side])
+
+    for found in _result()["contexts"].values():
+        cases = found["metrics"]
+        assert value(cases["amount_average"], ("2026-01-01", "1"), 2) == Decimal("13.5")
+        assert value(cases["amount_nn_average"], ("2026-01-01", "1"), 3) == Decimal("10.125")
+        ratio = cases["r_amount_sum_by_qty_sum"]
+        assert value(ratio, ("2026-01-04", "1"), 2) == Decimal("142857142857.142857")
+        assert value(ratio, ("2026-01-04", "1"), 3) == Decimal("142857142857.14285")
+
+
+def _term_value(values: list[Fraction], agg: str) -> Fraction | None:
+    """The aggregate of a group's values, None where it has none and the aggregate is NULL."""
+    if agg in ("count", "count_distinct"):
+        return Fraction(len(values) if agg == "count" else len(set(values)))
+    if not values:
+        return None
+    if agg == "sum":
+        return sum(values, Fraction(0))
+    return min(values) if agg == "min" else max(values)
 
 
 def test_matrix_data_holds_the_cases_it_names() -> None:
     script = _script()
+    columns = list(script.COLUMNS)
+    rows = script.table_rows()
+    assert [row[:2] + tuple(row[2 : 2 + len(script.NULLABLE)]) for row in rows] == [
+        tuple(row) for row in script.ROWS
+    ]
     groups: dict[tuple[str, int], list[tuple[Any, ...]]] = {}
-    for day, store, *values in script.ROWS:
+    for day, store, *values in rows:
         groups.setdefault((day, store), []).append(tuple(values))
-    columns = range(len(script.COLUMNS))
 
-    def present(found: list[tuple[Any, ...]], column: int) -> list[Decimal]:
-        return [Decimal(str(row[column])) for row in found if row[column] is not None]
+    def present(found: list[tuple[Any, ...]], column: str) -> list[Decimal]:
+        index = columns.index(column)
+        return [Decimal(str(row[index])) for row in found if row[index] is not None]
 
-    qty = list(script.COLUMNS).index("qty")
     # a nullable column under count; a group where a column is all NULL (a NULL denominator)
-    assert all(any(row[column] is None for row in script.ROWS) for column in range(2, 5))
-    assert any(not present(found, qty) for found in groups.values())
-    assert all(any(not present(found, column) for found in groups.values()) for column in columns)
+    for column in script.NULLABLE:
+        assert any(row[2 + columns.index(column)] is None for row in rows), column
+        assert any(not present(found, column) for found in groups.values()), column
     # a zero denominator: a group whose values sum to zero
-    assert any(present(found, qty) and sum(present(found, qty)) == 0 for found in groups.values())
+    assert any(
+        present(found, "qty") and sum(present(found, "qty")) == 0 for found in groups.values()
+    )
     # negative values in every column, a large numerator
     for column in columns:
         assert any(value < 0 for found in groups.values() for value in present(found, column))
-    assert any(value >= 10**11 for found in groups.values() for value in present(found, 0))
+    assert any(value >= 10**11 for found in groups.values() for value in present(found, "amount"))
     # repeated values under count_distinct
     for column in columns:
         assert any(
             len(present(found, column)) > len(set(present(found, column)))
             for found in groups.values()
-        )
+        ), column
     # a date without rows between two with rows
     days = sorted({date.fromisoformat(day) for day, _ in groups})
     assert any((later - earlier).days > 1 for earlier, later in pairwise(days))
+    # each NOT NULL twin: never NULL, zero where its column is NULL, its value elsewhere
+    for column, twin in script.TWINS.items():
+        assert script.CLASSES[twin] == script.CLASSES[column] == script.NULLABLE[column]
+        for row in rows:
+            value, other = row[2 + columns.index(column)], row[2 + columns.index(twin)]
+            assert other is not None
+            if value is None:
+                assert Decimal(str(other)) == 0, (column, row)
+            else:
+                assert other == value, (column, row)
+    # no value two engines may count apart: a negative zero, NaN, an infinity
+    for row in rows:
+        for value in row[2:]:
+            if value is not None:
+                number = Decimal(str(value))
+                assert number.is_finite(), row
+                assert not (number.is_zero() and number.is_signed()), row
+    # a group whose mean a double does not hold, of a decimal and of an integer column
+    for column in ("amount", "qty"):
+        means = [
+            sum(map(Fraction, present(found, column))) / len(present(found, column))
+            for found in groups.values()
+            if present(found, column)
+        ]
+        assert any(Fraction(float(mean)) != mean for mean in means), column
+    # no aggregate leaves the types ClickHouse computes it in: an integer sum within Int64
+    # whatever the order, a decimal one within Decimal(38, 2); a float sum exact in any order
+    for found in groups.values():
+        for column in columns:
+            values = present(found, column)
+            kind = script.CLASSES[column]
+            if kind == "integer":
+                assert sum(abs(value) for value in values) < 2**63, column
+            elif kind == "decimal":
+                assert sum(abs(value) for value in values) < 10**36, column
+            else:
+                # the sum of the doubles the column holds, which no order of adding rounds
+                exact = sum((Fraction(float(value)) for value in values), Fraction(0))
+                for order in permutations(values):
+                    total = 0.0
+                    for value in order:
+                        total += float(value)
+                    assert Fraction(total) == exact, (column, order)
+    # and the quotients of two ratio terms stay far from what `divideDecimal` at the
+    # precision holds: their range is under 10**32
+    terms = [
+        abs(term)
+        for found in groups.values()
+        for column in columns
+        for agg in script._side_aggregates(column)
+        if agg != "average"
+        for term in [_term_value(list(map(Fraction, present(found, column))), agg)]
+        if term
+    ]
+    assert max(terms) / min(terms) < 10**32
+    # a ratio is over two columns of one nullability, the same column included
+    for top, bottom in script.RATIO_SIDES:
+        assert (top in script.NULLABLE) is (bottom in script.NULLABLE)
+    assert len(script.RATIO_SIDES) == 2 * len(script.NULLABLE) ** 2
 
 
 def test_both_sides_group_by_the_grain_keys() -> None:
@@ -1416,9 +1756,13 @@ def test_both_sides_group_by_the_grain_keys() -> None:
     assert ("metric_time__day", f"{model['primary_entity']}__store_id") == script.GROUP_BY
     # every compared metric has one value per (day, store) group of the data on either side
     keys = {(day, str(store)) for day, store, *_ in script.ROWS}
-    for name, case in result["metrics"].items():
-        if case["outcome"] == "pass":
-            assert {(day, store) for day, store, _, _ in case["values"]} == keys, name
+    for context, found in result["contexts"].items():
+        for name, case in found["metrics"].items():
+            if case["outcome"] == "pass":
+                assert {(day, store) for day, store, _, _ in case["values"]} == keys, (
+                    context,
+                    name,
+                )
 
 
 # --- MetricFlow's side ----------------------------------------------------------------
@@ -1534,108 +1878,234 @@ def test_metricflow_side_refuses_a_query_with_bind_parameters(
 
 # --- the run ------------------------------------------------------------------------------
 
+#: How the run asks PostgreSQL and ClickHouse for a metric's rows by two keys.
 _KEYED = re.compile(
     r"SELECT json_agg\(t ORDER BY t\.k1, t\.k2\) FROM \("
     r'SELECT CAST\(q\."(?P<k1>[^"]+)" AS date\) AS k1, q\."(?P<k2>[^"]+)" AS k2, '
     r'q\."(?P<v>[^"]+)" AS v FROM \((?P<body>.*)\n\) AS q\) AS t',
     re.DOTALL,
 )
-
-
-def _reference_bodies(script: ModuleType, folder: Path) -> dict[str, str]:
-    """The reference SQL of each recorded formula, compiled here from the project's model.yaml
-    and the script's contract carrying that formula, as `_keyed` wraps it."""
-    read = read_semantic_manifest((PARITY / "semantic_manifest.json").read_bytes())
-    assert read.manifest is not None
-    (folder / "contracts").mkdir(parents=True)
-    (folder / "model.yaml").write_text(script.project_files()["model.yaml"], encoding="utf-8")
-    refs = {}
-    for name, case in _result()["metrics"].items():
-        contract = script.metric_contract(read.manifest, name).model_copy(
-            update={"formula": MetricFormula.model_validate(case["formula"])}
-        )
-        (folder / "contracts" / f"{name}.yaml").write_text(
-            yaml.safe_dump(contract.model_dump(mode="json", exclude_none=True)), encoding="utf-8"
-        )
-        refs[f"{contract.metadata.id}@{contract.metadata.version}"] = name
-    snapshot = NativeModelSource(folder / "model.yaml", folder / "contracts").snapshot()
-    compiled = compile_metric_queries(snapshot, list(refs))
-    return {refs[query.metric_ref]: query.sql.strip().rstrip(";") for query in compiled.queries}
-
-
+_KEYED_CLICKHOUSE = re.compile(
+    r'SELECT CAST\(q\."(?P<k1>[^"]+)" AS Date\) AS k1, q\."(?P<k2>[^"]+)" AS k2, '
+    r'q\."(?P<v>[^"]+)" AS v FROM \((?P<body>.*)\n\) AS q ORDER BY k1, k2',
+    re.DOTALL,
+)
+#: How the run asks ClickHouse for the types of the aggregates over a type.
+_PROBE = re.compile(r"SELECT '(?P<kind>[^']+)' AS probed, (?P<aggregates>.*)")
+_PROBED = re.compile(r"toTypeName\((?P<agg>\w+)\(CAST\(0 AS (?P<kind>.+?)\)\)\) AS (?P<alias>\w+)")
+_SETTINGS = re.compile(
+    r"SELECT name, value FROM system\.settings WHERE name IN \((?P<names>[^)]*)\) ORDER BY name"
+)
 _COLUMNS_SQL = (
-    "SELECT json_agg(json_build_object('c', attname, 't', format_type(atttypid, atttypmod)) "
-    "ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'dm.sales'::regclass "
+    "SELECT json_agg(json_build_object('c', attname, 't', format_type(atttypid, atttypmod), "
+    "'n', attnotnull) ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'dm.sales'::regclass "
     "AND attnum > 0 AND NOT attisdropped"
 )
+_CLICKHOUSE_COLUMNS_SQL = (
+    "SELECT name AS c, type AS t FROM system.columns "
+    "WHERE database = 'dm' AND table = 'sales' ORDER BY position"
+)
+_FORMAT = "\nFORMAT JSONEachRow"
+
+
+@functools.cache
+def _reference_bodies(context: str) -> dict[str, str]:
+    """The reference SQL of each formula the context recorded, compiled here from the
+    context's native model and the script's contract carrying that formula."""
+    script = _script()
+    read = read_semantic_manifest((PARITY / "semantic_manifest.json").read_bytes())
+    assert read.manifest is not None
+    engine = script.DECLARED[context].engine
+    refs = {}
+    with tempfile.TemporaryDirectory() as folder:
+        model = Path(folder) / "model.yaml"
+        model.write_text(script.project_files()[f"model.{engine}.yaml"], encoding="utf-8")
+        (Path(folder) / "contracts").mkdir()
+        for name, case in _result()["contexts"][context]["metrics"].items():
+            contract = script.metric_contract(read.manifest, name).model_copy(
+                update={"formula": MetricFormula.model_validate(case["formula"])}
+            )
+            (Path(folder) / "contracts" / f"{name}.yaml").write_text(
+                yaml.safe_dump(contract.model_dump(mode="json", exclude_none=True)),
+                encoding="utf-8",
+            )
+            refs[f"{contract.metadata.id}@{contract.metadata.version}"] = name
+        snapshot = NativeModelSource(model, Path(folder) / "contracts").snapshot()
+    compiled = compile_metric_queries(snapshot, list(refs))
+    return {refs[query.metric_ref]: query.sql for query in compiled.queries}
+
+
+def _body(context: str, name: str) -> str:
+    """The metric's reference SQL as the run's keyed query wraps it."""
+    return _reference_bodies(context)[name].strip().rstrip(";")
+
+
+def _number(value: Any) -> str:
+    """A value as a JSON number, as both engines write one."""
+    return "null" if value is None else str(value)
+
+
+def _keyed_rows(values: list[list[Any]], column: int) -> list[str]:
+    """Recorded values `[day, store, ...]` as the keyed rows of the value at `column`, which
+    the run reads back as it recorded them."""
+    for row in values:
+        assert (
+            row[column] is None or str(json.loads(row[column], parse_float=Decimal)) == row[column]
+        )
+    return [f'{{"k1": "{row[0]}", "k2": {row[1]}, "v": {_number(row[column])}}}' for row in values]
 
 
 def _replay(
     monkeypatch: pytest.MonkeyPatch,
     project: Path,
     *,
-    rows: Any = None,
-    types: dict[str, str] | None = None,
+    postgres_rows: Any = None,
+    clickhouse_rows: Any = None,
+    postgres_columns: dict[str, tuple[str, bool]] | None = None,
+    clickhouse_columns: dict[str, str] | None = None,
+    settings: dict[str, str] | None = None,
     wrong: str = "",
+    asked: Counter[str] | None = None,
 ) -> ModuleType:
     """The script with its project written under `project` and its subprocesses answered from
-    the recorded run: the bridge plans `MF <metric>` for each metric asked; psql gives the
-    table's columns and types (`types`, the declared ones by default) and rows (`rows`, the
-    recipe's by default), and, for a query keyed as one side groups, that side's recorded
-    values of the metric, MetricFlow's first value of `wrong` another number. A reference query
-    must be the SQL compiled for the metric's recorded formula."""
+    the recorded run. The bridge plans `MF <metric>` for each metric asked. psql gives its
+    version, the table's columns with their types and NOT NULL (`postgres_columns`; by default
+    the declared types, NOT NULL on the keys and the twins) and rows (`postgres_rows`, the
+    recipe's by default), and the values of a query keyed as one side groups: MetricFlow's
+    recorded ones, counted in `asked`, the first of `wrong` another number; the reference's
+    of `postgres.date`. `clickhouse local` must run with the recorded settings over the
+    project's data; it gives its version, the settings asked (`settings`, the recorded ones by
+    default), the table's columns (`clickhouse_columns`, the declared ones by default) and
+    rows (`clickhouse_rows`), the recorded types of each probed aggregate, and the reference
+    values of `clickhouse.date`. A reference query must be the SQL compiled for the metric's
+    recorded formula in its context."""
     script, result = _script(), _result()
-    reference: dict[str, str] = {}
+    recorded = result["contexts"]
     script.write_project(project)
     (project / "target").mkdir()
     artifact = project / "target" / "semantic_manifest.json"
     artifact.write_bytes((PARITY / "semantic_manifest.json").read_bytes())
-    recorded = {name: case.get("values", []) for name, case in result["metrics"].items()}
+    data = script.project_files()["data.clickhouse.sql"]
+    counted: Counter[str] = Counter() if asked is None else asked
+    # MetricFlow's values of a metric are one in every context that compared it
+    metricflow = {
+        name: [[day, store, value] for day, store, _, value in case["values"]]
+        for found in recorded.values()
+        for name, case in found["metrics"].items()
+        if "values" in case
+    }
+    if postgres_columns is None:
+        postgres_columns = {
+            name: (kind, name in script.KEYS or name.endswith("_nn"))
+            for name, kind in script.DECLARED["postgres.date"].column_types.items()
+        }
+    columns = clickhouse_columns or dict(script.DECLARED["clickhouse.date"].column_types)
+    answer = result["clickhouse_settings"] if settings is None else settings
 
-    def number(value: Any) -> str:
-        return "null" if value is None else str(value)
+    def table(rows: Any) -> list[str]:
+        names = ("store_id", *script.COLUMNS)
+        return [
+            f'{{"{script.EVENT_TIME}": "{day}", '
+            + ", ".join(
+                f'"{name}": {_number(value)}' for name, value in zip(names, rest, strict=True)
+            )
+            + "}"
+            for day, *rest in (script.table_rows() if rows is None else rows)
+        ]
 
     def psql(sql: str) -> str:
-        if "version()" in sql:
-            return json.dumps([{"v": result["versions"]["server"]}])
+        if sql == "SELECT json_agg(t) FROM (SELECT version() AS v) t":
+            return json.dumps([{"v": result["versions"]["postgres"]}])
         if sql == _COLUMNS_SQL:
-            declared = script.DECLARED.column_types if types is None else types
-            return json.dumps([{"c": column, "t": kind} for column, kind in declared.items()])
-        if sql == f"SELECT json_agg(t) FROM {script.SCHEMA}.{script.TABLE} AS t":
-            table = [
-                f'{{"date": "{day}", "store_id": {store}, "amount": {number(amount)}, '
-                f'"qty": {number(qty)}, "price": {number(price)}}}'
-                for day, store, amount, qty, price in (script.ROWS if rows is None else rows)
+            described = [
+                {"c": name, "t": kind, "n": nn} for name, (kind, nn) in postgres_columns.items()
             ]
-            return "[" + ",".join(table) + "]"
+            return json.dumps(described)
+        if sql == "SELECT json_agg(t) FROM dm.sales AS t":
+            return "[" + ",".join(table(postgres_rows)) + "]"
         found = _KEYED.fullmatch(sql)
         assert found is not None, sql
         name, body = found["v"], found["body"]
-        metricflow = body.startswith("MF ")
-        assert (found["k1"], found["k2"]) == (script.GROUP_BY if metricflow else script.KEYS)
-        if metricflow:
+        if body.startswith("MF "):
             assert body == f"MF {name}"
-        else:
-            if not reference:
-                reference.update(_reference_bodies(script, project / ".reference"))
-            assert body == reference[name], name
-        column = 3 if metricflow else 2
-        values = [
-            f'{{"k1": "{value[0]}", "k2": {value[1]}, "v": {number(value[column])}}}'
-            for value in recorded[name]
-        ]
-        if metricflow and name == wrong:
-            values[0] = (
-                f'{{"k1": "{recorded[name][0][0]}", "k2": {recorded[name][0][1]}, "v": 123456}}'
+            assert (found["k1"], found["k2"]) == script.GROUP_BY
+            counted[name] += 1
+            values = _keyed_rows(metricflow[name], 2)
+            if name == wrong:
+                day, store, _ = metricflow[name][0]
+                values[0] = f'{{"k1": "{day}", "k2": {store}, "v": 123456}}'
+            return "[" + ",".join(values) + "]"
+        assert (found["k1"], found["k2"]) == script.KEYS
+        assert body == _body("postgres.date", name), name
+        return (
+            "["
+            + ",".join(_keyed_rows(recorded["postgres.date"]["metrics"][name]["values"], 2))
+            + "]"
+        )
+
+    def probe(sql: str) -> list[str]:
+        found = []
+        for part in sql.split("\nUNION ALL\n"):
+            select = _PROBE.fullmatch(part)
+            assert select is not None, part
+            kind, aggregates = select["kind"], list(_PROBED.finditer(select["aggregates"]))
+            assert ", ".join(match[0] for match in aggregates) == select["aggregates"]
+            assert all(match["kind"] == kind for match in aggregates), part
+            assert all(match["agg"] == match["alias"] for match in aggregates), part
+            types = result["clickhouse_types"][kind]
+            found.append(
+                json.dumps(
+                    {"probed": kind, **{match["agg"]: types[match["agg"]] for match in aggregates}}
+                )
             )
-        return "[" + ",".join(values) + "]"
+        return found
+
+    def clickhouse(argv: list[str]) -> list[str]:
+        assert argv[:3] == ["clickhouse", "local", "--multiquery"]
+        assert argv[-2] == "-q"
+        flags = dict(flag.removeprefix("--").split("=", 1) for flag in argv[3:-2])
+        assert flags == result["clickhouse_settings"]
+        query = argv[-1]
+        # the recipe's data loaded for each query, the rows as JSON
+        assert query.startswith(data) and query.endswith(_FORMAT)
+        sql = query[len(data) : -len(_FORMAT)]
+        if sql == "SELECT version() AS v":
+            return [json.dumps({"v": result["versions"]["clickhouse"]})]
+        if (settings_asked := _SETTINGS.fullmatch(sql)) is not None:
+            names = sorted(name.strip().strip("'") for name in settings_asked["names"].split(","))
+            return [
+                json.dumps({"name": name, "value": answer[name]})
+                for name in names
+                if name in answer
+            ]
+        if sql == _CLICKHOUSE_COLUMNS_SQL:
+            return [json.dumps({"c": name, "t": kind}) for name, kind in columns.items()]
+        if sql == "SELECT * FROM dm.sales":
+            return table(clickhouse_rows)
+        if sql.startswith("SELECT '"):
+            return probe(sql)
+        found = _KEYED_CLICKHOUSE.fullmatch(sql)
+        assert found is not None, sql
+        name = found["v"]
+        assert (found["k1"], found["k2"]) == script.KEYS
+        assert found["body"] == _body("clickhouse.date", name), name
+        return _keyed_rows(recorded["clickhouse.date"]["metrics"][name]["values"], 2)
 
     def run(argv: list[str], **kwargs: Any) -> SimpleNamespace:
+        assert kwargs["check"] is True
         if argv[0] == "psql":
-            assert argv[-4:-2] == ["-d", "conninfo"]
+            # no psqlrc, unaligned tuples only, a failing statement fails psql, the SQL a command
+            assert argv[:-1] == [
+                "psql",
+                *("-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1"),
+                *("-d", "conninfo", "-c"),
+            ]
             return SimpleNamespace(stdout=psql(argv[-1]))
+        if argv[0] == "clickhouse":
+            return SimpleNamespace(stdout="".join(f"{line}\n" for line in clickhouse(argv)))
         assert argv[0] == "mf-python"
         if argv[1] == "-c":
+            assert argv[2:] == ["import importlib.metadata as m; print(m.version('metricflow'))"]
             return SimpleNamespace(stdout=result["versions"]["metricflow"] + "\n")
         assert argv[1:] == [str(REPO / "scripts" / "metricflow_parity_sql.py")]
         request = json.loads(kwargs["input"])
@@ -1649,16 +2119,32 @@ def _replay(
 
 
 def _run(script: ModuleType, project: Path) -> int:
-    code: int = script.run(project, "mf-python", "psql", "conninfo", project / "result.json")
+    code: int = script.run(
+        project, "mf-python", "psql", "conninfo", "clickhouse", project / "result.json"
+    )
     return code
+
+
+def _ran(project: Path) -> dict[str, Any]:
+    result: dict[str, Any] = json.loads((project / "result.json").read_bytes())
+    return result
 
 
 def test_run_compares_the_reference_with_metricflow_as_recorded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    script = _replay(monkeypatch, tmp_path)
+    asked: Counter[str] = Counter()
+    script = _replay(monkeypatch, tmp_path, asked=asked)
     assert _run(script, tmp_path) == 0
-    assert json.loads((tmp_path / "result.json").read_bytes()) == _result()
+    assert _ran(tmp_path) == _result()
+    # MetricFlow's query of a metric runs once, whichever contexts compare with it
+    compared = {
+        name
+        for found in _result()["contexts"].values()
+        for name, case in found["metrics"].items()
+        if case["outcome"] == "pass"
+    }
+    assert asked == Counter(dict.fromkeys(compared, 1))
 
 
 def test_run_records_a_metric_that_disagrees_and_what_falls_with_it(
@@ -1666,43 +2152,101 @@ def test_run_records_a_metric_that_disagrees_and_what_falls_with_it(
 ) -> None:
     script = _replay(monkeypatch, tmp_path, wrong="qty_sum")
     assert _run(script, tmp_path) == 0
-    result = json.loads((tmp_path / "result.json").read_bytes())
-    failed = {name for name, case in result["metrics"].items() if case["outcome"] == "fail"}
-    assert failed == {"qty_sum"}
-    assert len(result["metrics"]["qty_sum"]["mismatches"]) == 1
-    # its row, the rows relying on it, and the rows relying on those are no longer proven
-    fallen = {
-        f"{CONTEXT}:legacy.{form}"
-        for form in ("sum.integer", "measure_without_expr", "metric_expr")
-    }
-    assert not fallen & set(result["proven"])
-    assert f"{CONTEXT}:legacy.sum.decimal" in result["proven"]
+    result = _ran(tmp_path)
+    for context, found in result["contexts"].items():
+        cases = found["metrics"]
+        failed = {name for name, case in cases.items() if case["outcome"] == "fail"}
+        assert failed == {"qty_sum"}, context
+        assert len(cases["qty_sum"]["mismatches"]) == 1
+        # its row, the rows relying on it, and the rows relying on those are no longer proven
+        fallen = {
+            f"{context}:legacy.{form}"
+            for form in ("sum.integer", "measure_without_expr", "metric_expr")
+        }
+        assert not fallen & set(found["proven"])
+        assert not fallen & set(result["proven"])
+        assert f"{context}:legacy.sum.decimal" in found["proven"]
 
 
-def test_run_fails_when_a_control_agrees(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("control", "mismatches"),
+    [
+        (("amount_sum", "amount_sum"), 0),
+        # NULL against zero where the column is all NULL, and no number apart
+        (("amount_sum", "amount_nn_sum"), 2),
+    ],
+)
+def test_run_fails_when_a_control_differs_in_no_number(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    control: tuple[str, str],
+    mismatches: int,
+) -> None:
     script = _replay(monkeypatch, tmp_path)
-    monkeypatch.setattr(script, "CONTROLS", (("amount_sum", "amount_sum"),))
+    monkeypatch.setattr(script, "CONTROLS", (control,))
     assert _run(script, tmp_path) == 1
+    for found in _ran(tmp_path)["contexts"].values():
+        recorded = [(control["mismatches"], control["numeric"]) for control in found["controls"]]
+        assert recorded == [(mismatches, 0)]
 
 
-def test_run_refuses_inputs_other_than_the_recipe(
+def test_run_refuses_rows_other_than_the_recipe(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    rows = _script().ROWS
+    rows = _script().table_rows()
     # a row short, a row repeated, a value changed
     changed = ((*rows[0][:2], "10.01", *rows[0][3:]), *rows[1:])
-    for index, other in enumerate((rows[:-1], (*rows, rows[0]), changed)):
-        script = _replay(monkeypatch, tmp_path / str(index), rows=other)
-        with pytest.raises(SystemExit, match="other rows"):
-            _run(script, tmp_path / str(index))
-    # the recipe's values in a column of another type, a column more
-    declared = dict(_script().DECLARED.column_types)
-    for index, types in enumerate(({**declared, "qty": "numeric"}, {**declared, "note": "text"})):
-        script = _replay(monkeypatch, tmp_path / f"types{index}", types=types)
-        with pytest.raises(SystemExit, match="other columns or types"):
-            _run(script, tmp_path / f"types{index}")
+    for engine, side in (("PostgreSQL", "postgres_rows"), ("ClickHouse", "clickhouse_rows")):
+        for index, other in enumerate((rows[:-1], (*rows, rows[0]), changed)):
+            project = tmp_path / f"{side}{index}"
+            script = _replay(monkeypatch, project, **{side: other})
+            with pytest.raises(SystemExit, match=f"on {engine} holds other rows"):
+                _run(script, project)
+
+
+def test_run_refuses_columns_other_than_the_declared(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    script = _script()
+    postgres = {
+        name: (kind, name in script.KEYS or name.endswith("_nn"))
+        for name, kind in script.DECLARED["postgres.date"].column_types.items()
+    }
+    # the recipe's values in a column of another type, a column more, a twin that may be NULL
+    for index, columns in enumerate(
+        (
+            {**postgres, "qty": ("numeric", False)},
+            {**postgres, "note": ("text", False)},
+            {**postgres, "qty_nn": ("bigint", False)},
+        )
+    ):
+        project = tmp_path / f"postgres{index}"
+        script = _replay(monkeypatch, project, postgres_columns=columns)
+        with pytest.raises(SystemExit, match="on PostgreSQL has other columns or types"):
+            _run(script, project)
+    clickhouse = dict(_script().DECLARED["clickhouse.date"].column_types)
+    # a column that may be NULL declared without `Nullable`, a column more
+    for index, kinds in enumerate(
+        ({**clickhouse, "amount": "Decimal(18, 2)"}, {**clickhouse, "note": "String"})
+    ):
+        project = tmp_path / f"clickhouse{index}"
+        script = _replay(monkeypatch, project, clickhouse_columns=kinds)
+        with pytest.raises(SystemExit, match="on ClickHouse has other columns or types"):
+            _run(script, project)
+
+
+def test_run_refuses_settings_and_files_other_than_the_recipe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    approximate = {
+        **_result()["clickhouse_settings"],
+        "count_distinct_implementation": "uniqCombined",
+    }
+    script = _replay(monkeypatch, tmp_path / "settings", settings=approximate)
+    with pytest.raises(SystemExit, match="other settings than the recipe's"):
+        _run(script, tmp_path / "settings")
     script = _replay(monkeypatch, tmp_path / "files")
-    with (tmp_path / "files" / "model.yaml").open("a", encoding="utf-8") as model:
+    with (tmp_path / "files" / "model.clickhouse.yaml").open("a", encoding="utf-8") as model:
         model.write("# changed\n")
-    with pytest.raises(SystemExit, match=r"model\.yaml is not the recipe's"):
+    with pytest.raises(SystemExit, match=r"model\.clickhouse\.yaml is not the recipe's"):
         _run(script, tmp_path / "files")

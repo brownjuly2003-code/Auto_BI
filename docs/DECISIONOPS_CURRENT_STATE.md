@@ -302,8 +302,9 @@ reviewed capture, provenance/governance, все пять live DWH checks и sign
   **Ossie**, **MetricFlow** и **column-level lineage** не реализованы (дизайн первого
   внешнего источника формул — [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md);
   его строгий reader `semantic_manifest.json`, разрешение поддержанных формул в
-  `typed_aggregate`/`typed_ratio` с матрицей паритета, binding в узле метрики, артефакт
-  каждой стороны в `decision verify` и `decision capture`, `decision pin` и замыкания в
+  `typed_aggregate`/`typed_ratio` с матрицей паритета на PostgreSQL и ClickHouse
+  ([отчёт](reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md) S5c), binding в
+  узле метрики, артефакт каждой стороны в `decision verify` и `decision capture`, `decision pin` и замыкания в
   evidence есть — [pilot](pilot/2026-11-06-dbt-formula-pin/README.md); каждая причина, по
   которой формула dbt остаётся `external_ref`, — строка
   [инвентаря](specs/dbt-formula-inventory.md), и что из них пишет dbt-core 1.12.6, показывает
@@ -394,12 +395,14 @@ reader `semantic_manifest.json` (`auto_bi/semantic/metricflow.py`), и S2, ра�
 стороны в CLI, `decision pin` и замыкания в evidence с pilot
 [`docs/pilot/2026-11-06-dbt-formula-pin`](pilot/2026-11-06-dbt-formula-pin/README.md), сделаны.
 S5 нарезан на четыре среза. Сделаны S5a — [инвентарь](specs/dbt-formula-inventory.md) причин,
-по которым формула dbt остаётся `external_ref`, — и S5b —
+по которым формула dbt остаётся `external_ref`, — S5b —
 [корпус](reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md): что из этих конструкций пишет dbt-core
-1.12.6 (63 строки из 87; 10 он отвергает, 3 принимает, но не доносит). Следующий — S5c, паритет
-на ClickHouse (поправка ADR 0008 п. 7 до кода), затем S5d — финальное ревью этапа. Публичные
-dbt-проекты в корпус не вошли: их прогон — запуск чужого кода (`dbt deps`), на него нужно
-отдельное решение владельца.
+1.12.6 (63 строки из 87; 10 он отвергает, 3 принимает, но не доносит), — и S5c —
+[паритет на ClickHouse](reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md):
+контекст `clickhouse.date`, 328 доказанных строк (164 + 164). Следующий — S5d, финальное ревью
+этапа; Astra для него — по лимиту Codex у владельца (2026-11-07 — «дальше работай сам, лимит на
+кодекс заканчивается»), до S5d спросить. Публичные dbt-проекты в корпус не вошли: их прогон —
+запуск чужого кода (`dbt deps`), на него нужно отдельное решение владельца.
 Другие срезы владелец выбирает сам, содержательное ревью —
 Astra xhigh по [ADR 0006](adr/0006-modelled-review-development-gate.md) и
 [AGENTS.md](../AGENTS.md).

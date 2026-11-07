@@ -193,11 +193,12 @@ Asked last, and only of a formula with no other gap (ADR 0008, item 7). A resolu
 rows of the parity matrix in its context `<engine>.<event time>`; a row no recorded run proved is
 review `gap.external_parity_unproven` at the metric, and the reason names the rows: a row
 proven in a context does not prove another there. Proven today are 164 rows in the context
-`postgres.date` ([parity report](../reviews/DECISIONOPS_METRICFLOW_PARITY_CHECKS_2026-11-04.md)).
+`clickhouse.date` and 164 rows in the context `postgres.date`
+([parity report](../reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md)).
 
 | Id | What | Gap | Severity | Path |
 |---|---|---|---|---|
-| `parity.engine` | The native model declares the grain table on an engine where the rows the formula relies on are not all proven — today any but PostgreSQL: ClickHouse, Greenplum — or on none | `gap.external_parity_unproven` | review | `$.metrics[m]` |
+| `parity.engine` | The native model declares the grain table on an engine where the rows the formula relies on are not all proven — today any but PostgreSQL and ClickHouse: Greenplum — or on none | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 | `parity.event-time-type` | The event time column is a grain key of a type other than `date`, such as `timestamp` | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 | `parity.event-time-outside-grain` | The event time column is not a grain key | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 | `parity.column-type` | The aggregated column is of a type outside the classes `decimal`, `integer` and `float` — `text`, `date`, an array — or of no declared type | `gap.external_parity_unproven` | review | `$.metrics[m]` |

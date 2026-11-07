@@ -118,7 +118,9 @@ python scripts/metricflow_parity.py run --project OUT --mf-python MF_PY --psql P
 ## Артефакты и проверка
 
 `tests/fixtures/dbt_semantic_manifest/parity/semantic_manifest.json` и `result.json` — артефакт
-и результат этого прогона. `tests/test_metricflow_formula.py` сверяет:
+и результат этого прогона в дереве `8fd576c`; с S5c там fixtures прогона по обоим контекстам
+([отчёт](DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md)). `tests/test_metricflow_formula.py`
+сверял:
 
 - digest артефакта с записанным;
 - digest рецепта (файлы проекта и данные, grain обеих сторон, шаблоны контрактов,

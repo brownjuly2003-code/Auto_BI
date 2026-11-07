@@ -695,10 +695,10 @@ def test_proven_rows_are_those_the_spec_counts() -> None:
 
 
 def test_an_engine_the_rows_are_proven_on_resolves() -> None:
-    # the other side of `parity.engine`: today PostgreSQL alone
+    # the other side of `parity.engine`: today PostgreSQL and ClickHouse
     tables = [SALES, *OTHER_ENGINES]
     proven = [table for table in tables if _relies_on(table) <= PROVEN_PARITY]
-    assert [_engine(table) for table in proven] == ["postgres"]
+    assert [_engine(table) for table in proven] == ["postgres", "clickhouse"]
     for table in proven:
         assert _parity(declared=table) == [], table
 

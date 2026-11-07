@@ -1,7 +1,8 @@
 # ADR 0008: первый внешний источник формул метрик — dbt `semantic_manifest.json`
 
 **Статус:** Accepted (ревью дизайна Astra xhigh по [ADR 0006](0006-modelled-review-development-gate.md):
-первое — P1 и семь P2, исправлены; повторное по правкам — без P1 и P2)
+первое — P1 и семь P2, исправлены; повторное по правкам — без P1 и P2; ревью поправки п. 7
+под паритет ClickHouse, S5c, — P1, пять P2 и P3, исправлены)
 **Дата:** 2026-11-04
 **Основание:** решение владельца 2026-11-04 открыть один этап — внешний источник формул;
 открытый вопрос [ARCHITECTURE §18](../DECISIONOPS_ARCHITECTURE.md#18-открытые-продуктовые-решения)
@@ -119,41 +120,91 @@ Conversion- и private-метрик и natural entities в корпусе нет
    `create_metric`) принимается, только если говорит то же, что measure.
 
    Гарантия — структурный перевод: агрегат, колонка, таблица, числитель и знаменатель. Что
-   MetricFlow и reference SQL контракта дают одно число, проверяет матрица паритета (S2,
+   MetricFlow и reference SQL контракта дают одно число, проверяет матрица паритета (S2, S5c,
    `scripts/metricflow_parity.py`). Строка матрицы — один способ разрешения в своём контексте:
    `<движок>.<событийное время>:<форма>`. Движок — тот, что нативная модель объявляет для
    grain-таблицы; событийное время — класс типа его колонки, если она ключ grain (иначе
    `outside_grain`): MetricFlow группирует по дню времени агрегации, reference SQL — по ключам
    grain, и строки у них одни, только когда колонка — ключ, хранящий дни. Форма — агрегат
-   диалекта над классом типа колонки (`legacy.sum.decimal`; классы PostgreSQL — `decimal`,
-   `integer`, `float`, `date`, прочие типы — `unclassified`, нет типа — `undeclared`), ratio из
-   двух таких (`ratio.legacy.sum.decimal/legacy.count.integer`), колонка по имени measure
-   (`legacy.measure_without_expr`), `expr` метрики (`legacy.metric_expr`). Формула опирается на
-   строки своих термов, формы и способа назвать колонку; строка, которой нет в доказанных
-   (`PROVEN_PARITY` в `auto_bi/semantic/metricflow_formula.py`), — review
-   `gap.external_parity_unproven`, формулы нет. Этот шаг последний: он спрашивается только у
-   формулы без других гэпов. Строка доказана, если каждая построенная для неё метрика (и для
-   строк, на которые та ещё опирается) дала на одних данных одни ключи grain и по каждому
-   ключу одно число: агрегат — равенство; ratio — double MetricFlow лежит, в пределах ошибки
-   double, среди значений, которые при отсечении на `unit.precision` дают значение reference
-   (зеркально ниже нуля). Паритет — равенство определений, а не точность double: на
-   2026-01-04, store 1, reference даёт `142857142857.142857`, MetricFlow —
-   `142857142857.14285`, и это совпадение. В данных — nullable-колонка под `count`, группы,
-   где колонка целиком NULL, нулевой и NULL знаменатель, отрицательные значения, большой
-   числитель, повторы под `count_distinct` и дата без строк (time spine не участвует: оба
-   запроса её не дают); контрольные пары разных агрегатов и форм обязаны разойтись. Колонки —
-   `numeric(18,2)`, `bigint`, `double precision`; ratio — над любой их парой, включая одну и ту
-   же колонку. Ratio наследует ограничения reference SQL: терм `average` и float-терм под
-   `sum`, `min` или `max` дают advisory `sql.ratio_inexact_term` без SQL, а `count` и
+   диалекта над классом типа колонки (`legacy.sum.decimal`), ratio из двух таких
+   (`ratio.legacy.sum.decimal/legacy.count.integer`), колонка по имени measure
+   (`legacy.measure_without_expr`), `expr` метрики (`legacy.metric_expr`). Класс говорит, в чём
+   движок считает агрегат над колонкой и что такое день колонки времени. Классы PostgreSQL —
+   `decimal`, `integer`, `float`, `date` (имена типов и их псевдонимы — `_PG_CLASSES`).
+   Классы ClickHouse — по типу, как его пишет движок в `system.columns`
+   (`CLICKHOUSE_CLASSES`): `decimal` — `Decimal(P, 2)` при P ≤ 38, `integer` — `Int8`,
+   `Int16`, `Int32`, `Int64`, `float` — `Float64`, `date` — `Date`; `Nullable(T)` колонки
+   агрегата — класс `T`. Член класса считает агрегаты матрицы в тех же типах, что проверенный
+   тип класса (`Decimal(18, 2)`, `Int64`): `sum` — в `Decimal(38, 2)` и `Int64`, `avg` — во
+   `Float64`, `min` и `max` — в типе колонки, и reference SQL ratio читает член как его класс.
+   Прочее — `unclassified`: `UInt8` … `UInt64` (`sum` над ними — `UInt64`, а отрицательных
+   значений данных они не держат), `Decimal` другого масштаба или с P > 38, синонимы
+   `Decimal32(S)` … `Decimal256(S)`, `Int128` и шире, `LowCardinality(…)`, `Float32`, `Date32`,
+   `Nullable(Date)` событийного времени, псевдонимы SQL вроде `BIGINT` и написание не так, как
+   пишет движок (`Nullable( Int64 )`, `Decimal(18,2)`): reference SQL читает тип по написанию.
+   Типы `sum`, `avg`, `min` и `max` над каждым членом классов `decimal`, `integer`, `float` и
+   над `UInt8` … `UInt64` прогон записывает. У другого движка классов нет; нет типа —
+   `undeclared`. Формула опирается на строки своих термов, формы и способа назвать колонку;
+   строка, которой нет в доказанных (`PROVEN_PARITY` в
+   `auto_bi/semantic/metricflow_formula.py`), — review `gap.external_parity_unproven`, формулы
+   нет. Этот шаг последний: он спрашивается только у формулы без других гэпов.
+
+   Сторона MetricFlow в обоих контекстах — его SQL для PostgreSQL на PostgreSQL: metricflow
+   0.213.0 ClickHouse не рендерит (в его `SqlEngine` ClickHouse нет). Reference SQL — в
+   диалекте контекста на своём движке, PostgreSQL 16 или ClickHouse 24.8 (версии записаны в
+   результате прогона), над теми же строками. Так проверяется перевод определения на общих
+   данных, а не рендерер MetricFlow для ClickHouse, которого нет. Строка доказана, если каждая
+   построенная для неё метрика (и для строк, на которые та ещё опирается) дала на одних данных
+   одни ключи grain и по каждому ключу одно число по правилу метрики: агрегат — равенство;
+   `average` в контексте ClickHouse — правило `double`: |reference − MetricFlow| ≤
+   |reference|·10⁻¹⁵ + 10⁻³⁰⁰ (`avg` ClickHouse возвращает `Float64` над любой колонкой;
+   допуск — правило этого рецепта на его данных, где суммы точны, а не оценка ошибки `avg` на
+   любых данных); ratio — double MetricFlow лежит, в пределах ошибки double, среди значений,
+   которые при отсечении на `unit.precision` дают значение reference (зеркально ниже нуля).
+   Паритет — равенство определений, а не точность double: на 2026-01-04, store 1, reference
+   даёт `142857142857.142857`, MetricFlow — `142857142857.14285`, и это совпадение. В данных —
+   nullable-колонка под `count`, группы, где колонка целиком NULL, нулевой и NULL знаменатель,
+   отрицательные значения, большой числитель, повторы под `count_distinct`, дата без строк
+   (time spine не участвует: оба запроса её не дают) и группа, где среднее в double не равно
+   точному, у decimal- и integer-колонки. Контрольные пары разных агрегатов и форм обязаны
+   разойтись числом — хотя бы на одном ключе, где значение есть у обеих сторон, — и среди них
+   `average` колонки против `average` её NOT NULL-двойника: правило `double` не прячет NULL,
+   прочитанный как ноль (2026-01-01, store 1: 13.5 против 10.125). Колонки — `numeric(18,2)`,
+   `bigint`, `double precision` (на ClickHouse — `Nullable(Decimal(18, 2))`,
+   `Nullable(Int64)`, `Nullable(Float64)`), и у каждой есть NOT NULL-двойник с теми же
+   значениями, где NULL — ноль: на ClickHouse reference SQL ratio приводит целый числитель к
+   `Decimal(38, 0)` или `Nullable(Decimal(38, 0))` по тому, может ли терм быть NULL — `sum`,
+   `min` и `max` над nullable-колонкой могут, `count` и `count_distinct` нет, — а класс этого
+   не называет. Ratio — над любой парой колонок одной nullability, включая одну и ту же
+   колонку. Ratio наследует ограничения reference SQL: терм `average` и float-терм под `sum`,
+   `min` или `max` дают advisory `sql.ratio_inexact_term` без SQL, а `count` и
    `count_distinct` над float-колонкой — SQL. Поэтому float-терм ratio в матрице — только
-   `count` и `count_distinct`, а формы ratio с `average` в ней есть и не доказаны. Доказано
-   164 строки, все в контексте `postgres.date`: ClickHouse, Greenplum, событийное время
-   `timestamp` или вне ключей grain, колонки `text` и `date` под агрегатом матрицей не
-   проверены. V2 в матрицу не входит: dbt-core 1.12.6 не пишет гранулярность time dimension V2
-   (п. 8), и ни одна V2-метрика не разрешается. Прогон 2026-11-04 (PostgreSQL 16.15,
-   metricflow 0.213.0) и его границы — [отчёт](../reviews/DECISIONOPS_METRICFLOW_PARITY_CHECKS_2026-11-04.md);
-   результат с digest рецепта (файлы проекта, данные, grain обеих сторон, контракты, контроли)
-   и артефакт — fixtures, тесты сверяют с ними `PROVEN_PARITY`, рецепт и нынешнее разрешение.
+   `count` и `count_distinct`, а формы ratio с `average` в ней есть и не доказаны. Доказано 328
+   строк: 164 в контексте `postgres.date`, 164 в `clickhouse.date`.
+   Матрицей не проверены Greenplum, событийное время `timestamp`, вне ключей grain или с NULL
+   (на PostgreSQL его класс — `date`: тип nullability не называет), колонки `text` и `date`
+   под агрегатом. На ClickHouse вне доказательства и значения, которые два движка при одном
+   определении считают по-разному: `count(DISTINCT)` над `Float64` различает −0.0 и 0.0
+   (PostgreSQL — нет), NaN и бесконечности; значения, которые не помещаются в типы ClickHouse,
+   — агрегата (`sum` и `avg` над целым членом копят в `Int64`, `sum` над `Decimal(P, 2)` — в
+   `Decimal(38, 2)`), приведения к `Decimal(38, 0)`, частного `divideDecimal` с точностью
+   `unit.precision`: ClickHouse там переполняется молча или отказывает, PostgreSQL считает в
+   `numeric`. Данные их не держат, а float-суммы данных точны при любом порядке сложения.
+   Доказательство — для настроек, которые прогон задаёт и записывает, — значений ClickHouse
+   24.8 по умолчанию: `count_distinct_implementation = uniqExact` (иначе `count(DISTINCT)`
+   бывает приближённым), `aggregate_functions_null_for_empty = 0`,
+   `decimal_check_overflow = 1`, `cast_keep_nullable = 0`; сервер с другими — вне его. V2 в
+   матрицу не входит: dbt-core 1.12.6 не пишет гранулярность time dimension V2 (п. 8), и ни
+   одна V2-метрика не разрешается. Прогон 2026-11-07 (PostgreSQL 16.15, ClickHouse 24.8.14.39,
+   metricflow 0.213.0) и его границы —
+   [отчёт](../reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md); прогон
+   2026-11-04, только PostgreSQL, по прежнему рецепту (его fixtures — в дереве `8fd576c`) —
+   [отчёт](../reviews/DECISIONOPS_METRICFLOW_PARITY_CHECKS_2026-11-04.md). Результат с digest
+   рецепта (файлы проекта, данные, нативные модели обоих контекстов, grain обеих сторон,
+   контракты, правила сравнения и их допуски, мост к MetricFlow, настройки ClickHouse,
+   контроли), digest reference SQL каждой метрики в каждом контексте и артефакт — fixtures,
+   тесты сверяют с ними `PROVEN_PARITY`, рецепт, записанные типы и настройки, нынешнее
+   разрешение и SQL, который компилятор пишет сейчас.
 
    Результат проходит те же проверки, что native typed formula: валидатор `MetricFormula`
    (отказ — review `gap.external_construct_unsupported` на пути метрики, например grain-таблица
@@ -319,7 +370,8 @@ S0 на тех же проектах:
     verified assets, версии source, verifier и check, совместимость сериализации;
   - S4 — CLI (артефакт и database каждой стороны, печать пина), capture и verify, замыкания в
     evidence, pilot-сценарий;
-  - S5 — расширение корпуса, инвентарь неподдержанных конструкций, финальное ревью.
+  - S5 — расширение корпуса, инвентарь неподдержанных конструкций, паритет ClickHouse (S5c),
+    финальное ревью.
 - Каждый апгрейд dbt со сменой `dsi_package_version` блокирует внешние формулы, пока версию не
   добавят в список. Это цена отказа от угадывания.
 - Пин по объектам целиком консервативен: правка включённой semantic model или

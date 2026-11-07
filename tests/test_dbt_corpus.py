@@ -25,7 +25,7 @@ import pytest
 
 from auto_bi.evidence.canonical import digest_bytes
 from auto_bi.semantic.metricflow import ManifestRead, read_semantic_manifest
-from auto_bi.semantic.metricflow_formula import OUTSIDE_GRAIN
+from auto_bi.semantic.metricflow_formula import OUTSIDE_GRAIN, PROVEN_PARITY
 from tests.test_dbt_formula_inventory import ROWS, SIDES, SPEC, _shape
 from tests.test_metricflow_formula import FIXTURES, REPO
 
@@ -39,6 +39,8 @@ CONSTRUCT = "outside the subset a typed formula is resolved from: "
 PARITY = "no parity run has shown MetricFlow and the reference SQL to agree on "
 #: The classes of a column's type the parity run took.
 RUN_CLASSES = ("decimal", "integer", "float")
+#: The engines of the contexts the parity run proved rows in.
+RUN_ENGINES = frozenset(row.split(".", 1)[0] for row in PROVEN_PARITY)
 
 #: Each entry dbt refuses, and what it says. The JSON schema of dbt's properties refuses a key
 #: it does not know; dbt's own checks refuse the rest.
@@ -206,7 +208,7 @@ TELLS: dict[str, Tell] = {
             ("use_approximate_percentile", False),
         )
     },
-    "parity.engine": _parity(lambda row: row.engine != "postgres"),
+    "parity.engine": _parity(lambda row: row.engine not in RUN_ENGINES),
     "parity.event-time-type": _parity(lambda row: row.time not in ("date", OUTSIDE_GRAIN)),
     "parity.event-time-outside-grain": _parity(lambda row: row.time == OUTSIDE_GRAIN),
     "parity.column-type": _parity(
@@ -615,6 +617,10 @@ def test_a_reason_tells_its_row_only_whole(ident: str, said: Callable[[str], str
         ),
         (
             "clickhouse.unclassified:legacy.sum.unclassified",
+            {"parity.event-time-type", "parity.column-type"},
+        ),
+        (
+            "greenplum.unclassified:legacy.sum.unclassified",
             {"parity.engine", "parity.event-time-type", "parity.column-type"},
         ),
         (
@@ -627,8 +633,11 @@ def test_a_reason_tells_its_row_only_whole(ident: str, said: Callable[[str], str
             " postgres.date:ratio.legacy.min.float/legacy.sum.decimal",
             {"parity.column-type", "parity.ratio-float"},
         ),
-        ("clickhouse.date:legacy.metric_expr", {"parity.engine"}),
+        ("greenplum.date:legacy.metric_expr", {"parity.engine"}),
         ("greengage.date:legacy.sum.decimal", {"parity.engine"}),
+        # an engine the run proved rows on is not what keeps a row unproven
+        ("clickhouse.date:legacy.metric_expr", set()),
+        ("clickhouse.date:ratio.legacy.sum.decimal/legacy.max.float", {"parity.ratio-float"}),
         # what the resolver does not write names no row of the matrix
         ("postgres.date:ratio.legacy.average", set()),
         ("postgres.date:ratio.legacy.sum.float", set()),
