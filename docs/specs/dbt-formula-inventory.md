@@ -205,14 +205,98 @@ proven in a context does not prove another there. Proven today are 164 rows in t
 | `parity.ratio-float` | A ratio term under `sum`, `min` or `max` over a `float` column | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 | `parity.v2` | A V2 metric: no V2 row was run, since no V2 metric gets this far today (`time.no-granularity`) | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 
+## What dbt-core 1.12.6 writes
+
+The corpus of ADR 0008, slice S5b, asks dbt which of these rows a dbt project brings
+([report](../reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md)). `scripts/dbt_corpus.py` holds an
+entry per construct, as an author writes it in the legacy dialect or in V2, with the rows its
+metric is to give: the row the entry aims at, and those dbt's writing brings along. dbt-core
+1.12.6 (dbt-postgres 1.11.0, metricflow 0.213.0) parsed each entry alone, then the entries it
+accepted together, once per dialect; there each metric resolves as on its own project, or the
+run stops. `tests/fixtures/dbt_semantic_manifest/corpus` keeps both artifacts and the record,
+and `tests/test_dbt_corpus.py` holds the lists and the facts below to the record.
+
+An entry carries its rows when dbt accepted it and the resolver gives its metric, on the
+artifact of the entries accepted, the gaps of those rows and no other. A gap is the row with
+its code, severity and path shape; where rows share those, the resolver's reason, whole, tells
+them apart — for a parity gap, the rows of the matrix it names — and where they share the reason
+too — a time dimension's `expr` and its name, the keys of `agg_params` — the value the artifact
+has at the gap's path. One gap can be two rows: the `agg_params` of a percentile with
+`use_discrete_percentile: true` are `legacy.agg_params.percentile` and
+`legacy.agg_params.use_discrete_percentile`.
+
+**Written** (63) — an entry carries the row.
+
+`relation.table`, `relation.database`, `time.none-v2`, `time.expression`, `time.name`,
+`time.column-name`, `time.column-expr`, `time.no-granularity`, `time.granularity`, `ratio.models`,
+`ratio.times`, `additivity.aggregate-legacy`, `additivity.aggregate-v2`, `additivity.ratio`,
+`private`, `type.cumulative`, `type.derived`, `type.conversion`, `ratio.input-type`,
+`metric.filter`, `metric.time_granularity`, `params.window`, `params.grain_to_date`,
+`params.metrics`, `params.conversion_type_params`, `params.join_to_timespine`, `params.numerator`,
+`params.denominator`, `params.measure`, `params.expr`, `measure-input.filter`,
+`measure-input.alias`, `measure-input.join_to_timespine`, `measure-input.fill_nulls_with`,
+`metric-input.numerator.filter`, `metric-input.numerator.alias`,
+`metric-input.numerator.offset_window`, `metric-input.numerator.offset_to_grain`,
+`metric-input.denominator.filter`, `metric-input.denominator.alias`,
+`metric-input.denominator.offset_window`, `metric-input.denominator.offset_to_grain`,
+`legacy.agg.sum_boolean`, `legacy.agg.percentile`, `legacy.agg.median`,
+`legacy.agg_params.percentile`, `legacy.agg_params.use_discrete_percentile`,
+`legacy.agg_params.use_approximate_percentile`, `legacy.non-additive-dimension`, `legacy.expr`,
+`legacy.measure-name`, `legacy.metric-expr`, `v2.agg.sum_boolean`, `v2.agg.percentile`,
+`v2.agg.median`, `v2.agg_params.percentile`, `v2.agg_params.use_discrete_percentile`,
+`v2.agg_params.use_approximate_percentile`, `v2.non-additive-dimension`, `v2.no-expr`, `v2.expr`,
+`formula.table`, `parity.ratio-average`.
+
+**Refused** (10) — dbt refuses every entry built for the row.
+
+`time.none-legacy`, `time.not-time`, `ratio.numerator-missing`, `ratio.denominator-missing`,
+`ratio.input-measures`, `metric.datatype`, `params.metric_aggregation_params`,
+`simple.both-or-neither`, `legacy.input-measures`, `v2.input-measures`.
+
+**Not carried** (3) — dbt accepts an entry built for the row, and none carries it.
+
+`params.cumulative_type_params`, `params.fill_nulls_with`, `parity.v2`.
+
+**No entry** (11) — no entry is built for the row: it turns on the artifact as a whole, or on
+what the corpus holds the same for every entry — the contract's reference, pin, event time and
+grain keys, the database declared with the artifact, and the native model's declaration of the
+grain table.
+
+`artifact.missing`, `artifact.invalid`, `artifact.version`, `artifact.ref`, `artifact.pin`,
+`relation.database-undeclared`, `parity.engine`, `parity.event-time-type`,
+`parity.event-time-outside-grain`, `parity.column-type`, `parity.ratio-float`.
+
+What dbt does with the constructs it does not carry:
+
+- The JSON schema of dbt's properties refuses a key it does not know: a legacy metric's
+  `datatype` and `hidden`, and `join_to_timespine`, `fill_nulls_with`,
+  `metric_aggregation_params` and `input_measures` in its `type_params`; a V2 metric's
+  `datatype` and `input_measures`.
+- `window` and `grain_to_date` at the top of a legacy `type_params` are refused unless the
+  project sets the behaviour flag `require_nested_cumulative_type_params: false`; with it, dbt
+  writes them there, and the resolver gives their rows.
+- dbt writes as null the `cumulative_type_params` of a legacy simple metric, and the `window`,
+  `grain_to_date` and `fill_nulls_with` of a V2 simple metric: the fill value is lost, `0` or `5`.
+- A V2 `percentile_type` of `discrete` sets `use_discrete_percentile`, `continuous` sets
+  `use_approximate_percentile`, and another value — `approximate_continuous` — neither. The
+  resolver leaves each percentile to review all the same (`v2.agg.percentile`).
+- A name dbt reserves (`null`) or with an upper-case letter is refused; `true` as a measure's
+  name and `current_date` as a time dimension's are taken, and give `legacy.measure-name` and
+  `time.name`.
+- No V2 metric resolves: dbt writes no `type_params` for a V2 time dimension, so each V2 metric
+  stops at `time.no-granularity` — but the one whose semantic model sets no aggregation time
+  dimension (`time.none-v2`) — and none reaches `parity.v2`.
+
 ## What the artifact does not show
 
 The resolver reads the artifact, not the dbt project. dbt-core 1.12.6 writes a V2 metric's
-`fill_nulls_with: 0` as `null`, and no granularity for a V2 time dimension (ADR 0008, item 8,
-from the S0 projects). The second keeps every V2 metric review (`time.no-granularity`). The schema
-version does not guard the first: `dsi_package_version` marks the package, not the schema
-(ADR 0008, item 6), and a dbt release could write the granularity under 0.213.0. The reader
-would accept that artifact, and its V2 metrics would stop at `parity.v2`, since no V2 row is
-proven. A V2 row joins the matrix only through a recorded parity run (the matrix is the run's
-`proven`), and that run compares MetricFlow with the reference SQL on the artifact as written:
-the fill value it lost is lost on both sides, so the run has to check that value apart.
+`fill_nulls_with` as `null`, whatever its value, and no granularity for a V2 time dimension
+(ADR 0008, item 8; the corpus above). The second keeps every V2 metric review: at
+`time.no-granularity`, or at `time.none-v2` where its semantic model sets no aggregation time
+dimension. The schema version does not guard the first: `dsi_package_version`
+marks the package, not the schema (ADR 0008, item 6), and a dbt release could write the
+granularity under 0.213.0. The reader would accept that artifact, and its V2 metrics would stop
+at `parity.v2`, since no V2 row is proven. A V2 row joins the matrix only through a recorded
+parity run (the matrix is the run's `proven`), and that run compares MetricFlow with the
+reference SQL on the artifact as written: the fill value it lost is lost on both sides, so the
+run has to check that value apart.

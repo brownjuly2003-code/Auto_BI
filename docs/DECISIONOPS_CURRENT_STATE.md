@@ -306,8 +306,9 @@ reviewed capture, provenance/governance, все пять live DWH checks и sign
   каждой стороны в `decision verify` и `decision capture`, `decision pin` и замыкания в
   evidence есть — [pilot](pilot/2026-11-06-dbt-formula-pin/README.md); каждая причина, по
   которой формула dbt остаётся `external_ref`, — строка
-  [инвентаря](specs/dbt-formula-inventory.md); корпус fixtures пока — синтетический проект S0,
-  его расширение — S5b); проверка колонок
+  [инвентаря](specs/dbt-formula-inventory.md), и что из них пишет dbt-core 1.12.6, показывает
+  [корпус](reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md) S5b; публичные dbt-проекты в нём не
+  прогонялись); проверка колонок
   reviewed-запроса — это governance («объявлено ли поле»), а не lineage («откуда значение
   пришло через преобразования»). Offline brief
   остаётся `exploratory` и не является human acceptance evidence.
@@ -392,10 +393,13 @@ reader `semantic_manifest.json` (`auto_bi/semantic/metricflow.py`), и S2, ра�
 объявлению и `metric.binding_changed` (`auto_bi/semantic/gateway.py`), и S4, артефакт каждой
 стороны в CLI, `decision pin` и замыкания в evidence с pilot
 [`docs/pilot/2026-11-06-dbt-formula-pin`](pilot/2026-11-06-dbt-formula-pin/README.md), сделаны.
-S5 нарезан на четыре среза: S5a — [инвентарь](specs/dbt-formula-inventory.md) причин, по которым
-формула dbt остаётся `external_ref`, — сделан; следующий — S5b, корпус настоящих dbt-проектов
-(`dbt parse` 1.12.6, публичные примеры с проверкой лицензий); затем S5c — паритет на ClickHouse
-(поправка ADR 0008 п. 7 до кода) и S5d — финальное ревью этапа.
+S5 нарезан на четыре среза. Сделаны S5a — [инвентарь](specs/dbt-formula-inventory.md) причин,
+по которым формула dbt остаётся `external_ref`, — и S5b —
+[корпус](reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md): что из этих конструкций пишет dbt-core
+1.12.6 (63 строки из 87; 10 он отвергает, 3 принимает, но не доносит). Следующий — S5c, паритет
+на ClickHouse (поправка ADR 0008 п. 7 до кода), затем S5d — финальное ревью этапа. Публичные
+dbt-проекты в корпус не вошли: их прогон — запуск чужого кода (`dbt deps`), на него нужно
+отдельное решение владельца.
 Другие срезы владелец выбирает сам, содержательное ревью —
 Astra xhigh по [ADR 0006](adr/0006-modelled-review-development-gate.md) и
 [AGENTS.md](../AGENTS.md).

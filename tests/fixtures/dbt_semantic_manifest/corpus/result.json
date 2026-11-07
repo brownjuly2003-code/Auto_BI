@@ -1,0 +1,1087 @@
+{
+ "versions": {
+  "dbt-core": "1.12.6",
+  "dbt-postgres": "1.11.0",
+  "metricflow": "0.213.0"
+ },
+ "recipe": "sha256:5e3d282b0317443179833cfb3c60bb8a1ac55b156aa9c8f91ee1a25444c3bb73",
+ "artifacts": {
+  "legacy": "sha256:1ee6c9296ad6c9ab75a3666e5369abf0a1cb8a205b5910a949fba9dd3903db7b",
+  "v2": "sha256:a8e7498b3ccbf4edb48a3db6c9e4ce4b22ae155561ca95c5502cecd6b568a6fd"
+ },
+ "outcomes": {
+  "c_metric_datatype": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid metrics config given in models/schema.yml @ metrics: {…} - at path []: Additional properties are not allowed ('datatype' was unexpected)"
+  },
+  "c_params_window": {
+   "refused": "[WARNING]: Cumulative fields `type_params.window` and `type_params.grain_to_date` should be nested under `type_params.cumulative_type_params.window` a … _to_date`. Invalid metrics: c_params_window. See documentation on behavior changes: https://docs.getdbt.com/reference/global-configs/behavior-changes.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_params_grain_to_date": {
+   "refused": "[WARNING]: Cumulative fields `type_params.window` and `type_params.grain_to_date` should be nested under `type_params.cumulative_type_params.window` a … e`. Invalid metrics: c_params_grain_to_date. See documentation on behavior changes: https://docs.getdbt.com/reference/global-configs/behavior-changes.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_params_join_to_timespine": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid metrics config given in models/schema.yml @ metrics: {…} - at path ['type_params']: Additional properties are not allowed ('join_to_timespine' was unexpected)"
+  },
+  "c_params_fill_nulls_with": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid metrics config given in models/schema.yml @ metrics: {…} - at path ['type_params']: Additional properties are not allowed ('fill_nulls_with' was unexpected)"
+  },
+  "c_params_metric_aggregation_params": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid metrics config given in models/schema.yml @ metrics: {…} - at path ['type_params']: Additional properties are not allowed ('metric_aggregation_params' was unexpected)"
+  },
+  "c_simple_neither": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error in metric c_simple_neither (models/schema.yml)\n  Simple metric Metric(name='c_simple_neither', resource_type=<NodeType.Metric: 'metric'>, package_name='corpus', path='schema.yml', original_file_pat … sOn(macros=[], nodes=[]), refs=[], metrics=[], created_at=…, group=None, meta={}, tags=[]) should have a measure or agg type defined, but it does not."
+  },
+  "c_simple_both": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid metrics config given in models/schema.yml @ metrics: {…} - at path ['type_params']: Additional properties are not allowed ('metric_aggregation_params' was unexpected)"
+  },
+  "c_legacy_agg_params_percentile": {
+   "refused": "[WARNING]: Measure 'c_sum_percentile' with aggregation 'sum' uses agg_params (percentile) only relevant to Percentile measures.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_legacy_sum_use_discrete_percentile": {
+   "refused": "[WARNING]: Measure 'c_sum_use_discrete_percentile' with aggregation 'sum' uses agg_params (use_discrete_percentile) only relevant to Percentile measures.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_legacy_sum_use_approximate_percentile": {
+   "refused": "[WARNING]: Measure 'c_sum_use_approximate_percentile' with aggregation 'sum' uses agg_params (use_approximate_percentile) only relevant to Percentile measures.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_legacy_measure_name_0": {
+   "refused": "[WARNING]: 'null' is an SQL reserved keyword, and thus cannot be used as a measure 'name'.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_legacy_measure_name_1": {
+   "refused": "[WARNING]: Invalid name `Gross_Margin` - names may only contain lower case letters, numbers, and underscores. Additionally, names must start with a lower case letter, cannot end with an underscore, cannot contain dunders (double underscores, or __), and must be at least 2 characters long.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_time_name_0": {
+   "refused": "[WARNING]: 'null' is an SQL reserved keyword, and thus cannot be used as a dimension 'name'.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_time_name_1": {
+   "refused": "[WARNING]: Invalid name `Date` - names may only contain lower case letters, numbers, and underscores. Additionally, names must start with a lower case letter, cannot end with an underscore, cannot contain dunders (double underscores, or __), and must be at least 2 characters long.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_time_none_legacy": {
+   "refused": "[WARNING]: An error occurred while checking aggregation time dimension for a semantic model - AssertionError: Aggregation time dimension for measure c …  be set directly on the measure specification in the model, or else defaulted to the primary time dimension in the data source containing the measure.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_time_not_time": {
+   "refused": "[WARNING]: In semantic model 'c_time_not_time', measure 'c_time_not_time_m' has the aggregation time dimension set to 'kind', which is not a valid time dimension in the semantic model\n[WARNING]: Default aggregation time dimension was specified as 'kind' which doesn't exist as a time dimension in semantic model named 'c_time_not_time'.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed."
+  },
+  "c_ratio_numerator_missing": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error in metric c_ratio_numerator_missing (models/schema.yml)\n  Invalid ratio metric. Both a numerator and denominator must be specified"
+  },
+  "c_ratio_denominator_missing": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error in metric c_ratio_denominator_missing (models/schema.yml)\n  Invalid ratio metric. Both a numerator and denominator must be specified"
+  },
+  "c_private": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid metrics config given in models/schema.yml @ metrics: {…} - at path []: Additional properties are not allowed ('hidden' was unexpected)"
+  },
+  "c_legacy_input_measures": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid metrics config given in models/schema.yml @ metrics: {…} - at path ['type_params']: Additional properties are not allowed ('input_measures' was unexpected)"
+  },
+  "c_ratio_input_measures": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid metrics config given in models/schema.yml @ metrics: {…} - at path ['type_params']: Additional properties are not allowed ('input_measures' was unexpected)"
+  },
+  "c_v2_metric_datatype": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid models config given in models/schema.yml @ models: {…} - at path ['metrics']: [{'name': 'revenue', 'type': 'simple', 'agg': 'sum', 'expr': ' … 'name': 'c_v2_metric_datatype', 'type': 'simple', 'agg': 'sum', 'expr': 'revenue', 'datatype': 'decimal'}] is not valid under any of the given schemas"
+  },
+  "c_v2_input_measures": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid models config given in models/schema.yml @ models: {…} - at path ['metrics']: [{'name': 'revenue', 'type': 'simple', 'agg': 'sum', 'expr': ' … ut_measures', 'type': 'simple', 'agg': 'sum', 'expr': 'revenue', 'input_measures': [{'name': 'revenue'}]}] is not valid under any of the given schemas"
+  },
+  "c_v2_simple_neither": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error in metric c_v2_simple_neither (models/schema.yml)\n  Simple metric Metric(name='c_v2_simple_neither', resource_type=<NodeType.Metric: 'metric'>, package_name='corpus', path='schema.yml', original_file_ … sOn(macros=[], nodes=[]), refs=[], metrics=[], created_at=…, group=None, meta={}, tags=[]) should have a measure or agg type defined, but it does not."
+  },
+  "c_v2_params_metric_aggregation_params": {
+   "refused": "[ERROR]: Encountered an error:\nParsing Error\n  Invalid metrics config given in models/schema.yml @ metrics: {'name': 'c_v2_params_metric_aggregation_params', 'type': 'ratio', 'label': None, 'desc … on': None, 'base_metric': None, 'conversion_metric': None, 'constant_properties': None} - simple metrics in v2 YAML must be attached to semantic_model"
+  },
+  "c_v2_time_not_time": {
+   "refused": "[WARNING]: No time dimensions configured. To avoid unexpected query errors, configuring a time spine at or below the smallest time dimension granularity is recommended.\n[WARNING][TimeDimensionsRequireGranularityDeprecation]: Deprecated functionality\n[WARNING]: Default aggregation time dimension was specified as 'region' which doesn't exist as a time dimension in semantic model named 'sales_kind'.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed.\n[WARNING][DeprecationsSummary]: Deprecated functionality\nSummary of encountered deprecations:\n- TimeDimensionsRequireGranularityDeprecation: 2 occurrences\nTo see all deprecation instances instead of just the first occurrence of each,\nrun command again with the `--show-all-deprecations` flag. You may also need to\nrun with `--no-partial-parse` as some deprecations are only encountered during"
+  },
+  "legacy:revenue": {
+   "formula": {
+    "kind": "typed_aggregate",
+    "external": null,
+    "aggregate": {
+     "table": "dm.sales_daily",
+     "column": "revenue",
+     "agg": "sum"
+    },
+    "numerator": null,
+    "denominator": null,
+    "sql": "",
+    "review": null
+   }
+  },
+  "legacy:gross_margin_total": {
+   "formula": {
+    "kind": "typed_aggregate",
+    "external": null,
+    "aggregate": {
+     "table": "dm.sales_daily",
+     "column": "gross_margin",
+     "agg": "sum"
+    },
+    "numerator": null,
+    "denominator": null,
+    "sql": "",
+    "review": null
+   }
+  },
+  "legacy:gross_margin_pct": {
+   "formula": {
+    "kind": "typed_ratio",
+    "external": null,
+    "aggregate": null,
+    "numerator": {
+     "table": "dm.sales_daily",
+     "column": "gross_margin",
+     "agg": "sum"
+    },
+    "denominator": {
+     "table": "dm.sales_daily",
+     "column": "revenue",
+     "agg": "sum"
+    },
+    "sql": "",
+    "review": null
+   }
+  },
+  "c_metric_filter": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[3].filter",
+     "reason": "outside the subset a typed formula is resolved from: a metric filter"
+    }
+   ]
+  },
+  "c_metric_time_granularity": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[4].time_granularity",
+     "reason": "outside the subset a typed formula is resolved from: a metric time granularity"
+    }
+   ]
+  },
+  "c_params_window_flag": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[5].type_params.window",
+     "reason": "outside the subset a typed formula is resolved from: a window"
+    }
+   ]
+  },
+  "c_params_grain_to_date_flag": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[6].type_params.grain_to_date",
+     "reason": "outside the subset a typed formula is resolved from: a grain to date"
+    }
+   ]
+  },
+  "c_params_metrics": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[7].type_params.metrics",
+     "reason": "outside the subset a typed formula is resolved from: input metrics"
+    }
+   ]
+  },
+  "c_params_conversion_type_params": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[8].type_params.conversion_type_params",
+     "reason": "outside the subset a typed formula is resolved from: conversion parameters"
+    }
+   ]
+  },
+  "c_params_cumulative_type_params": {
+   "formula": {
+    "kind": "typed_aggregate",
+    "external": null,
+    "aggregate": {
+     "table": "dm.sales_daily",
+     "column": "revenue",
+     "agg": "sum"
+    },
+    "numerator": null,
+    "denominator": null,
+    "sql": "",
+    "review": null
+   }
+  },
+  "c_params_numerator": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[10].type_params.numerator",
+     "reason": "outside the subset a typed formula is resolved from: a numerator"
+    }
+   ]
+  },
+  "c_params_denominator": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[11].type_params.denominator",
+     "reason": "outside the subset a typed formula is resolved from: a denominator"
+    }
+   ]
+  },
+  "c_params_measure": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[12].type_params.measure",
+     "reason": "outside the subset a typed formula is resolved from: a measure"
+    }
+   ]
+  },
+  "c_params_expr": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[13].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: an expression"
+    }
+   ]
+  },
+  "c_measure_input_filter": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[14].type_params.measure.filter",
+     "reason": "outside the subset a typed formula is resolved from: a measure filter"
+    }
+   ]
+  },
+  "c_measure_input_alias": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[15].type_params.measure.alias",
+     "reason": "outside the subset a typed formula is resolved from: an alias"
+    }
+   ]
+  },
+  "c_measure_input_join_to_timespine": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[16].type_params.measure.join_to_timespine",
+     "reason": "outside the subset a typed formula is resolved from: a join to the time spine"
+    }
+   ]
+  },
+  "c_measure_input_fill_nulls_with": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[17].type_params.measure.fill_nulls_with",
+     "reason": "outside the subset a typed formula is resolved from: a value that fills NULL"
+    }
+   ]
+  },
+  "c_metric_input_numerator_filter": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[18].type_params.numerator.filter",
+     "reason": "outside the subset a typed formula is resolved from: an input filter"
+    }
+   ]
+  },
+  "c_metric_input_numerator_alias": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[19].type_params.numerator.alias",
+     "reason": "outside the subset a typed formula is resolved from: an alias"
+    }
+   ]
+  },
+  "c_metric_input_numerator_offset_window": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[20].type_params.numerator.offset_window",
+     "reason": "outside the subset a typed formula is resolved from: an offset window"
+    }
+   ]
+  },
+  "c_metric_input_numerator_offset_to_grain": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[21].type_params.numerator.offset_to_grain",
+     "reason": "outside the subset a typed formula is resolved from: an offset to grain"
+    }
+   ]
+  },
+  "c_metric_input_denominator_filter": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[22].type_params.denominator.filter",
+     "reason": "outside the subset a typed formula is resolved from: an input filter"
+    }
+   ]
+  },
+  "c_metric_input_denominator_alias": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[23].type_params.denominator.alias",
+     "reason": "outside the subset a typed formula is resolved from: an alias"
+    }
+   ]
+  },
+  "c_metric_input_denominator_offset_window": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[24].type_params.denominator.offset_window",
+     "reason": "outside the subset a typed formula is resolved from: an offset window"
+    }
+   ]
+  },
+  "c_metric_input_denominator_offset_to_grain": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[25].type_params.denominator.offset_to_grain",
+     "reason": "outside the subset a typed formula is resolved from: an offset to grain"
+    }
+   ]
+  },
+  "c_legacy_agg_sum_boolean": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[2].agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation sum_boolean"
+    }
+   ]
+  },
+  "c_legacy_agg_percentile": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[3].agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation percentile"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[3].agg_params",
+     "reason": "outside the subset a typed formula is resolved from: aggregation parameters other than the defaults"
+    }
+   ]
+  },
+  "c_legacy_agg_median": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[4].agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation median"
+    }
+   ]
+  },
+  "c_legacy_agg_params_use_discrete_percentile": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[5].agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation percentile"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[5].agg_params",
+     "reason": "outside the subset a typed formula is resolved from: aggregation parameters other than the defaults"
+    }
+   ]
+  },
+  "c_legacy_agg_params_use_approximate_percentile": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[6].agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation percentile"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[6].agg_params",
+     "reason": "outside the subset a typed formula is resolved from: aggregation parameters other than the defaults"
+    }
+   ]
+  },
+  "c_legacy_non_additive_dimension": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[7].non_additive_dimension",
+     "reason": "outside the subset a typed formula is resolved from: a non-additive dimension"
+    }
+   ]
+  },
+  "c_legacy_expr_0": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[8].expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    }
+   ]
+  },
+  "c_legacy_expr_1": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[9].expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    }
+   ]
+  },
+  "c_legacy_expr_2": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[10].expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    }
+   ]
+  },
+  "c_legacy_expr_3": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[11].expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    }
+   ]
+  },
+  "c_legacy_expr_4": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[12].expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    }
+   ]
+  },
+  "c_legacy_expr_5": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[13].expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    }
+   ]
+  },
+  "c_legacy_measure_name_2": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[14].name",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    }
+   ]
+  },
+  "c_legacy_metric_expr": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[39].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a metric expression other than the measure's"
+    }
+   ]
+  },
+  "c_time_expression": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[1].dimensions[0].expr",
+     "reason": "the expression of time dimension 'day_expr' is not one column"
+    }
+   ]
+  },
+  "c_time_name_2": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[2].dimensions[0].expr",
+     "reason": "the expression of time dimension 'current_date' is not one column"
+    }
+   ]
+  },
+  "c_time_column_name": {
+   "gaps": [
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[3].dimensions[0].name",
+     "reason": "time dimension 'order_date' reads column 'order_date'; the contract's event time column is 'date'"
+    }
+   ]
+  },
+  "c_time_column_expr": {
+   "gaps": [
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[4].dimensions[0].expr",
+     "reason": "time dimension 'ordered' reads column 'order_date'; the contract's event time column is 'date'"
+    }
+   ]
+  },
+  "c_time_granularity": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[5].dimensions[0].type_params.time_granularity",
+     "reason": "time dimension 'date_month' is not of day granularity"
+    }
+   ]
+  },
+  "c_ratio_models": {
+   "gaps": [
+    {
+     "code": "gap.external_ratio_unproven",
+     "severity": "review",
+     "path": "$.metrics[46].type_params.denominator",
+     "reason": "the numerator reads semantic model 'c_ratio_models' and the denominator 'sales_daily'; a typed ratio has one table"
+    }
+   ]
+  },
+  "c_ratio_times": {
+   "gaps": [
+    {
+     "code": "gap.external_ratio_unproven",
+     "severity": "review",
+     "path": "$.metrics[49].type_params.denominator",
+     "reason": "the numerator and the denominator aggregate over different time dimensions"
+    }
+   ]
+  },
+  "c_type_cumulative": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[50].type",
+     "reason": "outside the subset a typed formula is resolved from: a cumulative metric"
+    }
+   ]
+  },
+  "c_type_derived": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[51].type",
+     "reason": "outside the subset a typed formula is resolved from: a derived metric"
+    }
+   ]
+  },
+  "c_type_conversion": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[52].type",
+     "reason": "outside the subset a typed formula is resolved from: a conversion metric"
+    }
+   ]
+  },
+  "c_ratio_input_type": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[53].type",
+     "reason": "outside the subset a typed formula is resolved from: a ratio over a cumulative metric"
+    }
+   ]
+  },
+  "c_parity_ratio_average": {
+   "gaps": [
+    {
+     "code": "gap.external_parity_unproven",
+     "severity": "review",
+     "path": "$.metrics[56]",
+     "reason": "no parity run has shown MetricFlow and the reference SQL to agree on postgres.date:ratio.legacy.average.decimal/legacy.sum.decimal"
+    }
+   ]
+  },
+  "c_formula_table": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[57]",
+     "reason": "outside the subset a typed formula is resolved from: a term the typed formula does not take: the grain table is not a lower-case schema.table name"
+    }
+   ]
+  },
+  "c_relation_table": {
+   "gaps": [
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[9].node_relation",
+     "reason": "semantic model 'c_relation_table' reads a relation other than the grain table dm.sales_daily"
+    }
+   ]
+  },
+  "c_relation_database": {
+   "gaps": [
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[10].node_relation.database",
+     "reason": "semantic model 'c_relation_database' reads another database than the declared 'x'"
+    }
+   ]
+  },
+  "c_additivity_legacy": {
+   "gaps": [
+    {
+     "code": "gap.external_additivity_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].measures[18].agg",
+     "reason": "count_distinct does not add up by sum, and the contract declares the metric additive"
+    }
+   ]
+  },
+  "c_additivity_ratio": {
+   "gaps": [
+    {
+     "code": "gap.external_additivity_unproven",
+     "severity": "review",
+     "path": "$.metrics[61].type",
+     "reason": "a ratio does not add up by sum, and the contract declares the metric additive"
+    }
+   ]
+  },
+  "v2:revenue": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "v2:gross_margin_total": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "v2:gross_margin_pct": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_plain": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_parity_v2": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_agg_sum_boolean": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[5].type_params.metric_aggregation_params.agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation sum_boolean"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_agg_percentile": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[6].type_params.metric_aggregation_params.agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation percentile"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[6].type_params.metric_aggregation_params.agg_params",
+     "reason": "outside the subset a typed formula is resolved from: aggregation parameters other than the defaults"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_agg_median": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[7].type_params.metric_aggregation_params.agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation median"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_agg_params_percentile": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[8].type_params.metric_aggregation_params.agg_params",
+     "reason": "outside the subset a typed formula is resolved from: aggregation parameters other than the defaults"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_agg_params_use_discrete_percentile": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[9].type_params.metric_aggregation_params.agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation percentile"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[9].type_params.metric_aggregation_params.agg_params",
+     "reason": "outside the subset a typed formula is resolved from: aggregation parameters other than the defaults"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_agg_params_use_approximate_percentile": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[10].type_params.metric_aggregation_params.agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation percentile"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[10].type_params.metric_aggregation_params.agg_params",
+     "reason": "outside the subset a typed formula is resolved from: aggregation parameters other than the defaults"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_percentile_type_other": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[11].type_params.metric_aggregation_params.agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation percentile"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[11].type_params.metric_aggregation_params.agg_params",
+     "reason": "outside the subset a typed formula is resolved from: aggregation parameters other than the defaults"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_additivity_v2": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    },
+    {
+     "code": "gap.external_additivity_unproven",
+     "severity": "review",
+     "path": "$.metrics[12].type_params.metric_aggregation_params.agg",
+     "reason": "count_distinct does not add up by sum, and the contract declares the metric additive"
+    }
+   ]
+  },
+  "c_v2_non_additive_dimension": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[13].type_params.metric_aggregation_params.non_additive_dimension",
+     "reason": "outside the subset a typed formula is resolved from: a non-additive dimension"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_no_expr": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[14].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_expr_0": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[15].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_expr_1": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[16].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_private": {
+   "gaps": [
+    {
+     "code": "gap.external_private_metric",
+     "severity": "review",
+     "path": "$.metrics[17].type_params.is_private",
+     "reason": "metric 'c_v2_private' is private in dbt"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_join_to_timespine": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[18].type_params.join_to_timespine",
+     "reason": "outside the subset a typed formula is resolved from: a join to the time spine"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_fill_nulls_with_0": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_fill_nulls_with_1": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_metric_filter": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[21].filter",
+     "reason": "outside the subset a typed formula is resolved from: a metric filter"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_metric_time_granularity": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[22].time_granularity",
+     "reason": "outside the subset a typed formula is resolved from: a metric time granularity"
+    },
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_params_window": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_params_grain_to_date": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.semantic_models[0].dimensions[0].type_params",
+     "reason": "the artifact gives time dimension 'date' no granularity"
+    }
+   ]
+  },
+  "c_v2_time_none": {
+   "gaps": [
+    {
+     "code": "gap.external_time_unproven",
+     "severity": "review",
+     "path": "$.metrics[25].type_params.metric_aggregation_params.agg_time_dimension",
+     "reason": "the artifact names no aggregation time dimension"
+    }
+   ]
+  }
+ }
+}
