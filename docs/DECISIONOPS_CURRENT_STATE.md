@@ -304,9 +304,10 @@ reviewed capture, provenance/governance, все пять live DWH checks и sign
   его строгий reader `semantic_manifest.json`, разрешение поддержанных формул в
   `typed_aggregate`/`typed_ratio` с матрицей паритета, binding в узле метрики, артефакт
   каждой стороны в `decision verify` и `decision capture`, `decision pin` и замыкания в
-  evidence есть — [pilot](pilot/2026-11-06-dbt-formula-pin/README.md); корпус fixtures пока —
-  синтетический проект S0, а инвентаря конструкций вне поддержанного подмножества нет —
-  это S5); проверка колонок
+  evidence есть — [pilot](pilot/2026-11-06-dbt-formula-pin/README.md); каждая причина, по
+  которой формула dbt остаётся `external_ref`, — строка
+  [инвентаря](specs/dbt-formula-inventory.md); корпус fixtures пока — синтетический проект S0,
+  его расширение — S5b); проверка колонок
   reviewed-запроса — это governance («объявлено ли поле»), а не lineage («откуда значение
   пришло через преобразования»). Offline brief
   остаётся `exploratory` и не является human acceptance evidence.
@@ -390,8 +391,11 @@ reader `semantic_manifest.json` (`auto_bi/semantic/metricflow.py`), и S2, ра�
 (`auto_bi/semantic/metricflow_formula.py`), S3, binding в узле метрики со сверкой по
 объявлению и `metric.binding_changed` (`auto_bi/semantic/gateway.py`), и S4, артефакт каждой
 стороны в CLI, `decision pin` и замыкания в evidence с pilot
-[`docs/pilot/2026-11-06-dbt-formula-pin`](pilot/2026-11-06-dbt-formula-pin/README.md), сделаны,
-следующий — S5: расширение корпуса, инвентарь неподдержанных конструкций, финальное ревью.
+[`docs/pilot/2026-11-06-dbt-formula-pin`](pilot/2026-11-06-dbt-formula-pin/README.md), сделаны.
+S5 нарезан на четыре среза: S5a — [инвентарь](specs/dbt-formula-inventory.md) причин, по которым
+формула dbt остаётся `external_ref`, — сделан; следующий — S5b, корпус настоящих dbt-проектов
+(`dbt parse` 1.12.6, публичные примеры с проверкой лицензий); затем S5c — паритет на ClickHouse
+(поправка ADR 0008 п. 7 до кода) и S5d — финальное ревью этапа.
 Другие срезы владелец выбирает сам, содержательное ревью —
 Astra xhigh по [ADR 0006](adr/0006-modelled-review-development-gate.md) и
 [AGENTS.md](../AGENTS.md).

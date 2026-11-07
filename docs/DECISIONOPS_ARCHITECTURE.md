@@ -405,7 +405,9 @@ Native `model.yaml` — первый source adapter. Текущий `dbt_import.
 enrichment helper и не объявляется полноценным MetricFlow importer. Первый внешний
 источник — формулы метрик из dbt `semantic_manifest.json`, которые resolver подставляет в
 native snapshot; схему по-прежнему задаёт `model.yaml`, а `osi_document.json` источником
-формул не служит ([ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)). Apache
+формул не служит ([ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)). Каждая
+причина, по которой формула dbt остаётся `external_ref`, — строка
+[инвентаря](specs/dbt-formula-inventory.md) с гэпом, severity и JSON-путём. Apache
 Ossie (бывший OSI) используется через adapter, pinned на tag или commit;
 неизвестные `custom_extensions` сохраняются для round-trip, но не получают
 выдуманную внутреннюю семантику.

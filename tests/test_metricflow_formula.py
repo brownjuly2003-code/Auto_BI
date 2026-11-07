@@ -853,25 +853,53 @@ def _set_measure_input(key: str) -> Callable[[dict[str, Any]], tuple[str, str]]:
     return change
 
 
-def _set_metric_input(key: str) -> Callable[[dict[str, Any]], tuple[str, str]]:
+def _set_metric_input(
+    key: str, side: str = "numerator"
+) -> Callable[[dict[str, Any]], tuple[str, str]]:
     def change(data: dict[str, Any]) -> tuple[str, str]:
-        _metric(data, "gross_margin_pct")["type_params"]["numerator"][key] = SET_VALUES[key]
-        path = f"{_metric_path(data, 'gross_margin_pct')}.type_params.numerator.{key}"
+        _metric(data, "gross_margin_pct")["type_params"][side][key] = SET_VALUES[key]
+        path = f"{_metric_path(data, 'gross_margin_pct')}.type_params.{side}.{key}"
         return "gross_margin_pct", path
 
     return change
 
 
+#: What each kind of metric takes its number from in `type_params`.
+OWN_PARAMS = {
+    "simple": ("measure", "expr", "metric_aggregation_params"),
+    "ratio": ("numerator", "denominator"),
+}
+#: The keys of `type_params` each kind of metric reads as a construct, in the schema's order: each
+#: but those it takes its number from, `input_measures` and `is_private`. Held apart from the
+#: resolver's tables, which a test holds to them.
+CONSTRUCT_PARAMS = {
+    kind: [
+        key
+        for key in json.loads((FIXTURES / "dsi_0.213.0_schema.json").read_bytes())["models"][
+            "PydanticMetricTypeParams"
+        ]
+        if key not in {*own, "input_measures", "is_private", "__extra__"}
+    ]
+    for kind, own in OWN_PARAMS.items()
+}
+
 SET_KEYS = [
     *(pytest.param(_set_metric("revenue", key), id=f"simple-{key}") for key in _METRIC),
     *(pytest.param(_set_metric("gross_margin_pct", key), id=f"ratio-{key}") for key in _METRIC),
-    *(pytest.param(_set_params("revenue", k), id=f"simple-params-{k}") for k in _SIMPLE_PARAMS),
+    *(
+        pytest.param(_set_params("revenue", key), id=f"simple-params-{key}")
+        for key in CONSTRUCT_PARAMS["simple"]
+    ),
     *(
         pytest.param(_set_params("gross_margin_pct", key), id=f"ratio-params-{key}")
-        for key in _RATIO_PARAMS
+        for key in CONSTRUCT_PARAMS["ratio"]
     ),
     *(pytest.param(_set_measure_input(key), id=f"measure-input-{key}") for key in _INPUT_MEASURE),
-    *(pytest.param(_set_metric_input(key), id=f"metric-input-{key}") for key in _METRIC_INPUT),
+    *(
+        pytest.param(_set_metric_input(key, side), id=f"{side}-{key}")
+        for side in ("numerator", "denominator")
+        for key in _METRIC_INPUT
+    ),
 ]
 
 
@@ -933,6 +961,9 @@ def test_every_key_of_what_a_resolution_reads_is_classified() -> None:
         "input_measures",
         "is_private",
     }
+    # each kind of metric, apart: a key both read is not one either may drop
+    assert set(_SIMPLE_PARAMS) == set(CONSTRUCT_PARAMS["simple"])
+    assert set(_RATIO_PARAMS) == set(CONSTRUCT_PARAMS["ratio"])
     assert _schema_fields("PydanticMetricInputMeasure") == {*_INPUT_MEASURE, "name"}
     assert _schema_fields("PydanticMetricInput") == {*_METRIC_INPUT, "name"}
     measure_read = {"name", "agg", "agg_params", "agg_time_dimension", "expr"}
@@ -1308,6 +1339,31 @@ def test_keys_on_one_side_are_mismatches() -> None:
     theirs = [{"k1": "2026-01-01", "k2": 1, "v": "1"}, {"k1": "2026-01-03", "k2": 1, "v": "2"}]
     assert len(script._compare(ours, theirs, ratio=False)) == 2
     assert script._compare(ours, ours, ratio=False) == []
+
+
+def test_recorded_values_hold_the_keys_of_either_side() -> None:
+    script = _script()
+    ours = [
+        {"k1": "2026-01-02", "k2": 10, "v": Decimal("2")},
+        {"k1": "2026-01-02", "k2": 2, "v": Decimal("0.00")},
+        {"k1": "2026-01-01", "k2": 2, "v": None},
+        {"k1": "2026-01-04", "k2": 1, "v": Decimal("1.50")},
+    ]
+    theirs = [
+        {"k1": "2026-01-01", "k2": 2, "v": None},
+        {"k1": "2026-01-03", "k2": 1, "v": 3.5},
+        {"k1": "2026-01-04", "k2": 1, "v": 1.5},
+        {"k1": "2026-01-02", "k2": 2, "v": 0},
+    ]
+    # a key one side lacks is NULL on that side, a NULL value is NULL on its own side, zero is a
+    # value; keys in order of the day, then of the store as a number; each side as it came
+    assert script._values(ours, theirs) == [
+        ["2026-01-01", "2", None, None],
+        ["2026-01-02", "2", "0.00", "0"],
+        ["2026-01-02", "10", "2", None],
+        ["2026-01-03", "1", None, "3.5"],
+        ["2026-01-04", "1", "1.50", "1.5"],
+    ]
 
 
 def test_recorded_run_is_the_run_of_the_recipe() -> None:
