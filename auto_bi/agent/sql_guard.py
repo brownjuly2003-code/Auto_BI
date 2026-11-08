@@ -680,8 +680,8 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
     the same subquery written at the reference: its own FROM, with bare names enclosed
     toward the referencing scope. sqlglot 30.14.0 builds no scope for those bodies
     (`scope.py:708` "Cannot traverse scope"), so the read-through builds one with
-    `Scope.branch` and `_traverse_scope` — the same helpers `_traverse_subqueries` uses for
-    an inline subquery. A query-level alias that can reach itself through query-level or
+    `_subquery_scopes`, over the helpers sqlglot's `_traverse_subqueries` uses for an
+    inline subquery. A query-level alias that can reach itself through query-level or
     WITH definitions is a column wherever it is referenced, a WITH body in the read-through
     included. A WITH reference that closes a cycle on the read-through path is a column, and
     the definitions on the way are still read. Read-through of a WITH alias is bounded by a
@@ -730,9 +730,7 @@ def extract_column_refs(sql: str, *, dialect: str = DIALECT) -> ColumnReads:
             modifier = scope.expression.args.get(name)
             if isinstance(modifier, exp.Expression):
                 for query in _outermost_nested_queries(modifier):
-                    scopes.extend(
-                        _traverse_scope(scope.branch(query, scope_type=ScopeType.SUBQUERY))
-                    )
+                    scopes.extend(_subquery_scopes(scope, query))
     owners = {id(scope.expression): scope for scope in scopes}
     attributed: set[ColumnRef] = set()
     ambiguous: set[AmbiguousRef] = set()
@@ -1806,6 +1804,21 @@ def _outermost_nested_queries(node: exp.Expression) -> list[exp.Expression]:
     return found
 
 
+def _subquery_scopes(parent: Scope, query: exp.Expression) -> list[Scope]:
+    """Scopes of *query* read as a subquery of *parent*, the query's own scope last.
+
+    The one use of sqlglot's private scope API: `_traverse_scope` over
+    `Scope.branch(..., scope_type=ScopeType.SUBQUERY)`, the pair sqlglot 30.14.0's
+    `_traverse_subqueries` uses for an inline subquery. A sqlglot upgrade that changes
+    them changes this function only. What the callers rely on is pinned by
+    `tests/test_sql_guard_sqlglot_scope.py`: a wrapping `Subquery` is unwrapped, the
+    query's scope is a `SUBQUERY` whose parent is *parent* and whose sources are its own
+    FROM, scopes nested in the query come before it, a bare name it does not resolve is
+    an external column, and CTE names visible to *parent* stay visible.
+    """
+    return list(_traverse_scope(parent.branch(query, scope_type=ScopeType.SUBQUERY)))
+
+
 def _grade_nested_query(
     query: exp.Expression,
     parent: Scope,
@@ -1817,15 +1830,13 @@ def _grade_nested_query(
     """Grade a query nested in a read-through WITH as a subquery of *parent*.
 
     sqlglot 30.14.0 does not build a scope for a query nested in an expression-form
-    WITH body (`scope.py:708` "Cannot traverse scope"). `_traverse_scope` and
-    `Scope.branch` are the same helpers `_traverse_subqueries` uses for an inline
-    subquery, so the nested query gets its own FROM, its parent is the referencing
-    scope, and `_reads_enclosing` marks its bare names enclosed. The outer SELECT
-    alias that owned the reference is not visible here; the owner is computed
-    again from this branch's own SELECT list.
+    WITH body (`scope.py:708` "Cannot traverse scope"). `_subquery_scopes` reads it the
+    way sqlglot reads an inline subquery, so the nested query gets its own FROM, its
+    parent is the referencing scope, and `_reads_enclosing` marks its bare names
+    enclosed. The outer SELECT alias that owned the reference is not visible here; the
+    owner is computed again from this branch's own SELECT list.
     """
-    body = query.this if isinstance(query, exp.Subquery) else query
-    nested_scopes = list(_traverse_scope(parent.branch(body, scope_type=ScopeType.SUBQUERY)))
+    nested_scopes = _subquery_scopes(parent, query)
     owners = {id(scope.expression): scope for scope in nested_scopes}
     return _grade_columns(nested_scopes, owners, aliases, attributed, ambiguous, state, None, None)
 

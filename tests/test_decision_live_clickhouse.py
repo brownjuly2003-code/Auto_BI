@@ -514,3 +514,52 @@ def test_a_mart_without_its_event_time_column_is_reported(stand: Stand, tmp_path
     ]
     _unfit(run, "Code 47 UNKNOWN_IDENTIFIER", "date")
     assert run.verdict == "block"
+
+
+@pytest.mark.parametrize(
+    ("sql", "code", "refused"),
+    [
+        ("SELECT gross_margin FROM dm.sales_daily", 497, True),
+        ("EXPLAIN ESTIMATE SELECT sum(gross_margin) FROM dm.sales_daily", 497, True),
+        ("SELECT count() FROM dm.stores", 497, True),
+        ("SELECT 1 FROM dm.no_such_table", 60, True),
+        ("SELECT 1 FROM no_such_db.t", 81, True),
+        ("SELECT max(access_denied_at) FROM dm.sales_daily", 47, False),
+    ],
+    ids=[
+        "hidden-column",
+        "hidden-column-plan",
+        "table-not-granted",
+        "no-table",
+        "no-database",
+        "47-quoting-access-denied",
+    ],
+)
+def test_the_engine_s_refusals_are_read_by_their_codes(
+    stand: Stand, sql: str, code: int, refused: bool
+) -> None:
+    """Slice S8: the server refuses the gate role with a code, and the probe reads the code.
+    A column called `access_denied_at` that the mart does not have answers `47`, whose
+    message quotes the name: by the words it was a refusal, by the code it is not."""
+    import clickhouse_connect
+    from clickhouse_connect.driver.exceptions import DatabaseError
+
+    from auto_bi.verification import environment_probe
+    from auto_bi.verification.query_limits import clickhouse_error_code
+
+    stand.run(f"REVOKE SELECT(gross_margin) ON dm.sales_daily FROM {GATE_USER}")
+    stand.run(f"REVOKE SELECT ON dm.stores FROM {GATE_USER}")
+    gate = clickhouse_connect.get_client(
+        host=stand.server.host,
+        port=stand.server.port,
+        username=GATE_USER,
+        password=stand.gate_password,
+    )
+    try:
+        with pytest.raises(DatabaseError) as raised:
+            gate.query(sql)
+    finally:
+        gate.close()
+
+    assert clickhouse_error_code(raised.value) == code
+    assert environment_probe._refused(raised.value) is refused

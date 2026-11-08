@@ -73,7 +73,8 @@ What the driver raises is, of clickhouse_connect, a `ClickHouseError` or a `Stre
 — a result the engine stopped sending midway, which the driver raises outside that hierarchy —
 and of psycopg, through which `postgres`, `greenplum` and `greengage` are asked, a
 `psycopg.Error`. A refusal SHALL NOT end the run, although the driver raises it as one of these:
-the probe answers it as before, as a fact. Neither SHALL an answer that the reference query no
+the probe answers it as before, as a fact, and tells it by the code the error carries
+(ClickHouse since slice S8, below). Neither SHALL an answer that the reference query no
 longer fits the mart, nor a refusal of the exact query (ClickHouse since slice S7, PostgreSQL
 since S7b; both specified below). Other exceptions SHALL be raised as they are,
 apart from the local identifier quoting refusal specified below.
@@ -392,6 +393,32 @@ against a PostgreSQL it creates its own database and roles in; slice S7b ran it 
 `postgres:16` container for it; its first run there is still ahead. The cases the catalog does
 not explain are asserted offline.
 
+## Refusals read by the code (S8)
+
+Since verifier 132 an answer the probe asks about the environment is a refusal on ClickHouse
+by the code the error carries, as on PostgreSQL by its SQLSTATE, and never by the message,
+which quotes names from the query:
+
+- `497 ACCESS_DENIED`, `291 DATABASE_ACCESS_DENIED`, `60 UNKNOWN_TABLE` and
+  `81 UNKNOWN_DATABASE` SHALL be refusals, whatever the words around the code;
+- any other code SHALL NOT be a refusal, even where the message quotes a refusal's words: a
+  `47 UNKNOWN_IDENTIFIER` for a column called `access_denied_at` is the drift the rule above
+  weighs, or it ends the run;
+- the wording (`ACCESS_DENIED`, `Not enough privileges`, `UNKNOWN_TABLE`, …) SHALL be read
+  only for an error that carries neither a SQLSTATE nor a ClickHouse code.
+
+The code is the one the S7 rule reads: the driver's `code` attribute, else the `Code: <n>.` that
+opens the message or one of its lines, or follows `server response:`. Live, ClickHouse
+24.8.14.39 answers `497` for a column the role may not read, for its `EXPLAIN ESTIMATE` and for
+a table not granted; `60` for a table that is not there; `81` for a database that is not
+there. `291` was not seen live and stays in the set: the wording verifier 131 read matched it
+(`ACCESS_DENIED` inside `DATABASE_ACCESS_DENIED`), and what is not seen is not taken away.
+Verifier 131 took the `47` above for a refused `EXPLAIN ESTIMATE` and a refused `max()` of the
+event-time column: the plan was unpriced as refused, and the table taken for unreadable.
+`tests/test_decision_live_clickhouse.py` pins `497`, `60` and `81` against the live engine, and
+`47` for `max(access_denied_at)` as not a refusal; `tests/test_environment_probe.py` pins the
+reading offline, with the code as an attribute and in the message.
+
 ## Runtime SQL guard refusal at the CLI boundary (T-80)
 
 If `collect` raises `SQLGuardError` while `decision verify --dwh` asks about the
@@ -445,6 +472,9 @@ not establish that the current typed compiler emits that SQL from an ordinary in
   role may read is not compared: it may be hidden rather than gone. A `43`/`47` over such a
   column, even one really dropped, still ends the run, as before S7; `dwh.physical` does not
   grade that column either.
+- An error ClickHouse relays from another engine — a table of the `PostgreSQL` or `MySQL` engine
+  whose server refuses the read — is read by the ClickHouse code it carries, not by the refusal
+  its message quotes (S8): under any code outside the refusal set it ends the run.
 - Other faults of the probe, including tokenizer failures that are not `SQLGuardError`,
   remain outside the named handlers and may end in a traceback with exit 1.
 - Other driver failures end the run through the existing handler. Server-side settings

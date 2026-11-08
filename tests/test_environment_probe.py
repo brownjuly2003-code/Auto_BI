@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 from auto_bi.semantic.metric_contract import MetricBudget
+from auto_bi.verification import environment_probe
 from auto_bi.verification.environment import (
     CostBound,
     EnvironmentQuestions,
@@ -885,6 +886,100 @@ def test_a_reference_query_the_mart_no_longer_fits_is_an_unpriced_plan(
         f"EXPLAIN ESTIMATE answered the reference query with {said}, taken to mean the "
         "query no longer fits the mart as the engine has it (revenue drifted from the model)"
     )
+
+
+def clickhouse_error(code: int, text: str) -> Exception:
+    """A driver error that carries the ClickHouse code as an attribute, as clickhouse_connect's
+    `DatabaseError` does (from the `X-ClickHouse-Exception-Code` header), with words of its own
+    around it."""
+    error = RuntimeError(text)
+    error.code = code  # type: ignore[attr-defined]
+    return error
+
+
+#: `47` for a dropped column whose name holds a refusal's words: the text matches the
+#: refusal wording, the code does not.
+ACCESS_DENIED_AT_GONE = RuntimeError(
+    "HTTPDriver for http://127.0.0.1:18125 received ClickHouse error code 47\n Code: 47. "
+    "DB::Exception: Unknown expression identifier `access_denied_at` in scope SELECT "
+    "max(access_denied_at) FROM dm.sales_daily. (UNKNOWN_IDENTIFIER) (version 24.8.14.39 "
+    "(official build))"
+)
+
+
+@pytest.mark.parametrize(
+    ("error", "refused"),
+    [
+        (RuntimeError("Code: 497. DB::Exception: Not enough privileges. (ACCESS_DENIED)"), True),
+        (RuntimeError("Code: 291. DB::Exception: (DATABASE_ACCESS_DENIED)"), True),
+        (RuntimeError("Code: 60. DB::Exception: Unknown table 'dm.x'. (UNKNOWN_TABLE)"), True),
+        (RuntimeError("Code: 81. DB::Exception: No database dm. (UNKNOWN_DATABASE)"), True),
+        (clickhouse_error(497, "Недостаточно прав"), True),
+        (clickhouse_error(60, "server said no"), True),
+        (ACCESS_DENIED_AT_GONE, False),
+        (clickhouse_error(47, "Missing columns: 'access_denied_at' (UNKNOWN_IDENTIFIER)"), False),
+        (RuntimeError("Code: 159. DB::Exception: Timeout in unknown_table_log."), False),
+        (RuntimeError("gate_ro: Not enough privileges"), True),
+        (RuntimeError("ACCESS_DENIED"), True),
+        (RuntimeError("Connection refused"), False),
+    ],
+    ids=[
+        "497",
+        "291",
+        "60",
+        "81",
+        "497-attribute-other-words",
+        "60-attribute-other-words",
+        "47-quoting-access-denied",
+        "47-attribute-quoting-access-denied",
+        "159-quoting-unknown-table",
+        "no-code-text",
+        "no-code-name",
+        "no-code-other",
+    ],
+)
+def test_a_clickhouse_error_with_a_code_is_a_refusal_by_its_code(
+    error: Exception, refused: bool
+) -> None:
+    """The code decides where the error carries one; the words are read only where it does
+    not, as a Postgres error is read by its SQLSTATE before its text."""
+    assert environment_probe._refused(error) is refused
+
+
+def test_a_dropped_column_named_like_a_refusal_is_the_drift_it_is() -> None:
+    """`access_denied_at` gone answers `47`, whose text quotes the name. Read by the text it
+    was a refused `EXPLAIN ESTIMATE`; read by the code it is the drift `dwh.physical`
+    reports, and the plan says so."""
+    engine = Answering("EXPLAIN", ACCESS_DENIED_AT_GONE, **{"system.columns": DROPPED})
+    asked = priced(sql="SELECT max(access_denied_at) FROM dm.sales_daily")
+    asked.tables[0].columns = {"date": "Date", "access_denied_at": "DateTime"}
+
+    facts = collect(engine, asked, engine="clickhouse", target="stand")
+
+    assert facts.plans[0].scanned_rows is None
+    assert facts.plans[0].evidence == (
+        "EXPLAIN ESTIMATE answered the reference query with Code 47 UNKNOWN_IDENTIFIER, taken "
+        "to mean the query no longer fits the mart as the engine has it (access_denied_at "
+        "drifted from the model)"
+    )
+
+
+def test_an_event_time_column_named_like_a_refusal_leaves_the_rows_counted_and_undated() -> None:
+    """The same `47` for `max()` of the event-time column: read by the text, `max()` was
+    refused and the run never counted the rows; read by the code they are counted, undated."""
+    engine = Answering(
+        "max(",
+        ACCESS_DENIED_AT_GONE,
+        **{"count() AS rows_seen FROM": [{"rows_seen": 91}], "system.columns": DROPPED},
+    )
+    asked = questions({"date": "Date", "access_denied_at": "DateTime"})
+    asked.tables[0].event_time_column = "access_denied_at"
+
+    facts = collect(engine, asked, engine="clickhouse", target="stand")
+
+    table = facts.tables[0]
+    assert (table.exists, table.readable, table.rows_seen) == (True, True, 91)
+    assert table.max_event_time is None
 
 
 @pytest.mark.parametrize("error", [ILLEGAL_TYPE, UNKNOWN_IDENTIFIER])

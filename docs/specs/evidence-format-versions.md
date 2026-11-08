@@ -16,6 +16,16 @@ CHANGELOG names 1 → 2 and the transitions from verifier 7 → 8 and check 5 �
 Part of the idempotency key: a different verifier can derive a different verdict or
 evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 
+### Verifier 132
+
+ClickHouse refusals are read by the error code where the error carries one (slice S8):
+`497 ACCESS_DENIED`, `291 DATABASE_ACCESS_DENIED`, `60 UNKNOWN_TABLE` and
+`81 UNKNOWN_DATABASE` are refusals whatever the words around them, and any other code is not,
+even where the message quotes a refusal's words — a `47 UNKNOWN_IDENTIFIER` for a column
+called `access_denied_at` is weighed as the drift it accounts for, or ends the run. The
+wording is read only for an error that carries neither a code nor a SQLSTATE. Verifier 131
+took such an answer for a refusal; check grading is unchanged and CHECK_VERSION stays 83.
+
 ### Verifier 131
 
 a reference query the PostgreSQL mart no longer fits is a fact about the mart too

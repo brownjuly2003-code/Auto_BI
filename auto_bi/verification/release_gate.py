@@ -118,10 +118,6 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: What each verifier version changed: docs/specs/evidence-format-versions.md, newest first.
 #: A bump adds its entry there and here; here only the newest few stay (at most five,
 #: tests/test_evidence_format_versions.py). The newest:
-#: 127 — PostgreSQL mart questions preserve schema and table case in relation-name
-#: arguments for privileges, ownership, columns and row security. Both engines use the
-#: same two-part mart name for presence and COUNT/MAX. Collected facts and
-#: resulting reports can change; check grading is unchanged and CHECK_VERSION stays 81.
 #: 128 — native source version 4 (ADR 0008, slice S3): the node of a metric whose formula a dbt
 #: semantic manifest defines carries its binding and, where the formula resolves from the
 #: artifact the snapshot read, the typed formula, which impact and reference SQL then read;
@@ -155,7 +151,14 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: mart: the drift answers the code by its kind, not by where the query failed. Verifier 130 let
 #: those answers end a PostgreSQL run with no report and no bundle; check grading is unchanged
 #: and CHECK_VERSION stays 83.
-VERIFIER_VERSION = "131"
+#: 132 — ClickHouse refusals are read by the error code where the error carries one (slice S8):
+#: `497 ACCESS_DENIED`, `291 DATABASE_ACCESS_DENIED`, `60 UNKNOWN_TABLE` and
+#: `81 UNKNOWN_DATABASE` are refusals whatever the words around them, and any other code is not,
+#: even where the message quotes a refusal's words — a `47 UNKNOWN_IDENTIFIER` for a column
+#: called `access_denied_at` is weighed as the drift it accounts for, or ends the run. The
+#: wording is read only for an error that carries neither a code nor a SQLSTATE. Verifier 131
+#: took such an answer for a refusal; check grading is unchanged and CHECK_VERSION stays 83.
+VERIFIER_VERSION = "132"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

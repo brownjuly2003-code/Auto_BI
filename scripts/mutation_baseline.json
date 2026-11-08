@@ -46,7 +46,7 @@
       "survived": 9
     },
     "auto_bi.agent.sql_guard.x__outermost_nested_queries": {
-      "survived": 2
+      "survived": 1
     },
     "auto_bi.agent.sql_guard.x__owner_key": {
       "survived": 1
@@ -55,7 +55,7 @@
       "survived": 2
     },
     "auto_bi.agent.sql_guard.x__postgres_grouping_output": {
-      "survived": 10
+      "survived": 3
     },
     "auto_bi.agent.sql_guard.x__postgres_output_name": {
       "survived": 7
@@ -67,16 +67,13 @@
       "survived": 3
     },
     "auto_bi.agent.sql_guard.x__postgres_sort_token_info": {
-      "survived": 9
+      "survived": 3
     },
     "auto_bi.agent.sql_guard.x__postgres_table_alias_matches": {
       "survived": 1
     },
     "auto_bi.agent.sql_guard.x__rewrite_clickhouse_in_tables": {
       "survived": 6
-    },
-    "auto_bi.agent.sql_guard.x__rewrite_postgres_parenthesized_orders": {
-      "survived": 12
     },
     "auto_bi.agent.sql_guard.x__select_alias_graph": {
       "survived": 3
@@ -109,8 +106,8 @@
       "survived": 2
     },
     "auto_bi.agent.sql_guard.x_extract_column_refs": {
-      "survived": 10
+      "survived": 6
     }
   },
-  "measured": "2026-11-03; Mac 4 cores; Python 3.13; mutmut 3.6.0 run --max-children 4; 74 test modules; mutmut-only warning filters; PYTHONHASHSEED=0; 1024 s; functions with unchanged tests keep the max of this run, the two previous Mac runs and the Linux CI container run"
+  "measured": "2026-11-08; Mac 4 cores; Python 3.13; mutmut 3.6.0 run --max-children 4; 76 test modules; mutmut-only warning filters; PYTHONHASHSEED=0; 1073 s; functions with unchanged tests keep the max of this run, the previous Mac runs and the Linux CI container run"
 }

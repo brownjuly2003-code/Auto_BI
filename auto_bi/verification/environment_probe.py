@@ -246,9 +246,16 @@ _CH_ROLE_GRANTS = (
 #: else — a dropped connection above all — is not an access fact and is re-raised.
 _PG_REFUSALS = frozenset({"42501", "42P01", "3F000"})
 
-#: How the two engines word a refusal when the driver carries no state code. ClickHouse's
-#: codes are stable identifiers (`497 ACCESS_DENIED`, `60 UNKNOWN_TABLE`), which is what this
-#: matches on; the Postgres wording is the fallback for drivers that lose `sqlstate`.
+#: ClickHouse codes of a refusal: no privilege (`497 ACCESS_DENIED`, `291
+#: DATABASE_ACCESS_DENIED`), no such table (`60 UNKNOWN_TABLE`), no such database (`81
+#: UNKNOWN_DATABASE`). An error that carries a code is read by it, as a Postgres one is by
+#: its state: the message around the code quotes names, and a `47 UNKNOWN_IDENTIFIER` for a
+#: column called `access_denied_at` is not a refusal.
+_CH_REFUSALS = frozenset({60, 81, 291, 497})
+
+#: How the two engines word a refusal, for an error that carries neither a SQLSTATE nor a
+#: ClickHouse code: the code names of the set above and ClickHouse's `Not enough privileges`,
+#: and the Postgres wording for drivers that lose `sqlstate`.
 _REFUSED_TEXT = re.compile(
     r"ACCESS_DENIED|Not enough privileges|UNKNOWN_TABLE|UNKNOWN_DATABASE"
     r"|permission denied|must be owner|relation .* does not exist",
@@ -1614,6 +1621,9 @@ def _refused(error: Exception) -> bool:
     state = postgres_sqlstate(error)
     if state is not None:
         return state in _PG_REFUSALS
+    code = clickhouse_error_code(error)
+    if code is not None:
+        return code in _CH_REFUSALS
     return bool(_REFUSED_TEXT.search(str(error)))
 
 

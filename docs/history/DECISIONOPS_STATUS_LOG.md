@@ -10,6 +10,113 @@
 > Новая запись среза добавляется сверху, полным текстом. С 2026-11-04 это единственное место
 > записи о срезе: ни `CLAUDE.md`, ни `DECISIONOPS_CURRENT_STATE.md` её не дублируют.
 
+## 2026-11-08 — S8: отказ ClickHouse по коду ошибки (verifier 132); выжившие мутанты `sql_guard`; обёртка приватного API sqlglot
+
+Последний срез плана владельца (S5d → S6-hygiene → S7 → S8). Исполнитель — Claude; Codex/Astra не
+запускались (лимит владельца), ревьюер — независимый Opus-субагент, как в S5d–S7b. Модельная
+оценка, не human acceptance.
+
+- **Отказ ClickHouse — по коду, а не по тексту** (`environment_probe._refused`, `_CH_REFUSALS`).
+  Граница S7b: «`_REFUSED_TEXT` на ClickHouse проверяется раньше кода ошибки». Ошибка с кодом
+  ClickHouse (`query_limits.clickhouse_error_code`: атрибут `code`, иначе `Code: <n>.` в начале
+  сообщения или его строки, или после `server response:`) — отказ только при `497`, `291`, `60`, `81`, при любом тексте; любой другой код — не
+  отказ, даже если текст цитирует слова отказа. Текст читается только у ошибки без SQLSTATE и без
+  кода. Прежде `47 UNKNOWN_IDENTIFIER` по удалённой колонке `access_denied_at` был «отказом»:
+  `EXPLAIN ESTIMATE` — «the engine refused», таблица при отказанном `max()` колонки времени события —
+  нечитаемая. Теперь `47` взвешивается правилом S7 (дрейф, который каталог объясняет) или кончает
+  прогон. Живая сверка (ClickHouse 24.8.14.39, Mac): `497` — скрытая колонка, её `EXPLAIN ESTIMATE`,
+  таблица без гранта (и `SHOW CREATE DATABASE`, который проба не задаёт, — не закреплено); `60` —
+  нет таблицы; `81` — нет базы; `47` — для `access_denied_at` и `unknown_table` (текст совпадал с прежней регуляркой). `291` живьём не
+  встречен и оставлен: прежняя регулярка `ACCESS_DENIED` ловила `DATABASE_ACCESS_DENIED`.
+  Тесты: `tests/test_environment_probe.py` — 12 случаев `_refused` (код в тексте и атрибутом, чужие
+  слова вокруг кода, `47`/`159` с цитатой, без кода) + 2 сценария `collect` (`EXPLAIN ESTIMATE` и
+  `max()` с `47` по `access_denied_at`); на коде `5f8335f` падают 7. Живой
+  `test_the_engine_s_refusals_are_read_by_their_codes` — 6 из 6. Verifier 131 → 132, check 83
+  прежний; [spec](../specs/unanswered-engine.md) — «Refusals read by the code (S8)».
+- **Обёртка приватного API sqlglot.** `_subquery_scopes(parent, query)` — единственное место, где
+  `sql_guard` зовёт `_traverse_scope` поверх `Scope.branch(..., SUBQUERY)`; оба прежних места
+  (модификаторы set-операции в `extract_column_refs` и `_grade_nested_query`) идут через неё.
+  `tests/test_sql_guard_sqlglot_scope.py` (6) закрепляет, на что опираются вызывающие: обёрточный
+  `Subquery` разворачивается, scope запроса — `SUBQUERY` с родителем *parent* и своим FROM,
+  вложенные scope раньше него, неразрешённое голое имя — внешняя колонка, CTE родителя видны.
+  Поведение прежнее: дифференциальная сверка с копией до правки (`.tmp/s8/diff_fuzz.py`) — 5876
+  запросов (1876 литералов тестов и 4000 случайных по затронутым путям, 5194 разобраны), обоих
+  диалектов, расхождений 0; число вызовов (cProfile) то же, отношение 1.0000.
+- **Выжившие мутанты `sql_guard`.** `tests/test_sql_guard_mutation_postgres_reads.py` (21):
+  перенос ORDER BY после скобок PostgreSQL (сквозь голые скобки, второй ORDER BY остаётся и
+  отвергается, алиас подзапроса останавливает), имя GROUP BY, которое может дать любой выходной
+  алиас (голая колонка, алиас другого имени, повтор своей колонки, агрегат во вложенном запросе),
+  токенизатор PostgreSQL (`$$it's$$`, `E'\''`), имя функции без кавычек сворачивается в имя
+  выхода (`MAX(a) … ORDER BY max`), голый `cast` в конце запроса после унарного плюса — колонка
+  (sqlglot читает его так; заглядывание за `CAST(` не выходит за последний токен), хвостовой `+`
+  в GROUP BY / ORDER BY (sqlglot 30.14 его молча отбрасывает; поиск токена под плюсом не читает
+  за концом запроса), подзапрос в ORDER BY / FETCH FIRST set-операции и контракт
+  «sqlglot 30.14 кладёт FETCH set-операции в `limit`». Оба новых модуля — в выборке mutmut
+  (`pyproject.toml`, `tests/test_mutation_gate.py`, SLO: 76 модулей).
+  `_rewrite_postgres_parenthesized_orders` 12 → 0, `_postgres_grouping_output` 10 → 3,
+  `extract_column_refs` 10 → 6, `_postgres_sort_token_info` 9 → 3, `_grade_columns` 11 → 11.
+  Оставшиеся эквивалентны (как K1–K3, записаны здесь, не в коде):
+  - `_grade_columns` 11: защита от повторов 7/9/12/13/46/47 (узел колонки — в одном предложении,
+    грейдинг идемпотентен, у пути PostgreSQL нет бюджета); кеш 16/17/21 (пересчёт того же
+    кортежа); 28 (`""` ≡ `None` под `if declarations`); 109 маскируется (единственный читаемый
+    источник — совпавший по алиасу, ветка неоднозначности берётся в обоих случаях).
+  - `_postgres_grouping_output` 3: 13 (у каждого Select PostgreSQL есть scope, родитель Group —
+    владелец); 18 (`while … else` недостижим — цепочка родителей доходит до Select); 30 (путь
+    Alias не читает смещения токенов).
+  - `extract_column_refs` 6: 12/13 (ClickHouse не читает токены PostgreSQL — они нужны только
+    при `aliases is None`); 21/23 (`clickhouse_in_table_fields(root, None)` строит тот же индекс
+    алиасов); 38/39 (ключ `fetch` set-операции sqlglot 30.14 не заполняет — закреплено
+    контрактным тестом выше).
+  - `_postgres_sort_token_info` 3: 6 (`None` ≡ `False`); 7 (пустой frozenset ≡ `None` для узла с
+    целым `start` — у 3133 PostgreSQL-запросов из тестов узлов без него нет); 47 (отличим только
+    запрос, который кончается на `cast(`, а такой не разбирается; ревью r2 проверило `+cast(`,
+    `+(`, `+((`, `+cast()` в SELECT, GROUP BY и ORDER BY). Довод «границы индекса недостижимы на
+    SQL, который разбирается» сначала покрывал и 33/46/48/56 — он неверен: ревью r1 нашло `+cast`
+    в конце запроса (sqlglot читает голый `cast` как колонку; 46/48 читают за концом списка
+    токенов, `IndexError`), ревью r2 — хвостовой `+` в GROUP BY / ORDER BY, который sqlglot
+    отбрасывает (33/56, тот же `IndexError`). Все четыре убиты новыми тестами; проверено
+    `.tmp/s8/mut_check.py`.
+  Ещё `_outermost_nested_queries` 2 → 1: мутант 2 (`and` → `or` в отборе вложенных запросов) в
+  выборке mutmut убивает только новый тест подзапроса в ORDER BY set-операции (прочие убивающие —
+  в `test_sql_guard_clickhouse_alias.py`, вне выборки); проверено прогоном мутанта с
+  `PYTHONPATH=mutants`. Mac-замер, 76 модулей, seed 0, итоговое дерево: 3013 мутантов (+2 —
+  `_subquery_scopes`), 2911 killed, 2 timeout, 100 survived, 0 no_tests, 1073 с; слабые — в 36
+  функциях. Baseline понижен в том же изменении (сумма 130 → 100, проверка
+  `scripts/check_mutation_stats.py --pyproject` — в пределах, без уведомлений «ниже»); SLO
+  дописан. Linux-замера нет (см. `ci_local` ниже): baseline взят с Mac, рост на Linux покажет
+  первый Linux-прогон.
+- **Pilot `2026-11-06-dbt-formula-pin` перезаписан verifier 132.** Против прежних bundles изменились
+  только `manifest.json` и номер verifier в `reports/summary.md` (сверено `.tmp/s8/cmp_pilot.py`).
+  Новые run: `control` `run-632146bbb8c8eaef`, `drift` `run-545528fe67dfee35`, `repinned`
+  `run-4e3531fa58e778c7`; README и `CASES` теста обновлены.
+
+Ревью (независимый Opus-субагент, только чтение). **r1** (открытое): P0 нет; **P1** — мутанты
+46/48 `_postgres_sort_token_info` записаны эквивалентными, а `+cast` в конце запроса их различает
+(убиты тестом); **P2** — baseline не понижен (понижен по полному замеру), `SHOW CREATE DATABASE` в
+spec ничем не закреплён и пробой не задаётся (убран из spec); P3 — «pins each code» при
+незамеченном живьём `291`, пропущенная ветка «Code в начале строки», «map» вместо set, docstring
+helper'а про чужой драйвер, граница про ошибки внешних движков ClickHouse (исправлены); P3 «ends
+the run» без своего теста S8 — оставлен (закреплено тестами S7). Подтверждено: регресса отказов
+нет (коды с `ACCESS_DENIED`/`UNKNOWN_TABLE`/`UNKNOWN_DATABASE` в имени — 291/497/60/81 и
+`336 UNKNOWN_DATABASE_ENGINE` только для `CREATE DATABASE`; 164/516/192 и раньше не ловились);
+путь PostgreSQL не читает код ClickHouse по ошибке; `_subquery_scopes` сохраняет поведение (944 ×
+2 диалекта, 0 расхождений); остальные эквиваленты. **r2** (закрытие): закрыто всё, кроме остатка
+P1 — 33/56 той же функции различает хвостовой `+` (`SELECT a FROM t GROUP BY +`: sqlglot его
+отбрасывает) — убиты тестом, baseline 5 → 3; 47 подтверждён эквивалентным. r3 не запускался:
+закрытие проверено `mut_check` и полным замером mutmut. Урок: «недостижимо на разбираемом SQL»
+проверять перебором хвостов запроса (`+`, `+cast`, `(`) в каждом предложении, а не рассуждением.
+
+Гейт (Mac, Python 3.13, `--with duckdb`, итоговое дерево `d012c64`, правки r1 и r2 включены):
+pytest 11428 passed, 29 skipped, 68 deselected (marker `integration`); black, ruff, mypy
+`--platform linux`, `--strict` linux и win32 — чисто (после него менялись только цифры замера в
+SLO и `measured` baseline: `test_mutation_gate`, `test_docs_as_code`, `test_evidence_format_versions`
+и новый модуль — 196 passed). Гейт дерева после r1 тоже зелёный (11426 passed). Живой модуль
+ClickHouse целиком на том же коде (24.8.14.39): 18 из 18 (12 сценариев S7 и 6 кодов отказа).
+
+`ci_local` не прогнан: ожидание свободной памяти iMac под Linux-VM (≥ 4300 MB; остальное держит VM
+другого проекта) истекло на 3577 MB. Полный Linux-прогон — на коммите S8, когда память освободится;
+итог — в handoff. Публичные dbt-проекты по-прежнему ждут решения владельца.
+
 ## 2026-11-08 — S7b: живая проверка DecisionOps на PostgreSQL; тот же дрейф по SQLSTATE — отчёт, а не exit 2 (verifier 131)
 
 Продолжение S7 (граница его spec: «PostgreSQL 42703 не обработан — срез S7b»). Исполнитель —
