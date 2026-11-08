@@ -915,7 +915,7 @@ Ruff, Black и package-wide strict mypy чистые. Сравнение до/п
 Версии verifier 97 / check 72 / native source 3 сохранены. Synthetic Astra xhigh выбрала
 срез и проверила diff: 0 P1/P2; это не human/production acceptance. Полный offline suite
 и live-стенды в этом срезе не запускались; v1 `SemanticModel.load` не изменялся.
-[Контракт](../specs/unreadable-inputs.md), [план и проверки](../../empty-model-consistency.md).
+[Контракт](../specs/unreadable-inputs.md), [план и проверки](empty-model-consistency.md).
 
 **Предыдущий срез (T-63, 2026-10-07):** `FilesystemArtifactStore.put` пишет каждый артефакт,
 включая manifest, в уникальный соседний staging и публикует одним `os.replace`. На POSIX и

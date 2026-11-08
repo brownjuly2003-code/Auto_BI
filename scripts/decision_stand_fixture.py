@@ -25,9 +25,10 @@ not asked of the one the probe is connected to. Every `budget=N` becomes a `budg
 metric contract (`max_scanned_rows`, `max_scanned_bytes`, `timeout_ms`); with none, the metric
 declares no ceiling and `dwh.cost` answers `cost.no_budget_declared`.
 
-The stand the fixture expects is the one `docs/DECISIONOPS_CURRENT_STATE.md` describes under
-"Стенды, на которых это проверялось": a `dm.sales_daily` seeded with 600 rows over the last 30
-days. The directory is rewritten from scratch on every run, so point it somewhere disposable.
+The stand the fixture expects is the one
+`docs/history/DECISIONOPS_IMPLEMENTATION_HISTORY.md` describes under "Стенды, на которых это
+проверялось": a `dm.sales_daily` seeded with 600 rows over the last 30 days. The directory is
+rewritten from scratch on every run, so point it somewhere disposable.
 """
 
 from __future__ import annotations

@@ -1,11 +1,19 @@
 # Changelog
 
-Формат по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [SemVer](https://semver.org/lang/ru/).
+Формат по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии релизов — по
+[SemVer](https://semver.org/lang/ru/), dev-версии — в формате PEP 440 (`0.6.0.dev0`).
 
 ## [Unreleased]
 
 ### Changed
 
+- **Пакет форка называет себя DecisionOps и не выдаёт себя за опубликованный baseline.**
+  Версия `autobi-agent` в checkout — `0.6.0.dev0` (было `0.5.0`, как у опубликованного
+  baseline): её показывают `auto_bi --version`, `/api/v1/health` и OpenAPI. Описание пакета —
+  Analytics Release & Evidence Gate; ссылки `[project.urls]` на репозиторий baseline убраны.
+  Fork не публикуется и не имеет remote
+  ([ADR 0009](docs/adr/0009-local-package-identity-no-publication.md)).
+  Формат evidence (`VERIFIER_VERSION`, `CHECK_VERSION`) не меняется.
 - **`contracts.validate` грейдит validation issues продукта, который верифицирует
   прогон, а не каждого продукта validated paths.** Прежде шаг грейдил каждый issue
   validation report, и issue, который validation rules дали другому продукту тех же

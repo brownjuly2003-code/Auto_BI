@@ -2,9 +2,9 @@
 
 **Статус:** Accepted
 **Дата:** 2026-09-12
-**Заменяет:** решение 3 в
-[текущем состоянии](../DECISIONOPS_CURRENT_STATE.md) и только пункт 6 ADR 0004 в части
-отложенной подписи
+**Заменяет:** решение об integrity evidence в
+[текущем состоянии](../DECISIONOPS_CURRENT_STATE.md) (на 2026-09-12 — решение 3) и только
+пункт 6 ADR 0004 в части отложенной подписи
 **Связано:** [целевая архитектура](../DECISIONOPS_ARCHITECTURE.md),
 [ADR 0004](0004-synthetic-proxy-offline-investigation.md)
 

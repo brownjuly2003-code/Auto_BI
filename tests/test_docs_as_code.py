@@ -620,6 +620,12 @@ def test_decisionops_public_docs_describe_implemented_dwh_checks() -> None:
         assert not missing, f"{rel} missing implemented dwh checks: {', '.join(missing)}"
 
 
+def test_decisionops_state_stays_a_short_summary() -> None:
+    """Behaviour lives in specs, design in the architecture, slices in the status log."""
+    size = len(DECISIONOPS_CURRENT_STATE.read_bytes())
+    assert size <= 10 * 1024, f"DECISIONOPS_CURRENT_STATE.md is {size} bytes, over 10 KiB"
+
+
 def test_decisionops_state_names_known_residual_boundaries() -> None:
     """The not-implemented inventory must not imply broader coverage than the wedge has."""
     text = DECISIONOPS_CURRENT_STATE.read_text(encoding="utf-8")

@@ -6,8 +6,9 @@
 2. **Auto_BI v0.5.0** — унаследованный baseline «запрос → дашборд».
 
 Это разделение важно: опубликованный пакет `autobi-agent==0.5.0` относится только к
-baseline. DecisionOps пока запускается из локального checkout и не имеет выбранной
-package identity или remote.
+baseline. DecisionOps запускается из локального checkout как `autobi-agent` версии
+`0.6.0.dev0`, не публикуется и не имеет remote
+([ADR 0009](adr/0009-local-package-identity-no-publication.md)).
 
 ## С чего начать
 
@@ -25,7 +26,7 @@ package identity или remote.
 
 | Документ | Назначение | Статус |
 |---|---|---|
-| [DECISIONOPS_CURRENT_STATE.md](DECISIONOPS_CURRENT_STATE.md) | Короткая актуальная сводка, остаток pilot и решения владельца | current |
+| [DECISIONOPS_CURRENT_STATE.md](DECISIONOPS_CURRENT_STATE.md) | Короткая сводка: что работает, что не реализовано, что дальше, решения владельца | current |
 | [DECISIONOPS_ARCHITECTURE.md](DECISIONOPS_ARCHITECTURE.md) | Нормативная целевая архитектура и инварианты | current |
 | [DECISIONOPS_PILOT_2026-08-25.md](reviews/DECISIONOPS_PILOT_2026-08-25.md) | Воспроизводимая репетиция gate на ClickHouse | evidence record |
 | [Owner-gate simulation 2026-09-12](reviews/DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md) | Synthetic owner review и статус findings R1–R4 | proxy evidence; human outcome не измеряется |
@@ -35,6 +36,7 @@ package identity или remote.
 | [ADR 0006](adr/0006-modelled-review-development-gate.md) | Продолжение разработки через моделирование на Astra xhigh | decision |
 | [ADR 0007](adr/0007-human-outcome-out-of-scope.md) | Человеческий owner outcome не входит в цели проекта | decision |
 | [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md) | Первый внешний источник формул метрик — dbt `semantic_manifest.json` | decision |
+| [ADR 0009](adr/0009-local-package-identity-no-publication.md) | Локальная идентичность пакета форка, без публикации | decision |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome не измеряется |
 | [Implementation history](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md) | Подробный хронологический журнал реализации | archive |
 | [Status log](history/DECISIONOPS_STATUS_LOG.md) | Запись каждого среза, сверху новые; пополняется | history |
@@ -42,6 +44,8 @@ package identity или remote.
 | [Strategy snapshot](history/DECISIONOPS_STRATEGY_2026-08-21.md) | Исследование и шестимесячная концепция на 2026-08-21 | archive |
 | [Typed investigation MVP](history/TYPED_INVESTIGATION_MVP.md) | Журнал закрытого среза offline investigation alpha | archive; закрыт |
 | [Chart-level impact](history/CHART_LEVEL_IMPACT.md) | Журнал закрытого среза «impact до плитки» | archive; закрыт |
+| [T-64 empty model](history/empty-model-consistency.md) | План и проверки T-64: один отказ для `model.yaml` без mapping | archive; закрыт |
+| [Evidence signing plan](history/evidence-signing.md) | Чек-лист реализации ADR 0005 | archive; закрыт |
 | [Записи ревью и проверок](reviews/) | Ревью, проверки и pilot-записи отдельных срезов `DECISIONOPS_*` | archive |
 
 Директории `docs/pilot/` содержат tracked входы и evidence репетиции, включая
@@ -49,6 +53,52 @@ package identity или remote.
 Каталог
 `.pilot-work/` в корне хранит локальные технические прогоны и не является частью
 публичного doc graph.
+
+## Поведенческие контракты DecisionOps
+
+`docs/specs/` — основное место для требований и сценариев поведения гейта, которые держат
+тесты. ARCHITECTURE хранит дизайн и его обоснования, CURRENT_STATE — сводку со ссылками.
+
+| Spec | О чём |
+|---|---|
+| [asset-query-governance](specs/asset-query-governance.md) | Governance of a reviewed reference query |
+| [bi-contract-validation](specs/bi-contract-validation.md) | Validation of a delivered dashboard before its BI contract is compiled |
+| [chart-impact-resolution](specs/chart-impact-resolution.md) | Resolving a semantic change to a chart |
+| [contract-files-once](specs/contract-files-once.md) | A contract file is read once, however many validated paths reach it |
+| [contract-read-order](specs/contract-read-order.md) | A snapshot freezes its contracts in an order of what they hold |
+| [dashboard-spec-paths](specs/dashboard-spec-paths.md) | Where `decision verify` reads the spec of a delivered dashboard |
+| [dbt-formula-inventory](specs/dbt-formula-inventory.md) | What keeps a dbt formula `external_ref` |
+| [environment-access](specs/environment-access.md) | The read-only role an environment is reached through |
+| [environment-readings](specs/environment-readings.md) | Attribution of environment readings to the questions they answer |
+| [event-time-readings](specs/event-time-readings.md) | The newest event time a DWH reports is read in one of three forms |
+| [evidence-format-versions](specs/evidence-format-versions.md) | Evidence format versions — what each verifier and check version changed |
+| [evidence-ref-ids](specs/evidence-ref-ids.md) | The ids of evidence named after a ref |
+| [generated-sql](specs/generated-sql.md) | Generated SQL preserves identifier and string characters |
+| [investigation-exact-arithmetic](specs/investigation-exact-arithmetic.md) | Exact arithmetic of the offline investigation skills |
+| [metric-freshness-snapshot](specs/metric-freshness-snapshot.md) | A metric's declared freshness in the canonical snapshot and its diff |
+| [metric-join-paths-snapshot](specs/metric-join-paths-snapshot.md) | A metric's declared join paths in the canonical snapshot and its diff |
+| [metrics-links](specs/metrics-links.md) | A symbolic link below `metrics/` is frozen as the text git commits for it |
+| [model-declarations-snapshot](specs/model-declarations-snapshot.md) | What a model declares that the canonical graph cannot hold |
+| [one-line-answers](specs/one-line-answers.md) | A decision command answers in lines, whatever they name |
+| [one-line-errors](specs/one-line-errors.md) | A decision command says why it stopped in one line |
+| [postgres-kernel-row-security](specs/postgres-kernel-row-security.md) | A PostgreSQL-family kernel without row-level security |
+| [probe-execution-safety](specs/probe-execution-safety.md) | Read-only execution with finite probe limits |
+| [product-metric-pins](specs/product-metric-pins.md) | A product's metric pins in the candidate snapshot |
+| [recorded-result-keys](specs/recorded-result-keys.md) | Recorded results name supplied verified assets |
+| [repeated-delivery-entries](specs/repeated-delivery-entries.md) | An entry repeated in the delivery of a decision product |
+| [repeated-metric-contracts](specs/repeated-metric-contracts.md) | Two contracts of one metric id in a semantic ref |
+| [result-reconciliation](specs/result-reconciliation.md) | Reconciliation of a supplied result against its expected result |
+| [run-identity](specs/run-identity.md) | Run identity — the idempotency key covers every static gate input |
+| [schema-refused-products](specs/schema-refused-products.md) | The run of a product its schema refuses says why |
+| [stated-run-facts](specs/stated-run-facts.md) | What a command line states of a run |
+| [unanswered-engine](specs/unanswered-engine.md) | An engine a run was to ask and that did not answer |
+| [unencodable-output](specs/unencodable-output.md) | An answer on a stream that encodes less |
+| [unreadable-inputs](specs/unreadable-inputs.md) | Files a command cannot read |
+| [utc-timestamps](specs/utc-timestamps.md) | A moment evidence carries has one RFC 3339 spelling |
+| [validated-path-names](specs/validated-path-names.md) | A validated path is named by its place, wherever it lies |
+| [validation-issue-scope](specs/validation-issue-scope.md) | The validation issues a run grades |
+| [validation-report-paths](specs/validation-report-paths.md) | The validation report is one report on every system |
+| [verified-asset-metric-pins](specs/verified-asset-metric-pins.md) | A verified asset's metric pins in the candidate snapshot |
 
 ## Auto_BI v0.5.0 baseline
 

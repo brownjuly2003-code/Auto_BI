@@ -1,465 +1,131 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-04
+**Обновлено:** 2026-11-08 · **Версии evidence:** `VERIFIER_VERSION=129`, `CHECK_VERSION=83`
+(что меняла каждая — [spec](specs/evidence-format-versions.md))
 
-**Стадия:** release gate bootstrap завершён; offline investigation alpha разрешён;
-impact доведён до чарта; происхождение кандидатного числа проверяется вместе с
-привязкой его reviewed-запроса к governed-модели; read-only capture reviewed-запроса
-реализован и проверен на живых PostgreSQL и ClickHouse; evidence manifest получает
-opt-in Ed25519 authentication; единый signed R3 owner-пакет выпущен на Mac;
-Astra xhigh review R3/R4 выполнено по ADR 0006; owner-summary поясняет границы evidence;
-human/design-partner outcome не измеряется — по решению владельца 2026-10-28 он не входит в
-цели проекта ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)); этап hardening закрыт
-финальным synthetic-ревью Astra xhigh всего gate (2026-11-03, `9b534b6`): P1/P2 нет, остальные
-границы задокументированы; мутационный smoke v1-ядра держит ratchet по функциям, `ci_local` без FAIL
+Здесь только то, что работает, что не реализовано и что дальше. Поведение описывают
+[specs](README.md#поведенческие-контракты-decisionops), дизайн —
+[архитектура](DECISIONOPS_ARCHITECTURE.md), срезы —
+[журнал статуса](history/DECISIONOPS_STATUS_LOG.md).
+Прежний подробный текст файла — `git show 5f7b487:docs/DECISIONOPS_CURRENT_STATE.md`.
 
-**Версии evidence:** `VERIFIER_VERSION=129`, `CHECK_VERSION=83`
-
-**Итог этапа hardening (2026-11-03):** три финальных synthetic-ревью Astra xhigh всего gate. Первое
-(`40052f9`) — F1–F7, ревью генерируемого SQL — G1/G2, закрыты T-126…T-130; второе (`d817a17`) —
-R2-1…R2-3, закрыты T-131; третье (`9b534b6`) — P1/P2 нет, P3 (байты SQL обычных имён) исправлен в
-документах. Полный Windows gate — 10074 passed, покрытие 96.43%, mypy в четырёх режимах чисто;
-`ci_local` (впервые на форке) — FAIL в трёх шагах вне диффа этапа: мутационный smoke v1-ядра (97
-survived, 1818 без тестов из 3011), CVE в залоченных filelock, urllib3 и virtualenv, занятое имя
-контейнера demo-image; закрыто этапом мутационного smoke (ниже). Остальные границы — в specs, «Что ещё
-не реализовано» и §17/§18 ARCHITECTURE. Synthetic review, не human acceptance и не production
-certification.
-
-**Этап мутационного smoke (2026-11-03):** три падения первого `ci_local` закрыты. CVE — залоченные
-пакеты обновлены (`b8c9d48`), pip-audit чисто. Мутации — T-132: выборка из 71 офлайн-модуля и ratchet
-по функциям против `scripts/mutation_baseline.json` (рост — FAIL с именем функции, снижение — notice и
-готовое предложение baseline); T-133: ложные kill от гонки очистки `/tmp/pytest-of-<user>` между детьми
-mutmut убраны двумя узкими `-W` только в `[tool.mutmut]`; K1–K3 — 94 теста `sql_guard` убили мутанты CTE-
-и alias-проверок: baseline 356 survived + 39 без тестов в 44 функциях → 130 + 0 в 37; оставшиеся в
-функциях K1 и K3 (11 и 18) разобраны как эквивалентные, остальные не разбирались. Порядок обхода
-зависел от hash seed — шаг CI и локальные замеры идут с `PYTHONHASHSEED=0`. T-134: ожидаемые мутанты берутся из мутированных исходников целей `only_mutate`, и
-каждому нужен ровно один результат в `.meta` своей цели; неполный набор — FAIL без предложения
-baseline. Ревью Astra xhigh: этапа — P1 (неполный набор проходил), затем три раунда по T-134 — P1 и P2,
-P2, затем P1/P2 нет; P3 исправлены. `ci_local` на `87d8b48` — INCOMPLETE: 53 шага PASS, 0 FAIL, не покрыты
-windows-cli-smoke и коммит бейджа (push); мутации 2881/3011 в пределах baseline, Linux и Mac совпали.
-Контейнер `demo` создаётся каждым прогоном demo-image и удаляется после него. Коммиты локальные.
-[SLO](operations/SLO.md) «Mutation smoke».
+**Стадия.** Release gate bootstrap завершён; impact доходит до чарта; read-only capture
+reviewed-запроса проверен на живых PostgreSQL и ClickHouse; evidence подписывается Ed25519
+(opt-in); offline investigation alpha разрешён. Закрыты этапы hardening (2026-11-03),
+мутационного smoke и внешнего источника формул dbt (ADR 0008, S1–S5d, 2026-11-07).
+Owner outcome (human/design-partner) не измеряется
+([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Fork не публикуется и не имеет remote:
+`autobi-agent` локальной версии `0.6.0.dev0`
+([ADR 0009](adr/0009-local-package-identity-no-publication.md)).
 
 ## Коротко
 
-`Auto_BI_new` — локальный additive fork Auto_BI v0.5.0. **Analytics Release &
-Evidence Gate** проверяет governed-семантику, product impact и content-addressed
-evidence; унаследованный путь «запрос → DashboardSpec → BI» остаётся baseline.
-
-Рабочий путь DecisionOps:
+`Auto_BI_new` — локальный additive fork Auto_BI v0.5.0
+([ADR 0003](adr/0003-decisionops-additive-control-plane.md)). **Analytics Release & Evidence
+Gate** проверяет, что изменение governed-семантики не ломает числа продуктов, и пишет
+content-addressed evidence; путь «запрос → DashboardSpec → BI» остаётся baseline
+([ARCHITECTURE.md](ARCHITECTURE.md), [CURRENT_STATE.md](CURRENT_STATE.md)).
 
 ```text
 contracts -> validate -> snapshots/diff -> product impact -> result reconciliation
           -> reference SQL -> DWH checks -> pure BI compile -> evidence bundle/report
-
 reviewed asset SQL -> read-only capture -> canonical ResultSet + attestation -> gate input
 ```
 
-Offline investigation alpha работает отдельным контуром:
-
-```text
-InvestigationPlan + CanonicalMetricResult -> четыре pure version-pinned skill
-       -> evidence-backed observations/gaps -> deterministic brief artifacts
-```
-
-- `auto_bi decision validate` проверяет связанные YAML/JSON-контракты.
-- `auto_bi decision capture` исполняет reviewed SQL одного positive asset под SELECT-only
-  guard, сверяет типы и nullable-контракт с asset'ом и пишет новый gate-ready YAML с
-  canonical result и attestation, привязанной к digest кандидатного semantic snapshot'а.
-- `auto_bi decision verify` выполняет one-shot gate без удалённой BI-мутации; impact
-  доходит до конкретного чарта доставляемого дашборда (`computes_metric` / `reads_field`).
-  Плитка с оператором `raw_sql` читается из своего SQL: `reads_field` там, где statement
-  сам атрибутирует чтение, `computes_metric` не выводится; нерешаемые плитки выходят
-  именованными `chart_gaps` (`chart.opaque_sql` — текст не разобрали, `chart.sql_partial` —
-  прочитали частично, `chart.metric_unread` — связь с метрикой не вывели). Словарный вызов
-  ClickHouse в исполняемой части statement либо называет своё чтение, либо оставляет
-  плитку прочитанной частично: геттер из закрытого набора (`dictGet`, `dictGetOrDefault`,
-  `dictGetOrNull`, `dictGetAll` и типизированные `dictGet<Type>` с теми же суффиксами) с
-  литеральными словарём и атрибутом читается как `<словарь>.<атрибут>` (кортеж атрибутов —
-  по чтению на каждый) и участвует в `reads_field` и правиле метрики как любое
-  атрибутированное чтение; любой другой `dict…` — нелитеральный аргумент, `dictHas` /
-  `dictIsIn`, иерархия, неизвестная функция — `chart.sql_partial`. То же для семейства
-  Join-таблицы: `joinGet` / `joinGetOrNull` с литеральными таблицей и одной колонкой
-  читается как `<таблица>.<колонка>`; любой другой `joinget…` — `chart.sql_partial`.
-  Какая часть statement исполняется, решает один обход гейтов CTE, общий для словаря,
-  Join-таблицы и звезды: именованная CTE открывается, когда исполняемая неквалифицированная
-  ссылка на таблицу её называет или когда исполняемое голое `IN <name>`, которое не
-  видимый алиас, её называет; scalar `WITH` — когда исполняемая колонка читает алиас
-  (голое имя или обращение к кортежу с любого уровня). Плитка без словарного или Join-вызова
-  и без звезды обход не делает. На ClickHouse видимый алиас — не колонка таблицы плитки, а
-  чтение через expression-form `WITH` даёт `reads_field`; `WHERE region IN dm.rev` читается
-  как `IN (SELECT * FROM dm.rev)`, поэтому изменение `dm.rev.revenue` оставляет плитку
-  прочитанной частично (`chart.sql_partial`, «it selects *»), а не молчит. Metric-derived гэпы (`chart.metric_unread`,
-  `chart.metric_unknown`, `chart.formula_untyped`) записываются только для изменения,
-  которое достигает хотя бы одного продукта в scope: вопрос, которого никто в scope не
-  задавал, дырой этого отчёта не является. `chart.metric_unread` при этом спрашивается по
-  дашборду: гэп ложится на плитку raw-SQL, только когда продукт в scope, доставляющий
-  именно этот точный pinned ref, декларирует одну из изменённых метрик — общий дашборд
-  спрашивает объединение деклараций всех доставляющих продуктов, смешанное изменение
-  фильтруется по каждому дашборду независимо, две версии одного дашборда не сливаются;
-  чтения полей, IR-совпадение `computes_metric` и структурные гэпы остаются всем
-  изменением.
-- `results.provenance` оценивает, откуда пришло кандидатное число: snapshot, среда и
-  исполненный запрос сверяются с тем, что гейт держит независимо; число без attestation
-  называется `provenance.unattested`. Ни одна находка не блокирует.
-- `assets.invalidated` дополнительно сверяет reviewed `reference_query` с кандидатным
-  snapshot'ом: неуправляемая витрина — `asset.query_ungoverned`, необъявленная колонка
-  governed-витрины (в том числе голое имя, которого не объявляет ни один governed-источник,
-  который его scope читает) — `asset.query_ungoverned_field` (обе review). Источники
-  scope'а — те, что он читает: непрочитанный CTE колонок не предлагает. Голое имя в
-  подзапросе, который может читать охватывающий запрос, приписывается только когда его
-  объявляет один локальный governed-источник, иначе остаётся непроверенным; тело LATERAL
-  видит предшествующие FROM на каждом уровне до стены derived table/CTE. На ClickHouse
-  видимый алиас — не чтение колонки: SELECT-алиас виден на уровне запроса, `WITH <expr>
-  AS a` — в нём и во всех подзапросах ниже; ссылка на expression-form WITH читается
-  насквозь (колонки из `<expr>` грейдятся в referencing scope; запрос, вложенный в
-  `<expr>`, — как тот же подзапрос на месте ссылки, голые имена enclosed; внутри
-  определения SELECT-алиаса X, WITH-выражение, прочитанное насквозь из него, включено,
-  X — колонка; SELECT-алиас на цикле через SELECT- или WITH-определения — колонка где
-  бы на него ни сослались; WITH-ссылка, замыкающая цикл на пути раскрытия, — колонка,
-  определения по пути всё равно читаются; ссылка за глубиной/бюджетом раскрытий —
-  unattributed под своим именем, обрезанное раскрытие не мемоизируется). На ClickHouse
-  `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной колонки
-  `dm.sales_daily.rev` больше нет, а неуправляемая таблица справа от `IN` —
-  `asset.query_ungoverned` (review). Причина `it selects *` на ClickHouse следует
-  достижимости по общим с chart impact гейтам CTE; непрочитанная named CTE или scalar
-  `WITH` её не создаёт. Именованные чтения сохраняют прежнюю область проверки.
-  PostgreSQL-семейство без изменений. ClickHouse
-  `COLUMNS('regex')` оставляет `asset.query_fields_unchecked`: выбранный набор физических
-  колонок нельзя доказать по SQL или перечню snapshot-полей. Явные соседние чтения
-  грейдятся отдельно. Причина `COLUMNS(...)` следует достижимости по тем же гейтам CTE:
-  непрочитанный селектор её не создаёт; общий extractor сохраняет whole-AST остаток.
-  `JOIN … USING` на обоих семействах движков тоже оставляет
-  advisory с именами ключей: общий ключ нельзя приписать одной таблице. Governance
-  собирает этот остаток по всему AST. Неразрешимая без догадки часть запроса —
-  `asset.query_fields_unchecked` (advisory).
-- `auto_bi decision verify --signing-key <private.pem>` opt-in подписывает canonical
-  manifest Ed25519-ключом; private key читается только по явному внешнему пути.
-- `auto_bi decision evidence --trust-key <public.pem>` перепроверяет digest каждого
-  artifact и подпись против pinned public trust root. Для ротации флаг повторяется.
-- `auto_bi decision investigate <plan.yaml> --results <result.yaml> ... --output <dir>`
-  запускает только offline investigation skills и требует новый output-каталог.
-- Без `--dwh` engine checks дают `check.not_configured`; с `--dwh` работают
-  `dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security` и `dwh.cost`.
+- `auto_bi decision validate` — cross-contract проверка YAML/JSON-контрактов.
+- `auto_bi decision verify` — one-shot gate без BI-мутации. Impact доходит до чарта
+  (`computes_metric` / `reads_field`); нерешаемая плитка — именованный гэп, например
+  `chart.opaque_sql`, `chart.metric_unread`, `chart.formula_untyped`
+  ([spec](specs/chart-impact-resolution.md)). `results.provenance` оценивает происхождение
+  кандидатного числа (без attestation — `provenance.unattested`), `assets.invalidated` сверяет
+  reviewed-запрос со snapshot'ом ([spec](specs/asset-query-governance.md)).
+  `--{side}-semantic-manifest` берёт формулы из dbt, `--signing-key` подписывает manifest.
+- `auto_bi decision capture` — исполняет reviewed SQL positive asset'а read-only и пишет
+  canonical result с attestation, привязанной к digest кандидатного snapshot'а.
+- `auto_bi decision evidence` — пересчитывает digest каждого artifact и проверяет подпись
+  против pinned `--trust-key` ([ADR 0005](adr/0005-ed25519-evidence-trust-root.md)).
+- `auto_bi decision pin` — печатает pin каждой метрики dbt `semantic_manifest.json`;
+  `auto_bi decision runs` — список локальных прогонов без проверки целостности.
+- Без `--dwh` engine checks дают `check.not_configured`; с `--dwh` (`clickhouse`, `greenplum`,
+  `greengage`, `postgres`) —
+  `dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`, `dwh.cost`.
 - Exit codes: `0` pass/advisory, `3` needs_review, `4` block, `2` runtime/usage error.
 
-Remote и package identity fork не настроены; `autobi-agent==0.5.0` — baseline.
-
-## Bootstrap и pilot
-
-| Область | Состояние |
-|---|---|
-| Tasks 1–7 | завершены |
-| Task 8: технический pilot | завершён на ClickHouse 24.8.14.39; R3 unified live package tracked и проверен |
-| Task 8: proxy-owner review | v7 outcome записан исторически, bundles не tracked; свежий v14 proxy подтвердил scope/actionability, R1/R2 и техническая часть R3 закрыты tracked evidence |
-| Task 8: human owner outcome | не измеряется: по [ADR 0007](adr/0007-human-outcome-out-of-scope.md) не входит в цели; время и понятность отчёта для человека не измерены и не заявляются |
-| Offline typed investigation alpha | реализован для supplied canonical results; trust `exploratory` |
-| Chart-level impact | реализован 2026-09-07; 2026-09-17 операторский `raw_sql` читается из SQL (`reads_field`, никогда `computes_metric`); `chart.opaque_sql` — неразобранный текст, `chart.sql_partial` — частичное чтение, `chart.metric_unread` — невыведенная связь с метрикой; 2026-09-18 словарный вызов ClickHouse и `joinGet` / `joinGetOrNull` называют чтение `<таблица>.<колонка>` или оставляют плитку прочитанной частично, metric-derived гэпы — только для изменения, достигающего продукта в scope; один обход гейтов CTE решает исполняемую часть statement для словаря, Join-таблицы и звезды; ClickHouse-алиас больше не `chart.sql_partial` «not attributed to a table», а чтение через expression-form WITH даёт `reads_field` (verifier 24); `IN <table>` читается как звезда над этой таблицей и открывает именованную CTE (verifier 25); 2026-09-22 `chart.metric_unread` решается по каждому дашборду — объединением метрик продуктов в scope, доставляющих этот точный pinned ref (verifier 26); 2026-09-24 inline- и ARRAY JOIN-алиасы не дают phantom `reads_field`, но ARRAY source остаётся чтением (verifier 27); tracked verifier 14 overlay сохраняет `computes_metric` и `chart.opaque_sql`; грейдинг не меняет |
-| Result provenance | реализован 2026-09-07: проверяемая attestation, gate SQL по-прежнему не исполняет |
-| Governance reviewed-запроса | реализована 2026-09-07: таблицы и колонки запроса сверяются со snapshot'ом; 2026-09-11 голое имя приписывается, когда модель оставляет одного кандидата; 2026-09-17 имя разрешается только по источникам, которые scope читает; голое имя в коррелированном подзапросе, которого не объявляет ни один локальный governed-источник, остаётся непроверенным, а не ложным `asset.query_ungoverned_field`; тело LATERAL видит предшествующие FROM на каждом уровне до стены derived table/CTE; 2026-09-18 ClickHouse-алиас читается насквозь, а не как колонка (`CHECK_VERSION` 11 → 12); `x IN <table>` читается как `x IN (SELECT * FROM <table>)`: ложной находки поля `IN rev` больше нет, неуправляемая таблица справа от `IN` — review `asset.query_ungoverned` (`CHECK_VERSION` 12 → 13); 2026-09-24 inline- и ARRAY JOIN-алиасы не именуются как поля, но их определения и source array грейдятся (`CHECK_VERSION` 13 → 14) |
-| Reviewed result capture | реализован 2026-09-11; live-контракты PostgreSQL и ClickHouse 24.8.14.39 пройдены |
-| Evidence authentication | реализована 2026-09-12: opt-in Ed25519, pinned SPKI trust root; pilot-only signer создан вне checkout на Mac, production trust root не назначен |
-| Continuous platform | конкретные срезы через Astra-review по ADR 0006; human outcome не измеряется (ADR 0007) |
-
-Четыре tracked pilot-сценария и найденные дефекты описаны в
-[pilot rehearsal](reviews/DECISIONOPS_PILOT_2026-08-25.md) и `docs/pilot/`; сохранённые там bundles
-выпущены verifier 2 и сохраняют ожидаемые verdict и integrity `pass`. Отдельные Mac verifier 7 runs
-описаны в [симуляции owner-gate 2026-09-04](reviews/DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-04.md),
-но их bundles в Git нет. [Новая proxy-симуляция](reviews/DECISIONOPS_OWNER_GATE_SIMULATION_2026-09-12.md)
-подтвердила scope/actionability свежих verifier 14 отчётов. Её пробел R2 закрыт отдельным
-[tracked chart-impact overlay](pilot/2026-09-12-owner-review-chart-impact/README.md): affected
-report содержит один `computes_metric` chart и один именованный `chart.opaque_sql` gap.
-Свежий прогон на тех же входах сохраняет `computes_metric` и для `operator_table` называет
-`chart.metric_unread`.
-[Live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md) добавляет к тому же change
-reviewed capture, provenance/governance, все пять live DWH checks и signed evidence.
-Это всё ещё техническая подготовка. Task 8 human outcome не измеряется и открытым пунктом
-не считается ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)), а процедурный gate
-[ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md) заменён
-[ADR 0006](adr/0006-modelled-review-development-gate.md): дальнейшая
-разработка требует конкретного Astra-reviewed среза. Это не общее разрешение
-на scheduler, PostgreSQL, REST/MCP, notifications, actions или внешние операции.
+`auto_bi decision investigate <plan.yaml> --results <result.yaml> --output <dir>` — offline
+investigation: четыре pure version-pinned skill над supplied canonical results пишут в новый
+каталог ровно `plan.json`, `results.json`, `brief.json` и `brief.md`. План фиксирует
+`max_queries=0`, brief остаётся `exploratory` ([spec](specs/investigation-exact-arithmetic.md)).
 
 ## Карта реализации
 
 | Ответственность | Код |
 |---|---|
-| Contracts, product/chart impact | `auto_bi/decision/`, `auto_bi/semantic/` |
-| Verification, DWH probe, result capture и pure BI compile | `auto_bi/verification/` |
-| Provenance кандидатного числа | `auto_bi/verification/provenance.py`, `repository.py` |
+| Contracts, product/chart impact, dbt-формулы | `auto_bi/decision/`, `auto_bi/semantic/` |
+| Verification, DWH probe, result capture, pure BI compile | `auto_bi/verification/` |
 | Evidence и owner report | `auto_bi/evidence/`, `auto_bi/verification/summary.py` |
-| Typed offline investigation | `auto_bi/investigation/model.py`, `data.py`, `skills.py`, `claims.py`, `application.py` |
+| Offline investigation | `auto_bi/investigation/` |
 | CLI | `auto_bi/cli.py` |
-
-Нормативный дизайн и обязательные инварианты описаны в
-[DECISIONOPS_ARCHITECTURE.md](DECISIONOPS_ARCHITECTURE.md), решение об additive fork —
-в [ADR 0003](adr/0003-decisionops-additive-control-plane.md).
 
 ## Что ещё не реализовано
 
-- Для external/reviewed-SQL формул и неизвестного семейства движков reference SQL
-  остаётся явным semantic gap; такая формула не несёт термов, поэтому и до плитки
-  не разрешается (`chart.formula_untyped`).
-- Chart-разрешение не заменяет lineage: операторский `raw_sql` больше не непрозрачен как
-  таковой — `chart.opaque_sql` это SQL, который не разобрали, `chart.sql_partial` — SQL,
-  прочитанный частично, `chart.metric_unread` — связь с метрикой, которую резолвер
-  отказывается выводить, а `computes_metric` для operator SQL по-прежнему не заявляется.
-  Связь «чарт считает метрику» — вывод по точному совпадению термов IR-меры, потому что в
-  IR у чарта нет ссылки на метрику, а из произвольного SQL этот срез агрегат не читает.
-  Правило скрытого чтения — контракт (неразворачиваемое выражение оставляет плитку
-  прочитанной частично); детектор узнаёт именованный набор конструкций — `{{ … }}`,
-  `COLUMNS('re')`, `JOIN … USING`, словарное семейство ClickHouse и семейство
-  `joinGet` / `joinGetOrNull`. Для chart impact `COLUMNS('re')` учитывается только в
-  исполняемой части SQL: непрочитанные named CTE и scalar `WITH` гэпа не создают.
-  Ключ `JOIN … USING` следует тем же гейтам исполняемой части.
-  Словарный вызов и вызов Join-таблицы — default-deny:
-  литеральный геттер называет чтение `<таблица>.<колонка>` (для словаря — ещё кортеж
-  атрибутов) и участвует в `reads_field` и правиле метрики; любой другой вызов семейства
-  оставляет плитку прочитанной частично. Конструкция вне этого набора — дыра детектора,
-  а не гарантия полного чтения. `WHERE region IN rev` / `IN dm.rev` читается как
-  `IN (SELECT * FROM <name>)`: плитка выбирает `*` из этой таблицы, поэтому изменение
-  колонки той таблицы — `chart.sql_partial` (звезда), а не молчание. Алиас на том же
-  месте — не колонка: `WHERE region IN allowed` при `WITH […] AS allowed` не
-  приписывает `allowed` таблице плитки и не открывает именованную CTE. Голое имя на
-  правой стороне `IN`, которое не видимый алиас, открывает именованную CTE; видимый
-  scalar WITH- или SELECT-алиас с тем же именем выигрывает у CTE, и табличная форма тогда
-  молчит там, где `IN (SELECT * FROM x)` назвал бы чтение CTE (F-T-14-3).
-- Резолвер связывает ссылку на scalar `WITH` или named CTE с ближайшим объявлением, когда
-  такое связывание однозначно: вложенное объявление не открывает скрытое внешнее (F-T-11-3),
-  в том числе для `dictGet`, `joinGet`, `*` и `JOIN … USING`. Имена ClickHouse
-  сравниваются с точным регистром: `a` не затеняет `A` и не открывает одноимённое
-  при сворачивании регистра соседнее объявление. Self-reference и дубликаты
-  одноимённых объявлений на одном уровне остаются conservative. Обычная двухчастная колонка
-  `t.region` при однозначном явном алиасе именованного `FROM`/`JOIN`-источника того же SELECT читает
-  таблицу и не открывает scalar `WITH t` (F-T-11-7). Обычная трёхчастная колонка
-  `dm.sales_daily.revenue` также не открывает scalar `WITH dm`, когда она точно называет
-  единственный неалиасированный источник своего SELECT и `dm` не конфликтует с другим
-  именем источника (F-T-11-13). Иначе связывание остаётся консервативным.
-- `dwh.cost` проверяет ClickHouse `max_scanned_bytes` и `timeout_ms` exact reference SELECT'ом
-  под engine limits без материализации ответа; PostgreSQL так же потоково проверяет
-  `timeout_ms`. Native API PostgreSQL 14–18 не отдаёт честный exact-query `scanned_bytes`:
-  `EXPLAIN (ANALYZE, BUFFERS)` и transaction counters считают block requests,
-  `pg_stat_io`/PostgreSQL 18 `pg_stat_get_backend_io` — I/O и cache events, и ни один из
-  них не ставит byte ceiling. Поэтому этот потолок остаётся явным `cost.not_measured`
-  (**review**), а не переименованной planner/buffer/I/O-аппроксимацией.
-- Gate остаётся pure и сам не выполняет **verified-asset SQL**. Отдельный
-  `auto_bi decision capture` теперь исполняет его read-only драйвером, канонизирует ответ и
-  формирует attestation; snapshot, среда и запрос затем сверяются с тем, что гейт держит
-  независимо. Ed25519 теперь аутентифицирует producer и неизменность итогового bundle, но
-  сама не доказывает, что capture runner действительно исполнил заявленный запрос. R3 pilot
-  выполняет capture и signing одним runner'ом с ключом вне checkout; production-доказательство
-  требует boundary, в которой private key недоступен вызывающей стороне.
-- Governance reviewed-запроса покрывает таблицы и колонки. Колонка приписывается
-  таблице там, где выбора не оставляет сам SQL, а для голого имени — там, где его не
-  оставляет governed-модель: ровно один источник, который scope читает, объявляет это
-  имя, и все такие источники — governed-таблицы. На ClickHouse видимый алиас не
-  колонка: SELECT-алиас виден на уровне запроса и не виден в подзапросе; scalar
-  `WITH` виден в объявившем запросе и ниже; ссылка на `WITH <expr> AS a` читает
-  колонки из `<expr>` в referencing scope, а запрос, вложенный в `<expr>`, — как
-  тот же подзапрос на месте ссылки (свой FROM, голые имена enclosed); внутри
-  определения query-level алиаса X, WITH-выражение, прочитанное насквозь из него,
-  включено, X — колонка; query-level алиас на цикле через query-level или WITH-определения —
-  колонка где бы на него ни сослались; WITH-ссылка, замыкающая цикл на пути
-  раскрытия, — колонка, определения по пути всё равно читаются; обрезанное
-  раскрытие не мемоизируется. На ClickHouse `x IN <table>` читается как
-  `x IN (SELECT * FROM <table>)`. PostgreSQL-семейство без изменений. Inline-алиас в
-  любой клаузе своего уровня и ARRAY JOIN-алиас видны на этом уровне, их определения
-  грейдятся на месте, а в подзапрос они не видны. Имя, объявленное и WITH-, и SELECT-алиасом на одном
-  уровне, читается как колонка: `WITH revenue AS X, X * 2 AS w SELECT w AS X FROM
-  dm.sales_daily` даёт `asset.query_ungoverned_field` на `dm.sales_daily.X` (F-T-13-17,
-  риск принят). Видимый scalar WITH-, SELECT-, inline- или ARRAY JOIN-алиас справа от `IN` выигрывает у
-  одноимённой CTE, и табличная форма молчит там, где подзапросная открыла бы CTE
-  (F-T-14-3). Оба случая требуют одного имени, объявленного дважды, — ClickHouse такой
-  statement, скорее всего, отвергает. FROM-алиас справа от `IN` читается как таблица
-  этого имени, как и в подзапросной форме: `FROM dm.sales_daily AS rev WHERE region IN
-  rev` даёт `asset.query_ungoverned` на `rev` (F-T-14-1) — пере-сообщение, чтения не
-  прячет. Голое имя в подзапросе, который может
-  читать охватывающий запрос (scalar/IN/EXISTS), остаётся непроверенным, если его не
-  объявляет ни один локальный источник: проверка имя наружу не ведёт. `SELECT *` и
-  `COUNT(DISTINCT *)` остаются непроверенными — distinct-значение зависит от всех колонок
-  источника; один `COUNT(*)` считает строки и колонок не читает. Имя, объявленное
-  несколькими источниками (в том числе на двух LATERAL-уровнях), scope с неуправляемой
-  витриной, читаемым CTE или подзапросом остаются непроверенными — названными
-  (`asset.query_fields_unchecked`), а не молча пропущенными.
-  В PostgreSQL-семействе целое имя `GROUP BY`, совпадающее с допустимым выходным
-  столбцом, проверяется после локальных источников и оставляет advisory, если ни один
-  governed-источник его не объявляет; целое голое имя `ORDER BY` и `DISTINCT ON`
-  сначала называет выход SELECT, а имя внутри выражения читает input-колонку.
-  `ORDER BY` set operation называет выход левой ветки.
-- На ClickHouse `SETTINGS` — настройка, не чтение поля: ни имя, ни значение не участвуют в
-  governance или alias read-through на любом query level. `additional_table_filters` хранит
-  непрочитанный SQL row filter и поэтому оставляет проверку частичной; `additional_result_filter`
-  не добавляет чтение колонки таблицы.
-- Источники, дошедшие с охватывающих LATERAL-уровней, — кандидаты рядом с ближайшими, а
-  не упорядоченные по уровню, поэтому имя, которое объявляют несколько уровней, остаётся
-  непроверенным вместо того, чтобы быть приписанным ближайшему: innermost-first изменил бы
-  контракт атрибуции для каждого коррелированного scope и сначала должен быть задан как
-  требование.
-- Owner outcome человеком не измеряется: по решению владельца это не цель проекта
-  ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Proxy- и Astra-review не заменяют
-  время и подтверждение понятности от живого владельца, и такие утверждения не делаются.
-- Production-certified brief, scheduler, PostgreSQL platform runtime, MCP/actions,
-  **Ossie**, **MetricFlow** и **column-level lineage** не реализованы (дизайн первого
-  внешнего источника формул — [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md);
-  его строгий reader `semantic_manifest.json`, разрешение поддержанных формул в
-  `typed_aggregate`/`typed_ratio` с матрицей паритета на PostgreSQL и ClickHouse
-  ([отчёт](reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md) S5c), binding в
-  узле метрики, артефакт каждой стороны в `decision verify` и `decision capture`, `decision pin` и замыкания в
-  evidence есть — [pilot](pilot/2026-11-06-dbt-formula-pin/README.md); каждая причина, по
-  которой формула dbt остаётся `external_ref`, — строка
-  [инвентаря](specs/dbt-formula-inventory.md), и что из них пишет dbt-core 1.12.6, показывает
-  [корпус](reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md) S5b; публичные dbt-проекты в нём не
-  прогонялись. Известные ограничения этапа: число проблем reader не ограничено и повторяется
-  в каждом dbt-контракте; объявленная `--*-dbt-database` не записана в provenance источника;
-  часть `relation_name` не в двойных кавычках и не одно имя в нижнем регистре (например, имя в
-  смешанном регистре без кавычек или обратные кавычки) или database только с одной стороны —
-  review); проверка колонок
-  reviewed-запроса — это governance («объявлено ли поле»), а не lineage («откуда значение
-  пришло через преобразования»). Offline brief
-  остаётся `exploratory` и не является human acceptance evidence.
+- External/reviewed-SQL формула и неизвестный движок: термов нет, reference SQL — semantic gap,
+  до плитки формула не разрешается (`chart.formula_untyped`).
+- Chart-разрешение — не lineage: `computes_metric` для operator SQL не заявляется,
+  неразобранный SQL — `chart.opaque_sql`; детектор скрытого чтения знает именованный набор
+  конструкций, конструкция вне него — дыра детектора.
+- Governance reviewed-запроса отвечает «объявлено ли поле», а не «откуда значение»; что нельзя
+  приписать без догадки, — `asset.query_fields_unchecked`. Связывание с `WITH` и CTE
+  консервативно там, где оно неоднозначно (ARCHITECTURE §7.5).
+- PostgreSQL `max_scanned_bytes` — `cost.not_measured` (review): API 14–18 не даёт
+  exact-query scanned bytes (ARCHITECTURE §8.2).
+- Gate сам не исполняет **verified-asset SQL** — это делает `decision capture`. Подпись
+  аутентифицирует producer и bundle, но не доказывает, что capture runner исполнил запрос.
+- Production-certified brief, scheduler, PostgreSQL platform runtime, REST/MCP/actions,
+  **Ossie**, **MetricFlow** как движок запросов и **column-level lineage** не реализованы. Из
+  dbt читаются только формулы `semantic_manifest.json`; каждая причина остаться `external_ref` —
+  строка [инвентаря](specs/dbt-formula-inventory.md); публичные dbt-проекты не прогонялись.
+  Ограничения этапа: число проблем reader не ограничено; `--*-dbt-database` не записана в
+  provenance; сомнительное написание `relation_name` — review.
+- Human owner outcome не измеряется (ADR 0007); proxy- и Astra-review его не заменяют.
 
 ## Быстрая проверка
 
 ```bash
 uv run pytest tests/test_decision_verify.py tests/test_decision_cli.py \
   tests/test_decision_impact.py tests/test_decision_chart_impact.py \
-  tests/test_result_provenance.py tests/test_result_capture.py tests/test_result_probe.py -q
-uv run pytest tests/test_investigation_plan.py tests/test_investigation_skills.py \
-  tests/test_investigation_brief.py tests/test_investigation_cli.py -q
-uv run auto_bi decision --help
-uv run auto_bi decision evidence docs/pilot/2026-08-25-ch-tz-margin/evidence \
-  --artifact report-summary-md
-```
-
-Полный прогон гейта на входах, лежащих в репозитории (не на сохранённом bundle, а с
-нуля) — `docs/pilot/2026-08-25-ch-tz-margin/` держит контракты, оба semantic ref'а,
-дашборды, asset и записанный результат:
-
-```bash
+  tests/test_result_provenance.py tests/test_result_capture.py -q
 P=docs/pilot/2026-08-25-ch-tz-margin
 uv run auto_bi decision verify $P/contracts --base $P/base --candidate $P/candidate \
   --dashboards $P/dashboards --assets $P/assets --results $P/results.yaml \
   --product decision://sales/weekly_margin --evidence .evidence
-uv run auto_bi decision investigate tests/fixtures/investigation/weekly_margin.yaml \
-  --results tests/fixtures/investigation/revenue_results.yaml \
-  --output .investigation-example
 ```
 
-Ожидаемый исход — `block`: timezone change доходит до governed-продукта. У pilot-asset'а
-нет ни attestation'а, ни `reference_query`, поэтому там же видно `provenance.unattested`
-(review) и молчание governance-проверки запроса — так и должно быть для сохранённых
-pilot-входов без этих полей; сам tracked historical bundle выпущен verifier 2.
-
-Для owner-review chart resolution используется
-[`docs/pilot/2026-09-12-owner-review-chart-impact/`](pilot/2026-09-12-owner-review-chart-impact/README.md).
-Его verifier 14 bundle имеет release verdict `block` (exit `4`) и отдельно проходит
-integrity inspection (exit `0`); исторические `2026-08-25` dashboard inputs не менялись.
-
-Единый live owner-review пример находится в
-[`docs/pilot/2026-09-12-owner-review-live-r3/`](pilot/2026-09-12-owner-review-live-r3/README.md).
-Его signed verifier 14 bundle имеет release verdict `block` (exit `4`) и проходит inspection
-с pinned public key (`signature_verified=true`, exit `0`).
-
-Шаблон для собственных контрактов — тот же вызов со своими путями:
-
-```bash
-uv run auto_bi decision validate <contracts/>
-uv run auto_bi decision verify <contracts/> --base <base/> --candidate <candidate/> \
-  --dashboards <dashboards/> --evidence .evidence --signing-key <private.pem>
-uv run auto_bi decision evidence .evidence --trust-key <public.pem>
-```
-
-Без `--signing-key` сохраняется совместимый `integrity=content_hashed`. Signing key —
-внешний unencrypted PKCS#8 PEM; pilot-only ключ R3 хранится на Mac вне checkout/evidence с
-mode `0600`. Trust root — один или несколько SPKI public PEM. Private key в Git,
-документацию, evidence, логи или Windows workspace не помещается; production key не назначен.
-
-`investigate` пишет ровно четыре файла: canonical `plan.json`, canonical
-`results.json` с входами и ordered skill outputs, typed `brief.json` и
-deterministic `brief.md`. План фиксирует `max_queries=0`; application layer не получает
-DWH/BI executor и не импортирует remote adapters. Missing/duplicate metric, budget или
-scope stop завершаются кодом `2` до записи output-каталога. Unsupported или ambiguous
-аналитический вход остаётся evidence-backed gap без factual claim. План объявляет
-версию каждого skill: `data_health` — 1, `period_variance`, `contribution_decomposition`,
-`concentration_shift` — 2; другая версия завершает команду кодом `2`. Числовые outputs
-точны для значений любой длины и не зависят от decimal context вызывающего потока
-или порядка строк.
-
-Флаг `--dwh clickhouse|greenplum` включает пять read-only engine checks. На этой
-Windows-машине запрещено поднимать WSL/Docker и аналогичные среды; стенды — только Mac.
+Ожидаемый исход — `block` (смена timezone доходит до продукта) и `provenance.unattested`:
+у pilot-asset'а нет attestation. Другие tracked примеры —
+[chart-impact](pilot/2026-09-12-owner-review-chart-impact/README.md),
+[signed live R3](pilot/2026-09-12-owner-review-live-r3/README.md) и
+[dbt formula pin](pilot/2026-11-06-dbt-formula-pin/README.md). Signing key — внешний PKCS#8
+PEM вне checkout и evidence.
 
 ## Что делать дальше
 
-Этап «внешний источник формул метрик» (решение владельца 2026-11-04,
-[ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)) закрыт: S1 — строгий reader
-`semantic_manifest.json` (`auto_bi/semantic/metricflow.py`), S2 — разрешение поддержанных
-формул с именованными гэпами и матрицей паритета (`auto_bi/semantic/metricflow_formula.py`),
-S3 — binding в узле метрики со сверкой по объявлению и `metric.binding_changed`
-(`auto_bi/semantic/gateway.py`), S4 — артефакт каждой стороны в CLI, `decision pin` и замыкания
-в evidence с pilot [`docs/pilot/2026-11-06-dbt-formula-pin`](pilot/2026-11-06-dbt-formula-pin/README.md),
-S5a — [инвентарь](specs/dbt-formula-inventory.md) причин, по которым формула dbt остаётся
-`external_ref` (89 строк), S5b — [корпус](reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md): что из
-этих конструкций пишет dbt-core 1.12.6 (63 строки; 10 он отвергает, 3 принимает, но не
-доносит), S5c — [паритет на ClickHouse](reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md):
-контекст `clickhouse.date`, 328 доказанных строк (164 + 164), S5d — открытое ревью этапа
-(ревьюер — Opus-субагент, не Astra: лимит Codex у владельца, его выбор) и сверка
-`relation_name`. Публичные dbt-проекты в корпус не вошли: их прогон — запуск чужого кода
-(`dbt deps`), на него нужно отдельное решение владельца.
+S6-hygiene по аудиту 2026-11-07: LF во всём дереве, хроника версий в spec, этот файл не
+больше 10 КБ, идентичность пакета (ADR 0009). Дальше по плану
+владельца — полный `ci_local`, S7 (live-проверка DecisionOps на Mac-стенде в `ci_local`), S8
+(выжившие мутанты `sql_guard`, обёртка приватного API sqlglot). Другие срезы выбирает владелец.
+Публичные dbt-проекты (`dbt deps` — чужой код) — только по его решению.
 
-Дальше по плану владельца (2026-11-07, «прими все решения за меня, исходя из лучшего качества
-проекта»): S6-hygiene — EOL (`.gitattributes` и renormalize), CURRENT_STATE не больше 10 КБ,
-хроника версий в spec с docs-тестом, описание пакета без публикации; S7 — live-проверка
-DecisionOps на Mac-стенде в `ci_local`; S8 — выжившие мутанты `sql_guard` и обёртка приватного
-API sqlglot. Codex/Astra — пока владелец не скажет, что лимит есть.
-Другие срезы владелец выбирает сам, содержательное ревью —
-Astra xhigh по [ADR 0006](adr/0006-modelled-review-development-gate.md) и
-[AGENTS.md](../AGENTS.md).
-Записи закрытых срезов — [журнал статуса](history/DECISIONOPS_STATUS_LOG.md); прежние
-абзацы этого файла о срезах и перечень закрытого —
-[история состояния по срезам](history/DECISIONOPS_SLICE_STATE_HISTORY.md).
+Не начинать без нового решения:
 
-Технически заблокировано до named engine capability (не повторять как локальный research-срез):
+- PostgreSQL scanned bytes — только с trusted provider/extension и его контрактом.
+- Подпись самим capture runner — нужна trusted boundary, где private key недоступен вызывающему.
+- Scheduler, PostgreSQL runtime, REST/MCP, notifications, actions.
 
-1. **PostgreSQL `dwh.cost.max_scanned_bytes`** — native API PostgreSQL 14–18 не даёт
-   exact-query scanned-byte counter или byte ceiling. Возобновлять только с конкретным
-   trusted provider/extension и его pin/contract; до этого `cost.not_measured` — правильный
-   результат.
-
-Отдельно не начинать без нового решения о trusted capture boundary:
-
-1. **Подпись самим capture runner** — manifest signing не доказывает факт исполнения SQL;
-   для этого private key должен быть недоступен вызывающей стороне и изолирован внутри
-   trusted capture/execution boundary.
-
-Scheduler, PostgreSQL platform runtime, REST/MCP, notifications и actions не начинать
-автоматически: следующий срез выбирается после Astra-review. Production acceptance
-и human/design-partner evidence модельным review не заявляются.
-
-Журналы закрытых срезов — [typed investigation](history/TYPED_INVESTIGATION_MVP.md) и
-[chart-level impact](history/CHART_LEVEL_IMPACT.md).
 ## Решения для текущего scope
 
-1. Development gate — моделирование owner-review только через Astra xhigh;
-   человеческое review для продолжения разработки не требуется, human evidence не заявляется.
-2. До публикации fork остаётся без remote и использует текущую локальную package identity.
-3. Release evidence поддерживает два честно различимых режима: совместимый
-   `integrity=content_hashed` и opt-in `integrity=signed` с Ed25519 и out-of-band SPKI
-   trust root по [ADR 0005](adr/0005-ed25519-evidence-trust-root.md).
-4. Реализованный alpha-срез ограничен supplied canonical results и локальными
-   plan/results/brief artifacts; continuous runtime и внешние actions не начинаются.
-5. Дальнейшие срезы выбираются через Astra-review по ADR 0006; synthetic outcome
-   не означает production-certified brief или разрешение внешних действий.
-6. Human owner/design-partner outcome не измеряется и не входит в цели проекта
-   ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)); synthetic оценка его не заменяет,
-   утверждения о пользе для человека не делаются.
-
-## Источники истины
-
-1. Текущий Git status, код и [целевая архитектура](DECISIONOPS_ARCHITECTURE.md).
-2. [ADR 0003](adr/0003-decisionops-additive-control-plane.md),
-   [ADR 0004](adr/0004-synthetic-proxy-offline-investigation.md),
-   [ADR 0005](adr/0005-ed25519-evidence-trust-root.md),
-   [ADR 0006](adr/0006-modelled-review-development-gate.md),
-   [ADR 0007](adr/0007-human-outcome-out-of-scope.md) и tracked pilot evidence, включая
-   [live R3 package](pilot/2026-09-12-owner-review-live-r3/README.md).
-3. Для baseline v0.5.0 — [ARCHITECTURE.md](ARCHITECTURE.md) и [CURRENT_STATE.md](CURRENT_STATE.md).
+1. Development gate — модельное ревью Astra xhigh
+   ([ADR 0006](adr/0006-modelled-review-development-gate.md)); пока у владельца нет лимита
+   Codex — независимый Opus-субагент и мутанты (его выбор 2026-11-07). Human evidence и
+   production acceptance им не заявляются.
+2. Evidence: `integrity=content_hashed` или opt-in `integrity=signed` (Ed25519, ADR 0005).
+3. Investigation alpha ограничен supplied results и локальными artifacts.
