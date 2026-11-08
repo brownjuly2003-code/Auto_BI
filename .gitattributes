@@ -1,3 +1,11 @@
+# Every text file is LF in the index and in the working tree, on every platform (a system
+# `core.autocrlf=true` on Windows included): a CRLF checkout turned the first byte-level edit of a
+# file into a whole-file diff. Git decides what is text; the rules below force it where it matters.
+* text=auto eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+
 # Files that end up inside Linux containers must stay LF even on Windows checkouts.
 *.sh text eol=lf
 *.sql text eol=lf
@@ -11,3 +19,6 @@ docs/history/DECISIONOPS_STRATEGY_2026-08-21.md whitespace=-blank-at-eol
 
 # RFC 8785 conformance vectors are byte-exact fixtures — never line-ending converted.
 tests/fixtures/jcs/* -text
+
+# Tracked evidence bundles are content-addressed: a converted byte would break its digest.
+docs/pilot/**/evidence/** -text
