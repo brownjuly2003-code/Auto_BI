@@ -37,6 +37,8 @@ baseline. DecisionOps запускается из локального checkout 
 | [ADR 0007](adr/0007-human-outcome-out-of-scope.md) | Человеческий owner outcome не входит в цели проекта | decision |
 | [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md) | Первый внешний источник формул метрик — dbt `semantic_manifest.json` | decision |
 | [ADR 0009](adr/0009-local-package-identity-no-publication.md) | Локальная идентичность пакета форка, без публикации | decision |
+| [ADR 0010](adr/0010-finish-line.md) | Финишная черта DecisionOps: пункты F1–F6 и заморозка | decision |
+| [DECISIONOPS_BACKLOG.md](DECISIONOPS_BACKLOG.md) | Находки после финишной черты; срез не открывают | backlog |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome не измеряется |
 | [Implementation history](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md) | Подробный хронологический журнал реализации | archive |
 | [Status log](history/DECISIONOPS_STATUS_LOG.md) | Запись каждого среза, сверху новые; пополняется | history |
