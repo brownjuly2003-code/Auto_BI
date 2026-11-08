@@ -73,7 +73,9 @@ What the driver raises is, of clickhouse_connect, a `ClickHouseError` or a `Stre
 — a result the engine stopped sending midway, which the driver raises outside that hierarchy —
 and of psycopg, through which `postgres`, `greenplum` and `greengage` are asked, a
 `psycopg.Error`. A refusal SHALL NOT end the run, although the driver raises it as one of these:
-the probe answers it as before, as a fact. Other exceptions SHALL be raised as they are,
+the probe answers it as before, as a fact. Neither SHALL a ClickHouse answer that the reference
+query no longer fits the mart, nor a ClickHouse refusal of the exact query (both specified
+below, slice S7). Other exceptions SHALL be raised as they are,
 apart from the local identifier quoting refusal specified below.
 
 The probe SHALL report the failure as `EnvironmentProbeError(engine, target, error)`, the error
@@ -285,6 +287,61 @@ This corrects the earlier specification's statement that the local setting refus
 error: the former text classifier mistook the setting name for an exceeded ceiling.
 Verifier 98 / check 73 distinguish the new evidence; historical bundles are unchanged.
 
+## A reference query the mart no longer fits (ClickHouse, S7)
+
+A column the reference query names that was dropped or renamed, or retyped to a type its
+functions do not take, is the drift `dwh.physical` reports (`physical.column_absent` block,
+`physical.type_drift` review). ClickHouse 24.8.14.39 answers that query, live, with a server
+error rather than a plan: `47 UNKNOWN_IDENTIFIER` for a column gone, `43 ILLEGAL_TYPE_OF_ARGUMENT`
+for the stand's `Decimal` `revenue` retyped to `Float64` or to `String`. Verifier 129 let that
+error end the run as above — exit 2, no report, no bundle — so the drift was never reported.
+
+The code alone does not say the mart drifted: a query of the gate's own, or a model declaring a
+type its aggregate does not take, is answered with the same codes. So the probe takes a code as
+a fact about the mart only where the catalog it already read accounts for it: a column the
+query names that `dwh.physical` grades as gone (`physical.column_absent`) for 47, or as held
+as another type (`physical.type_drift`) for 43. Both read one comparison, `column_drift`,
+which leaves out a column ClickHouse hides from the role or whose reach it did not answer.
+Since verifier 130, for a server code 43 or 47 (a structured driver code first, else the
+`Code:` line, as for T-70):
+
+- `EXPLAIN ESTIMATE` of the reference query SHALL leave the plan unpriced when such a column is
+  among those the reference query names (as sqlglot reads it; a query it cannot read names
+  none) and the table question that lists the plan's metric declares, with the evidence
+  `EXPLAIN ESTIMATE answered the reference query with Code <n> <NAME>: the query no longer fits
+  the mart as the engine has it (<columns> drifted from the model)` naming those columns; the
+  grader emits `cost.not_estimated` (review) as for any unpriced plan. Otherwise — the query's
+  columns as declared, a drift of the other kind, a drift only of columns the query does not
+  name or another table question declares — the error SHALL end the run as above;
+- the exact SELECT of a plan so answered SHALL NOT be sent: its execution facts measure no
+  declared runtime bound, with the evidence `the exact SELECT was not run: EXPLAIN ESTIMATE of
+  the same query answered Code <n> <NAME>, and a query the mart no longer fits measures
+  nothing; no declared runtime bound was measured`, and the grader emits `cost.not_measured`
+  (review) for each declared runtime ceiling. A 43 or 47 from an exact SELECT whose plan was
+  answered is the gate's defect and SHALL end the run as above;
+- `count()` and `max(<event_time>)` SHALL be asked again as `count()` alone, and the reading
+  kept, when the drift of the event-time column accounts for the code (gone: 47; a type
+  `max()` does not take: 43): the rows are counted and undated, and `freshness.unknown`
+  (review) says `<table> has <n> row(s) on <target> and no newest <column> to date them by — a
+  NULL max, or a column the engine no longer has`. Otherwise the error SHALL end the run as
+  above, unless the role is refused even `count()`, which is `access.table_unreadable` (block).
+
+A server code 497 `ACCESS_DENIED` from the exact SELECT — a column the reference query names
+that the role may not read, which `dwh.security` blocks on — SHALL leave every declared runtime
+bound unmeasured, with the evidence `ClickHouse refused the exact SELECT with Code 497
+ACCESS_DENIED; no declared runtime bound was measured`.
+
+The evidence names the code and its name alone: what the server said beside them names its
+version and the URL it was asked at, which a sealed fact must not depend on. Any other code —
+`62 SYNTAX_ERROR` of a query of ours, a network error — and an error with no code still end the
+run as above; the query is not retried. Check grading is unchanged (check 83).
+
+`tests/test_decision_live_clickhouse.py` asserts each drift case against a ClickHouse of the
+pinned `24.8` series that it creates the mart and the gate role in; slice S7 ran it on the Mac
+stand (12 scenarios, ClickHouse 24.8.14.39) and added it to the CI `integration` job, whose
+first run is still ahead. The catalog cross-check and the cases a catalog does not explain are
+asserted offline (`tests/test_environment_probe.py`, `tests/test_runtime_probe.py`).
+
 ## Runtime SQL guard refusal at the CLI boundary (T-80)
 
 If `collect` raises `SQLGuardError` while `decision verify --dwh` asks about the
@@ -315,6 +372,16 @@ not establish that the current typed compiler emits that SQL from an ordinary in
 
 ## Known boundaries
 
+- The answers of a query that no longer fits the mart (S7) are classified for ClickHouse
+  only. PostgreSQL, Greenplum and Greengage name a dropped column with SQLSTATE 42703
+  `undefined_column` and answer a retyped one with errors such as 42883 `undefined_function`
+  or 42804 `datatype_mismatch`; none is a refusal here, so each still ends the run as above.
+  How each of their questions answers a dropped or retyped column is not yet checked live
+  (next slice, S7b).
+- On ClickHouse a column absent from `system.columns` while the engine did not answer what the
+  role may read is not compared: it may be hidden rather than gone. A `43`/`47` over such a
+  column, even one really dropped, still ends the run, as before S7; `dwh.physical` does not
+  grade that column either.
 - Other faults of the probe, including tokenizer failures that are not `SQLGuardError`,
   remain outside the named handlers and may end in a traceback with exit 1.
 - Other driver failures end the run through the existing handler. Server-side settings

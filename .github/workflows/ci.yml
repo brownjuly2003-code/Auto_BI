@@ -403,7 +403,7 @@ jobs:
   integration:
     name: Integration (ClickHouse + Superset stand)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       # Superset runs in its own container and reaches ClickHouse via the compose network
       # alias, not localhost; the RO/admin passwords below match the docker-compose.yml
@@ -425,6 +425,48 @@ jobs:
 
       - name: Install dependencies
         run: uv sync
+
+      # DecisionOps live check (S7): `decision verify --dwh clickhouse` against a ClickHouse of
+      # the image compose pins, which the test seeds itself — its own `dm`, gate role and drift
+      # — so not the compose stand, whose `dm` is the v1 demo mart. It runs before the stand
+      # and is gone before the stand starts: one ClickHouse on the runner at a time. The
+      # password is as ephemeral and unpublished as the stand's `change_me`.
+      - name: Start a throwaway ClickHouse for the DecisionOps live check
+        run: >-
+          docker run -d --rm --name decision-live-ch
+          -p 127.0.0.1:8124:8123
+          -e CLICKHOUSE_USER=admin
+          -e CLICKHOUSE_PASSWORD=decision_live_ci_only
+          -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+          clickhouse/clickhouse-server:24.8
+
+      - name: Integration tests — DecisionOps verify against live ClickHouse
+        env:
+          AUTO_BI_LIVE_CH_HOST: 127.0.0.1
+          AUTO_BI_LIVE_CH_PORT: "8124"
+          AUTO_BI_LIVE_CH_ADMIN_USER: admin
+          AUTO_BI_LIVE_CH_ADMIN_PASSWORD: decision_live_ci_only
+        run: |
+          ready=
+          for attempt in $(seq 60); do
+            if curl -fsS -o /dev/null --data-binary 'SELECT 1' \
+              -u "$AUTO_BI_LIVE_CH_ADMIN_USER:$AUTO_BI_LIVE_CH_ADMIN_PASSWORD" \
+              "http://$AUTO_BI_LIVE_CH_HOST:$AUTO_BI_LIVE_CH_PORT/"; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "$ready" ]; then
+            echo "the throwaway ClickHouse did not answer SELECT 1 within 60 s" >&2
+            docker logs decision-live-ch >&2 || true
+            exit 1
+          fi
+          uv run pytest -m integration tests/test_decision_live_clickhouse.py
+
+      - name: Stop the throwaway ClickHouse
+        if: always()
+        run: docker rm -f decision-live-ch || true
 
       # 1e6 rows (vs the Mac stand's 100M default) is plenty to exercise every
       # viz_type/adapter code path without blowing the runner's time/RAM budget.

@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-08 · **Версии evidence:** `VERIFIER_VERSION=129`, `CHECK_VERSION=83`
+**Обновлено:** 2026-11-08 · **Версии evidence:** `VERIFIER_VERSION=130`, `CHECK_VERSION=83`
 (что меняла каждая — [spec](specs/evidence-format-versions.md))
 
 Здесь только то, что работает, что не реализовано и что дальше. Поведение описывают
@@ -76,6 +76,9 @@ investigation: четыре pure version-pinned skill над supplied canonical 
 - Governance reviewed-запроса отвечает «объявлено ли поле», а не «откуда значение»; что нельзя
   приписать без догадки, — `asset.query_fields_unchecked`. Связывание с `WITH` и CTE
   консервативно там, где оно неоднозначно (ARCHITECTURE §7.5).
+- PostgreSQL/Greenplum: дрейф, которого reference-запрос не переживает (42703; смена
+  типа — 42883/42804), ещё кончает прогон exit 2; живой проверки нет (S7b,
+  [spec](specs/unanswered-engine.md)).
 - PostgreSQL `max_scanned_bytes` — `cost.not_measured` (review): API 14–18 не даёт
   exact-query scanned bytes (ARCHITECTURE §8.2).
 - Gate сам не исполняет **verified-asset SQL** — это делает `decision capture`. Подпись
@@ -109,10 +112,11 @@ PEM вне checkout и evidence.
 
 ## Что делать дальше
 
-S6-hygiene по аудиту 2026-11-07: LF во всём дереве, хроника версий в spec, этот файл не
-больше 10 КБ, идентичность пакета (ADR 0009). Дальше по плану
-владельца — полный `ci_local`, S7 (live-проверка DecisionOps на Mac-стенде в `ci_local`), S8
-(выжившие мутанты `sql_guard`, обёртка приватного API sqlglot). Другие срезы выбирает владелец.
+S7: живой тест verify на ClickHouse (12 сценариев) прогнан на Mac и добавлен в CI-job
+`integration`; дрейф, который каталог подтверждает, а запрос уже не переживает, — отчёт, а не
+exit 2 (verifier 130). Дальше по плану владельца — полный `ci_local`, S7b (то же на
+PostgreSQL), S8 (выжившие мутанты `sql_guard`, обёртка приватного API sqlglot). Другие срезы
+выбирает владелец.
 Публичные dbt-проекты (`dbt deps` — чужой код) — только по его решению.
 
 Не начинать без нового решения:

@@ -32,11 +32,13 @@ from auto_bi.verification.environment import (
     RoleFacts,
     RowPolicyFacts,
     TableFacts,
+    TableQuestion,
     check_access,
     check_cost,
     check_freshness,
     check_physical,
     check_security,
+    column_drift,
     denies_all_rows,
     questions_for,
 )
@@ -285,6 +287,31 @@ def test_a_null_max_event_time_is_unknown_too(tmp_path: Path) -> None:
     )
 
     assert [item.code for item in findings] == ["freshness.unknown"]
+    assert findings[0].detail == (
+        "dm.sales_daily has no rows to date on 127.0.0.1:8124/dm, so its date says nothing "
+        "about how fresh the source is — the check did not run rather than passing"
+    )
+
+
+def test_rows_with_no_newest_event_time_are_unknown_and_say_they_are_there(
+    tmp_path: Path,
+) -> None:
+    """Rows counted and nothing to date them by: a NULL `max()` over rows, or an event-time
+    column the engine no longer has (environment_probe.py counts the rows without it). Saying
+    "no rows" there would send the reader to look for a load that did happen."""
+    questions = questions_for(product(), snapshot_of(tmp_path))
+
+    findings = check_freshness(
+        questions, facts(fact(max_event_time=None, rows=91)), max_age="PT6H", created_at=CREATED_AT
+    )
+
+    assert [item.code for item in findings] == ["freshness.unknown"]
+    assert findings[0].severity is Severity.REVIEW
+    assert findings[0].detail == (
+        "dm.sales_daily has 91 row(s) on 127.0.0.1:8124/dm and no newest date to date them by "
+        "— a NULL max, or a column the engine no longer has — the check did not run rather "
+        "than passing"
+    )
 
 
 @pytest.mark.parametrize("window", ["P1Y", "P1M", "P1Y6M"])
@@ -955,3 +982,44 @@ def test_a_mart_row_security_empties_is_not_priced_either(tmp_path: Path) -> Non
     questions = budgeted(tmp_path, max_scanned_rows=500)
 
     assert check_cost(questions, facts(emptied, plans=[plan(0)])) == []
+
+
+def test_column_drift_is_what_physical_grades() -> None:
+    """environment_probe.py weighs a `43`/`47` against this reading, and `dwh.physical` grades
+    the same one: a column gone (`None`) or held as another type — not one hidden from the role,
+    which ClickHouse leaves out of `system.columns`, nor one whose reach ClickHouse did not
+    answer, and not a type spelt with other spacing or case."""
+    question = TableQuestion(
+        table="dm.sales_daily",
+        event_time_column="date",
+        columns={
+            "date": "Date",
+            "revenue": "Decimal(18,2)",
+            "region": "String",
+            "store_id": "UInt32",
+            "gross_margin": "Decimal(18,2)",
+        },
+        timezones=["Europe/Moscow"],
+        metric_refs=["metric://sales/gross_margin_pct@3"],
+    )
+    table = TableFacts(
+        table="dm.sales_daily",
+        exists=True,
+        readable=True,
+        columns={"date": "Date", "revenue": "decimal(18, 2)", "store_id": "UInt64"},
+        column_reads={"gross_margin": False, "region": True},
+    )
+    unasked = table.model_copy(update={"column_reads": None})
+
+    assert column_drift(question, table, engine="clickhouse") == {
+        "region": None,
+        "store_id": "UInt64",
+    }
+    assert column_drift(question, unasked, engine="clickhouse") == {"store_id": "UInt64"}
+    assert column_drift(question, unasked, engine="postgres") == {
+        "gross_margin": None,
+        "region": None,
+        "store_id": "UInt64",
+    }
+    no_catalog = table.model_copy(update={"columns": None})
+    assert column_drift(question, no_catalog, engine="clickhouse") == {}

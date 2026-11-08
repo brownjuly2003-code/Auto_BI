@@ -815,6 +815,327 @@ def test_a_refused_estimate_is_a_fact_not_a_crash() -> None:
     assert "refused" in facts.plans[0].evidence
 
 
+class Answering(FakeEngine):
+    """Raises `error` for any question containing `marker`, answers the rest as before."""
+
+    def __init__(self, marker: str, error: Exception, **overrides: list[dict[str, Any]]) -> None:
+        super().__init__(clickhouse_engine(**overrides).answers)
+        self.marker = marker
+        self.error = error
+
+    def __call__(self, sql: str) -> list[dict[str, Any]]:
+        if self.marker in sql:
+            self.asked.append(sql)
+            raise self.error
+        return super().__call__(sql)
+
+
+#: What ClickHouse 24.8.14.39 said, live, when `revenue` became a `Float64` and when it was
+#: dropped (tests/test_decision_live_clickhouse.py); the version and the URL around the code
+#: are what a sealed fact must not carry.
+ILLEGAL_TYPE = RuntimeError(
+    "HTTPDriver for http://127.0.0.1:18125 received ClickHouse error code 43\n Code: 43. "
+    "DB::Exception: Illegal type Float64 of 1st argument of function divideDecimal. "
+    "(ILLEGAL_TYPE_OF_ARGUMENT) (version 24.8.14.39 (official build))"
+)
+UNKNOWN_IDENTIFIER = RuntimeError(
+    "HTTPDriver for http://127.0.0.1:18125 received ClickHouse error code 47\n Code: 47. "
+    "DB::Exception: Unknown expression identifier `revenue` in scope SELECT sum(revenue). "
+    "(UNKNOWN_IDENTIFIER) (version 24.8.14.39 (official build))"
+)
+DECLARED = {"date": "Date", "revenue": "Decimal(18,2)"}
+#: The catalog of a mart whose `revenue` was retyped, and of one where it is gone.
+RETYPED = [{"name": "date", "type": "Date"}, {"name": "revenue", "type": "Float64"}]
+DROPPED = [{"name": "date", "type": "Date"}]
+
+
+def priced_over(columns: dict[str, str], **budgets: int) -> EnvironmentQuestions:
+    asked = priced(**budgets)
+    asked.tables[0].columns = columns
+    return asked
+
+
+@pytest.mark.parametrize(
+    ("error", "catalog", "said"),
+    [
+        (ILLEGAL_TYPE, RETYPED, "Code 43 ILLEGAL_TYPE_OF_ARGUMENT"),
+        (UNKNOWN_IDENTIFIER, DROPPED, "Code 47 UNKNOWN_IDENTIFIER"),
+    ],
+)
+def test_a_reference_query_the_mart_no_longer_fits_is_an_unpriced_plan(
+    error: Exception, catalog: list[dict[str, Any]], said: str
+) -> None:
+    """A retyped or dropped column makes the engine refuse to plan the reference query. That
+    is the drift `dwh.physical` exists to report, so it may not end the run before the
+    report; the plan stays unpriced and says why, in the code alone."""
+    engine = Answering("EXPLAIN", error, **{"system.columns": catalog})
+
+    facts = collect(engine, priced_over(DECLARED), engine="clickhouse", target="stand")
+
+    assert facts.plans[0].scanned_rows is None
+    assert facts.plans[0].evidence == (
+        f"EXPLAIN ESTIMATE answered the reference query with {said}: the query no longer "
+        "fits the mart as the engine has it (revenue drifted from the model)"
+    )
+
+
+@pytest.mark.parametrize("error", [ILLEGAL_TYPE, UNKNOWN_IDENTIFIER])
+def test_a_query_the_undrifted_mart_does_not_fit_still_ends_the_run(error: Exception) -> None:
+    """The catalog holds every column the metric reads as declared, so the engine's `43`/`47`
+    points at the query — the gate's own, or a model declaring a type its aggregate does not
+    take. That is a defect to fail on loudly, not a drift to report."""
+    engine = Answering("EXPLAIN", error, **{"system.columns": RETYPED})
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(
+            engine,
+            priced_over({"date": "Date", "revenue": "Float64"}),
+            engine="clickhouse",
+            target="stand",
+        )
+
+    assert raised.value is error
+
+
+@pytest.mark.parametrize(
+    ("error", "catalog", "declared"),
+    [
+        # `47` is a column gone; the only drift here is a retype
+        (UNKNOWN_IDENTIFIER, RETYPED, DECLARED),
+        # `43` is a column retyped; the only drift here is a column gone
+        (ILLEGAL_TYPE, DROPPED, DECLARED),
+        # gone, but the reference query does not read `gross_margin`
+        (
+            UNKNOWN_IDENTIFIER,
+            [{"name": "date", "type": "Date"}, {"name": "revenue", "type": "Decimal(18, 2)"}],
+            {**DECLARED, "gross_margin": "Decimal(18,2)"},
+        ),
+    ],
+    ids=["47-over-a-retype", "43-over-a-drop", "drift-the-query-does-not-read"],
+)
+def test_a_drift_that_does_not_account_for_the_code_still_ends_the_run(
+    error: Exception, catalog: list[dict[str, Any]], declared: dict[str, str]
+) -> None:
+    """The code is weighed against the columns the reference query names and the kind of
+    drift it would take: the mart drifting somewhere else does not make the query's own
+    `43`/`47` a fact about the mart."""
+    engine = Answering("EXPLAIN", error, **{"system.columns": catalog})
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, priced_over(declared), engine="clickhouse", target="stand")
+
+    assert raised.value is error
+
+
+def test_a_drift_of_another_clock_on_the_mart_does_not_account_for_the_code() -> None:
+    """Two table questions over one mart, one per clock. The plan's own question has no drift;
+    the other's `gross_margin` is gone. A query of the plan's metric that names `gross_margin`
+    is the gate's or the model's mistake, and `47` for it ends the run."""
+    engine = Answering(
+        "EXPLAIN",
+        UNKNOWN_IDENTIFIER,
+        **{
+            "system.columns": [
+                {"name": "date", "type": "Date"},
+                {"name": "ts", "type": "DateTime"},
+                {"name": "revenue", "type": "Decimal(18, 2)"},
+            ]
+        },
+    )
+    asked = priced_over(DECLARED)
+    asked.tables.append(
+        TableQuestion(
+            table="dm.sales_daily",
+            event_time_column="ts",
+            columns={"ts": "DateTime", "gross_margin": "Decimal(18,2)"},
+            timezones=["Europe/Moscow"],
+            metric_refs=["metric://sales/gross_margin@1"],
+        )
+    )
+    asked.plans[0].sql = "SELECT date, sum(gross_margin) AS m FROM dm.sales_daily GROUP BY date"
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, asked, engine="clickhouse", target="stand")
+
+    assert raised.value is UNKNOWN_IDENTIFIER
+
+
+def test_a_reference_query_sqlglot_cannot_read_names_no_column_to_account_for_the_code() -> None:
+    engine = Answering("EXPLAIN", UNKNOWN_IDENTIFIER, **{"system.columns": DROPPED})
+    asked = priced_over(DECLARED)
+    asked.plans[0].sql = "SELECT sum(revenue FROM dm.sales_daily"
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, asked, engine="clickhouse", target="stand")
+
+    assert raised.value is UNKNOWN_IDENTIFIER
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("Code: 62. DB::Exception: Syntax error: failed at position 1. (SYNTAX_ERROR)"),
+        RuntimeError("Connection refused"),
+    ],
+)
+def test_an_estimate_that_failed_for_any_other_reason_still_ends_the_run(error: Exception) -> None:
+    """A syntax error is ours and a dropped connection is the run's; neither says anything
+    about the mart, drifted or not, so neither becomes a fact about it."""
+    engine = Answering("EXPLAIN", error, **{"system.columns": DROPPED})
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, priced_over(DECLARED), engine="clickhouse", target="stand")
+
+    assert raised.value is error
+
+
+def test_the_exact_select_of_a_plan_the_mart_no_longer_fits_is_not_sent() -> None:
+    """Its answer is known from the plan; asking again measures nothing and reads the mart."""
+    engine = Answering("EXPLAIN", UNKNOWN_IDENTIFIER, **{"system.columns": DROPPED})
+    sent: list[PlanQuestion] = []
+
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        sent.append(question)
+        return ExecutionFacts(metric_ref=question.metric_ref, evidence="measured")
+
+    facts = collect(
+        engine,
+        priced_over(DECLARED, max_scanned_bytes=1000),
+        engine="clickhouse",
+        target="stand",
+        run_cost=run_cost,
+    )
+
+    assert sent == []
+    [execution] = facts.executions
+    assert execution.checked_bounds == []
+    assert execution.evidence == (
+        "the exact SELECT was not run: EXPLAIN ESTIMATE of the same query answered Code 47 "
+        "UNKNOWN_IDENTIFIER, and a query the mart no longer fits measures nothing; no declared "
+        "runtime bound was measured"
+    )
+
+
+@pytest.mark.parametrize(
+    ("error", "catalog"),
+    [
+        (UNKNOWN_IDENTIFIER, [{"name": "revenue", "type": "Decimal(18, 2)"}]),
+        (ILLEGAL_TYPE, [{"name": "date", "type": "Map(String, String)"}]),
+    ],
+    ids=["47-gone", "43-retyped"],
+)
+def test_an_event_time_column_that_is_gone_leaves_the_rows_counted_and_undated(
+    error: Exception, catalog: list[dict[str, Any]]
+) -> None:
+    """`max(date)` of a dropped `date` is `47 UNKNOWN_IDENTIFIER`, of a `date` retyped to
+    what `max()` does not take `43`. The rows are still there to count; nothing dates them,
+    and `check_freshness` says so instead of the run ending."""
+    engine = Answering(
+        "max(",
+        error,
+        **{"count() AS rows_seen FROM": [{"rows_seen": 91}], "system.columns": catalog},
+    )
+
+    facts = collect(engine, questions(), engine="clickhouse", target="stand")
+
+    table = facts.tables[0]
+    assert (table.exists, table.readable, table.rows_seen) == (True, True, 91)
+    assert table.max_event_time is None
+    assert 'SELECT count() AS rows_seen FROM "dm"."sales_daily"' in engine.asked
+
+
+@pytest.mark.parametrize(
+    ("error", "catalog", "declared"),
+    [
+        # a syntax error is ours, over a mart whose `date` is gone too
+        (
+            RuntimeError("Code: 62. DB::Exception: Syntax error. (SYNTAX_ERROR)"),
+            [{"name": "revenue", "type": "Decimal(18, 2)"}],
+            None,
+        ),
+        # the catalog still holds `date` as declared: the query is at fault, not the mart
+        (UNKNOWN_IDENTIFIER, [{"name": "date", "type": "Date"}], None),
+        (ILLEGAL_TYPE, [{"name": "date", "type": "Date"}], None),
+        # a drift of the other kind does not account for the code
+        (UNKNOWN_IDENTIFIER, [{"name": "date", "type": "DateTime"}], None),
+        (ILLEGAL_TYPE, [{"name": "revenue", "type": "Decimal(18, 2)"}], None),
+        # nor does a drift of another column
+        (UNKNOWN_IDENTIFIER, [{"name": "date", "type": "Date"}], DECLARED),
+    ],
+    ids=[
+        "syntax-over-drift",
+        "47-as-declared",
+        "43-as-declared",
+        "47-over-a-retype",
+        "43-over-a-drop",
+        "another-column-gone",
+    ],
+)
+def test_an_event_time_reading_that_failed_otherwise_still_ends_the_run(
+    error: Exception, catalog: list[dict[str, Any]], declared: dict[str, str] | None
+) -> None:
+    engine = Answering("max(", error, **{"system.columns": catalog})
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, questions(declared), engine="clickhouse", target="stand")
+
+    assert raised.value is error
+
+
+def test_only_an_unfit_code_earns_the_count_question() -> None:
+    """A syntax error is raised before `count()` is asked: asked anyway, a role refused
+    `count()` would turn it into `access.table_unreadable` instead of a broken run."""
+    error = RuntimeError("Code: 62. DB::Exception: Syntax error. (SYNTAX_ERROR)")
+    engine = Answering(
+        "max(", error, **{"system.columns": [{"name": "revenue", "type": "Decimal(18, 2)"}]}
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, questions(), engine="clickhouse", target="stand")
+
+    assert raised.value is error
+    assert 'SELECT count() AS rows_seen FROM "dm"."sales_daily"' not in engine.asked
+
+
+#: An own-grant row with no access type: the engine did not say what the identity may read,
+#: and ClickHouse leaves out of `system.columns` a column the role may not read.
+UNANSWERED_REACH = [{"access_type": None, "database": None, "table": None, "column": None}]
+
+
+def test_a_column_absent_where_the_reach_is_unanswered_does_not_account_for_a_plan() -> None:
+    """`dwh.physical` does not call such an absent column gone on ClickHouse, and the cost
+    reading may not either: the `47` of the plan still ends the run."""
+    engine = Answering(
+        "EXPLAIN",
+        UNKNOWN_IDENTIFIER,
+        **{"system.columns": DROPPED, "system.grants": UNANSWERED_REACH},
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, priced_over(DECLARED), engine="clickhouse", target="stand")
+
+    assert raised.value is UNKNOWN_IDENTIFIER
+
+
+def test_a_column_absent_where_the_reach_is_unanswered_does_not_account_for_max() -> None:
+    """The same reading for the event-time column: a `date` the role may merely not see is
+    not a `date` gone, so `max(date)` answering `47` still ends the run."""
+    engine = Answering(
+        "max(",
+        UNKNOWN_IDENTIFIER,
+        **{
+            "count() AS rows_seen FROM": [{"rows_seen": 91}],
+            "system.columns": [{"name": "revenue", "type": "Decimal(18, 2)"}],
+            "system.grants": UNANSWERED_REACH,
+        },
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, questions(DECLARED), engine="clickhouse", target="stand")
+
+    assert raised.value is UNKNOWN_IDENTIFIER
+
+
 def postgres_plan(*nodes: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     """The one-column document `EXPLAIN (FORMAT JSON)` answers with."""
     return {"EXPLAIN (FORMAT JSON)": [{"QUERY PLAN": list(nodes)}]}

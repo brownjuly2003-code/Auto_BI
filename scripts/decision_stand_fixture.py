@@ -1,19 +1,23 @@
-"""Lay out a decision-product fixture on disk, to run the gate against a live stand (manual).
+"""Lay out a decision-product fixture on disk, to run the gate against a live stand.
 
-NOT part of CI, and not a test fixture: the suite builds its own inputs in `tmp_path`. This is
-for the other check — pointing `auto_bi decision verify --dwh …` at a real engine and reading
+Not a fixture of the offline suite, which builds its own inputs in `tmp_path`. This is for the
+other check — pointing `auto_bi decision verify --dwh …` at a real engine and reading
 what step 7 says about it. Writing that by hand is a dozen YAML files, and a hand-written one
 drifts from what the tests actually cover; this emits exactly the shapes
 `tests/test_decision_verify.py` uses, so a live run and the suite are arguing about one product.
+`tests/test_decision_live_clickhouse.py` (CI job `integration`) runs it against a ClickHouse it
+seeds itself; by hand it points at any stand.
 
 Usage::
 
     uv run python scripts/decision_stand_fixture.py <dir> <engine> [budget=N ...]
 
-`asset=REGION:RATIO,...` writes one verified asset (`weekly_margin_by_region`) whose expected
-result is those rows, pinned to the base snapshot laid out here; `results=REGION:RATIO,...`
+`asset=REGION:VALUE,...` writes one verified asset (`weekly_margin_by_region`) whose expected
+result is those rows, pinned to the base snapshot laid out here; `results=REGION:VALUE,...`
 writes the candidate result recorded for it, so `results.reconcile` has something to compare.
-The gate never runs the asset query itself — record the rows from the stand.
+The gate never runs the asset query itself — record the rows from the stand. The asset's
+reviewed query is the suite's reference shape, `sum(revenue)` per region, so VALUE is that
+sum, not a margin ratio.
 
 `--two-products` lays a second product (`weekly_revenue`, metric `revenue`) beside the margin
 product, on the same mart — the graph on which the gate has to tell one product's change from
@@ -58,13 +62,13 @@ from tests.test_decision_verify import (  # noqa: E402
 
 USAGE = (
     "usage: decision_stand_fixture.py <dir> <engine> [--two-products] "
-    "[asset=REGION:RATIO,...] [results=REGION:RATIO,...] [max_scanned_rows=N] [timeout_ms=N] ..."
+    "[asset=REGION:VALUE,...] [results=REGION:VALUE,...] [max_scanned_rows=N] [timeout_ms=N] ..."
 )
 ROWS_KEYS = ("asset", "results")
 
 
 def _rows(spec: str) -> list[list[str]]:
-    """`msk:0.452054,kzn:0.377` -> rows of the asset result (region, gross_margin_pct)."""
+    """`msk:0.452054,kzn:0.377` -> rows of the asset result (region, value)."""
     return [item.split(":", 1) for item in spec.split(",") if item]
 
 

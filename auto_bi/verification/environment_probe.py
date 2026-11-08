@@ -131,6 +131,22 @@ privilege, and an exception there would turn a fact about the environment into a
 raises everything else — a dead connection is not an access fact and must not be graded as
 one.
 
+**A reference query the mart no longer fits is a plan without an estimate.** ClickHouse
+answers it with `47 UNKNOWN_IDENTIFIER` when a column it reads was dropped or renamed, and with
+`43 ILLEGAL_TYPE_OF_ARGUMENT` when that column is now of a type the query's functions do not
+take (24.8.14.39, live). That is how a mart that drifted from its model answers, and the run
+ended on it: no bundle, and the drift `dwh.physical` was there to report never reported.
+`EXPLAIN ESTIMATE` now keeps the code as the reason there is no number, and the exact SELECT
+of that query is not sent; a `max()` of an event-time column that is gone leaves the rows
+counted and undated. Only where the catalog accounts for the code: a column the query names
+that `dwh.physical` grades as gone, for `47`, or as held as another type, for `43`
+(`column_drift`, the one reading both use). Any other `43`/`47` is raised as before: over a
+mart that holds the query's columns as declared, or drifted only elsewhere, it points at the
+query — the gate's own, or a model that declares a type its aggregate does not take; over a
+column ClickHouse left out of the catalog without saying what the role may read, the column
+may be hidden rather than gone. So is every other error, and a `43`/`47` from an exact SELECT
+whose plan was answered.
+
 **A kernel without row-level security is graded by the catalogs it has.** Greenplum 6 and
 Greengage 6 run on the PostgreSQL 9.4 kernel, and `pg_roles.rolbypassrls`, `pg_policy` and
 `pg_class.relrowsecurity` came with 9.5. The identity question fails there with an undefined
@@ -149,6 +165,10 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime
 from typing import Any, NamedTuple
 
+import sqlglot
+from sqlglot import exp
+from sqlglot.errors import SqlglotError
+
 from auto_bi.engine import CLICKHOUSE, GREENPLUM, sqlglot_dialect
 from auto_bi.introspect.base import RunQuery
 from auto_bi.verification.environment import (
@@ -163,8 +183,14 @@ from auto_bi.verification.environment import (
     RowPolicyFacts,
     TableFacts,
     TableQuestion,
+    column_drift,
     denies_all_rows,
     reading_for,
+)
+from auto_bi.verification.query_limits import (
+    CLICKHOUSE_QUERY_UNFIT,
+    clickhouse_error_code,
+    clickhouse_named_code,
 )
 
 #: Privileges that make a session capable of changing a mart. `TRUNCATE` is Postgres-only;
@@ -276,14 +302,26 @@ def collect(
         session = _clickhouse_session(run_query)
         role = _clickhouse_role(run_query, session)
         tables = [_clickhouse_table(run_query, item, session) for item in questions.tables]
+    unfit: dict[tuple[str, str], str] = {}  # (metric, sql) -> the code its plan was answered
     plans = [
-        _estimate(run_query, item, dialect, postgres=postgres)
+        _estimate(
+            run_query,
+            item,
+            dialect,
+            postgres=postgres,
+            drift=_plan_drift(item, questions, tables, engine=engine),
+            unfit=unfit,
+        )
         for item in questions.plans
         if item.sql
     ]
     executions = (
         [
-            run_cost(item)
+            (
+                _not_run(item, unfit[(item.metric_ref, item.sql)])
+                if (item.metric_ref, item.sql) in unfit
+                else run_cost(item)
+            )
             for item in questions.plans
             if _may_execute(item, questions, dialect, role, tables)
         ]
@@ -325,11 +363,74 @@ def _may_execute(
     )
 
 
+def _plan_drift(
+    question: PlanQuestion,
+    questions: EnvironmentQuestions,
+    tables: list[TableFacts],
+    *,
+    engine: str,
+) -> dict[str, str | None]:
+    """The drift `dwh.physical` grades on the table question that lists the plan's metric."""
+    table = reading_for(question, questions, tables)
+    if table is None:
+        return {}
+    [owner] = [  # `reading_for` answers a plan only through exactly one owner
+        item
+        for item in questions.tables
+        if item.table == question.table and question.metric_ref in item.metric_refs
+    ]
+    return column_drift(owner, table, engine=engine)
+
+
+def _explained(error: Exception, drift: dict[str, str | None], named: set[str]) -> list[str]:
+    """The drifted columns among `named` that account for the engine's code, if any.
+
+    `47 UNKNOWN_IDENTIFIER` is accounted for by a column that is gone, `43
+    ILLEGAL_TYPE_OF_ARGUMENT` by one the engine now holds as another type; a drift the query
+    does not read, or of the other kind, explains nothing, and the code is the query's own.
+    """
+    code = clickhouse_error_code(error)
+    if code not in CLICKHOUSE_QUERY_UNFIT:
+        return []
+    return sorted(
+        column
+        for column, actual in drift.items()
+        if column in named and (actual is None) == (code == 47)
+    )
+
+
+def _named_columns(sql: str, dialect: str) -> set[str]:
+    """Every column name the query mentions; nothing when sqlglot cannot read it."""
+    try:
+        tree = sqlglot.parse_one(sql, read=dialect)
+    except SqlglotError:
+        return set()
+    return {column.name for column in tree.find_all(exp.Column)}
+
+
+def _not_run(question: PlanQuestion, unfit: str) -> ExecutionFacts:
+    """The exact SELECT of a query whose plan the mart no longer fits is not sent at all."""
+    return ExecutionFacts(
+        metric_ref=question.metric_ref,
+        evidence=(
+            f"the exact SELECT was not run: EXPLAIN ESTIMATE of the same query answered {unfit}, "
+            "and a query the mart no longer fits measures nothing; no declared runtime bound "
+            "was measured"
+        ),
+    )
+
+
 # --- plan estimates -----------------------------------------------------------
 
 
 def _estimate(
-    run_query: RunQuery, question: PlanQuestion, dialect: str, *, postgres: bool
+    run_query: RunQuery,
+    question: PlanQuestion,
+    dialect: str,
+    *,
+    postgres: bool,
+    drift: dict[str, str | None],
+    unfit: dict[tuple[str, str], str],
 ) -> PlanFacts:
     """What this engine says the metric's reference query will read.
 
@@ -347,12 +448,17 @@ def _estimate(
     reading = (
         _postgres_estimate(run_query, question.sql)
         if postgres
-        else _clickhouse_estimate(run_query, question.sql)
+        else _clickhouse_estimate(run_query, question.sql, dialect, drift)
     )
+    code = reading.pop("unfit", None)
+    if code is not None:
+        unfit[(question.metric_ref, question.sql)] = code
     return PlanFacts(metric_ref=question.metric_ref, **reading)
 
 
-def _clickhouse_estimate(run_query: RunQuery, sql: str) -> dict[str, Any]:
+def _clickhouse_estimate(
+    run_query: RunQuery, sql: str, dialect: str, drift: dict[str, str | None]
+) -> dict[str, Any]:
     """`EXPLAIN ESTIMATE` — parts, rows and marks, per table the plan reads.
 
     An empty answer is the trap: the stand returned one for a `count()` served out of
@@ -366,7 +472,21 @@ def _clickhouse_estimate(run_query: RunQuery, sql: str) -> dict[str, Any]:
     fact about the environment, while a dropped connection is a broken run, and one function
     cannot both report the first and raise the second.
     """
-    rows = _ask(run_query, f"EXPLAIN ESTIMATE {sql}")
+    try:
+        rows = _ask(run_query, f"EXPLAIN ESTIMATE {sql}")
+    except Exception as error:  # re-raised below unless the mart's own drift explains it
+        unfit = clickhouse_named_code(error, CLICKHOUSE_QUERY_UNFIT)
+        drifted = _explained(error, drift, _named_columns(sql, dialect)) if unfit else []
+        if unfit is None or not drifted:
+            raise
+        return {
+            "evidence": (
+                f"EXPLAIN ESTIMATE answered the reference query with {unfit}: the query no "
+                f"longer fits the mart as the engine has it ({', '.join(drifted)} drifted "
+                "from the model)"
+            ),
+            "unfit": unfit,
+        }
     if rows is None:
         return {"evidence": "the engine refused EXPLAIN ESTIMATE on the reference query"}
     if not rows:
@@ -678,14 +798,26 @@ def _clickhouse_table(
         return TableFacts(
             table=table, event_time_column=question.event_time_column, exists=False, readable=False
         )
-    reading = _ask(
-        run_query,
-        f"SELECT count() AS rows_seen, max({_ident(question.event_time_column)}) AS "
-        f"max_event_time FROM {_qualified(database, name)}",
-    )
+    unfit: Exception | None = None
+    try:
+        reading = _ask(
+            run_query,
+            f"SELECT count() AS rows_seen, max({_ident(question.event_time_column)}) AS "
+            f"max_event_time FROM {_qualified(database, name)}",
+        )
+    except Exception as error:  # re-raised below unless the event-time column no longer fits
+        if clickhouse_named_code(error, CLICKHOUSE_QUERY_UNFIT) is None:
+            raise
+        # The column is gone, or no longer takes `max()`: the rows are still there to count,
+        # and nothing dates them. `dwh.physical` is what says what became of the column; a
+        # catalog that holds it as declared says the query was ours to get wrong (below).
+        unfit = error
+        reading = _ask(run_query, f"SELECT count() AS rows_seen FROM {_qualified(database, name)}")
     reads = _ch_column_reads(session, database, name, question.columns)
     policies = _ch_policies(run_query, session, database, name)
     if not reading:  # the table is there but the role cannot read it
+        # A `max()` the engine could not run is not weighed here: a role refused even `count()`
+        # is `access.table_unreadable`, a block whatever became of the column.
         return TableFacts(
             table=table,
             event_time_column=question.event_time_column,
@@ -711,7 +843,7 @@ def _clickhouse_table(
         # `check_physical` compares only what an engine answered.
         distribution_key=None,
     )
-    return _reading(
+    facts = _reading(
         table,
         reading[0],
         event_time_column=question.event_time_column,
@@ -722,6 +854,11 @@ def _clickhouse_table(
         column_reads=reads,
         row_policies=policies,
     )
+    if unfit is not None and not _explained(
+        unfit, column_drift(question, facts, engine=CLICKHOUSE), {question.event_time_column}
+    ):
+        raise unfit
+    return facts
 
 
 def _ch_untyped_own_grants(grants: list[dict[str, Any]]) -> bool:

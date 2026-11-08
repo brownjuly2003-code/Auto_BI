@@ -251,7 +251,8 @@ class TableFacts(StrictModel):
     rows_seen: int = Field(ge=0, default=0)
     #: A day `2026-08-24`, a UTC moment `2026-08-24T09:00:00Z`, or a clock with no zone
     #: `2026-08-24T09:00:00`; any other text is the engine's own, and `dwh.freshness` names it
-    #: unreadable. `None` when the engine has nothing to date (no rows, or a NULL max).
+    #: unreadable. `None` when the engine has nothing to date (no rows, or a NULL max) or
+    #: no event-time column left to take `max()` of.
     max_event_time: str | None = None
     #: Column -> type as the engine spells it. `None` means the probe did not ask.
     columns: dict[str, str] | None = None
@@ -685,16 +686,20 @@ def check_freshness(
         if denies_all_rows(table, facts.role):
             continue  # `check_security` blocks on it; "no rows" here is that same fact
         if table.rows_seen == 0 or table.max_event_time is None:
+            undated = (
+                f"{question.table} has no rows to date on {facts.target}, so its "
+                f"{question.event_time_column} says nothing about how fresh the source is"
+                if table.rows_seen == 0
+                else f"{question.table} has {table.rows_seen} row(s) on {facts.target} and no "
+                f"newest {question.event_time_column} to date them by — a NULL max, or a "
+                "column the engine no longer has"
+            )
             findings.append(
                 EnvironmentFinding(
                     code="freshness.unknown",
                     severity=Severity.REVIEW,
                     subject=question.table,
-                    detail=(
-                        f"{question.table} has no rows to date on {facts.target}, so its "
-                        f"{question.event_time_column} says nothing about how fresh the "
-                        "source is — the check did not run rather than passing"
-                    ),
+                    detail=f"{undated} — the check did not run rather than passing",
                 )
             )
             continue
@@ -826,20 +831,9 @@ def _column_findings(
     question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
 ) -> list[EnvironmentFinding]:
     """Every column the metric's value is made of, as the engine has it."""
-    if table.columns is None:
-        return []
     findings: list[EnvironmentFinding] = []
-    reads = table.column_reads or {}
-    for column, declared in sorted(question.columns.items()):
-        actual = table.columns.get(column)
-        if actual is None and (
-            reads.get(column) is False
-            or (facts.engine == "clickhouse" and table.column_reads is None)
-        ):
-            # ClickHouse hides columns the role holds no `SELECT(col)` grant on, so absent
-            # from the catalog does not prove absence with denied or unknown reach.
-            # `check_security` reports the denied reach or the unobserved boundary.
-            continue
+    for column, actual in column_drift(question, table, engine=facts.engine).items():
+        declared = question.columns[column]
         if actual is None:
             findings.append(
                 EnvironmentFinding(
@@ -853,7 +847,7 @@ def _column_findings(
                     ),
                 )
             )
-        elif _normalized(actual) != _normalized(declared):
+        else:
             findings.append(
                 EnvironmentFinding(
                     code="physical.type_drift",
@@ -1281,6 +1275,34 @@ def _policy_names(policies: list[RowPolicyFacts]) -> str:
 
 def _joined(value: list[str] | None) -> str | None:
     return None if value is None else ", ".join(value)
+
+
+def column_drift(
+    question: TableQuestion, table: TableFacts, *, engine: str
+) -> dict[str, str | None]:
+    """Declared column -> the type the engine now holds it as, `None` for one it no longer has.
+
+    Exactly the columns `physical.column_absent` (`None`) and `physical.type_drift` grade, and
+    nothing else: environment_probe.py weighs an engine's `47 UNKNOWN_IDENTIFIER` and
+    `43 ILLEGAL_TYPE_OF_ARGUMENT` against the same reading, so a drift the probe takes a code
+    for is one this check reports. Empty when the probe did not read the catalog.
+    """
+    if table.columns is None:
+        return {}
+    reads = table.column_reads or {}
+    drift: dict[str, str | None] = {}
+    for column, declared in sorted(question.columns.items()):
+        actual = table.columns.get(column)
+        if actual is None and (
+            reads.get(column) is False or (engine == "clickhouse" and table.column_reads is None)
+        ):
+            # ClickHouse hides columns the role holds no `SELECT(col)` grant on, so absent
+            # from the catalog does not prove absence with denied or unknown reach.
+            # `check_security` reports the denied reach or the unobserved boundary.
+            continue
+        if actual is None or _normalized(actual) != _normalized(declared):
+            drift[column] = actual
+    return drift
 
 
 def _normalized(type_or_key: str) -> str:

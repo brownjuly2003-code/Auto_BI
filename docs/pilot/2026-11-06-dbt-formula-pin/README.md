@@ -45,15 +45,17 @@ uv run auto_bi decision pin docs/pilot/2026-11-06-dbt-formula-pin/dbt/candidate/
 
 ## Прогоны
 
-Все три прогона: verifier 129, check 83, `created_at=2026-11-06T12:00:00Z`, окружение
+Все три прогона: verifier 130, check 83, `created_at=2026-11-06T12:00:00Z`, окружение
 `synthetic-offline`, `content_hashed`, по 17 артефактов в каждом. Каждый прогон лежит в
-`evidence/<случай>/`.
+`evidence/<случай>/`. Записаны verifier 129 (S4) и перезаписаны verifier 130 (S7,
+2026-11-08): изменились только `run_id`, `verifier_version` и `reports/summary.md`,
+который их называет; прежние bundles — `git show e7df7b9:<путь>`.
 
 | Случай | Кандидат | Run | Evidence digest | Вердикт |
 |---|---|---|---|---|
-| `repinned` | `candidate-repinned` + `dbt/candidate` | `run-3a047d39b9b45869` | `sha256:b8aee14ae8296d780dac2b17a015a20fcba91c1a8aab29a8335eea47b1e9877f` | `block`, exit 4 |
-| `drift` | `candidate-drift` + `dbt/candidate` | `run-1b24c31453ef0d5d` | `sha256:956ed4c9440e914a21dd631961b50f4f2ba677df2e177456d8ff4c8b9f1887eb` | `block`, exit 4 |
-| `control` | `base` + `dbt/base` | `run-60c56808705fc351` | `sha256:72bfa116957772bc51b18e60a27fc2fc5397396b795c43abdc9fee6097fb206a` | `pass_with_advisory`, exit 0 |
+| `repinned` | `candidate-repinned` + `dbt/candidate` | `run-787b67f8b178d455` | `sha256:ec508565ad865434b415bbfdfb582bfccf4af865c57185335f5d229a9b29c549` | `block`, exit 4 |
+| `drift` | `candidate-drift` + `dbt/candidate` | `run-c390e604a56a7921` | `sha256:fbbe2206abf24346b6b4da3644f1ad551826cde906592f7a5b4b6b6143e097df` | `block`, exit 4 |
+| `control` | `base` + `dbt/base` | `run-f18a1c9bfc0d4c9b` | `sha256:dc2fb2520dd7a69a3e5ad5612a4f17daf0550180524455f4c57972797f090f46` | `pass_with_advisory`, exit 0 |
 
 - **repinned.** Diff называет review `metric.formula_changed`: типизированная формула,
   разрешённая из артефакта, сменила знаменатель с `sum(revenue)` на `sum(net_revenue)`. Рядом —
@@ -85,7 +87,7 @@ error: semantic ref docs/pilot/2026-11-06-dbt-formula-pin/candidate-repinned tak
 
 ```bash
 uv run auto_bi decision evidence docs/pilot/2026-11-06-dbt-formula-pin/evidence/repinned \
-  --expect-digest sha256:b8aee14ae8296d780dac2b17a015a20fcba91c1a8aab29a8335eea47b1e9877f
+  --expect-digest sha256:ec508565ad865434b415bbfdfb582bfccf4af865c57185335f5d229a9b29c549
 ```
 
 Воспроизведение в новом временном каталоге. Для `drift` в `--candidate` подставляется

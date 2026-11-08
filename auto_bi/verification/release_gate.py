@@ -133,7 +133,17 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: a bundle checks those closures against the bindings: `evidence.closure_missing`,
 #: `evidence.closure_mismatch`, `evidence.closure_unbound`, `evidence.closure_unverified`. A run
 #: without a bound metric keeps no closure.
-VERIFIER_VERSION = "129"
+#: 130 — a reference query the mart no longer fits is a fact about the mart, not a broken run
+#: (ClickHouse, slice S7): where the catalog accounts for the code — a column the query names that
+#: `dwh.physical` grades as gone for `47 UNKNOWN_IDENTIFIER`, or as retyped for
+#: `43 ILLEGAL_TYPE_OF_ARGUMENT` — EXPLAIN ESTIMATE leaves the plan unpriced, naming those columns,
+#: and its exact SELECT is not sent; `497 ACCESS_DENIED` from the exact SELECT is a refusal; a
+#: `max()` of an event-time column whose drift accounts for the code leaves the rows counted and
+#: undated. The evidence names the code alone, and a `43`/`47` the catalog does not account for
+#: still ends the run. `freshness.unknown` over rows with no newest event time says the rows are
+#: there. Verifier 129 let those answers end the run with no report and no bundle, so the drift
+#: `dwh.physical` reports was never reported; check grading is unchanged and CHECK_VERSION stays 83.
+VERIFIER_VERSION = "130"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

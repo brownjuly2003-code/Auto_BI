@@ -509,6 +509,39 @@ def test_runtime_evidence_harness_is_wired_without_claiming_production_slo() -> 
         assert "Docker cgroup memory usage" in text
 
 
+def test_ci_runs_the_decisionops_live_check_against_the_pinned_clickhouse() -> None:
+    """The live test skips where `AUTO_BI_LIVE_CH_HOST` is unset, so a CI that stopped setting
+    it, or stopped naming the file, would turn S7's evidence into a silent skip."""
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["integration"]["steps"]
+    names = [step.get("name") for step in steps]
+    start = names.index("Start a throwaway ClickHouse for the DecisionOps live check")
+    live = names.index("Integration tests — DecisionOps verify against live ClickHouse")
+    stop = names.index("Stop the throwaway ClickHouse")
+    stand = names.index("Bring up the stand (ClickHouse + Superset)")
+    assert start < live < stop < stand
+
+    compose = yaml.safe_load((REPO / "docker-compose.yml").read_text(encoding="utf-8"))
+    image = compose["services"]["clickhouse"]["image"]
+    server = steps[start]["run"]
+    assert server.split()[-1] == image
+    assert "-p 127.0.0.1:8124:8123" in server
+    assert "CLICKHOUSE_DB" not in server  # the test refuses a server that already has `dm`
+
+    env = steps[live]["env"]
+    assert (env["AUTO_BI_LIVE_CH_HOST"], env["AUTO_BI_LIVE_CH_PORT"]) == ("127.0.0.1", "8124")
+    assert {"AUTO_BI_LIVE_CH_ADMIN_USER", "AUTO_BI_LIVE_CH_ADMIN_PASSWORD"} <= set(env)
+    run = steps[live]["run"]
+    assert "uv run pytest -m integration tests/test_decision_live_clickhouse.py" in run
+    assert "--deselect" not in run and " -k " not in run
+    # a server that never came up fails the step with its log, not with 12 connection errors
+    waited = run.split("uv run pytest", 1)[0]
+    assert "docker logs decision-live-ch" in waited and "exit 1" in waited
+
+    assert steps[stop]["if"] == "always()"
+    assert "docker rm -f decision-live-ch" in steps[stop]["run"]
+
+
 def test_current_state_and_closure_match_closed_step12_gates() -> None:
     """CURRENT_STATE + PROJECT_CLOSURE must match closed step-12 mutation/mypy gates."""
     with (REPO / "pyproject.toml").open("rb") as fh:

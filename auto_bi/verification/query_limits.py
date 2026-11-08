@@ -175,3 +175,28 @@ def clickhouse_error_code(error: Exception) -> int | None:
 
 def clickhouse_timed_out(error: Exception) -> bool:
     return clickhouse_error_code(error) == 159
+
+
+#: What ClickHouse answers a query that no longer fits the mart it reads: a column the query names
+#: was dropped or renamed (`47 UNKNOWN_IDENTIFIER`), or is now of a type its functions do not take
+#: (`43 ILLEGAL_TYPE_OF_ARGUMENT`: the stand's `Decimal` `revenue` retyped to `Float64` or
+#: `String`). `EXPLAIN ESTIMATE` and `max()` of a dropped event-time column answer so (ClickHouse
+#: 24.8.14.39, live: tests/test_decision_live_clickhouse.py). The code alone does not say the mart
+#: drifted — a query of the gate's own can name a wrong column too — so environment_probe.py takes
+#: it as a fact only where the catalog accounts for it.
+CLICKHOUSE_QUERY_UNFIT = {43: "ILLEGAL_TYPE_OF_ARGUMENT", 47: "UNKNOWN_IDENTIFIER"}
+
+#: What ClickHouse answers a query naming a column the role may not read (`497 ACCESS_DENIED`:
+#: `SELECT(gross_margin)` revoked from a grant on the database; 24.8.14.39, live).
+CLICKHOUSE_QUERY_REFUSED = {497: "ACCESS_DENIED"}
+
+
+def clickhouse_named_code(error: Exception, names: dict[int, str]) -> str | None:
+    """`Code 47 UNKNOWN_IDENTIFIER` for an error whose code `names` holds, else `None`.
+
+    The code and its name only: what the server said beside them names its version and the
+    URL it was asked at, which a sealed fact must not depend on.
+    """
+    code = clickhouse_error_code(error)
+    name = None if code is None else names.get(code)
+    return None if name is None else f"Code {code} {name}"

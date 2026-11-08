@@ -24,7 +24,9 @@ from auto_bi.postgres import (
 )
 from auto_bi.verification.environment import CostBound, ExecutionFacts, PlanQuestion
 from auto_bi.verification.query_limits import (
+    CLICKHOUSE_QUERY_REFUSED,
     clickhouse_error_code,
+    clickhouse_named_code,
     clickhouse_query_settings,
     prepare_clickhouse_readonly,
     read_clickhouse_session,
@@ -150,6 +152,18 @@ def _clickhouse_execution(
         # Newer drivers carry the server code separately. Older ones include a Code line.
         # A setting name alone does not establish that a query ran or exceeded any limit.
         code = clickhouse_error_code(exc)
+        # `43`/`47` are not caught here: a query its own plan accepted that the engine then
+        # cannot run is the gate's defect, not a fact (environment_probe.py does not send the
+        # exact SELECT of a plan the mart's drift no longer fits).
+        refused = clickhouse_named_code(exc, CLICKHOUSE_QUERY_REFUSED)
+        if refused is not None:  # environment_probe.py: a refusal is an answer
+            return ExecutionFacts(
+                metric_ref=question.metric_ref,
+                evidence=(
+                    f"ClickHouse refused the exact SELECT with {refused}; no declared runtime "
+                    "bound was measured"
+                ),
+            )
         # TOO_MANY_BYTES must concern reading, not e.g. an environment result-size limit.
         if code == 307 and _CH_BYTES_EXCEEDED.search(message):
             if byte_limit is not None:

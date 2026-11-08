@@ -1,11 +1,11 @@
 # Release gate — decision\:\/\/sales\/weekly\_margin\@1
 
 **Verdict:** pass_with_advisory
-**Run:** run-60c56808705fc351
+**Run:** run-f18a1c9bfc0d4c9b
 **Base semantics:** sha256:a06579581d5bc9ace529da90b739cd7b846c97fd81ac3e36e288ebdc6cc96732
 **Candidate semantics:** sha256:a06579581d5bc9ace529da90b739cd7b846c97fd81ac3e36e288ebdc6cc96732
 **Environment:** synthetic\-offline
-**Created:** 2026-11-06T12:00:00Z by verifier 129
+**Created:** 2026-11-06T12:00:00Z by verifier 130
 
 Derived from the checks below (§9.2): this report restates what they found and adds
 no finding of its own. The verdict above is the one those checks carry — the bundle's

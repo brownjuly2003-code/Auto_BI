@@ -9,7 +9,7 @@ import pytest
 from psycopg.pq import TransactionStatus
 
 from auto_bi.semantic.metric_contract import MetricBudget
-from auto_bi.verification import runtime_probe
+from auto_bi.verification import query_limits, runtime_probe
 from auto_bi.verification.environment import CostBound, PlanQuestion
 
 SQL = "SELECT date, store_id, sum(revenue) AS m FROM dm.sales_daily GROUP BY date, store_id"
@@ -163,6 +163,105 @@ def test_clickhouse_safety_timeout_is_not_misreported_as_a_contract_violation() 
     assert fact.checked_bounds == []
     assert fact.exceeded_bound is None
     assert "safety timeout" in fact.evidence
+
+
+#: The server's own lines, as ClickHouse 24.8.14.39 said them live
+#: (tests/test_decision_live_clickhouse.py), with the URL and version a fact must not carry.
+SERVER_SAID = (
+    "HTTPDriver for http://127.0.0.1:18125 received ClickHouse error code {code}\n Code: {code}. "
+    "DB::Exception: {text}. ({name}) (version 24.8.14.39 (official build))"
+)
+
+
+@pytest.mark.parametrize(
+    ("code", "name", "text"),
+    [
+        (43, "ILLEGAL_TYPE_OF_ARGUMENT", "Illegal type Float64 of 1st argument of divideDecimal"),
+        (47, "UNKNOWN_IDENTIFIER", "Unknown expression identifier `revenue`"),
+    ],
+)
+def test_clickhouse_exact_select_its_plan_accepted_but_cannot_run_ends_the_run(
+    code: int, name: str, text: str
+) -> None:
+    """environment_probe.py does not send the exact SELECT of a plan the mart's drift no
+    longer fits, so `43`/`47` here means a query its own plan accepted that the engine then
+    could not run: the gate's defect, raised as it was rather than sealed as a fact."""
+    error = FakeClickHouseError(SERVER_SAID.format(code=code, name=name, text=text))
+    client = FakeClickHouse(error=error)
+
+    with pytest.raises(FakeClickHouseError) as raised:
+        runtime_probe._clickhouse_execution(
+            client,
+            question(max_scanned_bytes=50_000, timeout_ms=2_500),
+            error_type=FakeClickHouseError,
+        )
+
+    assert raised.value is error
+
+
+def test_clickhouse_exact_select_refused_for_a_column_is_an_unmeasured_fact() -> None:
+    """`SELECT(gross_margin)` revoked: `dwh.security` blocks on it; the exact SELECT that
+    names the column is refused, and that refusal is an answer, not a broken run."""
+    client = FakeClickHouse(
+        error=FakeClickHouseError(
+            SERVER_SAID.format(
+                code=497,
+                name="ACCESS_DENIED",
+                text="gate_ro: Not enough privileges. To execute this query, it's necessary to "
+                "have the grant SELECT(gross_margin) ON dm.sales_daily",
+            )
+        )
+    )
+
+    fact = runtime_probe._clickhouse_execution(
+        client, question(max_scanned_bytes=50_000, timeout_ms=2_500), error_type=FakeClickHouseError
+    )
+
+    assert fact.checked_bounds == []
+    assert fact.exceeded_bound is None
+    assert fact.evidence == (
+        "ClickHouse refused the exact SELECT with Code 497 ACCESS_DENIED; no declared runtime "
+        "bound was measured"
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Code: 62. DB::Exception: Syntax error: failed at position 1. (SYNTAX_ERROR)",
+        "Code: 210. DB::NetException: Connection refused. (NETWORK_ERROR)",
+        "ACCESS_DENIED with no code line",
+    ],
+)
+def test_clickhouse_exact_select_failing_otherwise_still_ends_the_run(message: str) -> None:
+    error = FakeClickHouseError(message)
+    client = FakeClickHouse(error=error)
+
+    with pytest.raises(FakeClickHouseError) as raised:
+        runtime_probe._clickhouse_execution(
+            client,
+            question(max_scanned_bytes=50_000, timeout_ms=2_500),
+            error_type=FakeClickHouseError,
+        )
+
+    assert raised.value is error
+
+
+def test_clickhouse_code_carried_by_the_driver_is_named_the_same() -> None:
+    """Newer drivers carry the server code as an attribute and no `Code:` line."""
+    error = FakeClickHouseError("Unknown expression identifier `revenue`")
+    error.code = 47  # type: ignore[attr-defined]
+
+    assert query_limits.clickhouse_named_code(error, query_limits.CLICKHOUSE_QUERY_UNFIT) == (
+        "Code 47 UNKNOWN_IDENTIFIER"
+    )
+    assert query_limits.clickhouse_named_code(error, query_limits.CLICKHOUSE_QUERY_REFUSED) is None
+    assert (
+        query_limits.clickhouse_named_code(
+            FakeClickHouseError("no code at all"), query_limits.CLICKHOUSE_QUERY_UNFIT
+        )
+        is None
+    )
 
 
 class FakeQueryCanceled(Exception):
