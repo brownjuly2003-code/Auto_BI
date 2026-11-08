@@ -16,6 +16,21 @@ CHANGELOG names 1 → 2 and the transitions from verifier 7 → 8 and check 5 �
 Part of the idempotency key: a different verifier can derive a different verdict or
 evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 
+### Verifier 131
+
+a reference query the PostgreSQL mart no longer fits is a fact about the mart too
+(slice S7b), as verifier 130 made it on ClickHouse: where the catalog accounts for the state —
+a column the query names that `dwh.physical` grades as gone for `42703 undefined_column`, or
+as retyped for `42883 undefined_function` — EXPLAIN leaves the plan unpriced, naming those
+columns, and its exact SELECT is not sent; `42501 insufficient_privilege` from the exact
+SELECT is a refusal; a `max()` of an event-time column whose drift accounts for the state
+leaves the rows counted and undated. The evidence names the SQLSTATE and its condition name
+alone, and a `42703`/`42883` the catalog does not account for still ends the run. On both
+engines that plan's evidence now says the drift is taken to mean the query no longer fits the
+mart: the drift answers the code by its kind, not by where the query failed. Verifier 130 let
+those answers end a PostgreSQL run with no report and no bundle; check grading is unchanged
+and CHECK_VERSION stays 83.
+
 ### Verifier 130
 
 a reference query the mart no longer fits is a fact about the mart, not a broken run

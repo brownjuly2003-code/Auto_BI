@@ -1284,8 +1284,9 @@ def column_drift(
 
     Exactly the columns `physical.column_absent` (`None`) and `physical.type_drift` grade, and
     nothing else: environment_probe.py weighs an engine's `47 UNKNOWN_IDENTIFIER` and
-    `43 ILLEGAL_TYPE_OF_ARGUMENT` against the same reading, so a drift the probe takes a code
-    for is one this check reports. Empty when the probe did not read the catalog.
+    `43 ILLEGAL_TYPE_OF_ARGUMENT` (PostgreSQL: `42703`, `42883`) against the same reading, so
+    a drift the probe takes a code for is one this check reports. Empty when the probe did not
+    read the catalog.
     """
     if table.columns is None:
         return {}

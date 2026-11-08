@@ -73,9 +73,9 @@ What the driver raises is, of clickhouse_connect, a `ClickHouseError` or a `Stre
 — a result the engine stopped sending midway, which the driver raises outside that hierarchy —
 and of psycopg, through which `postgres`, `greenplum` and `greengage` are asked, a
 `psycopg.Error`. A refusal SHALL NOT end the run, although the driver raises it as one of these:
-the probe answers it as before, as a fact. Neither SHALL a ClickHouse answer that the reference
-query no longer fits the mart, nor a ClickHouse refusal of the exact query (both specified
-below, slice S7). Other exceptions SHALL be raised as they are,
+the probe answers it as before, as a fact. Neither SHALL an answer that the reference query no
+longer fits the mart, nor a refusal of the exact query (ClickHouse since slice S7, PostgreSQL
+since S7b; both specified below). Other exceptions SHALL be raised as they are,
 apart from the local identifier quoting refusal specified below.
 
 The probe SHALL report the failure as `EnvironmentProbeError(engine, target, error)`, the error
@@ -308,8 +308,9 @@ Since verifier 130, for a server code 43 or 47 (a structured driver code first, 
 - `EXPLAIN ESTIMATE` of the reference query SHALL leave the plan unpriced when such a column is
   among those the reference query names (as sqlglot reads it; a query it cannot read names
   none) and the table question that lists the plan's metric declares, with the evidence
-  `EXPLAIN ESTIMATE answered the reference query with Code <n> <NAME>: the query no longer fits
-  the mart as the engine has it (<columns> drifted from the model)` naming those columns; the
+  `EXPLAIN ESTIMATE answered the reference query with Code <n> <NAME>, taken to mean the query
+  no longer fits the mart as the engine has it (<columns> drifted from the model)` naming those
+  columns (since verifier 131; verifier 130 said `…<NAME>: the query no longer fits…`); the
   grader emits `cost.not_estimated` (review) as for any unpriced plan. Otherwise — the query's
   columns as declared, a drift of the other kind, a drift only of columns the query does not
   name or another table question declares — the error SHALL end the run as above;
@@ -342,6 +343,55 @@ stand (12 scenarios, ClickHouse 24.8.14.39) and added it to the CI `integration`
 first run is still ahead. The catalog cross-check and the cases a catalog does not explain are
 asserted offline (`tests/test_environment_probe.py`, `tests/test_runtime_probe.py`).
 
+## The same drift on PostgreSQL (S7b)
+
+PostgreSQL 16.15 answers the same drift, live, in its own states: `42703 undefined_column` for a
+column the query names that was dropped or renamed, `42883 undefined_function` for one retyped
+to what its functions or operators do not take. `EXPLAIN (FORMAT JSON)` of the reference query
+answers so, and so does `max()` of an event-time column dropped (42703) or retyped (42883). A
+drift PostgreSQL still plans raises nothing and is graded as before (`physical.type_drift`, and
+`freshness.unreadable_event_time` for a `date` that no longer reads as a time). Verifier 130
+let the two states end the run as above. `tests/test_decision_live_postgres.py` pins `revenue`
+renamed, as `text` (`sum(text)`) and as `double precision` (which `trunc(…, integer)` does not
+take), `gross_margin` dropped, `date` dropped and as `jsonb` (`max(jsonb)`), and `revenue` as
+`numeric(38,4)`, which still plans. Seen once on 16.15 while the slice was designed, and not
+pinned: 42883 for `revenue` as `boolean` or `interval` (no `=` with an integer) and for `date`
+as `boolean`; a plan for `revenue` as `bigint` and for `date` as `timestamptz`, `integer` or
+`text`.
+
+Since verifier 131 the probe reads them as it reads ClickHouse's codes, by the SQLSTATE the
+driver carries (psycopg's `sqlstate`, psycopg2's `pgcode`) and never by the message, which
+quotes the query: 42703 is accounted for by a column gone, 42883 by one retyped, against the
+same `column_drift`. The PostgreSQL catalog lists every column whatever the role may read, so
+no column is left out of it for being hidden.
+
+- `EXPLAIN` of the reference query SHALL leave the plan unpriced where the rule above would on
+  ClickHouse, with the evidence `EXPLAIN answered the reference query with SQLSTATE <state>
+  <name>, taken to mean the query no longer fits the mart as the engine has it (<columns>
+  drifted from the model)`; otherwise the error SHALL end the run as above;
+- the exact SELECT of a plan so answered SHALL NOT be sent, with the evidence `the exact SELECT
+  was not run: EXPLAIN of the same query answered SQLSTATE <state> <name>, and a query the mart
+  no longer fits measures nothing; no declared runtime bound was measured`; a 42703 or 42883
+  from an exact SELECT whose plan was answered SHALL end the run as above;
+- `count(*)` and `max(<event_time>)` SHALL be asked again as `count(*)` alone, and the reading
+  kept, where the drift of the event-time column accounts for the state, as on ClickHouse.
+
+Any `42501 insufficient_privilege` from the exact SELECT SHALL leave every declared runtime
+bound unmeasured, with the evidence `PostgreSQL refused the exact SELECT with SQLSTATE 42501
+insufficient_privilege; no declared runtime bound was measured`. Live it is a column the
+reference query names that the role may not read, which `dwh.security` blocks on; its plan was
+refused already, as before (`the engine refused EXPLAIN on the reference query`). The runtime
+bounds are set before the SELECT, outside this reading, so a `SET` the role may not make still
+ends the run.
+
+Any other state — `42601 syntax_error` of a query of ours, a connection failure — and an error
+with no state still end the run as above. `tests/test_decision_live_postgres.py` asserts the
+pinned drifts above, the hidden column and the clean, stale, rows-ceiling and writer stands
+against a PostgreSQL it creates its own database and roles in; slice S7b ran it on the Mac
+(PostgreSQL 16.15) and added it to the CI `integration` job, which starts a throwaway
+`postgres:16` container for it; its first run there is still ahead. The cases the catalog does
+not explain are asserted offline.
+
 ## Runtime SQL guard refusal at the CLI boundary (T-80)
 
 If `collect` raises `SQLGuardError` while `decision verify --dwh` asks about the
@@ -372,12 +422,25 @@ not establish that the current typed compiler emits that SQL from an ordinary in
 
 ## Known boundaries
 
-- The answers of a query that no longer fits the mart (S7) are classified for ClickHouse
-  only. PostgreSQL, Greenplum and Greengage name a dropped column with SQLSTATE 42703
-  `undefined_column` and answer a retyped one with errors such as 42883 `undefined_function`
-  or 42804 `datatype_mismatch`; none is a refusal here, so each still ends the run as above.
-  How each of their questions answers a dropped or retyped column is not yet checked live
-  (next slice, S7b).
+- The answers of a query that no longer fits the mart (S7, S7b) were observed live on
+  ClickHouse 24.8.14.39 and PostgreSQL 16.15 only. Greenplum and Greengage take the PostgreSQL
+  path and are expected to answer with the same states, but no stand of either has been run.
+  A retype answered with another state — `42804 datatype_mismatch`, which no drift produced on
+  16.15 — still ends the run as above.
+- A code or a state is taken to mean a drift by its kind alone — a column gone for `47` and
+  `42703`, one retyped for `43` and `42883` — and neither the message nor where in the query the
+  engine failed is read. A fault of the gate's own query that meets a drift of that kind of a
+  column the query names is reported as that drift: the plan unpriced, its evidence «taken to
+  mean», `physical.*` grading the drift; it ends the run once the drift is resolved. `42883`
+  also answers a function or an operator missing altogether (an older kernel, an extension
+  outside `search_path`), and `dwh.physical` compares type names as written, so a model that
+  spells a PostgreSQL type otherwise than `format_type` does (`float8` for `double precision`)
+  holds that column as retyped, and a `42883` over it as explained.
+- Still ending the run, as before S7b: a drift that breaks the reference query of a mart the role
+  may not read (PostgreSQL resolves the query's columns and functions before it checks
+  privileges, and the catalog of an unreadable mart is not read, so no drift accounts for the
+  state); and a table the reference query joins, not the mart, dropped: its `EXPLAIN` answers
+  `42P01`, a refusal, so the exact SELECT is still sent, and its `42P01` ends the run.
 - On ClickHouse a column absent from `system.columns` while the engine did not answer what the
   role may read is not compared: it may be hidden rather than gone. A `43`/`47` over such a
   column, even one really dropped, still ends the run, as before S7; `dwh.physical` does not

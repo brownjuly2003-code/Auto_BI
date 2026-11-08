@@ -698,7 +698,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=130`, `CHECK_VERSION=83`.
+`VERIFIER_VERSION=131`, `CHECK_VERSION=83`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -2433,7 +2433,19 @@ stderr над строкой ответа; поэтому `verify` и `capture` 
 только если дрейф этой колонки объясняет код. Evidence несёт код и имя, без текста сервера с
 версией и URL. Остальные коды по-прежнему ошибка прогона. Найдено живым тестом на
 ClickHouse 24.8.14.39 (Mac-стенд, 12 сценариев); тот же тест добавлен в CI-job `integration`.
-PostgreSQL — S7b ([спека](specs/unanswered-engine.md)).
+
+PostgreSQL отвечает на тот же дрейф своими SQLSTATE — `42703 undefined_column` и
+`42883 undefined_function` (`sum(text)`, `trunc(double precision, integer)`, `max(jsonb)`), —
+и с S7b (verifier 131) они читаются так же: по SQLSTATE драйвера, не по тексту, 42703
+объясняется удалённой колонкой, 42883 — колонкой с другим типом; `EXPLAIN` даёт план без
+оценки, exact SELECT не отправляется, `max()` колонки времени события переспрашивается
+одним `count(*)`, `42501 insufficient_privilege` exact SELECT'а — отказ. Дрейф
+сопоставляется с кодом по виду, не по месту ошибки в запросе, поэтому evidence плана на
+обоих движках говорит «taken to mean». Каталог PostgreSQL
+показывает все колонки независимо от прав роли, так что скрытая колонка удалённой не
+читается. Найдено живым тестом на PostgreSQL 16.15 (Mac, 12 сценариев), тест добавлен в
+`integration` с `postgres:16`. Greenplum и Greengage идут тем же путём, но живьём не
+прогонялись ([спека](specs/unanswered-engine.md)).
 
 Если `_ident` коллектора не принимает временную колонку или компонент имени таблицы,
 он поднимает `UnsafeIdentifierError(ValueError)` с прежним `repr` имени. CLI-проба

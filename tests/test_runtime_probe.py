@@ -366,3 +366,115 @@ def test_postgres_does_not_execute_a_query_only_to_guess_at_scanned_bytes() -> N
     assert fact.checked_bounds == []
     assert fact.scanned_bytes is None
     assert "does not report scanned bytes" in fact.evidence
+
+
+class FakePostgresError(Exception):
+    """A psycopg error as the gate holds it: the SQLSTATE in `sqlstate`, the server's text."""
+
+    def __init__(self, sqlstate: str, message: str) -> None:
+        super().__init__(message)
+        self.sqlstate = sqlstate
+
+
+def test_postgres_exact_select_refused_for_a_column_is_an_unmeasured_fact() -> None:
+    """`SELECT` granted on every column of the mart but `revenue` (PostgreSQL 16.15, live):
+    `dwh.security` blocks on it, and the exact SELECT that names the column is refused. That
+    refusal is an answer, as on ClickHouse, not a broken run."""
+    connection = FakePostgres(
+        error=FakePostgresError("42501", "permission denied for table sales_daily")
+    )
+    asked = question(timeout_ms=250).model_copy(update={"dialect": "postgres"})
+
+    fact = runtime_probe._postgres_execution(connection, asked, cancelled_error=FakeQueryCanceled)
+
+    assert fact.checked_bounds == []
+    assert fact.exceeded_bound is None
+    assert fact.elapsed_ms is None
+    assert fact.evidence == (
+        "PostgreSQL refused the exact SELECT with SQLSTATE 42501 insufficient_privilege; no "
+        "declared runtime bound was measured"
+    )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FakePostgresError("42703", 'column "revenue" does not exist'),
+        FakePostgresError("42883", "function sum(text) does not exist"),
+        FakePostgresError("42601", 'syntax error at or near "FROM"'),
+        FakePostgresError("08006", "server closed the connection unexpectedly"),
+        Exception("permission denied for table sales_daily"),
+    ],
+    ids=["42703", "42883", "syntax", "connection", "no-sqlstate"],
+)
+def test_postgres_exact_select_failing_otherwise_still_ends_the_run(error: Exception) -> None:
+    """`42703`/`42883` here mean a query its own plan accepted that the engine then could not
+    run (environment_probe.py does not send the exact SELECT of a plan the mart's drift no
+    longer fits); the rest are ours or the run's. A refusal is told by its state, never by
+    its text."""
+    connection = FakePostgres(error=error)
+    asked = question(timeout_ms=250).model_copy(update={"dialect": "postgres"})
+
+    with pytest.raises(type(error)) as raised:
+        runtime_probe._postgres_execution(connection, asked, cancelled_error=FakeQueryCanceled)
+
+    assert raised.value is error
+
+
+def test_only_the_drivers_cancellation_is_read_as_a_statement_timeout() -> None:
+    """The cancellation class decides, as before S7b: another error whose text happens to
+    mention a statement timeout is not a measured bound."""
+    error = FakePostgresError("XX000", "could not arm the statement timeout")
+    connection = FakePostgres(error=error)
+    asked = question(timeout_ms=250).model_copy(update={"dialect": "postgres"})
+
+    with pytest.raises(FakePostgresError) as raised:
+        runtime_probe._postgres_execution(connection, asked, cancelled_error=FakeQueryCanceled)
+
+    assert raised.value is error
+
+
+def test_a_cancellation_other_than_the_statement_timeout_still_ends_the_run() -> None:
+    """`pg_cancel_backend` raises the same class; only the statement timeout is a bound."""
+    error = FakeQueryCanceled("canceling statement due to user request")
+    connection = FakePostgres(error=error)
+    asked = question(timeout_ms=250).model_copy(update={"dialect": "postgres"})
+
+    with pytest.raises(FakeQueryCanceled) as raised:
+        runtime_probe._postgres_execution(connection, asked, cancelled_error=FakeQueryCanceled)
+
+    assert raised.value is error
+
+
+def test_postgres_safety_timeout_is_not_misreported_as_a_contract_violation() -> None:
+    connection = FakePostgres(
+        error=FakeQueryCanceled("canceling statement due to statement timeout")
+    )
+    asked = question(timeout_ms=120_000).model_copy(update={"dialect": "postgres"})
+
+    fact = runtime_probe._postgres_execution(connection, asked, cancelled_error=FakeQueryCanceled)
+
+    assert (
+        f"SET LOCAL statement_timeout = {runtime_probe.SAFETY_TIMEOUT_MS}"
+        in connection.cursor_value.statements
+    )
+    assert fact.checked_bounds == []
+    assert fact.exceeded_bound is None
+    assert "safety timeout" in fact.evidence
+
+
+def test_a_postgres_state_carried_as_psycopg2_carries_it_is_named_the_same() -> None:
+    """psycopg2 keeps the SQLSTATE in `pgcode`; psycopg 3 in `sqlstate`."""
+    error = Exception('column "revenue" does not exist')
+    error.pgcode = "42703"  # type: ignore[attr-defined]
+
+    assert query_limits.postgres_named_state(error, query_limits.POSTGRES_QUERY_UNFIT) == (
+        "SQLSTATE 42703 undefined_column"
+    )
+    assert query_limits.postgres_named_state(error, query_limits.POSTGRES_QUERY_REFUSED) is None
+    assert (
+        query_limits.postgres_named_state(
+            Exception("no state at all"), query_limits.POSTGRES_QUERY_UNFIT
+        )
+        is None
+    )

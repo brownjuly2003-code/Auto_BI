@@ -46,9 +46,9 @@ CREATED_AT = "2026-11-06T12:00:00Z"
 #: Each case of the pilot: the candidate semantic ref, its artifact, the run under
 #: `evidence/<case>` and the exit of `decision verify`.
 CASES = {
-    "repinned": ("candidate-repinned", CANDIDATE_ARTIFACT, "run-787b67f8b178d455", 4),
-    "drift": ("candidate-drift", CANDIDATE_ARTIFACT, "run-c390e604a56a7921", 4),
-    "control": ("base", BASE_ARTIFACT, "run-f18a1c9bfc0d4c9b", 0),
+    "repinned": ("candidate-repinned", CANDIDATE_ARTIFACT, "run-a4e4a9d400b70992", 4),
+    "drift": ("candidate-drift", CANDIDATE_ARTIFACT, "run-b6907d4ae9d7c748", 4),
+    "control": ("base", BASE_ARTIFACT, "run-ea96134f13513961", 0),
 }
 RUN = CASES["repinned"][2]
 

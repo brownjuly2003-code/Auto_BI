@@ -5,8 +5,9 @@ other check — pointing `auto_bi decision verify --dwh …` at a real engine an
 what step 7 says about it. Writing that by hand is a dozen YAML files, and a hand-written one
 drifts from what the tests actually cover; this emits exactly the shapes
 `tests/test_decision_verify.py` uses, so a live run and the suite are arguing about one product.
-`tests/test_decision_live_clickhouse.py` (CI job `integration`) runs it against a ClickHouse it
-seeds itself; by hand it points at any stand.
+`tests/test_decision_live_clickhouse.py` and `tests/test_decision_live_postgres.py` (CI job
+`integration`) run it against a ClickHouse and a PostgreSQL they seed themselves; by hand it
+points at any stand.
 
 Usage::
 
@@ -23,11 +24,14 @@ sum, not a margin ratio.
 product, on the same mart — the graph on which the gate has to tell one product's change from
 the other's.
 
-`<engine>` is what the model declares for its tables (`clickhouse`, `greenplum`) — it decides
-which dialect step 6 compiles the reference query for, and a plan compiled for another engine is
-not asked of the one the probe is connected to. Every `budget=N` becomes a `budgets` key on the
-metric contract (`max_scanned_rows`, `max_scanned_bytes`, `timeout_ms`); with none, the metric
-declares no ceiling and `dwh.cost` answers `cost.no_budget_declared`.
+`<engine>` is what the model declares for its tables (`clickhouse`, `postgres`, `greenplum`) —
+it decides which dialect step 6 compiles the reference query for, and a plan compiled for another
+engine is not asked of the one the probe is connected to. An engine on the PostgreSQL kernel
+gets the column types as PostgreSQL names them (`POSTGRES_TYPES`), no MergeTree layout, and an
+asset whose reference query is labelled with that engine (the SQL is the same). Every
+`budget=N` becomes a `budgets` key on the metric contract (`max_scanned_rows`,
+`max_scanned_bytes`, `timeout_ms`); with none, the metric declares no ceiling and `dwh.cost`
+answers `cost.no_budget_declared`.
 
 The stand the fixture expects is the one
 `docs/history/DECISIONOPS_IMPLEMENTATION_HISTORY.md` describes under "Стенды, на которых это
@@ -43,6 +47,7 @@ from pathlib import Path
 
 import yaml
 
+from auto_bi.engine import CLICKHOUSE, sqlglot_dialect
 from auto_bi.semantic.gateway import NativeModelSource
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -65,6 +70,14 @@ USAGE = (
     "[asset=REGION:VALUE,...] [results=REGION:VALUE,...] [max_scanned_rows=N] [timeout_ms=N] ..."
 )
 ROWS_KEYS = ("asset", "results")
+#: The test shapes' ClickHouse column types as PostgreSQL's `format_type` names them, for a
+#: stand on the PostgreSQL kernel: declared as ClickHouse has them, a clean stand would drift.
+POSTGRES_TYPES = {
+    "Date": "date",
+    "UInt32": "integer",
+    "String": "text",
+    "Decimal(18, 2)": "numeric(18,2)",
+}
 
 
 def _rows(spec: str) -> list[list[str]]:
@@ -111,6 +124,13 @@ def main(argv: list[str]) -> int:
         for table in model.tables:
             if table.physical is not None:
                 table.physical.engine = engine
+            if sqlglot_dialect(engine) != sqlglot_dialect(CLICKHOUSE):
+                for column in table.columns:
+                    column.type = POSTGRES_TYPES[column.type]
+                if table.physical is not None:  # a MergeTree layout is ClickHouse's alone
+                    table.physical.table_engine = ""
+                    table.physical.sorting_key = []
+                    table.physical.partition_key = ""
         model.dump(root / ref / "model.yaml")
         _lf(root / ref / "model.yaml")  # v1 dump() writes CRLF on Windows
         _write(root / ref / "metrics" / "gross_margin_pct.yaml", contract)
@@ -128,12 +148,14 @@ def main(argv: list[str]) -> int:
         # computed from what was just written, not typed in.
         base = NativeModelSource(root / "base" / "model.yaml", root / "base" / "metrics")
         asset = verified_asset(base.snapshot().canonical_digest)
+        asset["reference_query"]["engine"] = engine
         asset["expectation"]["result"]["rows"] = rows["asset"]
         _write(root / "assets" / "weekly_margin_by_region.yaml", asset)
     if "results" in rows:
         # What the candidate answered for that asset — recorded by whoever ran it (here, a
         # query against the stand), never computed by the gate.
-        _write(root / "results.yaml", recorded_results(rows["results"]))
+        # The shape of a results file before attestations, which the gate still reads.
+        _write(root / "results.yaml", recorded_results(rows["results"], None))
 
     print(root)
     return 0

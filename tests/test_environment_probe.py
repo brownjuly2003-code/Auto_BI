@@ -16,6 +16,7 @@ to learn whether it could would be a gate that writes to somebody's warehouse.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date, datetime
 from typing import Any
 
@@ -818,8 +819,15 @@ def test_a_refused_estimate_is_a_fact_not_a_crash() -> None:
 class Answering(FakeEngine):
     """Raises `error` for any question containing `marker`, answers the rest as before."""
 
-    def __init__(self, marker: str, error: Exception, **overrides: list[dict[str, Any]]) -> None:
-        super().__init__(clickhouse_engine(**overrides).answers)
+    def __init__(
+        self,
+        marker: str,
+        error: Exception,
+        *,
+        base: Callable[..., FakeEngine] = clickhouse_engine,
+        **overrides: list[dict[str, Any]],
+    ) -> None:
+        super().__init__(base(**overrides).answers)
         self.marker = marker
         self.error = error
 
@@ -874,8 +882,8 @@ def test_a_reference_query_the_mart_no_longer_fits_is_an_unpriced_plan(
 
     assert facts.plans[0].scanned_rows is None
     assert facts.plans[0].evidence == (
-        f"EXPLAIN ESTIMATE answered the reference query with {said}: the query no longer "
-        "fits the mart as the engine has it (revenue drifted from the model)"
+        f"EXPLAIN ESTIMATE answered the reference query with {said}, taken to mean the "
+        "query no longer fits the mart as the engine has it (revenue drifted from the model)"
     )
 
 
@@ -1220,6 +1228,325 @@ def test_a_postgres_driver_that_hands_back_raw_text_is_read_anyway() -> None:
     facts = collect(engine, priced(dialect="postgres"), engine="greengage", target="stand")
 
     assert facts.plans[0].scanned_rows == 600
+
+
+class PostgresError(RuntimeError):
+    """A psycopg error as the gate holds it: the SQLSTATE in `sqlstate`, the server's text."""
+
+    def __init__(self, sqlstate: str, message: str) -> None:
+        super().__init__(message)
+        self.sqlstate = sqlstate
+
+
+#: What PostgreSQL 16.15 said, live, when `revenue` was dropped and when it became `text`
+#: (tests/test_decision_live_postgres.py); the text quotes the query, which a sealed fact
+#: must not carry.
+UNDEFINED_COLUMN = PostgresError(
+    "42703",
+    'column "revenue" does not exist\nLINE 1: EXPLAIN (FORMAT JSON) SELECT date, store_id, '
+    "sum(revenue) ...",
+)
+UNDEFINED_FUNCTION = PostgresError(
+    "42883",
+    "function sum(text) does not exist\nHINT:  No function matches the given name and argument "
+    "types. You might need to add explicit type casts.",
+)
+PG_DECLARED = {"date": "date", "revenue": "numeric(18,2)"}
+#: The catalog of a mart whose `revenue` was retyped, and of one where it is gone.
+PG_RETYPED = [{"name": "date", "type": "date"}, {"name": "revenue", "type": "text"}]
+PG_DROPPED = [{"name": "date", "type": "date"}]
+
+
+def pg_answering(
+    marker: str,
+    error: Exception,
+    catalog: list[dict[str, Any]],
+    **overrides: list[dict[str, Any]],
+) -> Answering:
+    """A PostgreSQL mart holding `catalog`, every column of it readable, raising at `marker`."""
+    reads = [{"name": column["name"], "ok": True} for column in catalog]
+    return Answering(
+        marker,
+        error,
+        base=postgres_engine,
+        **{"format_type": catalog, "has_column_privilege(a.attrelid": reads, **overrides},
+    )
+
+
+def pg_priced_over(columns: dict[str, str], **budgets: int) -> EnvironmentQuestions:
+    asked = priced(dialect="postgres", **budgets)
+    asked.tables[0].columns = columns
+    return asked
+
+
+@pytest.mark.parametrize(
+    ("error", "catalog", "said"),
+    [
+        (UNDEFINED_FUNCTION, PG_RETYPED, "SQLSTATE 42883 undefined_function"),
+        (UNDEFINED_COLUMN, PG_DROPPED, "SQLSTATE 42703 undefined_column"),
+    ],
+)
+def test_a_postgres_reference_query_the_mart_no_longer_fits_is_an_unpriced_plan(
+    error: Exception, catalog: list[dict[str, Any]], said: str
+) -> None:
+    """PostgreSQL refuses to plan over a retyped or dropped column as ClickHouse does, in its
+    own states: the plan stays unpriced and says why, in the state and its name alone."""
+    engine = pg_answering("EXPLAIN", error, catalog)
+
+    facts = collect(engine, pg_priced_over(PG_DECLARED), engine="postgres", target="stand")
+
+    assert facts.plans[0].scanned_rows is None
+    assert facts.plans[0].evidence == (
+        f"EXPLAIN answered the reference query with {said}, taken to mean the query no "
+        "longer fits the mart as the engine has it (revenue drifted from the model)"
+    )
+
+
+def test_a_type_spelled_otherwise_than_format_type_takes_a_42883_of_the_query_s_own() -> None:
+    """The Known boundary of unanswered-engine.md: a state is matched to a drift by its kind,
+    not by where the query failed, and `dwh.physical` compares type names as written. `float8`
+    against the catalog's `double precision` is a retype, so a `42883` that is the query's own
+    (a function missing altogether) is taken to mean that drift — hence «taken to mean»."""
+    error = PostgresError("42883", "function median(numeric) does not exist")
+    catalog = [{"name": "date", "type": "date"}, {"name": "revenue", "type": "double precision"}]
+
+    facts = collect(
+        pg_answering("EXPLAIN", error, catalog),
+        pg_priced_over({"date": "date", "revenue": "float8"}),
+        engine="postgres",
+        target="stand",
+    )
+
+    assert facts.plans[0].scanned_rows is None
+    assert facts.plans[0].evidence == (
+        "EXPLAIN answered the reference query with SQLSTATE 42883 undefined_function, taken to "
+        "mean the query no longer fits the mart as the engine has it (revenue drifted from the "
+        "model)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("error", "catalog", "declared"),
+    [
+        # `42703` is a column gone; the only drift here is a retype
+        (UNDEFINED_COLUMN, PG_RETYPED, PG_DECLARED),
+        # `42883` is a column retyped; the only drift here is a column gone
+        (UNDEFINED_FUNCTION, PG_DROPPED, PG_DECLARED),
+        # the catalog holds every column as declared: the query is at fault, not the mart
+        (UNDEFINED_COLUMN, PG_RETYPED, {"date": "date", "revenue": "text"}),
+        (UNDEFINED_FUNCTION, PG_RETYPED, {"date": "date", "revenue": "text"}),
+        # gone, but the reference query does not read `gross_margin`
+        (
+            UNDEFINED_COLUMN,
+            [{"name": "date", "type": "date"}, {"name": "revenue", "type": "numeric(18,2)"}],
+            {**PG_DECLARED, "gross_margin": "numeric(18,2)"},
+        ),
+        # a syntax error is ours and a dropped connection the run's, over a drift that fits
+        (PostgresError("42601", 'syntax error at or near "FROM"'), PG_DROPPED, PG_DECLARED),
+        (PostgresError("08006", "server closed the connection"), PG_DROPPED, PG_DECLARED),
+        # a state is what is weighed, never the text
+        (RuntimeError('column "revenue" does not exist'), PG_DROPPED, PG_DECLARED),
+    ],
+    ids=[
+        "42703-over-a-retype",
+        "42883-over-a-drop",
+        "42703-as-declared",
+        "42883-as-declared",
+        "drift-the-query-does-not-read",
+        "syntax-over-a-drop",
+        "connection-over-a-drop",
+        "no-state-over-a-drop",
+    ],
+)
+def test_a_postgres_state_the_drift_does_not_account_for_still_ends_the_run(
+    error: Exception, catalog: list[dict[str, Any]], declared: dict[str, str]
+) -> None:
+    engine = pg_answering("EXPLAIN", error, catalog)
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, pg_priced_over(declared), engine="postgres", target="stand")
+
+    assert raised.value is error
+
+
+def test_the_exact_select_of_a_postgres_plan_the_mart_no_longer_fits_is_not_sent() -> None:
+    engine = pg_answering("EXPLAIN", UNDEFINED_COLUMN, PG_DROPPED)
+    sent: list[PlanQuestion] = []
+
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        sent.append(question)
+        return ExecutionFacts(metric_ref=question.metric_ref, evidence="measured")
+
+    facts = collect(
+        engine,
+        pg_priced_over(PG_DECLARED, timeout_ms=1000),
+        engine="postgres",
+        target="stand",
+        run_cost=run_cost,
+    )
+
+    assert sent == []
+    [execution] = facts.executions
+    assert execution.checked_bounds == []
+    assert execution.evidence == (
+        "the exact SELECT was not run: EXPLAIN of the same query answered SQLSTATE 42703 "
+        "undefined_column, and a query the mart no longer fits measures nothing; no declared "
+        "runtime bound was measured"
+    )
+
+
+def test_the_exact_select_of_a_postgres_plan_that_fits_is_still_sent() -> None:
+    """The control of the test above: the same mart as declared, the same budget."""
+    engine = postgres_engine(
+        **postgres_plan(
+            {"Plan": {"Node Type": "Seq Scan", "Relation Name": "sales_daily", "Plan Rows": 600}}
+        )
+    )
+    sent: list[PlanQuestion] = []
+
+    def run_cost(question: PlanQuestion) -> ExecutionFacts:
+        sent.append(question)
+        return ExecutionFacts(metric_ref=question.metric_ref, evidence="measured")
+
+    facts = collect(
+        engine,
+        pg_priced_over(PG_DECLARED, timeout_ms=1000),
+        engine="postgres",
+        target="stand",
+        run_cost=run_cost,
+    )
+
+    assert [question.sql for question in sent] == [PLAN_SQL]
+    assert [execution.evidence for execution in facts.executions] == ["measured"]
+
+
+#: The mart's answer to the one question that counts its rows without dating them.
+PG_COUNTED = {"count(*) AS rows_seen FROM": [{"rows_seen": 91}]}
+
+
+@pytest.mark.parametrize(
+    ("error", "catalog"),
+    [
+        (
+            PostgresError("42703", 'column "date" does not exist'),
+            [{"name": "revenue", "type": "numeric(18,2)"}],
+        ),
+        (
+            PostgresError("42883", "function max(jsonb) does not exist"),
+            [{"name": "date", "type": "jsonb"}],
+        ),
+    ],
+    ids=["42703-gone", "42883-retyped"],
+)
+def test_a_postgres_event_time_column_that_no_longer_fits_leaves_the_rows_counted_and_undated(
+    error: Exception, catalog: list[dict[str, Any]]
+) -> None:
+    """`max(date)` of a dropped `date` is `42703`, of a `date` retyped to `jsonb` `42883`
+    (PostgreSQL 16.15, live). As on ClickHouse, the rows are still there to count; nothing
+    dates them, and `check_freshness` says so instead of the run ending."""
+    engine = pg_answering("max(", error, catalog, **PG_COUNTED)
+
+    facts = collect(engine, questions({"date": "date"}), engine="postgres", target="stand")
+
+    table = facts.tables[0]
+    assert (table.exists, table.readable, table.rows_seen) == (True, True, 91)
+    assert table.max_event_time is None
+    assert 'SELECT count(*) AS rows_seen FROM "dm"."sales_daily"' in engine.asked
+
+
+@pytest.mark.parametrize(
+    ("error", "catalog", "declared"),
+    [
+        # a syntax error is ours, over a mart whose `date` is gone too
+        (
+            PostgresError("42601", 'syntax error at or near "FROM"'),
+            [{"name": "revenue", "type": "numeric(18,2)"}],
+            None,
+        ),
+        # the catalog still holds `date` as declared: the query is at fault, not the mart
+        (PostgresError("42703", 'column "date" does not exist'), PG_DROPPED, None),
+        (PostgresError("42883", "function max(date) does not exist"), PG_DROPPED, None),
+        # a drift of the other kind does not account for the state
+        (
+            PostgresError("42703", 'column "date" does not exist'),
+            [{"name": "date", "type": "jsonb"}],
+            None,
+        ),
+        (
+            PostgresError("42883", "function max(jsonb) does not exist"),
+            [{"name": "revenue", "type": "numeric(18,2)"}],
+            None,
+        ),
+        # nor does a drift of another column
+        (PostgresError("42703", 'column "date" does not exist'), PG_DROPPED, PG_DECLARED),
+    ],
+    ids=[
+        "syntax-over-drift",
+        "42703-as-declared",
+        "42883-as-declared",
+        "42703-over-a-retype",
+        "42883-over-a-drop",
+        "another-column-gone",
+    ],
+)
+def test_a_postgres_event_time_reading_that_failed_otherwise_still_ends_the_run(
+    error: Exception, catalog: list[dict[str, Any]], declared: dict[str, str] | None
+) -> None:
+    engine = pg_answering("max(", error, catalog, **PG_COUNTED)
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(
+            engine,
+            questions({"date": "date"} if declared is None else declared),
+            engine="postgres",
+            target="stand",
+        )
+
+    assert raised.value is error
+
+
+def test_a_postgres_column_gone_where_the_reach_is_unanswered_still_accounts_for_max() -> None:
+    """Unlike ClickHouse, the PostgreSQL catalog lists every column whatever the role may
+    read: a `date` it does not list is gone even where `has_column_privilege` was refused, and
+    `max(date)` answering `42703` leaves the rows counted."""
+    engine = pg_answering(
+        "max(",
+        PostgresError("42703", 'column "date" does not exist'),
+        [{"name": "revenue", "type": "numeric(18,2)"}],
+        **PG_COUNTED,
+    )
+    refusing = RefusingEngine(engine, "has_column_privilege(a.attrelid", sqlstate="42501")
+
+    facts = collect(refusing, questions({"date": "date"}), engine="postgres", target="stand")
+
+    table = facts.tables[0]
+    assert table.column_reads is None
+    assert (table.rows_seen, table.max_event_time) == (91, None)
+
+
+def test_a_postgres_refusal_carried_as_psycopg2_carries_it_is_a_refusal() -> None:
+    """psycopg2 keeps the SQLSTATE in `pgcode`: `42501` there is the same refusal, whatever
+    language the server words it in (`lc_messages`), so the state decides, not the text."""
+    error = RuntimeError("нет доступа к таблице sales_daily")
+    error.pgcode = "42501"  # type: ignore[attr-defined]
+    engine = Answering("EXPLAIN", error, base=postgres_engine)
+
+    facts = collect(engine, priced(dialect="postgres"), engine="postgres", target="stand")
+
+    assert facts.plans[0].scanned_rows is None
+    assert facts.plans[0].evidence == "the engine refused EXPLAIN on the reference query"
+
+
+def test_only_a_postgres_unfit_state_earns_the_count_question() -> None:
+    """A syntax error is raised before `count(*)` is asked, as on ClickHouse."""
+    error = PostgresError("42601", 'syntax error at or near "FROM"')
+    engine = pg_answering("max(", error, [{"name": "revenue", "type": "numeric(18,2)"}])
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, questions({"date": "date"}), engine="postgres", target="stand")
+
+    assert raised.value is error
+    assert 'SELECT count(*) AS rows_seen FROM "dm"."sales_daily"' not in engine.asked
 
 
 def test_a_plan_compiled_for_another_engine_is_not_asked_of_this_one() -> None:

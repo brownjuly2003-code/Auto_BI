@@ -25,9 +25,11 @@ from auto_bi.postgres import (
 from auto_bi.verification.environment import CostBound, ExecutionFacts, PlanQuestion
 from auto_bi.verification.query_limits import (
     CLICKHOUSE_QUERY_REFUSED,
+    POSTGRES_QUERY_REFUSED,
     clickhouse_error_code,
     clickhouse_named_code,
     clickhouse_query_settings,
+    postgres_named_state,
     prepare_clickhouse_readonly,
     read_clickhouse_session,
     reviewed_clickhouse_settings,
@@ -237,10 +239,23 @@ def _postgres_execution(
         try:
             for _row in cursor.stream(question.sql, size=1):
                 pass
-        except cancelled_error as exc:
-            if "statement timeout" not in str(exc).lower():
+        except Exception as exc:  # re-raised below unless a refusal or a timeout
+            # `42703`/`42883` are not caught here either: environment_probe.py does not send
+            # the exact SELECT of a plan the mart's drift no longer fits (see ClickHouse above).
+            refused = postgres_named_state(exc, POSTGRES_QUERY_REFUSED)
+            if refused is not None:  # environment_probe.py: a refusal is an answer
+                outcome = ExecutionFacts(
+                    metric_ref=question.metric_ref,
+                    evidence=(
+                        f"PostgreSQL refused the exact SELECT with {refused}; no declared "
+                        "runtime bound was measured"
+                    ),
+                )
+            elif (
+                not isinstance(exc, cancelled_error) or "statement timeout" not in str(exc).lower()
+            ):
                 raise
-            if timeout_is_contract:
+            elif timeout_is_contract:
                 outcome = _exceeded(
                     question,
                     CostBound.TIMEOUT,

@@ -468,6 +468,47 @@ jobs:
         if: always()
         run: docker rm -f decision-live-ch || true
 
+      # The same live check on PostgreSQL (S7b): `decision verify --dwh postgres` against the
+      # major version whose answers docs/specs/unanswered-engine.md records. The test creates
+      # its own database and roles and refuses a server that already has them; the password is
+      # as ephemeral and unpublished as the ClickHouse one above.
+      - name: Start a throwaway PostgreSQL for the DecisionOps live check
+        run: >-
+          docker run -d --rm --name decision-live-pg
+          -p 127.0.0.1:5433:5432
+          -e POSTGRES_PASSWORD=decision_live_ci_only
+          postgres:16
+
+      - name: Integration tests — DecisionOps verify against live PostgreSQL
+        env:
+          AUTO_BI_LIVE_PG_HOST: 127.0.0.1
+          AUTO_BI_LIVE_PG_PORT: "5433"
+          AUTO_BI_LIVE_PG_ADMIN_USER: postgres
+          AUTO_BI_LIVE_PG_ADMIN_PASSWORD: decision_live_ci_only
+        run: |
+          # TCP, not the socket: the image's first-boot server listens on the socket alone and
+          # is restarted once the cluster is initialised.
+          ready=
+          for attempt in $(seq 60); do
+            if docker exec -e PGPASSWORD="$AUTO_BI_LIVE_PG_ADMIN_PASSWORD" decision-live-pg \
+              psql -h 127.0.0.1 -U "$AUTO_BI_LIVE_PG_ADMIN_USER" -d postgres -Atc 'SELECT 1' \
+              >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "$ready" ]; then
+            echo "the throwaway PostgreSQL did not answer SELECT 1 within 60 s" >&2
+            docker logs decision-live-pg >&2 || true
+            exit 1
+          fi
+          uv run pytest -m integration tests/test_decision_live_postgres.py
+
+      - name: Stop the throwaway PostgreSQL
+        if: always()
+        run: docker rm -f decision-live-pg || true
+
       # 1e6 rows (vs the Mac stand's 100M default) is plenty to exercise every
       # viz_type/adapter code path without blowing the runner's time/RAM budget.
       # `--wait --wait-timeout` is the retry logic for Superset's slow first-boot

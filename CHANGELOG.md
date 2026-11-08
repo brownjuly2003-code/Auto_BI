@@ -649,6 +649,17 @@
 
 ### Added
 
+- **Живая проверка DecisionOps на PostgreSQL** (`tests/test_decision_live_postgres.py`,
+  шаг CI-job `integration` с `postgres:16`). Половина проверки на ClickHouse ниже для
+  PostgreSQL: тест сам создаёт базу `decision_live` со схемой `dm`, gate-роль и дрейф и
+  прогоняет `decision capture` + `decision verify --dwh postgres` по 12 сценариям: чистый
+  `pass`; устаревшие данные; потолок строк по плану; пишущая роль; скрытая колонка
+  (column grants); `double precision`, `text`, переименование и удаление колонки;
+  `numeric(38,4)`; удалённая колонка времени события и `jsonb` вместо `date`. Проверяет, что
+  сервер — PostgreSQL 16; отказывается работать, где база или роли уже есть; всё созданное
+  удаляет. Без `AUTO_BI_LIVE_PG_HOST` — skip. Прогнан на Mac (PostgreSQL 16.15): 12 из 12;
+  на коде до S7b падают 7 сценариев дрейфа и скрытой колонки.
+
 - **Живая проверка DecisionOps на ClickHouse** (`tests/test_decision_live_clickhouse.py`,
   шаг CI-job `integration`). Тест сам создаёт на ClickHouse серии образа compose (`24.8`) базу
   `dm`, gate-роль
@@ -1058,6 +1069,27 @@
   репетиция не доказывает — task 8 закрывает владелец.
 
 ### Fixed
+
+- **Тот же дрейф на PostgreSQL — отчёт, а не exit 2.** PostgreSQL 16.15 отвечает на него
+  своими SQLSTATE: `42703 undefined_column` — колонку удалили или переименовали,
+  `42883 undefined_function` — тип, который функции или операторы запроса не берут
+  (`sum(text)`, `sum(boolean)`, `trunc(double precision, integer)`, `interval = integer`,
+  `max(jsonb)`); прежде `decision verify --dwh postgres` кончался exit 2 без отчёта и bundle.
+  Теперь они читаются по правилу ClickHouse-пункта ниже: по SQLSTATE драйвера (`sqlstate`
+  psycopg, `pgcode` psycopg2), не по тексту, который цитирует запрос; 42703 объясняется
+  удалённой колонкой, 42883 — сменившей тип. `EXPLAIN` даёт план без оценки, exact SELECT не
+  отправляется, `max()` колонки времени события переспрашивается одним `count(*)`;
+  любой `42501 insufficient_privilege` exact SELECT'а (живьём — скрытая колонка) —
+  факт-отказ, а не exit 2. Состояние, которое каталог не объясняет, и другие (`42601`,
+  `42804`, сеть) — по-прежнему exit 2. Greenplum/Greengage идут тем же путём, живьём не
+  прогонялись. Дрейф сопоставляется с кодом по виду, а не по месту ошибки в запросе,
+  поэтому evidence плана без оценки на обоих движках теперь говорит «taken to mean the
+  query no longer fits the mart» (verifier 130 утверждал это без оговорки). Verifier
+  130 → 131, check 83 прежний; pilot `2026-11-06-dbt-formula-pin` перезаписан
+  ([spec](docs/specs/unanswered-engine.md)). Попутно: `results=` у
+  `scripts/decision_stand_fixture.py` падал с `TypeError` (сигнатура
+  `recorded_results` сменилась с аттестациями) — исправлено, у фикстуры появился
+  офлайн-тест.
 
 - **Дрейф ClickHouse, которого reference-запрос уже не переживает, — отчёт, а не exit 2.**
   Колонку, которую запрос называет, удалили или переименовали (`47 UNKNOWN_IDENTIFIER`) или

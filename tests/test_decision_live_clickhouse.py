@@ -392,8 +392,9 @@ def _unfit(run: Run, unfit: str, drifted: str) -> None:
     [plan] = run.cost["plans"]
     assert plan.get("scanned_rows") is None
     assert plan["evidence"] == (
-        f"EXPLAIN ESTIMATE answered the reference query with {unfit}: the query no longer "
-        f"fits the mart as the engine has it ({drifted} drifted from the model)"
+        f"EXPLAIN ESTIMATE answered the reference query with {unfit}, taken to mean the "
+        f"query no longer fits the mart as the engine has it ({drifted} drifted from the "
+        "model)"
     )
     [execution] = run.cost["executions"]
     assert execution["checked_bounds"] == []

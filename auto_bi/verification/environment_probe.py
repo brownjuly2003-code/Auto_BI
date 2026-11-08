@@ -134,18 +134,19 @@ one.
 **A reference query the mart no longer fits is a plan without an estimate.** ClickHouse
 answers it with `47 UNKNOWN_IDENTIFIER` when a column it reads was dropped or renamed, and with
 `43 ILLEGAL_TYPE_OF_ARGUMENT` when that column is now of a type the query's functions do not
-take (24.8.14.39, live). That is how a mart that drifted from its model answers, and the run
-ended on it: no bundle, and the drift `dwh.physical` was there to report never reported.
-`EXPLAIN ESTIMATE` now keeps the code as the reason there is no number, and the exact SELECT
-of that query is not sent; a `max()` of an event-time column that is gone leaves the rows
-counted and undated. Only where the catalog accounts for the code: a column the query names
-that `dwh.physical` grades as gone, for `47`, or as held as another type, for `43`
-(`column_drift`, the one reading both use). Any other `43`/`47` is raised as before: over a
-mart that holds the query's columns as declared, or drifted only elsewhere, it points at the
-query — the gate's own, or a model that declares a type its aggregate does not take; over a
-column ClickHouse left out of the catalog without saying what the role may read, the column
-may be hidden rather than gone. So is every other error, and a `43`/`47` from an exact SELECT
-whose plan was answered.
+take (24.8.14.39, live); PostgreSQL with `42703 undefined_column` and `42883
+undefined_function` (16.15, live). That is how a mart that drifted from its model answers, and
+the run ended on it: no bundle, and the drift `dwh.physical` was there to report never
+reported. The plan question (`EXPLAIN ESTIMATE`, `EXPLAIN`) now keeps the code as the reason
+there is no number, and the exact SELECT of that query is not sent; a `max()` of an
+event-time column that is gone leaves the rows counted and undated. Only where the catalog
+accounts for the code: a column the query names that `dwh.physical` grades as gone, for
+`47`/`42703`, or as held as another type, for `43`/`42883` (`column_drift`, the one reading
+both use). Any other such code is raised as before: over a mart that holds the query's columns
+as declared, or drifted only elsewhere, it points at the query — the gate's own, or a model
+that declares a type its aggregate does not take; over a column ClickHouse left out of the
+catalog without saying what the role may read, the column may be hidden rather than gone. So
+is every other error, and any of these codes from an exact SELECT whose plan was answered.
 
 **A kernel without row-level security is graded by the catalogs it has.** Greenplum 6 and
 Greengage 6 run on the PostgreSQL 9.4 kernel, and `pg_roles.rolbypassrls`, `pg_policy` and
@@ -189,8 +190,11 @@ from auto_bi.verification.environment import (
 )
 from auto_bi.verification.query_limits import (
     CLICKHOUSE_QUERY_UNFIT,
+    POSTGRES_QUERY_UNFIT,
     clickhouse_error_code,
     clickhouse_named_code,
+    postgres_named_state,
+    postgres_sqlstate,
 )
 
 #: Privileges that make a session capable of changing a mart. `TRUNCATE` is Postgres-only;
@@ -318,7 +322,7 @@ def collect(
     executions = (
         [
             (
-                _not_run(item, unfit[(item.metric_ref, item.sql)])
+                _not_run(item, unfit[(item.metric_ref, item.sql)], postgres=postgres)
                 if (item.metric_ref, item.sql) in unfit
                 else run_cost(item)
             )
@@ -382,21 +386,84 @@ def _plan_drift(
     return column_drift(owner, table, engine=engine)
 
 
-def _explained(error: Exception, drift: dict[str, str | None], named: set[str]) -> list[str]:
-    """The drifted columns among `named` that account for the engine's code, if any.
+class _Unfit(NamedTuple):
+    """How an engine said a query no longer fits the mart it reads."""
 
-    `47 UNKNOWN_IDENTIFIER` is accounted for by a column that is gone, `43
-    ILLEGAL_TYPE_OF_ARGUMENT` by one the engine now holds as another type; a drift the query
-    does not read, or of the other kind, explains nothing, and the code is the query's own.
+    #: as a sealed fact holds it: `Code 47 UNKNOWN_IDENTIFIER`, `SQLSTATE 42703 undefined_column`
+    code: str
+    #: a column gone accounts for it; otherwise a column the engine now holds as another type
+    gone: bool
+
+
+def _unfit(error: Exception, *, postgres: bool) -> _Unfit | None:
+    """The engine's answer that a query no longer fits the mart, or `None` for any other error.
+
+    `47 UNKNOWN_IDENTIFIER` and `42703 undefined_column` name a column that is not there; `43
+    ILLEGAL_TYPE_OF_ARGUMENT` and `42883 undefined_function` a function or an operator that
+    does not take the type a column now has.
     """
-    code = clickhouse_error_code(error)
-    if code not in CLICKHOUSE_QUERY_UNFIT:
-        return []
+    if postgres:
+        named = postgres_named_state(error, POSTGRES_QUERY_UNFIT)
+        gone = postgres_sqlstate(error) == "42703"
+    else:
+        named = clickhouse_named_code(error, CLICKHOUSE_QUERY_UNFIT)
+        gone = clickhouse_error_code(error) == 47
+    return None if named is None else _Unfit(named, gone=gone)
+
+
+def _explained(unfit: _Unfit, drift: dict[str, str | None], named: set[str]) -> list[str]:
+    """The drifted columns among `named` that account for the engine's answer, if any.
+
+    A code of a column that is not there is accounted for by a column that is gone, one of a
+    type a function does not take by a column the engine now holds as another type; a drift the
+    query does not read, or of the other kind, explains nothing, and the code is the query's own.
+    """
     return sorted(
         column
         for column, actual in drift.items()
-        if column in named and (actual is None) == (code == 47)
+        if column in named and (actual is None) == unfit.gone
     )
+
+
+def _unfit_plan(
+    error: Exception, sql: str, dialect: str, drift: dict[str, str | None], *, postgres: bool
+) -> dict[str, Any]:
+    """The reading of a plan the mart no longer fits; the error itself where nothing explains it.
+
+    The drift is taken to account for the code by its kind alone: where in the query the engine
+    failed is not read, so a fault of the query's own that meets a drift of that kind is read as
+    the drift — hence «taken to mean» in the evidence (unanswered-engine.md, Known boundaries).
+    """
+    unfit = _unfit(error, postgres=postgres)
+    drifted = _explained(unfit, drift, _named_columns(sql, dialect)) if unfit else []
+    if unfit is None or not drifted:
+        raise error
+    return {
+        "evidence": (
+            f"{_plan_question(postgres)} answered the reference query with {unfit.code}, taken "
+            "to mean the query no longer fits the mart as the engine has it "
+            f"({', '.join(drifted)} drifted from the model)"
+        ),
+        "unfit": unfit.code,
+    }
+
+
+def _plan_question(postgres: bool) -> str:
+    return "EXPLAIN" if postgres else "EXPLAIN ESTIMATE"
+
+
+def _undated(
+    error: Exception | None, question: TableQuestion, facts: TableFacts, *, postgres: bool
+) -> TableFacts:
+    """The rows counted without a date, where the event-time column's drift accounts for the
+    `max()` the engine would not run; that error itself otherwise."""
+    if error is None:
+        return facts
+    unfit = _unfit(error, postgres=postgres)
+    drift = column_drift(question, facts, engine=GREENPLUM if postgres else CLICKHOUSE)
+    if unfit is None or not _explained(unfit, drift, {question.event_time_column}):
+        raise error
+    return facts
 
 
 def _named_columns(sql: str, dialect: str) -> set[str]:
@@ -408,14 +475,14 @@ def _named_columns(sql: str, dialect: str) -> set[str]:
     return {column.name for column in tree.find_all(exp.Column)}
 
 
-def _not_run(question: PlanQuestion, unfit: str) -> ExecutionFacts:
+def _not_run(question: PlanQuestion, unfit: str, *, postgres: bool) -> ExecutionFacts:
     """The exact SELECT of a query whose plan the mart no longer fits is not sent at all."""
     return ExecutionFacts(
         metric_ref=question.metric_ref,
         evidence=(
-            f"the exact SELECT was not run: EXPLAIN ESTIMATE of the same query answered {unfit}, "
-            "and a query the mart no longer fits measures nothing; no declared runtime bound "
-            "was measured"
+            f"the exact SELECT was not run: {_plan_question(postgres)} of the same query "
+            f"answered {unfit}, and a query the mart no longer fits measures nothing; no "
+            "declared runtime bound was measured"
         ),
     )
 
@@ -446,7 +513,7 @@ def _estimate(
             ),
         )
     reading = (
-        _postgres_estimate(run_query, question.sql)
+        _postgres_estimate(run_query, question.sql, dialect, drift)
         if postgres
         else _clickhouse_estimate(run_query, question.sql, dialect, drift)
     )
@@ -474,19 +541,8 @@ def _clickhouse_estimate(
     """
     try:
         rows = _ask(run_query, f"EXPLAIN ESTIMATE {sql}")
-    except Exception as error:  # re-raised below unless the mart's own drift explains it
-        unfit = clickhouse_named_code(error, CLICKHOUSE_QUERY_UNFIT)
-        drifted = _explained(error, drift, _named_columns(sql, dialect)) if unfit else []
-        if unfit is None or not drifted:
-            raise
-        return {
-            "evidence": (
-                f"EXPLAIN ESTIMATE answered the reference query with {unfit}: the query no "
-                f"longer fits the mart as the engine has it ({', '.join(drifted)} drifted "
-                "from the model)"
-            ),
-            "unfit": unfit,
-        }
+    except Exception as error:  # re-raised unless the mart's own drift explains it
+        return _unfit_plan(error, sql, dialect, drift, postgres=False)
     if rows is None:
         return {"evidence": "the engine refused EXPLAIN ESTIMATE on the reference query"}
     if not rows:
@@ -505,7 +561,9 @@ def _clickhouse_estimate(
     }
 
 
-def _postgres_estimate(run_query: RunQuery, sql: str) -> dict[str, Any]:
+def _postgres_estimate(
+    run_query: RunQuery, sql: str, dialect: str, drift: dict[str, str | None]
+) -> dict[str, Any]:
     """`EXPLAIN (FORMAT JSON)` — the scan nodes, never the root.
 
     The root of the stand's plan said `Plan Rows: 60` over a `Seq Scan` that said 600: the
@@ -514,7 +572,10 @@ def _postgres_estimate(run_query: RunQuery, sql: str) -> dict[str, Any]:
     filter — 600 became 30 on the stand), and a plan with no relation scan at all, which is
     what row security emptying a mart looks like (`One-Time Filter: "false"`).
     """
-    rows = _ask(run_query, f"EXPLAIN (FORMAT JSON) {sql}")
+    try:
+        rows = _ask(run_query, f"EXPLAIN (FORMAT JSON) {sql}")
+    except Exception as error:  # re-raised unless the mart's own drift explains it
+        return _unfit_plan(error, sql, dialect, drift, postgres=True)
     if rows is None:
         return {"evidence": "the engine refused EXPLAIN on the reference query"}
     plan = _plan_tree(rows)
@@ -806,7 +867,7 @@ def _clickhouse_table(
             f"max_event_time FROM {_qualified(database, name)}",
         )
     except Exception as error:  # re-raised below unless the event-time column no longer fits
-        if clickhouse_named_code(error, CLICKHOUSE_QUERY_UNFIT) is None:
+        if _unfit(error, postgres=False) is None:
             raise
         # The column is gone, or no longer takes `max()`: the rows are still there to count,
         # and nothing dates them. `dwh.physical` is what says what became of the column; a
@@ -854,11 +915,7 @@ def _clickhouse_table(
         column_reads=reads,
         row_policies=policies,
     )
-    if unfit is not None and not _explained(
-        unfit, column_drift(question, facts, engine=CLICKHOUSE), {question.event_time_column}
-    ):
-        raise unfit
-    return facts
+    return _undated(unfit, question, facts, postgres=False)
 
 
 def _ch_untyped_own_grants(grants: list[dict[str, Any]]) -> bool:
@@ -1315,12 +1372,23 @@ def _postgres_table(
             owner_bypasses_row_security=owner_bypass,
             row_policies=policies,
         )
-    reading = _ask(
-        run_query,
-        f"SELECT count(*) AS rows_seen, max({_ident(question.event_time_column)}) AS "
-        f"max_event_time FROM {_qualified(schema, name)}",
-    )
+    unfit: Exception | None = None
+    try:
+        reading = _ask(
+            run_query,
+            f"SELECT count(*) AS rows_seen, max({_ident(question.event_time_column)}) AS "
+            f"max_event_time FROM {_qualified(schema, name)}",
+        )
+    except Exception as error:  # re-raised below unless the event-time column no longer fits
+        if _unfit(error, postgres=True) is None:
+            raise
+        # As on ClickHouse: the rows are still there to count, and nothing dates them.
+        unfit = error
+        reading = _ask(run_query, f"SELECT count(*) AS rows_seen FROM {_qualified(schema, name)}")
     if not reading:
+        # As on ClickHouse, a `max()` the engine could not run is not weighed here: a role
+        # refused even `count(*)` is `access.table_unreadable`, a block whatever became of
+        # the column (and `has_any_column_privilege` above makes that refusal unlikely).
         return TableFacts(
             table=table,
             event_time_column=question.event_time_column,
@@ -1343,7 +1411,7 @@ def _postgres_table(
     }
     # Layout stays unreported here: the distribution policy and partition levels live in
     # Greenplum-only catalogs, and no Greengage stand has been available to pin them.
-    return _reading(
+    facts = _reading(
         table,
         reading[0],
         event_time_column=question.event_time_column,
@@ -1356,6 +1424,7 @@ def _postgres_table(
         owner_bypasses_row_security=owner_bypass,
         row_policies=policies,
     )
+    return _undated(unfit, question, facts, postgres=True)
 
 
 def _pg_column_reads(
@@ -1542,9 +1611,9 @@ def _ask(run_query: RunQuery, sql: str) -> list[dict[str, Any]] | None:
 
 def _refused(error: Exception) -> bool:
     """Whether the engine said "not for you" or "no such object" rather than falling over."""
-    state = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
+    state = postgres_sqlstate(error)
     if state is not None:
-        return str(state) in _PG_REFUSALS
+        return state in _PG_REFUSALS
     return bool(_REFUSED_TEXT.search(str(error)))
 
 

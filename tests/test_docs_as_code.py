@@ -542,6 +542,40 @@ def test_ci_runs_the_decisionops_live_check_against_the_pinned_clickhouse() -> N
     assert "docker rm -f decision-live-ch" in steps[stop]["run"]
 
 
+def test_ci_runs_the_decisionops_live_check_against_postgres_of_the_recorded_major() -> None:
+    """The PostgreSQL half (S7b) skips as silently where `AUTO_BI_LIVE_PG_HOST` is unset; its
+    server is the major version the test asserts and the spec records the answers of."""
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["integration"]["steps"]
+    names = [step.get("name") for step in steps]
+    start = names.index("Start a throwaway PostgreSQL for the DecisionOps live check")
+    live = names.index("Integration tests — DecisionOps verify against live PostgreSQL")
+    stop = names.index("Stop the throwaway PostgreSQL")
+    stand = names.index("Bring up the stand (ClickHouse + Superset)")
+    assert start < live < stop < stand
+
+    live_test = (REPO / "tests" / "test_decision_live_postgres.py").read_text(encoding="utf-8")
+    major = re.search(r"^MAJOR = (\d+)$", live_test, re.MULTILINE)
+    assert major, "tests/test_decision_live_postgres.py no longer names the major it asserts"
+    server = steps[start]["run"]
+    assert server.split()[-1] == f"postgres:{major.group(1)}"
+    assert "-p 127.0.0.1:5433:5432" in server
+    assert "POSTGRES_DB" not in server  # the test refuses a server that already has its database
+
+    env = steps[live]["env"]
+    assert (env["AUTO_BI_LIVE_PG_HOST"], env["AUTO_BI_LIVE_PG_PORT"]) == ("127.0.0.1", "5433")
+    assert {"AUTO_BI_LIVE_PG_ADMIN_USER", "AUTO_BI_LIVE_PG_ADMIN_PASSWORD"} <= set(env)
+    run = steps[live]["run"]
+    assert "uv run pytest -m integration tests/test_decision_live_postgres.py" in run
+    assert "--deselect" not in run and " -k " not in run
+    waited = run.split("uv run pytest", 1)[0]
+    assert "docker logs decision-live-pg" in waited and "exit 1" in waited
+    assert "psql -h 127.0.0.1" in waited  # the socket answers before the final server is up
+
+    assert steps[stop]["if"] == "always()"
+    assert "docker rm -f decision-live-pg" in steps[stop]["run"]
+
+
 def test_current_state_and_closure_match_closed_step12_gates() -> None:
     """CURRENT_STATE + PROJECT_CLOSURE must match closed step-12 mutation/mypy gates."""
     with (REPO / "pyproject.toml").open("rb") as fh:

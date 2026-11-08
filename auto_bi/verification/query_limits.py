@@ -200,3 +200,33 @@ def clickhouse_named_code(error: Exception, names: dict[int, str]) -> str | None
     code = clickhouse_error_code(error)
     name = None if code is None else names.get(code)
     return None if name is None else f"Code {code} {name}"
+
+
+#: What PostgreSQL answers the same drift: a column the query names was dropped or renamed
+#: (`42703 undefined_column`), or is now of a type its functions or operators do not take
+#: (`42883 undefined_function`: `sum(text)`, `trunc(double precision, integer)`, `max(jsonb)`).
+#: `EXPLAIN` of the reference query and `max()` of an event-time column answer so (PostgreSQL
+#: 16.15, live: tests/test_decision_live_postgres.py). As on ClickHouse,
+#: environment_probe.py takes the state as a fact only where the catalog accounts for it.
+POSTGRES_QUERY_UNFIT = {"42703": "undefined_column", "42883": "undefined_function"}
+
+#: What PostgreSQL answers a query naming a column the role may not read (`42501
+#: insufficient_privilege`: `SELECT` granted on every column but `revenue`; 16.15, live).
+POSTGRES_QUERY_REFUSED = {"42501": "insufficient_privilege"}
+
+
+def postgres_named_state(error: Exception, names: dict[str, str]) -> str | None:
+    """`SQLSTATE 42703 undefined_column` for an error whose state `names` holds, else `None`.
+
+    The state and its condition name only, never the message: it quotes the query and the
+    driver's text around it names the host the gate was connected to.
+    """
+    state = postgres_sqlstate(error)
+    name = None if state is None else names.get(state)
+    return None if name is None else f"SQLSTATE {state} {name}"
+
+
+def postgres_sqlstate(error: Exception) -> str | None:
+    """The SQLSTATE psycopg carries (`sqlstate`), or psycopg2 (`pgcode`); `None` without one."""
+    state = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
+    return None if state is None else str(state)
