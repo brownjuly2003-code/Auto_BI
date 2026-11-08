@@ -35,7 +35,8 @@ group whose mean in a double is not the exact one, of a decimal and of an intege
 Columns are ``amount`` (class ``decimal``), ``qty`` (``integer``) and ``price`` (``float``),
 nullable, and their NOT NULL twins ``amount_nn``, ``qty_nn``, ``price_nn``, holding zero where
 the column is NULL: ClickHouse's reference SQL casts an integral ratio numerator by whether the
-term may be NULL. A ratio is over any two columns of one nullability, the same one included.
+term may be NULL. A ratio is over any two columns, the same one included, of one nullability
+or not: each term is cast by its own.
 Its float term is a ``count`` or a ``count_distinct``: under another aggregate a float term has
 no reference SQL, as an ``average`` term has none (``sql.ratio_inexact_term``) — the ratios
 with an ``average`` term are in the matrix to show it, and their rows stay unproven. The
@@ -101,13 +102,8 @@ ZERO = {"amount": "0.00", "qty": 0, "price": "0"}
 AGGREGATES = ("sum", "count", "count_distinct", "min", "max", "average")
 #: Aggregates whose metric the matrix contracts as `additive`; the others and ratios are not.
 ADDITIVE = ("sum", "count")
-#: A ratio's columns: any two of one nullability.
-RATIO_SIDES = tuple(
-    (top, bottom)
-    for group in (tuple(NULLABLE), tuple(TWINS.values()))
-    for top in group
-    for bottom in group
-)
+#: A ratio's columns: any two, the same one included, of one nullability or not.
+RATIO_SIDES = tuple((top, bottom) for top in COLUMNS for bottom in COLUMNS)
 
 #: The grain table as each context's native model declares it, and as the run loads it.
 DECLARED = {

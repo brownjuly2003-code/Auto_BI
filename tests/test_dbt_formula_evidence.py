@@ -9,6 +9,7 @@ broken works on a copy.
 
 from __future__ import annotations
 
+import errno
 import json
 import re
 import shutil
@@ -422,6 +423,43 @@ def test_an_artifact_that_is_not_there_is_named(
     assert not (tmp_path / "evidence").exists()
 
 
+def test_an_artifact_that_is_a_directory_is_named(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = _argv("repinned", tmp_path / "evidence", candidate=False)
+    folder = tmp_path / "artifact"
+    folder.mkdir()
+    assert main([*argv, "--candidate-semantic-manifest", str(folder)]) == EXIT_ERROR
+    err = capsys.readouterr().err
+    assert "dbt semantic manifest is not a file" in err and "not found" not in err
+    assert not (tmp_path / "evidence").exists()
+
+
+def _deny_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """A copy of the candidate artifact this process may not open, on any platform."""
+    denied = tmp_path / "artifact.json"
+    shutil.copyfile(CANDIDATE_ARTIFACT, denied)
+    original = Path.read_bytes
+
+    def refuse(self: Path) -> bytes:
+        if self == denied:
+            raise PermissionError(errno.EACCES, "Permission denied", str(self))
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", refuse)
+    return denied
+
+
+def test_an_artifact_that_cannot_be_read_is_named(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    denied = _deny_artifact(monkeypatch, tmp_path)
+    argv = _argv("repinned", tmp_path / "evidence", candidate=False)
+    assert main([*argv, "--candidate-semantic-manifest", str(denied)]) == EXIT_ERROR
+    assert capsys.readouterr().err.rstrip().endswith(f"cannot read {denied}: PermissionError")
+    assert not (tmp_path / "evidence").exists()
+
+
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_the_pilot_bundles_are_what_verify_writes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], case: str
@@ -785,6 +823,21 @@ def test_capture_takes_no_dbt_database_without_its_artifact(
     err = capsys.readouterr().err
     assert "--candidate-dbt-database is given without --candidate-semantic-manifest" in err
     assert asked == []
+
+
+def test_capture_names_an_artifact_that_cannot_be_read_and_asks_no_engine(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+    _engine(monkeypatch, asked)
+    denied = _deny_artifact(monkeypatch, tmp_path)
+    case = Case(tmp_path).with_asset()
+    output = tmp_path / "captured.yaml"
+    dbt = ["--candidate-semantic-manifest", str(denied), "--candidate-dbt-database", "x"]
+    assert main(_capture_argv(case, output, *dbt)) == EXIT_ERROR
+    assert capsys.readouterr().err.rstrip().endswith(f"cannot read {denied}: PermissionError")
+    assert asked == []
+    assert not output.exists()
 
 
 # --- ids and versions --------------------------------------------------------------------------

@@ -55,7 +55,18 @@ Conversion- и private-метрик и natural entities в корпусе нет
      доказательство: другая database — block `gap.external_relation_mismatch`, не
      объявленная при непустой database в relation — review `gap.external_relation_unproven`.
      `schema_name.alias`, не равный `grain.table` контракта, — block
-     `gap.external_relation_mismatch`.
+     `gap.external_relation_mismatch`. Таблицу же MetricFlow читает из `relation_name`
+     (metricflow 0.213.0, `SqlTable.from_string`: части через точку; пустой он строит из трёх
+     полей), и `relation_name` сверяется с ними: последние две части — schema и alias, третья
+     перед ними — database; часть в кавычках (`""` — кавычка в имени) или одно имя в нижнем
+     регистре без кавычек читается как имя. Имя, не равное своему полю, или не две-три части —
+     block `gap.external_relation_mismatch`; часть не в кавычках и не одно имя в нижнем
+     регистре (имя в смешанном регистре без кавычек — PostgreSQL приводит его к нижнему
+     регистру, ClickHouse нет; обратные кавычки; незакрытая кавычка) или database только в
+     `relation_name` либо только в полях (адаптер может её опустить, и читается database
+     подключения) — review `gap.external_relation_unproven`. dbt-core 1.12.6 пишет `relation_name` из той же
+     relation, что и поля, — расхождение несёт только артефакт, правленый после dbt, или
+     другой адаптер и quoting (дополнение S5d).
    - **Время.** Действующий `agg_time_dimension` (V2 — `metric_aggregation_params`; legacy —
      у measure, иначе `defaults` semantic model) ведёт к dimension, а та — к колонке (`expr`
      dimension, без него — её имя). Колонка, не равная `time.event_time_column`, — block
@@ -175,9 +186,10 @@ Conversion- и private-метрик и natural entities в корпусе нет
    значениями, где NULL — ноль: на ClickHouse reference SQL ratio приводит целый числитель к
    `Decimal(38, 0)` или `Nullable(Decimal(38, 0))` по тому, может ли терм быть NULL — `sum`,
    `min` и `max` над nullable-колонкой могут, `count` и `count_distinct` нет, — а класс этого
-   не называет. Ratio — над любой парой колонок одной nullability, включая одну и ту же
-   колонку. Ratio наследует ограничения reference SQL: терм `average` и float-терм под `sum`,
-   `min` или `max` дают advisory `sql.ratio_inexact_term` без SQL, а `count` и
+   не называет. Ratio — над любой парой колонок, включая одну и ту же, одной nullability и
+   разной: каждая доказанная строка ratio держится метриками всех четырёх сочетаний
+   nullability своих термов (дополнение S5d). Ratio наследует ограничения reference SQL: терм
+   `average` и float-терм под `sum`, `min` или `max` дают advisory `sql.ratio_inexact_term` без SQL, а `count` и
    `count_distinct` над float-колонкой — SQL. Поэтому float-терм ratio в матрице — только
    `count` и `count_distinct`, а формы ratio с `average` в ней есть и не доказаны. Доказано 328
    строк: 164 в контексте `postgres.date`, 164 в `clickhouse.date`.
@@ -257,13 +269,14 @@ Conversion- и private-метрик и natural entities в корпусе нет
    1.12.6: каждую отдельно, потом принятые вместе; метрика в общем артефакте разрешается так
    же, как на своём проекте, иначе прогон останавливается. Артефакты принятых записей и ответ
    резолвера по каждой лежат в `tests/fixtures/dbt_semantic_manifest/corpus`
-   ([отчёт](../reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md)). Из 87 строк dbt пишет 63 и
+   ([отчёт](../reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md)). Из 89 строк dbt пишет 63 и
    отвергает 10: незнакомые ключи legacy и V2 — JSON-схемой, остальное — собственными
    проверками. 3 строки он принимает, но не доносит: `cumulative_type_params` legacy
    simple-метрики и `fill_nulls_with` V2 пишет как `null`, а до паритета не доходит ни одна
-   V2-метрика. Ещё 11 строк зависят от артефакта целиком или от контекста, который корпус
-   держит одним. Строки, которых dbt-core 1.12.6 не пишет, остаются: артефакт другой версии
-   или другого автора может их нести.
+   V2-метрика. Ещё 13 строк зависят от артефакта целиком, от того, что dbt пишет одинаково
+   для всех записей (`relation_name`), или от контекста, который корпус держит одним. Строки,
+   которых dbt-core 1.12.6 не пишет, остаются: артефакт другой версии или другого автора может
+   их нести.
 9. **Без ложной эквивалентности.** Узел метрики несёт binding: source, ref, revision и digest
    замыкания. Любое изменение определения в dbt — поддержанное или нет — сдвигает canonical
    digest, и diff его называет. Неподдержанная конструкция никогда не сводится к типизированной

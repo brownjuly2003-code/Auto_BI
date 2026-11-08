@@ -489,7 +489,8 @@ def _snapshot(root: Path, dbt: DbtArtifact | None, option: str) -> SnapshotRead:
         if not filesystem.is_file(model_path):
             raise VerifyError(f"semantic ref {root} has no {MODEL_FILE}")
         if manifest is not None and not filesystem.is_file(manifest):
-            raise VerifyError(f"dbt semantic manifest not found: {manifest}")
+            what = "is not a file" if filesystem.exists(manifest) else "not found"
+            raise VerifyError(f"dbt semantic manifest {what}: {manifest}")
         metrics = root / METRICS_DIR
         source = NativeModelSource(
             model_path,

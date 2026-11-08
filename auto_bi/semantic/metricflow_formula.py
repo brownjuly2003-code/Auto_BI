@@ -18,9 +18,11 @@ The answer comes in steps, and a step that finds a gap is the last one:
 3. **The contract and the supported subset** (ADR 0008, items 3, 7 and 8), every gap reported:
 
    - *relation* — the semantic model's ``schema_name.alias`` is not the contract's grain
-     table, or its database is not the one declared with the artifact: block
-     ``gap.external_relation_mismatch``; a database the artifact names when none was declared:
-     review ``gap.external_relation_unproven``;
+     table, its database is not the one declared with the artifact, or its ``relation_name``,
+     the relation MetricFlow reads, names another than those fields: block
+     ``gap.external_relation_mismatch``; a database the artifact names when none was declared,
+     a part of ``relation_name`` neither quoted nor one lower-case identifier, or a database
+     in ``relation_name`` or in the fields only: review ``gap.external_relation_unproven``;
    - *time* — the column of the aggregation time dimension is not the contract's event time
      column: block ``gap.external_time_mismatch``; no such dimension, a dimension that is not
      ``time``, an expression that is not one column, or a granularity that is not ``day`` or
@@ -199,7 +201,13 @@ PROVEN_PARITY: frozenset[str] = frozenset(
 #: engines, and anything else is an expression.
 _COLUMN = re.compile(r"[a-z_][a-z0-9_]*")
 
-#: Bare words SQL reads as a value, not as a column.
+#: A quoted part of a relation name; ``""`` stands for a quote in it.
+_QUOTED = re.compile(r'"((?:[^"]|"")*)"')
+
+#: Bare words SQL reads as a value, not as a column. MetricFlow writes `true`, `false` and
+#: `null` as they are, values; another bare word it qualifies with the table's alias, and the
+#: reference SQL quotes a column — these stay out all the same, as PostgreSQL reads each of
+#: them unqualified as a value (`system_user` since PostgreSQL 16).
 _VALUE_WORDS = frozenset(
     {
         "true",
@@ -215,6 +223,7 @@ _VALUE_WORDS = frozenset(
         "current_catalog",
         "current_schema",
         "session_user",
+        "system_user",
         "user",
     }
 )
@@ -737,6 +746,55 @@ class _Resolver:
                 f"semantic model {model_name!r} reads another database than the declared "
                 f"{self._database!r}",
             )
+        self._relation_name(model_name, relation, f"{path}.relation_name")
+
+    def _relation_name(self, model_name: str, relation: JsonObject, path: str) -> None:
+        """The relation MetricFlow reads: ``relation_name``, split at each dot as it splits it.
+
+        An empty one metricflow builds from the three fields, joined by dots. Its last two
+        parts are the schema and the alias, a third before them the database. A part reads as a
+        name when it is quoted or, unquoted, one lower-case identifier; another unquoted part
+        PostgreSQL folds to lower case and ClickHouse does not. A name other than its field is
+        block; a part that does not read as a name, or a database on one side only — an
+        adapter can leave it out of the relation, and the connection's database is read —
+        review.
+        """
+        database = relation.get("database")
+        schema, alias = relation["schema_name"], relation["alias"]
+        spelled = relation.get("relation_name") or (
+            f"{schema}.{alias}" if database is None else f"{database}.{schema}.{alias}"
+        )
+        parts = spelled.split(".")
+        names = [self._part(part) for part in parts]
+        fields: list[str | None] = [database or None, schema, alias][-len(parts) :]
+        if len(parts) not in (2, 3) or any(
+            name is not None and field is not None and name != field
+            for name, field in zip(names, fields, strict=True)
+        ):
+            self._gap(
+                RELATION_MISMATCH,
+                Severity.BLOCK,
+                path,
+                f"semantic model {model_name!r} has a relation_name MetricFlow reads as another "
+                "relation than its database, schema_name and alias",
+            )
+        elif None in names or len(parts) != (3 if database else 2):
+            self._gap(
+                RELATION_UNPROVEN,
+                Severity.REVIEW,
+                path,
+                f"semantic model {model_name!r} has a relation_name that may read another "
+                "relation than its fields: a part neither quoted nor one lower-case identifier, "
+                "or a database on one side only",
+            )
+
+    @staticmethod
+    def _part(part: str) -> str | None:
+        """The name a part of a relation name reads as; None where engines read it apart."""
+        quoted = _QUOTED.fullmatch(part)
+        if quoted is not None:
+            return quoted.group(1).replace('""', '"')
+        return part if _COLUMN.fullmatch(part) is not None else None
 
     def _additivity(self, path: str, why: str) -> None:
         if self._contract.additivity is Additivity.ADDITIVE:

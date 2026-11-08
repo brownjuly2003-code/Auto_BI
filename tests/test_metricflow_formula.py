@@ -535,6 +535,15 @@ def test_another_pin_is_the_only_answer() -> None:
 # --- compatibility with the contract --------------------------------------------------
 
 
+def _relate(data: dict[str, Any], **fields: str | None) -> None:
+    """Set fields of the sales relation, and its `relation_name` as dbt-postgres writes it."""
+    relation = _model(data, "sales_daily")["node_relation"]
+    relation.update(fields)
+    parts = [relation["database"]] if relation["database"] else []
+    parts += [relation["schema_name"], relation["alias"]]
+    relation["relation_name"] = ".".join('"' + part.replace('"', '""') + '"' for part in parts)
+
+
 @pytest.mark.parametrize(
     ("database", "relation", "expected"),
     [
@@ -553,24 +562,108 @@ def test_database_of_the_relation(
     database: str | None, relation: str | None, expected: list[tuple[str, str]]
 ) -> None:
     data = _data("legacy")
-    _model(data, "sales_daily")["node_relation"]["database"] = relation
+    _relate(data, database=relation)
     path = "$.semantic_models[0].node_relation.database"
     resolution = _resolve(data, "revenue", database=database)
     assert _gaps(resolution) == [(code, severity, path) for code, severity in expected]
     assert (resolution.formula is not None) is (expected == [])
 
 
+#: Stands for a relation without `relation_name`, which metricflow builds from the fields.
+ABSENT = object()
+
+
+@pytest.mark.parametrize(
+    ("database", "spelled", "expected"),
+    [
+        # as dbt writes it, quoted or not, part by part, and as metricflow builds it
+        ("x", '"x"."dm"."sales_daily"', []),
+        ("x", "x.dm.sales_daily", []),
+        ("x", '"x".dm."sales_daily"', []),
+        ("x", ABSENT, []),
+        ("x", "", []),
+        (None, '"dm"."sales_daily"', []),
+        (None, "dm.sales_daily", []),
+        (None, ABSENT, []),
+        ("", '"dm"."sales_daily"', []),
+        # a name other than its field, quoted or one lower-case identifier
+        ("x", '"x"."dm"."sales_other"', [(RELATION_MISMATCH, BLOCK)]),
+        ("x", '"x"."mart"."sales_daily"', [(RELATION_MISMATCH, BLOCK)]),
+        ("x", '"y"."dm"."sales_daily"', [(RELATION_MISMATCH, BLOCK)]),
+        ("x", "x.dm.sales_other", [(RELATION_MISMATCH, BLOCK)]),
+        ("x", "y.dm.sales_daily", [(RELATION_MISMATCH, BLOCK)]),
+        ("x", '"x"."dm"."Sales_Daily"', [(RELATION_MISMATCH, BLOCK)]),
+        (None, '"mart"."sales_daily"', [(RELATION_MISMATCH, BLOCK)]),
+        (None, '"dm"."sales_other"', [(RELATION_MISMATCH, BLOCK)]),
+        ("x", 'x.Dm."sales_other"', [(RELATION_MISMATCH, BLOCK)]),
+        ("x", 'Y."dm"."sales_other"', [(RELATION_MISMATCH, BLOCK)]),
+        # parts MetricFlow does not read as a relation
+        ("x", '"x"."dm"."sales"."daily"', [(RELATION_MISMATCH, BLOCK)]),
+        ("x", '"sales_daily"', [(RELATION_MISMATCH, BLOCK)]),
+        (None, "sales_daily", [(RELATION_MISMATCH, BLOCK)]),
+        # a part engines read apart, or a database on one side only
+        ("x", "x.dm.Sales_Daily", [(RELATION_UNPROVEN, REVIEW)]),
+        ("x", '"x"."dm".Sales_Daily', [(RELATION_UNPROVEN, REVIEW)]),
+        ("x", 'X."dm"."sales_daily"', [(RELATION_UNPROVEN, REVIEW)]),
+        ("x", 'x.dm."sales_daily', [(RELATION_UNPROVEN, REVIEW)]),
+        ("x", 'x.dm.sales_daily"', [(RELATION_UNPROVEN, REVIEW)]),
+        ("x", '"x"."dm"."sales"daily"', [(RELATION_UNPROVEN, REVIEW)]),
+        ("x", "`x`.`dm`.`sales_daily`", [(RELATION_UNPROVEN, REVIEW)]),
+        (None, "`dm`.`sales_daily`", [(RELATION_UNPROVEN, REVIEW)]),
+        ("x", '"dm"."sales_daily"', [(RELATION_UNPROVEN, REVIEW)]),
+        (None, '"x"."dm"."sales_daily"', [(RELATION_UNPROVEN, REVIEW)]),
+        ("", '"x"."dm"."sales_daily"', [(RELATION_UNPROVEN, REVIEW)]),
+        ("", ABSENT, [(RELATION_UNPROVEN, REVIEW)]),
+    ],
+)
+def test_relation_name_is_the_relation_metricflow_reads(
+    database: str | None, spelled: object, expected: list[tuple[str, str]]
+) -> None:
+    # metricflow 0.213.0 reads FROM `relation_name`, split at each dot
+    # (`SqlTable.from_string`); a relation_name other than its fields types the formula of
+    # another table
+    data = _data("legacy")
+    relation = _model(data, "sales_daily")["node_relation"]
+    relation["database"] = database
+    if spelled is ABSENT:
+        del relation["relation_name"]
+    else:
+        relation["relation_name"] = spelled
+    path = "$.semantic_models[0].node_relation.relation_name"
+    resolution = _resolve(data, "revenue", database=database)
+    assert _gaps(resolution) == [(code, severity, path) for code, severity in expected]
+    assert (resolution.formula is not None) is (expected == [])
+
+
+def test_a_doubled_quote_in_a_quoted_part_is_one_quote() -> None:
+    data = _data("legacy")
+    _relate(data, alias='sales"daily')
+    path = "$.semantic_models[0].node_relation.relation_name"
+    relation = _model(data, "sales_daily")["node_relation"]
+    assert relation["relation_name"] == '"x"."dm"."sales""daily"'
+    for spelled, expected in [
+        ('"x"."dm"."sales""daily"', []),
+        ('"x"."dm"."sales""""daily"', [(RELATION_MISMATCH, BLOCK, path)]),
+        ('"x"."dm"."sales"daily"', [(RELATION_UNPROVEN, REVIEW, path)]),
+    ]:
+        relation["relation_name"] = spelled
+        gaps = _gaps(_resolve(data, "revenue"))
+        assert [gap for gap in gaps if gap[2] == path] == expected, spelled
+        # the alias is not the grain table's either
+        assert (RELATION_MISMATCH, BLOCK, "$.semantic_models[0].node_relation") in gaps
+
+
 def test_another_table_is_a_relation_mismatch() -> None:
     data = _data("legacy")
     path = "$.semantic_models[0].node_relation"
     assert _gaps(_resolve(data, "revenue", table="dm.sales")) == [(RELATION_MISMATCH, BLOCK, path)]
-    _model(data, "sales_daily")["node_relation"]["schema_name"] = "mart"
+    _relate(data, schema_name="mart")
     assert _gaps(_resolve(data, "revenue")) == [(RELATION_MISMATCH, BLOCK, path)]
 
 
 def test_grain_table_a_typed_term_does_not_take_is_a_construct() -> None:
     data = _data("legacy")
-    _model(data, "sales_daily")["node_relation"]["alias"] = "Sales_Daily"
+    _relate(data, alias="Sales_Daily")
     assert _gaps(_resolve(data, "revenue", table="dm.Sales_Daily")) == [
         (CONSTRUCT_UNSUPPORTED, REVIEW, _metric_path(data, "revenue"))
     ]
@@ -583,6 +676,27 @@ def test_another_event_time_is_a_time_mismatch() -> None:
     ]
 
 
+#: Each bare word PostgreSQL reads as a value, spelled here and not taken from the module: one
+#: the resolver forgot would be read as a column.
+VALUE_WORDS = (
+    "true",
+    "false",
+    "null",
+    "current_date",
+    "current_time",
+    "current_timestamp",
+    "localtime",
+    "localtimestamp",
+    "current_user",
+    "current_role",
+    "current_catalog",
+    "current_schema",
+    "session_user",
+    "system_user",
+    "user",
+)
+
+
 @pytest.mark.parametrize(
     ("expr", "expected"),
     [
@@ -590,7 +704,7 @@ def test_another_event_time_is_a_time_mismatch() -> None:
         ("order_date", [(TIME_MISMATCH, BLOCK)]),
         ("DATE", [(TIME_UNPROVEN, REVIEW)]),
         ("date_trunc('day', ts)", [(TIME_UNPROVEN, REVIEW)]),
-        ("current_date", [(TIME_UNPROVEN, REVIEW)]),
+        *((word, [(TIME_UNPROVEN, REVIEW)]) for word in VALUE_WORDS),
     ],
 )
 def test_time_dimension_expression(expr: str, expected: list[tuple[str, str]]) -> None:
@@ -1022,7 +1136,7 @@ def test_aggregation_parameters_other_than_the_defaults_are_a_construct() -> Non
     ]
 
 
-@pytest.mark.parametrize("expr", ["Revenue", "true", "null", "revenue - gross_margin", "1"])
+@pytest.mark.parametrize("expr", ["Revenue", *VALUE_WORDS, "revenue - gross_margin", "1"])
 def test_measure_expression_that_is_not_one_column_is_a_construct(expr: str) -> None:
     data = _data("legacy")
     _measure(data, "revenue")["expr"] = expr
@@ -1739,10 +1853,29 @@ def test_matrix_data_holds_the_cases_it_names() -> None:
         if term
     ]
     assert max(terms) / min(terms) < 10**32
-    # a ratio is over two columns of one nullability, the same column included
-    for top, bottom in script.RATIO_SIDES:
-        assert (top in script.NULLABLE) is (bottom in script.NULLABLE)
-    assert len(script.RATIO_SIDES) == 2 * len(script.NULLABLE) ** 2
+    # a ratio is over any two columns, the same column included, of one nullability or not
+    pairs = tuple((top, bottom) for top in script.COLUMNS for bottom in script.COLUMNS)
+    assert pairs == script.RATIO_SIDES
+
+
+def test_a_proven_ratio_row_holds_over_each_nullability_of_its_terms() -> None:
+    # the class of a column does not name its nullability, and ClickHouse's reference SQL casts
+    # an integral numerator by it: a ratio row is proven over each pair of nullabilities
+    script, result = _script(), _result()
+    every = {(top, bottom) for top in (True, False) for bottom in (True, False)}
+    for context, found in result["contexts"].items():
+        held: dict[str, set[tuple[bool, bool]]] = {}
+        for top, bottom in script.RATIO_SIDES:
+            for top_agg in script._side_aggregates(top):
+                for bottom_agg in script._side_aggregates(bottom):
+                    case = found["metrics"][script._ratio_name(top, top_agg, bottom, bottom_agg)]
+                    if case["outcome"] == "pass":
+                        nullable = (top in script.NULLABLE, bottom in script.NULLABLE)
+                        held.setdefault(case["subject"], set()).add(nullable)
+        ratios = [row for row in found["proven"] if row.startswith(f"{context}:ratio.")]
+        assert ratios and sorted(held) == ratios, context
+        for row in ratios:
+            assert held[row] == every, (context, row)
 
 
 def test_both_sides_group_by_the_grain_keys() -> None:

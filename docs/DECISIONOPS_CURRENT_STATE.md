@@ -309,7 +309,11 @@ reviewed capture, provenance/governance, все пять live DWH checks и sign
   которой формула dbt остаётся `external_ref`, — строка
   [инвентаря](specs/dbt-formula-inventory.md), и что из них пишет dbt-core 1.12.6, показывает
   [корпус](reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md) S5b; публичные dbt-проекты в нём не
-  прогонялись); проверка колонок
+  прогонялись. Известные ограничения этапа: число проблем reader не ограничено и повторяется
+  в каждом dbt-контракте; объявленная `--*-dbt-database` не записана в provenance источника;
+  часть `relation_name` не в двойных кавычках и не одно имя в нижнем регистре (например, имя в
+  смешанном регистре без кавычек или обратные кавычки) или database только с одной стороны —
+  review); проверка колонок
   reviewed-запроса — это governance («объявлено ли поле»), а не lineage («откуда значение
   пришло через преобразования»). Offline brief
   остаётся `exploratory` и не является human acceptance evidence.
@@ -386,23 +390,27 @@ Windows-машине запрещено поднимать WSL/Docker и ана�
 
 ## Что делать дальше
 
-Открыт один этап — внешний источник формул метрик (решение владельца 2026-11-04,
-[ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)): срезы S1–S5 перечислены в его «Последствиях»; S1, строгий
-reader `semantic_manifest.json` (`auto_bi/semantic/metricflow.py`), и S2, разрешение
-поддержанных формул с именованными гэпами и матрицей паритета
-(`auto_bi/semantic/metricflow_formula.py`), S3, binding в узле метрики со сверкой по
-объявлению и `metric.binding_changed` (`auto_bi/semantic/gateway.py`), и S4, артефакт каждой
-стороны в CLI, `decision pin` и замыкания в evidence с pilot
-[`docs/pilot/2026-11-06-dbt-formula-pin`](pilot/2026-11-06-dbt-formula-pin/README.md), сделаны.
-S5 нарезан на четыре среза. Сделаны S5a — [инвентарь](specs/dbt-formula-inventory.md) причин,
-по которым формула dbt остаётся `external_ref`, — S5b —
-[корпус](reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md): что из этих конструкций пишет dbt-core
-1.12.6 (63 строки из 87; 10 он отвергает, 3 принимает, но не доносит), — и S5c —
-[паритет на ClickHouse](reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md):
-контекст `clickhouse.date`, 328 доказанных строк (164 + 164). Следующий — S5d, финальное ревью
-этапа; Astra для него — по лимиту Codex у владельца (2026-11-07 — «дальше работай сам, лимит на
-кодекс заканчивается»), до S5d спросить. Публичные dbt-проекты в корпус не вошли: их прогон —
-запуск чужого кода (`dbt deps`), на него нужно отдельное решение владельца.
+Этап «внешний источник формул метрик» (решение владельца 2026-11-04,
+[ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md)) закрыт: S1 — строгий reader
+`semantic_manifest.json` (`auto_bi/semantic/metricflow.py`), S2 — разрешение поддержанных
+формул с именованными гэпами и матрицей паритета (`auto_bi/semantic/metricflow_formula.py`),
+S3 — binding в узле метрики со сверкой по объявлению и `metric.binding_changed`
+(`auto_bi/semantic/gateway.py`), S4 — артефакт каждой стороны в CLI, `decision pin` и замыкания
+в evidence с pilot [`docs/pilot/2026-11-06-dbt-formula-pin`](pilot/2026-11-06-dbt-formula-pin/README.md),
+S5a — [инвентарь](specs/dbt-formula-inventory.md) причин, по которым формула dbt остаётся
+`external_ref` (89 строк), S5b — [корпус](reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md): что из
+этих конструкций пишет dbt-core 1.12.6 (63 строки; 10 он отвергает, 3 принимает, но не
+доносит), S5c — [паритет на ClickHouse](reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md):
+контекст `clickhouse.date`, 328 доказанных строк (164 + 164), S5d — открытое ревью этапа
+(ревьюер — Opus-субагент, не Astra: лимит Codex у владельца, его выбор) и сверка
+`relation_name`. Публичные dbt-проекты в корпус не вошли: их прогон — запуск чужого кода
+(`dbt deps`), на него нужно отдельное решение владельца.
+
+Дальше по плану владельца (2026-11-07, «прими все решения за меня, исходя из лучшего качества
+проекта»): S6-hygiene — EOL (`.gitattributes` и renormalize), CURRENT_STATE не больше 10 КБ,
+хроника версий в spec с docs-тестом, описание пакета без публикации; S7 — live-проверка
+DecisionOps на Mac-стенде в `ci_local`; S8 — выжившие мутанты `sql_guard` и обёртка приватного
+API sqlglot. Codex/Astra — пока владелец не скажет, что лимит есть.
 Другие срезы владелец выбирает сам, содержательное ревью —
 Astra xhigh по [ADR 0006](adr/0006-modelled-review-development-gate.md) и
 [AGENTS.md](../AGENTS.md).

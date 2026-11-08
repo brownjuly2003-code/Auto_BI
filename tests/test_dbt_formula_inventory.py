@@ -68,6 +68,7 @@ from tests.test_metricflow_formula import (
     _metric_path,
     _model,
     _read,
+    _relate,
     _resolve,
     _second_revenue,
     _second_time_dimension,
@@ -210,7 +211,7 @@ def _relation_table() -> Gaps:
 
 def _named_database() -> dict[str, Any]:
     data = _data("legacy")
-    _model(data, "sales_daily")["node_relation"]["database"] = "analytics"
+    _relate(data, database="analytics")
     return data
 
 
@@ -222,6 +223,22 @@ def _relation_database() -> Gaps:
 @case("relation.database-undeclared")
 def _relation_database_undeclared() -> Gaps:
     return _gaps(_resolve(_named_database(), "revenue", database=None))
+
+
+def _relation_named(spelled: str) -> Gaps:
+    data = _data("legacy")
+    _model(data, "sales_daily")["node_relation"]["relation_name"] = spelled
+    return _gaps(_resolve(data, "revenue"))
+
+
+@case("relation.name")
+def _relation_name() -> Gaps:
+    return _relation_named('"x"."dm"."sales_other"')
+
+
+@case("relation.name-unproven")
+def _relation_name_unproven() -> Gaps:
+    return _relation_named("x.dm.Sales_Daily")
 
 
 @case("time.none-legacy")
@@ -555,7 +572,7 @@ def _v2_expr() -> Gaps:
 @case("formula.table")
 def _formula_table() -> Gaps:
     data = _data("legacy")
-    _model(data, "sales_daily")["node_relation"]["alias"] = "Sales_Daily"
+    _relate(data, alias="Sales_Daily")
     return _gaps(_resolve(data, "revenue", table="dm.Sales_Daily"))
 
 

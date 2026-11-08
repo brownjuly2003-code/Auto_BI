@@ -6,6 +6,12 @@
 Списки строк по классам — раздел спеки «What dbt-core 1.12.6 writes». Дизайн —
 [ADR 0008](../adr/0008-dbt-semantic-manifest-external-formulas.md), п. 8.
 
+Дополнение S5d: в инвентаре теперь 89 строк — две новые, `relation.name` и
+`relation.name-unproven` (сверка `relation_name`, ADR 0008, п. 3), обе без записи (No entry,
+теперь 13). Корпус не перегонялся: dbt пишет `relation_name` из той же relation, что и поля, и
+ответы резолвера на записи те же — это держит `tests/test_dbt_corpus.py` на записанных
+артефактах.
+
 ## Что строилось
 
 Инвентарь S5a называет каждую причину, по которой формула dbt остаётся `external_ref`. Почти

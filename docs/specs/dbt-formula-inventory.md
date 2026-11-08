@@ -100,6 +100,8 @@ is not looked for:
 | `relation.table` | The semantic model's `schema_name.alias` is not the contract's grain table | `gap.external_relation_mismatch` | block | `$.semantic_models[s].node_relation` |
 | `relation.database` | The semantic model's database is not the dbt database declared with the artifact (`--base-dbt-database`, `--candidate-dbt-database`) | `gap.external_relation_mismatch` | block | `$.semantic_models[s].node_relation.database` |
 | `relation.database-undeclared` | The semantic model names a database, and none was declared with the artifact | `gap.external_relation_unproven` | review | `$.semantic_models[s].node_relation.database` |
+| `relation.name` | The semantic model's `relation_name` — the relation MetricFlow reads, split at each dot; when empty, the three fields joined by dots, as metricflow builds it — is not two or three parts, or a part read as a name (quoted, `""` a quote in it, or one lower-case identifier) is not its field: the last two the schema and the alias, a third the database | `gap.external_relation_mismatch` | block | `$.semantic_models[s].node_relation.relation_name` |
+| `relation.name-unproven` | A part of `relation_name` is neither quoted nor one lower-case identifier — PostgreSQL folds its case, ClickHouse does not — or a database is in `relation_name` or in the fields only: an adapter can leave it out of the relation, and the connection's database is read | `gap.external_relation_unproven` | review | `$.semantic_models[s].node_relation.relation_name` |
 | `time.none-legacy` | A legacy measure names no `agg_time_dimension`, and neither do the `defaults` of its semantic model | `gap.external_time_unproven` | review | `$.semantic_models[s].measures[j].agg_time_dimension` |
 | `time.none-v2` | A V2 metric's `metric_aggregation_params.agg_time_dimension` is null; the `defaults` of the semantic model are not read for a V2 metric | `gap.external_time_unproven` | review | `$.metrics[m].type_params.metric_aggregation_params.agg_time_dimension` |
 | `time.not-time` | The aggregation time dimension is not of type `time` | `gap.external_time_unproven` | review | `$.semantic_models[s].dimensions[d].type` |
@@ -258,14 +260,19 @@ has at the gap's path. One gap can be two rows: the `agg_params` of a percentile
 
 `params.cumulative_type_params`, `params.fill_nulls_with`, `parity.v2`.
 
-**No entry** (11) — no entry is built for the row: it turns on the artifact as a whole, or on
-what the corpus holds the same for every entry — the contract's reference, pin, event time and
-grain keys, the database declared with the artifact, and the native model's declaration of the
-grain table.
+**No entry** (13) — no entry is built for the row: it turns on the artifact as a whole, on
+what dbt-core 1.12.6 writes the same for every entry, or on what the corpus holds the same for
+every entry — the contract's reference, pin, event time and grain keys, the database declared
+with the artifact, the project's quoting, and the native model's declaration of the grain
+table. dbt writes a semantic model's `relation_name` as the relation of the model it refers to,
+rendered by the adapter from the same database, schema and alias under the project's quoting:
+`relation.name` needs an artifact edited after dbt, `relation.name-unproven` an adapter or a
+quoting other than dbt-postgres's default, which quotes each part.
 
 `artifact.missing`, `artifact.invalid`, `artifact.version`, `artifact.ref`, `artifact.pin`,
-`relation.database-undeclared`, `parity.engine`, `parity.event-time-type`,
-`parity.event-time-outside-grain`, `parity.column-type`, `parity.ratio-float`.
+`relation.database-undeclared`, `relation.name`, `relation.name-unproven`, `parity.engine`,
+`parity.event-time-type`, `parity.event-time-outside-grain`, `parity.column-type`,
+`parity.ratio-float`.
 
 What dbt does with the constructs it does not carry:
 
