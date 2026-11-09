@@ -118,12 +118,6 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: What each verifier version changed: docs/specs/evidence-format-versions.md, newest first.
 #: A bump adds its entry there and here; here only the newest few stay (at most five,
 #: tests/test_evidence_format_versions.py). The newest:
-#: 128 — native source version 4 (ADR 0008, slice S3): the node of a metric whose formula a dbt
-#: semantic manifest defines carries its binding and, where the formula resolves from the
-#: artifact the snapshot read, the typed formula, which impact and reference SQL then read;
-#: without the artifact, or where it does not resolve, the formula stays `external_ref` and
-#: the resolution's gaps join `gap.opaque_metric_formula`. Snapshots, the diff and every check
-#: over a bound metric can change; a snapshot without one keeps its digest.
 #: 129 — a bundle keeps, beside each snapshot, the canonical closure of every dbt metric a
 #: binding of that snapshot names a closure digest for (ADR 0008, slice S4), and re-verifying
 #: a bundle checks those closures against the bindings: `evidence.closure_missing`,
@@ -158,7 +152,17 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: called `access_denied_at` is weighed as the drift it accounts for, or ends the run. The
 #: wording is read only for an error that carries neither a code nor a SQLSTATE. Verifier 131
 #: took such an answer for a refusal; check grading is unchanged and CHECK_VERSION stays 83.
-VERIFIER_VERSION = "132"
+#: 133 — a catalog question the engine refused is not read as an empty answer (ADR 0010, F1). A
+#: refused `pg_attribute` or `system.columns` question leaves the mart's columns unknown, so
+#: `dwh.physical` compares none of them and no drift accounts for a `42703`/`47` of the reference
+#: query or of `max()` of the event-time column, which then ends the run. Verifier 132 graded each
+#: declared column whose reach was not denied `physical.column_absent` (block) — on ClickHouse only
+#: with the grants answered — and that drift accounted for those codes. A refused
+#: `pg_tables`/`pg_views` presence question is now followed by `to_regclass`, where verifier 132
+#: graded a mart the role reads `access.table_absent` (block), and it asks `pg_matviews` too, where
+#: verifier 132 graded a mart served as a materialized view the same. An answered catalog with no
+#: rows is read as before; check grading is unchanged and CHECK_VERSION stays 83.
+VERIFIER_VERSION = "133"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

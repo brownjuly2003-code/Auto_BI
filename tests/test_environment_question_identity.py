@@ -348,6 +348,7 @@ def test_clean_wording_uses_only_attributed_layout_readings(reverse: bool) -> No
 # T-39 identity question reading the current role's superuser flag from pg_roles.
 # T-127 adds mart/schema ownership columns and joins, plus the owner/FORCE RLS answer.
 # T-131 quotes schema and table inside PostgreSQL relation arguments.
+# Verifier 133 (F1): the PostgreSQL presence question also asks `pg_matviews`.
 REPLAYS = [
     (
         "clickhouse",
@@ -375,28 +376,28 @@ REPLAYS = [
         "made",
         {},
         20,
-        "412b4621dda91f86992e4d59859ef3f4771afeec77f21bd105152e31a845a462",
+        "be2476c885441760c90ff4881fbe3e281293b14b1e362bab6ec76e89751ce69a",
     ),
     (
         "greengage",
         "absent",
         {"pg_tables": []},
         8,
-        "3048430f704b2ffc44734e9a8da479c6b4bd29f827aab3f5bde1d75c492b927f",
+        "7f0e1e46292df2753d343da63a0fc0dc93691e5430ce7e48389c04d3ba8827b2",
     ),
     (
         "greengage",
         "no_privilege",
         {"has_any_column_privilege": [{"ok": False}]},
         16,
-        "79d4a31a3fe51aadc5fd3ea2136d8a17825f1500ab1fafb8345c0ab50f854a0e",
+        "d36279a31f8deef79c30bf730c5b810c23a53b1379551b1ea451ca3b0fbc2f1d",
     ),
     (
         "greengage",
         "refused",
         {"count(*)": []},
         18,
-        "a599dc5970ca8da6b33fbc365d08369d138187b377520ecd04839133205b1050",
+        "17c7234e9557a94db1a48eb82f036d66eefc53183e06e1782b375b401f1a2bae",
     ),
 ]
 

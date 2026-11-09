@@ -254,7 +254,8 @@ class TableFacts(StrictModel):
     #: unreadable. `None` when the engine has nothing to date (no rows, or a NULL max) or
     #: no event-time column left to take `max()` of.
     max_event_time: str | None = None
-    #: Column -> type as the engine spells it. `None` means the probe did not ask.
+    #: Column -> type as the engine spells it. `None` means the probe did not ask, or the
+    #: engine refused the catalog question: nothing is then compared, nothing is absent.
     columns: dict[str, str] | None = None
     layout: LayoutFacts | None = None
     #: Asked column -> may this session read it. `None` means the engine was not asked.

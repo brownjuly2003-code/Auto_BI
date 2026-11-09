@@ -419,6 +419,60 @@ event-time column: the plan was unpriced as refused, and the table taken for unr
 `47` for `max(access_denied_at)` as not a refusal; `tests/test_environment_probe.py` pins the
 reading offline, with the code as an attribute and in the message.
 
+## A catalog the role may not read (F1)
+
+The column list of a mart is one question of the catalog: `pg_attribute` with
+`format_type(atttypid, atttypmod)` on the Postgres family, `system.columns` on ClickHouse. A
+role can be refused it — `REVOKE SELECT ON pg_catalog.pg_attribute FROM PUBLIC` answers
+`42501`, live on PostgreSQL 16.15 — and verifier 132 read that refusal as an empty catalog:
+each declared column whose reach was not denied (on ClickHouse, only with the grants answered)
+gone, `physical.column_absent` (block) for each, over a mart that holds them all; and that
+"drift" accounted for a `42703`/`47` of the reference query or of `max()` of the event-time
+column, so the run reported a plan unpriced or rows undated for a reason nothing the engine
+answered had given. Since verifier 133 (ADR 0010, F1):
+
+- a refused column catalog SHALL leave the mart's columns unreported (`columns` is `None`), as
+  for a probe that did not ask: `dwh.physical` compares no column of that mart and finds no
+  column absent; the mart adds none of its declared column types to the compared count of the
+  check's detail, which then says coverage is incomplete, and the code is `physical.not_run`
+  when no mart in scope had a column type or a declared layout field compared;
+- no drift SHALL then account for a `42703`/`47`: such an error from EXPLAIN of the reference
+  query or from `max()` of the event-time column ends the run as above;
+- an answered catalog with no rows SHALL be read as before — the engine's answer, which
+  `column_drift` weighs as any other (ClickHouse leaves out what the role may not read).
+
+`dwh.physical` raises no review of its own over a refused catalog: it passes with coverage
+incomplete, as for a probe that did not ask, and where nothing was compared the owner report
+lists `physical.not_run` as not done. The refusal of `pg_attribute` refuses `has_column_privilege` asked over it too, so on
+PostgreSQL the review comes from `dwh.security`: `security.not_observed` for which columns the
+role may read. A role refused only the type question (column grants on `pg_attribute`), or a
+ClickHouse role refused `system.columns` alone, has its verdict decided by the other checks; a
+review of `dwh.physical`'s own is in the [backlog](../DECISIONOPS_BACKLOG.md).
+
+The presence question of a PostgreSQL mart reads `pg_tables`, `pg_views` and, since verifier
+133, `pg_matviews`: a mart served as a materialized view (relkind `m`) is in neither of the first
+two, and verifier 132 graded it `access.table_absent` (block). Verifier 132 read the refusal of
+the first two (`REVOKE SELECT ON pg_catalog.pg_tables, pg_catalog.pg_views FROM PUBLIC`,
+`42501`) as "no row": `access.table_absent` (block) over a mart the role reads. Since verifier
+133 a refused presence question SHALL be followed by `to_regclass` of the mart's name, which
+reads none of the three views: a relation by that name is present, and the probe goes on as for an
+answered one. `NULL`, or that question refused too, SHALL leave the mart absent, as before. An
+answered "no row" SHALL stay absent without the second question, which would resolve any
+relation of that name, an index or a sequence too.
+
+`tests/test_decision_live_postgres.py` pins four cases live on PostgreSQL 16 — the clean mart
+behind the revoked column catalog (`physical.not_run`, `security.not_observed`,
+`needs_review`), a column dropped behind it (exit 2, `UndefinedColumn`, no bundle), the clean
+mart behind the revoked table catalog, and the same rows served as a materialized view (both the
+clean stand's `pass`). The ClickHouse refusal
+of `system.columns` is pinned offline only; the live ClickHouse test does not refuse it. The
+ClickHouse presence question over `system.tables` is unchanged: a refusal there still reads as
+absent, the one silence the probe already shares with a mart out of reach (both block).
+Check grading is unchanged (check 83); ADR 0010 named `CHECK_VERSION` for this item, but the
+rules of `dwh.physical` over unreported columns and of `dwh.access` over a present mart are the
+ones they had — what changed is the fact the probe reports, and that is the verifier's (as S7,
+S7b and S8).
+
 ## Runtime SQL guard refusal at the CLI boundary (T-80)
 
 If `collect` raises `SQLGuardError` while `decision verify --dwh` asks about the

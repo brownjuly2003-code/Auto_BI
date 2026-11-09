@@ -10,6 +10,91 @@
 > Новая запись среза добавляется сверху, полным текстом. С 2026-11-04 это единственное место
 > записи о срезе: ни `CLAUDE.md`, ни `DECISIONOPS_CURRENT_STATE.md` её не дублируют.
 
+## 2026-11-09 — F1: отказ читать каталог — «неизвестно», а не «нет» (verifier 133)
+
+Первый пункт финишной черты ([ADR 0010](../adr/0010-finish-line.md)). Исполнитель — Claude;
+Codex/Astra не запускались (лимит владельца), ревьюер — независимый Opus-субагент. Модельная
+оценка, не human acceptance.
+
+- **Отказ каталога — `columns=None`, а не `{}`** (`environment_probe._catalog_columns`). Обе точки
+  чтения — `pg_attribute` (PostgreSQL/Greenplum/Greengage) и `system.columns` (ClickHouse) — писали
+  `{… for row in _ask(...) or []}`: отказ роли гейта (`_ask` → `None`) читался как пустой каталог.
+  `column_drift` называл исчезнувшей каждую объявленную колонку, до которой роль не лишена доступа
+  (на ClickHouse — только при отвеченных грантах): `physical.column_absent` (block) над витриной,
+  где они есть, и этот «дрейф» объяснял `42703`/`47` у `EXPLAIN` reference-запроса и у `max()`
+  колонки времени события (правило S7/S7b) — прогон шёл дальше вместо exit 2. Теперь отказанный
+  каталог — «колонки неизвестны»: `dwh.physical` не сравнивает ни одной колонки (PostgreSQL —
+  `physical.not_run`; раскладку таблицы ClickHouse по-прежнему сравнивает), дрейф ничего не
+  объясняет, `42703`/`47` кончает прогон. Отвеченный каталог без строк читается как прежде (`{}`).
+  Точка ClickHouse в ADR не названа — тот же дефект с ложным block, починена в том же срезе по
+  правилу заморозки («неверный вердикт» чинится сразу). Собственного review `dwh.physical` не даёт:
+  pass с неполным покрытием, как при непрошенном вопросе; на PostgreSQL review приходит из
+  `security.not_observed` (ревью r1, P2-1 → бэклог).
+- **Вопрос о наличии витрины PostgreSQL** (ревью r1, P2-2, тот же класс). Отказ
+  `pg_tables`/`pg_views` читался как «строк нет» — `access.table_absent` (block) над читаемой
+  витриной; теперь за отказом следует `SELECT 1 AS present WHERE to_regclass(<имя>) IS NOT NULL`
+  (`NULL` или отказ — витрины нет, как прежде; отвеченное «нет строк» второй раз не
+  спрашивается — `to_regclass` нашёл бы и индекс). При разборе найдено ещё одно ложное «нет»:
+  материализованное представление (relkind `m`) не входит ни в `pg_tables`, ни в `pg_views` —
+  вопрос читает и `pg_matviews` (9.3+). Внешняя таблица (relkind `f`) и двойник на ClickHouse
+  (`system.tables`) — в [бэклог](../DECISIONOPS_BACKLOG.md).
+- **Версия: verifier 132 → 133, check 83 прежний** — отклонение от текста ADR 0010 («меняет
+  грейдинг — CHECK_VERSION»). Правила `dwh.physical` над колонками, о которых проба не
+  сообщила, и `dwh.access` над найденной витриной не менялись; меняется факт, который сообщает
+  проба, — как в S7, S7b, S8. Ревью r1 подтвердило: при check 83 старый bundle с запечатанным
+  `columns: {}` читается так же, как был выставлен.
+  [spec](../specs/evidence-format-versions.md) — «Verifier 133», запись 128 вытеснена (FROZEN
+  128 закреплён).
+- **Тесты.** `tests/test_environment_probe.py` — 13: отказ `pg_attribute` (весь и только вопрос о
+  типах), `system.columns`, отвеченный пустой каталог обоих движков, отказ при `42703`/`47` в
+  `EXPLAIN` и в `max()` (на PostgreSQL отказан только вопрос о типах — каталог закреплён без
+  вопроса о доступе), отказ `pg_tables` с найденным/ненайденным/отказанным именем, отвеченное
+  «нет строк» без второго вопроса, matview; `tests/test_physical_coverage.py` — гейт целиком
+  (ClickHouse/PostgreSQL × отказ/ответ, на PostgreSQL ещё `security.not_observed`). На коде
+  `df01190` падают 11 новых, контроли зелёные. Ручные мутанты (`.tmp/f1/mut.py`) 8 из 8 убиты:
+  отказ как пустой каталог; не починена точка ClickHouse; не починена PostgreSQL; отвеченный
+  пустой каталог как неизвестный; нет второго вопроса; второй вопрос и после «нет строк»; отказ
+  как «есть»; без `pg_matviews`. mutmut не мерился: `environment_probe` вне выборки.
+- **Живьём (PostgreSQL 16, Mac).** `tests/test_decision_live_postgres.py` — 4 сценария:
+  `REVOKE SELECT ON pg_catalog.pg_attribute FROM PUBLIC` без дрейфа — `needs_review`
+  (`physical.not_run`, `security.not_observed`, план сканирует все строки), с удалённой
+  `gross_margin` — exit 2, `UndefinedColumn`, evidence не пишется; `REVOKE` на `pg_tables` и
+  `pg_views` — чистый `pass`; те же строки за материализованным представлением — чистый `pass`.
+  На `df01190` все 4 падают (ложный block; exit 4 вместо 2); файл целиком 16 из 16. Отказ
+  `system.columns` на ClickHouse закреплён только offline.
+- **Pilot `2026-11-06-dbt-formula-pin` перезаписан verifier 133.** Против прежних bundles
+  изменился только `manifest.json` (после нормализации run id и версии; `.tmp/f1/cmp_pilot.py`).
+  Новые run: `control` `run-d13507ded3ecfb04`, `drift` `run-ec05cc3a068b720a`, `repinned`
+  `run-2714c8710f9a30d1`; README и `CASES` теста обновлены.
+
+Ревью (независимый Opus-субагент, только чтение). **r1** (открытое): P1 нет; решение «verifier,
+а не check» подтверждено (правила проверок побайтно прежние, check 83 читает старый bundle
+верно; прецедент 130–132). **P2-1** — отказ каталога колонок даёт `dwh.physical` pass, review
+только на PostgreSQL через `security.not_observed`: в spec — абзац, где берётся review;
+`physical.not_observed` (CHECK) — в бэклог: это правило покрытия, а не неверно прочитанный факт.
+**P2-2** — отказ `pg_tables`/`pg_views` как «витрины нет»: исправлено (`to_regclass`), при
+разборе — matview. P3 — «каждая объявленная колонка» шире кода (сужено в тексте версии, spec,
+CHANGELOG, архитектуре); два PG-теста отказывали весь `pg_attribute` и не закрепляли каталог
+отдельно (отказывают только вопрос о типах); `security.not_observed` закреплён только живьём
+(закреплён в `test_physical_coverage`); формулировка spec для одной витрины и docstring
+исправлены; отклонение от текста ADR — здесь, выше.
+**r2** (закрытие): все находки r1 закрыты; новая — P1 уровня гейта: старые файлы дословно
+закрепляли текст вопроса о наличии (`MART_QUESTIONS` в `test_postgres_kernel_row_security.py`,
+число литералов в `test_postgres_relation_identity.py`) — 35 падений; полный гейт нашёл ещё
+sha256-пины SQL пробы (`test_catalog_literals.py` — 3, `test_environment_question_identity.py` —
+4). Пины обновлены; каждый sha256 сверен скриптом (`.tmp/f1/sqlbytes.sh`, `replays.sh`): на
+`df01190` даёт прежний, а каждый изменившийся запрос отличается только частью `pg_matviews`.
+Точный текст заодно закрепил `pg_views` в объединении (по разбору r2, мутант `pg_views` →
+`pg_matviews` прежде выживал бы). Наблюдения r2 (matview с правами на запись, `WITH NO DATA`) —
+в бэклог. r3 не запускался: закрытие проверено полным гейтом. Урок: смена текста SQL пробы — grep тестов
+по соседним кускам этого SQL (`pg_views`, `viewname`) и по `sha256(…asked…)` до полного гейта.
+
+Гейт (Mac, Python 3.13, `--with duckdb`, итоговое дерево `6184e93`, правки r1 и r2 включены):
+pytest 11446 passed, 29 skipped, 72 deselected (marker `integration`); black, ruff, mypy
+`--platform linux`, `--strict` linux и win32 — чисто. После гейта менялась только эта запись.
+Живой PostgreSQL 16 — 16 из 16 (до правок пинов; файл после не менялся). `ci_local` — не
+прогонялся (F5).
+
 ## 2026-11-08 — решение владельца: финишная черта (ADR 0010)
 
 Не срез: изменений кода и evidence нет. После S8 владелец спросил, когда работа по проекту

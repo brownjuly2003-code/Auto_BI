@@ -31,6 +31,7 @@ from auto_bi.verification.environment import (
     PlanQuestion,
     TableQuestion,
     check_access,
+    check_physical,
 )
 from auto_bi.verification.environment_probe import collect
 
@@ -1745,3 +1746,215 @@ def test_pricing_a_plan_never_writes_and_never_executes() -> None:
         assert explains, "the plan was never asked for"
         assert not any(WRITE_STATEMENT.match(sql) for sql in engine.asked)
         assert not any("ANALYZE" in sql.upper() for sql in explains)
+
+
+# --- a column catalog the role may not read (ADR 0010, F1) ----------------------------------
+
+
+@pytest.mark.parametrize(
+    "refused",
+    ["FROM pg_attribute", "format_type(a.atttypid"],
+    ids=["every-pg_attribute-question", "the-column-type-question-alone"],
+)
+def test_a_postgres_column_catalog_the_role_may_not_read_is_unknown_not_empty(
+    refused: str,
+) -> None:
+    """`REVOKE SELECT ON pg_catalog.pg_attribute FROM PUBLIC` refuses the gate's role the
+    column list (`42501`). Verifier 132 read the refusal as an empty catalog: each declared
+    column gone, `physical.column_absent` (block) over a mart that holds them all."""
+    engine = RefusingEngine(postgres_engine(), refused, sqlstate="42501")
+    scope = questions(dict(PG_DECLARED))
+
+    facts = collect(engine, scope, engine="postgres", target="stand")
+
+    table = facts.tables[0]
+    assert (table.exists, table.readable, table.rows_seen) == (True, True, 600)
+    assert table.columns is None
+    assert check_physical(scope, facts) == []
+
+
+def test_a_postgres_column_catalog_that_answers_no_row_is_still_an_answer() -> None:
+    """The engine answered the question: a mart with none of the declared columns is what it
+    said, and the column is gone, as before."""
+    engine = postgres_engine(format_type=[])
+    scope = questions({"date": "date"})
+
+    facts = collect(engine, scope, engine="postgres", target="stand")
+
+    assert facts.tables[0].columns == {}
+    assert [finding.code for finding in check_physical(scope, facts)] == ["physical.column_absent"]
+
+
+def test_a_clickhouse_column_catalog_the_role_may_not_read_is_unknown_not_empty() -> None:
+    """`system.columns` refused while the grants put every declared column in reach: read as
+    empty, the catalog made each of them gone, a block over a mart that holds them."""
+    engine = RefusingEngine(clickhouse_engine(), "FROM system.columns")
+    scope = questions({"date": "Date", "revenue": "Decimal(18, 2)"})
+
+    facts = collect(engine, scope, engine="clickhouse", target="stand")
+
+    table = facts.tables[0]
+    assert table.column_reads == {"date": True, "revenue": True}
+    assert table.columns is None
+    assert table.layout is not None  # `system.tables` answered: only the columns are unknown
+    assert check_physical(scope, facts) == []
+
+
+def test_a_clickhouse_column_catalog_that_answers_no_row_is_still_an_answer() -> None:
+    """Every declared column is in reach by the grants and the catalog lists none of them:
+    they are gone, as before."""
+    engine = clickhouse_engine(**{"system.columns": []})
+    scope = questions({"date": "Date"})
+
+    facts = collect(engine, scope, engine="clickhouse", target="stand")
+
+    assert facts.tables[0].columns == {}
+    assert [finding.code for finding in check_physical(scope, facts)] == ["physical.column_absent"]
+
+
+def test_a_refused_postgres_catalog_accounts_for_no_unfit_plan() -> None:
+    """The `42703` of EXPLAIN was taken to mean `revenue` gone, for the refused catalog read
+    as empty said so; nothing the engine answered says it now, and the state ends the run.
+    Only the column-type question is refused (the reach question still answers), so the
+    catalog alone is what this pins."""
+    engine = RefusingEngine(
+        pg_answering("EXPLAIN", UNDEFINED_COLUMN, PG_DROPPED),
+        "format_type(a.atttypid",
+        sqlstate="42501",
+    )
+
+    with pytest.raises(PostgresError) as raised:
+        collect(engine, pg_priced_over(PG_DECLARED), engine="postgres", target="stand")
+
+    assert raised.value is UNDEFINED_COLUMN
+
+
+def test_a_refused_postgres_catalog_accounts_for_no_undated_reading() -> None:
+    """Nor does it account for the `42703` of `max(date)`: the rows are not counted undated."""
+    error = PostgresError("42703", 'column "date" does not exist')
+    engine = RefusingEngine(
+        pg_answering("max(", error, [{"name": "revenue", "type": "numeric(18,2)"}], **PG_COUNTED),
+        "format_type(a.atttypid",
+        sqlstate="42501",
+    )
+
+    with pytest.raises(PostgresError) as raised:
+        collect(engine, questions({"date": "date"}), engine="postgres", target="stand")
+
+    assert raised.value is error
+
+
+def test_a_refused_clickhouse_catalog_accounts_for_no_unfit_plan() -> None:
+    """The ClickHouse twin: `47` from EXPLAIN ESTIMATE with `system.columns` refused and every
+    column in reach by the grants ends the run."""
+    engine = RefusingEngine(
+        Answering("EXPLAIN", UNKNOWN_IDENTIFIER, **{"system.columns": DROPPED}),
+        "FROM system.columns",
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, priced_over(DECLARED), engine="clickhouse", target="stand")
+
+    assert raised.value is UNKNOWN_IDENTIFIER
+
+
+def test_a_refused_clickhouse_catalog_accounts_for_no_undated_reading() -> None:
+    """Nor the `47` of `max(date)`: the rows are not counted undated."""
+    error = RuntimeError(
+        "Code: 47. DB::Exception: Unknown expression identifier `date` in scope SELECT "
+        "max(date). (UNKNOWN_IDENTIFIER)"
+    )
+    engine = RefusingEngine(
+        Answering(
+            "max(",
+            error,
+            **{
+                "count() AS rows_seen FROM": [{"rows_seen": 91}],
+                "system.columns": [{"name": "revenue", "type": "Decimal(18,2)"}],
+            },
+        ),
+        "FROM system.columns",
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(engine, questions({"date": "Date"}), engine="clickhouse", target="stand")
+
+    assert raised.value is error
+
+
+# --- a table catalog the role may not read (ADR 0010, F1; review r1) -------------------------
+
+#: The question that resolves the mart's name alone, asked only when the catalog views refuse.
+PG_NAME_QUESTION = "1 AS present WHERE to_regclass("
+
+
+def pg_scope() -> EnvironmentQuestions:
+    """The PostgreSQL mart of `PG_DECLARED`, declared as PostgreSQL: `check_access` compares
+    the declared engine with the one that answered."""
+    scope = questions(dict(PG_DECLARED))
+    scope.engines = ["postgres"]
+    return scope
+
+
+def test_a_postgres_table_catalog_the_role_may_not_read_asks_the_name_itself() -> None:
+    """`REVOKE SELECT ON pg_catalog.pg_tables FROM PUBLIC` refuses the presence question
+    (`42501`). Read as "no row", the refusal named a mart the role reads
+    `access.table_absent` (block); `to_regclass` finds it without the view."""
+    engine = RefusingEngine(
+        postgres_engine(**{PG_NAME_QUESTION: [{"present": 1}]}), "FROM pg_tables", sqlstate="42501"
+    )
+    scope = pg_scope()
+
+    facts = collect(engine, scope, engine="postgres", target="stand")
+
+    table = facts.tables[0]
+    assert (table.exists, table.readable, table.rows_seen) == (True, True, 600)
+    assert check_access(scope, facts) == []
+    [asked] = [sql for sql in engine.asked if PG_NAME_QUESTION in sql]
+    assert 'to_regclass(\'"dm"."sales_daily"\') IS NOT NULL' in asked
+
+
+@pytest.mark.parametrize(
+    "name_answer",
+    [[], None],
+    ids=["no-relation-by-that-name", "the-name-question-refused-too"],
+)
+def test_a_refused_postgres_table_catalog_leaves_a_mart_it_cannot_find_absent(
+    name_answer: list[dict[str, Any]] | None,
+) -> None:
+    """The name resolves to nothing, or that question is refused as well: absent, as before —
+    nothing the engine answered places the mart."""
+    refused = ["FROM pg_tables"] + ([PG_NAME_QUESTION] if name_answer is None else [])
+    engine = RefusingEngine(
+        postgres_engine(**{PG_NAME_QUESTION: name_answer or []}), *refused, sqlstate="42501"
+    )
+    scope = pg_scope()
+
+    facts = collect(engine, scope, engine="postgres", target="stand")
+
+    assert (facts.tables[0].exists, facts.tables[0].readable) == (False, False)
+    assert [finding.code for finding in check_access(scope, facts)] == ["access.table_absent"]
+
+
+def test_an_answered_postgres_table_catalog_is_not_asked_again() -> None:
+    """The views answered "no row": that is the engine's answer, and the name question — which
+    resolves any relation, an index or a sequence too — is not put in its place."""
+    engine = postgres_engine(**{"pg_tables": [], PG_NAME_QUESTION: [{"present": 1}]})
+
+    facts = collect(engine, questions(dict(PG_DECLARED)), engine="postgres", target="stand")
+
+    assert facts.tables[0].exists is False
+    assert not [sql for sql in engine.asked if PG_NAME_QUESTION in sql]
+
+
+def test_a_postgres_materialized_view_counts_as_a_mart() -> None:
+    """A DM served as a materialized view is in neither `pg_tables` nor `pg_views` (relkind
+    `m`); read from those two alone, it was `access.table_absent` (block) — found while
+    triaging review r1 of F1."""
+    engine = postgres_engine(**{"pg_tables": [], "pg_matviews": [{"matviewname": "sales_daily"}]})
+
+    facts = collect(engine, questions(), engine="greengage", target="stand")
+
+    assert (facts.tables[0].exists, facts.tables[0].readable) == (True, True)
+    [presence] = [sql for sql in engine.asked if "FROM pg_tables" in sql]
+    assert "FROM pg_matviews WHERE schemaname = 'dm' AND matviewname = 'sales_daily'" in presence

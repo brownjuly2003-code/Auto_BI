@@ -418,7 +418,8 @@ def test_name_without_dot_keeps_absence(engine: str) -> None:
         for sql in catalog.asked
         if "FROM pg_tables" in sql or "FROM system.tables" in sql
     ]
-    assert presence == [["sales", ""] * (1 if engine == "clickhouse" else 2)]
+    # PostgreSQL asks `pg_tables`, `pg_views` and `pg_matviews`; ClickHouse `system.tables`
+    assert presence == [["sales", ""] * (1 if engine == "clickhouse" else 3)]
     assert len(facts.tables) == 1
     assert facts.tables[0].exists is False
     assert facts.tables[0].readable is False

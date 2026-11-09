@@ -1,5 +1,6 @@
 """Physical success evidence is limited to comparisons the engine actually answered."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from auto_bi.verification.environment import (
     LayoutFacts,
     check_physical,
 )
+from auto_bi.verification.environment_probe import collect
 from auto_bi.verification.release_gate import CheckStatus, _physical_clean
 from tests.test_decision_verify import (
     Case,
@@ -22,6 +24,12 @@ from tests.test_decision_verify import (
     metric_contract,
     product_contract,
     semantic_model,
+)
+from tests.test_environment_probe import (
+    FakeEngine,
+    RefusingEngine,
+    clickhouse_engine,
+    postgres_engine,
 )
 from tests.test_environment_question_identity import facts, questions, reading
 from tests.test_freshness_coverage import two_clock_case
@@ -313,3 +321,58 @@ def test_public_detail_does_not_cover_an_unreadable_clock(tmp_path: Path, revers
     assert "3 of 6 declared layout fields" in physical.detail
     assert "coverage is incomplete" in physical.detail
     assert _check_payload(tmp_path, report, "dwh.physical")["findings"] == []
+
+
+@pytest.mark.parametrize("refused", [False, True], ids=["answered", "refused"])
+@pytest.mark.parametrize(
+    ("engine", "base", "catalog", "sqlstate"),
+    [
+        ("clickhouse", clickhouse_engine, "FROM system.columns", None),
+        ("postgres", postgres_engine, "FROM pg_attribute", "42501"),
+    ],
+    ids=["clickhouse", "postgres"],
+)
+def test_a_column_catalog_the_role_may_not_read_marks_no_column_absent(
+    tmp_path: Path,
+    engine: str,
+    base: Callable[[], FakeEngine],
+    catalog: str,
+    sqlstate: str | None,
+    refused: bool,
+) -> None:
+    """ADR 0010, F1, through the gate. The engine's catalog lists `date` and `revenue` of the
+    four columns the product reads: answered, the other two are gone and block. Refused, it
+    was read as empty until verifier 133 — all four gone, a block over a mart whose rows the
+    gate counted and whose columns it never saw; now none of them is compared. On PostgreSQL
+    the same refusal leaves the role's reach unread, and that is what asks for review."""
+    asked = base()
+    run_query = RefusingEngine(asked, catalog, sqlstate=sqlstate) if refused else asked
+
+    report = Case(tmp_path).run(
+        probe=lambda scope: collect(run_query, scope, engine=engine, target="127.0.0.1:8124/dm")
+    )
+
+    check = next(item for item in report.checks if item.check_id == "dwh.physical")
+    findings = _check_payload(tmp_path, report, "dwh.physical")["findings"]
+    if refused:
+        assert check.status is CheckStatus.PASS
+        # ClickHouse still answered the layout from `system.tables`; PostgreSQL reports none
+        assert check.summary_code == (
+            "physical.as_declared" if engine == "clickhouse" else "physical.not_run"
+        )
+        assert findings == []
+        assert "0 of 4 declared column types" in check.detail
+        assert "coverage is incomplete" in check.detail
+        if engine == "postgres":
+            security = next(item for item in report.checks if item.check_id == "dwh.security")
+            assert (security.status, security.summary_code) == (
+                CheckStatus.REVIEW,
+                "security.not_observed",
+            )
+    else:
+        assert check.status is CheckStatus.BLOCK
+        assert sorted(
+            finding["subject"]
+            for finding in findings
+            if finding["code"] == "physical.column_absent"
+        ) == ["dm.sales_daily.gross_margin", "dm.sales_daily.store_id"]

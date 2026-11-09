@@ -16,6 +16,19 @@ CHANGELOG names 1 → 2 and the transitions from verifier 7 → 8 and check 5 �
 Part of the idempotency key: a different verifier can derive a different verdict or
 evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 
+### Verifier 133
+
+a catalog question the engine refused is not read as an empty answer (ADR 0010, F1). A refused
+`pg_attribute` or `system.columns` question leaves the mart's columns unknown, so `dwh.physical`
+compares none of them and no drift accounts for a `42703`/`47` of the reference query or of `max()`
+of the event-time column, which then ends the run. Verifier 132 graded each declared column whose
+reach was not denied `physical.column_absent` (block) — on ClickHouse only with the grants answered
+— and that drift accounted for those codes. A refused `pg_tables`/`pg_views` presence question is
+now followed by `to_regclass`, where verifier 132 graded a mart the role reads
+`access.table_absent` (block), and it asks `pg_matviews` too, where verifier 132 graded a mart
+served as a materialized view the same. An answered catalog with no rows is read as before; check
+grading is unchanged and CHECK_VERSION stays 83.
+
 ### Verifier 132
 
 ClickHouse refusals are read by the error code where the error carries one (slice S8):

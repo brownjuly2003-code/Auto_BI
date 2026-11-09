@@ -68,7 +68,9 @@ REACH = (
 )
 MART_QUESTIONS = [
     "SELECT tablename FROM pg_tables WHERE schemaname = 'dm' AND tablename = 'sales_daily' "
-    "UNION ALL SELECT viewname FROM pg_views WHERE schemaname = 'dm' AND viewname = 'sales_daily'",
+    "UNION ALL SELECT viewname FROM pg_views WHERE schemaname = 'dm' AND viewname = 'sales_daily' "
+    "UNION ALL SELECT matviewname FROM pg_matviews WHERE schemaname = 'dm' "
+    "AND matviewname = 'sales_daily'",
     "SELECT a.attname AS name, has_column_privilege(a.attrelid, a.attnum, 'SELECT') AS ok "
     'FROM pg_attribute a WHERE a.attrelid = to_regclass(\'"dm"."sales_daily"\') '
     "AND a.attnum > 0 AND NOT a.attisdropped AND a.attname IN ('date', 'revenue')",

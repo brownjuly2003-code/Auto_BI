@@ -1,11 +1,11 @@
 # Release gate — decision\:\/\/sales\/weekly\_margin\@1
 
-**Verdict:** block
-**Run:** run-4e3531fa58e778c7
+**Verdict:** pass_with_advisory
+**Run:** run-d13507ded3ecfb04
 **Base semantics:** sha256:a06579581d5bc9ace529da90b739cd7b846c97fd81ac3e36e288ebdc6cc96732
-**Candidate semantics:** sha256:52f5d08349c980cbb0764eacbbc09b1ef7f7bef362dbacf619858ee20ba79d3c
+**Candidate semantics:** sha256:a06579581d5bc9ace529da90b739cd7b846c97fd81ac3e36e288ebdc6cc96732
 **Environment:** synthetic\-offline
-**Created:** 2026-11-06T12:00:00Z by verifier 132
+**Created:** 2026-11-06T12:00:00Z by verifier 133
 
 Derived from the checks below (§9.2): this report restates what they found and adds
 no finding of its own. The verdict above is the one those checks carry — the bundle's
@@ -14,28 +14,7 @@ with the run, not here.
 
 ## Owner action
 
-Do not release this candidate. Resolve the blocking findings in this report, then run the release gate again.
-
-## What stops the release
-
-- **impact.products** — `impact.reaches_product` — 2 of 3 change\(s\) reach this product\; 2 escalated from review to block because it is governed\; 0 delivered chart\(s\) named \(0 read only in part\)\; of the tiles not named\: 0 whose SQL could not be read\, 0 read only in part\, 0 read in whole but not settled against a changed metric
-
-## Whose numbers this reaches
-
-- **block** `metric.formula_changed` — metric\:\/\/sales\/gross\_margin\_pct
-  - formula changed
-  - dashboards: dashboard\:\/\/weekly\_margin\@7
-  - owners: commercial\-analytics
-  - raised from review to block because a governed product depends on it
-- **block** `metric.binding_changed` — metric\:\/\/sales\/gross\_margin\_pct
-  - external definition changed\: pin sha256\:318854cc18766c041ff79d50c440841402e225ef54bd64521e6178be2e29b2db \-\> sha256\:e13a91d635e199637759b448c2db2f59a602d74a8fc3127197e243d5d9d9a53c\, closure sha256\:318854cc18766c041ff79d50c440841402e225ef54bd64521e6178be2e29b2db \-\> sha256\:e13a91d635e199637759b448c2db2f59a602d74a8fc3127197e243d5d9d9a53c
-  - dashboards: dashboard\:\/\/weekly\_margin\@7
-  - owners: commercial\-analytics
-  - raised from review to block because a governed product depends on it
-
-## What needs a human
-
-- **semantic.diff** — `semantic.changed` — 3 semantic change\(s\) between the snapshots
+Release is not blocked by this gate. Read the advisory findings before release.
 
 ## What was not done
 
@@ -62,12 +41,12 @@ Do not release this candidate. Resolve the blocking findings in this report, the
 |---|---|---|---|
 | `contracts.validate` | pass | `contracts.clean` | 1 metric contract\(s\) resolved\, 0 issue\(s\)\; 1 of 1 metric pin\(s\) match the candidate snapshot |
 | `semantic.gaps` | pass | `semantic.representable` | both snapshots represent their source completely |
-| `semantic.diff` | review | `semantic.changed` | 3 semantic change\(s\) between the snapshots |
-| `impact.products` | block | `impact.reaches_product` | 2 of 3 change\(s\) reach this product\; 2 escalated from review to block because it is governed\; 0 delivered chart\(s\) named \(0 read only in part\)\; of the tiles not named\: 0 whose SQL could not be read\, 0 read only in part\, 0 read in whole but not settled against a changed metric |
+| `semantic.diff` | pass | `semantic.unchanged` | 0 semantic change\(s\) between the snapshots |
+| `impact.products` | pass | `impact.none` | 0 of 0 change\(s\) reach this product\; 0 escalated from review to block because it is governed\; 0 delivered chart\(s\) named \(0 read only in part\)\; of the tiles not named\: 0 whose SQL could not be read\, 0 read only in part\, 0 read in whole but not settled against a changed metric |
 | `assets.invalidated` | pass | `assets.valid` | 0 verified asset\(s\) still stand as evidence |
 | `results.reconcile` | advisory | `result.no_expectations` | no verified asset declares an expected result for this product |
 | `results.provenance` | advisory | `provenance.no_results` | no candidate result was supplied\, so there is no origin to establish |
-| `sql.compile` | advisory | `sql.changed` | 1 of 1 metric\(s\) compiled to a reference query\; 1 moved between the snapshots\, 0 not compiled offline |
+| `sql.compile` | pass | `sql.compiled` | 1 of 1 metric\(s\) compiled to a reference query\; 0 moved between the snapshots\, 0 not compiled offline |
 | `dwh.access` | advisory | `check.not_configured` | no engine was configured for this run\, so the release was not verified against a live environment \(§8\.2 step 7\) |
 | `dwh.freshness` | advisory | `check.not_configured` | no engine was configured for this run\, so the release was not verified against a live environment \(§8\.2 step 7\) |
 | `dwh.physical` | advisory | `check.not_configured` | no engine was configured for this run\, so the release was not verified against a live environment \(§8\.2 step 7\) |

@@ -284,7 +284,8 @@ def test_ordinary_catalog_sql_bytes(engine: str) -> None:
     expected = (
         "a14068adf36a63adcfae83954b08453a8b0bd2c92345f2e947ef17071fcf0ae1"
         if engine == "clickhouse"
-        else "43ca7d18b65d73dfefbfe315bfb0fc8f429986e6ef27002b990636c2440bcccb"
+        # verifier 133 (F1): the presence question also asks `pg_matviews`
+        else "c053f0cd633ab0ff39e3f69e2969ea42b34b585147c5a889e89d19e6c3d91adf"
     )
     assert hashlib.sha256(encoded).hexdigest() == expected
 

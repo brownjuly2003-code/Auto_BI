@@ -894,15 +894,13 @@ def _clickhouse_table(
             column_reads=reads,
             row_policies=policies,
         )
-    columns = {
-        str(row.get("name")): str(row.get("type"))
-        for row in _ask(
+    columns = _catalog_columns(
+        _ask(
             run_query,
             "SELECT name, type FROM system.columns WHERE database = "
             f"{_ch_literal(database)} AND table = {_ch_literal(name)}",
         )
-        or []
-    }
+    )
     layout = LayoutFacts(
         table_engine=str(present[0].get("engine") or ""),
         sorting_key=_key_list(present[0].get("sorting_key")),
@@ -1351,8 +1349,19 @@ def _postgres_table(
         "SELECT tablename FROM pg_tables WHERE schemaname = "
         f"{_literal(schema)} AND tablename = {_literal(name)} "
         "UNION ALL SELECT viewname FROM pg_views WHERE schemaname = "
-        f"{_literal(schema)} AND viewname = {_literal(name)}",
+        f"{_literal(schema)} AND viewname = {_literal(name)} "
+        # A materialized view is in neither of the two above (relkind `m`).
+        "UNION ALL SELECT matviewname FROM pg_matviews WHERE schemaname = "
+        f"{_literal(schema)} AND matviewname = {_literal(name)}",
     )
+    if present is None:
+        # The catalog views were refused, not empty: read as "no row", the refusal named a mart
+        # the role reads `access.table_absent` (ADR 0010, F1). `to_regclass` resolves the name
+        # without any of the three views; refused or `NULL`, the mart stays absent, as before.
+        present = _ask(
+            run_query,
+            f"SELECT 1 AS present WHERE to_regclass({_pg_relation_literal(table)}) IS NOT NULL",
+        )
     if not present:
         return TableFacts(
             table=table, event_time_column=question.event_time_column, exists=False, readable=False
@@ -1406,16 +1415,14 @@ def _postgres_table(
             owner_bypasses_row_security=owner_bypass,
             row_policies=policies,
         )
-    columns = {
-        str(row.get("name")): str(row.get("type"))
-        for row in _ask(
+    columns = _catalog_columns(
+        _ask(
             run_query,
             "SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type "
             "FROM pg_attribute a WHERE a.attrelid = "
             f"to_regclass({_pg_relation_literal(table)}) AND a.attnum > 0 AND NOT a.attisdropped",
         )
-        or []
-    }
+    )
     # Layout stays unreported here: the distribution policy and partition levels live in
     # Greenplum-only catalogs, and no Greengage stand has been available to pin them.
     facts = _reading(
@@ -1538,6 +1545,20 @@ def _reading(
         owner_bypasses_row_security=owner_bypasses_row_security,
         row_policies=row_policies,
     )
+
+
+def _catalog_columns(rows: list[dict[str, Any]] | None) -> dict[str, str] | None:
+    """Column -> type as the catalog answered it; `None` where the engine refused the question.
+
+    A refused catalog says nothing about the columns. Read as an empty answer it would say
+    every declared column is gone: `physical.column_absent` (block) for each, and a drift that
+    accounts for any `47`/`42703` the reference query or `max()` gets (ADR 0010, F1). An
+    answered catalog with no rows stays `{}`, an answer `column_drift` weighs as any other
+    (ClickHouse leaves out what the role may not read; PostgreSQL lists every column).
+    """
+    if rows is None:
+        return None
+    return {str(row.get("name")): str(row.get("type")) for row in rows}
 
 
 def _key_list(value: object) -> list[str]:

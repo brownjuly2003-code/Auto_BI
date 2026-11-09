@@ -264,6 +264,34 @@ def _product(
     return root
 
 
+def _verify_argv(root: Path, evidence: Path, created_at: str) -> list[str]:
+    return [
+        "verify",
+        str(root / "contracts"),
+        "--base",
+        str(root / "base"),
+        "--candidate",
+        str(root / "candidate"),
+        "--dashboards",
+        str(root / "dashboards"),
+        "--assets",
+        str(root / "assets"),
+        "--results",
+        str(root / "results.yaml"),
+        "--product",
+        PRODUCT_ID,
+        "--dwh",
+        "postgres",
+        "--environment",
+        "live-postgres",
+        "--created-at",
+        created_at,
+        "--evidence",
+        str(evidence),
+        "--json",
+    ]
+
+
 def _verify(
     stand: Stand,
     root: Path,
@@ -273,31 +301,7 @@ def _verify(
 ) -> Run:
     evidence = root.parent / "evidence"
     done = _cli(
-        [
-            "verify",
-            str(root / "contracts"),
-            "--base",
-            str(root / "base"),
-            "--candidate",
-            str(root / "candidate"),
-            "--dashboards",
-            str(root / "dashboards"),
-            "--assets",
-            str(root / "assets"),
-            "--results",
-            str(root / "results.yaml"),
-            "--product",
-            PRODUCT_ID,
-            "--dwh",
-            "postgres",
-            "--environment",
-            "live-postgres",
-            "--created-at",
-            created_at,
-            "--evidence",
-            str(evidence),
-            "--json",
-        ],
+        _verify_argv(root, evidence, created_at),
         _env(stand, user, stand.gate_password),
         root.parent,
     )
@@ -552,3 +556,85 @@ def test_an_event_time_column_max_does_not_take_is_reported(stand: Stand, tmp_pa
     [plan] = run.cost["plans"]
     assert plan["scanned_rows"] == ROWS
     assert run.verdict == "needs_review"
+
+
+#: The stand's own database only: `pg_attribute` is a catalog of each database, and this one
+#: is dropped at the end of the test.
+REVOKE_COLUMN_CATALOG = "REVOKE SELECT ON pg_catalog.pg_attribute FROM PUBLIC"
+
+
+def test_a_column_catalog_the_role_may_not_read_marks_no_column_absent(
+    stand: Stand, tmp_path: Path
+) -> None:
+    """ADR 0010, F1: the gate's role is refused the column list (`42501`). Verifier 132 read
+    that as an empty catalog and blocked on every declared column of a mart that holds them
+    all; now no column is compared, and which columns the role may read is not observed."""
+    root = _product(stand, tmp_path)
+    stand.run(REVOKE_COLUMN_CATALOG)
+
+    run = _verify(stand, root)
+
+    assert run.changed() == {
+        "dwh.physical": ("pass", "physical.not_run"),
+        "dwh.security": ("review", "security.not_observed"),
+    }
+    assert run.codes() == {"dwh.security": ["security.not_observed"]}
+    [plan] = run.cost["plans"]
+    assert plan["scanned_rows"] == ROWS
+    assert run.verdict == "needs_review"
+
+
+def test_a_column_gone_behind_a_refused_catalog_ends_the_run(stand: Stand, tmp_path: Path) -> None:
+    """Nor does the refused catalog account for the `42703` of a column that is really gone:
+    nothing the engine answered says which column drifted, so the state ends the run, as any
+    `42703` the catalog does not account for."""
+    root = _product(stand, tmp_path)
+    stand.run(REVOKE_COLUMN_CATALOG)
+    _drift(stand, "ALTER TABLE dm.sales_daily DROP COLUMN gross_margin")
+    evidence = root.parent / "evidence"
+
+    done = _cli(
+        _verify_argv(root, evidence, FRESH_AT),
+        _env(stand, GATE_USER, stand.gate_password),
+        root.parent,
+    )
+
+    assert done.returncode == 2, done.stdout + done.stderr
+    assert done.stdout == ""
+    assert "UndefinedColumn" in done.stderr
+    assert not evidence.exists()
+
+
+def test_a_table_catalog_the_role_may_not_read_does_not_hide_the_mart(
+    stand: Stand, tmp_path: Path
+) -> None:
+    """Review r1 of F1: the presence question over `pg_tables` and `pg_views` refused
+    (`42501`). Verifier 132 read the refusal as "no row" and blocked `access.table_absent` on a
+    mart the role reads; `to_regclass` finds it, and the run is the clean stand's."""
+    root = _product(stand, tmp_path)
+    stand.run("REVOKE SELECT ON pg_catalog.pg_tables, pg_catalog.pg_views FROM PUBLIC")
+
+    run = _verify(stand, root)
+
+    assert run.changed() == {}
+    assert run.codes() == {}
+    assert run.verdict == "pass"
+
+
+def test_a_materialized_view_mart_is_the_mart(stand: Stand, tmp_path: Path) -> None:
+    """A mart served as a materialized view is in neither `pg_tables` nor `pg_views`. Verifier
+    132 asked only those two and blocked `access.table_absent`; the same rows behind a
+    materialized view are the clean stand's run."""
+    root = _product(stand, tmp_path)
+    stand.run("ALTER TABLE dm.sales_daily RENAME TO sales_daily_rows")
+    stand.run("CREATE MATERIALIZED VIEW dm.sales_daily AS SELECT * FROM dm.sales_daily_rows")
+    stand.run(f"GRANT SELECT ON dm.sales_daily TO {GATE_USER}")
+    stand.run("ANALYZE dm.sales_daily")
+
+    run = _verify(stand, root)
+
+    assert run.changed() == {}
+    assert run.codes() == {}
+    [plan] = run.cost["plans"]
+    assert plan["scanned_rows"] == ROWS
+    assert run.verdict == "pass"
