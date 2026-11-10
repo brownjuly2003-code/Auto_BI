@@ -1,3 +1,7 @@
+# Version updates are off (open-pull-requests-limit: 0): the project is finished (ADR 0010)
+# and published as is (ADR 0011), so a dependency bump is new work. The limit does not touch
+# Dependabot security updates — a repository setting, kept on — which still open PRs for
+# vulnerable dependencies. To bring version updates back, restore the limits (5 / 5 / 3).
 version: 2
 updates:
   # Python dependencies (pyproject.toml + uv.lock)
@@ -5,7 +9,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       # One weekly PR for non-major bumps; major stays separate so CI can fail isolated.
       python-dependencies:
@@ -16,7 +20,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       github-actions-minor:
         patterns: ["*"]
@@ -27,4 +31,4 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
