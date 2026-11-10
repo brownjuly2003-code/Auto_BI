@@ -10,7 +10,9 @@ roles is refused, not reused.
 
 Without `AUTO_BI_LIVE_PG_HOST` the file is skipped. The `integration` job of
 `.github/workflows/ci.yml` sets it and starts the server from `postgres:16`, the major version
-whose answers docs/specs/unanswered-engine.md records.
+whose answers docs/specs/unanswered-engine.md records. The file ran as it is, once, on a
+PostgreSQL 9.4.26 too, the kernel of Greenplum 6 and Greengage 6 (ADR 0010, F3); no CI job
+starts that kernel, so nothing keeps the file running there.
 """
 
 from __future__ import annotations
@@ -35,8 +37,15 @@ PRODUCT_ID = "decision://sales/weekly_margin"
 DATABASE = "decision_live"
 GATE_USER = "decision_live_gate_ro"
 WRITER_USER = "decision_live_gate_rw"
-#: The major version the recorded answers (`42703`, `42883`, `42501`) were observed on.
+#: The major version the recorded answers (`42703`, `42883`, `42501`) were observed on, and the
+#: server of the CI `integration` job.
 MAJOR = 16
+#: The kernel of Greenplum 6 and Greengage 6: the file ran once on a throwaway vanilla
+#: PostgreSQL 9.4.26 on the Mac (ADR 0010, F3), and no CI job starts one.
+KERNEL = "9.4"
+#: Greenplum and Greengage report that kernel too, but plan and answer as MPP databases whose
+#: answers are not recorded: a server naming either is refused.
+FORKS = ("Greenplum", "Greengage")
 
 # As in the ClickHouse file: the mart is dated by day, the newest day DAY, read as its 00:00
 # in Europe/Moscow; FRESH_AT is inside the product's PT6H window, STALE_AT 27 hours after it.
@@ -167,7 +176,12 @@ def stand() -> Iterator[Stand]:
     root = server.connect("postgres")
     try:
         version = int(root.execute("SHOW server_version_num").fetchone()[0])
-        assert version // 10000 == MAJOR, f"PostgreSQL {version}, the recorded answers are {MAJOR}"
+        first, second = divmod(version // 100, 100)  # 160015 is 16, 90426 is 9.4
+        major = str(first) if first >= 10 else f"{first}.{second}"
+        recorded = (str(MAJOR), KERNEL)
+        assert major in recorded, f"PostgreSQL {version}, the recorded answers are of {recorded}"
+        named = root.execute("SELECT version()").fetchone()[0]
+        assert not any(fork in named for fork in FORKS), f"{named}: not a vanilla kernel"
         taken = root.execute(
             "SELECT (SELECT count(*) FROM pg_database WHERE datname = %s) + "
             "(SELECT count(*) FROM pg_roles WHERE rolname IN (%s, %s))",
@@ -195,7 +209,15 @@ def stand() -> Iterator[Stand]:
                 finally:
                     admin.close()
             finally:
-                root.execute(f"DROP DATABASE IF EXISTS {DATABASE} WITH (FORCE)")
+                if version >= 130000:
+                    root.execute(f"DROP DATABASE IF EXISTS {DATABASE} WITH (FORCE)")
+                else:  # `WITH (FORCE)` came with 13: end the database's sessions first
+                    root.execute(
+                        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                        "WHERE datname = %s AND pid <> pg_backend_pid()",
+                        (DATABASE,),
+                    )
+                    root.execute(f"DROP DATABASE IF EXISTS {DATABASE}")
         finally:
             # the writer, where a test made it, is checked absent together with the gate role
             root.execute(f"DROP ROLE IF EXISTS {GATE_USER}, {WRITER_USER}")
@@ -540,7 +562,9 @@ def test_an_event_time_column_max_does_not_take_is_reported(stand: Stand, tmp_pa
     """`max(jsonb)` does not exist, while the reference query still groups by the column: the
     rows are counted and undated, and the plan is priced as before."""
     root = _product(stand, tmp_path)
-    _drift(stand, "ALTER TABLE dm.sales_daily ALTER COLUMN date TYPE jsonb USING to_jsonb(date)")
+    # `to_jsonb` came with 9.5; the cast of `json` is on the 9.4 kernel too
+    retyped = "ALTER TABLE dm.sales_daily ALTER COLUMN date TYPE jsonb USING to_json(date)::jsonb"
+    _drift(stand, retyped)
 
     run = _verify(stand, root)
 
@@ -602,6 +626,9 @@ def test_a_column_gone_behind_a_refused_catalog_ends_the_run(stand: Stand, tmp_p
     assert done.returncode == 2, done.stdout + done.stderr
     assert done.stdout == ""
     assert "UndefinedColumn" in done.stderr
+    # the column the drift dropped, not another 42703: on the 9.4 kernel each run first meets
+    # one of its own, `rolbypassrls`, which the probe takes for a kernel without it
+    assert 'column "gross_margin" does not exist' in done.stderr
     assert not evidence.exists()
 
 

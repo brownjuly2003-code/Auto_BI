@@ -2479,6 +2479,13 @@ varying(n)`, `timestamp` — `timestamp without time zone`, `float(p)`, `numeric
 только версию verifier. Таблица имён сверена живьём: колонка в каждом написании на PostgreSQL 16
 читается через `format_type`, как её читает проба.
 
+F3 (ADR 0010) прогнал живой файл `tests/test_decision_live_postgres.py` целиком на временном
+PostgreSQL 9.4.26 — ядре Greenplum 6 и Greengage 6: 17 из 17, те же SQLSTATE за те же дрейфы,
+отказанные каталоги и таблица имён типов; код гейта не менялся. Это проверка ядра, а не
+Greenplum: свои каталоги, MPP, распределение и планировщик Greenplum (GPORCA, `Motion` в
+`EXPLAIN`, из которого читаются факты стоимости) ею не покрываются. Прогон разовый: CI
+ядро 9.4 не запускает.
+
 Если `_ident` коллектора не принимает временную колонку или компонент имени таблицы,
 он поднимает `UnsafeIdentifierError(ValueError)` с прежним `repr` имени. CLI-проба
 перехватывает только этот тип вокруг `collect` и возвращает usage error

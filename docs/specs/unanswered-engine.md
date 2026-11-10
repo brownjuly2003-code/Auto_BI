@@ -385,12 +385,15 @@ refused already, as before (`the engine refused EXPLAIN on the reference query`)
 bounds are set before the SELECT, outside this reading, so a `SET` the role may not make still
 ends the run.
 
-Any other state — `42601 syntax_error` of a query of ours, a connection failure — and an error
-with no state still end the run as above. `tests/test_decision_live_postgres.py` asserts the
-pinned drifts above, the hidden column and the clean, stale, rows-ceiling and writer stands
-against a PostgreSQL it creates its own database and roles in; slice S7b ran it on the Mac
-(PostgreSQL 16.15) and added it to the CI `integration` job, which starts a throwaway
-`postgres:16` container for it; its first run there is still ahead. The cases the catalog does
+Any other state — `42601 syntax_error` of a query of ours, a connection failure — and an error with
+no state still end the run as above. `tests/test_decision_live_postgres.py` asserts the pinned
+drifts above, the hidden column and the clean, stale, rows-ceiling and writer stands against a
+PostgreSQL it creates its own database and roles in; slice S7b ran it on the Mac (PostgreSQL 16.15)
+and added it to the CI `integration` job, which starts a throwaway `postgres:16` container for it;
+its first run there is still ahead. F3 (ADR 0010) ran the whole file on a throwaway PostgreSQL
+9.4.26, the kernel of Greenplum 6 and Greengage 6 (vanilla, built from source on the Mac, md5
+password auth): the same states for the same drifts (`max(jsonb)` 42883 too), 17 of 17. It ran once:
+no CI job starts that kernel, so nothing keeps the file running there. The cases the catalog does
 not explain are asserted offline.
 
 ## Refusals read by the code (S8)
@@ -460,18 +463,17 @@ answered one. `NULL`, or that question refused too, SHALL leave the mart absent,
 answered "no row" SHALL stay absent without the second question, which would resolve any
 relation of that name, an index or a sequence too.
 
-`tests/test_decision_live_postgres.py` pins four cases live on PostgreSQL 16 — the clean mart
-behind the revoked column catalog (`physical.not_run`, `security.not_observed`,
-`needs_review`), a column dropped behind it (exit 2, `UndefinedColumn`, no bundle), the clean
-mart behind the revoked table catalog, and the same rows served as a materialized view (both the
-clean stand's `pass`). The ClickHouse refusal
-of `system.columns` is pinned offline only; the live ClickHouse test does not refuse it. The
-ClickHouse presence question over `system.tables` is unchanged: a refusal there still reads as
-absent, the one silence the probe already shares with a mart out of reach (both block).
-Check grading is unchanged (check 83); ADR 0010 named `CHECK_VERSION` for this item, but the
-rules of `dwh.physical` over unreported columns and of `dwh.access` over a present mart are the
-ones they had — what changed is the fact the probe reports, and that is the verifier's (as S7,
-S7b and S8).
+`tests/test_decision_live_postgres.py` pins four cases live on PostgreSQL 16 (run once on the 9.4.26
+kernel too, F3) — the clean mart behind the revoked column catalog (`physical.not_run`,
+`security.not_observed`, `needs_review`), a column dropped behind it (exit 2, `UndefinedColumn`, no
+bundle), the clean mart behind the revoked table catalog, and the same rows served as a materialized
+view (both the clean stand's `pass`). The ClickHouse refusal of `system.columns` is pinned offline
+only; the live ClickHouse test does not refuse it. The ClickHouse presence question over
+`system.tables` is unchanged: a refusal there still reads as absent, the one silence the probe
+already shares with a mart out of reach (both block). Check grading is unchanged (check 83); ADR
+0010 named `CHECK_VERSION` for this item, but the rules of `dwh.physical` over unreported columns
+and of `dwh.access` over a present mart are the ones they had — what changed is the fact the probe
+reports, and that is the verifier's (as S7, S7b and S8).
 
 ## One type, any of its PostgreSQL names (F2)
 
@@ -506,12 +508,12 @@ mart's drift. Since verifier 134 and check 84 (ADR 0010, F2), on an engine of th
 - ClickHouse SHALL compare as before, spacing and case aside: its aliases are its own (its `INT8`
   is `Int8`, PostgreSQL's `int8` is `bigint`), and `system.columns` prints the canonical name.
 
-`tests/test_decision_live_postgres.py` creates a column in each spelling of the rule on
-PostgreSQL 16 and reads it back through `format_type`, as the probe does: the names the rule maps
-to are the engine's, not the manual's. The rule is pinned offline both ways and on each engine
-name of the family; a spelling of thousands of characters is read at once (each repeated part
-of the pattern matches its text one way only, so a failed match does not retry every split),
-and so is a `float(p)` of thousands of digits, past what `int()` converts.
+`tests/test_decision_live_postgres.py` creates a column in each spelling of the rule on PostgreSQL
+16 (once on the 9.4.26 kernel too, F3) and reads it back through `format_type`, as the probe does:
+the names the rule maps to are the engine's, not the manual's. The rule is pinned offline both ways
+and on each engine name of the family; a spelling of thousands of characters is read at once (each
+repeated part of the pattern matches its text one way only, so a failed match does not retry every
+split), and so is a `float(p)` of thousands of digits, past what `int()` converts.
 
 ## Runtime SQL guard refusal at the CLI boundary (T-80)
 
@@ -544,10 +546,13 @@ not establish that the current typed compiler emits that SQL from an ordinary in
 ## Known boundaries
 
 - The answers of a query that no longer fits the mart (S7, S7b) were observed live on
-  ClickHouse 24.8.14.39 and PostgreSQL 16.15 only. Greenplum and Greengage take the PostgreSQL
-  path and are expected to answer with the same states, but no stand of either has been run.
+  ClickHouse 24.8.14.39, PostgreSQL 16.15 and the PostgreSQL 9.4.26 kernel of Greenplum 6 and
+  Greengage 6 (F3). Greenplum and Greengage take the PostgreSQL path, but a kernel is not
+  either: their own catalogs, MPP, distribution and planner (GPORCA, `Motion` nodes in the
+  `EXPLAIN` the cost facts are read from) are not covered, and no stand of either has been
+  run.
   A retype answered with another state — `42804 datatype_mismatch`, which no drift produced on
-  16.15 — still ends the run as above.
+  16.15 or on the 9.4.26 kernel — still ends the run as above.
 - A code or a state is taken to mean a drift by its kind alone — a column gone for `47` and
   `42703`, one retyped for `43` and `42883` — and neither the message nor where in the query the
   engine failed is read. A fault of the gate's own query that meets a drift of that kind of a

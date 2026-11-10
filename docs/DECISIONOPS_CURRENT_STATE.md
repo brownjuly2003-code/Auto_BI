@@ -76,7 +76,7 @@ investigation: четыре pure version-pinned skill над supplied canonical 
 - Governance reviewed-запроса отвечает «объявлено ли поле», а не «откуда значение»; что нельзя
   приписать без догадки, — `asset.query_fields_unchecked`. Связывание с `WITH` и CTE
   консервативно там, где оно неоднозначно (ARCHITECTURE §7.5).
-- Дрейф по SQLSTATE (42703/42883) живьём проверен только на PostgreSQL 16.15, не на
+- Дрейф по SQLSTATE (42703/42883) живьём проверен на PostgreSQL 16.15 и ядре 9.4.26, не на
   Greenplum/Greengage; смена типа с другим SQLSTATE (42804) — exit 2 на любом ядре
   ([spec](specs/unanswered-engine.md)).
 - PostgreSQL `max_scanned_bytes` — `cost.not_measured` (review): API 14–18 не даёт
@@ -112,11 +112,11 @@ PEM вне checkout и evidence.
 
 ## Что делать дальше
 
-Финишная черта — [ADR 0010](adr/0010-finish-line.md) (решение владельца 2026-11-08). F1
-и F2 сделаны (verifier 133, 134): отказанный каталог колонок — «неизвестно», другое имя типа
-PostgreSQL — не смена типа. Осталось: F3 живой verify на ядре PostgreSQL 9.4.26; F4 публичные
-dbt-проекты (`deps` + `parse`); F5 полный `ci_local` на финальном коммите; F6 закрывающая
-запись и `0.6.0`. Находки вне F1–F6 — в [бэклог](DECISIONOPS_BACKLOG.md); сразу чинится
+Финишная черта — [ADR 0010](adr/0010-finish-line.md) (решение владельца 2026-11-08). F1–F3
+сделаны (verifier 133, 134; F3 — тесты): отказанный каталог колонок — «неизвестно», другое
+имя типа PostgreSQL — не смена типа, живой файл прошёл на 9.4.26. Осталось: F4
+публичные dbt-проекты (`deps` + `parse`); F5 полный `ci_local` на финальном коммите; F6
+закрывающая запись и `0.6.0`. Находки вне F1–F6 — в [бэклог](DECISIONOPS_BACKLOG.md); сразу чинится
 только неверный вердикт по числам.
 
 Не начинать без нового решения:

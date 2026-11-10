@@ -544,7 +544,8 @@ def test_ci_runs_the_decisionops_live_check_against_the_pinned_clickhouse() -> N
 
 def test_ci_runs_the_decisionops_live_check_against_postgres_of_the_recorded_major() -> None:
     """The PostgreSQL half (S7b) skips as silently where `AUTO_BI_LIVE_PG_HOST` is unset; its
-    server is the major version the test asserts and the spec records the answers of."""
+    server is the major version the test names (`MAJOR`; it takes the 9.4 kernel besides) and
+    the spec records the answers of."""
     workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
     steps = workflow["jobs"]["integration"]["steps"]
     names = [step.get("name") for step in steps]

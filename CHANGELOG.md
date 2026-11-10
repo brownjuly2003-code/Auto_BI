@@ -649,6 +649,15 @@
 
 ### Added
 
+- **Живая проверка DecisionOps и на ядре PostgreSQL 9.4.26** — ядре Greenplum 6 и Greengage 6
+  ([ADR 0010](docs/adr/0010-finish-line.md), F3). `tests/test_decision_live_postgres.py`
+  принимает сервер 16 (CI) и 9.4: база теста на ядре до 13 удаляется без `WITH (FORCE)`, дрейф
+  `date` в `jsonb` делается через `to_json(date)::jsonb` (`to_jsonb` появился в 9.5). На
+  временном 9.4.26, собранном на Mac из исходников, файл — 17 из 17: `42703`/`42883` за те же
+  дрейфы, `42501` за скрытую колонку и отказанные каталоги (F1), таблица имён типов (F2). Код
+  гейта не менялся. Это проверка ядра, не Greenplum: MPP, распределение, свои каталоги и
+  планировщик Greenplum (GPORCA, `Motion` в `EXPLAIN`) не покрыты; сервер, назвавший себя
+  Greenplum или Greengage, тест отвергает. CI это ядро не запускает — прогон разовый.
 - **Живая проверка DecisionOps на PostgreSQL** (`tests/test_decision_live_postgres.py`,
   шаг CI-job `integration` с `postgres:16`). Половина проверки на ClickHouse ниже для
   PostgreSQL: тест сам создаёт базу `decision_live` со схемой `dm`, gate-роль и дрейф и
