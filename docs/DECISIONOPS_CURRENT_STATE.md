@@ -15,7 +15,7 @@ reviewed-запроса проверен на живых PostgreSQL и ClickHous
 мутационного smoke и внешнего источника формул dbt (ADR 0008, S1–S5d, 2026-11-07).
 Owner outcome (human/design-partner) не измеряется
 ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Fork не публикуется и не имеет remote:
-`autobi-agent` локальной версии `0.6.0.dev0`
+`autobi-agent` локальной версии `0.6.0`
 ([ADR 0009](adr/0009-local-package-identity-no-publication.md)).
 
 ## Коротко

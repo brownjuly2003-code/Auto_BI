@@ -7,7 +7,7 @@ plane для выпуска проверяемых аналитических п
 
 > **Fork не публикуется** ([ADR 0009](docs/adr/0009-local-package-identity-no-publication.md)).
 > `pip install autobi-agent` устанавливает опубликованный baseline v0.5.0, а не DecisionOps из
-> этого checkout: здесь тот же дистрибутив локальной версии `0.6.0.dev0`, без remote. Используйте
+> этого checkout: здесь тот же дистрибутив локальной версии `0.6.0`, без remote. Используйте
 > `uv sync` и запускайте CLI через `uv run auto_bi`.
 
 Первый вертикальный путь работает offline: `auto_bi decision

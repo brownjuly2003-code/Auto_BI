@@ -7,7 +7,7 @@
 
 Это разделение важно: опубликованный пакет `autobi-agent==0.5.0` относится только к
 baseline. DecisionOps запускается из локального checkout как `autobi-agent` версии
-`0.6.0.dev0`, не публикуется и не имеет remote
+`0.6.0`, не публикуется и не имеет remote
 ([ADR 0009](adr/0009-local-package-identity-no-publication.md)).
 
 ## С чего начать

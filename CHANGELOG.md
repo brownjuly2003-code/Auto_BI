@@ -5,12 +5,20 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-10
+
+Локальная версия форка на финишной черте
+([ADR 0010](docs/adr/0010-finish-line.md), F6): не публикуется и не имеет remote
+([ADR 0009](docs/adr/0009-local-package-identity-no-publication.md)). Ссылки сравнения версий
+в конце файла ведут в репозиторий baseline, поэтому у `0.6.0` такой ссылки нет.
+
 ### Changed
 
 - **Пакет форка называет себя DecisionOps и не выдаёт себя за опубликованный baseline.**
-  Версия `autobi-agent` в checkout — `0.6.0.dev0` (было `0.5.0`, как у опубликованного
-  baseline): её показывают `auto_bi --version`, `/api/v1/health` и OpenAPI. Описание пакета —
-  Analytics Release & Evidence Gate; ссылки `[project.urls]` на репозиторий baseline убраны.
+  Версия `autobi-agent` в checkout — `0.6.0` (было `0.5.0`, как у опубликованного
+  baseline; во время разработки — `0.6.0.dev0`): её показывают `auto_bi --version`,
+  `/api/v1/health` и OpenAPI. Описание пакета — Analytics Release & Evidence Gate; ссылки
+  `[project.urls]` на репозиторий baseline убраны.
   Fork не публикуется и не имеет remote
   ([ADR 0009](docs/adr/0009-local-package-identity-no-publication.md)).
   Формат evidence (`VERIFIER_VERSION`, `CHECK_VERSION`) не меняется.
@@ -2487,7 +2495,6 @@ Phase 0–4 и последующего hardening-трека и вводит с�
   (после отсечения детальной таблицы по `max_charts`), растягивается на всю ширину — нет
   «рваного» полупустого ряда.
 
-[Unreleased]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.5.0...HEAD
 [0.5.0]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.3.0...v0.3.1

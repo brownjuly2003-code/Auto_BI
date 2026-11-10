@@ -48,7 +48,7 @@ untracked presentation artifact; они, `.env`, виртуальные окру
 | Tracked-файлы | 324 | Это зрелый fork, не greenfield rewrite |
 | Python source | 82 файла / 20 824 физических строки | Новый слой должен быть additive |
 | Python tests | 100 файлов / 27 960 физических строк | v1 regression suite остаётся обязательной |
-| Package | `autobi-agent` 0.5.0 (на bootstrap; теперь `0.6.0.dev0`, ADR 0009) | Имя пакета не меняется |
+| Package | `autobi-agent` 0.5.0 (на bootstrap; теперь `0.6.0`, ADR 0009/0010) | Имя пакета не меняется |
 | Runtime | Python 3.12+, FastAPI, Pydantic, sqlglot, SQLite | Нового framework в MVP не требуется |
 | Primary path | ClickHouse + Superset | Первый live gate углубляет этот путь |
 | Secondary path | Greenplum + DataLens | Используется для cross-target contracts |
@@ -2675,7 +2675,8 @@ owner/design-partner outcome не измеряется и не входит в �
 [ADR 0005](adr/0005-ed25519-evidence-trust-root.md); этот вопрос больше не открыт. Первый
 внешний semantic source выбран в [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md).
 Пункты 2 и 3 закрыты [ADR 0009](adr/0009-local-package-identity-no-publication.md): fork не
-публикуется и не имеет remote, дистрибутив остаётся `autobi-agent` локальной версии `0.6.0.dev0`.
+публикуется и не имеет remote, дистрибутив остаётся `autobi-agent` локальной версии — `0.6.0` с F6
+[ADR 0010](adr/0010-finish-line.md).
 
 ## 19. Bootstrap acceptance
 
