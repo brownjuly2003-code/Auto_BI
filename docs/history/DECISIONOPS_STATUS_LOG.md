@@ -10,6 +10,53 @@
 > Новая запись среза добавляется сверху, полным текстом. С 2026-11-04 это единственное место
 > записи о срезе: ни `CLAUDE.md`, ни `DECISIONOPS_CURRENT_STATE.md` её не дублируют.
 
+## 2026-11-10 — F5 и F6: полный `ci_local` на финальном коммите, версия `0.6.0`; финишная черта пройдена
+
+Пятый и шестой пункты финишной черты ([ADR 0010](../adr/0010-finish-line.md)). Исполнитель —
+Claude; Codex/Astra не запускались (лимит владельца). Модельная оценка, не human acceptance.
+
+- **Версия `0.6.0` (F6, `09b2cee`) поставлена до F5,** чтобы полный прогон шёл на финальном
+  коммите кода: `pyproject.toml`, `auto_bi.__version__`, `uv.lock`; в CHANGELOG — датированная
+  секция `[0.6.0]`, ссылка сравнения `[Unreleased]` в репозиторий baseline снята. ADR 0009 в
+  силе (без публикации и remote) и называет версию. Тест ADR 0009 принимает dev-версию или
+  версию после `0.5.0`, а у версии без `.dev` требует датированную секцию CHANGELOG. Проверка на
+  Mac: 143 целевых теста, `scripts/release_preflight.py 0.6.0`, ruff, black; мутанты теста
+  (`.tmp/f6/mut_f6.sh`) — 6 убиты, 2 контрольных прошли.
+- **F5 — полный `ci_local` на `main@09b2cee`:** Linux-контейнер ubuntu 24.04 в VM `ci-local`
+  iMac, 64 мин; время выбрано владельцем, память iMac освобождена под прогон. 55 шагов PASS,
+  1 FAIL, 2 непокрыто:
+  - pytest на Python 3.12 и 3.13 — по 11628 passed, 25 skipped, 73 deselected (marker
+    `integration`); покрытие 96,58 % при пороге 90;
+  - мутационный smoke — 2913 из 3013, в пределах baseline; первый замер на Linux (baseline
+    снимался на Mac);
+  - живые проверки: DecisionOps verify на ClickHouse — 18 тестов, на PostgreSQL — 17; контракт
+    Superset и D-1 — 23; браузерные E2E — 6; Docker-образ (non-root, HEALTHCHECK), аудит
+    зависимостей, golden eval (ClickHouse, Greenplum) — PASS;
+  - FAIL — `demo-image/smoke > Build image`: внутри `docker build` в VM не разрешилось имя
+    github.com (`dns error: Name does not resolve`) при загрузке CPython 3.12, до кода сборка не
+    дошла. По решению владельца перезапущена одна эта джоба (`--runner linux --workflow
+    demo-image --job smoke`): первый повтор без `--docker` не получил сокет Docker (ci_local
+    пробрасывает его, только когда видит docker-шаги среди выбранных джоб, а у одной этой джобы
+    их не видит), второй снова упал на DNS (`pkg-containers.githubusercontent.com`: `no such
+    host`; через минуту это имя разрешалось с iMac и через роутер, и через публичные DNS — сбой
+    сети, не проекта), третий — PASS: сборка образа, запуск, готовность, оба smoke-шага (5 из
+    5). Контейнер `demo` после прогона удалён (`.tmp/t132/rm_demo.sh`).
+  - не покрыто: `ci/windows-cli-smoke` (`runs-on: windows-latest`) и коммит coverage-бейджа
+    (push); только в GitHub — CodeQL и gitleaks.
+
+  Штампа `ci_local` нет: вердикт полного прогона — FAIL, повтор одной джобы штамп не ставит.
+  Штамп нужен только для push, а push нет (ADR 0009).
+- **Рецепт прогона поправлен.** Запуск из detached worktree `.tmp/ci_wt`, который handoff
+  предписывал с S6, даёт `NO_CHECKS` за секунды: ci_local читает ветку как `detached`, а все
+  workflow, кроме gitleaks, запускаются на `on.push.branches: [main]`. Прежние попытки до
+  прогона не доходили (`host busy`), поэтому это не было видно. Прогон шёл из основного
+  checkout на `main`, дерево во время прогона не менялось.
+- **Финишная черта пройдена:** F1 `443c99b`, F2 `47dc983`, F3 `5080d72`, F4 `a940a0b`, F5 —
+  этот прогон, F6 — `09b2cee` и эта запись. Новая работа — только новым решением владельца и
+  новым ADR (ADR 0010, п. 4); известные ограничения — в
+  [текущем состоянии](../DECISIONOPS_CURRENT_STATE.md) и [бэклоге](../DECISIONOPS_BACKLOG.md).
+  Версии evidence не менялись (verifier 134, check 84).
+
 ## 2026-11-10 — F4: формулы публичных dbt-проектов прочитаны (код гейта не менялся)
 
 Четвёртый пункт финишной черты ([ADR 0010](../adr/0010-finish-line.md)). Исполнитель — Claude;

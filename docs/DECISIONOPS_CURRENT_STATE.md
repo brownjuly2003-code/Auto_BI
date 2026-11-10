@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-09 · **Версии evidence:** `VERIFIER_VERSION=134`, `CHECK_VERSION=84`
+**Обновлено:** 2026-11-10 · **Версии evidence:** `VERIFIER_VERSION=134`, `CHECK_VERSION=84`
 (что меняла каждая — [spec](specs/evidence-format-versions.md))
 
 Здесь только то, что работает, что не реализовано и что дальше. Поведение описывают
@@ -12,7 +12,8 @@
 **Стадия.** Release gate bootstrap завершён; impact доходит до чарта; read-only capture
 reviewed-запроса проверен на живых PostgreSQL и ClickHouse; evidence подписывается Ed25519
 (opt-in); offline investigation alpha разрешён. Закрыты этапы hardening (2026-11-03),
-мутационного smoke и внешнего источника формул dbt (ADR 0008, S1–S5d, 2026-11-07).
+мутационного smoke и внешнего источника формул dbt (ADR 0008, S1–S5d, 2026-11-07);
+финишная черта ADR 0010 пройдена 2026-11-10.
 Owner outcome (human/design-partner) не измеряется
 ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Fork не публикуется и не имеет remote:
 `autobi-agent` локальной версии `0.6.0`
@@ -112,12 +113,10 @@ PEM вне checkout и evidence.
 
 ## Что делать дальше
 
-Финишная черта — [ADR 0010](adr/0010-finish-line.md) (решение владельца 2026-11-08). F1–F4
-сделаны (verifier 133, 134; F3, F4 — тесты): отказанный каталог колонок — «неизвестно»,
-другое имя типа PostgreSQL — не смена типа, живой файл прошёл на 9.4.26, публичные dbt-проекты
-прочитаны. Осталось: F5 полный `ci_local` на финальном коммите; F6 закрывающая запись и
-`0.6.0`. Находки вне F1–F6 — в [бэклог](DECISIONOPS_BACKLOG.md); сразу чинится
-только неверный вердикт по числам.
+Финишная черта [ADR 0010](adr/0010-finish-line.md) пройдена 2026-11-10: F1–F6 сделаны,
+версия `0.6.0`, полный `ci_local` на финальном коммите — в
+[журнале статуса](history/DECISIONOPS_STATUS_LOG.md). Новая работа — только новым
+решением владельца и новым ADR; находки — в [бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:
 
