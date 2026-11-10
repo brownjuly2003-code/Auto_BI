@@ -82,6 +82,27 @@ class Settings(BaseSettings):
         description="Greenplum or Greengage schema that holds DM tables and views.",
     )
 
+    environment_query_timeout_ms: int = Field(
+        default=30_000,
+        gt=0,
+        description="Positive server timeout in ms for each gate catalog/statistics query.",
+    )
+    capture_timeout_ms: int = Field(
+        default=30_000,
+        gt=0,
+        description="Positive server timeout in milliseconds for each capture statement.",
+    )
+    capture_max_rows: int = Field(
+        default=10_000,
+        gt=0,
+        description="Positive row limit; excess rows cause refusal of the entire capture.",
+    )
+    capture_max_bytes: int = Field(
+        default=16_777_216,
+        gt=0,
+        description="Maximum sum of UTF-8 bytes of captured non-null values rendered with str().",
+    )
+
     # Superset
     superset_url: str = Field(
         default="http://localhost:8088",

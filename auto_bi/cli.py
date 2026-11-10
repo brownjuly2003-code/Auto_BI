@@ -4,22 +4,56 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn, TextIO
 
 from auto_bi import __version__
 
 if TYPE_CHECKING:
+    from _typeshed import SupportsWrite
     from rich.console import Console
 
     from auto_bi.agent.machine import AgentTurn
     from auto_bi.config import Settings
+    from auto_bi.decision.use_cases import DbtArtifact, EnvironmentProbe, ResultQueryFactory
+    from auto_bi.introspect.base import RunQuery
     from auto_bi.store import Store
 
 logger = logging.getLogger(__name__)
 
 
+class _HelpArgumentParser(argparse.ArgumentParser):
+    """Escape unencodable parser text without changing streams or exit codes."""
+
+    #: Set on `decision` and its commands, and on `auto_bi` for a command line of `decision`:
+    #: what the parser refuses is said in one line.
+    one_line = False
+
+    def error(self, message: str) -> NoReturn:
+        super().error(_one_line(message) if self.one_line else message)
+
+    def _print_message(self, message: str, file: "SupportsWrite[str] | None" = None) -> None:
+        try:
+            super()._print_message(message, file)
+        except UnicodeEncodeError:
+            stream = file or sys.stderr
+            encoding = getattr(stream, "encoding", None) or "ascii"
+            # Keep argparse's handling of non-encoding write errors on both attempts.
+            super()._print_message(
+                message.encode(encoding, "backslashreplace").decode(encoding), file
+            )
+
+    def print_help(self, file: "SupportsWrite[str] | None" = None) -> None:
+        stream = sys.stdout if file is None else file
+        text = self.format_help()
+        try:
+            stream.write(text)
+        except UnicodeEncodeError:
+            encoding = getattr(stream, "encoding", None) or "ascii"
+            stream.write(text.encode(encoding, "backslashreplace").decode(encoding))
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="auto_bi", description=__doc__)
+    parser = _HelpArgumentParser(prog="auto_bi", description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -154,6 +188,157 @@ def main(argv: list[str] | None = None) -> int:
     )
     prune.add_argument("--model-path", default="semantic/model.yaml", help="Semantic model file")
 
+    decision = sub.add_parser(
+        "decision", help="DecisionOps contracts, evidence, and read-only result capture"
+    )
+    decision_sub = decision.add_subparsers(dest="decision_command", required=True)
+    validate = decision_sub.add_parser(
+        "validate", help="Validate Git-tracked decision products against their metric contracts"
+    )
+    validate.add_argument("paths", nargs="+", help="Contract files or directories (YAML or JSON)")
+    validate.add_argument(
+        "--json", action="store_true", help="Emit the report as JSON and nothing else"
+    )
+
+    capture = decision_sub.add_parser(
+        "capture",
+        help="Execute one verified asset's reviewed SQL and write an attested result",
+    )
+    capture.add_argument("assets", help="Verified asset repository (file or directory)")
+    capture.add_argument(
+        "--candidate", required=True, help="Candidate semantic ref: a directory holding model.yaml"
+    )
+    _dbt_arguments(capture, "candidate")
+    capture.add_argument(
+        "--asset", default="", help="Asset id, required when the repository holds several"
+    )
+    capture.add_argument(
+        "--dwh",
+        required=True,
+        choices=["clickhouse", "greenplum", "greengage", "postgres"],
+        help="Configured read-only DWH driver used to execute the reviewed query",
+    )
+    capture.add_argument(
+        "--environment",
+        default="",
+        help="Attested environment ref (default: configured host:port/database)",
+    )
+    capture.add_argument("--output", required=True, help="New recorded-results YAML file")
+    capture.add_argument(
+        "--captured-at",
+        default="",
+        help="RFC 3339 UTC capture timestamp; defaults to the current time",
+    )
+
+    verify = decision_sub.add_parser(
+        "verify",
+        help="Run the Analytics Release & Evidence Gate for one decision product",
+    )
+    verify.add_argument("paths", nargs="+", help="Contract files or directories (YAML or JSON)")
+    verify.add_argument(
+        "--base", required=True, help="Base semantic ref: a directory holding model.yaml"
+    )
+    verify.add_argument(
+        "--candidate", required=True, help="Candidate semantic ref: a directory holding model.yaml"
+    )
+    _dbt_arguments(verify, "base")
+    _dbt_arguments(verify, "candidate")
+    verify.add_argument(
+        "--evidence", required=True, help="Directory the evidence bundle is written to"
+    )
+    verify.add_argument(
+        "--signing-key",
+        default="",
+        help="Ed25519 PKCS#8 private-key PEM used to seal the evidence manifest",
+    )
+    verify.add_argument("--dashboards", default=None, help="Directory of delivered DashboardSpecs")
+    verify.add_argument("--assets", default=None, help="Verified asset repository (file or dir)")
+    verify.add_argument(
+        "--results",
+        default=None,
+        help="Recorded candidate results: {asset id: ResultSet | {result, attestation}}",
+    )
+    verify.add_argument("--product", default="", help="Product id, when the paths hold several")
+    verify.add_argument("--environment", default="", help="DWH/BI environment ref for the run key")
+    verify.add_argument(
+        "--dwh",
+        default="",
+        choices=["", "clickhouse", "greenplum", "greengage", "postgres"],
+        help="Ask this engine step 7's questions, read-only, using the configured settings",
+    )
+    verify.add_argument(
+        "--created-at",
+        default="",
+        help="RFC 3339 UTC bundle timestamp; supply it to make the run byte-reproducible",
+    )
+    verify.add_argument(
+        "--json", action="store_true", help="Emit the report as JSON and nothing else"
+    )
+
+    evidence = decision_sub.add_parser(
+        "evidence",
+        help="Read a written evidence bundle back and re-verify every content address",
+    )
+    evidence.add_argument("path", help="Evidence directory, or one run directory inside it")
+    evidence.add_argument("--run", default="", help="Run id, when the directory holds several")
+    evidence.add_argument(
+        "--artifact", default="", help="Print this artifact's payload and nothing else"
+    )
+    evidence.add_argument(
+        "--expect-digest",
+        default="",
+        help="Manifest digest the bundle must have; a mismatch blocks",
+    )
+    evidence.add_argument(
+        "--trust-key",
+        action="append",
+        default=[],
+        help="Trusted Ed25519 public-key PEM; repeat during key rotation",
+    )
+    evidence.add_argument(
+        "--json", action="store_true", help="Emit the inspection as JSON and nothing else"
+    )
+
+    pin = decision_sub.add_parser(
+        "pin",
+        help="Print the pin of each dbt metric of a semantic_manifest.json "
+        "(external.source_revision of a dbt_semantic_manifest formula)",
+    )
+    pin.add_argument("manifest", help="dbt semantic_manifest.json")
+    pin.add_argument("metrics", nargs="*", help="dbt metric names (default: every metric)")
+    pin.add_argument("--json", action="store_true", help="Emit the pins as JSON and nothing else")
+
+    runs = decision_sub.add_parser(
+        "runs", help="List local runs without checking evidence integrity"
+    )
+    runs.add_argument("path", help="Evidence root containing run directories")
+    runs.add_argument("--json", action="store_true", help="Emit the catalogue as JSON")
+
+    investigate = decision_sub.add_parser(
+        "investigate",
+        help="Run a typed investigation over canonical results (offline, no DWH/BI/LLM)",
+    )
+    investigate.add_argument("plan", help="InvestigationPlan YAML file")
+    investigate.add_argument(
+        "--results",
+        nargs="+",
+        required=True,
+        help="CanonicalMetricResult YAML files, exactly one per investigated metric",
+    )
+    investigate.add_argument(
+        "--output", required=True, help="New directory for canonical plan/results/brief artifacts"
+    )
+    for command_parser in (decision, *decision_sub.choices.values()):
+        command_parser.one_line = True
+    # `auto_bi` refuses what no command takes, quoted after `unrecognized arguments: ` — what a
+    # decision command does not take among it — and on CPython 3.12.6 and earlier an option
+    # after `decision runs` that could be one of its own, `--=x`. A command line argparse hands
+    # to `decision` has it as its first argument that does not begin with `-`: what comes before
+    # is options of `auto_bi`, and they take no value.
+    arguments = sys.argv[1:] if argv is None else argv
+    command = next((argument for argument in arguments if not argument.startswith("-")), None)
+    parser.one_line = command == "decision"
+
     args = parser.parse_args(argv)
 
     if args.command == "build":
@@ -180,7 +365,547 @@ def main(argv: list[str] | None = None) -> int:
         return _dbt_import(args.manifest, args.catalog, args.model_path, args.dry_run)
     if args.command == "prune":
         return _prune(args.session, args.dry_run, args.model_path)
+    if args.command == "decision":
+        if args.decision_command == "runs":
+            return _decision_runs(args)
+        if args.decision_command == "capture":
+            return _decision_capture(args)
+        if args.decision_command == "verify":
+            return _decision_verify(args)
+        if args.decision_command == "evidence":
+            return _decision_evidence(args)
+        if args.decision_command == "pin":
+            return _decision_pin(args)
+        if args.decision_command == "investigate":
+            return _decision_investigate(args)
+        return _decision_validate(args.paths, args.json)
     return 0
+
+
+def _decision_runs(args: argparse.Namespace) -> int:
+    from auto_bi.decision.runs import FilesystemRunRepository, RunDiscoveryError
+
+    try:
+        rows = FilesystemRunRepository(args.path).list_runs()
+    except RunDiscoveryError as exc:
+        _say(_one_line(str(exc)), file=sys.stderr)
+        return 2
+    if args.json:
+        _say_json([row.model_dump(mode="json") for row in rows])
+    else:
+        _say("Local runs (integrity_checked=false; use decision evidence to verify):")
+        for row in rows:
+            _say_one_line(
+                f"{row.run_id}  {row.product_ref!r}  {row.created_at!r}  "
+                f"{row.manifest_digest}  manifest_run_id={row.manifest_run_id}"
+            )
+    return 0
+
+
+def _say(text: str, file: TextIO | None = None) -> None:
+    """Print one line of a decision command's answer, whatever the stream encodes.
+
+    A stream refuses a character it has no form for, and a command prints what it found: a
+    path, an id, a detail. Left to itself that ends the command in a traceback — after the
+    bundle is sealed or the artifacts are written — with an exit code that is no verdict.
+    The character is spelled by its backslash escape instead, the way the interpreter prints
+    to its own error stream; what the stream does encode is printed as it is.
+    """
+    stream = sys.stdout if file is None else file
+    try:
+        print(text, file=stream)
+    except UnicodeEncodeError:
+        encoding = getattr(stream, "encoding", None) or "ascii"
+        print(text.encode(encoding, "backslashreplace").decode(encoding), file=stream)
+
+
+def _one_line(text: str) -> str:
+    """*text* with each character that is not printable spelled by its escape: one line.
+
+    A refusal quotes what it refuses — a path found under a directory, a key of a document,
+    what a validator or an engine said — and any of them may hold a line break, which splits
+    the refusal into lines, or a control a terminal acts on. Each such character is spelled
+    as Python escapes it (``\\n``, ``\\x1b``, ``\\u2028``); every other character, a backslash
+    among them, is left as it is.
+    """
+    return "".join(char if char.isprintable() else ascii(char)[1:-1] for char in text)
+
+
+def _say_error(message: object) -> None:
+    """Print why a decision command stopped: one line, after ``error: ``, on standard error."""
+    _say(f"error: {_one_line(str(message))}", file=sys.stderr)
+
+
+def _say_one_line(text: str) -> None:
+    """Print a line of an answer that names what the command read: one line, as a refusal is.
+
+    A line of a text answer names a file found under a directory, quotes a key of a document,
+    the detail a check wrote of an attestation, a caveat or a version of a bundle, a run of a
+    store. Any of them may hold a line break or a carriage return — each makes two lines of one
+    for a reader of lines, and the second may read `verdict: pass` — or an escape. Each
+    character that is not printable is spelled by its escape (`_one_line`) before `_say` offers
+    the line. A JSON answer is not spelled.
+    """
+    _say(_one_line(text))
+
+
+def _say_json(document: Any) -> None:
+    """Print a JSON answer; in ASCII, by the escapes of JSON, when the stream refuses it.
+
+    A backslash escape of `_say` is not one JSON reads, and JSON has its own for every
+    character outside ASCII, a lone surrogate too: the document printed is the same document.
+    """
+    import json
+
+    try:
+        print(json.dumps(document, ensure_ascii=False, indent=2))
+    except UnicodeEncodeError:
+        print(json.dumps(document, ensure_ascii=True, indent=2))
+
+
+def _dbt_arguments(command: argparse.ArgumentParser, side: str) -> None:
+    """The dbt artifact the *side* ref's formulas are resolved from (ADR 0008, item 11)."""
+    command.add_argument(
+        f"--{side}-semantic-manifest",
+        default=None,
+        help=f"dbt semantic_manifest.json the {side} ref's dbt_semantic_manifest formulas "
+        "are resolved from; required when its contracts have one",
+    )
+    command.add_argument(
+        f"--{side}-dbt-database",
+        default=None,
+        help=f"dbt database of the {side} artifact's relations, empty for two-part names "
+        f"(with --{side}-semantic-manifest)",
+    )
+
+
+def _dbt_artifact(args: argparse.Namespace, side: str) -> "DbtArtifact | None":
+    """The *side* artifact the command line names, or a usage error for a database alone."""
+    from auto_bi.decision.use_cases import DbtArtifact, VerifyError
+
+    path = getattr(args, f"{side}_semantic_manifest")
+    database = getattr(args, f"{side}_dbt_database")
+    if path is None:
+        if database is not None:
+            raise VerifyError(f"--{side}-dbt-database is given without --{side}-semantic-manifest")
+        return None
+    return DbtArtifact(path, database)
+
+
+def _decision_pin(args: argparse.Namespace) -> int:
+    """`auto_bi decision pin` — the pin a contract writes for a dbt metric (ADR 0008, item 4).
+
+    Each line is the pin of a metric — `sha256:` of the RFC 8785 form of its closure, the
+    value of `external.source_revision` — and its name, every metric of the artifact in name
+    order when none is named. The artifact is read as the gate reads it: one it refuses is said
+    problem by problem, and it and a metric it does not hold exit 2.
+    """
+    from pathlib import Path
+
+    from auto_bi.semantic.metricflow import read_semantic_manifest
+    from auto_bi.verification.model import EXIT_ERROR
+    from auto_bi.yaml_document import unread_reason
+
+    path = Path(args.manifest)
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        _say_error(f"cannot read {path}: {unread_reason(exc)}")
+        return EXIT_ERROR
+    read = read_semantic_manifest(raw)
+    if read.manifest is None:
+        for problem in read.problems:
+            _say_error(f"{path}: {problem.code} at {problem.path}: {problem.reason}")
+        return EXIT_ERROR
+    names = list(dict.fromkeys(args.metrics)) or read.manifest.metric_names()
+    unknown = [name for name in names if not read.manifest.has_metric(name)]
+    if unknown:
+        _say_error(f"{path} holds no metric {', '.join(repr(name) for name in unknown)}")
+        return EXIT_ERROR
+    pins = {name: read.manifest.closure_digest(name) for name in names}
+    if args.json:
+        _say_json(
+            {
+                "artifact_digest": read.artifact_digest,
+                "schema_version": read.schema_version,
+                "pins": pins,
+            }
+        )
+    else:
+        for name, pin in pins.items():
+            _say_one_line(f"{pin}  {name}")
+    return 0
+
+
+def _decision_validate(paths: list[str], as_json: bool) -> int:
+    """`auto_bi decision validate` — offline cross-contract check (ARCHITECTURE §12.1).
+
+    Exit code carries the verdict (0 pass/advisory, 3 needs_review, 4 block); a run that
+    validated no product at all exits 2 rather than pretending to pass.
+    """
+    from auto_bi.decision.validate import validate_paths
+    from auto_bi.verification.model import EXIT_ERROR, exit_code_for
+
+    report = validate_paths(paths)
+    if as_json:
+        _say_json(report.model_dump(mode="json"))
+    else:
+        for issue in report.issues:
+            _say_one_line(f"{issue.severity.value:<8} {issue.code:<26} {issue.subject}")
+            _say_one_line(f"{'':<8} {issue.message} [{issue.source}]")
+        for ref in report.products:
+            _say_one_line(f"product  {ref}")
+        for ref in report.metrics:
+            _say_one_line(f"metric   {ref}")
+        _say(
+            f"verdict: {report.verdict.value} "
+            f"({len(report.products)} product(s), {len(report.metrics)} metric contract(s), "
+            f"{len(report.issues)} issue(s))"
+        )
+
+    if not report.products:
+        message = "error: no decision product contract found in the given paths"
+        _say(message, file=sys.stderr if as_json else sys.stdout)
+        return EXIT_ERROR
+    return exit_code_for(report.verdict)
+
+
+def _decision_investigate(args: argparse.Namespace) -> int:
+    """Run the internal offline investigation alpha over supplied canonical results."""
+    from auto_bi.investigation.application import (
+        OfflineInvestigationError,
+        write_offline_investigation,
+    )
+    from auto_bi.verification.model import EXIT_ERROR
+
+    try:
+        artifacts = write_offline_investigation(args.plan, args.results, args.output)
+    except OfflineInvestigationError as exc:
+        # Supplied names and paths must not insert lines or terminal controls.
+        _say_error(exc)
+        return EXIT_ERROR
+    _say(f"wrote    {args.output}")
+    _say(f"plan     {artifacts.plan.digest()}")
+    _say(f"brief    {artifacts.brief.digest()}")
+    _say("trust    exploratory; human acceptance not measured")
+    return 0
+
+
+def _quiet_driver_log(name: str) -> None:
+    """Keep dependency warnings off the error stream a decision command answers on.
+
+    No `decision` command configures logging, so a record a driver logs is printed by
+    `logging.lastResort` — on stderr, above the one line the command answers with.
+    clickhouse_connect logs a warning of each request it fails before it raises, and one with
+    the traceback of a response it could not read to the end. A `NullHandler` on the driver's
+    logger is a handler found, so the last resort is not used; a process that configured
+    logging still has the records where its own handlers put them. Added once, however many
+    times a client is built. The same fallback can expose SQL in sqlglot parser warnings.
+    """
+    driver = logging.getLogger(name)
+    if not any(isinstance(handler, logging.NullHandler) for handler in driver.handlers):
+        driver.addHandler(logging.NullHandler())
+
+
+def _decision_settings() -> "Settings":
+    """Load settings for DecisionOps without printing values or source error messages."""
+    from pydantic import ValidationError
+
+    from auto_bi.config import Settings, get_settings
+    from auto_bi.decision.use_cases import VerifyError
+
+    try:
+        return get_settings()
+    except ValidationError as exc:
+        errors = exc.errors(include_url=False, include_context=False, include_input=False)
+        reasons = []
+        for error in errors[:3]:
+            name = error["loc"][0] if error["loc"] else None
+            field = (
+                name if isinstance(name, str) and name in Settings.model_fields else "<settings>"
+            )
+            reasons.append(f"{field} ({error['type']})")
+        if len(errors) > len(reasons):
+            reasons.append(f"(+{len(errors) - len(reasons)} more)")
+        raise VerifyError(f"cannot load settings: ValidationError: {'; '.join(reasons)}") from exc
+    except (OSError, UnicodeError) as exc:
+        raise VerifyError(f"cannot load settings: {type(exc).__name__}") from exc
+
+
+def _result_capture_target(engine: str) -> tuple["ResultQueryFactory", str, str]:
+    """Build a lazy driver factory plus the environment and actor it will use."""
+    from auto_bi.engine import GREENPLUM, sqlglot_dialect
+    from auto_bi.verification.result_probe import (
+        make_clickhouse_result_query,
+        make_postgres_result_query,
+    )
+
+    settings = _decision_settings()
+    if sqlglot_dialect(engine) == sqlglot_dialect(GREENPLUM):
+        return (
+            lambda: make_postgres_result_query(settings),
+            f"{settings.gp_host}:{settings.gp_port}/{settings.gp_database}",
+            settings.gp_user,
+        )
+    _quiet_driver_log("clickhouse_connect")
+    return (
+        lambda: make_clickhouse_result_query(settings),
+        f"{settings.ch_host}:{settings.ch_port}/{settings.ch_database}",
+        settings.ch_user,
+    )
+
+
+def _decision_capture(args: argparse.Namespace) -> int:
+    """Capture one reviewed query without making the offline release gate open a socket."""
+    from datetime import UTC, datetime
+
+    from auto_bi.decision.use_cases import CaptureRequest, VerifyError, capture_result
+    from auto_bi.verification.model import EXIT_ERROR
+
+    captured_at = args.captured_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        candidate_dbt = _dbt_artifact(args, "candidate")
+        query_factory, configured_environment, executed_by = _result_capture_target(args.dwh)
+        report = capture_result(
+            CaptureRequest(
+                assets=args.assets,
+                candidate=args.candidate,
+                output=args.output,
+                engine=args.dwh,
+                environment_ref=args.environment or configured_environment,
+                executed_by=executed_by,
+                captured_at=captured_at,
+                query_factory=query_factory,
+                asset_id=args.asset,
+                candidate_dbt=candidate_dbt,
+            )
+        )
+    except VerifyError as exc:
+        _say_error(exc)
+        return EXIT_ERROR
+
+    _say(f"wrote    {report.output}")
+    _say(f"asset    {report.asset_id}")
+    _say(f"rows     {report.row_count}")
+    _say(f"snapshot {report.candidate_digest}")
+    return 0
+
+
+def _environment_probe(engine: str) -> "EnvironmentProbe | None":
+    """A read-only look at the configured engine for §8.2 step 7, or nothing.
+
+    The probe is built here rather than inside the use case so that a run without `--dwh`
+    stays what it has always been: files in, verdict out, no socket. Building it connects to
+    nothing: the client is made when the use case asks, which it does after the run's stated
+    facts and every input were taken — a run refused for one of them opens no session.
+    Credentials come from the same settings the rest of the CLI uses and never travel into
+    the bundle — the facts carry host, port and database, which is where the numbers came
+    from, not how we got in.
+
+    What the driver raises — a connection refused, a session lost, a question the engine
+    failed — is raised as `EnvironmentProbeError`, and the run ends as a usage error. What
+    the engine refused is not raised: it is a fact. Local identifier quoting and SQL guard
+    refusals are separate usage errors; other unexpected exceptions are raised as is.
+    """
+    if not engine:
+        return None
+
+    from auto_bi.agent.sql_guard import SQLGuardError
+    from auto_bi.decision.use_cases import EnvironmentProbeError, VerifyError
+    from auto_bi.engine import GREENPLUM, sqlglot_dialect
+    from auto_bi.verification.environment import EnvironmentFacts, EnvironmentQuestions
+    from auto_bi.verification.environment_probe import UnsafeIdentifierError, collect
+    from auto_bi.verification.runtime_probe import (
+        make_clickhouse_runtime_probe,
+        make_postgres_runtime_probe,
+    )
+
+    settings = _decision_settings()
+    connect: Callable[[Settings], RunQuery]
+    driver_errors: tuple[type[Exception], ...]
+    if sqlglot_dialect(engine) == sqlglot_dialect(GREENPLUM):
+        import psycopg
+
+        from auto_bi.introspect.greenplum import make_run_query_pg
+
+        def connect(configured: "Settings") -> "RunQuery":
+            return make_run_query_pg(configured, timeout_ms=configured.environment_query_timeout_ms)
+
+        run_cost = make_postgres_runtime_probe(settings)
+        driver_errors = (psycopg.Error,)
+        target = f"{settings.gp_host}:{settings.gp_port}/{settings.gp_database}"
+    else:
+        # Before the driver is imported: it logs while it loads, too.
+        _quiet_driver_log("clickhouse_connect")
+        from clickhouse_connect.driver.exceptions import ClickHouseError, StreamFailureError
+
+        from auto_bi.introspect.clickhouse import make_run_query
+
+        def connect(configured: "Settings") -> "RunQuery":
+            return make_run_query(configured, timeout_ms=configured.environment_query_timeout_ms)
+
+        run_cost = make_clickhouse_runtime_probe(settings)
+        # A result the engine stopped sending midway is raised outside the driver's hierarchy.
+        driver_errors = (ClickHouseError, StreamFailureError)
+        target = f"{settings.ch_host}:{settings.ch_port}/{settings.ch_database}"
+
+    def probe(questions: EnvironmentQuestions) -> EnvironmentFacts:
+        try:
+            run_query = connect(settings)
+            _quiet_driver_log("sqlglot")
+            try:
+                return collect(
+                    run_query, questions, engine=engine, target=target, run_cost=run_cost
+                )
+            except UnsafeIdentifierError as error:
+                raise VerifyError(f"cannot build environment query: {error}") from None
+            except SQLGuardError:
+                # Parser diagnostics may contain SQL, line breaks and terminal controls.
+                raise VerifyError("cannot execute environment query: SQLGuardError") from None
+        except driver_errors as error:
+            raise EnvironmentProbeError(engine, target, error) from error
+
+    return probe
+
+
+def _decision_verify(args: argparse.Namespace) -> int:
+    """`auto_bi decision verify` — the one-shot release gate (ARCHITECTURE §8.2, §12.1).
+
+    The exit code carries the verdict, never the operational status: a completed run that
+    blocks exits 4, while a run that could not start exits 2 (invariant 8).
+    """
+    from datetime import UTC, datetime
+
+    from auto_bi.decision.use_cases import VerifyError, VerifyRequest, verify
+    from auto_bi.evidence.signing import EvidenceSignatureError, load_ed25519_signer
+    from auto_bi.verification.model import EXIT_ERROR, exit_code_for
+
+    created_at = args.created_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        signer = load_ed25519_signer(args.signing_key) if args.signing_key else None
+        report = verify(
+            VerifyRequest(
+                contract_paths=args.paths,
+                base=args.base,
+                candidate=args.candidate,
+                evidence_dir=args.evidence,
+                created_at=created_at,
+                dashboards_dir=args.dashboards,
+                assets_dir=args.assets,
+                results_file=args.results,
+                environment_ref=args.environment,
+                product_id=args.product,
+                probe=_environment_probe(args.dwh),
+                signer=signer,
+                base_dbt=_dbt_artifact(args, "base"),
+                candidate_dbt=_dbt_artifact(args, "candidate"),
+            )
+        )
+    except (VerifyError, EvidenceSignatureError) as exc:
+        _say_error(exc)
+        return EXIT_ERROR
+
+    if args.json:
+        _say_json(report.model_dump(mode="json"))
+    else:
+        for check in report.checks:
+            _say(f"{check.status.value:<8} {check.check_id:<22} {check.summary_code}")
+            _say_one_line(f"{'':<8} {check.detail}")
+        _say(f"run      {report.run_id}  evidence {report.evidence_digest}")
+        _say(f"status   {report.operational_status.value}")
+        _say(f"verdict: {report.verdict.value} ({len(report.blocking())} blocking check(s))")
+    return exit_code_for(report.verdict)
+
+
+def _decision_evidence(args: argparse.Namespace) -> int:
+    """`auto_bi decision evidence` — read a bundle back and re-verify it (§9.3, §12.1).
+
+    The verdict grades the evidence, not the release it recorded: an intact bundle exits 0
+    whatever the run inside it decided, and a tampered one exits 4 whatever it says.
+    """
+    from auto_bi.decision.use_cases import VerifyError, locate_evidence
+    from auto_bi.evidence.inspect import (
+        EvidenceDigestError,
+        EvidenceReadError,
+        inspect_bundle,
+        read_artifact,
+    )
+    from auto_bi.evidence.signing import (
+        EvidenceSignatureError,
+        load_ed25519_trust_store,
+    )
+    from auto_bi.verification.model import EXIT_ERROR, Verdict, exit_code_for
+
+    try:
+        verifier = load_ed25519_trust_store(args.trust_key) if args.trust_key else None
+        location = locate_evidence(args.path, args.run)
+        if args.artifact:
+            artifact, payload = read_artifact(
+                location.store,
+                location.run_id,
+                args.artifact,
+                expected_digest=args.expect_digest or None,
+                verifier=verifier,
+            )
+            try:
+                text = payload.decode("utf-8")
+            except UnicodeDecodeError:
+                _say_error(
+                    f"{artifact.artifact_id} is not text ({artifact.media_type}, "
+                    f"{artifact.size_bytes} bytes); it is stored at {artifact.path}"
+                )
+                return EXIT_ERROR
+            try:
+                print(text)
+            except UnicodeEncodeError:
+                # The payload is the evidence: spelled with escapes it would be other text.
+                encoding = getattr(sys.stdout, "encoding", None) or "an unnamed encoding"
+                _say_error(
+                    f"{artifact.artifact_id} holds text the output stream cannot encode "
+                    f"({encoding}); it is stored at {artifact.path}"
+                )
+                return EXIT_ERROR
+            return 0
+        inspection = inspect_bundle(
+            location.store,
+            location.run_id,
+            expected_digest=args.expect_digest or None,
+            verifier=verifier,
+        )
+    except EvidenceDigestError as exc:
+        _say_error(exc)
+        return exit_code_for(Verdict.BLOCK)
+    except (VerifyError, EvidenceReadError, EvidenceSignatureError) as exc:
+        _say_error(exc)
+        return EXIT_ERROR
+
+    if args.json:
+        _say_json(inspection.model_dump(mode="json"))
+    else:
+        _say_one_line(f"run       {inspection.run_id}")
+        _say(f"digest    {inspection.manifest_digest}")
+        bundle = inspection.bundle
+        if bundle is not None:
+            _say_one_line(f"product   {bundle.product_ref}")
+            _say_one_line(f"created   {bundle.created_at}   verifier {bundle.verifier_version}")
+            _say(f"integrity {bundle.integrity.value}")
+            if bundle.signature is not None:
+                status = "verified" if inspection.signature_verified else "unverified"
+                _say_one_line(f"signature {status}   key {bundle.signature.key_id}")
+            for claim in bundle.claims:
+                _say_one_line(f"claim     {claim.claim_type.value:<13} {claim.summary_code:<24} ")
+                _say_one_line(f"{'':<10} {claim.claim_id} <- {', '.join(claim.evidence_refs)}")
+                for caveat in claim.caveats:
+                    _say_one_line(f"{'':<10} caveat: {caveat}")
+            for artifact in bundle.artifacts:
+                _say_one_line(
+                    f"artifact  {artifact.classification.value:<13} {artifact.kind.value:<18} "
+                    f"{artifact.size_bytes:>8} B  {artifact.artifact_id}"
+                )
+        for problem in inspection.problems:
+            _say_one_line(f"{problem.severity.value:<9} {problem.code:<28} {problem.detail}")
+        _say(f"verdict: {inspection.verdict.value} ({len(inspection.problems)} problem(s))")
+    return exit_code_for(inspection.verdict)
 
 
 def _build(description: str, model_path: str, target: str = "superset") -> int:

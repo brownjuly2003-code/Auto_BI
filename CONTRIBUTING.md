@@ -36,11 +36,21 @@ uv run ruff check .
 uv run black --check auto_bi tests
 uv run --with mypy --with types-PyYAML mypy auto_bi
 uv run --with mypy --with types-PyYAML mypy --strict auto_bi
+uv run --with mypy --with types-PyYAML mypy --platform win32 --strict auto_bi
 uv run --with pytest-cov --with duckdb pytest -q --cov=auto_bi --cov-report=term-missing
 uv run auto_bi eval --suite advisor --model-path semantic/model.yaml
 ```
 
-This mirrors the `quality` job in `.github/workflows/ci.yml` — if it's green locally, that job will be green too. `pytest-cov` and `duckdb` are pulled in ephemerally (not in `uv.lock`) to keep the lockfile lean; same for `types-PyYAML`.
+This mirrors the `quality` job in `.github/workflows/ci.yml` — if it's green locally on Linux, that job will be green too. `pytest-cov` and `duckdb` are pulled in ephemerally (not in `uv.lock`) to keep the lockfile lean; same for `types-PyYAML`.
+
+That job runs on Linux, and mypy checks the platform it runs on: a branch it can tell is not taken there is skipped — hence the third mypy line, for the Windows-only branches. On Windows or macOS, run the first two for Linux as well — that is what CI checks:
+
+```bash
+uv run --with mypy --with types-PyYAML mypy --platform linux auto_bi
+uv run --with mypy --with types-PyYAML mypy --platform linux --strict auto_bi
+```
+
+Code that reaches what exists on Windows alone (`msvcrt`, `ctypes.WinDLL`, `os.O_BINARY`, …) branches on `sys.platform`, which mypy reads, not on `os.name`, which it does not; in an `and`, the platform check comes first. `tests/test_platform_guards.py` holds the package to this without running mypy.
 
 Two more CI jobs are **not** part of the local gate above and don't need Docker installed to contribute:
 - `integration` — requires a live ClickHouse/Superset/DataLens stand; its tests (marked `@pytest.mark.integration`) are deselected by default (`pytest -m integration` to run them if you have a stand).

@@ -1,0 +1,1 @@
+{"sql":"SELECT region, sum(revenue) FROM dm.sales_daily GROUP BY region","table_name":"auto_bi__недельная_маржа_live_owner_review__operator_table__a858229a"}

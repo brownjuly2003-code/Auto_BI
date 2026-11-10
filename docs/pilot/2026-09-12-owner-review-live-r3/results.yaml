@@ -1,0 +1,22 @@
+asset://sales/weekly_margin_by_region:
+  result:
+    columns:
+    - name: region
+      type: string
+      nullable: false
+      unit: ''
+    - name: gross_margin_pct
+      type: decimal
+      nullable: true
+      unit: ratio
+    rows:
+    - - msk
+      - '0.452054'
+    truncated: false
+  attestation:
+    origin: query_run
+    captured_at: '2026-09-12T15:38:18Z'
+    environment_ref: owner-review-mac-native-ch24.8.14.39
+    semantic_digest: sha256:07a6d4053a8c71f8b96f99a17c2713a1b9b62a02192945d28d6133ccae5258a2
+    query_digest: sha256:2bb4898389f6c8f85f0d61aeed1074f589fc69f870dc72baf5b49e53737fadd0
+    executed_by: gate_ro

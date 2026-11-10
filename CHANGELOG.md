@@ -1,10 +1,1553 @@
 # Changelog
 
-Формат по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [SemVer](https://semver.org/lang/ru/).
+Формат по [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии релизов — по
+[SemVer](https://semver.org/lang/ru/), dev-версии — в формате PEP 440 (`0.6.0.dev0`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Код форка опубликован в `main` публичного репозитория baseline**
+  ([ADR 0011](docs/adr/0011-public-repository.md)). GitHub `main` и PR #99 влиты merge-коммитом;
+  в `main` код идёт pull request'ом с обязательными проверками, без force push. Пакет
+  в индексы не публикуется, тега `v0.6.0` нет; пункт «без remote» ADR 0009 заменён. В
+  дереве имя владельца заменено именем аккаунта (PR #99), имя хоста и домашние пути в
+  документах и архивном скрипте пилота — нейтральные. Бейдж покрытия — 97 %, как
+  намерил полный `ci_local` (96,58 %).
+
+## [0.6.0] - 2026-11-10
+
+Локальная версия форка на финишной черте
+([ADR 0010](docs/adr/0010-finish-line.md), F6): не публикуется и не имеет remote
+([ADR 0009](docs/adr/0009-local-package-identity-no-publication.md)). Ссылки сравнения версий
+в конце файла ведут в репозиторий baseline, поэтому у `0.6.0` такой ссылки нет.
+
+### Changed
+
+- **Пакет форка называет себя DecisionOps и не выдаёт себя за опубликованный baseline.**
+  Версия `autobi-agent` в checkout — `0.6.0` (было `0.5.0`, как у опубликованного
+  baseline; во время разработки — `0.6.0.dev0`): её показывают `auto_bi --version`,
+  `/api/v1/health` и OpenAPI. Описание пакета — Analytics Release & Evidence Gate; ссылки
+  `[project.urls]` на репозиторий baseline убраны.
+  Fork не публикуется и не имеет remote
+  ([ADR 0009](docs/adr/0009-local-package-identity-no-publication.md)).
+  Формат evidence (`VERIFIER_VERSION`, `CHECK_VERSION`) не меняется.
+- **`contracts.validate` грейдит validation issues продукта, который верифицирует
+  прогон, а не каждого продукта validated paths.** Прежде шаг грейдил каждый issue
+  validation report, и issue, который validation rules дали другому продукту тех же
+  путей — неразрешённый pin, необъявленная dimension, retired или draft метрика,
+  чужая governing policy, — блокировал или отправлял на review выпуск продукта,
+  о котором ничего не говорит. Теперь такой issue запечатывается отдельно, в
+  `other_product_issues`, и не грейдится; detail считает такие issues и их продукты.
+  Issues самого продукта и issues загрузки файла (`contract.unreadable`,
+  `contract.unknown_kind`, `contract.invalid`, `contract.duplicate_id`) грейдятся
+  как прежде. `decision validate`, validation report, остальные checks и состав
+  run id прежние.
+  Verifier 91 → 92, check 66 → 67; historical bundles прежние.
+
+- **`run_id` различает прогоны по каждому статическому входу гейта.** Прежде
+  idempotency key строился из продукта и canonical digests двух snapshots, и два
+  прогона с разными validated-контрактами, verified assets, dashboard specs, gaps
+  или прочитанными байтами snapshot делили `run_id` при разных вердиктах; повтор
+  `decision verify` в тот же каталог evidence после исправления такого входа
+  отклонялся с exit 2. Теперь ключ несёт content address validation report,
+  validated-контрактов, обоих snapshots целиком, candidate model, dashboard specs
+  и verified assets: изменённый вход — другой `run_id`, и повтор пишется рядом с
+  первым bundle. Записанные результаты, показания движка и `created_at` остаются
+  вне ключа; проверки, findings и вердикты прежние.
+  Verifier 90 → 91, check остаётся 66; historical bundles прежние.
+
+- **`contracts.validate` отвечает на правила продукта — dimensions, status, governing
+  policies — и на определении метрики в candidate.** Прежде запинненная метрика,
+  которую candidate вернул в `draft` или отдал под governing policy, под которой
+  продукт не верифицируется, проходила с advisory, хотя `decision validate` по
+  контракту candidate отвечает review. Теперь ответ правила, которого нет на
+  validated definition, — rule issue: `dimension.candidate_not_allowed` и
+  `metric.candidate_retired` — block, `metric.candidate_draft` и
+  `policy.candidate_mismatch` — review, `metric.candidate_deprecated` — advisory,
+  независимо от того, держит ли base validated definition. Rule issues стоят после
+  pin issues, detail называет их коды по каждому pin. `candidate_pins`, validation
+  report, `decision validate`, остальные checks и состав run id прежние.
+  Verifier 89 → 90, check 65 → 66; historical bundles прежние.
+
+- **`contracts.validate` прежде пропускал другую definition метрики на запинненной
+  версии как `contracts.clean`; теперь сравнивает её с validated-контрактом по
+  изменениям semantic diff.** Когда base держит validated definition, изменение
+  под review остаётся у `semantic.diff` и `impact.products`. Иначе
+  `metric_ref.candidate_content_mismatch` — block или advisory по классификации
+  diff; запись pin несёт `differences`. Правило версий, validation report,
+  `decision validate`, остальные checks и состав run id прежние.
+  Verifier 88 → 89, check 64 → 65; historical bundles прежние.
+
+- **Investigation skills отвечают точно по supplied values при любой длине.**
+  Прежде цифры после 28-го знака терялись (группа, идущая от
+  `10000000000000000000000000000` к `10000000000000000000000000001`, отвечала
+  дельтой `0`), ответ зависел от порядка строк и decimal context вызывающего потока;
+  значение или окно freshness длиннее лимита преобразования integer/text обрывало
+  `decision investigate` с unhandled error. При короткой caller precision freshness
+  могла получить ложный `pass`. Теперь суммы и разности вычисляются точно, ranking
+  идёт по точным значениям, отношения сохраняют шесть знаков, rounding —
+  `HALF_EVEN`; outputs и digests не зависят от caller context, порядка строк или
+  длины значения. `data_health` сравнивает точный возраст в целых микросекундах
+  с окном и читает окно общим `duration_seconds`. План объявляет версию каждого
+  skill, другая версия делает план невалидным, brief отказывается от output другой
+  версии. Числовые skills — `skill_version` 2, `data_health` — 1; release-версии
+  evidence прежние (verifier 88, check 64).
+
+- **`assets.invalidated` резолвит metric pins каждого выбранного verified asset в candidate snapshot.**
+  Другая версия, несколько контрактов или отсутствие метрики блокируют шаг с
+  `asset.metric_ref_version_mismatch`, `asset.metric_ref_ambiguous`,
+  `asset.metric_ref_absent`, где прежде asset сохранял clean. Findings pins стоят
+  после семантического изменения и перед reviewed-запросом; base не сравнивается.
+  Payload несёт `metric_pins`, clean detail считает совпавшие pins. Выбор assets,
+  `contracts.validate`, `results.reconcile`, `results.provenance`, `decision validate`
+  и not-run при непрочитанном контракте прежние.
+  Verifier 87 → 88, check 63 → 64; historical bundles прежние.
+
+- **ClickHouse own-grant строка без access type больше не считается отсутствием grant.**
+  Missing key, NULL или пустой `access_type` означает неполный ответ: `readonly=1/2`,
+  доказанный write grant и неполные enabled roles сохраняют evidence; иначе read-only
+  не установлен, `dwh.access` блокируется, reach-вопросы и exact runtime SQL не
+  отправляются. Column reach неизвестен при любом `readonly`: `column_reads=null`,
+  `security.not_observed`, без ложных unreadable, physical absence и unenforced
+  classification. Row-policy facts, typed answers, отказ grants-вопроса, вопросы
+  и их порядок, PostgreSQL прежние. Колонка движка — не-nullable `Enum16`
+  (ClickHouse 24.8.14.39, вживую): такая строка означает, что ответ доставлен
+  не целиком.
+  Verifier 86 → 87, check 62 → 63; historical bundles прежние.
+
+- **PostgreSQL-family ядро без row-level security грейдится вместо ошибки на identity-вопросе.**
+  Только после undefined column (`42703`) collector спрашивает `server_version_num`;
+  ниже `90500` повторяет identity без `BYPASSRLS`, сохраняет правила роли и runtime
+  SQL, не читает отсутствующие RLS-каталоги и записывает версию в facts. Clean
+  `dwh.security` с покрытием называет ядро; без читаемых витрин его текст прежний.
+  Живые факты — ядро PostgreSQL 9.4.26; ответившее на identity ядро, ClickHouse и
+  остальные undefined-column случаи прежние.
+  Verifier 85 → 86, check 61 → 62; historical bundles прежние.
+
+- **`contracts.validate` резолвит metric pins продукта в candidate snapshot.**
+  Ровно один контракт метрики на запинненной версии сохраняет clean; другая версия,
+  несколько контрактов или отсутствие блокируют шаг с
+  `metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,
+  `metric_ref.candidate_absent`. Base и метрики вне pins продукта не сравниваются;
+  отсутствующий узел при `gap.contract_invalid` назван `not_compared`, найденный
+  грейдится как обычно. Payload сохраняет validation issues и добавляет
+  `candidate_pins`; detail считает совпавшие pins. `decision validate` прежний,
+  содержимое контрактов одной версии и pins verified assets не сравниваются.
+  Verifier 84 → 85, check 60 → 61; historical bundles прежние.
+
+- **Текущая PostgreSQL-family роль без LOGIN больше не блокируется из-за отсутствующей строки в `pg_user`.**
+  Identity-вопрос читает superuser-флаг из `pg_roles.rolsuper`, где есть каждая
+  роль: прежний view отвечал NULL для NOLOGIN current role (PostgreSQL 16.15,
+  вживую). Select-only роль грейдится по своим привилегиям и правам ролей,
+  которые session user достигает через `SET ROLE`, и сохраняет eligible exact
+  runtime SQL; NOLOGIN superuser получает прежнее superuser evidence и block
+  без write-privilege вопросов и runtime SQL. BYPASSRLS, login-роли и правила
+  отказа, пустого, частичного и NULL identity-ответа сохраняются.
+  Verifier 83 → 84, check 59 → 60; historical bundles прежние.
+
+- **Выданная, но не включённая ClickHouse-роль больше не может скрыть право записи.**
+  Роль, выданная пользователю с `SET DEFAULT ROLE NONE`, отсутствует в
+  `system.enabled_roles`, поэтому grants-вопрос её не видел, хотя `SET ROLE`
+  (или HTTP-параметр `role`) пишет. После чистых собственных grants зонд задаёт
+  один вопрос к `system.role_grants` — строка с `user_name` означает роль,
+  выданную пользователю напрямую, строка с `role_name` — роль, выданную роли
+  и включаемую вместе с ней на любую глубину; уже включённые роли исключены.
+  Достижимые роли опрашиваются одним вопросом к `system.grants`: write access
+  type даёт `read_only=false` с evidence `SET ROLE reaches …`, `dwh.access` —
+  block, exact runtime SQL не исполняется. Отказ или неполный ответ любого из
+  двух вопросов не подтверждает read-only; доказанный write grant сохраняет
+  приоритет. `readonly=1/2`, отказ `system.grants`, неполные enabled roles и
+  собственный write grant сохраняют факты, evidence и вопросы. Имя роли в
+  литерале пишется с удвоенными обратной косой чертой и кавычкой: одиночная
+  черта называет другую роль или никакую. Пользователю гейта, read-only по
+  grants, нужен `SELECT` на `system.role_grants` помимо `system.grants`: без
+  него `dwh.access` блокируется. Verifier 82 → 83, check 58 → 59;
+  historical bundles прежние.
+
+- **Объявленные join paths метрики сохраняются в canonical snapshot и именуются в semantic diff.**
+  Пути отсортированы, одинаковые объявления сохраняются один раз; висячий endpoint —
+  `gap.metric_join_dangling`, несколько cardinality одного пути — `gap.metric_join_conflict`,
+  оба block. Удаление пути — `metric.join_path_removed` (block), смена cardinality —
+  `metric.join_path_changed` (review), добавление — `metric.join_path_added` (advisory).
+  Canonical digest каждого native snapshot с метриками перемещается (native projection
+  version 2 → 3), поэтому verified assets и result attestations, привязанные к прежнему
+  digest, получают `asset.stale_snapshot` / `provenance.other_snapshot` (review) до повторной
+  верификации; snapshot без метрик сохраняет digest. Удалённый путь или смена его cardinality
+  достигает verified assets метрики как `asset.metric_changed`; модельные joins сохраняют
+  свои правила. Verifier 81 → 82, check 57 → 58; historical bundles прежние.
+
+- **Объявленная freshness метрики сохраняется в canonical snapshot и именуется в semantic diff.**
+  `max_age` сохраняется как объявлен, quality preconditions отсортированы без повторов.
+  Ослабление окна или снятие precondition — `metric.freshness_relaxed` (review),
+  ужесточение — `metric.freshness_tightened`, равное окно в другой записи —
+  `metric.freshness_restated` (advisory). Canonical digest каждого native snapshot
+  с метриками перемещается (native projection version 1 → 2), поэтому verified assets
+  и result attestations, привязанные к его прежнему digest, получают
+  `asset.stale_snapshot` / `provenance.other_snapshot` (review) до повторной
+  верификации; snapshot без метрик сохраняет digest. Ослабленная freshness
+  достигает verified assets метрики как `asset.metric_changed`, как и ослабленный
+  потолок стоимости. `dwh.freshness` по-прежнему грейдит витрины против окна продукта.
+  Окна сравниваются в точных целых секундах: очень длинное или записанное
+  тысячами цифр объявленное окно больше не роняет gate в diff, freshness витрин
+  и provenance stale-capture. Verifier 80 → 81, check 56 → 57; historical
+  bundles прежние.
+
+- **Поставляемый дашборд валидируется против candidate-модели до компиляции BI contract.**
+  `bi.contract` использует тот же `validate_spec`, что и build path перед вызовом
+  BI, с разрешённым операторским `raw_sql`. Spec с ошибками не компилируется
+  и payload'ов не получает; проверка — block с `bi.spec_invalid`, evidence
+  называет дашборд и ошибки валидатора в порядке поставки. Валидные дашборды
+  сохраняют findings и payload digests, отсутствующий spec — `bi.spec_missing`;
+  `impact.products` читает specs как прежде. Verifier 79 → 80, check 55 → 56;
+  historical bundles прежние.
+
+- **Роль, достижимая через `SET ROLE`, больше не может скрыть право записи.**
+  PostgreSQL-family role probe одним вопросом находит роли, в которые session user
+  может переключиться (PostgreSQL 16 — опция `SET`, раньше и в Greenplum/Greengage —
+  членство), включая самого session user за role default; superuser-роли остаются
+  в вопросе и при наследовании их текущей ролью, потому что членство не передаёт
+  атрибут `SUPERUSER`. Одним вопросом на витрину спрашиваются их табличные
+  и колоночные write-права. Достижимая пишущая роль, достижимый superuser,
+  имя без значения или неотвеченный вопрос не подтверждают read-only:
+  `dwh.access` — block с `access.role_writable`, exact runtime SQL
+  не исполняется; доказанные grants сохраняют приоритет. Чистое read-only evidence
+  называет проверенные достижимые роли или сообщает, что `SET ROLE` других ролей
+  не достигает; identity-вопрос с его короткими путями и ClickHouse-коллекция
+  без изменений. Verifier 78 → 79, check 54 → 55; historical bundles прежние.
+
+- **Отсутствующая readable-витрина больше не даёт `freshness.fresh`.**
+  Если нет существующей читаемой витрины, доступной для датировки, чистый код —
+  `freshness.not_run`, и проверка появляется в `What was not done`.
+  Detail сообщает, что возраст не сравнивался. Частичное ненулевое покрытие,
+  findings, status и verdict прежние. Verifier 77 → 78, check 53 → 54.
+
+- **Отсутствие security-наблюдений больше не даёт `security.unfiltered`.**
+  При нуле подтверждений чтения запрошенных колонок и ответов о политиках чистый
+  код — `security.not_run`, и проверка появляется в `What was not done`.
+  Частичное ненулевое покрытие сохраняет `security.unfiltered`; пустой список
+  политик считается ответом. Findings, status, verdict и detail прежние.
+  Verifier 76 → 77, check 52 → 53; historical bundles прежние.
+
+- **Отсутствие физических сравнений больше не даёт `physical.as_declared`.**
+  При нуле сравнённых объявленных типов и свойств layout чистый результат —
+  `physical.not_run`, и проверка появляется в `What was not done`.
+  Частичное ненулевое покрытие сохраняет `physical.as_declared`; findings,
+  status, verdict и detail прежние. Verifier 75 → 76, check 51 → 52.
+
+- **Непроверенные cost-факты больше не дают `cost.within_budget`.**
+  Если все cost-вопросы пропущены, чистый результат — `cost.not_run`,
+  и проверка появляется в `What was not done`. Для положительного кода
+  требуется фактическое сравнение хотя бы одного объявленного потолка.
+  Findings, status, verdict и detail прежние. Verifier 74 → 75, check 50 → 51;
+  исторические bundles не переписаны.
+
+- **`dwh.cost` сообщает фактически проверенные потолки.**
+  Чистая сводка раздельно считает лимиты строк из планов и лимиты байтов/времени
+  из exact-query runtime evidence относительно всех объявленных потолков.
+  Недоступные, неатрибутированные и закрытые deny-all вопросы не увеличивают
+  покрытие. Неполное и нулевое покрытие названы явно; положительный вывод ограничен
+  проверенными лимитами. Findings, summary codes и verdict прежние.
+  Verifier 73 → 74, check 50 без изменений; historical bundles прежние.
+
+- **`dwh.security` сообщает фактически наблюдённое покрытие.**
+  Чистая сводка считает явные подтверждения чтения запрошенных колонок и ответы
+  о row policies по вопросам (витрина, колонка времени). Частичный каталог или
+  недоступная часть скоупа больше не подтверждают чтение всех колонок; неполное
+  и нулевое покрытие названы явно. Findings, summary codes и verdict прежние.
+  Verifier 72 → 73, check 50 без изменений; historical bundles прежние.
+
+- **`dwh.freshness` ограничивает чистую сводку выполненными сравнениями.**
+  Покрытие считается по вопросам (витрина, колонка времени): отсутствующие,
+  нечитаемые, неатрибутированные и закрытые row security вопросы не подтверждают
+  свежесть. Сводка сообщает число сравнений и полное/неполное покрытие; при нуле
+  не утверждает свежесть. Findings, summary codes и verdict прежние.
+  Verifier 71 → 72, check 50 без изменений; исторические bundles не переписаны.
+
+- **`dwh.physical` сообщает фактическое покрытие сравнения.**
+  Чистая сводка считает отвеченные типы колонок и заявленные свойства layout
+  по каждому вопросу (витрина, колонка времени). Неатрибутированные, отсутствующие
+  и нечитаемые витрины, неизвестные типы и NULL layout не подтверждают совпадение;
+  неполное и нулевое покрытие названы явно. Findings, summary codes и verdict прежние.
+  Verifier 70 → 71, check 50 без изменений; исторические bundles не переписаны.
+
+- **ClickHouse распознаёт составные write grants и `ALL`.**
+  Canonical `ALTER UPDATE`, `ALTER DELETE`, `CREATE TABLE`, `DROP TABLE` и прочие
+  `ALTER`/`CREATE`/`DROP` с границей-пробелом теперь блокируют grant-based read-only
+  и runtime SQL; `ALL` также включает права записи. Evidence сохраняет точные
+  названия. Профили readonly=1/2 и partial revokes прежние. Версии evidence
+  69 → 70 / 49 → 50; исторические bundles не переписаны.
+
+- **Неполный ClickHouse enabled-roles ответ не подтверждает эффективный доступ.**
+  Отказ, missing/NULL/пустое имя роли без профиля `readonly=1/2` блокируют grant-based
+  read-only и runtime SQL. Известные grants сохраняются; column/policy reach остаётся
+  неизвестным с `security.not_observed`, без ложного отсутствия скрытой колонки
+  или утверждения об отсутствии защиты классификации. Известный пустой список ролей
+  и пустой policy catalog различаются с неизвестными. Версии evidence 68 → 69 / 48 → 49;
+  исторические bundles не переписаны.
+
+- **Частичные write-privilege ответы PostgreSQL блокируют доступ.**
+  Отсутствующее/NULL поле табличных INSERT/UPDATE/DELETE/TRUNCATE или колоночных
+  INSERT/UPDATE не подтверждает read-only: `dwh.access` — BLOCK, exact runtime SQL
+  не выполняется. Evidence называет неизвестные права и витрину; известные grants
+  сохраняют приоритет и не дублируются. SQL-вопросы, identity и ClickHouse прежние.
+  `VERIFIER_VERSION` 67 → 68, `CHECK_VERSION` 47 → 48;
+  исторические bundles не переписаны.
+
+- **Частичный identity-ответ PostgreSQL блокирует доступ.**
+  Отсутствующее/NULL identity-поле или пустое имя не подтверждают read-only:
+  `dwh.access` — BLOCK; write-privilege вопросы и exact runtime SELECT не выполняются.
+  Известное имя и доказанный superuser/BYPASSRLS сохраняются; обход RLS — false
+  только при двух известных отрицательных флагах, иначе null. Evidence называет
+  неотвеченные поля. Доказанный superuser сохраняет прежнее writable evidence даже
+  при неполной строке. Имя роли и subject refs сохраняют значимые пробелы quoted-имён.
+  SQL-вопросы и общий boolean-normalizer не менялись.
+  `VERIFIER_VERSION` 66 → 67, `CHECK_VERSION` 46 → 47;
+  исторические bundles не переписаны.
+
+- **Неотвеченный identity-вопрос PostgreSQL блокирует доступ.**
+  Отказ или пустой ответ о роли не подтверждает read-only: роль — `unknown`,
+  superuser и `BYPASSRLS` не установлены, `bypasses_row_security=null`.
+  `dwh.access` — BLOCK; write-privilege вопросы и exact runtime SELECT не выполняются.
+  Finding сообщает о неподтверждённом read-only, без утверждения, что неизвестная
+  роль умеет писать. Ответившие роли и ClickHouse сохраняют свои правила;
+  ошибки соединения продолжают пробрасываться. `VERIFIER_VERSION` 65 → 66,
+  `CHECK_VERSION` 45 → 46; исторические bundles не переписаны.
+
+- **Неотвеченный табличный write-privilege вопрос PostgreSQL блокирует доступ.**
+  Отказ или пустой ответ о INSERT/UPDATE/DELETE/TRUNCATE не подтверждает read-only,
+  даже если колоночные INSERT/UPDATE отрицательны. `dwh.access` — BLOCK,
+  exact runtime SELECT не выполняется; evidence называет неотвеченные права
+  и витрину. Колоночный вопрос продолжается, доказанный grant сохраняет evidence.
+  Набор SQL, superuser и ClickHouse сохраняются. `VERIFIER_VERSION` 64 → 65,
+  `CHECK_VERSION` 44 → 45; исторические bundles не переписаны.
+
+- **Колоночный write-grant PostgreSQL-роли делает `dwh.access` BLOCK.**
+  Probe спрашивает `has_any_column_privilege` для INSERT/UPDATE по всей витрине
+  скоупа, включая колонки вне metric-чтений; evidence называет привилегию, колонки
+  и витрину. Табличный grant сохраняет одну запись, read-only evidence называет
+  обе группы проверенных прав. Exact runtime SQL через такую роль не исполняется;
+  неотвеченный колоночный privilege-вопрос также блокирует доступ с evidence о
+  неподтверждённом read-only. Superuser и ClickHouse сохраняют свои правила.
+  `VERIFIER_VERSION` 63 → 64, `CHECK_VERSION` 43 → 44;
+  исторические bundles не переписаны.
+
+- **Нечисловое значение в reconciliation сравнивается по виду.**
+  Бесконечности одного знака равны при разных записях и float за пределом binary64;
+  float-допуск к ним не применяется. NaN кандидата против числа или бесконечности —
+  `value.changed`; ожидаемый NaN, включая decimal `sNaN`, — `value.expected_nan`
+  и `insufficient` / REVIEW, если сравнение не доказало различие в другом месте.
+  Проверка порядка не скрывается ожидаемым NaN; ячейка любого business key решается
+  сопоставлением строки. NULL, идентичность ключей и агрегатные проверки сохраняют
+  свои правила. `VERIFIER_VERSION` 62 → 63, `CHECK_VERSION` 42 → 43;
+  исторические bundles не переписаны.
+
+- **Float reconciliation сравнивает точную binary64-разность с точным decimal-допуском.**
+  Absolute и relative bounds больше не пропускают превышение, скрытое погрешностью
+  binary64-арифметики; точное попадание в relative-допуск больше не отвергается
+  из-за приближённого отношения.
+  Попадание в любой объявленный bound даёт `equivalent`, выход за оба — `value.changed`.
+  Absolute-допуск за пределом binary64 больше не делает бесконечность равной конечному
+  значению или бесконечности другого знака: прежде такой допуск сам становился бесконечностью.
+  `VERIFIER_VERSION` 61 → 62, `CHECK_VERSION` 41 → 42; исторические bundles не переписаны.
+
+- **Environment-чтение отвечает своему вопросу (витрина, event-time колонка).**
+  Коллекторы записывают `event_time_column` на всех ветках; access, freshness,
+  physical, security и cost, включая runtime probe, используют своё чтение.
+  Порядок больше не скрывает stale clock или denied column и не делает свежие часы
+  протухшими. Без однозначной атрибуции — `access.reading_unattributed` (review);
+  старое чтение без колонки подходит только единственным часам с единственным чтением.
+  `freshness.stale` называет часы, evidence facts сохраняют их колонку.
+  `VERIFIER_VERSION` 60 → 61, `CHECK_VERSION` 40 → 41; исторические bundles не переписаны.
+
+- **Reconciliation отождествляет integer/decimal ключи и агрегатные группы по числу.**
+  Ключ на другом scale теперь находит свою строку вместо `row.missing` / `row.added`;
+  две записи одного числа в result дают `insufficient` / `key.not_unique` вместо
+  сопоставления по строке и возможного ложного pass. `share_sum` и
+  `partition_conservation` объединяют `group_by` на разных scales в одну группу.
+  NULL, non-finite, нечисловые значения и ключи другого типа сохраняют записанную форму;
+  детали называют ключ так, как его записал свой result; `conflicting totals`
+  перечисляет totals числами, без `Decimal(...)`. ResultSet не меняются.
+  `VERIFIER_VERSION` 59 → 60, `CHECK_VERSION` 39 → 40; исторические bundles не переписаны.
+
+- **Reconciliation читает колонки supplied result по имени после schema step.**
+  Перестановка с ожидаемыми named values, включая перенос business key, больше
+  не блокирует эквивалентный результат; changed named values больше не получают
+  ложный pass и sealed `result.equivalent` claim. Контрактный порядок строк и
+  failed aggregate check используют собственный ключ каждого result; NULL и
+  float tolerance остаются у своей колонки. ResultSet не меняются, native capture
+  сохраняет порядок asset. `VERIFIER_VERSION` 58 → 59, `CHECK_VERSION` 38 → 39;
+  исторические bundles не переписаны.
+
+- **CTE исключает физическую таблицу только внутри объявившего её запроса.**
+  Вложенная или соседняя CTE больше не скрывает внешнюю таблицу от governance
+  и raw-SQL RBAC и не освобождает bare-имя от denylist SQL guard: пропущенный
+  `asset.query_ungoverned` (review) возвращается. Внешний `WITH`, включая обе
+  ветки своего `UNION`, сохраняет исключение; whole-AST extraction, сравнение
+  имён и прежние same-WITH, recursive и scalar правила сохраняются.
+  `VERIFIER_VERSION` 57 → 58, `CHECK_VERSION` 37 → 38.
+
+- **ClickHouse исключает CTE из физических таблиц только по точному регистру.**
+  `WITH A … FROM a` больше не скрывает физическую таблицу от governance и
+  raw-SQL RBAC и не обходит denylist SQL guard: пропущенный
+  `asset.query_ungoverned` (review) возвращается. Точное совпадение имён,
+  whole-AST extraction, lexical resolution и PostgreSQL сохраняют правила.
+  `VERIFIER_VERSION` 56 → 57, `CHECK_VERSION` 36 → 37.
+
+- **ClickHouse governance учитывает достижимость ключей `JOIN … USING`.**
+  Непрочитанная named CTE или scalar `WITH` больше не добавляет ключи в причину
+  `asset.query_fields_unchecked`; при соседнем живом JOIN остаются только его
+  ключи. Используется общий с chart impact обход гейтов CTE. Общий extractor
+  сохраняет whole-AST `join_using_keys`, именованные чтения и PostgreSQL — прежние
+  правила. `VERIFIER_VERSION` 55 → 56, `CHECK_VERSION` 35 → 36.
+
+- **ClickHouse governance учитывает достижимость `COLUMNS(...)`.** Селектор в
+  непрочитанной named CTE или scalar `WITH` больше не создаёт причину
+  `it selects COLUMNS(...)` в `asset.query_fields_unchecked`. Живой селектор
+  сохраняет advisory; regex не раскрывается по snapshot-полям. Общий extractor
+  сохраняет whole-AST `column_selectors`, а governance использует общий с
+  chart impact обход гейтов CTE. `VERIFIER_VERSION` 54 → 55,
+  `CHECK_VERSION` 34 → 35.
+
+- **ClickHouse связывает достижимые CTE и scalar `WITH` по точному регистру.**
+  Внутреннее `a` больше не скрывает внешнее `A`, а ссылка на `a` не открывает
+  непрочитанное соседнее `A`: пропущенный star advisory возвращается, ложный
+  исчезает. Chart impact применяет то же правило к звёздам, `COLUMNS`,
+  `JOIN … USING`, dictionary- и Join-table-вызовам, включая named CTE в `IN`.
+  Точное затенение, self-reference, дубликаты, квалификаторы и `SETTINGS`,
+  явные table/field findings и другие причины advisory сохраняют правила.
+  `VERIFIER_VERSION` 53 → 54, `CHECK_VERSION` 33 → 34.
+
+- **ClickHouse governance учитывает достижимость звезды.** Звезда в непрочитанной
+  named CTE или scalar `WITH` больше не создаёт причину `it selects *` в
+  `asset.query_fields_unchecked`. Живые звёзды и `IN <table>` сохраняют advisory;
+  обычный `COUNT(*)` остаётся счётчиком строк. Governance использует общий с
+  chart impact обход CTE без изменения его алгоритма. Общий extractor,
+  именованные чтения, неизвестные таблицы и поля, `COLUMNS`, `JOIN … USING` и
+  PostgreSQL сохраняют прежние правила. `VERIFIER_VERSION` 52 → 53,
+  `CHECK_VERSION` 32 → 33. Полный offline pytest: 3037 passed, 21 skipped,
+  38 deselected; strict mypy, Ruff и Black чистые. Синтетическое Astra xhigh
+  review: 0 actionable P1/P2; живой ClickHouse не запускался,
+  не human/production acceptance.
+
+- **PostgreSQL CAST сохраняет известное имя выхода при сортировке.**
+  `CAST(expr AS type)` и `expr::type`, включая вложенные casts, сохраняют
+  сильное имя колонки, `COUNT`/`SUM`/`AVG`/`MIN`/`MAX` или оконного `ROW_NUMBER`
+  для целого `ORDER BY`/`DISTINCT ON` и выхода левой ветки set operation.
+  Чтения аргумента, `FILTER` и оконных выражений остаются; `AS`, унарный `+`,
+  `GROUP BY` и ClickHouse сохраняют границы. Функции, нормализованные sqlglot
+  в `Cast`, не наследуют имя аргумента и не прячут чтение сортировки.
+  `VERIFIER_VERSION` 51 → 52, `CHECK_VERSION` 31 → 32.
+
+- **PostgreSQL оконный `ROW_NUMBER` даёт неявное имя при сортировке.**
+  `ROW_NUMBER() OVER (…)` без alias разрешает целое имя `row_number` в
+  `ORDER BY`/`DISTINCT ON` и выход левой ветки set operation без ложного
+  field review или sourceless advisory. `PARTITION BY` и внутренний `ORDER BY`
+  остаются чтениями; bare `row_number()` и другие оконные функции сохраняют
+  прежние правила.
+  `VERIFIER_VERSION` 50 → 51, `CHECK_VERSION` 30 → 31.
+
+- **PostgreSQL оконные агрегаты сохраняют неявное имя при сортировке.**
+  `COUNT`, `SUM`, `AVG`, `MIN` и `MAX` с `OVER`, включая `FILTER (WHERE …)`
+  внутри оконного вызова, разрешают целое имя в `ORDER BY`/`DISTINCT ON`
+  и выход левой ветки set operation без ложного field review или sourceless
+  advisory. Аргументы, предикат `FILTER`, `PARTITION BY` и внутренний
+  `ORDER BY` остаются чтениями.
+  `VERIFIER_VERSION` 49 → 50, `CHECK_VERSION` 29 → 30.
+
+- **Пустой ClickHouse `map()` больше не считается шаблоном Superset.**
+  В operator SQL исчезает ложный `chart.sql_partial`; настоящий `{{ … }}`
+  остаётся частично прочитанным, в том числе рядом с `map()`. Явные чтения
+  колонок сохраняются. Меняется chart evidence, грейдинг проверок остаётся
+  прежним. `VERIFIER_VERSION` 48 → 49, `CHECK_VERSION` остаётся 29.
+
+- **PostgreSQL агрегаты с `FILTER` сохраняют неявное имя при сортировке.**
+  `COUNT`, `SUM`, `AVG`, `MIN` и `MAX` с `FILTER (WHERE …)` разрешают целое
+  имя в `ORDER BY`/`DISTINCT ON` и выход левой ветки set operation без ложного
+  field review или advisory. Чтения аргумента и предиката сохраняются;
+  `AS`, квотированный регистр, унарный `+`, выражения, квалифицированные имена
+  и `GROUP BY` остаются на прежних границах. `VERIFIER_VERSION` 47 → 48,
+  `CHECK_VERSION` 28 → 29. Выбор среза — синтетическое Astra xhigh review;
+  реализация — Luna xhigh. Полный offline pytest: 2937 passed, 21 skipped,
+  38 deselected; strict mypy, Ruff и Black чистые. Итоговое синтетическое
+  Astra xhigh review: 0 actionable P1/P2; живой PostgreSQL не запускался,
+  не human/production acceptance.
+
+- **PostgreSQL `AVG`/`MIN`/`MAX` дают неявные имена при сортировке.**
+  Прямые агрегаты без alias разрешают целое имя в `ORDER BY`/`DISTINCT ON`
+  и выход левой ветки set operation без ложного field review или advisory.
+  Чтения аргументов остаются; квотированный регистр, `AS`, унарный `+`,
+  выражения, квалифицированные имена и `GROUP BY` сохраняют границы.
+  `VERIFIER_VERSION` 46 → 47, `CHECK_VERSION` 27 → 28.
+  Red-green: 18 падений, затем 137 passed. Полный offline pytest:
+  2893 passed, 21 skipped, 38 deselected; strict mypy, Ruff и Black чистые.
+  Синтетическое Astra xhigh review: 0 actionable P1/P2;
+  live PostgreSQL не запускался, не human/production acceptance.
+
+- **PostgreSQL алиас таблицы со списком колонок сохраняет advisory.**
+  Ссылки на объявленные выходные имена таблицы или скобочного `JOIN` оставляют
+  `asset.query_fields_unchecked`: snapshot не доказывает физический ordinal
+  lineage. Ложный field review или чистый результат сменяется advisory;
+  соседние физические поля и имена колонок таблицы вне списка проверяются по прежним
+  правилам. `ORDER BY` сохраняет приоритет выхода SELECT, `GROUP BY` внутри
+  LATERAL — локального выхода. `VERIFIER_VERSION` 45 → 46, `CHECK_VERSION` 26 → 27.
+
+- **PostgreSQL `NATURAL JOIN` сообщает о неявных ключах.**
+  Governance оставляет `asset.query_fields_unchecked`: ключи выбираются по
+  совпадающим выходным колонкам источников, могут зависеть от физической схемы
+  и не выводятся из semantic snapshot. Явные соседние чтения продолжают
+  проверяться; вложенные join учитываются.
+  `VERIFIER_VERSION` 44 → 45, `CHECK_VERSION` 25 → 26.
+
+- **PostgreSQL `SUM(...)` даёт неявное имя `sum` при сортировке.**
+  Целый `ORDER BY`/`DISTINCT ON` и сортировка set operation по левой ветке
+  используют выход `SUM`, не создавая ложное чтение поля или advisory.
+  Аргументы продолжают читаться; явный `AS`, квотированный регистр и унарный `+`
+  сохраняют границы. Проверено на PostgreSQL 16 на Mac.
+  `VERIFIER_VERSION` 43 → 44, `CHECK_VERSION` 24 → 25.
+
+- **PostgreSQL `COUNT(...)` даёт неявное имя `count` при сортировке.**
+  Целый `ORDER BY`/`DISTINCT ON` и сортировка set operation по левой ветке
+  используют выход `COUNT`, не создавая ложное чтение физического поля или
+  sourceless advisory. Аргументы `COUNT` сохраняют реальные чтения; явный `AS`
+  и унарный `+` сохраняют приоритет; `"Count"(...)` сохраняет регистр выходного
+  имени. Проверено на PostgreSQL 16.15 на Mac.
+  `VERIFIER_VERSION` 42 → 43, `CHECK_VERSION` 23 → 24 из-за изменившихся
+  governance findings.
+
+- **Корневые `INTERSECT` и `EXCEPT` проходят SQL guard.**
+  PostgreSQL и ClickHouse читают обе ветки для governance; PostgreSQL допускает
+  также скобочную форму с внешними `ORDER BY`, `LIMIT`, `OFFSET`.
+  `SELECT INTO` и remote table functions внутри веток отклоняются. Подзапросы в
+  общих `LIMIT`/`OFFSET` теперь учитываются и у ранее допустимого `UNION`.
+  Mac-проверка подтвердила синтаксис обеих операций в PostgreSQL 16.15 и
+  ClickHouse 24.8.14.39. `VERIFIER_VERSION` 41 → 42: operator SQL теперь может
+  заменить `chart.opaque_sql` на `reads_field`. `CHECK_VERSION` 22 → 23:
+  исправленное чтение `UNION` и отказ на ранее допустимый `SELECT INTO` меняют
+  смысл старых CheckResult.
+
+- **Корневой PostgreSQL `SELECT` в скобках проходит guard.**
+  `(SELECT …) ORDER BY …` сохраняет чтения из сортировки, а также внешних
+  `LIMIT` и `OFFSET` для governance. Неподдержанные и повторные модификаторы
+  остаются отказом; корневые `INTERSECT`/`EXCEPT`, `VALUES` и ClickHouse не расширены.
+  Evidence versions 41/22 остаются: ранее такой reviewed-запрос не проходил
+  границу контракта, поэтому старых CheckResult для него нет. Реализовано Luna xhigh;
+  синтетическое Astra xhigh review: 0 actionable P1/P2, не human/production
+  acceptance. Полный offline pytest: 2774 passed, 21 skipped, 38 deselected;
+  strict mypy, Ruff и Black чистые.
+
+- **Скобочный ClickHouse `ARRAY JOIN` читается как выражение.**
+  `ARRAY JOIN (tags AS t)` читает `tags`, но не псевдоколонку `t`;
+  `ARRAY JOIN (tags AS t) AS a` объявляет только внешний `a`, поэтому отдельное `t`
+  может добавить governance review. Настоящий скобочный SELECT сохраняет свой scope.
+  Поиск таблиц и chart impact применяют то же правило при `IN <name>`: валидный
+  reviewed SQL больше не обрывает проверку и не превращается в `chart.opaque_sql`.
+  `VERIFIER_VERSION` 40 → 41, `CHECK_VERSION` 21 → 22.
+  Реализовано как Codex companion Luna xhigh; синтетическое Astra xhigh review:
+  0 actionable P1/P2, не human/production acceptance. Целевой прогон T-25:
+  303 passed; полный offline pytest: 2751 passed, 21 skipped, 38 deselected.
+  Strict mypy: 0 ошибок в 120 модулях, Ruff и Black чистые.
+
+- **Глубокий reviewed SQL получает отказ guard вместо аварии парсера.**
+  `_parse_one_select` переводит `RecursionError` от sqlglot в `SQLGuardError`, поэтому
+  `guard_sql`, `ReferenceQuery` и загрузка verified assets сообщают о превышении глубины
+  вложенности через существующий путь отказа. Читаемые запросы и chart impact не меняются;
+  `VERIFIER_VERSION=40`, `CHECK_VERSION=21` остаются без изменений. Реализовано как Codex
+  companion Luna xhigh. Целевой прогон T-26: 190 passed, включая docs-as-code;
+  полный offline pytest: 2745 passed, 21 skipped, 38 deselected. Strict mypy:
+  0 ошибок в 120 модулях, Ruff и Black чистые.
+
+- **PostgreSQL `ORDER BY` и `DISTINCT ON` разрешают имена по правилам движка.**
+  Целое голое имя называет выход SELECT с учётом PostgreSQL-сворачивания регистра;
+  имя внутри выражения читает input-колонку и может добавить review или advisory.
+  `ORDER BY` set operation называет выход левой ветки без ложного sourceless advisory;
+  корневые `INTERSECT` и `EXCEPT` guard по-прежнему отклоняет, для них правило действует
+  во вложенном запросе.
+  Оконные, `WITHIN GROUP` и агрегатные сортировки, остальные формы `GROUP BY`,
+  ClickHouse и chart impact сохраняют прежние чтения. `VERIFIER_VERSION` 39 → 40,
+  `CHECK_VERSION` 20 → 21.
+  Унарный `+` оставляет имя input-выражением и не создаёт имя выхода у неалиасированной
+  проекции; сортировка после скобочного запроса читается внутри него, а `(column)`
+  сохраняет имя выходного столбца.
+  Реализовано `gpt-6-sol` high через MyFlow-кандидат `sol-high`; полный offline pytest:
+  2737 passed, 20 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях, Ruff и
+  Black чистые. Правила сверены вживую на PostgreSQL 16.15 (одноразовый кластер на Mac);
+  ClickHouse 24.8.14.39 форму `(SELECT …) ORDER BY …` отвергает синтаксически.
+  Синтетическое ревью `gpt-6-astra` xhigh через MyFlow: проход 1 — три находки (унарный
+  `+`, сортировка после скобочного запроса, `(column)`) исправлены, проход 2 — F-T-24-7
+  (`+dm.stores.id`) исправлена, проход 3 — 0 findings; не human/production acceptance.
+
+- **PostgreSQL `GROUP BY` разрешает целое имя с учётом выходного столбца SELECT.**
+  Локальная FROM-колонка выигрывает; если модель не объявляет её, возможный выходной
+  столбец оставляет `asset.query_fields_unchecked` вместо ложного
+  `asset.query_ungoverned_field`. Без локального источника остатка нет. Агрегатные и
+  оконные выходы, выражения и квалифицированные имена сохраняют прежнее чтение; ClickHouse
+  и chart impact не менялись. `VERIFIER_VERSION` 38 → 39, `CHECK_VERSION` 19 → 20.
+  Реализовано `gpt-6-sol` high через MyFlow-кандидат `sol-high`; полный offline pytest:
+  2684 passed, 20 skipped, 38 deselected; strict mypy: 0 ошибок в 120 модулях, Ruff и
+  Black чистые. Правило сверено вживую на PostgreSQL 16.15 (одноразовый кластер на Mac).
+  Синтетическое ревью `gpt-6-astra` xhigh через MyFlow: F-T-23-1 (имя `GROUP BY` в LATERAL
+  без собственного FROM) исправлена, второй проход — 0 findings; не human/production
+  acceptance.
+
+- **`JOIN … USING` в governance reviewed SQL теперь оставляет advisory о ключе.**
+  На ClickHouse и PostgreSQL-семействе общий ключ нельзя приписать одной таблице, поэтому
+  он получает `asset.query_fields_unchecked`, а явные соседние колонки грейдятся отдельно.
+  `JOIN … ON` не менялся. `VERIFIER_VERSION` 37 → 38, `CHECK_VERSION` 18 → 19.
+  Реализовано `gpt-5.6-luna` xhigh; финальное синтетическое review `gpt-6-astra` xhigh:
+  0 actionable P1/P2, не human/production acceptance. Полный offline pytest: 2655 passed,
+  21 skipped, 38 deselected; docs-as-code: 24 passed; strict mypy: 0 ошибок в 120 модулях,
+  Ruff и Black чистые.
+
+- **Трёхчастная колонка больше не открывает одноимённый scalar `WITH` при точном
+  совпадении с табличным источником.** `dm.sales_daily.revenue` читает единственный
+  неалиасированный `FROM`/`JOIN dm.sales_daily` своего SELECT, а не скрытое
+  `WITH … AS dm`. Дубликаты, конфликтующие имена и catalog-источники остаются
+  conservative. `VERIFIER_VERSION` 36 → 37, `CHECK_VERSION` остаётся 18.
+  Синтетическое review `gpt-6-astra` xhigh: 3 P2 закрыты red-green тестами, не
+  human/production acceptance. Полный offline pytest: 2647 passed, 21 skipped,
+  38 deselected; docs-as-code: 24 passed; strict mypy чистый, Ruff и Black чистые.
+
+- **`t.region` при однозначном явном алиасе именованного табличного источника
+  своего SELECT больше не открывает scalar `WITH t`.** `FROM`/`JOIN … AS t`
+  направляет колонку к таблице: ложные chart reads и `chart.sql_partial` исчезают,
+  а tuple `t.1` и отдельное чтение scalar alias сохраняются.
+  `VERIFIER_VERSION` 35 → 36, `CHECK_VERSION` остаётся 18. Итоговое синтетическое
+  `gpt-6-astra` xhigh review: 0 actionable findings после закрытия P2; не
+  human/production acceptance. Полный offline pytest: 2641 passed, 21 skipped,
+  38 deselected; chart-impact suite: 260 passed; docs-as-code: 24 passed; strict mypy:
+  0 ошибок в 120 модулях, Ruff и Black чистые.
+
+- **Однозначная ссылка на named CTE связывается с ближайшим объявлением.** Внутренняя
+  CTE больше не открывает одноимённую внешнюю и не добавляет ложные chart reads или
+  `chart.sql_partial`; `FROM` и bare `IN <name>` следуют одному правилу, а отдельная
+  внешняя ссылка сохраняет реальный гэп. Self-reference и одноуровневые дубликаты
+  остаются conservative. `VERIFIER_VERSION` 34 → 35, `CHECK_VERSION` остаётся 18.
+  Полный offline pytest до трёх дополнительных граничных тестов: 2628 passed, 21 skipped,
+  38 deselected; после них chart-impact suite: 179 passed; strict mypy: 0 ошибок в 120
+  модулях. Синтетическое ревью `gpt-6-astra` xhigh: дефектов кода нет, один пробел
+  покрытия закрыт тестами; не human/production acceptance.
+
+- **Chart impact учитывает достижимость `JOIN … USING`.** Ключ JOIN в непрочитанной
+  named CTE или scalar `WITH` больше не создаёт ложный `chart.sql_partial`; открытая
+  ссылка сохраняет гэп. `VERIFIER_VERSION` 33 → 34, `CHECK_VERSION` остаётся 18. Полный
+  offline pytest: 2623 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120
+  модулях, Ruff и Black чистые. Синтетическое ревью `gpt-6-astra` xhigh:
+  0 actionable findings, не human/production acceptance.
+
+- **Chart impact учитывает достижимость ClickHouse `COLUMNS('regex')`.** Селектор в
+  непрочитанной named CTE или scalar `WITH` больше не создаёт ложный `chart.sql_partial`;
+  ссылка из исполняемой части сохраняет гэп. Governance reviewed asset SQL продолжает
+  проверять весь AST. `VERIFIER_VERSION` 32 → 33, `CHECK_VERSION` остаётся 18. Полный
+  offline pytest: 2618 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120
+  модулях, Ruff и Black чистые. Синтетическое ревью `gpt-6-astra` xhigh:
+  0 actionable findings, не human/production acceptance.
+
+- **Восстановлен package-wide strict mypy для SQL AST.** Аннотации sqlglot `Expr` и
+  `Selectable`, nullable cache/scope и типы коллекций приведены к фактическим контрактам;
+  SQL-поведение и версии evidence не менялись. Strict mypy: 0 ошибок в 120 модулях; полный
+  offline pytest: 2603 passed, 21 skipped, 38 deselected. Синтетическое ревью `gpt-6-astra`
+  xhigh: 0 actionable findings, не human/production acceptance.
+
+- **Offline-тесты ClickHouse alias read-through ограничивают объём работы.** Девять
+  проверок с порогом в две секунды заменены бюджетом Python-вызовов парсера и reader'а:
+  превышение прерывает вычисление, прежние SQL и семантические assertions сохранены.
+  Это убирает зависимость гейта от загрузки хоста; C-операции и elapsed time бюджет не
+  измеряет. Версии verifier/check не менялись. Моделированное ревью `gpt-6-astra` xhigh
+  (2026-09-26): 0 actionable findings; offline pytest — 2596 passed, 21 skipped,
+  38 deselected, Ruff и Black чистые.
+
+- **PostgreSQL `max_scanned_bytes` теперь явно capability-gated.** Контракты native API
+  PostgreSQL 14–18 не дают ни per-query scanned-byte counter, ни engine byte ceiling:
+  `EXPLAIN (ANALYZE, BUFFERS)` и `pg_stat_get_xact_blocks_fetched` считают обращения к
+  блокам, `pg_stat_io` — I/O/cache events, а PostgreSQL 18 `pg_stat_get_backend_io` лишь
+  сужает те же I/O-счётчики до backend. Эти величины не переименовываются в scanned bytes;
+  до выбора trusted provider/extension сохраняется `cost.not_measured`. Runtime-поведение
+  не менялось, поэтому версии verifier/check не повышались.
+
 ### Added
+
+- **Формулы публичных dbt-проектов прочитаны** ([ADR 0010](docs/adr/0010-finish-line.md), F4;
+  [отчёт](docs/reviews/DECISIONOPS_DBT_PUBLIC_2026-11-10.md)). `scripts/dbt_corpus.py public`
+  делает `dbt deps` и `dbt parse` на временной копии проекта, без базы и секретов, и пишет
+  запись: объявленный `require-dbt-version`, отказ dbt или проблемы ридера и ответ резолвера
+  по каждой метрике; `--flag` ставит флаг поведения в копию `dbt_project.yml`. Три проекта
+  dbt-labs — MetricFlow tutorial, jaffle-sl-template (dbt-core 1.12.6 принимает его только с
+  `require_nested_cumulative_type_params: false`) и jaffle-shop (просит dbt `>=2.0.0`, прочитан
+  1.12.6 с `--no-version-check`): ридер прочитал все артефакты, каждый гэп проекта из 54
+  метрик — одна строка инвентаря, новых нет. Гэпов проекта нет у четырёх метрик, с контрактом
+  на своей таблице разрешилась бы одна; узость подмножества — в бэклоге. Записи —
+  `tests/fixtures/dbt_semantic_manifest/public/` (без артефактов: у jaffle-репозиториев нет
+  лицензии), тест — `tests/test_dbt_public.py`.
+- **Гранулярность V2 time dimension в инвентаре уточнена** (F4): dbt-core 1.12.6 не пишет её
+  только в написании `dimension: time`; в написании `dimension: {type: time}` с
+  `granularity: day` пишет `day`, и V2-метрика без других гэпов останавливается на `parity.v2`
+  (review) — так исправлены строки `time.no-granularity`, `parity.v2` и п. 7 и 8 ADR 0008.
+  Вердикт не меняется.
+- **Живая проверка DecisionOps и на ядре PostgreSQL 9.4.26** — ядре Greenplum 6 и Greengage 6
+  ([ADR 0010](docs/adr/0010-finish-line.md), F3). `tests/test_decision_live_postgres.py`
+  принимает сервер 16 (CI) и 9.4: база теста на ядре до 13 удаляется без `WITH (FORCE)`, дрейф
+  `date` в `jsonb` делается через `to_json(date)::jsonb` (`to_jsonb` появился в 9.5). На
+  временном 9.4.26, собранном на Mac из исходников, файл — 17 из 17: `42703`/`42883` за те же
+  дрейфы, `42501` за скрытую колонку и отказанные каталоги (F1), таблица имён типов (F2). Код
+  гейта не менялся. Это проверка ядра, не Greenplum: MPP, распределение, свои каталоги и
+  планировщик Greenplum (GPORCA, `Motion` в `EXPLAIN`) не покрыты; сервер, назвавший себя
+  Greenplum или Greengage, тест отвергает. CI это ядро не запускает — прогон разовый.
+- **Живая проверка DecisionOps на PostgreSQL** (`tests/test_decision_live_postgres.py`,
+  шаг CI-job `integration` с `postgres:16`). Половина проверки на ClickHouse ниже для
+  PostgreSQL: тест сам создаёт базу `decision_live` со схемой `dm`, gate-роль и дрейф и
+  прогоняет `decision capture` + `decision verify --dwh postgres` по 12 сценариям: чистый
+  `pass`; устаревшие данные; потолок строк по плану; пишущая роль; скрытая колонка
+  (column grants); `double precision`, `text`, переименование и удаление колонки;
+  `numeric(38,4)`; удалённая колонка времени события и `jsonb` вместо `date`. Проверяет, что
+  сервер — PostgreSQL 16; отказывается работать, где база или роли уже есть; всё созданное
+  удаляет. Без `AUTO_BI_LIVE_PG_HOST` — skip. Прогнан на Mac (PostgreSQL 16.15): 12 из 12;
+  на коде до S7b падают 7 сценариев дрейфа и скрытой колонки.
+
+- **Живая проверка DecisionOps на ClickHouse** (`tests/test_decision_live_clickhouse.py`,
+  шаг CI-job `integration`). Тест сам создаёт на ClickHouse серии образа compose (`24.8`) базу
+  `dm`, gate-роль
+  (`readonly = 2`) и дрейф и прогоняет `decision capture` + `decision verify --dwh clickhouse`
+  по 12 сценариям: чистый `pass`; устаревшие данные; потолок строк по плану и байтов по
+  исполнению; пишущая роль; скрытая колонка; `Float64`, `String`, переименование и удаление
+  колонки; `Decimal(38,4)`; удалённая колонка времени события. Сверяет вердикт, exit code,
+  `summary_code` всех 15 проверок и коды findings. Отказывается работать на сервере, где `dm`
+  или его пользователи уже есть; всё созданное удаляет. Без `AUTO_BI_LIVE_CH_HOST` — skip.
+  Прогнан на Mac-стенде (ClickHouse 24.8.14.39): 12 из 12.
+
+- **ClickHouse `COLUMNS('regex')` оставляет честный остаток field governance**
+  (`VERIFIER_VERSION` 31 → 32, `CHECK_VERSION` 17 → 18). Селектор выбирает физические
+  колонки, которые reviewed SQL не перечисляет, поэтому `assets.invalidated` добавляет
+  advisory `asset.query_fields_unchecked` с причиной про `COLUMNS(...)`. Именованные поля
+  рядом по-прежнему грейдятся, PostgreSQL-семейство и chart impact не меняются. Правило
+  применяется ко всему AST, как и текущая проверка `*`; достижимость непрочитанных CTE и
+  scalar `WITH` остаётся отдельной задачей. Выбор среза — синтетическая оценка
+  `gpt-6-astra` xhigh: 0 actionable findings, не human/production acceptance. Полный
+  offline pytest: 2612 passed, 21 skipped, 38 deselected; strict mypy: 0 ошибок в 120
+  модулях, Ruff и Black чистые.
+
+- **Однозначная ссылка на scalar `WITH` связывается с ближайшим объявлением** (`VERIFIER_VERSION`
+  30 → 31, `CHECK_VERSION` остаётся 17). Вложенный `WITH 1 AS a` больше не открывает внешнее
+  чтение `dictGet`, `joinGet` или `*`, когда внутреннее объявление однозначно его скрывает;
+  self-reference, дубликаты scalar-алиасов на одном уровне и shadowing именованных CTE остаются
+  conservative и могут пере-сообщать. Выбор среза помечен как synthetic/modelled review
+  `gpt-6-astra` xhigh: это не human evidence и не production/design-partner acceptance.
+
+- **`COUNT(*)` не читает колонки, а `COUNT(DISTINCT *)` читает все** (`CHECK_VERSION`
+  16 → 17, `VERIFIER_VERSION` 29 → 30). Прямой `COUNT(*)` считает строки, поэтому governance
+  снимает advisory `asset.query_fields_unchecked`, когда его единственной причиной была
+  звезда. `COUNT(DISTINCT *)` зависит от всех колонок источника там, где движок его принимает:
+  chart impact теперь оставляет `chart.sql_partial` для плитки, которая прежде была «не этой
+  плиткой» либо была названа только по другим чтениям. Реализовано `gpt-5.6-terra` xhigh
+  (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow:
+  моделированное ревью, не human evidence и не production/design-partner acceptance.
+  Итог ревью — один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
+
+- **ClickHouse `SETTINGS` не читается как колонка** (`CHECK_VERSION` 15 → 16,
+  `VERIFIER_VERSION` 28 → 29). Имя и значение настройки больше не дают phantom review
+  `asset.query_ungoverned_field`, advisory `asset.query_fields_unchecked`, chart
+  `reads_field` или `chart.sql_partial` на имени настройки. `additional_table_filters`
+  вместо phantom review теперь даёт advisory `asset.query_fields_unchecked` и
+  `chart.sql_partial`: это SQL-текст row filter, который reader не разбирает;
+  `additional_result_filter` не добавляет чтение таблицы. Реализовано `gpt-5.6-terra` xhigh
+  (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью — `gpt-6-astra` xhigh через
+  MyFlow: моделированное ревью, не human evidence и не production/design-partner acceptance.
+  Итог ревью — один проход `gpt-6-astra` xhigh через MyFlow (2026-09-25): 0 findings.
+
+- **Колонки из `HAVING` и `QUALIFY` читаются как из любой другой клаузы** (`CHECK_VERSION`
+  14 → 15, `VERIFIER_VERSION` 27 → 28). `Scope.columns` sqlglot опускал голое `cost` как
+  возможный output alias, поэтому reviewed PostgreSQL `HAVING sum(cost) > 0` и ClickHouse
+  `QUALIFY row_number() OVER (PARTITION BY cost) = 1` могли пройти как чистые. Теперь
+  PostgreSQL читает input текущего query level, а ClickHouse сначала применяет прежнее
+  правило видимого alias/read-through; окно в `QUALIFY` включает `PARTITION BY` и `ORDER BY`.
+  Направление одно: добавляются `asset.query_ungoverned_field` (review),
+  `asset.query_fields_unchecked` (advisory) и chart `reads_field`; ни одна находка не
+  снимается. Реализовано `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат
+  `terra-xhigh`); ревью — `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human
+  evidence и не production/design-partner acceptance. Итог ревью — один проход
+  `gpt-6-astra` xhigh через MyFlow (2026-09-25): одна находка (голое имя над единственным
+  подзапросом или CTE) отклонена воспроизведением — её запрос отвергают оба движка, а имя
+  читается так же, как в любой другой клаузе.
+
+- **Metric-гэп `chart.metric_unread` задаётся по каждому дашборду** (`VERIFIER_VERSION`
+  25 → 26, `CHECK_VERSION` остаётся 13). Резолвер держит дашборды всех продуктов в scope
+  одним списком, поэтому изменение, достигающее продукта A, поднимало
+  `chart.metric_unread` и на плитке дашборда, который доставляет только продукт B, не
+  декларирующий изменённую метрику, — дыра о вопросе, которого этот дашборд не задавал.
+  Теперь для каждого точного pinned dashboard ref берётся объединение метрик продуктов в
+  scope, которые доставляют этот ref, и решение о `chart.metric_unread` на плитке raw-SQL
+  принимается только по пересечению этого объединения с метриками изменения: общий
+  дашборд спрашивает объединение всех доставляющих продуктов, смешанное изменение
+  фильтруется по каждому дашборду независимо, версии дашборда не сливаются, порядок
+  продуктов не влияет. Чтения полей, IR-совпадение `computes_metric` и структурные гэпы
+  (`chart.opaque_sql`, `chart.sql_partial`, `chart.dashboard_spec_missing`) остаются всем
+  изменением; `chart.metric_unknown` и `chart.formula_untyped` — уровнем изменения.
+  Реализовано GLM 5.3 xhigh (изолированный профиль), ревью — synthetic Astra xhigh
+  read-only по ворк-ордеру: моделированное ревью, не human evidence и не
+  production/design-partner acceptance. Финальный post-implementation review — один проход
+  `gpt-6-astra` xhigh через MyFlow (2026-09-24), 0 findings.
+
+- **ClickHouse inline- и ARRAY JOIN-алиасы больше не читаются как поля таблицы**
+  (`CHECK_VERSION` 13 → 14, `VERIFIER_VERSION` 26 → 27). Псевдополя вроде
+  `dm.sales_daily.a`, `dm.sales_daily.y` и `dm.sales_daily.r` исчезают из governance и
+  chart impact: alias виден во всём своём query level, но не в подзапросе; его определение
+  грейдится на месте. Верхнеуровневый SELECT-алиас сохраняет приоритет, а без него берётся
+  первое inline/ARRAY JOIN-объявление имени. `ARRAY JOIN tags AS a` по-прежнему читает
+  `tags`, `ARRAY JOIN tags` и `ARRAY JOIN tags AS tags` не меняются; alias справа от `IN`
+  не становится таблицей. Направления оба: уходят ложные `asset.query_ungoverned_field`
+  и phantom `reads_field` на алиасе, но inline-определение в HAVING или QUALIFY, которое
+  прежняя атрибуция пропускала, теперь грейдится на месте и может назвать реальное поле
+  (например, `internal_cost_raw` в `(internal_cost_raw AS y)`). Реализовано
+  `gpt-5.6-terra` xhigh (Codex companion, MyFlow-кандидат `terra-xhigh`); ревью —
+  `gpt-6-astra` xhigh через MyFlow: моделированное ревью, не human evidence и не
+  production/design-partner acceptance. Итог ревью — шесть проходов `gpt-6-astra` xhigh через
+  MyFlow (2026-09-24): девять находок, восемь исправлены, одна (порог по wall-clock) отклонена
+  с доказательством, последний проход — 0 findings.
+
+- **`x IN <table>` читается как таблица, которую оно называет** (`CHECK_VERSION` 12 → 13,
+  `VERIFIER_VERSION` 24 → 25). ClickHouse исполняет `x IN rev` как `x IN (SELECT * FROM
+  rev)`, а sqlglot разбирает имя как колонку, и гейт её так и грейдил: `IN rev` давал
+  `asset.query_ungoverned_field` на колонку `dm.sales_daily.rev`, которой ни у кого нет, а
+  саму таблицу не читал; `IN dm.rev` поднимал только advisory
+  `asset.query_fields_unchecked`, и reviewed-число, отфильтрованное через неуправляемую
+  таблицу, проходило. Теперь на ClickHouse колонка справа от `[GLOBAL] [NOT] IN`, которая
+  не видимый алиас, до scoping переписывается в `IN (SELECT * FROM <name>)` и получает те
+  же TableRef и тот же исход звезды, что подзапросная форма. Видимый WITH- или
+  SELECT-алиас там остаётся алиасом (по правилу T-13; циклический SELECT-алиас считается
+  колонкой и становится таблицей), CTE с этим именем — CTE, как во FROM; литеральные
+  списки, подзапросная форма и PostgreSQL-семейство не меняются, функциональная форма
+  `in(x, t)` по-прежнему не разбирается. Chart impact читает табличную форму как
+  подзапросную: операторская плитка с `IN dm.rev` не получает `reads_field` на
+  `dm.rev.revenue` и остаётся `chart.sql_partial` «operator SQL was not fully resolved: it
+  selects *»; голое `IN x` открывает именованную CTE `x` в обходе исполняемой части, и
+  словарное чтение в ней называется. Версии растут в обе стороны: ложной находки поля для
+  `IN rev` больше нет, а неуправляемая таблица справа от `IN` теперь даёт review
+  `asset.query_ungoverned` там, где был advisory (`IN dm.rev`) или ничего (`IN rev`).
+  Заодно закрыт F-T-13-16: циклическое множество ключуется объявлением и scope, и цикл,
+  который есть только во внутреннем scope, больше не делает внешнюю ссылку колонкой.
+  Переписывание ищет колонку справа от `IN` до любой сборки; statement с ней строит дерево
+  scope и индекс алиасов дважды (риск принят). Остаются названными: видимый scalar WITH-
+  или SELECT-алиас справа от `IN` выигрывает у одноимённой CTE, и табличная форма молчит
+  там, где подзапросная открыла бы CTE (F-T-14-3); FROM-алиас справа от `IN` читается как
+  таблица этого имени, как и в подзапросной форме (F-T-14-1, пере-сообщение). Срез начал
+  grok xhigh (`grokw`); оба grok-аккаунта упёрлись в лимиты, и закончил opus-high
+  (`claude -p`, claude-opus-5, effort high); ранний выход в `clickhouse_in_table_fields`
+  добавил оркестратор после красного полного гейта. Ревью — один проход Fable
+  (claude-fable-5-1, effort medium), записанный через MyFlow как внешнее ревью; Opus-ревьюеры
+  пропущены, потому что делят движок с автором, GLM-5.3 и Codex упёрлись в rate limit.
+  Моделированное ревью: не Astra по ADR 0006, не human evidence, не production или
+  design-partner acceptance.
+
+- **ClickHouse-алиас читается насквозь, а не как колонка** (`CHECK_VERSION` 11 → 12,
+  `VERIFIER_VERSION` 23 → 24). На ClickHouse голое имя, которое в месте написания —
+  видимый алиас, грейдилось как колонка таблицы в scope: валидный reviewed SQL нёс
+  `asset.query_ungoverned_field` на имена вроде `floor_value`, `allowed` или `m`, которых
+  нет ни у одной таблицы, а колонки внутри expression-form `WITH <expr> AS a` не читались
+  вовсе. Теперь `extract_column_refs` следует правилам алиасов ClickHouse: SELECT-алиас
+  виден на своём уровне запроса и не виден в подзапросах; WITH-алиас — в объявившем
+  запросе и во всех подзапросах и ветках UNION ниже; алиас выигрывает у колонки,
+  идентификаторы сравниваются как написаны; внутри определения алиаса X имя X — колонка.
+  Ссылка на WITH-выражение читается как его inline-подстановка: колонки грейдятся на месте
+  ссылки, вложенный запрос — как тот же подзапрос там. Циклы (невалидный ClickHouse)
+  читаются как колонки — в сторону, которая ничего не прячет. Сквозное чтение линейно;
+  ссылка за пределом глубины (64) или бюджета раскрытий (10 000) называется unattributed
+  под своим именем, а не пропускается. Chart impact: алиас больше не `chart.sql_partial`
+  «not attributed to a table», а чтение через expression-form `WITH` даёт `reads_field`.
+  Версии растут в обе стороны: меньше находок на именах алиасов и новые — на колонках,
+  которые читает выражение алиаса. PostgreSQL-семейство не меняется. Остаётся принятым
+  риском: имя, объявленное и WITH-, и SELECT-алиасом на одном уровне, читается как колонка
+  (`WITH revenue AS X, X * 2 AS w SELECT w AS X` даёт `asset.query_ungoverned_field` на
+  `dm.sales_daily.X`, F-T-13-17) — сторона ложного отказа на statement, который ClickHouse,
+  скорее всего, отвергает. Реализовано grok xhigh (`grokw`), ревью — Opus через MyFlow
+  (`opus-sub`), три прохода, без второго голоса; GLM-5.3 и Codex 2026-09-18 недоступны:
+  моделированное ревью, не Astra по ADR 0006, не human evidence, не production или
+  design-partner acceptance.
+
+- **Какая часть operator SQL исполняется, решает один обход гейтов CTE**
+  (`VERIFIER_VERSION` 22 → 23, `CHECK_VERSION` остаётся 11). Резолвер решал это дважды и
+  по двум правилам: словарный путь открывал scalar `WITH`, когда любое голое имя где угодно
+  несло его алиас, включая читателя внутри CTE, которую никто не исполняет; путь звезды
+  проверял достижимость отдельно. Теперь один линейный обход разобранного дерева решает
+  оба пути — словарный / Join-таблица и звезда, — один раз на SQL. Гейты — именованные CTE
+  и ClickHouse scalar `WITH` в обеих формах. Именованная CTE открывается, когда исполняемая
+  неквалифицированная ссылка на таблицу её называет; scalar `WITH` — когда исполняемая
+  колонка читает алиас (голое имя или обращение к кортежу с любого уровня: `t.1`, `t.a.b`,
+  по левому квалификатору). Плитка без словарного или Join-вызова и без звезды обход не
+  делает. На тех же входах чтений и гэпов больше: CTE называется без учёта регистра и
+  независимо от порядка объявления (forward reference); запрос, вложенный в исполняемую
+  часть, исполняется вместе с ней, и именованная CTE, которую он называет, открывается —
+  в том числе запрос внутри живого тела scalar `WITH` и подзапрос, до которого sqlglot
+  scope не доходит (аргумент `arrayJoin`); алиас, прочитанный только через обращение к
+  кортежу с любого уровня, считается прочитанным (для звезды под `WITH <expr> AS alias`
+  это совпадает с 22, для звезды под `WITH (SELECT …) AS alias` и для словарного вызова —
+  новое); database или catalog qualifier с тем же именем, что у scalar `WITH`, открывает
+  его — это больше чтений, чем у 22. Меньше: читатель, который не исполняется, ничего не
+  открывает; звезда внутри непрочитанного `WITH <expr> AS alias` больше не
+  `chart.sql_partial`; именованная CTE, объявленная во вложенном запросе и никем не
+  названная, не исполняется. Срез закрывает оба пункта, которые запись T-10 отложила в
+  T-11: алиас, прочитанный из CTE, которую никто не исполняет, больше не делает scalar
+  `WITH` достижимым, и звезда внутри `WITH <expr> AS alias` считается только когда
+  алиас прочитан. Известные пере-сообщения, все в сторону, которая ничего не прячет:
+  shadowing не моделируется; table alias с тем же именем открывает scalar `WITH`;
+  database (или catalog) qualifier с тем же именем — тоже. Первое ревью нашло, что
+  достижимость по sqlglot scopes прятала чтения, которые HEAD видел: sqlglot не строит
+  scope внутри expression-form `WITH`; починка — обход гейтов. Реализовано grok xhigh
+  (`grokw`), ревью — Opus через MyFlow (`opus-sub`), без второго голоса; GLM-5.3 и Codex
+  2026-09-18 недоступны: моделированное ревью, не Astra по ADR 0006 и не human evidence.
+
+- **`joinGet` читается как `dictGet`, или называется непрочитанным** (`VERIFIER_VERSION`
+  21 → 22, `CHECK_VERSION` остаётся 11). `joinGet('dm.rev', 'revenue', key)` читает колонку
+  Join-таблицы, а `extract_column_refs` видит только ключ — плитка выглядела прочитанной
+  целиком и снималась ответом «не эта плитка» для изменения той самой колонки. Семейство
+  Join-таблицы идёт тем же путём, что словарное: `joinGet` / `joinGetOrNull` с литеральными
+  таблицей и одной колонкой разворачивается в чтение `<таблица>.<колонка>` и участвует в
+  `reads_field` и правиле метрики; любой другой `joinget…` — идентификатор или выражение
+  вместо литерала, кортеж колонок (не сигнатура ClickHouse), неизвестное имя — оставляет
+  плитку прочитанной частично (`chart.sql_partial`) с клаузой «whose Join table read this
+  run could not name». Считаются только вызовы, которые statement исполняет. На тех же
+  входах появляется либо чтение, либо ещё одна клауза гэпа. Реализовано grok xhigh
+  (`grokw`), ревью — Opus через MyFlow (`opus-sub`), без второго голоса; GLM-5.3 и Codex
+  2026-09-18 недоступны: моделированное ревью, не Astra по ADR 0006 и не human evidence.
+
+- **Словарный вызов ClickHouse доведён до закрытого набора и до того, что statement
+  исполняет** (`VERIFIER_VERSION` 20 → 21, `CHECK_VERSION` остаётся 11). Четыре дефекта
+  первого среза, найденные ревью после него, закрыты: типизированные геттеры —
+  именованный закрытый набор (`dictGet<Type>` по целым 8…256, float32/64, decimal32…256,
+  date, date32, datetime, datetime64, uuid, ipv4, ipv6, string, bool, с `OrDefault` /
+  `OrNull`), поэтому `dictGetDecimal64` и `dictGetDate32` называют чтение вместо гэпа;
+  scalar `WITH (SELECT …) AS alias` считается, когда алиас прочитан, а именованная CTE, в том
+  числе `WITH x AS ((SELECT …))`, — только через FROM/JOIN; клауза непрочитанного вызова
+  говорит то, что правдиво для каждого: «whose dictionary read this run could not name»;
+  плитка без `dict…` не строит scope-дерево. На тех же входах гэпов становится меньше, а
+  detail словарного `chart.sql_partial` меняется. Открыто и отложено в T-11 (оба
+  пере-сообщают, ничего не прячут): алиас, прочитанный из неисполняемой CTE, делает scalar
+  `WITH` достижимым, и звезда внутри `WITH <expr> AS alias` считается при любом алиасе.
+  Реализовано grok xhigh (`grokw`), ревью — Opus через MyFlow (`opus-sub`, второй голос
+  `fable`; GLM-5.3 и Codex 2026-09-18 недоступны): моделированное ревью, не Astra по
+  ADR 0006 и не human evidence.
+
+- **Metric-гэп задаётся только там, где вопрос задал продукт в scope**
+  (`VERIFIER_VERSION` 19 → 20, `CHECK_VERSION` остаётся 11). Резолвер записывал
+  `chart.metric_unread`, `chart.metric_unknown` и `chart.formula_untyped` для каждого
+  обходимого изменения, в том числе такого, от которого никто в scope не зависит, и плитка
+  попадала в бакет `impact.products` против метрики, которую никто не читает. Теперь
+  `resolve_impact` передаёт резолверу, достигает ли изменение продукта в scope, и
+  недостигающее изменение этих вопросов не задаёт. Термы по-прежнему разрешаются, так что
+  `computes_metric` на таком изменении остаётся evidence; гэпы плитки (`chart.opaque_sql`,
+  `chart.sql_partial`, `chart.dashboard_spec_missing`) и разрешение полей не менялись.
+  Открыто: на плитках какого продукта гэп вправе быть записан — дашборды всех продуктов в
+  scope лежат одним списком. Реализовано grok xhigh (`grokw`), ревью — Opus через MyFlow
+  (`opus-sub`, второй голос `fable`; GLM-5.3 и Codex 2026-09-18 недоступны):
+  моделированное ревью, не Astra по ADR 0006 и не human evidence.
+
+- **Словарный вызов ClickHouse — чтение, а не молчание** (`VERIFIER_VERSION` 18 → 19,
+  `CHECK_VERSION` остаётся 11). `extract_column_refs` видит у `dictGet('dm.rev', 'revenue',
+  region)` только ключ, и плитка выглядела прочитанной целиком — резолвер мог снять её
+  ответом «не эта плитка» для изменения `dm.rev.revenue`. Теперь литеральные словарь и
+  атрибут (или кортеж атрибутов) разворачиваются в чтения `<словарь>.<атрибут>`, которые
+  дают `reads_field` и участвуют в правиле метрики как любое атрибутированное чтение; любой
+  другой `dict…` — нелитеральный аргумент, `dictHas` / `dictIsIn`, иерархия, неизвестная
+  функция — оставляет плитку прочитанной частично (`chart.sql_partial`). Считаются только
+  вызовы в scope, который statement исполняет. Реализовано grok xhigh (`grokw`), ревью —
+  Opus через MyFlow (`opus-cli`, на части прогонов молча отдавший haiku, затем `opus-sub`;
+  второй голос `fable`; GLM-5.3 и Codex 2026-09-18 недоступны): моделированное ревью, не
+  Astra по ADR 0006 и не human evidence.
+
+- **Операторский `raw_sql` читается из своего SQL** (`VERIFIER_VERSION` 17 → 18,
+  `CHECK_VERSION` остаётся 11). Каждая такая плитка была одной строкой `chart.opaque_sql`:
+  гейт говорил, что IR не знает, какие колонки читает плитка, про statement, который говорит
+  именно это. Теперь `reads_field` ставится там, где statement сам атрибутирует чтение;
+  `computes_metric` из произвольного SQL не выводится, поэтому невыведенная связь с метрикой
+  — отдельный гэп `chart.metric_unread`, кроме случая, когда statement прочитан целиком и не
+  называет ни одной колонки-терма изменённой метрики. `chart.opaque_sql` — SQL, который не
+  разобрали; `chart.sql_partial` — прочитанный частично. Выражение, которое резолвер не
+  разворачивает в чтения колонок, оставляет плитку прочитанной частично, а не «не эта плитка»:
+  это контракт, а сегодня гейт узнаёт три известных случая (`{{ … }}`, `COLUMNS('re')`,
+  `JOIN … USING`); конструкция вне этого набора — дыра детектора, не гарантия. `COUNT(*)`,
+  `COUNT(DISTINCT *)` и звезда в scope, который statement не читает, дырами не являются.
+  `impact.products` в detail раскладывает плитки по коду гэпа, так что четыре числа делят
+  плитки, которых коснулись изменения продукта. Chart-разрешение — evidence, грейдинг не
+  меняет.
+
+- **Предшествующие FROM-элементы LATERAL доходят до каждого уровня его тела**
+  (`VERIFIER_VERSION` 16 → 17, `CHECK_VERSION` 10 → 11). sqlglot вешает sibling-источники на
+  UDTF-scope, а тело может сидеть ниже — set operation или вложенный LATERAL, — и валидный
+  PostgreSQL отвергался по колонке, которую объявляет sibling. Обход идёт вверх по предкам и
+  останавливается на стене derived table или CTE, которая окружающее не читает. Кандидаты
+  остаются плоским множеством: имя, объявленное на двух LATERAL-уровнях, непроверено, а не
+  приписано ближайшему. Durable spec и комментарии обеих версий записывают, что имя внутри
+  тела LATERAL может сдвинуть грейдинг в любую сторону, `needs_review` включительно, — старый
+  bundle нельзя читать сегодняшним правилом.
+
+- **Голое имя разрешается только по источникам, которые его scope читает**
+  (`VERIFIER_VERSION` 15 → 16, `CHECK_VERSION` 9 → 10). CTE, которого FROM/JOIN не называет,
+  считался источником scope'а, и reviewed-запрос с WITH деградировал в advisory с неверной
+  причиной и переставал грейдить необъявленные колонки governed-витрин. Голое имя внутри
+  коррелированного подзапроса приписывалось собственной таблице подзапроса, и объявленная
+  колонка охватывающего запроса отвергалась как ungoverned. Теперь scope предлагает имя
+  только тем источникам, которые читает; имя, написанное там, откуда охватывающий запрос мог
+  его поставить, приписывается только когда его объявляет один локальный governed-источник —
+  иначе остаётся `asset.query_fields_unchecked` со своей причиной, потому что проверка имя
+  наружу не ведёт.
+
+- **Owner-summary объясняет границы reconciliation, attestation, cost и подписи.**
+  `result.equivalent` означает совпадение supplied rows, не semantic approval.
+  Attestation связывает reviewed query, snapshot и заявленное environment,
+  не доказывая исполнение SQL. `dwh.cost` относится к compiled reference SQL,
+  а не captured reviewed asset SQL. Подпись подтверждает producer и целостность,
+  не исполнение SQL или production sign-off; её проверяют отдельно с trusted key.
+  Отчёт sealed до проверки bundle и сам не заявляет, что bundle signed или verified.
+  `VERIFIER_VERSION` 14 → 15, `CHECK_VERSION` остаётся 9.
+
+- **Evidence manifest получает opt-in Ed25519 authentication** (`VERIFIER_VERSION` 13 →
+  14, `CHECK_VERSION` остаётся 9). `decision verify --signing-key <private.pem>` подписывает
+  domain-separated RFC 8785 manifest unencrypted PKCS#8 ключом по явному внешнему пути и
+  выставляет `integrity=signed` только после self-verification. `decision evidence
+  --trust-key <public.pem>` проверяет подпись против out-of-band pinned SPKI trust root;
+  флаг повторяется для overlap-ротации, а signed artifact без подходящего ключа не
+  выдаётся. `key_id` — SHA-256 raw Ed25519 public key, signature — canonical unpadded
+  base64url. Algorithm/key identity входит в idempotency key, поэтому unsigned, signed и
+  rotated-key runs получают разные `run_id`. Старые `content_hashed` bundles остаются
+  читаемыми. Private key не записывается в evidence, Git или ошибки; production KMS и
+  trusted capture boundary не заявлены ([ADR 0005](docs/adr/0005-ed25519-evidence-trust-root.md)).
+
+- **`dwh.cost` проверяет runtime-границы exact reference-запроса**
+  (`VERIFIER_VERSION` 12 → 13, `CHECK_VERSION` 8 → 9). После безопасных plan/access/
+  security-проверок ClickHouse выполняет запрос через command API с `FORMAT Null` под
+  engine-enforced `max_bytes_to_read` и `max_execution_time`, а PostgreSQL — read-only
+  транзакцией с потоковым cursor под transaction-local `statement_timeout`. Ответ не
+  материализуется; превышение или отсутствие runtime evidence требует review, успешное
+  выполнение подтверждает границу. PostgreSQL не предоставляет честный exact-query
+  `scanned_bytes`, поэтому его `max_scanned_bytes` остаётся явным `cost.not_measured`, а
+  нулевой лимит без соответствующего counter не выдаётся за доказанный. Для ClickHouse
+  используется `command()`, чтобы драйвер не добавлял второй `FORMAT Native` к уже
+  заданному `FORMAT Null`.
+
+- **Голая колонка reviewed-запроса приписывается через governed-модель**
+  (`VERIFIER_VERSION` 11 → 12, `CHECK_VERSION` 7 → 8). Голое `category` в join'е двух
+  таблиц уходило в `asset.query_fields_unchecked` даже тогда, когда snapshot объявлял это
+  имя ровно на одной из них: гейт отказывался читать evidence, которое уже держал. Движок
+  этот SQL принял — значит имя разрешилось ровно в один источник scope'а; если и модель
+  оставляет единственного кандидата, прочитать его — это чтение запроса, а не догадка о
+  нём. Условие вывода: все источники scope'а — governed-таблицы. Неуправляемая витрина,
+  CTE или подзапрос рядом держат колонки, о которых snapshot не знает, — имя остаётся
+  непроверенным; два объявляющих источника (пусть даже это одна таблица, приджойненная к
+  себе) оставляют тот же выбор, что был бы у движка, — тоже непроверенным.
+  `asset.query_fields_unchecked` разбирает остаток по причинам (несколько объявляющих
+  источников; scope, который модель не видит насквозь; квалификатор, которого не объявляет
+  ни один охватывающий scope; scope без собственных источников) и считает его по ссылкам, а
+  не по именам: разрешённое `category` не закрывает `z.category` рядом.
+  Имя, которого не объявляет ни один governed-источник scope'а, называется
+  `asset.query_ungoverned_field` (review) вместе с перечнем этих источников. Для `*`
+  ничего не изменилось: состав колонок по-прежнему зависит от физической таблицы.
+
+- **Governance reviewed-запроса доведена до поля** (`VERIFIER_VERSION` 10 → 11,
+  `CHECK_VERSION` 6 → 7). Проверка витрин отвечала, что число «про эти витрины», но метрика
+  определена над полями: запрос по governed-витрине, читающий необъявленную колонку, считал
+  число частично из данных, о которых модель ничего не говорит. `assets.invalidated` теперь
+  называет и это — `asset.query_ungoverned_field` (review). Колонка приписывается таблице
+  только там, где выбора не оставляет сам SQL: квалифицированная разрешается наружу по
+  цепочке scope'ов, неквалифицированная — лишь при единственном источнике в scope, а
+  проекционный алиас чтением витрины не считается. Что не разрешается без догадки,
+  называется, а не пропускается: `asset.query_fields_unchecked` (advisory) перечисляет
+  неприписанные имена и отдельно сообщает про `SELECT *`, состав колонок которого зависит
+  от физической таблицы, — частичная проверка не должна читаться как чистая. Колонка
+  неуправляемой витрины отдельной находкой не становится (один факт — один вес).
+
+- **Reviewed-запрос asset'а сверяется с governed-моделью** (`VERIFIER_VERSION` 9 → 10,
+  `CHECK_VERSION` 5 → 6). Provenance-цепочка якорится на reviewed `reference_query`, но
+  ничто не проверяло, что сам этот запрос читает витрины, которыми модель управляет:
+  attested, сошедшееся число из `dm.sales_daily_v2` проходило молча — ровно тот отказ,
+  ради которого продукт существует. `assets.invalidated` теперь отвечает на более широкий
+  вопрос — перестал ли asset быть доказательством, — и второй причиной стало
+  `asset.query_ungoverned` (review): таблицы reviewed-запроса, которых нет в кандидатном
+  snapshot'е, названы поимённо. Сверяются только таблицы: приписать неквалифицированную
+  колонку одной из таблиц в scope — догадка, а гейт, догадывающийся о governance,
+  перестаёт быть evidence (инвариант 6). Регистр читается по движку asset'а — ClickHouse
+  различает `Sales_Daily` и `sales_daily`, PostgreSQL-семейство складывает
+  **неквотированный** идентификатор, — поэтому `extract_table_refs` отдаёт квотирование
+  вместе с именем, а `extract_table_names` остаётся его тонкой обёрткой для RBAC.
+  Заодно `assets.invalidated` перестала прятать причину: summary code теперь называет
+  решившую находку (`asset.metric_changed`, `asset.stale_snapshot`,
+  `asset.query_ungoverned`), а detail — сам повод с именем asset'а, потому что в
+  owner-отчёт попадает только он, а «1 из 1 asset(s)» одинаков для двух разных починок.
+
+- **Происхождение кандидатного числа проверяется** (`VERIFIER_VERSION` 8 → 9). Гейт запрос
+  asset'а не исполняет — числа приходят из порта, — поэтому дыра была не в сверке, а рядом с
+  ней: число, снятое месяц назад, на другом кластере, запросом, который никто не ревьюил,
+  сходится не хуже правильного. Теперь кандидатный результат несёт `ResultAttestation`
+  (`origin`, `captured_at`, `environment_ref`, `semantic_digest`, `query_digest`,
+  `executed_by`), а новая проверка `results.provenance` сверяет три её утверждения с тем, что
+  гейт держит независимо: snapshot — с canonical digest кандидата, среду — с
+  `environment_ref` прогона, исполненный запрос — с digest reviewed `reference_query`
+  asset'а (новое поле `VerifiedAsset`, `{engine, sql}`, проходящее SELECT-only guard прямо
+  при загрузке контракта). Четвёртое — что runner действительно выполнил заявленный запрос —
+  непроверяемо без подписи и так и названо. Число без attestation больше не проходит молча:
+  `provenance.unattested`. Ни одна находка не блокирует (блокирует расхождение чисел, и это
+  уже делает `results.reconcile`), summary code называет решившую находку, а
+  `result.equivalent`-claim несёт находки caveat'ами и ссылкой на артефакт provenance —
+  чтобы прочитанный вне bundle claim не выглядел чистым. Файл `--results` читается в обеих
+  формах, старая (`{asset id: ResultSet}`) остаётся валидной.
+
+- **Impact доходит до чарта, а не до дашборда** (`VERIFIER_VERSION` 7 → 8). `resolve_impact`
+  разрешает изменение до конкретной плитки доставляемого дашборда и держит два утверждения
+  раздельно: `computes_metric` — measure чарта воспроизводит термы формулы (numerator на мере,
+  denominator на её `denominator`; `transform`/`compare` остаются тем же базовым агрегатом),
+  `reads_field` — запрос просто называет изменённую колонку. Термы берутся из обоих снапшотов:
+  плитка, считавшая вчерашнее определение, — ровно та, которую владелец должен открыть.
+  Разрешение — evidence, а не грейдинг: вердикт и `_reaching` не меняются, но плитка, читающая
+  колонку без покрывающего metric contract, теперь названа как незадекларированная зависимость.
+  Нерешаемое выходит именованным гэпом (`chart.opaque_sql`, `chart.dashboard_spec_missing`,
+  `chart.formula_untyped`, `chart.metric_unknown`), а не пустым списком; owner summary
+  печатает и плитки, и гэпы.
+
+- **Репетиция пилота release gate на локальном стенде** —
+  `docs/reviews/DECISIONOPS_PILOT_2026-08-25.md` и
+  `docs/pilot/2026-08-25-ch-{control,tz-margin,tz-revenue,result-drift}/` (входы +
+  evidence всех четырёх прогонов, перепроверяемые `auto_bi decision evidence`). Против живого
+  ClickHouse 24.8.14.39 ролью `gate_ro`, на графе из двух governed-продуктов на одной
+  витрине: контроль → `needs_review` только из-за `freshness.stale`; `time.timezone`
+  `Europe/Moscow → UTC` → `block` для зависимого продукта и `impact.none` для независимого;
+  расхождение записанного результата против verified asset (ожидаемое число снято со стенда)
+  → `block` с названной разницей. Гейт целиком ~1.6 с и детерминирован. Записано и то, чего
+  репетиция не доказывает — task 8 закрывает владелец.
+
+### Fixed
+
+- **Другое имя того же типа PostgreSQL — не смена типа.** `dwh.physical` сравнивал объявленный тип
+  колонки с тем, что печатает `format_type`, как написано: модель с `float8` по колонке `double
+  precision`, `int4` по `integer`, `varchar(20)` по `character varying(20)` или `timestamp` по
+  `timestamp without time zone` получала `physical.type_drift` (review), и эта «смена типа»
+  объясняла `42883` плана и `max()` колонки времени события — ошибка самого запроса выдавалась за
+  дрейф витрины. Теперь на PostgreSQL, Greenplum и Greengage имена канонизируются перед сравнением:
+  таблица псевдонимов из документации PostgreSQL (кроме serial-типов), `float(p)`, `numeric(p)`,
+  `char` без длины, `bpchar(n)`, `timestamp`/`time` без зоны, массивы любой размерности. Такая пара — не дрейф, а `42883` по колонке того же типа
+  кончает прогон. ClickHouse сравнивается как прежде: его псевдонимы — свои (`INT8` — `Int8`, а не
+  `bigint`). Живьём на PostgreSQL 16 колонка в каждом написании читается через `format_type`
+  (`tests/test_decision_live_postgres.py`). Verifier 133 → 134, check 83 → 84: меняется правило
+  `dwh.physical`, а identity прогона держит только версию verifier
+  ([ADR 0010](docs/adr/0010-finish-line.md), F2; [spec](docs/specs/unanswered-engine.md)); pilot
+  `2026-11-06-dbt-formula-pin` перезаписан.
+
+- **Отказ читать каталог — «неизвестно», а не «нет».** Если роли гейта отказано в `pg_attribute`
+  (PostgreSQL: `REVOKE SELECT ON pg_catalog.pg_attribute FROM PUBLIC`, `42501`) или в
+  `system.columns` (ClickHouse), проба читала отказ как пустой каталог: каждая объявленная
+  колонка, до которой роль не лишена доступа, «удалена» — `physical.column_absent` (block) по
+  витрине, которая их держит, — и этот «дрейф» объяснял `42703`/`47` плана и `max()` колонки
+  времени события. Теперь колонки такой витрины не сообщаются: `dwh.physical` их не сравнивает, а
+  необъяснённый `42703`/`47` кончает прогон, как любой другой. Отказ `pg_tables`/`pg_views` в
+  вопросе о наличии витрины давал `access.table_absent` (block) по читаемой витрине; теперь за
+  ним следует `to_regclass` имени. Витрина — материализованное представление тоже была
+  «отсутствующей»: вопрос не читал `pg_matviews`; теперь читает. Отвеченный пустой каталог
+  читается как прежде. Живьём на PostgreSQL 16 — `tests/test_decision_live_postgres.py` (чистая
+  витрина за отказанным каталогом колонок — `needs_review` по `security.not_observed`; удалённая
+  за ним колонка — exit 2; за отказанным каталогом таблиц и витрина-matview — чистый `pass`).
+  Verifier 132 → 133, check 83 прежний: правила проверок не менялись, меняется факт пробы
+  ([ADR 0010](docs/adr/0010-finish-line.md), F1; [spec](docs/specs/unanswered-engine.md));
+  pilot `2026-11-06-dbt-formula-pin` перезаписан.
+
+- **Отказ ClickHouse читается по коду ошибки, а не по её тексту.** Вопрос об окружении, на
+  который ClickHouse ответил ошибкой с кодом, считается отказом только по коду:
+  `497 ACCESS_DENIED`, `291 DATABASE_ACCESS_DENIED`, `60 UNKNOWN_TABLE`,
+  `81 UNKNOWN_DATABASE` — отказ при любом тексте вокруг кода, любой другой код — не отказ,
+  даже если в тексте есть слова отказа. Прежде решал текст, а он цитирует имена из запроса:
+  удалённая колонка `access_denied_at` (`47 UNKNOWN_IDENTIFIER`) читалась как отказ —
+  `EXPLAIN ESTIMATE` «отказан», а таблица при отказанном `max()` колонки времени события
+  «не читается». Теперь такой `47` взвешивается как дрейф по правилу S7 или кончает прогон.
+  Текст читается только у ошибки без SQLSTATE и без кода ClickHouse. Коды сняты живьём на
+  ClickHouse 24.8.14.39 (`497` — скрытая колонка, её `EXPLAIN ESTIMATE`, таблица без гранта;
+  `60` — нет таблицы; `81` — нет базы) и закреплены в `tests/test_decision_live_clickhouse.py`;
+  `291` живьём не встречен и оставлен (прежний текст его ловил). Verifier 131 → 132, check
+  83 прежний; pilot `2026-11-06-dbt-formula-pin` перезаписан
+  ([spec](docs/specs/unanswered-engine.md)).
+
+- **Тот же дрейф на PostgreSQL — отчёт, а не exit 2.** PostgreSQL 16.15 отвечает на него
+  своими SQLSTATE: `42703 undefined_column` — колонку удалили или переименовали,
+  `42883 undefined_function` — тип, который функции или операторы запроса не берут
+  (`sum(text)`, `sum(boolean)`, `trunc(double precision, integer)`, `interval = integer`,
+  `max(jsonb)`); прежде `decision verify --dwh postgres` кончался exit 2 без отчёта и bundle.
+  Теперь они читаются по правилу ClickHouse-пункта ниже: по SQLSTATE драйвера (`sqlstate`
+  psycopg, `pgcode` psycopg2), не по тексту, который цитирует запрос; 42703 объясняется
+  удалённой колонкой, 42883 — сменившей тип. `EXPLAIN` даёт план без оценки, exact SELECT не
+  отправляется, `max()` колонки времени события переспрашивается одним `count(*)`;
+  любой `42501 insufficient_privilege` exact SELECT'а (живьём — скрытая колонка) —
+  факт-отказ, а не exit 2. Состояние, которое каталог не объясняет, и другие (`42601`,
+  `42804`, сеть) — по-прежнему exit 2. Greenplum/Greengage идут тем же путём, живьём не
+  прогонялись. Дрейф сопоставляется с кодом по виду, а не по месту ошибки в запросе,
+  поэтому evidence плана без оценки на обоих движках теперь говорит «taken to mean the
+  query no longer fits the mart» (verifier 130 утверждал это без оговорки). Verifier
+  130 → 131, check 83 прежний; pilot `2026-11-06-dbt-formula-pin` перезаписан
+  ([spec](docs/specs/unanswered-engine.md)). Попутно: `results=` у
+  `scripts/decision_stand_fixture.py` падал с `TypeError` (сигнатура
+  `recorded_results` сменилась с аттестациями) — исправлено, у фикстуры появился
+  офлайн-тест.
+
+- **Дрейф ClickHouse, которого reference-запрос уже не переживает, — отчёт, а не exit 2.**
+  Колонку, которую запрос называет, удалили или переименовали (`47 UNKNOWN_IDENTIFIER`) или
+  сменили ей тип на такой, который функции запроса не берут (`43 ILLEGAL_TYPE_OF_ARGUMENT`:
+  `Decimal`-колонка стала `Float64` или `String`) — ClickHouse 24.8.14.39 отвечает ошибкой уже
+  на `EXPLAIN ESTIMATE`. Прежде `decision verify --dwh clickhouse` кончался exit 2 без отчёта и
+  bundle, и `dwh.physical` так и не говорил о дрейфе. Теперь, если каталог объясняет код —
+  колонка, которую запрос называет, по `dwh.physical` удалена (для 47) или сменила тип (для
+  43), — план остаётся без оценки (`cost.not_estimated`; evidence называет код и эти колонки),
+  а exact SELECT не отправляется (`cost.not_measured`). Код, который каталог не объясняет, —
+  по-прежнему exit 2, как до S7: колонки запроса как объявлены или дрейф другого вида или чужих
+  колонок (обычно это ошибка запроса гейта или модели), а на ClickHouse и настоящее удаление
+  колонки, когда движок не ответил, что роли можно читать (такую колонку не грейдит и
+  `dwh.physical`). `497 ACCESS_DENIED` exact SELECT'а по скрытой колонке — факт-отказ. `max()`
+  колонки времени события, ответивший 43/47, переспрашивается одним `count()`; если дрейф этой
+  колонки объясняет код, строки остаются посчитанными, и `freshness.unknown` говорит, что они
+  есть и датировать их нечем, иначе — exit 2 (роль, которой отказан и `count()`, —
+  `access.table_unreadable`). Другие коды (`62 SYNTAX_ERROR`, сеть) по-прежнему кончают прогон.
+  Найдено живым тестом выше; PostgreSQL не проверен (S7b). Verifier 129 → 130, check 83 прежний
+  ([spec](docs/specs/unanswered-engine.md)).
+
+- **`impact.products` грейдил изменения, до этого продукта не доходящие.** `resolve_impact`
+  намеренно держит в payload каждое изменение диффа, включая чужие; гейт же грейдил весь
+  список, поэтому change чужой метрики поднимал вердикт продукта и попадал в его секцию
+  «Whose numbers this reaches». Теперь грейдится и рендерится только достигшее продукта
+  (`_reaching`), payload остаётся полным, `semantic.diff` по-прежнему называет change.
+- **`assets`/`results` брались независимо от продукта.** Verified asset чужой метрики
+  инвалидировался на вердикт этого продукта, а его сверка запечатывала в bundle claim о
+  числе, которого продукт не отдаёт. Репозиторий сужается до assets, называющих метрики
+  продукта (версии игнорируются с обеих сторон).
+- **Одинаковый `run_id` тихо перезаписывал запечатанный bundle.** Записанные результаты не
+  входят в idempotency key §7.6 (как и показания движка), поэтому два прогона с разными
+  результатами и разными вердиктами делят `run_id`. `BundleWriter.write` теперь отказывается
+  писать другой bundle под тем же id (`EvidenceConflictError` → exit 2) до записи первого
+  байта; идентичная перезапись остаётся no-op.
+
+### Changed
+
+- **Документация и корень репозитория упорядочены.** Добавлен единый
+  `docs/README.md`; короткий DecisionOps current state отделён от подробного
+  implementation history; завершённые strategy/bootstrap/execution-документы
+  перенесены из корня в `docs/history/`. Локальные pilot и owner-only artifacts
+  получили явные ignore-каталоги и не удалялись.
+
+- `CHECK_VERSION` и `VERIFIER_VERSION` 1 → 2: смысл `impact.products` изменился, и bundle,
+  выданный прежним верификатором, не должен читаться как гранёный сегодняшним правилом.
+
+- **§8.2 шаг 7 — стоимость плана против `budgets` метрики** — `dwh.cost`, последняя из пяти
+  проверок шага. Оценивается план reference-запроса шага 6 против потолка, объявленного самой
+  метрикой. Спрашивается **планом, никогда прогоном**: `EXPLAIN ESTIMATE` на ClickHouse и
+  `EXPLAIN` **без** `ANALYZE` на PG-семействе. Градация:
+  - план дороже объявленного потолка → **review**: число остаётся верным, а выпускать ли
+    метрику дороже, чем объявил её владелец, — его решение (та же градация, что у протухшего
+    источника);
+  - объявленный потолок, на который движок не дал оценки, → **review**: проверка не прошла, а
+    не прошла успешно;
+  - `max_scanned_bytes` и `timeout_ms` → **advisory** `cost.bound_not_estimable`: их не
+    отвечает ни один планировщик, а вывести их (гранулы × ширина колонки; стоимость,
+    переведённая в миллисекунды) значило бы выдать арифметику гейта за ответ движка. Это
+    граница гейта, а не двусмысленность владельца;
+  - потолок у метрики, для которой шаг 6 не скомпилировал запрос, → **advisory**: гэп уже
+    назван там.
+
+  Чтобы это вообще было чем оценивать, `MetricNode` теперь несёт `budgets` (§7.3 и так
+  перечисляет «physical budgets» среди переносимых частей контракта): план компилируется из
+  снапшота, и брать запрос оттуда, а потолок — из файла рядом значило бы оценить релиз по
+  бюджету другой версии метрики. Поле двигает `canonical_digest`, поэтому сдвинутый потолок
+  теперь обязан иметь имя в диффе: `metric.budget_relaxed` (**review** — поднятый или снятый
+  потолок пропускает план, который гейт отказал вчера) и `metric.budget_tightened`
+  (**advisory** — спрятать этим ничего нельзя, а если он отказывает релизу, `dwh.cost`
+  скажет сам).
+
+  Оба движка умеют ответить молчанием, которое читается как ноль, и оба случая
+  воспроизведены на стендах: ClickHouse отдаёт **пустую** оценку, когда план не читает ни
+  одного парта — тривиальный `count()` из метаданных и витрина на `ENGINE = Memory`, чьи
+  строки запрос действительно прочитал; PostgreSQL считает строки скан-узла **после**
+  фильтра (`WHERE store_id = 1` — 600 → 30) и вообще не строит скан-узел для витрины,
+  опустошённой row security (`One-Time Filter: "false"`). Читается скан-узел, а не корень
+  плана: корневой `Aggregate` на стенде сказал `Plan Rows: 60` над `Seq Scan`, сказавшим 600.
+  Прогнано вживую на обоих стендах: потолок 500 → `cost.over_budget`, потолок 1000 →
+  `cost.within_budget`.
+
+  В гейте больше нет ни одного `check.not_implemented` — конструктор удалён; сам код остался
+  в словаре `verification/summary.py`, потому что bundle, записанный прежней версией
+  верификатора, всё ещё его несёт.
+
+- **§8.2 шаг 7 — security: что роль реально достаёт** — последняя из четырёх проверок шага,
+  `dwh.security`. Она спрашивает про досягаемость роли, через которую собрано evidence:
+  сузила ли row-политика прочитанные числа и есть ли у роли доступ к колонкам, из которых
+  сделано само число. Градация:
+  - колонка метрики, недоступная роли, → **block**: метрику там не посчитать (и это не то же
+    самое, что «колонки нет»);
+  - включённый row security, при котором роль не проходит ни одной permissive-политики, →
+    **block**: витрина отдаёт пустой ответ **и не отдаёт ошибки**;
+  - политика, применяющаяся к сессии, → **review**: числа настоящие, но это числа
+    подмножества, а выпускать ли продукт на подмножестве — решение владельца;
+  - роль, обходящая row security (superuser / `BYPASSRLS`), при живых политиках → **review**:
+    гейт прочитал строки, которых потребители не видят;
+  - объявленный `confidential`/`restricted`, ничем не ограниченный для этой роли, →
+    **review** (§10.1: ограничение исполняет роль или детерминированный rewrite, а не
+    документ); `internal` объявлением не считается — это дефолт непроставленного поля;
+  - недоступный access-каталог → **review**: «не вижу политику» не значит «её нет».
+  Механизмы у движков разные, и это установлено на стендах: ClickHouse исполняет
+  `GRANT SELECT(col)` и **прячет** неразрешённые колонки из `system.columns`, поэтому
+  досягаемость читается из `system.grants` (включая partial revoke), и применяет политику
+  только к тем, кого она называет; PostgreSQL показывает все колонки в `pg_attribute`,
+  отвечает `has_column_privilege`, а при `relrowsecurity` требует хотя бы одну
+  permissive-политику — иначе витрина пуста. Политики обоих движков вешаются и на роли,
+  поэтому членство решают enabled roles сессии.
+  Проверено вживую: `security.unfiltered` под `gate_ro` на `dm`; `security.row_filtered` под
+  заведённой на время прогона политикой; `security.column_unreadable` (**block**) под
+  `gate_sec`, у которого отобрана одна колонка, — при `physical.as_declared` в том же
+  прогоне; на PostgreSQL — `security.column_unreadable` + `security.row_filtered` на
+  `dm_sec.sales_daily` и `security.row_policy_denies_all` (**block**) на `dm_sec.denied`.
+
+### Fixed
+
+- **Роль с колоночными грантами больше не блокирует релиз по витрине, которую читает.**
+  `has_table_privilege(…, 'SELECT')` у такой роли на PostgreSQL 14.24 равен `false`, и гейт
+  выносил `access.table_unreadable` (**block**) по витрине, из которой сам только что читал
+  строки. Читаемость спрашивается через `has_any_column_privilege`, а какие именно колонки
+  вне досягаемости — находка `dwh.security`.
+- **Колонка без гранта на ClickHouse больше не называется отсутствующей.** Движок прячет
+  неразрешённые колонки из `system.columns`, поэтому «нет колонки» и «нет гранта» выглядели
+  одинаково, и `dwh.physical` выносил `physical.column_absent` (**block**) по колонке,
+  которая в витрине есть. Physical молчит там, где security говорит «нет гранта».
+- **Отказ движка больше не роняет прогон.** Вопросы про доступ — ровно то место, где у
+  read-only роли кончаются привилегии; исключение оттуда превращало факт о среде в упавший
+  прогон. Отказ (`ACCESS_DENIED`, SQLSTATE 42501/42P01/3F000) читается как «движок не
+  ответил», а всё остальное — оборванное соединение прежде всего — по-прежнему поднимается
+  наверх: пустой ответ мёртвого соединения не должен читаться как «политик нет».
+- **`dwh.freshness` больше не хвалит пустоту.** Витрину, которую опустошил row security,
+  роль читает, но датировать её нечем; проверка молчит (block уже сказан), а сводка пишет
+  `freshness.not_run` вместо «все витрины внутри окна».
+
+### Added
+
+- **§8.2 шаг 7 — physical: держит ли движок то, что заявляет модель** — третья проверка
+  шага, `dwh.physical`. Сравнивается ровно то, что модель утверждает, и только там, где
+  движок ответил:
+  - колонка, из которой сделано число метрики (`MetricNode.fields` — термы формулы, ключи
+    grain, event time), которой на движке нет → **block**: метрику там просто не посчитать;
+  - тип, который разъехался с объявленным → **review**. Это хуже отсутствия: точная форма
+    governed ratio из шага 6 выведена именно из объявленного типа, и `Float64` вместо
+    `Decimal(18, 2)` означает, что гейт рассуждал не про то число, которое вернёт запрос;
+  - разъехавшаяся раскладка (`table_engine`, sorting key, partition key, distribution key)
+    → **review**: само число не меняется, но план и advisor спорили про таблицу, которой
+    нет.
+  Типы читаются из каталога каждого движка в том же написании, в каком записана модель:
+  `system.columns.type` на ClickHouse и `format_type(atttypid, atttypmod)` на
+  PG-семействе — той же функцией, которой типы писал greenplum-интроспектор. Косметика не
+  считается дрейфом: `Decimal(18, 2)` и `decimal(18,2)` — один тип.
+  **Раскладка репортится только там, где проверена.** ClickHouse отдаёт engine/sorting
+  key/partition key из `system.tables`; распределение и уровни партиций Greenplum живут в
+  каталогах, которых нет ни на одном доступном стенде (`gp_distribution_policy`,
+  `pg_partition`), поэтому PG-путь оставляет раскладку **не отвеченной**, и проверка
+  сравнивает ничего вместо того, чтобы выдумать несовпадение.
+  Проверено вживую: засеянная витрина совпадает с моделью → `physical.as_declared` на обоих
+  стендах; отдельная база `dm_drift`, где `revenue` действительно `Float64`, а ORDER BY
+  действительно `(store_id, date)` → `physical.type_drift` + `physical.layout_drift` в одном
+  вердикте. Не реализованной у шага 7 осталась только security-половина (row/column policy и
+  классификация).
+
+- **§8.2 шаг 7 — access и freshness против живого движка** — шаг, который до сих пор
+  целиком выходил как `check.not_implemented`, наполовину реализован и проверен на двух
+  локальных стендах (ClickHouse 24.8.14.39 и PostgreSQL 14.24, оба в WSL, оба под
+  read-only ролью). `auto_bi decision verify … --dwh clickhouse|greengage` спрашивает
+  движок, гейт выносит две новые проверки:
+  - `dwh.access` — роль, под которой пришёл гейт, умеет только читать, и каждая витрина
+    в скоупе продукта на этом движке есть и читается. Роль, которая может писать, — **block**
+    (инвариант 3: числа, снятые ролью, способной изменить витрину, не то evidence, за которое
+    отвечает bundle); отсутствующая или нечитаемая витрина — тоже block;
+  - `dwh.freshness` — возраст самой свежей строки против объявленного продуктом
+    `freshness_max_age`, измеренный от `created_at` прогона, а не от стенных часов (иначе
+    вердикт зависел бы от времени рендера отчёта). Протухший источник — **review**: сам
+    change не сломан, а решение выпускать ли продукт на старых данных — владельца.
+  **Гейт никогда не проверяет запись записью.** Read-only определяется ответом самого
+  движка: на ClickHouse решает профиль (`readonly=1` заставляет сессию отказать даже
+  пользователю, которому `users.xml` выдал `GRANT INSERT … ON *.*` — по грантам корректная
+  read-only роль читалась бы как пишущая), на PostgreSQL — `has_table_privilege` по
+  витринам скоупа плюс отдельная проверка на суперпользователя (привилегии к нему не
+  применяются). Ещё один факт со стенда: `max(Date)` по пустой таблице ClickHouse — это
+  `1970-01-01`, а не NULL, поэтому вместе с чтением едет `rows_seen`, и пустая витрина даёт
+  `freshness.unknown`, а не «протухла на пятьдесят лет».
+  Разделение на чистый слой (`verification/environment.py` — вопросы, факты, правила) и IO
+  (`verification/environment_probe.py` поверх того же read-only `RunQuery`, что и
+  интроспекция, SQL-guard и advisor) оставляет гейт без сокета: он оценивает факты, и они же
+  ложатся в bundle как данные, а не как строчка лога. Прогон без `--dwh` остаётся полностью
+  офлайновым и говорит `check.not_configured` — это ответ, а не пропуск. Physical и security
+  половины шага 7 по-прежнему `check.not_implemented`.
+
+- **§8.2 шаг 6 — governed ratio компилируется и на PostgreSQL-семействе** — вторая форма
+  деления, проверенная на живом движке: PostgreSQL 14.24 (`postgresql-14` в WSL Ubuntu
+  22.04) — реализация `numeric`, которую наследуют Greenplum и Greengage. Гейт печатает
+  `TRUNC(SUM(num) * 1.000000 / NULLIF(SUM(den), 0), <precision>)`. Множитель — не
+  косметика: Postgres выбирает масштаб деления по операндам, целясь примерно в 16 значащих
+  цифр, поэтому на большом частном `TRUNC(a / b, 18)` дописывает нули, которых деление не
+  считало (`1000000000000.00 / 3.00` при 18 → `…33333333` + девять нулей); умножение
+  делимого на точную единицу с объявленным числом знаков поднимает его масштаб, не трогая
+  значение, и цифры становятся настоящими — приведение к `numeric(_, p)` вместо этого
+  округляет. При `precision` 0 множитель всё равно с десятичным знаком: `/` над двумя
+  целочисленными термами — целочисленное деление, и оно усекает раньше, чем `TRUNC` увидит
+  число. Больше ничего охранять не нужно: это `/` уважает NULL-маску, поэтому
+  `NULLIF(den, 0)` закрывает нулевой знаменатель, а NULL-терм занулевает свою строку сам;
+  `TRUNC` усекает к нулю — как и `divideDecimal`, так что одно governed-число читается
+  одинаково на обоих движках. Движок теперь читается по имени, а не по диалекту
+  (`engine.is_known_engine`): `sqlglot_dialect` подставляет v1-движок незнакомому имени —
+  честное допущение для `SUM(col)` и никакое для формы, которая вся состоит из
+  engine-specific синтаксиса, поэтому незнакомый движок получает `sql.ratio_unverified`, а
+  не ClickHouse-форму. Типы термов читаются в словаре своего семейства (`numeric`/`decimal`
+  и `integer`/`bigint`/… — целыми именами: префиксом `interval` прочёлся бы как целое).
+  Проверено текстом, который печатает компилятор, против засеянной `dm.sales_daily`:
+  300/400 → `0.750000`, нулевой и отсутствующий знаменатель → `NULL`, −200/300 →
+  `-0.666666` (те же числа, что на ClickHouse-стенде), большое частное при `precision` 18 →
+  `333333333333.333333333333333333` против `333333333333.333333330000000000` без
+  множителя; `EXPLAIN` разбирает запрос.
+
+- **§8.2 шаг 6 — governed ratio компилируется на ClickHouse** — форма деления,
+  которую «негде было подтвердить», проверена на живом движке того же пина
+  (`clickhouse local` из релиза `v24.8.14.39-lts`, в который резолвится
+  `clickhouse/clickhouse-server:24.8` из `docker-compose.yml`). Гейт печатает
+  `CASE WHEN COALESCE(SUM(den), 0) = 0 THEN NULL ELSE divideDecimal(SUM(num),
+  COALESCE(nullIf(SUM(den), 0), 1), <precision>) END`: точное деление с усечением к нулю
+  на объявленной `unit.precision` (у неё впервые появился потребитель), нулевой или
+  отсутствующий знаменатель → NULL в строке. Охрана вокруг вызова не декоративная —
+  `divideDecimal` читает значения знаменателя под NULL-маской, поэтому привычный
+  `NULLIF(den, 0)` сам по себе даёт `ILLEGAL_DIVISION`; аргументы обязаны быть Decimal,
+  поэтому счётные и целочисленные термы приводятся (nullable — nullable-приведением, иначе
+  группа из одних NULL падает на CAST). Вне ClickHouse форма не подтверждена →
+  `sql.ratio_unverified` с названным диалектом; неточный терм (AVG, Float-колонка) →
+  `sql.ratio_inexact_term`; необъявленная в модели колонка → `sql.term_undeclared`.
+  Фикстурный продукт больше не даёт `sql.not_compiled`, и шаг 6 ушёл из раздела «что не
+  сделано» в отчёте владельцу.
+
+- **§8.2 шаг 6 — reference SQL метрики** — `auto_bi/verification/sql_contract.py`:
+  гейт компилирует определение каждой метрики продукта на её же grain (без окна,
+  фильтра и top-N — это принадлежит продукту и прогону, не метрике) для base и
+  candidate, кладёт обе стороны в bundle и показывает, какие запросы поехали.
+  Граница узкая намеренно: typed aggregate компилируется, governed ratio — нет
+  (десятичное деление зависит от движка; chart-путь отвечает на это Float64-приведением,
+  которое governed-метрика с объявленной precision наследовать не должна, а стенда для
+  подтверждения точной формы нет), external/reviewed-SQL не пере-выводится. Все находки
+  advisory — почему метрика поехала, уже оценили diff и impact. Агрегат берётся из
+  `agent/sqlgen.aggregate_expr`: та же функция, что у chart-пути, вынесена из
+  `_measure_expr`, чтобы новая агрегация не компилировалась по-разному для дашборда и
+  для evidence, который его проверяет. `check.not_implemented` теперь остался только у
+  шага 7 (исполнение против DWH).
+
+- **`reports/summary.md` — производный отчёт для владельца внутри bundle** —
+  `auto_bi/verification/summary.py`: единственный артефакт layout §9.2, написанный
+  для человека. Порядок — владельческий, не машинный: что блокирует релиз → чьи
+  числа задеты (метрика, дашборд, владелец, и почему review поднялся до block) →
+  что решает человек → что прогон НЕ сделал → таблица всех check'ов. Отчёт
+  пересказывает уже оценённые findings и не вводит собственных; каждый check
+  попадает ровно в один раздел, чтобы одна находка не читалась как две.
+  `result.no_expectations` вынесен в «что не сделано», а не оставлен среди
+  advisory: гейт, который не сравнил ни одного числа, ничего про числа не
+  проверил. `evidence.bundle` в отчёте отсутствует намеренно — эта проверка судит
+  артефакт, внутрь которого отчёт запечатан, и решается после запечатывания.
+  Читается через `auto_bi decision evidence <path> --artifact report-summary-md`.
+
+- **`auto_bi decision evidence` — чтение написанного evidence bundle** —
+  `auto_bi/evidence/inspect.py` (`inspect_bundle` пересчитывает digest манифеста из
+  байтов на диске, перепроверяет каждый content address и отдаёт `BundleInspection`
+  с вердиктом; `read_artifact` выдаёт один payload) и `locate_evidence` в
+  `auto_bi/decision/use_cases.py` (адресом может быть и каталог evidence, и один
+  run-каталог внутри; несколько run'ов — команда называет их и просит `--run`, а не
+  выбирает сама). Вердикт про целостность, а не про релиз: целый bundle выходит с
+  `0`, даже если внутри записан `block`. Два отказа сознательные — `restricted`
+  payload не печатается никогда (§10.2), а артефакт, который больше не хешируется в
+  свой адрес, не выдаётся вовсе. `--expect-digest` проверяет, что это именно тот
+  bundle, под которым публиковался вердикт: без него «bundle проходит проверку»
+  означает лишь внутреннюю согласованность каталога.
+
+- **`evidence.run_id_mismatch`** (`verify_bundle`) — скопированный bundle остаётся
+  внутренне согласованным (манифест каноничен, артефакты хешируются), врёт только его
+  расположение. Review, а не block: читать такой bundle можно, но принадлежность к
+  run'у, под которым он лежит, ничем не подтверждена.
+
+- **`auto_bi decision verify` — one-shot Analytics Release & Evidence Gate** —
+  `auto_bi/verification/release_gate.py` (последовательность §8.2 для одного
+  продукта: validate → snapshots → gaps → diff → impact → инвалидация assets →
+  reconcile → BI compile → evidence bundle → повторная верификация bundle) и
+  `auto_bi/decision/use_cases.py` (единственный слой, читающий ФС). Exit code
+  несёт вердикт (0/3/4), usage-ошибка — 2. `operational_status` и `verdict` —
+  разные поля, и отчёт не валидируется, если их смешать (инвариант 8). Шаги
+  6–7 (compile SQL, DWH-проверки) объявлены `check.not_implemented`, а не
+  пропущены молча; недоступный кандидатный результат — review, не pass. `run_id`
+  детерминирован из idempotency key §7.6, поэтому одинаковый вход даёт
+  байт-в-байт одинаковый bundle. Сценарии §15.3: четыре breaking seeds (formula,
+  grain, event time, removed field) блокируются с точным impact до владельца и
+  дашборда, presentation-only change не блокирует, прогон не открывает сокет и не
+  зовёт ни один метод BI-клиентов.
+
+- **Pure BI compile contracts** — `auto_bi/verification/bi_contract.py`:
+  compile-only порт `BIContractCompiler` (§8.5) и реализации для Superset и
+  DataLens, которые компилируют `DashboardSpec` в нативные payload'ы, не трогая BI.
+  Второй реализации payload-логики нет — компиляторы зовут те же module-level
+  функции, что и `BIAdapter.build()` (`build_form_data`, `build_position_json`,
+  `build_native_filter_configuration`, `build_dataset_payload`,
+  `build_chart_shared`, `build_selectors`, `build_dashboard_data`), и тест
+  сравнивает объекты, а не результаты. Контракт content-addressed: payload'ы
+  исключены из dump, digest артефакта считается JCS с `allow_float=True` (чужие
+  JSON-документы), digest контракта адресует своё собственное тело. Build-time
+  warning'и адаптеров стали типизированными findings: `bi.filter_unwired`,
+  `bi.filter_partial_scope`, `bi.viz_degraded`, `bi.viz_unsupported`. Ноль remote
+  mutation доказан socket-запретом и mutation-spy на каждом глаголе обоих клиентов.
+
+- **`adapters/superset/derive.py`** — четыре model-производные входа
+  `build_form_data` (`metric_labels`, `temporal_alias`, `heatmap_y_pad`,
+  `human_label`/`measure_currency`) вынесены из `SupersetAdapter` в чистый модуль,
+  чтобы адаптер и compile-контракт считали их одной функцией. Методы адаптера
+  остались тонкими делегатами — поведение и v1-тесты не изменились.
+
+- **Evidence writer и artifact store** — `auto_bi/evidence/store.py` (порт
+  `ArtifactStore` + файловый адаптер с конфайнментом и отказом на symlink-компоненте)
+  и `auto_bi/evidence/manifest.py` (`BundleWriter` по layout §9.2, `read_bundle`,
+  `verify_bundle`). Одинаковый вход даёт байт-в-байт одинаковый манифест и digest;
+  claim без артефакта падает до записи; restricted-payload не попадает в публичный
+  манифест.
+
+- **Verified assets и typed result comparator** — `auto_bi/verification/reconcile.py`
+  (сравнение по §8.4 с тремя исходами: `equivalent`/`different`/`insufficient`;
+  схема до значений, матчинг по business key, точный decimal, float только с
+  объявленным tolerance, различение `NULL`/ноль/отсутствие строки/пустого
+  результата, truncated не доказывает эквивалентность) и
+  `auto_bi/verification/repository.py` (`VerifiedAsset` + репозиторий с
+  инвалидацией по semantic diff: `asset.stale_snapshot`, `asset.metric_changed`,
+  `asset.metric_removed`).
+
+- **Ужесточение границ contract kernel** (по итогам adversarial-ревью) — `\Z`
+  вместо `$` в рукописных regex (хвостовой `\n` больше не проходит в id, ref,
+  digest, decimal и slug); JCS-слой печатает оба нуля как `0` и округляет большие
+  целые к double по RFC 8785 §3.2.2.3, а negative zero отклоняет contract-граница;
+  `EvidenceBundle.digest()` перевалидирует собранный bundle; целочисленные поля
+  ограничены `2**53-1`; path confinement перешёл на whitelist сегментов (NUL,
+  NTFS-ADS `name:stream`, хвостовые точки/пробелы, device-имена, bidi-override);
+  `source_revision` отвергает `HEAD`/`main`/`latest`; decimal-строки нормализуются,
+  `budgets: {}` ≡ отсутствие бюджетов; дубликаты в `scope.metrics`/`dimensions`
+  запрещены схемой.
+
+- **Semantic snapshot, diff и impact** — `auto_bi/semantic/gateway.py`
+  (`NativeModelSource`: `model.yaml` + metric contracts → content-addressed
+  `SemanticSnapshot` с явными `SemanticGap`), `auto_bi/semantic/diff.py`
+  (классификация изменений по §8.3: removal и weakened policy → block,
+  formula/grain/time/unit/additivity → review, label → advisory) и
+  `auto_bi/decision/impact.py` (metric → dashboard → product → owner плюс
+  эскалация review→block, когда от метрики зависит governed product).
+
+- **`auto_bi decision validate`** — offline cross-contract проверка Git-tracked
+  YAML: продукты резолвятся против metric contracts (`metric_ref.unknown`,
+  `metric_ref.version_mismatch`, `metric_ref.duplicate`, `dimension.not_allowed`,
+  lifecycle и `policy.mismatch`), без DWH/BI/LLM. Exit codes зафиксированы
+  contract-тестом (`0` pass/advisory, `2` runtime-usage error, `3` needs_review,
+  `4` block); `--json` печатает отчёт и ничего больше. Verdict считается из
+  severity находок в `auto_bi/verification/model.py`.
+
+- **DecisionOps contract kernel** — первый исполняемый слой нового control plane
+  (`DECISIONOPS_ARCHITECTURE.md` §7, §9.1): `auto_bi/decision/spec.py`
+  (`DecisionProductSpec`), `auto_bi/semantic/metric_contract.py` (`MetricContract`),
+  `auto_bi/evidence/model.py` (`EvidenceBundle`/`Claim`/`EvidenceArtifact`) плюс
+  shared kernel `auto_bi/refs.py` (stable id vs version-pinned ref) и
+  `auto_bi/scalars.py` (decimal-строки, ISO-8601 duration, RFC 3339 UTC, `sha256:`).
+  `auto_bi/evidence/canonical.py` — RFC 8785 JCS + SHA-256 content address, проверен
+  на официальном векторном корпусе (`tests/fixtures/jcs`), а не на
+  `json.dumps(sort_keys=True)`. Аддитивно: `DashboardSpec`, `BIAdapter` и схема Store
+  не менялись.
 
 - **Direct Mistral provider** — `AUTO_BI_LLM_PROVIDER=mistral` routes through
   Mistral Chat Completions with standard `MISTRAL_API_KEY` (or the
@@ -15,6 +1558,16 @@
 - **Local BYOK runbook** — `docs/LOCAL_BYOK.md`: первый локальный запуск после
   clone со своим `ANTHROPIC_API_KEY` (ClickHouse + Superset через Compose,
   `uv run auto_bi serve`, health/ready, остановка и troubleshooting).
+
+### Security
+
+- **`FilesystemArtifactStore` проверяет и сам run id** — конфайнмент путей внутри
+  bundle был укоренён *в* каталоге run'а, поэтому проверял всё, кроме имени самого
+  каталога: `run_id` вида `../..` сдвигал корень, и любой путь внутри резолвился
+  «правильно» уже совсем не туда. Теперь run id обязан быть одним обычным именем
+  (той же формы, что `scalars.Slug`, которой манифест его и объявляет). До появления
+  `decision evidence --run` все вызывающие были внутренними, так что известного
+  вектора не было — закрыто до того, как значение стало приходить снаружи.
 
 ## [0.5.0] - 2026-07-29
 
@@ -182,8 +1735,9 @@
   `docs/ENV_REFERENCE.md` from `Settings` (`scripts/generate_env_reference.py`,
   `--check` mode); `tests/test_docs_as_code.py` (env-ref freshness, `.env.example`
   covers every Settings key, internal markdown link resolve, golden/advisor counts
-  ↔ 53 fixtures). USER_GUIDE §6 / README / PLAN / ARCHITECTURE / root `plan.md`
-  point at CURRENT_STATE + ENV_REFERENCE. Follow-up closes the remaining docs
+  ↔ 53 fixtures). USER_GUIDE §6 / README / PLAN / ARCHITECTURE and the former root
+  plan (now [archived](docs/history/AUTO_BI_IMPLEMENTATION_PLAN.md)) point at
+  CURRENT_STATE + ENV_REFERENCE. Follow-up closes the remaining docs
   polish: `ARCHITECTURE.md` is current design, the original delivery narrative
   lives in `ARCHITECTURE_HISTORY.md`, and all Settings keys carry
   `Field(description=...)` metadata used by the generated reference.
@@ -951,7 +2505,6 @@ Phase 0–4 и последующего hardening-трека и вводит с�
   (после отсечения детальной таблицы по `max_charts`), растягивается на всю ширину — нет
   «рваного» полупустого ряда.
 
-[Unreleased]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.5.0...HEAD
 [0.5.0]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/brownjuly2003-code/Auto_BI/compare/v0.3.0...v0.3.1

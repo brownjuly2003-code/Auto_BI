@@ -7,6 +7,7 @@ defaults, version badge drift, etc.) without requiring a full docs generator yet
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 from auto_bi import __version__
@@ -65,6 +66,24 @@ def test_package_version_consistent() -> None:
     assert m.group(1) == __version__
     # README badge mentions Python, not a hard-coded stale package version required;
     # OpenAPI uses __version__ (covered in test_api).
+
+
+def test_the_fork_does_not_pass_for_the_published_baseline() -> None:
+    """ADR 0009: a version after the published 0.5.0, no URLs of the baseline.
+
+    A PEP 440 dev release while the work goes on; ADR 0010 F6 closes it as the local
+    0.6.0, and a release version needs its own dated CHANGELOG section.
+    """
+    project = tomllib.loads(PYPROJECT)["project"]
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(\.dev\d+)?", project["version"])
+    assert m, f"{project['version']} is neither a release nor a dev release"
+    assert tuple(int(part) for part in m.groups()[:3]) > (0, 5, 0), project["version"]
+    if m.group(4) is None:
+        changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
+        heading = rf"^## \[{re.escape(project['version'])}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
+        assert re.search(heading, changelog, flags=re.M), "no CHANGELOG section"
+    assert "urls" not in project, "the fork has no URL of its own (ADR 0009)"
+    assert "DecisionOps" in project["description"]
 
 
 def test_env_example_has_critical_flags() -> None:

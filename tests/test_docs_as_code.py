@@ -1,4 +1,4 @@
-"""plan_sol step 11: docs-as-code ratchets (env ref, links, eval counts)."""
+"""plan_sol step 11: docs-as-code ratchets (env ref, links, eval counts, DecisionOps claims)."""
 
 from __future__ import annotations
 
@@ -19,11 +19,14 @@ from auto_bi.eval.cases import (
     GP_ADVISOR_CASES,
     GP_GOLDEN_CASES,
 )
+from auto_bi.verification.release_gate import CHECK_VERSION, VERIFIER_VERSION
 
 REPO = Path(__file__).resolve().parents[1]
 DOCS = REPO / "docs"
 ENV_REF = DOCS / "ENV_REFERENCE.md"
 CURRENT_STATE = DOCS / "CURRENT_STATE.md"
+DECISIONOPS_CURRENT_STATE = DOCS / "DECISIONOPS_CURRENT_STATE.md"
+DECISIONOPS_ARCHITECTURE = DOCS / "DECISIONOPS_ARCHITECTURE.md"
 PROJECT_CLOSURE = DOCS / "PROJECT_CLOSURE.md"
 ARCHITECTURE = DOCS / "ARCHITECTURE.md"
 ARCHITECTURE_HISTORY = DOCS / "ARCHITECTURE_HISTORY.md"
@@ -43,7 +46,6 @@ PUBLIC_MD = [
     REPO / "CHANGELOG.md",
     REPO / "CONTRIBUTING.md",
     REPO / "SECURITY.md",
-    REPO / "plan.md",
     *sorted(DOCS.rglob("*.md")),
 ]
 
@@ -411,6 +413,32 @@ def test_mypy_strict_package_gate_in_ci_and_slo() -> None:
         assert obsolete not in slo, f"obsolete SLO contract text still present: {obsolete!r}"
 
 
+def test_the_mypy_gate_names_the_platforms_it_checks() -> None:
+    """mypy checks one platform: CI runs it on Linux, once more for Windows, and the docs
+    tell a contributor on another platform how to check what CI checks."""
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    steps = [
+        (job["runs-on"], step["run"])
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if "mypy" in str(step.get("run", ""))
+    ]
+    assert {runner for runner, _ in steps} == {"ubuntu-latest"}
+    windows = "uv run --with mypy --with types-PyYAML mypy --platform win32 --strict auto_bi"
+    assert [run for _, run in steps if "--platform" in run] == [windows]
+
+    slo = SLO.read_text(encoding="utf-8")
+    assert "`mypy --platform linux --strict auto_bi`" in slo
+    assert "`mypy --platform win32 --strict auto_bi`" in slo
+    contributing = CONTRIBUTING.read_text(encoding="utf-8")
+    for line in (
+        windows,
+        "uv run --with mypy --with types-PyYAML mypy --platform linux auto_bi",
+        "uv run --with mypy --with types-PyYAML mypy --platform linux --strict auto_bi",
+    ):
+        assert line in contributing
+
+
 def test_runtime_evidence_harness_is_wired_without_claiming_production_slo() -> None:
     """CI samples must remain descriptive and distinct from production SLO evidence."""
     assert (REPO / "scripts" / "collect_runtime_evidence.py").is_file()
@@ -479,6 +507,74 @@ def test_runtime_evidence_harness_is_wired_without_claiming_production_slo() -> 
         assert "process RSS" in text
         assert "/proc/1/status" in text
         assert "Docker cgroup memory usage" in text
+
+
+def test_ci_runs_the_decisionops_live_check_against_the_pinned_clickhouse() -> None:
+    """The live test skips where `AUTO_BI_LIVE_CH_HOST` is unset, so a CI that stopped setting
+    it, or stopped naming the file, would turn S7's evidence into a silent skip."""
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["integration"]["steps"]
+    names = [step.get("name") for step in steps]
+    start = names.index("Start a throwaway ClickHouse for the DecisionOps live check")
+    live = names.index("Integration tests — DecisionOps verify against live ClickHouse")
+    stop = names.index("Stop the throwaway ClickHouse")
+    stand = names.index("Bring up the stand (ClickHouse + Superset)")
+    assert start < live < stop < stand
+
+    compose = yaml.safe_load((REPO / "docker-compose.yml").read_text(encoding="utf-8"))
+    image = compose["services"]["clickhouse"]["image"]
+    server = steps[start]["run"]
+    assert server.split()[-1] == image
+    assert "-p 127.0.0.1:8124:8123" in server
+    assert "CLICKHOUSE_DB" not in server  # the test refuses a server that already has `dm`
+
+    env = steps[live]["env"]
+    assert (env["AUTO_BI_LIVE_CH_HOST"], env["AUTO_BI_LIVE_CH_PORT"]) == ("127.0.0.1", "8124")
+    assert {"AUTO_BI_LIVE_CH_ADMIN_USER", "AUTO_BI_LIVE_CH_ADMIN_PASSWORD"} <= set(env)
+    run = steps[live]["run"]
+    assert "uv run pytest -m integration tests/test_decision_live_clickhouse.py" in run
+    assert "--deselect" not in run and " -k " not in run
+    # a server that never came up fails the step with its log, not with 12 connection errors
+    waited = run.split("uv run pytest", 1)[0]
+    assert "docker logs decision-live-ch" in waited and "exit 1" in waited
+
+    assert steps[stop]["if"] == "always()"
+    assert "docker rm -f decision-live-ch" in steps[stop]["run"]
+
+
+def test_ci_runs_the_decisionops_live_check_against_postgres_of_the_recorded_major() -> None:
+    """The PostgreSQL half (S7b) skips as silently where `AUTO_BI_LIVE_PG_HOST` is unset; its
+    server is the major version the test names (`MAJOR`; it takes the 9.4 kernel besides) and
+    the spec records the answers of."""
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["integration"]["steps"]
+    names = [step.get("name") for step in steps]
+    start = names.index("Start a throwaway PostgreSQL for the DecisionOps live check")
+    live = names.index("Integration tests — DecisionOps verify against live PostgreSQL")
+    stop = names.index("Stop the throwaway PostgreSQL")
+    stand = names.index("Bring up the stand (ClickHouse + Superset)")
+    assert start < live < stop < stand
+
+    live_test = (REPO / "tests" / "test_decision_live_postgres.py").read_text(encoding="utf-8")
+    major = re.search(r"^MAJOR = (\d+)$", live_test, re.MULTILINE)
+    assert major, "tests/test_decision_live_postgres.py no longer names the major it asserts"
+    server = steps[start]["run"]
+    assert server.split()[-1] == f"postgres:{major.group(1)}"
+    assert "-p 127.0.0.1:5433:5432" in server
+    assert "POSTGRES_DB" not in server  # the test refuses a server that already has its database
+
+    env = steps[live]["env"]
+    assert (env["AUTO_BI_LIVE_PG_HOST"], env["AUTO_BI_LIVE_PG_PORT"]) == ("127.0.0.1", "5433")
+    assert {"AUTO_BI_LIVE_PG_ADMIN_USER", "AUTO_BI_LIVE_PG_ADMIN_PASSWORD"} <= set(env)
+    run = steps[live]["run"]
+    assert "uv run pytest -m integration tests/test_decision_live_postgres.py" in run
+    assert "--deselect" not in run and " -k " not in run
+    waited = run.split("uv run pytest", 1)[0]
+    assert "docker logs decision-live-pg" in waited and "exit 1" in waited
+    assert "psql -h 127.0.0.1" in waited  # the socket answers before the final server is up
+
+    assert steps[stop]["if"] == "always()"
+    assert "docker rm -f decision-live-pg" in steps[stop]["run"]
 
 
 def test_current_state_and_closure_match_closed_step12_gates() -> None:
@@ -571,3 +667,84 @@ def test_env_reference_documents_security_defaults(attr: str, expected: object) 
         assert want in cell, f"{env} default cell {cell!r} should contain {want}"
     else:
         assert str(expected) in cell
+
+
+def test_decisionops_public_docs_describe_implemented_dwh_checks() -> None:
+    """README and USER_GUIDE must name live §8.2 step-7 checks, not the retired stub."""
+    implemented = (
+        "dwh.access",
+        "dwh.freshness",
+        "dwh.physical",
+        "dwh.security",
+        "dwh.cost",
+    )
+    for path in (README, USER_GUIDE):
+        text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(REPO).as_posix()
+        assert (
+            "check.not_implemented" not in text
+        ), f"{rel} still claims check.not_implemented as current behaviour"
+        missing = [check for check in implemented if check not in text]
+        assert not missing, f"{rel} missing implemented dwh checks: {', '.join(missing)}"
+
+
+def test_decisionops_state_stays_a_short_summary() -> None:
+    """Behaviour lives in specs, design in the architecture, slices in the status log."""
+    size = len(DECISIONOPS_CURRENT_STATE.read_bytes())
+    assert size <= 10 * 1024, f"DECISIONOPS_CURRENT_STATE.md is {size} bytes, over 10 KiB"
+
+
+def test_decisionops_state_names_known_residual_boundaries() -> None:
+    """The not-implemented inventory must not imply broader coverage than the wedge has."""
+    text = DECISIONOPS_CURRENT_STATE.read_text(encoding="utf-8")
+    section = re.search(r"## Что ещё не реализовано\s*(.*?)(?=\n## )", text, re.DOTALL)
+    assert section is not None
+    residual = section.group(1)
+    required = (
+        # Impact now resolves to the tile, so the honest residual is what that resolution
+        # still cannot read — an operator SQL chart — not the whole link.
+        "chart.opaque_sql",
+        "verified-asset SQL",
+        "Ossie",
+        "MetricFlow",
+        "column-level lineage",
+    )
+    missing = [item for item in required if item not in residual]
+    assert not missing, "DecisionOps residual inventory missing: " + ", ".join(missing)
+
+
+def test_decisionops_docs_pin_the_offline_investigation_alpha_boundary() -> None:
+    """Architecture and status must describe the same implemented, non-production slice."""
+    required = (
+        "auto_bi decision investigate",
+        "`plan.json`",
+        "`results.json`",
+        "`brief.json`",
+        "`brief.md`",
+        "`max_queries=0`",
+        "`exploratory`",
+        "human/design-partner",
+    )
+    for path in (DECISIONOPS_CURRENT_STATE, DECISIONOPS_ARCHITECTURE):
+        text = path.read_text(encoding="utf-8")
+        missing = [token for token in required if token not in text]
+        assert not missing, f"{path.name} missing investigation boundary: {', '.join(missing)}"
+
+    state = DECISIONOPS_CURRENT_STATE.read_text(encoding="utf-8")
+    assert "реализация начата" not in state
+
+
+@pytest.mark.parametrize(
+    "path",
+    (DECISIONOPS_CURRENT_STATE, DECISIONOPS_ARCHITECTURE),
+)
+def test_decisionops_evidence_versions_match_runtime(path: Path) -> None:
+    """Maintained DecisionOps docs must identify the evidence format in current use."""
+    text = path.read_text(encoding="utf-8")
+    rel = path.relative_to(REPO).as_posix()
+    assert (
+        f"`VERIFIER_VERSION={VERIFIER_VERSION}`" in text
+    ), f"{rel} does not name runtime VERIFIER_VERSION={VERIFIER_VERSION}"
+    assert (
+        f"`CHECK_VERSION={CHECK_VERSION}`" in text
+    ), f"{rel} does not name runtime CHECK_VERSION={CHECK_VERSION}"

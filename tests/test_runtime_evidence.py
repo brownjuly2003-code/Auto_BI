@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +33,20 @@ def _load_module() -> ModuleType:
 @pytest.fixture(scope="module")
 def mod() -> ModuleType:
     return _load_module()
+
+
+@pytest.fixture(autouse=True)
+def _warm_platform_cache() -> None:
+    """Answer `platform.system()` from cache before any test patches `subprocess.run`.
+
+    `_safe_metadata` records `runner_os` through `platform.system()`. On Windows an
+    uncached `platform.uname()` asks WMI, and CPython falls back to
+    `subprocess.check_output("ver", shell=True)` whenever that query fails — which the
+    docker fakes below would then see as an unexpected docker call. Whether the host's WMI
+    service answers is not what these tests are about, so the cache is filled first, while
+    the real `subprocess.run` is still in place.
+    """
+    platform.system()
 
 
 # ---------------------------------------------------------------------------

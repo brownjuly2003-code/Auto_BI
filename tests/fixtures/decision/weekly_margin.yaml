@@ -1,0 +1,25 @@
+api_version: auto-bi.io/v2alpha1
+kind: DecisionProduct
+metadata:
+  id: decision://sales/weekly_margin
+  version: 1
+  owner: commercial-analytics
+  risk_tier: medium
+decision:
+  question: Почему изменилась валовая маржа?
+  consumer: commercial-director
+  cadence: weekly
+scope:
+  metrics: [metric://sales/gross_margin_pct@3]
+  dimensions: [region, category]
+  time_window: P13W
+verification:
+  policy: policy://release/default@1
+  freshness_max_age: PT6H
+  cross_surface_tolerance: "0.000001"
+delivery:
+  dashboards:
+    - ref: dashboard://weekly_margin@7
+  brief_formats: [markdown]
+actions:
+  mode: disabled

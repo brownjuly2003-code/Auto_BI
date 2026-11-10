@@ -23,3 +23,14 @@ _SQLGLOT_DIALECT = {
 def sqlglot_dialect(engine: str | None) -> str:
     """sqlglot dialect for an engine name; defaults to clickhouse (the v1 engine)."""
     return _SQLGLOT_DIALECT.get((engine or "").lower(), "clickhouse")
+
+
+def is_known_engine(engine: str | None) -> bool:
+    """Whether the seam recognises this engine name, rather than falling back to the default.
+
+    `sqlglot_dialect` answers "which dialect do I render for", and for a plain aggregate its
+    v1 default is a fair assumption. A caller that emits engine-specific syntax needs the
+    other question — "is this an engine we know at all" — and must not read a fallback as an
+    answer (`verification/sql_contract.py`).
+    """
+    return (engine or "").lower() in _SQLGLOT_DIALECT

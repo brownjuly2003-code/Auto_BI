@@ -36,6 +36,7 @@ from auto_bi.ir.spec import (
     measure_alias,
 )
 from auto_bi.semantic.model import Aggregation
+from auto_bi.sql_render import quote_identifier
 
 
 def _dim_dataset_alias(col: str, mart_table: str, *, from_source: bool) -> str:
@@ -103,8 +104,7 @@ GRID_WIDTH = 12  # superset dashboard grid is 12 columns wide
 
 
 def _quote_ident(name: str) -> str:
-    """Double-quote a SQL identifier, escaping embedded quotes (form_data is un-guarded SQL)."""
-    return '"' + name.replace('"', '""') + '"'
+    return quote_identifier(name, dialect="clickhouse")
 
 
 def _agg_sql_expr(measure: Measure, *, column: str) -> str:
@@ -143,11 +143,8 @@ def _adhoc_metric(
         else:
             sql = _agg_sql_expr(measure, column=column_alias(measure.column))
     else:
-        # alias is LLM-controlled (measure.label) -> escape it as a quoted identifier the
-        # same way SQL_GEN does (double the quote), so it cannot break out of SUM("...")
-        # and inject SQL. form_data is the second, un-guarded SQL path Superset executes.
-        quoted_alias = measure_alias(measure).replace('"', '""')
-        sql = f'{agg}("{quoted_alias}")'
+        quoted_alias = _quote_ident(measure_alias(measure))
+        sql = f"{agg}({quoted_alias})"
     return {
         "expressionType": "SQL",
         "sqlExpression": sql,
@@ -377,7 +374,9 @@ def _fd_heatmap(
         # dataset; live-verified on the pinned 4.1 (probe chart, stand 2026-07-11).
         groupby = {
             "expressionType": "SQL",
-            "sqlExpression": f"LPAD(CAST(\"{y_alias}\" AS VARCHAR), {heatmap_y_pad}, '0')",
+            "sqlExpression": (
+                f"LPAD(CAST({_quote_ident(y_alias)} AS VARCHAR), {heatmap_y_pad}, '0')"
+            ),
             "label": y_alias,
         }
     return {

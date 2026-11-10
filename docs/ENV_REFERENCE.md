@@ -29,6 +29,9 @@ Deployment profile validation (`local` / `demo` / `production`) is described in
 | `AUTO_BI_AUTH_TOKEN_TTL_HOURS` | `int` | (set; not printed) | Bearer token lifetime in hours after login. |
 | `AUTO_BI_AUTH_USERS_FILE` | `str` | (empty) | Path to YAML user list for auth; empty skips the file and may use bootstrap admin instead. |
 | `AUTO_BI_BI_CONNECTION_STRICT` | `bool` | false | When true, refuse builds if a reused BI connection fingerprint mismatches the current DWH config. |
+| `AUTO_BI_CAPTURE_MAX_BYTES` | `int` | `16777216` | Maximum sum of UTF-8 bytes of captured non-null values rendered with str(). |
+| `AUTO_BI_CAPTURE_MAX_ROWS` | `int` | `10000` | Positive row limit; excess rows cause refusal of the entire capture. |
+| `AUTO_BI_CAPTURE_TIMEOUT_MS` | `int` | `30000` | Positive server timeout in milliseconds for each capture statement. |
 | `AUTO_BI_CH_DATABASE` | `str` | `dm` | ClickHouse database name that holds the demo DM tables. |
 | `AUTO_BI_CH_HOST` | `str` | `localhost` | ClickHouse host the CLI and agent use for read-only DWH access. |
 | `AUTO_BI_CH_HOST_FROM_BI` | `str` | (empty) | ClickHouse host as the BI server reaches it; empty reuses ch_host. |
@@ -42,6 +45,7 @@ Deployment profile validation (`local` / `demo` / `production`) is described in
 | `AUTO_BI_DATALENS_USER` | `str` | `admin` | DataLens login username used by the adapter. |
 | `AUTO_BI_DATALENS_WORKBOOK_ID` | `str` | `ra7f79yirtumb` | Isolated DataLens workbook id owned by Auto_BI so rebuilds never clobber foreign entries. |
 | `AUTO_BI_DEMO_AUTO_ONLY` | `bool` | false | Public demo mode: only auto-overview is allowed and LLM-backed paths return 403. |
+| `AUTO_BI_ENVIRONMENT_QUERY_TIMEOUT_MS` | `int` | `30000` | Positive server timeout in ms for each gate catalog/statistics query. |
 | `AUTO_BI_FORWARDED_ALLOW_IPS` | `str | null` | (unset / null) | Trusted proxy IPs or CIDRs for X-Forwarded-For; None trusts loopback only, "*" trusts all direct peers. |
 | `AUTO_BI_GP_DATABASE` | `str` | `postgres` | Greenplum or Greengage database name used for DM queries. |
 | `AUTO_BI_GP_HOST` | `str` | `localhost` | Greenplum or Greengage host for the v2 read-only DWH path. |
@@ -98,7 +102,7 @@ Deployment profile validation (`local` / `demo` / `production`) is described in
 
 ## Counts
 
-- Settings fields / `AUTO_BI_*` keys: **70**
+- Settings fields / `AUTO_BI_*` keys: **74**
 - Companion vars listed above: **2**
 
 <!-- generate_env_reference:end -->

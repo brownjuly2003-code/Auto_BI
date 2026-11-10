@@ -1,0 +1,11 @@
+asset://sales/weekly_margin_by_region:
+  columns:
+  - name: region
+    type: string
+    nullable: false
+  - name: gross_margin_pct
+    type: decimal
+    unit: ratio
+  rows:
+  - - msk
+    - '0.452100'

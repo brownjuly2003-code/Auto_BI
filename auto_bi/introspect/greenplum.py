@@ -18,6 +18,7 @@ from typing import Any
 from auto_bi.config import Settings
 from auto_bi.engine import GREENPLUM
 from auto_bi.introspect.base import RunQuery, rate_like
+from auto_bi.postgres import check_postgres_session, connect_postgres, set_postgres_timeout
 from auto_bi.semantic.model import (
     Additivity,
     Aggregation,
@@ -238,15 +239,14 @@ class GreenplumIntrospector:
         return sanitize_samples([str(r["v"]) for r in result if r["v"] is not None])
 
 
-def make_run_query_pg(settings: Settings) -> RunQuery:
+def make_run_query_pg(settings: Settings, *, timeout_ms: int | None = None) -> RunQuery:
     """Real psycopg client behind the RunQuery seam (read-only role, one session).
 
     One persistent connection so a `SET statement_timeout` issued by LiveSQLValidator
     persists for the trial SELECT that follows. Statements with no result set (SET) -> []."""
-    import psycopg
     from psycopg.rows import dict_row
 
-    conn = psycopg.connect(
+    conn = connect_postgres(
         host=settings.gp_host,
         port=settings.gp_port,
         dbname=settings.gp_database,
@@ -257,8 +257,25 @@ def make_run_query_pg(settings: Settings) -> RunQuery:
     )
 
     def run(sql: str) -> list[dict[str, Any]]:
+        check_postgres_session(conn)
         with conn.cursor() as cur:
-            cur.execute(sql)
+            if timeout_ms is not None:
+                set_postgres_timeout(conn, cur, timeout_ms, local=False)
+                check_postgres_session(conn)
+            try:
+                cur.execute(sql)
+            except Exception as exc:
+                from psycopg.errors import QueryCanceled
+
+                if (
+                    timeout_ms is not None
+                    and isinstance(exc, QueryCanceled)
+                    and "statement timeout" in str(exc)
+                ):
+                    raise QueryCanceled(
+                        f"environment_query_timeout_ms={timeout_ms} exceeded (PostgreSQL)"
+                    ) from exc
+                raise
             if cur.description is None:
                 return []
             return list(cur.fetchall())

@@ -1,0 +1,11 @@
+{
+ "source": "github.com/dbt-labs/jaffle-sl-template@c54c8fb8bea86c0c4d3d5c588d55f8de9de57ade",
+ "flags": {},
+ "require_dbt_version": ">=1.6.0rc2",
+ "versions": {
+  "dbt-core": "1.12.6",
+  "dbt-postgres": "1.11.0",
+  "metricflow": "0.213.0"
+ },
+ "refused": "[WARNING][MissingArgumentsPropertyInGenericTestDeprecation]: Deprecated\nfunctionality\nFound top-level arguments to test `accepted_values` defined on 'customers' in\npackage 'jaffle_shop' (models/marts/customer360/customers.yml). Arguments to\ngeneric tests should be nested under the `arguments` property.\n[WARNING]: Cumulative fields `type_params.window` and `type_params.grain_to_date` should be nested under `type_params.cumulative_type_params.window` a … _date`. Invalid metrics: orders_last_7_days. See documentation on behavior changes: https://docs.getdbt.com/reference/global-configs/behavior-changes.\n[ERROR]: Encountered an error:\nParsing Error\n  Semantic Manifest validation failed.\n[WARNING][DeprecationsSummary]: Deprecated functionality\nSummary of encountered deprecations:\n- MissingArgumentsPropertyInGenericTestDeprecation: 2 occurrences"
+}

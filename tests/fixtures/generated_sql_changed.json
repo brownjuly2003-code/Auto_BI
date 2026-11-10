@@ -1,0 +1,713 @@
+[
+  {
+    "id": "0/main/flat",
+    "kind": "main",
+    "site": "flat",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"x\\\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"x\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "3607f105a28ef20cb03596759bbbdcf92cb78c0481b90269ea4eaa69ebe1825f"
+  },
+  {
+    "id": "0/main/window",
+    "kind": "main",
+    "site": "window",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"x\\\\\"\" FROM mart WHERE 1=1 --\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"x\\\"\" FROM mart WHERE 1=1 --\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sha256": "ffe184e7d5e221bf1267f53c5c0b3cfe1e560fe45f4375b15b5805b77ddea83b"
+  },
+  {
+    "id": "0/main/compare",
+    "kind": "main",
+    "site": "compare",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"x\\\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"x\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sha256": "e87167b1c50326e7a7bb495f44fcfe8da775dc287fb7fa41eee62263cae04813"
+  },
+  {
+    "id": "0/main/histogram",
+    "kind": "main",
+    "site": "histogram",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"x\\\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"x\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sha256": "af05d9fdbdaa93a2b24e29878d2e8ebd8316236aca862cce26980da291792697"
+  },
+  {
+    "id": "0/main/source",
+    "kind": "main",
+    "site": "source",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT \"x\\\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\"",
+    "head_sql": "SELECT \"x\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\"",
+    "head_sha256": "dbdf480f047edf7f00bda242df6dd5efa4732f19c8eadb677ef632e161061dd8"
+  },
+  {
+    "id": "0/main/reference",
+    "kind": "main",
+    "site": "reference",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT \"x\\\\\"\" FROM mart WHERE 1=1 --\", SUM(\"x\\\\\"\" FROM mart WHERE 1=1 --\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"x\\\\\"\" FROM mart WHERE 1=1 --\"",
+    "head_sql": "SELECT \"x\\\"\" FROM mart WHERE 1=1 --\", SUM(\"x\\\"\" FROM mart WHERE 1=1 --\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"x\\\"\" FROM mart WHERE 1=1 --\"",
+    "head_sha256": "3b3634979316a2959740f5c3044d70d8e747db90482662cdf7f1c9073cf54abb"
+  },
+  {
+    "id": "0/main/dataset",
+    "kind": "main",
+    "site": "dataset",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"x\\\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"x\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "3607f105a28ef20cb03596759bbbdcf92cb78c0481b90269ea4eaa69ebe1825f"
+  },
+  {
+    "id": "0/main/scaled",
+    "kind": "main",
+    "site": "scaled",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT \"date\", \"x\\\\\"\" FROM mart WHERE 1=1 --\" / 1000 AS \"x\\\\\"\" FROM mart WHERE 1=1 --\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"x\\\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sql": "SELECT \"date\", \"x\\\"\" FROM mart WHERE 1=1 --\" / 1000 AS \"x\\\"\" FROM mart WHERE 1=1 --\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"x\\\"\" FROM mart WHERE 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sha256": "30fd80bb703aba4003b6fd638c4baa019a787b53b0141315fffb08058956eff2"
+  },
+  {
+    "id": "0/superset/own",
+    "kind": "superset",
+    "site": "own",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT SUM(\"x\\\\\"\" FROM mart WHERE 1=1 --\")",
+    "head_sql": "SELECT SUM(\"x\\\"\" FROM mart WHERE 1=1 --\")",
+    "head_sha256": "93f483822a61851b1fd1d1baea57e1d72bae3a840b0845f6231bef256e2bd1ce"
+  },
+  {
+    "id": "0/superset/source",
+    "kind": "superset",
+    "site": "source",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT SUM(\"x\\\\\"\" FROM mart WHERE 1=1 --\")",
+    "head_sql": "SELECT SUM(\"x\\\"\" FROM mart WHERE 1=1 --\")",
+    "head_sha256": "93f483822a61851b1fd1d1baea57e1d72bae3a840b0845f6231bef256e2bd1ce"
+  },
+  {
+    "id": "0/superset/ratio",
+    "kind": "superset",
+    "site": "ratio",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT (SUM(\"x\\\\\"\" FROM mart WHERE 1=1 --\")) / NULLIF((COUNT(DISTINCT \"x\\\\\"\" FROM mart WHERE 1=1 --\")), 0)",
+    "head_sql": "SELECT (SUM(\"x\\\"\" FROM mart WHERE 1=1 --\")) / NULLIF((COUNT(DISTINCT \"x\\\"\" FROM mart WHERE 1=1 --\")), 0)",
+    "head_sha256": "ff22cc6eaa84000829f2b44efa33002e75aedda871b90fb7175bb1d6666bf54f"
+  },
+  {
+    "id": "0/superset/kpi",
+    "kind": "superset",
+    "site": "kpi",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT MAX(\"x\\\\\"\" FROM mart WHERE 1=1 --\")",
+    "head_sql": "SELECT MAX(\"x\\\"\" FROM mart WHERE 1=1 --\")",
+    "head_sha256": "717e619b8c4a6fa3c29ab66645abed45a4dcb4ba5fdc50d19a9483299d6289ef"
+  },
+  {
+    "id": "0/superset/heatmap",
+    "kind": "superset",
+    "site": "heatmap",
+    "name": "x\\\" FROM mart WHERE 1=1 --",
+    "sql": "SELECT LPAD(CAST(\"x\\\\\"\" FROM mart WHERE 1=1 --\" AS VARCHAR), 2, '0')",
+    "head_sql": "SELECT LPAD(CAST(\"x\\\" FROM mart WHERE 1=1 --\" AS VARCHAR), 2, '0')",
+    "head_sha256": "072301617c637f681c75702ea7f689d1da37b8d51feb2fe29d7f1a5c65e4da31"
+  },
+  {
+    "id": "1/main/flat",
+    "kind": "main",
+    "site": "flat",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"x\\\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"x\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "517028e90c695ae3119ef742bd9bbfb6300b82b6d011c1bba9595fe3ab891abd"
+  },
+  {
+    "id": "1/main/window",
+    "kind": "main",
+    "site": "window",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"x\\\\' OR 1=1 --\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"x\\' OR 1=1 --\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sha256": "c1bafdea244d080ccb648b3fbff5e2f7d7349ac9b4047c775b83f0fb5f13975b"
+  },
+  {
+    "id": "1/main/compare",
+    "kind": "main",
+    "site": "compare",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"x\\\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"x\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sha256": "c0b5943a7f1f44c2e70aee1448ee61cd0fbfc0a7353297c401632022133a3f3d"
+  },
+  {
+    "id": "1/main/histogram",
+    "kind": "main",
+    "site": "histogram",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"x\\\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"x\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sha256": "b17fc17e1a8374347191a0a71ccd1adf482a4bda639cb838602a0aef296f5369"
+  },
+  {
+    "id": "1/main/source",
+    "kind": "main",
+    "site": "source",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT \"x\\\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\"",
+    "head_sql": "SELECT \"x\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\"",
+    "head_sha256": "617f42624021fbd1fdf95ec52893dc3aaa82a811ba86418c32c93d0daca9e314"
+  },
+  {
+    "id": "1/main/reference",
+    "kind": "main",
+    "site": "reference",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT \"x\\\\' OR 1=1 --\", SUM(\"x\\\\' OR 1=1 --\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"x\\\\' OR 1=1 --\"",
+    "head_sql": "SELECT \"x\\' OR 1=1 --\", SUM(\"x\\' OR 1=1 --\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"x\\' OR 1=1 --\"",
+    "head_sha256": "84f4c1af6eba70365a38f6c9511ed5e42546e8b2604089b4dddf2575c01eef29"
+  },
+  {
+    "id": "1/main/dataset",
+    "kind": "main",
+    "site": "dataset",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"x\\\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"x\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "517028e90c695ae3119ef742bd9bbfb6300b82b6d011c1bba9595fe3ab891abd"
+  },
+  {
+    "id": "1/main/scaled",
+    "kind": "main",
+    "site": "scaled",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT \"date\", \"x\\\\' OR 1=1 --\" / 1000 AS \"x\\\\' OR 1=1 --\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"x\\\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sql": "SELECT \"date\", \"x\\' OR 1=1 --\" / 1000 AS \"x\\' OR 1=1 --\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"x\\' OR 1=1 --\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sha256": "fe2ea6638879db30cf2972c8bbc91127fda86f34ff1b0853bb8e6e10ec60e405"
+  },
+  {
+    "id": "1/superset/own",
+    "kind": "superset",
+    "site": "own",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT SUM(\"x\\\\' OR 1=1 --\")",
+    "head_sql": "SELECT SUM(\"x\\' OR 1=1 --\")",
+    "head_sha256": "f0da1d9fb6ca41299f68cdbfe23d53265293d6ccbcff9121dba8b772161391cf"
+  },
+  {
+    "id": "1/superset/source",
+    "kind": "superset",
+    "site": "source",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT SUM(\"x\\\\' OR 1=1 --\")",
+    "head_sql": "SELECT SUM(\"x\\' OR 1=1 --\")",
+    "head_sha256": "f0da1d9fb6ca41299f68cdbfe23d53265293d6ccbcff9121dba8b772161391cf"
+  },
+  {
+    "id": "1/superset/ratio",
+    "kind": "superset",
+    "site": "ratio",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT (SUM(\"x\\\\' OR 1=1 --\")) / NULLIF((COUNT(DISTINCT \"x\\\\' OR 1=1 --\")), 0)",
+    "head_sql": "SELECT (SUM(\"x\\' OR 1=1 --\")) / NULLIF((COUNT(DISTINCT \"x\\' OR 1=1 --\")), 0)",
+    "head_sha256": "0afd25606a5f69ea53ff922829ab9054fd6a7fff3d53757a3813d8b1606479aa"
+  },
+  {
+    "id": "1/superset/kpi",
+    "kind": "superset",
+    "site": "kpi",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT MAX(\"x\\\\' OR 1=1 --\")",
+    "head_sql": "SELECT MAX(\"x\\' OR 1=1 --\")",
+    "head_sha256": "e7a1d4d563326b2782f7f5e4cb9627c6bf645ebd26e8daca250955b29a8ee318"
+  },
+  {
+    "id": "1/superset/heatmap",
+    "kind": "superset",
+    "site": "heatmap",
+    "name": "x\\' OR 1=1 --",
+    "sql": "SELECT LPAD(CAST(\"x\\\\' OR 1=1 --\" AS VARCHAR), 2, '0')",
+    "head_sql": "SELECT LPAD(CAST(\"x\\' OR 1=1 --\" AS VARCHAR), 2, '0')",
+    "head_sha256": "f03f62aaef3370e6d8d05f235ee9c21da141595a42a77eed7514f551b8a37430"
+  },
+  {
+    "id": "2/main/flat",
+    "kind": "main",
+    "site": "flat",
+    "name": "a\\nb",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\\\nb\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\nb\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "5d8f856cd17d17a736621c1d5e79ed8a2c6eb9cafb98f166ddc6aa51a93c9f4d"
+  },
+  {
+    "id": "2/main/window",
+    "kind": "main",
+    "site": "window",
+    "name": "a\\nb",
+    "sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"a\\\\nb\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"a\\nb\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sha256": "51900d320c0eae342fac642a60690bcc37eb81876b1605de6bf59076314acc19"
+  },
+  {
+    "id": "2/main/compare",
+    "kind": "main",
+    "site": "compare",
+    "name": "a\\nb",
+    "sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"a\\\\nb\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"a\\nb\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sha256": "7e9b5deec5a3a8b317fd607e19477398060d8c3484d596524c96d976cff3cdb6"
+  },
+  {
+    "id": "2/main/histogram",
+    "kind": "main",
+    "site": "histogram",
+    "name": "a\\nb",
+    "sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"a\\\\nb\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"a\\nb\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sha256": "de4327fb42fc6a70c959bbcd5cf5f285c641c3f639f126cdabdbdb0c9e51e527"
+  },
+  {
+    "id": "2/main/source",
+    "kind": "main",
+    "site": "source",
+    "name": "a\\nb",
+    "sql": "SELECT \"a\\\\nb\" FROM \"dm\".\"sales_daily\"",
+    "head_sql": "SELECT \"a\\nb\" FROM \"dm\".\"sales_daily\"",
+    "head_sha256": "adf25f503ba72dd9c132d3e6b457fd88a9558ae6bb47515dba7f51b662db191d"
+  },
+  {
+    "id": "2/main/reference",
+    "kind": "main",
+    "site": "reference",
+    "name": "a\\nb",
+    "sql": "SELECT \"a\\\\nb\", SUM(\"a\\\\nb\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"a\\\\nb\"",
+    "head_sql": "SELECT \"a\\nb\", SUM(\"a\\nb\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"a\\nb\"",
+    "head_sha256": "5700d22d3d0fd35c54ecdc510bf50001b4729ceed2a4c17f170229d3bbcd7059"
+  },
+  {
+    "id": "2/main/dataset",
+    "kind": "main",
+    "site": "dataset",
+    "name": "a\\nb",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\\\nb\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\nb\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "5d8f856cd17d17a736621c1d5e79ed8a2c6eb9cafb98f166ddc6aa51a93c9f4d"
+  },
+  {
+    "id": "2/main/scaled",
+    "kind": "main",
+    "site": "scaled",
+    "name": "a\\nb",
+    "sql": "SELECT \"date\", \"a\\\\nb\" / 1000 AS \"a\\\\nb\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"a\\\\nb\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sql": "SELECT \"date\", \"a\\nb\" / 1000 AS \"a\\nb\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"a\\nb\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sha256": "db4d1c80eb1e16af927dde112a3f8061aea59dfafe45b56a349a6eece9d4c037"
+  },
+  {
+    "id": "2/superset/own",
+    "kind": "superset",
+    "site": "own",
+    "name": "a\\nb",
+    "sql": "SELECT SUM(\"a\\\\nb\")",
+    "head_sql": "SELECT SUM(\"a\\nb\")",
+    "head_sha256": "6a9d2b02a2487d5c20b46652de704f022a73a4b1224c92f983f685c746d4d8c2"
+  },
+  {
+    "id": "2/superset/source",
+    "kind": "superset",
+    "site": "source",
+    "name": "a\\nb",
+    "sql": "SELECT SUM(\"a\\\\nb\")",
+    "head_sql": "SELECT SUM(\"a\\nb\")",
+    "head_sha256": "6a9d2b02a2487d5c20b46652de704f022a73a4b1224c92f983f685c746d4d8c2"
+  },
+  {
+    "id": "2/superset/ratio",
+    "kind": "superset",
+    "site": "ratio",
+    "name": "a\\nb",
+    "sql": "SELECT (SUM(\"a\\\\nb\")) / NULLIF((COUNT(DISTINCT \"a\\\\nb\")), 0)",
+    "head_sql": "SELECT (SUM(\"a\\nb\")) / NULLIF((COUNT(DISTINCT \"a\\nb\")), 0)",
+    "head_sha256": "43a30c63767970f6576d4bd74eb8fe72323796e54f5f3d3970bd229fcc0eb47d"
+  },
+  {
+    "id": "2/superset/kpi",
+    "kind": "superset",
+    "site": "kpi",
+    "name": "a\\nb",
+    "sql": "SELECT MAX(\"a\\\\nb\")",
+    "head_sql": "SELECT MAX(\"a\\nb\")",
+    "head_sha256": "6c37fb7165713dc5c97778ed74e20b4a25a011ba1fbf6a41a2f59e9f763c4dc6"
+  },
+  {
+    "id": "2/superset/heatmap",
+    "kind": "superset",
+    "site": "heatmap",
+    "name": "a\\nb",
+    "sql": "SELECT LPAD(CAST(\"a\\\\nb\" AS VARCHAR), 2, '0')",
+    "head_sql": "SELECT LPAD(CAST(\"a\\nb\" AS VARCHAR), 2, '0')",
+    "head_sha256": "47c91598b70f096f4ae635654e0680483bc2b8006ccc74809c24b633fe7558ec"
+  },
+  {
+    "id": "3/main/flat",
+    "kind": "main",
+    "site": "flat",
+    "name": "a\\x27b",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\\\x27b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\x27b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "9c159847256a826902137713755a26d693c22a315230faa873eacc5d749b1a0c"
+  },
+  {
+    "id": "3/main/window",
+    "kind": "main",
+    "site": "window",
+    "name": "a\\x27b",
+    "sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"a\\\\x27b\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"a\\x27b\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sha256": "294ac2526696a38f3a1ac063568fb029d7a5b1678b6f902ad511f0b9774a27e5"
+  },
+  {
+    "id": "3/main/compare",
+    "kind": "main",
+    "site": "compare",
+    "name": "a\\x27b",
+    "sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"a\\\\x27b\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"a\\x27b\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sha256": "14fc57456f6a89a1f29e587316555af1b5da50a2085e1af279fc0c229b8e97e8"
+  },
+  {
+    "id": "3/main/histogram",
+    "kind": "main",
+    "site": "histogram",
+    "name": "a\\x27b",
+    "sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"a\\\\x27b\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"a\\x27b\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sha256": "c9617d96db59f64db90f95ef4c9e0a012f181cae4942fc0ef8d3da7afa800f2b"
+  },
+  {
+    "id": "3/main/source",
+    "kind": "main",
+    "site": "source",
+    "name": "a\\x27b",
+    "sql": "SELECT \"a\\\\x27b\" FROM \"dm\".\"sales_daily\"",
+    "head_sql": "SELECT \"a\\x27b\" FROM \"dm\".\"sales_daily\"",
+    "head_sha256": "a76298f8702c2e5cd3c4a00ed1195a08c5ce2e32fff7a659ad065eae6f2561c7"
+  },
+  {
+    "id": "3/main/reference",
+    "kind": "main",
+    "site": "reference",
+    "name": "a\\x27b",
+    "sql": "SELECT \"a\\\\x27b\", SUM(\"a\\\\x27b\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"a\\\\x27b\"",
+    "head_sql": "SELECT \"a\\x27b\", SUM(\"a\\x27b\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"a\\x27b\"",
+    "head_sha256": "2cbc9bbf2a1b35f7864b750fee2658476af7da510a9bb49d507645bde1e64001"
+  },
+  {
+    "id": "3/main/dataset",
+    "kind": "main",
+    "site": "dataset",
+    "name": "a\\x27b",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\\\x27b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\x27b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "9c159847256a826902137713755a26d693c22a315230faa873eacc5d749b1a0c"
+  },
+  {
+    "id": "3/main/scaled",
+    "kind": "main",
+    "site": "scaled",
+    "name": "a\\x27b",
+    "sql": "SELECT \"date\", \"a\\\\x27b\" / 1000 AS \"a\\\\x27b\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"a\\\\x27b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sql": "SELECT \"date\", \"a\\x27b\" / 1000 AS \"a\\x27b\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"a\\x27b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sha256": "141b92466771da2d0bdc0f7d3b9255079bd05ad13b4a6d179e5bf204e637e941"
+  },
+  {
+    "id": "3/superset/own",
+    "kind": "superset",
+    "site": "own",
+    "name": "a\\x27b",
+    "sql": "SELECT SUM(\"a\\\\x27b\")",
+    "head_sql": "SELECT SUM(\"a\\x27b\")",
+    "head_sha256": "4c2fae5c776d0b8662806dfc34e8bc3299c5d8fc1d2e14fff571d08e498ac5c1"
+  },
+  {
+    "id": "3/superset/source",
+    "kind": "superset",
+    "site": "source",
+    "name": "a\\x27b",
+    "sql": "SELECT SUM(\"a\\\\x27b\")",
+    "head_sql": "SELECT SUM(\"a\\x27b\")",
+    "head_sha256": "4c2fae5c776d0b8662806dfc34e8bc3299c5d8fc1d2e14fff571d08e498ac5c1"
+  },
+  {
+    "id": "3/superset/ratio",
+    "kind": "superset",
+    "site": "ratio",
+    "name": "a\\x27b",
+    "sql": "SELECT (SUM(\"a\\\\x27b\")) / NULLIF((COUNT(DISTINCT \"a\\\\x27b\")), 0)",
+    "head_sql": "SELECT (SUM(\"a\\x27b\")) / NULLIF((COUNT(DISTINCT \"a\\x27b\")), 0)",
+    "head_sha256": "dc03e55f4becac76310ac01556fe8964d3f756e44e9f47d3c44c3d1d3ff65789"
+  },
+  {
+    "id": "3/superset/kpi",
+    "kind": "superset",
+    "site": "kpi",
+    "name": "a\\x27b",
+    "sql": "SELECT MAX(\"a\\\\x27b\")",
+    "head_sql": "SELECT MAX(\"a\\x27b\")",
+    "head_sha256": "dee520032ef28ed4d39bd41e9e31f480f3a8c70dd741809efbb3d99bc8f85780"
+  },
+  {
+    "id": "3/superset/heatmap",
+    "kind": "superset",
+    "site": "heatmap",
+    "name": "a\\x27b",
+    "sql": "SELECT LPAD(CAST(\"a\\\\x27b\" AS VARCHAR), 2, '0')",
+    "head_sql": "SELECT LPAD(CAST(\"a\\x27b\" AS VARCHAR), 2, '0')",
+    "head_sha256": "cbc66ee85e2868cf785446316412390472e89fb2b717d56cd7554d85f7fe9bb4"
+  },
+  {
+    "id": "4/main/flat",
+    "kind": "main",
+    "site": "flat",
+    "name": "a\\\\b",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\\\\\\\b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\\\b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "2f367eff0387aeaad1613acf93d9e12a8c8bee783c550f745ad59b79752759d1"
+  },
+  {
+    "id": "4/main/window",
+    "kind": "main",
+    "site": "window",
+    "name": "a\\\\b",
+    "sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"a\\\\\\\\b\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"a\\\\b\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sha256": "9925d45914b36230c143287510c8a477fb925c38e2130379955d6cf65e2ad098"
+  },
+  {
+    "id": "4/main/compare",
+    "kind": "main",
+    "site": "compare",
+    "name": "a\\\\b",
+    "sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"a\\\\\\\\b\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"a\\\\b\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sha256": "2f0d484811395a74350461007db9a3963c6e516d519e30e7b15fa49f2c3b1577"
+  },
+  {
+    "id": "4/main/histogram",
+    "kind": "main",
+    "site": "histogram",
+    "name": "a\\\\b",
+    "sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"a\\\\\\\\b\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"a\\\\b\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sha256": "0fedacf1e73eac9160ae10ef6f82215fa24b2cc9660a5e4e11beea2d103e0b11"
+  },
+  {
+    "id": "4/main/source",
+    "kind": "main",
+    "site": "source",
+    "name": "a\\\\b",
+    "sql": "SELECT \"a\\\\\\\\b\" FROM \"dm\".\"sales_daily\"",
+    "head_sql": "SELECT \"a\\\\b\" FROM \"dm\".\"sales_daily\"",
+    "head_sha256": "e03ec637c38ea7cf73d10e18a5b64ebaa9a5d9013245388276fdcbd754f14722"
+  },
+  {
+    "id": "4/main/reference",
+    "kind": "main",
+    "site": "reference",
+    "name": "a\\\\b",
+    "sql": "SELECT \"a\\\\\\\\b\", SUM(\"a\\\\\\\\b\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"a\\\\\\\\b\"",
+    "head_sql": "SELECT \"a\\\\b\", SUM(\"a\\\\b\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"a\\\\b\"",
+    "head_sha256": "cdef1721324caa3eeb007a32b794f46bba3a2272855b38139d095761e2923a16"
+  },
+  {
+    "id": "4/main/dataset",
+    "kind": "main",
+    "site": "dataset",
+    "name": "a\\\\b",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\\\\\\\b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"a\\\\b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "2f367eff0387aeaad1613acf93d9e12a8c8bee783c550f745ad59b79752759d1"
+  },
+  {
+    "id": "4/main/scaled",
+    "kind": "main",
+    "site": "scaled",
+    "name": "a\\\\b",
+    "sql": "SELECT \"date\", \"a\\\\\\\\b\" / 1000 AS \"a\\\\\\\\b\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"a\\\\\\\\b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sql": "SELECT \"date\", \"a\\\\b\" / 1000 AS \"a\\\\b\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"a\\\\b\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sha256": "d26f4daf2e84cb48b34c2ebeac75037c94619e71bd417c22d3959e9dffa6af1f"
+  },
+  {
+    "id": "4/superset/own",
+    "kind": "superset",
+    "site": "own",
+    "name": "a\\\\b",
+    "sql": "SELECT SUM(\"a\\\\\\\\b\")",
+    "head_sql": "SELECT SUM(\"a\\\\b\")",
+    "head_sha256": "1ea1310a5e36b1212b3ca250f4942673b28c14d266cf9061d4b90381ee1f8ed5"
+  },
+  {
+    "id": "4/superset/source",
+    "kind": "superset",
+    "site": "source",
+    "name": "a\\\\b",
+    "sql": "SELECT SUM(\"a\\\\\\\\b\")",
+    "head_sql": "SELECT SUM(\"a\\\\b\")",
+    "head_sha256": "1ea1310a5e36b1212b3ca250f4942673b28c14d266cf9061d4b90381ee1f8ed5"
+  },
+  {
+    "id": "4/superset/ratio",
+    "kind": "superset",
+    "site": "ratio",
+    "name": "a\\\\b",
+    "sql": "SELECT (SUM(\"a\\\\\\\\b\")) / NULLIF((COUNT(DISTINCT \"a\\\\\\\\b\")), 0)",
+    "head_sql": "SELECT (SUM(\"a\\\\b\")) / NULLIF((COUNT(DISTINCT \"a\\\\b\")), 0)",
+    "head_sha256": "28c86301f705e71bed4a0983c760a9048a8f78c91b160fdb56405e60a482fa9f"
+  },
+  {
+    "id": "4/superset/kpi",
+    "kind": "superset",
+    "site": "kpi",
+    "name": "a\\\\b",
+    "sql": "SELECT MAX(\"a\\\\\\\\b\")",
+    "head_sql": "SELECT MAX(\"a\\\\b\")",
+    "head_sha256": "70dae02edd0292c59e7a3cba41b134a56a41f70f340fc766c75e5deebefdf400"
+  },
+  {
+    "id": "4/superset/heatmap",
+    "kind": "superset",
+    "site": "heatmap",
+    "name": "a\\\\b",
+    "sql": "SELECT LPAD(CAST(\"a\\\\\\\\b\" AS VARCHAR), 2, '0')",
+    "head_sql": "SELECT LPAD(CAST(\"a\\\\b\" AS VARCHAR), 2, '0')",
+    "head_sha256": "4eb79821be133de7c65f5d8f951c6051dccf569f9bf2fc25b51e3eb659cf51e4"
+  },
+  {
+    "id": "5/main/flat",
+    "kind": "main",
+    "site": "flat",
+    "name": "tail\\",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"tail\\\\\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"tail\\\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "0c9a2fe40734f350be5cb5ce94ba963ceabe31003441c14d509d86c1ca6a7067"
+  },
+  {
+    "id": "5/main/window",
+    "kind": "main",
+    "site": "window",
+    "name": "tail\\",
+    "sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"tail\\\\\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"__src_0\") OVER (ORDER BY \"date\" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS \"tail\\\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"__src_0\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\") AS \"t\" LIMIT 5000",
+    "head_sha256": "b4cf280420b08216ca6be5bfa9c2b385681c1159a26ee19a9c9b206f3c9dfb1d"
+  },
+  {
+    "id": "5/main/compare",
+    "kind": "main",
+    "site": "compare",
+    "name": "tail\\",
+    "sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"tail\\\\\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sql": "SELECT CAST((SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_cur\" THEN \"revenue\" END) - SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END)) AS Nullable(Float64)) / nullIf(SUM(CASE WHEN toStartOfMonth(\"dm\".\"sales_daily\".\"date\") = \"b\".\"p_prev\" THEN \"revenue\" END), 0) AS \"tail\\\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) AS \"p_cur\", MAX(toStartOfMonth(\"dm\".\"sales_daily\".\"date\")) - INTERVAL 12 MONTH AS \"p_prev\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value') AS \"b\" WHERE \"city\" = 'marker_value'",
+    "head_sha256": "7cf3091df8cfbfdfc72b7754af466c9d7e42f348eeecca08b9de0bb7e75d3032"
+  },
+  {
+    "id": "5/main/histogram",
+    "kind": "main",
+    "site": "histogram",
+    "name": "tail\\",
+    "sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"tail\\\\\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sql": "SELECT \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" AS \"revenue\", COUNT(\"revenue\") AS \"tail\\\" FROM \"dm\".\"sales_daily\" CROSS JOIN (SELECT MIN(CAST(\"revenue\" AS Nullable(Float64))) AS \"mn\", (MAX(CAST(\"revenue\" AS Nullable(Float64))) - MIN(CAST(\"revenue\" AS Nullable(Float64)))) / 5 AS \"w\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' AND NOT (\"revenue\" IS NULL)) AS \"b\" WHERE \"city\" = 'marker_value' AND NOT (\"dm\".\"sales_daily\".\"revenue\" IS NULL) GROUP BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" ORDER BY \"b\".\"mn\" + (LEAST(FLOOR((CAST(\"dm\".\"sales_daily\".\"revenue\" AS Nullable(Float64)) - \"b\".\"mn\") / nullIf(\"b\".\"w\", 0)), 4)) * \"b\".\"w\" LIMIT 5000",
+    "head_sha256": "d3ec2a448d0891ec348202888f1f392d79675417370cdd49280693d0640099f9"
+  },
+  {
+    "id": "5/main/source",
+    "kind": "main",
+    "site": "source",
+    "name": "tail\\",
+    "sql": "SELECT \"tail\\\\\" FROM \"dm\".\"sales_daily\"",
+    "head_sql": "SELECT \"tail\\\" FROM \"dm\".\"sales_daily\"",
+    "head_sha256": "b5637fbd26d477ad50c37c721db8d15815318dc145a2c6eeb8f9d6729787c8e2"
+  },
+  {
+    "id": "5/main/reference",
+    "kind": "main",
+    "site": "reference",
+    "name": "tail\\",
+    "sql": "SELECT \"tail\\\\\", SUM(\"tail\\\\\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"tail\\\\\"",
+    "head_sql": "SELECT \"tail\\\", SUM(\"tail\\\") AS \"revenue\" FROM \"dm\".\"sales_daily\" GROUP BY \"tail\\\"",
+    "head_sha256": "bc5d3a24f944241593ab2d7fc73b3f3ee989ef7fb0882bc0e5c11895571bc690"
+  },
+  {
+    "id": "5/main/dataset",
+    "kind": "main",
+    "site": "dataset",
+    "name": "tail\\",
+    "sql": "SELECT \"date\", SUM(\"revenue\") AS \"tail\\\\\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sql": "SELECT \"date\", SUM(\"revenue\") AS \"tail\\\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000",
+    "head_sha256": "0c9a2fe40734f350be5cb5ce94ba963ceabe31003441c14d509d86c1ca6a7067"
+  },
+  {
+    "id": "5/main/scaled",
+    "kind": "main",
+    "site": "scaled",
+    "name": "tail\\",
+    "sql": "SELECT \"date\", \"tail\\\\\" / 1000 AS \"tail\\\\\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"tail\\\\\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sql": "SELECT \"date\", \"tail\\\" / 1000 AS \"tail\\\" FROM (SELECT \"date\", SUM(\"revenue\") AS \"tail\\\" FROM \"dm\".\"sales_daily\" WHERE \"city\" = 'marker_value' GROUP BY \"date\" LIMIT 5000) AS auto_bi_scaled",
+    "head_sha256": "317d8170fb5747eb3d98b9bfbc8c80a1543fb515e5fda69a0c2ee0ebe521ebc9"
+  },
+  {
+    "id": "5/superset/own",
+    "kind": "superset",
+    "site": "own",
+    "name": "tail\\",
+    "sql": "SELECT SUM(\"tail\\\\\")",
+    "head_sql": "SELECT SUM(\"tail\\\")",
+    "head_sha256": "2c0b7f8bb5f44a6bcfa3e993ca5f5fbd2ef7276daf2d12d8d3b387e8740cb579"
+  },
+  {
+    "id": "5/superset/source",
+    "kind": "superset",
+    "site": "source",
+    "name": "tail\\",
+    "sql": "SELECT SUM(\"tail\\\\\")",
+    "head_sql": "SELECT SUM(\"tail\\\")",
+    "head_sha256": "2c0b7f8bb5f44a6bcfa3e993ca5f5fbd2ef7276daf2d12d8d3b387e8740cb579"
+  },
+  {
+    "id": "5/superset/ratio",
+    "kind": "superset",
+    "site": "ratio",
+    "name": "tail\\",
+    "sql": "SELECT (SUM(\"tail\\\\\")) / NULLIF((COUNT(DISTINCT \"tail\\\\\")), 0)",
+    "head_sql": "SELECT (SUM(\"tail\\\")) / NULLIF((COUNT(DISTINCT \"tail\\\")), 0)",
+    "head_sha256": "8c39cbb4781348b50d4c1c436d460b21cded94b08854856f7f8eb5283d6d4056"
+  },
+  {
+    "id": "5/superset/kpi",
+    "kind": "superset",
+    "site": "kpi",
+    "name": "tail\\",
+    "sql": "SELECT MAX(\"tail\\\\\")",
+    "head_sql": "SELECT MAX(\"tail\\\")",
+    "head_sha256": "12a3e9b0c642318278734ebe48d0623e7ab77a12c871fd4664f58e4f659ad6d7"
+  },
+  {
+    "id": "5/superset/heatmap",
+    "kind": "superset",
+    "site": "heatmap",
+    "name": "tail\\",
+    "sql": "SELECT LPAD(CAST(\"tail\\\\\" AS VARCHAR), 2, '0')",
+    "head_sql": "SELECT LPAD(CAST(\"tail\\\" AS VARCHAR), 2, '0')",
+    "head_sha256": "3bbf6871985b90948586d471247d4e210522726dcd659735a252a8aa51cb41b7"
+  },
+  {
+    "id": "double_quote/superset/heatmap",
+    "kind": "superset",
+    "site": "heatmap",
+    "name": "a\"b",
+    "sql": "SELECT LPAD(CAST(\"a\"\"b\" AS VARCHAR), 2, '0')",
+    "head_sql": "SELECT LPAD(CAST(\"a\"b\" AS VARCHAR), 2, '0')",
+    "head_sha256": "39d9accf8e9b27eff034b3a2509cd829bdd9813900cf9c5f68d69f4d4fc0cf34"
+  }
+]

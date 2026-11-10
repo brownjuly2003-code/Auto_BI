@@ -1,0 +1,27 @@
+api_version: auto-bi.io/v2alpha1
+kind: DecisionProduct
+metadata:
+  id: decision://sales/weekly_revenue
+  version: 1
+  owner: commercial-analytics
+  risk_tier: medium
+decision:
+  question: Как изменилась выручка?
+  consumer: commercial-director
+  cadence: weekly
+scope:
+  metrics:
+  - metric://sales/revenue@3
+  dimensions:
+  - region
+  - category
+  time_window: P13W
+verification:
+  policy: policy://release/default@1
+  freshness_max_age: PT6H
+  cross_surface_tolerance: '0.000001'
+delivery:
+  dashboards:
+  - ref: dashboard://weekly_revenue@1
+actions:
+  mode: disabled

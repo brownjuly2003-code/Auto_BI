@@ -1,0 +1,41 @@
+api_version: auto-bi.io/v2alpha1
+kind: MetricContract
+metadata:
+  id: metric://sales/gross_margin_pct
+  version: 3
+  owner: commercial-analytics
+  status: active
+formula:
+  kind: typed_ratio
+  numerator:
+    table: dm.sales_daily
+    column: gross_margin
+    agg: sum
+  denominator:
+    table: dm.sales_daily
+    column: revenue
+    agg: sum
+grain:
+  table: dm.sales_daily
+  keys:
+  - date
+  - store_id
+dimensions:
+- region
+- category
+additivity: non_additive
+time:
+  event_time_column: date
+  timezone: UTC
+unit:
+  unit: ratio
+  precision: 6
+  null_semantics: null_is_missing
+  zero_semantics: zero_is_value
+freshness:
+  max_age: PT6H
+classification: internal
+policy_refs:
+- policy://release/default@1
+budgets:
+  max_scanned_rows: 1000

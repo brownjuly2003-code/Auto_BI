@@ -1,0 +1,32 @@
+api_version: auto-bi.io/v2alpha1
+kind: VerifiedAsset
+metadata:
+  id: asset://sales/weekly_margin_by_region
+  version: 2
+  owner: commercial-analytics
+  risk_tier: medium
+question: Какая валовая маржа по регионам за 13 недель?
+intent: breakdown
+metric_refs:
+- metric://sales/gross_margin_pct@3
+expectation:
+  kind: result
+  result:
+    columns:
+    - name: region
+      type: string
+      nullable: false
+    - name: gross_margin_pct
+      type: decimal
+      unit: ratio
+    rows:
+    - - msk
+      - '0.452054'
+tolerance:
+  business_key:
+  - region
+semantic_digest: sha256:fd45b72f519890722167bb3289b4ff78534cdb8e3514c7588e71dd5ce785ef7c
+review:
+  reviewer: commercial-analytics
+  reviewed_at: '2026-08-20T10:00:00Z'
+  rationale: сверено с закрытым периодом

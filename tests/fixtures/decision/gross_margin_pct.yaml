@@ -1,0 +1,46 @@
+api_version: auto-bi.io/v2alpha1
+kind: MetricContract
+metadata:
+  id: metric://sales/gross_margin_pct
+  version: 3
+  owner: commercial-analytics
+  status: active
+  description: Валовая маржа в процентах от выручки
+formula:
+  kind: typed_ratio
+  numerator:
+    table: dm.sales_daily
+    column: gross_margin
+    agg: sum
+  denominator:
+    table: dm.sales_daily
+    column: revenue
+    agg: sum
+grain:
+  table: dm.sales_daily
+  keys: [date, store_id, product_id]
+dimensions: [region, category]
+join_paths:
+  - left: dm.sales_daily.store_id
+    right: dm.stores.id
+    type: many_to_one
+additivity: non_additive
+time:
+  event_time_column: date
+  timezone: Europe/Moscow
+  calendar: gregorian
+unit:
+  unit: ratio
+  precision: 6
+  null_semantics: null_is_missing
+  zero_semantics: zero_is_value
+freshness:
+  max_age: PT6H
+  quality_preconditions: [dm.sales_daily.row_count_nonzero]
+classification: internal
+policy_refs: [policy://release/default@1]
+budgets:
+  max_scanned_rows: 50000000
+  timeout_ms: 30000
+lineage_refs: [dm.sales_daily.gross_margin, dm.sales_daily.revenue]
+verified_asset_refs: [asset://sales/weekly_margin_by_region@2]

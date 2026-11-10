@@ -1,0 +1,1 @@
+{"sql":"SELECT \"date\", \"store_id\", \"region\", \"category\", \"revenue\", \"gross_margin\" FROM \"dm\".\"sales_daily\"","table_name":"auto_bi__недельная_маржа_live_owner_review__source_dm_sales_daily__23e72106"}

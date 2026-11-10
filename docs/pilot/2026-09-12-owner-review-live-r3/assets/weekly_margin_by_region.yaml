@@ -1,0 +1,41 @@
+api_version: auto-bi.io/v2alpha1
+kind: VerifiedAsset
+metadata:
+  id: asset://sales/weekly_margin_by_region
+  version: 3
+  owner: commercial-analytics
+  risk_tier: medium
+question: Какая валовая маржа по регионам за 13 недель?
+intent: breakdown
+metric_refs:
+- metric://sales/gross_margin_pct@3
+reference_query:
+  engine: clickhouse
+  sql: >-
+    SELECT region,
+    divideDecimal(SUM(gross_margin), SUM(revenue), 6) AS gross_margin_pct
+    FROM dm.sales_daily
+    WHERE date BETWEEN toDate('2026-06-14') AND toDate('2026-09-12')
+    GROUP BY region
+    ORDER BY region
+expectation:
+  kind: result
+  result:
+    columns:
+    - name: region
+      type: string
+      nullable: false
+    - name: gross_margin_pct
+      type: decimal
+      unit: ratio
+    rows:
+    - - msk
+      - '0.452054'
+tolerance:
+  business_key:
+  - region
+semantic_digest: sha256:6686e782cde5f3c53f30793052f736c9a41a1722090ee43ef2d480b391f3df7e
+review:
+  reviewer: commercial-analytics
+  reviewed_at: '2026-09-12T00:00:00Z'
+  rationale: reviewed fixed 13-week query for the live owner package

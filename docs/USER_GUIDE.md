@@ -76,6 +76,10 @@ auto_bi serve            # http://127.0.0.1:8200
 | `eval` | Прогон eval-сьютов. `--suite advisor\|golden\|all`, `--cases id1,id2` (подмножество). advisor — офлайн; golden — `--llm-mode live` (деф., живой LLM) \| `replay` (офлайн по записанным фикстурам) \| `record` (живой LLM + запись фикстур), `--fixtures-dir DIR` (деф. `tests/fixtures/golden_llm`). |
 | `dbt-import` | Обогащение `model.yaml` из dbt-артефактов (описания, связи). `--manifest` (обяз.), `--catalog`, `--dry-run`. Заполняет ТОЛЬКО пустые значения — ручные правки всегда выигрывают. |
 | `prune` | Удаление BI-артефактов прошлых ревизий через ownership-леджер (последняя сборка каждой сессии всегда переживает). `--session ID` (только одна сессия), `--dry-run` (показать кандидатов, не удаляя). |
+| `decision validate` | **DecisionOps.** Offline-проверка decision products против metric contracts (пины версий, lifecycle, dimensions, policy). Аргументы — файлы или каталоги контрактов `.yaml`/`.yml`/`.json`, `--json` для вывода отчёта. Каждый найденный в каталоге (и вложенных) файл с таким расширением проверяется как контракт: посторонний JSON блокирует (`contract.unknown_kind`) — держите его вне переданных каталогов. Файл, до которого доходят несколько аргументов (каталог и файл в нём, другое написание пути, ссылка), читается один раз; копия файла в другом каталоге — второй файл, и повтор id блокирует (`contract.duplicate_id`). Ни DWH, ни BI, ни LLM. |
+| `decision verify` | **DecisionOps.** Полный Analytics Release & Evidence Gate для ОДНОГО продукта: `--base`/`--candidate` (каталоги с `model.yaml`), `--evidence DIR`, `--dashboards DIR`, `--assets PATH`, `--results FILE`, `--product ID`, `--environment REF`, `--created-at TS`, opt-in `--signing-key PRIVATE_PEM`, `--json`. Тоже полностью offline без `--dwh`. |
+| `decision evidence` | **DecisionOps.** Чтение написанного evidence bundle с пересчётом всех content address. Аргумент — каталог evidence или один run-каталог внутри; `--run ID` (если run'ов несколько), `--artifact ID` (напечатать один payload), `--expect-digest sha256:…`, повторяемый `--trust-key PUBLIC_PEM`, `--json`. Signed bundle без совпавшего trust key блокируется. |
+| `decision runs` | **DecisionOps.** Локальный каталог прогонов: `decision runs EVIDENCE_ROOT [--json]`. Читает manifests без проверки payload hashes и подписи; `integrity_checked=false`. Для проверки выбранного bundle используйте `decision evidence --run ID`. |
 
 ### build
 ```bash
@@ -153,6 +157,284 @@ auto_bi prune --session <id>      # только одна сессия
 удаляет. Недоступный BI-таргет → его строки пропускаются, строка с неудавшимся удалением
 остаётся `live` и повторяется следующим прунингом; код возврата 0 при чистом прогоне, 1 если
 что-то не удалось или было пропущено. См. ARCHITECTURE §3.17.
+
+### decision
+```bash
+auto_bi decision validate contracts/                     # продукты ↔ metric contracts
+auto_bi decision verify contracts/ \
+        --base semantic/base --candidate semantic/head \
+        --evidence .evidence --dashboards dashboards/ \
+        --assets assets/ --results results.yaml \
+        --signing-key /secure/path/evidence-private.pem
+auto_bi decision runs .evidence --json                   # выбрать run перед проверкой
+auto_bi decision evidence .evidence \
+        --trust-key /secure/path/evidence-public.pem     # digest + signature
+auto_bi decision evidence .evidence --artifact check-semantic.diff \
+        --trust-key /secure/path/evidence-public.pem
+```
+Контур DecisionOps: не «запрос → дашборд», а проверка, что изменение семантики не ломает
+governed-числа. `validate` отвечает на один вопрос — согласованы ли контракты между собой.
+`verify` прогоняет полную последовательность гейта: валидация контрактов → заморозка двух
+semantic snapshot'ов → семантические gap'ы → diff → impact до продукта, дашборда и владельца →
+инвалидация verified assets → сверка результатов → компиляция дашбордов под их BI **без единого
+remote-вызова** → сборка content-addressed evidence bundle и его повторная верификация.
+
+Чтобы найти нужный прогон среди нескольких, выполните `auto_bi decision runs .evidence --json`.
+Команда читает только manifests непосредственных run-каталогов и сортирует строки по имени
+каталога, не по времени. Она ничего не записывает. Поля строки:
+
+| Поле | Как использовать |
+|---|---|
+| `run_id` | Имя каталога; передайте его в `decision evidence --run`. |
+| `manifest_run_id` | ID, записанный внутри manifest; после переименования каталога может отличаться от `run_id`. |
+| `product_ref`, `created_at` | Заявленные в manifest продукт и время; помогают выбрать прогон. |
+| `manifest_digest` | SHA-256 прочитанных байтов manifest; передайте целиком, включая `sha256:`, в `--expect-digest`. |
+| `integrity_checked` | Всегда `false`: каталог не проверяет payload hashes или подпись, даже у signed bundle. |
+
+Скопируйте `run_id` и `manifest_digest` из одной выбранной строки, заменив заполнители
+в команде ниже. Для signed bundle добавьте `--trust-key` с доверенным public key,
+полученным независимо от bundle:
+
+```text
+auto_bi decision evidence .evidence --run "<run_id>" --expect-digest "<manifest_digest>" --json
+```
+
+Эта команда проверяет выбранный bundle, включая совпадение двух run ID. Digest из каталога
+фиксирует увиденную версию manifest, но сам по себе не доказывает её подлинность или
+одобрение владельцем. Если manifest изменился между командами, несовпадение pin даёт
+exit `4` и отчёт с `evidence.digest_unexpected` в stdout. При чтении конкретного payload
+через `--artifact ID` несовпадение pin также даёт exit `4`, но stdout пуст, причина — в stderr.
+Pin не заменяет проверку payload hashes и подписи и не создаёт атомарный snapshot каталога.
+
+Чтобы прочитать owner-summary signed bundle, используйте те же выбранные значения
+и путь к доверенному ключу (замените все заполнители):
+
+```text
+auto_bi decision evidence .evidence --run "<run_id>" --expect-digest "<manifest_digest>" --artifact report-summary-md --trust-key "<public-key.pem>"
+```
+
+`--artifact` проверяет digest выбранного payload и ограничения его чтения; остальные
+payload этой командой не проверяются. Для полной проверки сначала выполните inspection
+без `--artifact`, добавив тот же `--trust-key`.
+
+Пустой evidence root при `--json` возвращает `[]` с exit `0`; текстовый режим печатает
+только заголовок каталога. Каталоги без manifest пропускаются.
+Отсутствующий или недоступный root, невалидный либо нечитаемый manifest, каталог вместо
+manifest и перенаправленный sealed run дают exit `2`, stderr с причиной и пустой stdout.
+Даже если до ошибки найден корректный run, частичный каталог не выводится.
+
+Когда `decision verify`, `capture`, `evidence` или `investigate` отказывает (exit `2`, при
+несовпавшем `--expect-digest` — `4`), причина — одна строка stderr после `error: `;
+`decision runs` пишет её так же, без `error: `. Перевод строки, табуляция, ESC и другие
+непечатаемые символы из имени файла, ключа документа или ответа валидатора записаны в ней
+escape-последовательностью Python (`\n`, `\t`, `\x1b`); буквы любого алфавита и обратная косая
+черта печатаются как есть (буква, которую поток не кодирует, — escape-последовательностью, как
+прежде: `\u043c`). Поэтому `\n` в строке — либо записанный перевод строки, либо обратная косая
+черта и `n` из самого пути (`C:\new`). В validation report с verifier 121 `source` issue файла
+и `subject` у `contract.unreadable` — место validated path и имена под ним (`$1/notes/x.yaml`);
+текст самого аргумента в это имя не входит. У `contract.invalid` без id `subject` хранит имя
+файла: для файла, переданного самому по себе, — как передано, включая регистр.
+Путь, который не прочитан, и файл отвергнутого продукта,
+если в них есть непечатаемый символ, стоят в кавычках Python, и обратная косая черта в них
+удвоена; без кавычек их `\n` — символы пути. Кавычки бывают и в самом имени, поэтому строка —
+для чтения: исходный текст по ней восстанавливается не всегда. Отказ argparse у `decision` и её
+команд — аргумент, которого команда не берёт (`unrecognized arguments:`), опция, которую нельзя
+узнать однозначно (`ambiguous option:`), — записан так же, под прежними строками `usage:`, и
+опция до `decision` тоже. Команды v1 argparse отвергает, как прежде: цитирует как есть.
+
+Так же записаны строки текстового ответа `decision validate`, `verify`, `evidence` и `runs`,
+которые называют прочитанное: путь и ключ контракта, detail проверки, версия, caveat и id из
+bundle, run из каталога, digest из `--expect-digest`. Значение остаётся в своей строке, и
+`verdict:` из имени файла или caveat не станет отдельной строкой ответа. Ответ `--json` —
+возвращённый документ в JSON: имена validation report с verifier 121 — те же `$1/…`, что в
+тексте. Управляющий символ ниже U+0020 в нём — escape самого JSON (`\r`, `\u001b`), а
+U+2028 и U+202E стоят как есть, поэтому текст и JSON одного ответа здесь различаются.
+`decision evidence --artifact` печатает payload как есть, а `capture` и `investigate` называют
+записанный файл так, как передан путь.
+
+`--signing-key` принимает Ed25519 unencrypted PKCS#8 PEM только по явному пути. Private key
+хранится вне checkout, evidence и логов; на Mac задайте ему mode `0600`. Соответствующий
+public key экспортируется как SPKI PEM и задаётся reader'у через `--trust-key`. Флаг trust
+key можно повторить во время ротации. Без signing key создаётся прежний
+`integrity=content_hashed`; signed bundle без matching out-of-band public key можно
+проинспектировать только как blocked и нельзя читать через `--artifact`.
+
+Форматы входов: semantic ref — каталог с `model.yaml` и необязательным `metrics/`;
+dashboard spec — файл по полному ref: `dashboard://sales/weekly_margin@7` читается из
+`<dashboards>/sales/weekly_margin@7.yaml` (или `.yml`, `.json`), `dashboard://weekly_margin@7` —
+из `<dashboards>/weekly_margin@7.yaml`. Без версии в имени продукт, запинненный на `@7`,
+подхватил бы вёрстку `@8`, без каталогов — вёрстку другого дашборда с тем же последним
+сегментом. Spec ref из нескольких сегментов, который лежит в корне каталога по последнему
+сегменту (так его читал verifier 111), не читается: `bi.contract` даёт review
+`bi.spec_missing`, пока файл не перенесён на путь своего ref. Assets — YAML `VerifiedAsset`;
+results — `{asset id: ResultSet}` с кандидатными ответами, снятыми вне гейта.
+Candidate ref должен держать каждую запинненную продуктом метрику ровно одним
+контрактом на запинненной версии, иначе `contracts.validate` блокирует выпуск:
+`metric_ref.candidate_version_mismatch`, `metric_ref.candidate_ambiguous`,
+`metric_ref.candidate_absent`.
+Каждый metric id semantic ref — и base, и candidate — должен определяться одним
+контрактом под `metrics/`, в каком бы подкаталоге ни лежал файл. Два контракта одного id,
+даже одинаковые, — blocking `gap.metric_duplicate` в `semantic.gaps`: ref не говорит,
+какой из них он имеет в виду. Тогда `semantic.diff`, `impact.products`,
+`assets.invalidated`, `results.reconcile`, `results.provenance` и `sql.compile` выходят
+`check.not_run`, как при контракте, который не загрузился. Старую версию контракта держите
+вне `metrics/` и его подкаталогов.
+Контракт запинненной метрики в validated paths должен быть определением, которое
+держит candidate ref, или определением, которое держит base ref: тогда изменение
+candidate — изменение под review. Иначе `contracts.validate` сообщает
+`metric_ref.candidate_content_mismatch` и называет отличия кодами semantic diff:
+block, когда отличие меняет смысл или ослабляет обещание, advisory при одних
+отличиях labels. Валидируйте контракт, который держит выпуск.
+На правила продукта, читающие контракт метрики, — dimensions, status и governing
+policies — гейт отвечает и на определении, которое держит candidate ref. Dimension
+продукта, которую метрика там не объявляет, и status `retired` блокируют выпуск
+(`dimension.candidate_not_allowed`, `metric.candidate_retired`); status `draft` и
+governing policy, под которой продукт не верифицируется, требуют review
+(`metric.candidate_draft`, `policy.candidate_mismatch`); status `deprecated` —
+advisory (`metric.candidate_deprecated`). Ответ, который validation уже даёт на
+validated-контракте, второй раз не сообщается.
+Когда validated paths держат несколько продуктов, `--product` называет верифицируемый,
+и `contracts.validate` грейдит issues этого продукта и issues загрузки файлов. Issue,
+который validation rules дали другому продукту тех же путей, выпуск не останавливает:
+он записан в payload шага как `other_product_issues`, а detail их считает. Файл,
+который не прочитан, не прошёл схему или повторяет id, блокирует прогон каждого
+продукта, чей бы контракт он ни держал. Схему не проходит и продукт, который дважды
+перечисляет один дашборд в `delivery.dashboards` или один формат в `delivery.brief_formats`
+(как повтор в `scope.metrics`): `decision validate` называет повтор, а `decision verify`
+от такого продукта отказывается, как от продукта, которого нет в путях (`no decision
+product …`, exit 2), и в той же строке называет его файл и что отвергла схема:
+`; 1 decision product(s) failed the schema: '<id>' in <файл> (<причина>)`. С `--product`
+называются файлы продуктов с этим id, без него — каждый отвергнутый схемой (первые три).
+За пути целиком отвечает `decision validate`: его exit code следует issues всех продуктов.
+Каждая запись `metric_refs` verified asset, переданного прогону, тоже должна пинить
+версию, которую держит candidate ref, ровно одним контрактом этой метрики. Иначе
+`assets.invalidated` блокирует выпуск с `asset.metric_ref_version_mismatch` или
+`asset.metric_ref_absent`. После сдвига версии
+перепиньте asset вместе с candidate.
+
+Для агрегатного результата asset может объявить проверки в `tolerance.aggregate_checks`.
+Они типизированы по `kind`: `partition_conservation` (сумма частей равна total), `share_sum`
+(доли дают целое), `ratio_reconstruction` (ratio восстанавливается из numerator/denominator)
+и `additive_decomposition` (компоненты дают total). Имена колонок указываются явно; эвристик
+по названиям нет. `absolute_tolerance`, `expected_sum` и `factor` задаются decimal-строками.
+Некорректный reference result даёт `insufficient`, а нарушивший инвариант candidate —
+`different`; оба исхода исключают clean pass.
+
+Код возврата — вердикт, а не операционный статус: `0` pass / pass_with_advisory, `3`
+needs_review, `4` block, `2` usage-ошибка. `1` не используется намеренно — это код
+необработанного исключения, и падение не должно выглядеть как вынесенный вердикт.
+
+Ответ decision-команд печатается в любой поток. Если кодировка потока не знает символа
+(вывод перенаправлен в файл или pipe под cp1252, задан `PYTHONIOENCODING=ascii`), строка
+печатается с backslash-escape на его месте, ответ `--json` — целиком в ASCII с escape самого
+JSON, и код возврата остаётся вердиктом. `decision evidence --artifact` печатает payload как
+есть или не печатает вовсе: при таком потоке — exit `2` и адрес файла в bundle.
+
+Evidence, которое файловая система не даёт прочитать, — не evidence, которого нет. Если на
+manifest, артефакт или каталог bundle нельзя посмотреть или их нельзя прочитать (чужие права,
+каталог без права поиска), `decision evidence` отвечает `error: cannot read <путь>: <класс>`
+и выходит с `2`, без вердикта; `block` с `evidence.artifact_missing` остаётся ответом на
+артефакт, которого действительно нет. Каталог под evidence-путём, в который нельзя заглянуть,
+не пропускается: команда просит назвать run через `--run`. `decision verify`, которому после
+записи bundle отказано в его повторном чтении (например, umask отнимает чтение у записанного),
+кончается `error: cannot read back the evidence bundle under <каталог>: …` и кодом `2`; bundle
+при этом записан целиком, и читатель, которому чтение разрешено, его верифицирует.
+
+Гейт не скрывает, чего он не сделал. Шаг «security/access/freshness/physical checks»
+требует движка: с `--dwh clickhouse|greengage` гейт спрашивает его read-only ролью и выносит
+все пять проверок — `dwh.access` (роль только читает и видит каждую витрину скоупа — иначе block),
+`dwh.freshness` (возраст самой свежей строки против `freshness_max_age` продукта — протухший
+источник review; день и часы без зоны читаются в timezone, которую объявляет метрика, а нет
+одной объявленной зоны или время позже момента прогона — тоже review),
+`dwh.physical` (колонка метрики, которой на движке нет, — block;
+разъехавшийся тип или раскладка — review), `dwh.security` (досягаемость роли, через которую
+собрано evidence) и `dwh.cost` (план против `budgets` метрики); без `--dwh` все пять выходят как
+`check.not_configured`. Шаг «compile SQL» компилирует
+reference-запрос метрики только там, где семантика точна: typed aggregate и governed ratio
+на ClickHouse (деление — `divideDecimal` на объявленной `unit.precision`, форма проверена на
+живом движке 24.8) и на PostgreSQL-семействе (`TRUNC(num * 1.000000 / NULLIF(den, 0), p)`,
+форма проверена на PostgreSQL 14.24). Ratio на движке, которого шов не знает, external и
+reviewed-SQL формулы получают названный гэп вместо запроса, за который гейт не может
+ручаться. Недоступный кандидатный результат — `needs_review`, никогда не pass. `--created-at` задаётся
+явно, когда прогон должен быть байт-в-байт воспроизводимым. `--created-at` (и `--captured-at` у
+`decision capture`), который не RFC 3339 UTC timestamp в одном написании, и `--environment` с
+одиночным суррогатом — usage-ошибка в одну строку (exit `2`) до чтения входов и до запроса к
+движку. Момент в файлах — `review.reviewed_at` verified asset, `formula.review.reviewed_at`
+метрического контракта, `attestation.captured_at` записанного результата — пишется так же:
+`YYYY-MM-DDTHH:MM:SS`, по желанию дробь секунды, `Z` (`2026-08-20T10:00:00Z`); без секунд,
+со смещением вместо `Z` или с текстом после дроби файл отвергается. В YAML момент стоит в
+кавычках (`reviewed_at: '2026-08-20T10:00:00Z'`): без них YAML читает его как дату, и отказ
+так и говорит. Bundle, чей manifest запечатан до verifier 115 с моментом другого написания
+(`created_at`, `signature.signed_at`), больше не читается (`evidence.manifest_invalid`);
+момент внутри артефакта заново не читается — артефакт проверяется по digest и размеру. См.
+[UTC timestamps](specs/utc-timestamps.md).
+Движок `--dwh`, который не ответил, — соединение отвергнуто, сессия потеряна, вопрос упал, —
+тоже usage-ошибка в одну строку `error: cannot ask <engine> at <host>:<port>/<database>: …`
+(exit `2`, без каталога evidence); отказ движка в доступе остаётся фактом окружения, который
+оценивает гейт. См.
+[DECISIONOPS_ARCHITECTURE §8.2 и §12.1](DECISIONOPS_ARCHITECTURE.md).
+
+Если проверка `--dwh` не может построить запрос из-за имени временной колонки или
+компонента имени таблицы, она возвращает exit `2` и одну строку
+`error: cannot build environment query: unsafe identifier: …`, без evidence.
+Проверьте указанное имя в кандидатном metric contract. Запрос подсчёта строк и
+свежести не отправляется, но соединение и чтение каталогов могут уже состояться.
+
+Если `decision verify --dwh` или `decision capture` не может загрузить настройки,
+команда возвращает exit `2` и одну строку `error: cannot load settings: …`, до соединения
+и записи результата. Ошибка валидации называет до трёх полей и кодов ошибок, например
+`ch_port (int_parsing)`; отказ чтения — только класс исключения. Значения настроек
+не выводятся. Offline `decision verify` без `--dwh` настройки не читает.
+
+`run_id` выводится из статических входов прогона: продукта, контрактов в validated paths,
+обоих semantic refs целиком, candidate `model.yaml`, dashboard specs и verified assets
+продукта, а также `--environment`, signing key и версии verifier. Изменился любой из них —
+это другой прогон с другим `run_id`, и в том же каталоге `--evidence` он пишется рядом с
+прежним bundle. Записанные результаты, показания движка и `--created-at` в `run_id` не
+входят: повтор с другими наблюдениями или в другое время в тот же каталог отклоняется
+(usage-ошибка, exit `2`) — такому прогону нужен свой каталог evidence.
+В `source` issue файла и `subject` у `contract.unreadable` стоит место аргумента и имена под
+ним: `$1/notes/x.yaml`, файл, переданный вторым аргументом, — `$2`. Каталог checkout и написание
+путей `run_id` не меняют при прочих равных, кроме двух случаев: `subject` у `contract.invalid`
+без id сохраняет имя файла как передано, если передан сам файл; у пути без файловой identity
+разный абсолютный текст (`..`, регистр) даёт отдельный issue при повторном обращении.
+Порядок аргументов может менять имена или порядок issues и тем самым `run_id`; если issues
+не называют пути, перестановка тех же аргументов отчёт не меняет: refs отсортированы, правила
+продуктов идут по id. Непрочитанный путь — один issue, если совпадает identity или абсолютный
+текст ([validated path names](specs/validated-path-names.md)).
+
+С `--dwh greengage` на ядре до PostgreSQL 9.5 (Greenplum 6 и Greengage 6 работают
+на 9.4) нет row-level security: гейт не читает row-policy каталог, clean summary
+`dwh.security` с покрытием называет версию ядра, остальные проверки среды грейдятся
+как на любом ядре.
+
+`evidence` — вторая половина: bundle, который написал `verify`, читается заново и каждый
+content address пересчитывается. Аргумент — каталог evidence или один run-каталог внутри
+него; если run'ов несколько, команда называет их и просит `--run`, а не выбирает сама.
+Вердикт здесь про целостность, а не про релиз: целый bundle выходит с `0`, даже если внутри
+записан `block`; подменённый payload или неожиданный `--expect-digest` дают `4`.
+Digest, проверка подписи и возвращённый bundle относятся к одним прочитанным bytes
+manifest. Это не атомарный snapshot всего каталога: каждый payload проверяется по
+адресу из этого manifest при его чтении.
+`--artifact ID` печатает один payload — но только если он всё ещё хешируется в свой адрес,
+а `restricted`-артефакт не печатается никогда: в манифесте у него есть digest, размер и
+класс, и это вся публичная поверхность (§10.2).
+ID claim и BI payload, названные по ref, — slug ref для чтения и на конце полный SHA-256
+canonical JSON: `[asset id]` у claim, `[dashboard ref, payload id]` у payload
+(`claim-asset-sales-weekly-margin-by-region-<64 hex>`,
+`bi-dashboard-weekly-margin-7-dataset-1-<64 hex>`): у `weekly_margin` и `weekly-margin`
+slug один, хеш разный. ID для `--artifact` берите из списка артефактов `decision evidence`.
+
+`--expect-digest` действует и вместе с `--artifact`: несовпадение manifest digest даёт
+`4`, диагностику `evidence.digest_unexpected` в stderr и пустой stdout. При совпадении
+stdout содержит только выбранный payload; подпись и ограничения доступа продолжают
+проверяться. Этот режим не проверяет содержимое остальных artifacts bundle.
+
+Начинать чтение стоит с `--artifact report-summary-md` — это `reports/summary.md`,
+единственный артефакт bundle, написанный для человека: что блокирует релиз, чьи числа
+задеты (метрика, дашборд, владелец), что решает человек и **что прогон не сделал**.
+Отчёт производный — он пересказывает уже оценённые check'и и не вводит собственных
+находок, поэтому спорить с ним бессмысленно: источник истины — сами check'и рядом.
 
 ---
 

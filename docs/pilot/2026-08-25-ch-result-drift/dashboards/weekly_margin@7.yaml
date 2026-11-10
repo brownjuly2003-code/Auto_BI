@@ -1,0 +1,15 @@
+title: Недельная маржа
+target_bi: superset
+filters:
+- column: dm.sales_daily.date
+charts:
+- id: revenue_by_region
+  title: Выручка по регионам
+  viz: bar
+  query:
+    table: dm.sales_daily
+    dimensions:
+    - region
+    measures:
+    - column: revenue
+      agg: sum

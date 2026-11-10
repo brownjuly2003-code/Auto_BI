@@ -1,8 +1,8 @@
 # Auto_BI — план до 9.8/10 (архив волн 1–2)
 
 > **Устарел как current roadmap.** Актуальный статус и residual —
-> **[docs/CURRENT_STATE.md](docs/CURRENT_STATE.md)**. Фазы 0–4 —
-> [docs/PLAN.md](docs/PLAN.md). Этот файл сохранён как история audit-steps S01–S18
+> **[CURRENT_STATE.md](../CURRENT_STATE.md)**. Фазы 0–4 —
+> [PLAN.md](../PLAN.md). Этот файл сохранён как история audit-steps S01–S18
 > (июль 2026); не обновлять гейт-цифры здесь.
 >
 > Источник находок волн 1–2: `audit_fable_03_07_26.md` (внутренний).

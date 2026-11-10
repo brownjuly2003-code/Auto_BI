@@ -1,5 +1,9 @@
 # Auto_BI — Архитектура
 
+> В `Auto_BI_new` этот файл описывает унаследованный v1 dashboard compiler.
+> Нормативная архитектура DecisionOps находится в
+> [DECISIONOPS_ARCHITECTURE.md](DECISIONOPS_ARCHITECTURE.md).
+>
 > Этот файл описывает **текущий дизайн**: компоненты, границы и обязательные
 > инварианты. Текущий продуктовый статус находится в
 > [CURRENT_STATE.md](CURRENT_STATE.md), хронология архитектуры — в

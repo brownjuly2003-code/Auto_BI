@@ -24,6 +24,7 @@ from auto_bi.ir.spec import (
     measure_alias,
 )
 from auto_bi.semantic.model import Aggregation
+from auto_bi.sql_render import render_sql
 
 DIALECT = "clickhouse"
 
@@ -43,6 +44,21 @@ _AGG_FUNC = {
 }
 
 
+def aggregate_expr(agg: Aggregation, col: exp.Expression) -> exp.Expression:
+    """The aggregate call for *agg* over *col*.
+
+    One mapping with two callers: chart SQL below, and the metric reference queries the
+    release gate compiles (`verification/sql_contract.py`, ARCHITECTURE §8.2 step 6). A
+    second copy would let a newly added aggregation compile one way for a dashboard and
+    another way for the evidence that is supposed to verify that dashboard.
+    """
+    if agg is Aggregation.COUNT_DISTINCT:
+        return exp.Count(this=exp.Distinct(expressions=[col]))
+    # sqlglot types func() as Func, an Expression subclass at runtime
+    built: exp.Expression = exp.func(_AGG_FUNC[agg], col)  # type: ignore[assignment]
+    return built
+
+
 def _measure_expr(
     measure: Measure, col_ref: str | None = None, *, alias: str | None = None
 ) -> exp.Expression:
@@ -51,11 +67,7 @@ def _measure_expr(
     # `alias` overrides the SELECT alias — the windowed path names the inner base
     # aggregate with a private alias the outer window then reads.
     col = _dim_column(col_ref or measure.column)
-    if measure.agg == Aggregation.COUNT_DISTINCT:
-        agg: exp.Expression = exp.Count(this=exp.Distinct(expressions=[col]))
-    else:
-        # sqlglot types func()/alias_ as Func/Expr, both Expression subclasses at runtime
-        agg = exp.func(_AGG_FUNC[measure.agg], col)  # type: ignore[assignment]
+    agg = aggregate_expr(measure.agg, col)
     return exp.alias_(agg, alias or measure_alias(measure), quoted=True)  # type: ignore[return-value]
 
 
@@ -294,7 +306,7 @@ def generate_source_sql(
             on=_dim_column(j.on_left).eq(_dim_column(j.on_right)),
             join_type="left",
         )
-    return select.sql(dialect=dialect, identify=True)
+    return render_sql(select, dialect=dialect)
 
 
 def _resolve_for(query: ChartQuery) -> Callable[[str], str]:
@@ -378,7 +390,7 @@ def _generate_flat_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) ->
     select = _apply_order_and_limit(
         select, query, apply_limit=apply_limit, order_exprs=_grain_order_exprs(query, dialect)
     )
-    return select.sql(dialect=dialect, identify=True)
+    return render_sql(select, dialect=dialect)
 
 
 def _safe_div(num: exp.Expression, den: exp.Expression) -> exp.Expression:
@@ -546,7 +558,7 @@ def _generate_windowed_sql(query: ChartQuery, *, dialect: str, apply_limit: bool
 
     outer = exp.select(*outer_dims, *outer_measures).from_(inner.subquery(alias="t"))
     outer = _apply_order_and_limit(outer, query, apply_limit=apply_limit)
-    return outer.sql(dialect=dialect, identify=True)
+    return render_sql(outer, dialect=dialect)
 
 
 # (unit, step) to subtract for ONE period at each grain; a yoy compare multiplies step by the
@@ -653,7 +665,7 @@ def _generate_compare_kpi_sql(query: ChartQuery, *, dialect: str, apply_limit: b
             select = select.where(exp.GTE(this=_dim_column(resolved.column), expression=widened))
         else:
             select = select.where(_filter_expr(resolved, dialect=dialect))
-    return select.sql(dialect=dialect, identify=True)
+    return render_sql(select, dialect=dialect)
 
 
 def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: bool) -> str:
@@ -736,4 +748,4 @@ def _generate_histogram_sql(query: ChartQuery, *, dialect: str, apply_limit: boo
     select = select.order_by(exp.Ordered(this=bucket.copy()))
     if apply_limit:
         select = select.limit(query.limit)
-    return select.sql(dialect=dialect, identify=True)
+    return render_sql(select, dialect=dialect)

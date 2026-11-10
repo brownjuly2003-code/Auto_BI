@@ -1,13 +1,17 @@
 # Auto_BI — текущее состояние
 
-Единая точка входа «что сейчас правда» для операторов и агентов.
+> В `Auto_BI_new` это состояние унаследованного v1 baseline. Текущее состояние
+> нового проекта находится в
+> [DECISIONOPS_CURRENT_STATE.md](DECISIONOPS_CURRENT_STATE.md).
+>
+Сводка закрытого baseline-релиза. Общий навигатор — [README.md](README.md).
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — текущий дизайн и обязательные инварианты.
 - [ARCHITECTURE_HISTORY.md](ARCHITECTURE_HISTORY.md) — история эволюции дизайна
   и доказательств поставки.
 - [PLAN.md](PLAN.md) — фазовая история; [adr/](adr/) — принятые решения.
-- Операторский roadmap-аудит (внутренний) — `plan_sol_23_07_26.md` в корне
-  (gitignored hygiene, не публичный).
+- Внутренние roadmap-аудиты не входят в публичное дерево; итоговые выводы
+  перенесены в tracked state/closure документы.
 
 **Версия пакета:** см. `auto_bi.__version__` / `pyproject.toml` (ratchet в
 `tests/test_docs_defaults.py`).
@@ -136,8 +140,7 @@ live evidence и final accounting закрыты; excluded external demo paths �
 
 Прежний open-ended residual больше не является активным local backlog.
 Disposition tokens: `closed` / `owner-de-scoped` / `externally-blocked` /
-`still-open`; исходная 24-row mapping сохранена в root
-`plan_audit_closure_29_07.md`, а текущая disposition зафиксирована в
+`still-open`; итоговая 24-row disposition зафиксирована в
 [PROJECT_CLOSURE.md](PROJECT_CLOSURE.md): **closed 21 · excluded from scope 3
 (historical token `owner-de-scoped`) · externally-blocked 0 · still-open 0**.
 Software release v0.5.0 complete; локально actionable строк **нет**. Три
@@ -178,11 +181,11 @@ Historical rows 4, 21 и 23 имеют token `owner-de-scoped` только дл
 
 ## Что не является source of truth
 
-- Root `plan_*.md`, `audit_*.md` — execution history, не current backlog.
-- `_NEXT_SESSION.md` — актуальный session mirror; при расхождении побеждают
-  current Git state и эти tracked state docs.
+- Локальные `plan_*.md`, `audit_*.md` и `_NEXT_SESSION.md` — internal working
+  notes, не current backlog и не часть публичной документации.
 - `docs/PLAN.md` — **фаза 0–4 history**, не «что делать завтра».
-- Корневой `plan.md` — legacy public stub; prefer this file for current status.
+- [history/AUTO_BI_IMPLEMENTATION_PLAN.md](history/AUTO_BI_IMPLEMENTATION_PLAN.md) —
+  архив execution/audit-шагов, не current roadmap.
 
 ## Локальные presentation artifacts
 

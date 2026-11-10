@@ -36,6 +36,7 @@ from auto_bi.ir.spec import (
     measure_alias,
 )
 from auto_bi.semantic.model import Aggregation, SemanticModel, Table
+from auto_bi.sql_render import quote_identifier
 
 # physical.engine / DWHConfig.engine -> DataLens connection `type` (input field).
 # NB: the type field on input is `type`, NOT `db_type` (db_type is only in getConnection
@@ -219,13 +220,17 @@ def build_connection_payload(
     }
 
 
-def _quote_ident(ident: str) -> str:
-    """ANSI-quoted identifier (ClickHouse and PostgreSQL/Greenplum both accept it); the
-    quote is doubled so an LLM-controlled alias cannot break out of the identifier."""
-    return '"' + ident.replace('"', '""') + '"'
+def _quote_ident(ident: str, *, dialect: str = "clickhouse") -> str:
+    return quote_identifier(ident, dialect=dialect)
 
 
-def _scale_measure_sql(sql: str, query: ChartQuery, measure_scale: tuple[float, list[str]]) -> str:
+def _scale_measure_sql(
+    sql: str,
+    query: ChartQuery,
+    measure_scale: tuple[float, list[str]],
+    *,
+    dialect: str = "clickhouse",
+) -> str:
     """Wrap the chart subselect so the listed measures are divided for display (N2 RU units).
 
     Mirrors the Superset adapter's display scaling (`form_data.py`: the adhoc metric becomes
@@ -238,10 +243,10 @@ def _scale_measure_sql(sql: str, query: ChartQuery, measure_scale: tuple[float, 
     targets = set(target_aliases)
     cols: list[str] = []
     for ref in query.group_columns():
-        cols.append(_quote_ident(column_alias(ref)))
+        cols.append(_quote_ident(column_alias(ref), dialect=dialect))
     for measure in query.measures:
         alias = measure_alias(measure)
-        quoted = _quote_ident(alias)
+        quoted = _quote_ident(alias, dialect=dialect)
         if alias in targets:
             cols.append(f"{quoted} / {divisor:.0f} AS {quoted}")
         else:
@@ -288,7 +293,7 @@ def build_dataset_payload(
         raise ValueError(f"no DataLens source_type for engine {engine!r}")
     sql = generate_chart_sql(query, dialect=sqlglot_dialect(engine), apply_limit=apply_limit)
     if measure_scale is not None:
-        sql = _scale_measure_sql(sql, query, measure_scale)
+        sql = _scale_measure_sql(sql, query, measure_scale, dialect=sqlglot_dialect(engine))
     src_title = source_title or name
 
     base_table = model.table(query.table)
