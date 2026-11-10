@@ -86,7 +86,7 @@ investigation: четыре pure version-pinned skill над supplied canonical 
 - Production-certified brief, scheduler, PostgreSQL platform runtime, REST/MCP/actions,
   **Ossie**, **MetricFlow** как движок запросов и **column-level lineage** не реализованы. Из
   dbt читаются только формулы `semantic_manifest.json`; каждая причина остаться `external_ref` —
-  строка [инвентаря](specs/dbt-formula-inventory.md); публичные dbt-проекты не прогонялись.
+  строка [инвентаря](specs/dbt-formula-inventory.md); три публичных проекта новых не дали.
   Ограничения этапа: число проблем reader не ограничено; `--*-dbt-database` не записана в
   provenance; сомнительное написание `relation_name` — review.
 - Human owner outcome не измеряется (ADR 0007); proxy- и Astra-review его не заменяют.
@@ -112,11 +112,11 @@ PEM вне checkout и evidence.
 
 ## Что делать дальше
 
-Финишная черта — [ADR 0010](adr/0010-finish-line.md) (решение владельца 2026-11-08). F1–F3
-сделаны (verifier 133, 134; F3 — тесты): отказанный каталог колонок — «неизвестно», другое
-имя типа PostgreSQL — не смена типа, живой файл прошёл на 9.4.26. Осталось: F4
-публичные dbt-проекты (`deps` + `parse`); F5 полный `ci_local` на финальном коммите; F6
-закрывающая запись и `0.6.0`. Находки вне F1–F6 — в [бэклог](DECISIONOPS_BACKLOG.md); сразу чинится
+Финишная черта — [ADR 0010](adr/0010-finish-line.md) (решение владельца 2026-11-08). F1–F4
+сделаны (verifier 133, 134; F3, F4 — тесты): отказанный каталог колонок — «неизвестно»,
+другое имя типа PostgreSQL — не смена типа, живой файл прошёл на 9.4.26, публичные dbt-проекты
+прочитаны. Осталось: F5 полный `ci_local` на финальном коммите; F6 закрывающая запись и
+`0.6.0`. Находки вне F1–F6 — в [бэклог](DECISIONOPS_BACKLOG.md); сразу чинится
 только неверный вердикт по числам.
 
 Не начинать без нового решения:

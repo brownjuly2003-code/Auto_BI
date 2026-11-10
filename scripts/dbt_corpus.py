@@ -19,12 +19,24 @@ rows proven today. The run stops, writing nothing, unless each metric, the contr
 resolves there as on its own project, the indexes in its paths aside: no entry, and no flag one
 sets, changes how another resolves.
 
+``public`` parses a public dbt project as its authors wrote it — a copy, with the profile of
+the corpus in place of its own — and records the ``require-dbt-version`` it declares, the
+artifact's digest, the reader's problems and, for each metric, what the resolver answers
+against a contract on ``dm.public_grain``. That is no table of the project: the rows such a
+contract decides — the grain table, the event time column — are the contract's, the others
+the project's (``tests/test_dbt_public.py``). Like every dbt call here, it runs with
+``--no-version-check``: a project that requires another dbt is read by this one all the same.
+
 Steps (the Mac stand)::
 
     python scripts/dbt_corpus.py run --dbt DBT --out tests/fixtures/dbt_semantic_manifest/corpus
+    python scripts/dbt_corpus.py public --dbt DBT --project DIR [--add DIR=PLACE ...] \\
+        [--flag NAME=JSON ...] \\
+        --source "REPOSITORY@REVISION" --out RECORD [--artifact ARTIFACT]
 
 ``DBT`` is the ``dbt`` of an environment with dbt-core and dbt-postgres. No database is
-reached: ``dbt parse`` alone.
+reached: ``dbt parse`` alone, after ``dbt deps`` for a public project with packages, which
+fetches them.
 """
 
 from __future__ import annotations
@@ -33,6 +45,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,10 +54,16 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from auto_bi.evidence.canonical import digest_bytes, sha256_digest
 from auto_bi.semantic.metric_contract import MetricContract
 from auto_bi.semantic.metricflow import ManifestRead, read_semantic_manifest
-from auto_bi.semantic.metricflow_formula import PROVEN_PARITY, DeclaredTable, resolve_formula
+from auto_bi.semantic.metricflow_formula import (
+    PROVEN_PARITY,
+    DeclaredTable,
+    resolve_formula,
+)
 
 DIALECTS = ("legacy", "v2")
 SCHEMA = "dm"
@@ -1139,13 +1158,168 @@ def run(dbt: str, out: Path) -> int:
     return 0
 
 
+# --- public projects ---------------------------------------------------------------------
+
+#: A public project has no contract of ours: its metrics are read against a table of none.
+PUBLIC_TABLE = f"{SCHEMA}.public_grain"
+_PROFILE = "corpus"
+#: What dbt writes or fetches in a project's root, not of the project as its authors wrote it.
+_NOT_THE_PROJECT = frozenset({".git", "target", "logs", "dbt_packages"})
+
+
+def public(
+    dbt: str,
+    project: Path,
+    out: Path,
+    *,
+    source: str,
+    adds: Sequence[tuple[Path, str]] = (),
+    flags: Mapping[str, Any] | None = None,
+    artifact: Path | None = None,
+) -> int:
+    """Parse a public dbt project as its authors wrote it; record what the reader and the
+    resolver say of it, or dbt's refusal. The project is copied first (with `adds`, directory
+    -> place in the copy), so its own directory gets nothing written; `flags` are behaviour
+    flags written into the copy's `dbt_project.yml`, which must set none of its own. dbt runs
+    with `--no-version-check`; the record keeps the `require-dbt-version` the project declares.
+    A parse that exits 0 and writes no artifact is no refusal: it stops the run."""
+    flags = dict(sorted((flags or {}).items()))
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp)
+        work = home / "project"
+        shutil.copytree(project, work, ignore=_root_only(project))
+        for directory, place in adds:
+            into = (work / place).resolve()
+            if not into.is_relative_to(work.resolve()):
+                raise SystemExit(f"--add {place!r} is not a place in the project")
+            shutil.copytree(directory, into, dirs_exist_ok=True)
+        settings = work / "dbt_project.yml"
+        text = settings.read_text(encoding="utf-8")
+        declared = yaml.safe_load(text)
+        if not isinstance(declared, dict):
+            raise SystemExit(f"{source}: dbt_project.yml is no mapping")
+        if flags:
+            if "flags" in declared:
+                raise SystemExit(f"{source} sets behaviour flags of its own")
+            settings.write_text(
+                text.rstrip("\n")
+                + "\nflags:\n"
+                + "".join(f"  {flag}: {json.dumps(value)}\n" for flag, value in flags.items()),
+                encoding="utf-8",
+                newline="\n",
+            )
+        profiles = home / "profiles"
+        profiles.mkdir()
+        (profiles / "profiles.yml").write_text(
+            project_files("legacy", [])["profiles.yml"], encoding="utf-8", newline="\n"
+        )
+        where = ["--project-dir", str(work), "--profiles-dir", str(profiles), "--profile", _PROFILE]
+        if (work / "packages.yml").is_file() or (work / "dependencies.yml").is_file():
+            done = _dbt(dbt, ["deps", *where], home)
+            if done.returncode != 0:
+                raise SystemExit(
+                    f"dbt deps fails for {source}:\n{_excerpt(done.stdout + done.stderr, work)}"
+                )
+        target = home / "target"
+        done = _dbt(
+            dbt, ["parse", *where, "--target-path", str(target), "--no-partial-parse"], home
+        )
+        written = target / "semantic_manifest.json"
+        refused = None
+        if done.returncode != 0:
+            refused = _excerpt(done.stdout + done.stderr, work)
+        elif not written.is_file():
+            raise SystemExit(f"dbt parse of {source} exits 0 and writes no artifact")
+        raw = None if refused is not None else written.read_bytes()
+    record: dict[str, Any] = {
+        "source": source,
+        "flags": flags,
+        "require_dbt_version": declared.get("require-dbt-version"),
+        "versions": _versions(dbt),
+    }
+    if raw is None:
+        record["refused"] = refused
+    else:
+        if artifact is not None:
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_bytes(raw)
+        read = read_semantic_manifest(raw)
+        record["artifact"] = digest_bytes(raw)
+        record["problems"] = [
+            {"code": p.code, "path": p.path, "reason": p.reason} for p in read.problems
+        ]
+        if read.manifest is not None:
+            names = sorted(metric["name"] for metric in json.loads(raw)["metrics"])
+            record["outcomes"] = {name: outcome(read, name, PUBLIC_TABLE) for name in names}
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        json.dumps(record, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
+    )
+    return 0
+
+
+def _root_only(project: Path) -> Any:
+    """`copytree` ignore: what dbt writes or fetches, in the project's root only."""
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        if Path(directory) != project:
+            return set()
+        return {name for name in names if name in _NOT_THE_PROJECT}
+
+    return ignore
+
+
+def _add(text: str) -> tuple[Path, str]:
+    directory, _, place = text.partition("=")
+    if not place:
+        raise argparse.ArgumentTypeError(f"--add takes DIRECTORY=PLACE, not {text!r}")
+    return Path(directory), place
+
+
+def _flag(text: str) -> tuple[str, Any]:
+    name, _, value = text.partition("=")
+    if not name or not value:
+        raise argparse.ArgumentTypeError(f"--flag takes NAME=VALUE, not {text!r}")
+    try:
+        return name, json.loads(value)
+    except json.JSONDecodeError as error:
+        raise argparse.ArgumentTypeError(f"--flag {name}: {value!r} is no JSON value") from error
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     commands = parser.add_subparsers(dest="command", required=True)
     running = commands.add_parser("run", help="parse each entry, then the corpus; record")
     running.add_argument("--dbt", required=True)
     running.add_argument("--out", type=Path, required=True)
+    reading = commands.add_parser("public", help="parse a public dbt project; record")
+    reading.add_argument("--dbt", required=True)
+    reading.add_argument("--project", type=Path, required=True)
+    reading.add_argument(
+        "--source", required=True, help="where the project is from, with its revision"
+    )
+    reading.add_argument(
+        "--add", type=_add, action="append", default=[], help="DIRECTORY=PLACE in the project"
+    )
+    reading.add_argument(
+        "--flag", type=_flag, action="append", default=[], help="NAME=JSON behaviour flag"
+    )
+    reading.add_argument("--out", type=Path, required=True)
+    reading.add_argument("--artifact", type=Path, help="where to keep the artifact dbt wrote")
     args = parser.parse_args(argv)
+    if args.command == "public":
+        names = [name for name, _ in args.flag]
+        if len(set(names)) != len(names):
+            parser.error("--flag sets a flag twice")
+        return public(
+            args.dbt,
+            args.project,
+            args.out,
+            source=args.source,
+            adds=args.add,
+            flags=dict(args.flag),
+            artifact=args.artifact,
+        )
     return run(args.dbt, args.out)
 
 

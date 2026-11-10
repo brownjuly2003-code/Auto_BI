@@ -206,8 +206,9 @@ Conversion- и private-метрик и natural entities в корпусе нет
    24.8 по умолчанию: `count_distinct_implementation = uniqExact` (иначе `count(DISTINCT)`
    бывает приближённым), `aggregate_functions_null_for_empty = 0`,
    `decimal_check_overflow = 1`, `cast_keep_nullable = 0`; сервер с другими — вне его. V2 в
-   матрицу не входит: dbt-core 1.12.6 не пишет гранулярность time dimension V2 (п. 8), и ни
-   одна V2-метрика не разрешается. Прогон 2026-11-07 (PostgreSQL 16.15, ClickHouse 24.8.14.39,
+   матрицу не входит: dbt-core 1.12.6 не пишет гранулярность time dimension V2 в написании
+   `dimension: time` (п. 8; в написании `dimension: {type: time}` пишет — F4 ADR 0010), и ни
+   одна V2-метрика не разрешается: V2-строк в матрице нет (`parity.v2`). Прогон 2026-11-07 (PostgreSQL 16.15, ClickHouse 24.8.14.39,
    metricflow 0.213.0) и его границы —
    [отчёт](../reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md); прогон
    2026-11-04, только PostgreSQL, по прежнему рецепту (его fixtures — в дереве `8fd576c`) —
@@ -241,7 +242,8 @@ Conversion- и private-метрик и natural entities в корпусе нет
    `primary_entity` (dbt пишет и виртуальную entity), шаблоны фильтров, saved queries. Каждая
    из этих конструкций в формуле — review выше; saved queries в формулу не входят.
    Для S2: V2-артефакт dbt 1.12.6 пишет `fill_nulls_with: null` при `fill_nulls_with: 0` в
-   YAML и `type_params: null` у time dimension (гранулярности в артефакте нет). S2 читает
+   YAML и `type_params: null` у time dimension, написанной `dimension: time` (гранулярности в
+   артефакте нет; написанной `dimension: {type: time}` — `day`, F4 ADR 0010). S2 читает
    артефакт, а не YAML: заполнения в нём нет, а гранулярность time dimension V2 не доказать —
    review п. 3. `input_measures` ratio dbt пишет как меры числителя, затем знаменателя, каждую
    один раз: у ratio одной метрики на саму себя мера одна (прогон матрицы); иной список —

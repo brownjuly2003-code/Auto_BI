@@ -649,6 +649,23 @@
 
 ### Added
 
+- **Формулы публичных dbt-проектов прочитаны** ([ADR 0010](docs/adr/0010-finish-line.md), F4;
+  [отчёт](docs/reviews/DECISIONOPS_DBT_PUBLIC_2026-11-10.md)). `scripts/dbt_corpus.py public`
+  делает `dbt deps` и `dbt parse` на временной копии проекта, без базы и секретов, и пишет
+  запись: объявленный `require-dbt-version`, отказ dbt или проблемы ридера и ответ резолвера
+  по каждой метрике; `--flag` ставит флаг поведения в копию `dbt_project.yml`. Три проекта
+  dbt-labs — MetricFlow tutorial, jaffle-sl-template (dbt-core 1.12.6 принимает его только с
+  `require_nested_cumulative_type_params: false`) и jaffle-shop (просит dbt `>=2.0.0`, прочитан
+  1.12.6 с `--no-version-check`): ридер прочитал все артефакты, каждый гэп проекта из 54
+  метрик — одна строка инвентаря, новых нет. Гэпов проекта нет у четырёх метрик, с контрактом
+  на своей таблице разрешилась бы одна; узость подмножества — в бэклоге. Записи —
+  `tests/fixtures/dbt_semantic_manifest/public/` (без артефактов: у jaffle-репозиториев нет
+  лицензии), тест — `tests/test_dbt_public.py`.
+- **Гранулярность V2 time dimension в инвентаре уточнена** (F4): dbt-core 1.12.6 не пишет её
+  только в написании `dimension: time`; в написании `dimension: {type: time}` с
+  `granularity: day` пишет `day`, и V2-метрика без других гэпов останавливается на `parity.v2`
+  (review) — так исправлены строки `time.no-granularity`, `parity.v2` и п. 7 и 8 ADR 0008.
+  Вердикт не меняется.
 - **Живая проверка DecisionOps и на ядре PostgreSQL 9.4.26** — ядре Greenplum 6 и Greengage 6
   ([ADR 0010](docs/adr/0010-finish-line.md), F3). `tests/test_decision_live_postgres.py`
   принимает сервер 16 (CI) и 9.4: база теста на ядре до 13 удаляется без `WITH (FORCE)`, дрейф

@@ -1,0 +1,478 @@
+{
+ "source": "github.com/dbt-labs/jaffle-shop@5beb145b00f5465ec759cfcdd9745e858818cf95",
+ "flags": {},
+ "require_dbt_version": ">=2.0.0",
+ "versions": {
+  "dbt-core": "1.12.6",
+  "dbt-postgres": "1.11.0",
+  "metricflow": "0.213.0"
+ },
+ "artifact": "sha256:f60b85e473efc40076755761cee3e1dc9e83f241a201f91765730fdf4650e284",
+ "problems": [],
+ "outcomes": {
+  "average_order_value": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[4].type",
+     "reason": "outside the subset a typed formula is resolved from: a derived metric"
+    }
+   ]
+  },
+  "average_tax_rate": {
+   "gaps": [
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[4].dimensions[1].name",
+     "reason": "time dimension 'opened_date' reads column 'opened_date'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[4].node_relation",
+     "reason": "semantic model 'locations' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "count_lifetime_orders": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[1].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[1].dimensions[1].name",
+     "reason": "time dimension 'first_ordered_at' reads column 'first_ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[1].node_relation",
+     "reason": "semantic model 'customers' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "cumulative_revenue": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[22].type",
+     "reason": "outside the subset a typed formula is resolved from: a cumulative metric"
+    }
+   ]
+  },
+  "customers": {
+   "gaps": [
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[1].dimensions[1].name",
+     "reason": "time dimension 'first_ordered_at' reads column 'first_ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[1].node_relation",
+     "reason": "semantic model 'customers' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "drink_orders": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[10].filter",
+     "reason": "outside the subset a typed formula is resolved from: a metric filter"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[10].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].dimensions[1].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].node_relation",
+     "reason": "semantic model 'orders' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "drink_revenue": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[16].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].dimensions[0].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].node_relation",
+     "reason": "semantic model 'order_items' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "drink_revenue_pct": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[16].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].dimensions[0].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].node_relation",
+     "reason": "semantic model 'order_items' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "food_orders": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[9].filter",
+     "reason": "outside the subset a typed formula is resolved from: a metric filter"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[9].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].dimensions[1].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].node_relation",
+     "reason": "semantic model 'orders' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "food_revenue": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[15].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].dimensions[0].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].node_relation",
+     "reason": "semantic model 'order_items' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "food_revenue_pct": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[15].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].dimensions[0].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].node_relation",
+     "reason": "semantic model 'order_items' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "large_orders": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[8].filter",
+     "reason": "outside the subset a typed formula is resolved from: a metric filter"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[8].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].dimensions[1].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].node_relation",
+     "reason": "semantic model 'orders' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "lifetime_spend": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[3].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[1].dimensions[1].name",
+     "reason": "time dimension 'first_ordered_at' reads column 'first_ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[1].node_relation",
+     "reason": "semantic model 'customers' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "lifetime_spend_pretax": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[2].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[1].dimensions[1].name",
+     "reason": "time dimension 'first_ordered_at' reads column 'first_ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[1].node_relation",
+     "reason": "semantic model 'customers' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "median_revenue": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[17].type_params.metric_aggregation_params.agg",
+     "reason": "outside the subset a typed formula is resolved from: aggregation median"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].dimensions[0].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].node_relation",
+     "reason": "semantic model 'order_items' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "new_customer_orders": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[7].filter",
+     "reason": "outside the subset a typed formula is resolved from: a metric filter"
+    },
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[7].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].dimensions[1].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].node_relation",
+     "reason": "semantic model 'orders' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "order_cost": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[12].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].dimensions[1].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].node_relation",
+     "reason": "semantic model 'orders' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "order_gross_profit": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[21].type",
+     "reason": "outside the subset a typed formula is resolved from: a derived metric"
+    }
+   ]
+  },
+  "order_total": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[5].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].dimensions[1].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].node_relation",
+     "reason": "semantic model 'orders' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "orders": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[6].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a column that is not one lower-case identifier"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].dimensions[1].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].node_relation",
+     "reason": "semantic model 'orders' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "revenue": {
+   "gaps": [
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].dimensions[0].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[5].node_relation",
+     "reason": "semantic model 'order_items' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  },
+  "revenue_growth_mom": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[20].type",
+     "reason": "outside the subset a typed formula is resolved from: a derived metric"
+    }
+   ]
+  },
+  "tax_paid": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[11].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
+    },
+    {
+     "code": "gap.external_time_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].dimensions[1].name",
+     "reason": "time dimension 'ordered_at' reads column 'ordered_at'; the contract's event time column is 'date'"
+    },
+    {
+     "code": "gap.external_relation_mismatch",
+     "severity": "block",
+     "path": "$.semantic_models[2].node_relation",
+     "reason": "semantic model 'orders' reads a relation other than the grain table dm.public_grain"
+    }
+   ]
+  }
+ }
+}

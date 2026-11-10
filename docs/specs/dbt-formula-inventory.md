@@ -109,7 +109,7 @@ is not looked for:
 | `time.name` | The dimension has no `expr`, and its name — the column dbt reads then — is not one lower-case column: a value word such as `null`, an upper-case name; the path is that of the `expr` the name stands in for | `gap.external_time_unproven` | review | `$.semantic_models[s].dimensions[d].expr` |
 | `time.column-name` | The dimension has no `expr`, and its name is a column other than the contract's `time.event_time_column` | `gap.external_time_mismatch` | block | `$.semantic_models[s].dimensions[d].name` |
 | `time.column-expr` | The dimension's `expr` is a column other than the contract's event time column | `gap.external_time_mismatch` | block | `$.semantic_models[s].dimensions[d].expr` |
-| `time.no-granularity` | The artifact gives the dimension no granularity (`type_params: null`) — as dbt-core 1.12.6 writes every V2 time dimension, which keeps every V2 metric review | `gap.external_time_unproven` | review | `$.semantic_models[s].dimensions[d].type_params` |
+| `time.no-granularity` | The artifact gives the dimension no granularity (`type_params: null`) — as dbt-core 1.12.6 writes a V2 time dimension spelled `dimension: time`, which keeps its metric review | `gap.external_time_unproven` | review | `$.semantic_models[s].dimensions[d].type_params` |
 | `time.granularity` | The dimension's granularity is not `day` | `gap.external_time_unproven` | review | `$.semantic_models[s].dimensions[d].type_params.time_granularity` |
 | `ratio.models` | The numerator and the denominator aggregate in two semantic models | `gap.external_ratio_unproven` | review | `$.metrics[m].type_params.denominator` |
 | `ratio.times` | The numerator and the denominator aggregate over two time dimensions | `gap.external_ratio_unproven` | review | `$.metrics[m].type_params.denominator` |
@@ -206,7 +206,7 @@ proven in a context does not prove another there. Proven today are 164 rows in t
 | `parity.column-type` | The aggregated column is of a type outside the classes `decimal`, `integer` and `float` — `text`, `date`, an array — or of no declared type | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 | `parity.ratio-average` | A ratio term under `average` | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 | `parity.ratio-float` | A ratio term under `sum`, `min` or `max` over a `float` column | `gap.external_parity_unproven` | review | `$.metrics[m]` |
-| `parity.v2` | A V2 metric: no V2 row was run, since no V2 metric gets this far today (`time.no-granularity`) | `gap.external_parity_unproven` | review | `$.metrics[m]` |
+| `parity.v2` | A V2 metric: no V2 row was run — no V2 metric of the corpus gets this far (`time.no-granularity`); one whose time dimension is spelled `dimension: {type: time}` does | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 
 ## What dbt-core 1.12.6 writes
 
@@ -291,20 +291,40 @@ What dbt does with the constructs it does not carry:
 - A name dbt reserves (`null`) or with an upper-case letter is refused; `true` as a measure's
   name and `current_date` as a time dimension's are taken, and give `legacy.measure-name` and
   `time.name`.
-- No V2 metric resolves: dbt writes no `type_params` for a V2 time dimension, so each V2 metric
-  stops at `time.no-granularity` — but the one whose semantic model sets no aggregation time
-  dimension (`time.none-v2`) — and none reaches `parity.v2`.
+- No V2 metric of the corpus resolves: dbt writes no `type_params` for a V2 time dimension
+  spelled `dimension: time`, as the corpus spells it, so each V2 metric stops at
+  `time.no-granularity` — but the one whose semantic model sets no aggregation time dimension
+  (`time.none-v2`) — and none reaches `parity.v2`. Spelled `dimension: {type: time}`, as
+  jaffle-shop spells it (below), the dimension gets `time_granularity: day`.
+
+## Public projects
+
+F4 of [ADR 0010](../adr/0010-finish-line.md) read three public dbt-labs projects with the
+versions of the corpus ([report](../reviews/DECISIONOPS_DBT_PUBLIC_2026-11-10.md)):
+`scripts/dbt_corpus.py public` runs `dbt deps` and `dbt parse` on a temporary copy, no
+database reached, and resolves each metric against a contract on `dm.public_grain`, a table of
+no project — the gaps that contract decides are set aside. dbt-core 1.12.6 refuses
+jaffle-sl-template as written (`orders_last_7_days` keeps `window` at the top of
+`type_params`) and reads it with `require_nested_cumulative_type_params: false`. The reader
+reads each artifact, and every gap the projects give, for 54 metrics, is a row above: none of
+their constructs is outside the inventory. dbt runs with `--no-version-check`, so jaffle-shop,
+which requires dbt `>=2.0.0`, is read by dbt-core 1.12.6. Its V2 time dimensions, spelled
+`dimension: {type: time}` with `granularity: day`, get `time_granularity: day`: time no longer
+stops a V2 metric of such a project, and one with no other gap reaches `parity.v2`.
+`tests/fixtures/dbt_semantic_manifest/public` keeps the records, not the artifacts (neither
+jaffle repository carries a licence), and `tests/test_dbt_public.py` holds them to the rows.
 
 ## What the artifact does not show
 
 The resolver reads the artifact, not the dbt project. dbt-core 1.12.6 writes a V2 metric's
 `fill_nulls_with` as `null`, whatever its value, and no granularity for a V2 time dimension
-(ADR 0008, item 8; the corpus above). The second keeps every V2 metric review: at
-`time.no-granularity`, or at `time.none-v2` where its semantic model sets no aggregation time
-dimension. The schema version does not guard the first: `dsi_package_version`
-marks the package, not the schema (ADR 0008, item 6), and a dbt release could write the
-granularity under 0.213.0. The reader would accept that artifact, and its V2 metrics would stop
-at `parity.v2`, since no V2 row is proven. A V2 row joins the matrix only through a recorded
+spelled `dimension: time` (ADR 0008, item 8; the corpus above). The second keeps such a V2
+metric review: at `time.no-granularity`, or at `time.none-v2` where its semantic model sets no
+aggregation time dimension. It does not guard the first: spelled `dimension: {type: time}`
+with `granularity: day`, the dimension gets its granularity from dbt-core 1.12.6 itself (F4,
+jaffle-shop), and the schema version tells nothing apart — `dsi_package_version` marks the
+package, not the schema (ADR 0008, item 6). Such a V2 metric with no other gap stops at
+`parity.v2` only, since no V2 row is proven. A V2 row joins the matrix only through a recorded
 parity run (the matrix is the run's `proven`), and that run compares MetricFlow with the
 reference SQL on the artifact as written: the fill value it lost is lost on both sides, so the
 run has to check that value apart.

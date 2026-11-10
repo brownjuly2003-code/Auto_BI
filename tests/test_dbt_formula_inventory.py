@@ -306,7 +306,7 @@ def _time_column_expr() -> Gaps:
 
 @case("time.no-granularity")
 def _time_no_granularity() -> Gaps:
-    # as dbt-core 1.12.6 writes every V2 time dimension
+    # as dbt-core 1.12.6 writes a V2 time dimension spelled `dimension: time`
     return _gaps(_resolve(_data("v2"), "revenue"))
 
 
