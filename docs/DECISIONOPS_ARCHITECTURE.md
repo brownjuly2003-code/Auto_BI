@@ -2676,7 +2676,8 @@ owner/design-partner outcome не измеряется и не входит в �
 внешний semantic source выбран в [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md).
 Пункты 2 и 3 закрыты [ADR 0009](adr/0009-local-package-identity-no-publication.md): fork не
 публикуется и не имеет remote, дистрибутив остаётся `autobi-agent` локальной версии — `0.6.0` с F6
-[ADR 0010](adr/0010-finish-line.md).
+[ADR 0010](adr/0010-finish-line.md). Пункт 3 пересмотрен [ADR 0011](adr/0011-public-repository.md): код форка —
+в `main` публичного репозитория baseline, пакет в индексы не публикуется.
 
 ## 19. Bootstrap acceptance
 

@@ -51,7 +51,7 @@
 - Windows, Python 3.13.7: пять затронутых модулей — **96 passed**, без пропусков; после
   правки теста pin `test_evidence_inspect` и `test_decision_cli` — **59 passed**.
   Ruff и Black пяти файлов чистые.
-- Mac (imac-julia), дерево `0196d42` (пять тестовых файлов, ещё без правки теста pin),
+- iMac, дерево `0196d42` (пять тестовых файлов, ещё без правки теста pin),
   Python 3.13.13, 3.12.13 и 3.14.6: пять затронутых модулей — каждый раз **94 passed,
   2 skipped**. Оба пропуска — суррогатные кейсы с причиной «the filesystem refuses
   this name: Illegal byte sequence».

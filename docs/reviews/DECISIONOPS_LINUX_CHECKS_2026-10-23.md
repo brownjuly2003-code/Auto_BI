@@ -11,7 +11,7 @@ Ruff, Black, mypy, strict mypy Linux и strict mypy win32 — exit 0.
 - Tree: `445345a30627a421eb44b60b1b4608254979961a`.
 - Источник: `git archive HEAD`, без untracked файлов. Git-индекс в контейнере
   восстановлен из точного списка `git ls-files -z`; `git write-tree` совпал с tree выше.
-- Host: `imac-julia`, Intel Mac. Изолированный Colima `autobi-linux`, 2 CPU / 3 GiB,
+- Host: iMac (Intel). Изолированный Colima `autobi-linux`, 2 CPU / 3 GiB,
   диск 20 GiB, без Kubernetes, mount и port forwarding; другие профили не запускались.
 - Container: 2 CPU / 2 GiB, Linux x86_64, kernel `6.8.0-100-generic`.
 - Python: CPython 3.12.15, образ `python:3.12-slim`, полученный digest:

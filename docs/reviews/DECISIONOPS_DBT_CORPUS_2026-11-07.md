@@ -148,7 +148,7 @@ dbt-core 1.12.6 отвергает (Refused, 10 строк):
 
 ## Среда
 
-- Host `imac-julia` (Intel Mac).
+- Host: iMac (Intel).
 - dbt-core 1.12.6, dbt-postgres 1.11.0, metricflow 0.213.0 — отдельный venv, Python 3.12.13.
   Только `dbt parse`, база не нужна.
 - Сторона репозитория — Python 3.13, `uv run`, дерево среза S5b до коммита.

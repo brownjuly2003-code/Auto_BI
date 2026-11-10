@@ -122,7 +122,7 @@ nullability своих термов: оба nullable, оба NOT NULL и сме�
 
 ## Среда
 
-- Host `imac-julia` (Intel Mac).
+- Host: iMac (Intel).
 - PostgreSQL 16.15 (Homebrew, `x86_64-apple-darwin22.6.0`): одноразовый кластер `initdb` в
   `mktemp`, `LC_ALL=C`, только unix-сокет, порт 55439; удалён после прогона.
 - ClickHouse 24.8.14.39: одиночный бинарник, режим `clickhouse local` (без сервера), таблица

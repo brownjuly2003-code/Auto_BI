@@ -94,7 +94,7 @@ PostgreSQL, `format_type` с модификатором) и мультимнож
 
 ## Среда
 
-- Host `imac-julia` (Intel Mac). PostgreSQL 16.15 (Homebrew,
+- Host: iMac (Intel). PostgreSQL 16.15 (Homebrew,
   `x86_64-apple-darwin22.6.0`): одноразовый кластер `initdb` в `mktemp`, `LC_ALL=C`,
   только unix-сокет, порт 55439; удалён после прогона.
 - dbt-core 1.12.6, dbt-postgres 1.11.0, metricflow 0.213.0 — отдельный venv (Python 3.13);

@@ -6,9 +6,8 @@
 2. **Auto_BI v0.5.0** — унаследованный baseline «запрос → дашборд».
 
 Это разделение важно: опубликованный пакет `autobi-agent==0.5.0` относится только к
-baseline. DecisionOps запускается из локального checkout как `autobi-agent` версии
-`0.6.0`, не публикуется и не имеет remote
-([ADR 0009](adr/0009-local-package-identity-no-publication.md)).
+baseline. DecisionOps запускается из checkout как `autobi-agent` версии `0.6.0`: код — в этом
+репозитории, пакет в индексы не публикуется ([ADR 0011](adr/0011-public-repository.md)).
 
 ## С чего начать
 
@@ -38,6 +37,7 @@ baseline. DecisionOps запускается из локального checkout 
 | [ADR 0008](adr/0008-dbt-semantic-manifest-external-formulas.md) | Первый внешний источник формул метрик — dbt `semantic_manifest.json` | decision |
 | [ADR 0009](adr/0009-local-package-identity-no-publication.md) | Локальная идентичность пакета форка, без публикации | decision |
 | [ADR 0010](adr/0010-finish-line.md) | Финишная черта DecisionOps: пункты F1–F6 и заморозка | decision |
+| [ADR 0011](adr/0011-public-repository.md) | Код форка — в публичном репозитории baseline; пакет не публикуется | decision |
 | [DECISIONOPS_BACKLOG.md](DECISIONOPS_BACKLOG.md) | Находки после финишной черты; срез не открывают | backlog |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome не измеряется |
 | [Implementation history](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md) | Подробный хронологический журнал реализации | archive |

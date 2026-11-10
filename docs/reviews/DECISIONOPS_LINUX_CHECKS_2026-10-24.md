@@ -11,7 +11,7 @@ Ruff, Black, mypy, strict mypy Linux и strict mypy win32 — exit 0. Код и 
 - Источник: `git archive HEAD`, без untracked файлов. Git-индекс в контейнере собран из
   точного списка `git ls-files -z`; `git write-tree` совпал с tree выше (сценарий сверяет
   их и иначе завершается до тестов).
-- Host: `imac-julia`, Intel i5-7500, macOS 13.7.8. Изолированный Colima `autobi-linux`,
+- Host: iMac, Intel i5-7500, macOS 13.7.8. Изолированный Colima `autobi-linux`,
   2 CPU / 3 GiB, диск 20 GiB; другие профили не запускались. Профиль запущен перед
   проверкой и остановлен после неё (`colima stop` — exit 0).
 - Container: 2 CPU / 2 GiB без swap, Linux x86_64, kernel `6.8.0-100-generic`.

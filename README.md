@@ -1,14 +1,14 @@
 # Auto_BI DecisionOps
 
-Локальный additive fork проверенного Auto_BI v0.5.0. Цель — self-hosted control
-plane для выпуска проверяемых аналитических продуктов; первый вертикальный
-продукт — **Analytics Release & Evidence Gate**. Навигатор по двум слоям проекта —
-[docs/README.md](docs/README.md).
+Additive fork проверенного Auto_BI v0.5.0; продолжает историю этого репозитория. Цель —
+self-hosted control plane для выпуска проверяемых аналитических продуктов; первый
+вертикальный продукт — **Analytics Release & Evidence Gate**. Навигатор по двум слоям
+проекта — [docs/README.md](docs/README.md).
 
-> **Fork не публикуется** ([ADR 0009](docs/adr/0009-local-package-identity-no-publication.md)).
-> `pip install autobi-agent` устанавливает опубликованный baseline v0.5.0, а не DecisionOps из
-> этого checkout: здесь тот же дистрибутив локальной версии `0.6.0`, без remote. Используйте
-> `uv sync` и запускайте CLI через `uv run auto_bi`.
+> **Пакет DecisionOps не публикуется** ([ADR 0011](docs/adr/0011-public-repository.md)): код лежит
+> в этом репозитории, но `pip install autobi-agent` устанавливает опубликованный baseline
+> v0.5.0. Здесь тот же дистрибутив версии `0.6.0`. Используйте `uv sync` и запускайте CLI
+> через `uv run auto_bi`.
 
 Первый вертикальный путь работает offline: `auto_bi decision
 validate` (cross-contract проверка), `auto_bi decision verify` (полный гейт §8.2
@@ -51,8 +51,8 @@ usage-ошибка (падение никогда не выглядит как �
 
 ## Auto_BI v0.5.0 baseline (унаследованный runtime)
 
-Бейджи ниже относятся к исходному публичному репозиторию baseline, а не к
-локальному DecisionOps fork без remote.
+Бейджи ниже показывают CI ветки `main` этого репозитория; с 2026-11-10 в ней
+DecisionOps ([ADR 0011](docs/adr/0011-public-repository.md)).
 
 [![CI](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml/badge.svg)](https://github.com/brownjuly2003-code/Auto_BI/actions/workflows/ci.yml) ![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/brownjuly2003-code/Auto_BI/main/.github/badges/coverage.json) ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![BI targets](https://img.shields.io/badge/BI-Superset_+_DataLens-1FA8C9) ![DWH](https://img.shields.io/badge/DWH-ClickHouse_+_Greenplum-FACC15) ![License](https://img.shields.io/badge/license-MIT-blue)
 

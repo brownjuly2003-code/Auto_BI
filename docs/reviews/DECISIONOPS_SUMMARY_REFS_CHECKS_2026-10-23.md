@@ -90,7 +90,7 @@ uv run --frozen --with mypy --with types-PyYAML mypy --platform win32 --strict a
 
 ## Полный прогон на Mac
 
-После коммита, дерево `db54a05` (`8b057fc`), imac-julia, с DuckDB, `-p no:randomly`:
+После коммита, дерево `db54a05` (`8b057fc`), iMac, с DuckDB, `-p no:randomly`:
 
 - Python 3.13.13: **6 failed, 6796 passed, 17 skipped, 38 deselected in 290.97s**.
   Black (`auto_bi`, `tests`), Ruff по всему репозиторию, mypy `--platform linux`,

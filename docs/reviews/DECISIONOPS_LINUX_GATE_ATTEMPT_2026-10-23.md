@@ -12,7 +12,7 @@
 - Commit: `e90485ee8f43d85476c2bb940dbdabc058d1d9d3`.
 - Git tree: `4cc3265d171c67714eb3226c91a510bb90e1d7d4`.
 - Источник: `git archive HEAD`, без untracked файлов.
-- Host: `imac-julia`, Intel Mac, 8 GiB RAM.
+- Host: iMac (Intel), 8 GiB RAM.
 - Colima: существующий профиль `default`, 2 CPU, 2 GiB RAM.
 - Container: `python:3.12-slim`, CPython 3.12.13, лимит 1 GiB / 1 CPU.
 - Зависимости: `uv sync --frozen` завершился успешно.

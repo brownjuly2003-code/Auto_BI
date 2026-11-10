@@ -35,7 +35,7 @@ Markdown sanitizer.
   **9 passed**, после правки по ревью — **11 passed**; все `tests/test_investigation_*.py` —
   **384 passed in 10.61s**, после правки — **386 passed in 12.55s**. Ruff и Black двух
   изменённых Python-файлов чистые.
-- Mac (imac-julia), дерево `69c7118` (код и тест до правки по ревью, без документов).
+- iMac, дерево `69c7118` (код и тест до правки по ревью, без документов).
   Новый модуль на `claims.py` из `9109a12` — **5 failed, 4 passed**: оба step id с выделением,
   legacy ID, custom body и CLI. Проходят тесты, закрепляющие прежнее поведение: step id
   без пунктуации, custom title, несколько evidence references и causal-отказ step id

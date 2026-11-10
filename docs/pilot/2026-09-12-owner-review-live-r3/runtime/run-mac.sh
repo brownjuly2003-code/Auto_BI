@@ -24,23 +24,23 @@ fi
 
 tar -xf "$source_archive" -C "$work_root"
 cd "$work_root"
-/Users/julia/.local/bin/uv sync --frozen --quiet
+$HOME/.local/bin/uv sync --frozen --quiet
 
 set -a
-. /Users/julia/chstand/creds.env
+. $HOME/chstand/creds.env
 set +a
 
 stand_root="$work_root/chstand"
 mkdir -p "$stand_root/access" "$stand_root/data" "$stand_root/format_schemas" \
     "$stand_root/logs" "$stand_root/tmp" "$stand_root/user_files"
 sed \
-    -e "s#/Users/julia/chstand#$stand_root#g" \
+    -e "s#$HOME/chstand#$stand_root#g" \
     -e 's#<http_port>8123</http_port>#<http_port>18123</http_port>#' \
     -e 's#<tcp_port>9000</tcp_port>#<tcp_port>19000</tcp_port>#' \
-    /Users/julia/chstand/config.xml >"$stand_root/config.xml"
-sed '/<gate_ro>/,/<\/gate_ro>/d' /Users/julia/chstand/users.xml >"$stand_root/users.xml"
+    $HOME/chstand/config.xml >"$stand_root/config.xml"
+sed '/<gate_ro>/,/<\/gate_ro>/d' $HOME/chstand/users.xml >"$stand_root/users.xml"
 
-/Users/julia/chlocal/clickhouse24 server \
+$HOME/chlocal/clickhouse24 server \
     --config-file="$stand_root/config.xml" \
     >"$work_root/clickhouse.log" 2>&1 &
 server_pid_value=$!
@@ -49,16 +49,16 @@ server_pid_value=$!
     --user "default:$CH_ADMIN_PASSWORD" --data-binary "SELECT 1" \
     http://127.0.0.1:18123/ >/dev/null
 
-/Users/julia/chlocal/clickhouse24 client \
+$HOME/chlocal/clickhouse24 client \
     --host 127.0.0.1 --port 19000 --user default --password "$CH_ADMIN_PASSWORD" \
     --multiquery <docs/pilot/2026-09-12-owner-review-live-r3/runtime/schema.sql
-/Users/julia/chlocal/clickhouse24 client \
+$HOME/chlocal/clickhouse24 client \
     --host 127.0.0.1 --port 19000 --user default --password "$CH_ADMIN_PASSWORD" \
     --query "CREATE USER gate_ro IDENTIFIED WITH plaintext_password BY '$CH_GATE_PASSWORD' SETTINGS readonly = 2"
-/Users/julia/chlocal/clickhouse24 client \
+$HOME/chlocal/clickhouse24 client \
     --host 127.0.0.1 --port 19000 --user default --password "$CH_ADMIN_PASSWORD" \
     --query "GRANT SELECT ON dm.* TO gate_ro"
-/Users/julia/chlocal/clickhouse24 client \
+$HOME/chlocal/clickhouse24 client \
     --host 127.0.0.1 --port 19000 --user default --password "$CH_ADMIN_PASSWORD" \
     --query "GRANT SELECT ON system.* TO gate_ro"
 
@@ -73,11 +73,11 @@ environment_ref=owner-review-mac-native-ch24.8.14.39
 rm -rf "$package_root/evidence" "$package_root/trust"
 rm -f "$package_root/results.yaml"
 
-private_key=/Users/julia/.auto-bi/owner-review-r3-signing-private.pem
-public_key=/Users/julia/.auto-bi/owner-review-r3-signing-public.pem
-mkdir -p /Users/julia/.auto-bi
+private_key=$HOME/.auto-bi/owner-review-r3-signing-private.pem
+public_key=$HOME/.auto-bi/owner-review-r3-signing-public.pem
+mkdir -p $HOME/.auto-bi
 if [ ! -f "$private_key" ]; then
-    /Users/julia/.local/bin/uv run --frozen python - "$private_key" <<'PY'
+    $HOME/.local/bin/uv run --frozen python - "$private_key" <<'PY'
 import os
 import sys
 from pathlib import Path
@@ -97,7 +97,7 @@ with os.fdopen(descriptor, "wb") as stream:
 PY
 fi
 chmod 600 "$private_key"
-/Users/julia/.local/bin/uv run --frozen python - "$private_key" "$public_key" <<'PY'
+$HOME/.local/bin/uv run --frozen python - "$private_key" "$public_key" <<'PY'
 import sys
 from pathlib import Path
 
@@ -115,7 +115,7 @@ chmod 644 "$public_key"
 mkdir -p "$package_root/trust"
 cp "$public_key" "$package_root/trust/evidence-public.pem"
 
-/Users/julia/.local/bin/uv run --frozen auto_bi decision capture \
+$HOME/.local/bin/uv run --frozen auto_bi decision capture \
     "$package_root/assets" \
     --candidate "$package_root/candidate" \
     --asset asset://sales/weekly_margin_by_region \
@@ -125,7 +125,7 @@ cp "$public_key" "$package_root/trust/evidence-public.pem"
 
 created_at=$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')
 set +e
-/Users/julia/.local/bin/uv run --frozen auto_bi decision verify \
+$HOME/.local/bin/uv run --frozen auto_bi decision verify \
     "$package_root/contracts" \
     --base "$package_root/base" \
     --candidate "$package_root/candidate" \
@@ -146,12 +146,12 @@ if [ "$verify_exit" -ne 4 ]; then
     exit 41
 fi
 
-/Users/julia/.local/bin/uv run --frozen auto_bi decision evidence \
+$HOME/.local/bin/uv run --frozen auto_bi decision evidence \
     "$package_root/evidence" \
     --trust-key "$package_root/trust/evidence-public.pem" \
     --json >"$work_root/evidence-inspection.json"
 
-/Users/julia/.local/bin/uv run --frozen python - \
+$HOME/.local/bin/uv run --frozen python - \
     "$package_root" "$work_root/verify.json" "$work_root/evidence-inspection.json" <<'PY'
 import json
 import sys

@@ -3157,7 +3157,7 @@ acceptance.
 
 ## 2026-10-23 — полный прогон T-95 на Mac
 
-Дерево `db54a05` на imac-julia, с DuckDB: Python 3.13.13, 3.12 и 3.14.6 — каждый
+Дерево `db54a05` на iMac, с DuckDB: Python 3.13.13, 3.12 и 3.14.6 — каждый
 **6 failed, 6796 passed, 17 skipped, 38 deselected**; Black, Ruff и mypy как в CI
 (Linux, strict Linux, strict win32) чистые. Те же шесть тестов падают в своих модулях и
 на `7363962`, до T-95: это не регрессия, а тесты T-74, T-75 и T-82, которые запускались
