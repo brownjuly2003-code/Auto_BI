@@ -118,11 +118,6 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: What each verifier version changed: docs/specs/evidence-format-versions.md, newest first.
 #: A bump adds its entry there and here; here only the newest few stay (at most five,
 #: tests/test_evidence_format_versions.py). The newest:
-#: 129 — a bundle keeps, beside each snapshot, the canonical closure of every dbt metric a
-#: binding of that snapshot names a closure digest for (ADR 0008, slice S4), and re-verifying
-#: a bundle checks those closures against the bindings: `evidence.closure_missing`,
-#: `evidence.closure_mismatch`, `evidence.closure_unbound`, `evidence.closure_unverified`. A run
-#: without a bound metric keeps no closure.
 #: 130 — a reference query the mart no longer fits is a fact about the mart, not a broken run
 #: (ClickHouse, slice S7): where the catalog accounts for the code — a column the query names that
 #: `dwh.physical` grades as gone for `47 UNKNOWN_IDENTIFIER`, or as retyped for
@@ -162,7 +157,16 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: graded a mart the role reads `access.table_absent` (block), and it asks `pg_matviews` too, where
 #: verifier 132 graded a mart served as a materialized view the same. An answered catalog with no
 #: rows is read as before; check grading is unchanged and CHECK_VERSION stays 83.
-VERIFIER_VERSION = "133"
+#: 134 — a column's type on a PostgreSQL kernel is compared by the name `format_type` prints for it,
+#: not by the one the model writes (ADR 0010, F2): `float8` is `double precision`, `int4` is
+#: `integer`, `varchar(n)` is `character varying(n)`, `timestamp` is `timestamp without time zone`,
+#: and so are the other names of the manual's alias table but the serial types, `float(p)`,
+#: `numeric(p)`, `char` with no length, `bpchar(n)` and the brackets of an array of any dimensions.
+#: Verifier 133 graded such a pair `physical.type_drift` (review), and that drift accounted for a
+#: `42883` of the reference query or of `max()` of the event-time column, which now ends the run.
+#: ClickHouse types are compared as before. CHECK_VERSION moves to 84 with it: the rule of
+#: `dwh.physical` changed, and a run's identity holds the verifier version alone.
+VERIFIER_VERSION = "134"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -186,7 +190,13 @@ VERIFIER_VERSION = "133"
 #: 83 — evidence.bundle also checks the closures of dbt formulas a bundle keeps against the
 #: bindings of its snapshots (ADR 0008, item 11): a closure missing, mismatched, unbound or
 #: left unverified blocks, where rule 82 checked the presence, hash and size of artifacts.
-CHECK_VERSION = "83"
+#: 84 — dwh.physical compares the type of a column on a PostgreSQL kernel (`postgres`, `greenplum`,
+#: `greengage`) by the name `format_type` prints for it, where rule 83 compared the names as
+#: written, spacing and case aside: a declared alias of the type the engine holds — `float8` for
+#: `double precision`, `int4` for `integer`, `varchar(n)` for `character varying(n)`, `timestamp`
+#: for `timestamp without time zone` — is no longer `physical.type_drift` (ADR 0010, F2).
+#: ClickHouse types are compared as before.
+CHECK_VERSION = "84"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and

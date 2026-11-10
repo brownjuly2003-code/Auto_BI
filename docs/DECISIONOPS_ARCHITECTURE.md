@@ -698,7 +698,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=133`, `CHECK_VERSION=83`.
+`VERIFIER_VERSION=134`, `CHECK_VERSION=84`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -2466,6 +2466,18 @@ review не даёт — покрытие неполное, как у непро
 представление (relkind `m`) не входило ни в одно из двух — вопрос читает и `pg_matviews`. Правила проверок не менялись —
 меняется факт пробы, поэтому bump verifier, а не check. Живьём — `REVOKE SELECT` на
 `pg_attribute` и на `pg_tables`/`pg_views` на PostgreSQL 16.
+
+Другое имя того же типа PostgreSQL с F2 (verifier 134, check 84, ADR 0010) — не смена типа: на ядре
+PostgreSQL (`postgres`, `greenplum`, `greengage`) `column_drift` сравнивает обе стороны после
+канонизации имён (`float8` — `double precision`, `int4` — `integer`, `varchar(n)` — `character
+varying(n)`, `timestamp` — `timestamp without time zone`, `float(p)`, `numeric(p)`, `char` без
+длины, `bpchar(n)`, массив любой размерности — одна пара скобок, как печатает `format_type`). Прежде такая пара была `physical.type_drift` (review) и объясняла `42883` плана и
+`max()`, то есть ошибку самого запроса выдавала за дрейф витрины; теперь `42883` по колонке того же
+типа кончает прогон. Написание вне правила (имя в кавычках или со схемой, `serial`) сравнивается
+как написано. ClickHouse не трогается: его `INT8` — `Int8`, а у PostgreSQL `int8` — `bigint`.
+Меняется правило проверки — bump check; verifier вместе с ним, потому что identity прогона держит
+только версию verifier. Таблица имён сверена живьём: колонка в каждом написании на PostgreSQL 16
+читается через `format_type`, как её читает проба.
 
 Если `_ident` коллектора не принимает временную колонку или компонент имени таблицы,
 он поднимает `UnsafeIdentifierError(ValueError)` с прежним `repr` имени. CLI-проба

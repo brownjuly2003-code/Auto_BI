@@ -473,6 +473,46 @@ rules of `dwh.physical` over unreported columns and of `dwh.access` over a prese
 ones they had — what changed is the fact the probe reports, and that is the verifier's (as S7,
 S7b and S8).
 
+## One type, any of its PostgreSQL names (F2)
+
+`dwh.physical` compares the type the model declares for a column with the one the catalog holds,
+and on the Postgres family the catalog's is the name `format_type(atttypid, atttypmod)` prints:
+one name per type. A model may write any name the engine takes for it — `float8`, `int4`,
+`varchar(20)`, `timestamp` — and verifier 133 compared the names as written, spacing and case
+aside: a model declaring `float8` for a `double precision` column had that column graded
+`physical.type_drift` (review), and the "retype" accounted for a `42883` of the reference query
+or of `max()` of the event-time column, so a function missing altogether was reported as the
+mart's drift. Since verifier 134 and check 84 (ADR 0010, F2), on an engine of the Postgres family
+(`postgres`, `greenplum`, `greengage`):
+
+- a declared type and the catalog's SHALL compare equal when both name one type. The names read are
+  those of the manual's alias table, the serial types aside — `int` and `int4` for `integer`, `int2`
+  for `smallint`, `int8` for `bigint`, `float4` for `real`, `float8` for `double precision`, `bool`
+  for `boolean`, `decimal` and `dec` for `numeric`, `char` for `character`, `varchar` and `char
+  varying` for `character varying`, `varbit` for `bit varying`, `timestamptz` and `timetz` for the
+  time types `with time zone` — and the rules of its grammar: `timestamp` and `time` with no zone
+  are `without time zone`, `float` is `double precision`, `float(p)` is `real` for `p` from 1 to 24
+  and `double precision` from 25 to 53, `numeric(p)` is `numeric(p,0)`, `character` with no length
+  is `character(1)`, `bpchar(n)` is `character(n)`. A modifier is kept, and so is an array as the
+  one pair of brackets `format_type` prints for any of its dimensions (`varchar(10)[3]` and
+  `varchar(10)[][]` are `character varying(10)[]`);
+- a spelling the rule does not read — a quoted or schema-qualified name (`"char"`,
+  `pg_catalog.int4`), `integer array`, `national character varying`, `serial`, `bpchar` with
+  no length, `float(54)`, a zone after a name that carries one (`timestamptz without time
+  zone`), an array bound other than one number — SHALL be compared as written, spacing and
+  case aside, as before;
+- a pair the rule reads as one type SHALL be no drift: `dwh.physical` does not grade it, and it
+  accounts for no `42883`, which then ends the run as any state the catalog does not account for;
+- ClickHouse SHALL compare as before, spacing and case aside: its aliases are its own (its `INT8`
+  is `Int8`, PostgreSQL's `int8` is `bigint`), and `system.columns` prints the canonical name.
+
+`tests/test_decision_live_postgres.py` creates a column in each spelling of the rule on
+PostgreSQL 16 and reads it back through `format_type`, as the probe does: the names the rule maps
+to are the engine's, not the manual's. The rule is pinned offline both ways and on each engine
+name of the family; a spelling of thousands of characters is read at once (each repeated part
+of the pattern matches its text one way only, so a failed match does not retry every split),
+and so is a `float(p)` of thousands of digits, past what `int()` converts.
+
 ## Runtime SQL guard refusal at the CLI boundary (T-80)
 
 If `collect` raises `SQLGuardError` while `decision verify --dwh` asks about the
@@ -514,9 +554,10 @@ not establish that the current typed compiler emits that SQL from an ordinary in
   column the query names is reported as that drift: the plan unpriced, its evidence «taken to
   mean», `physical.*` grading the drift; it ends the run once the drift is resolved. `42883`
   also answers a function or an operator missing altogether (an older kernel, an extension
-  outside `search_path`), and `dwh.physical` compares type names as written, so a model that
-  spells a PostgreSQL type otherwise than `format_type` does (`float8` for `double precision`)
-  holds that column as retyped, and a `42883` over it as explained.
+  outside `search_path`), so a model that declares a type other than the one the catalog holds
+  holds that column as retyped, and a `42883` over it as explained. Another name of the same
+  type no longer does (F2, above), save a spelling F2 does not read (`pg_catalog.int4`,
+  `serial`), which is compared as written.
 - Still ending the run, as before S7b: a drift that breaks the reference query of a mart the role
   may not read (PostgreSQL resolves the query's columns and functions before it checks
   privileges, and the catalog of an unreadable mart is not read, so no drift accounts for the

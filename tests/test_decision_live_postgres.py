@@ -638,3 +638,22 @@ def test_a_materialized_view_mart_is_the_mart(stand: Stand, tmp_path: Path) -> N
     [plan] = run.cost["plans"]
     assert plan["scanned_rows"] == ROWS
     assert run.verdict == "pass"
+
+
+def test_each_name_the_gate_reads_as_another_is_the_one_format_type_prints(stand: Stand) -> None:
+    """ADR 0010, F2: `dwh.physical` takes a declared `float8` for the `double precision` the
+    catalog holds. Each spelling of `PG_SAME_TYPE` is created here as written and read back
+    through `format_type`, as the probe reads it — the table is the engine's, not the manual's."""
+    from tests.test_environment_checks import PG_SAME_TYPE
+
+    columns = ", ".join(f"c{index} {declared}" for index, (declared, _) in enumerate(PG_SAME_TYPE))
+    stand.run(f"CREATE TABLE dm.spellings ({columns})")
+
+    printed = dict(
+        stand.admin.execute(
+            "SELECT a.attname, format_type(a.atttypid, a.atttypmod) FROM pg_attribute a "
+            "WHERE a.attrelid = 'dm.spellings'::regclass AND a.attnum > 0 ORDER BY a.attnum"
+        ).fetchall()
+    )
+
+    assert printed == {f"c{index}": held for index, (_, held) in enumerate(PG_SAME_TYPE)}

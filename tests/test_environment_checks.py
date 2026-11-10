@@ -12,6 +12,10 @@ facts. Two of them exist only because a stand said something the documentation d
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -1023,3 +1027,205 @@ def test_column_drift_is_what_physical_grades() -> None:
     }
     no_catalog = table.model_copy(update={"columns": None})
     assert column_drift(question, no_catalog, engine="clickhouse") == {}
+
+
+# --- one PostgreSQL type, any of its names (ADR 0010, F2) -----------------------
+
+#: A spelling a model may declare -> the name `format_type` prints for the same type.
+PG_SAME_TYPE = [
+    ("float8", "double precision"),
+    ("FLOAT8", "double precision"),
+    ("Double  Precision", "double precision"),
+    ("float", "double precision"),
+    ("float(25)", "double precision"),
+    ("float(53)", "double precision"),
+    ("float4", "real"),
+    ("float(1)", "real"),
+    ("float(24)", "real"),
+    ("float(024)", "real"),
+    ("int", "integer"),
+    ("int4", "integer"),
+    ("int2", "smallint"),
+    ("int8", "bigint"),
+    ("bool", "boolean"),
+    ("decimal(18, 2)", "numeric(18,2)"),
+    ("Decimal(18, 2)", "numeric(18,2)"),
+    ("dec(18,2)", "numeric(18,2)"),
+    ("decimal", "numeric"),
+    ("numeric(10)", "numeric(10,0)"),
+    ("varchar(20)", "character varying(20)"),
+    ("varchar", "character varying"),
+    ("char varying (20)", "character varying(20)"),
+    ("char(3)", "character(3)"),
+    ("char", "character(1)"),
+    ("character", "character(1)"),
+    ("varbit(8)", "bit varying(8)"),
+    ("timestamp", "timestamp without time zone"),
+    ("timestamp(3)", "timestamp(3) without time zone"),
+    ("timestamptz", "timestamp with time zone"),
+    ("timestamptz(3)", "timestamp(3) with time zone"),
+    ("time", "time without time zone"),
+    ("timetz", "time with time zone"),
+    ("bpchar(3)", "character(3)"),
+    ("int4[]", "integer[]"),
+    ("varchar(10)[3]", "character varying(10)[]"),
+    ("int4[][]", "integer[]"),
+    ("int4 [ 3 ] [ ]", "integer[]"),
+]
+#: A spelling of a type other than the one the catalog holds. A name no alias covers, or one
+#: that names no type, is compared as written.
+PG_OTHER_TYPE = [
+    ("float4", "double precision"),
+    ("float(24)", "double precision"),
+    ("float(25)", "real"),
+    ("float(54)", "double precision"),
+    ("float(\u0662\u0664)", "real"),
+    ("int4", "bigint"),
+    ("int8", "integer"),
+    ("varchar(20)", "character varying(30)"),
+    ("varchar(20)", "character(20)"),
+    ("char(2)", "character(1)"),
+    ("character", "character varying"),
+    ("numeric", "numeric(10,0)"),
+    ("numeric(10)", "numeric(10,2)"),
+    ("timestamp", "timestamp with time zone"),
+    ("timestamptz", "timestamp without time zone"),
+    ("time", "timestamp without time zone"),
+    ("timestamptz without time zone", "timestamp with time zone"),
+    ("integer with time zone", "integer"),
+    ("int4[]", "integer"),
+    ("int4", "integer[]"),
+    ("Float64", "double precision"),
+    ("text", "character varying"),
+    ('"char"', "character(1)"),
+    ("char", '"char"'),
+    ("pg_catalog.int4", "integer"),
+    ("serial", "integer"),
+    ("integer array", "integer[]"),
+    ("national character varying(3)", "character varying(3)"),
+    ("bpchar", "character(1)"),
+    ("int4[3 4]", "integer[]"),
+]
+
+
+def held_as(declared: str, held: str) -> tuple[TableQuestion, TableFacts]:
+    """A mart whose `revenue` the model declares as `declared` and the engine holds as `held`."""
+    question = TableQuestion(
+        table="dm.sales_daily",
+        event_time_column="date",
+        columns={"revenue": declared},
+        timezones=["Europe/Moscow"],
+        metric_refs=["metric://sales/gross_margin_pct@3"],
+    )
+    table = TableFacts(
+        table="dm.sales_daily", exists=True, readable=True, columns={"revenue": held}
+    )
+    return question, table
+
+
+@pytest.mark.parametrize("engine", ["postgres", "greenplum", "greengage"])
+@pytest.mark.parametrize(("declared", "held"), PG_SAME_TYPE)
+def test_another_name_of_the_postgres_type_the_engine_holds_is_not_drift(
+    declared: str, held: str, engine: str
+) -> None:
+    """`format_type` prints one name per type and a model may write any the engine takes;
+    which side writes which name does not matter."""
+    assert column_drift(*held_as(declared, held), engine=engine) == {}
+    assert column_drift(*held_as(held, declared), engine=engine) == {}
+
+
+@pytest.mark.parametrize(("declared", "held"), PG_OTHER_TYPE)
+def test_a_postgres_type_of_another_name_and_another_type_is_drift(
+    declared: str, held: str
+) -> None:
+    assert column_drift(*held_as(declared, held), engine="postgres") == {"revenue": held}
+
+
+#: Read in a child process: a pattern that could match one text two ways retries every split
+#: when the match fails, 2^n tries for n repeats, and that would hang the suite, not fail it.
+SPELLINGS_CHILD = """
+import json, sys
+from auto_bi.verification.environment import TableFacts, TableQuestion, column_drift
+for spelling in json.load(sys.stdin):
+    question = TableQuestion(
+        table="dm.t", event_time_column="d", columns={"c": spelling},
+        timezones=["UTC"], metric_refs=["metric://m/m@1"],
+    )
+    table = TableFacts(table="dm.t", exists=True, readable=True, columns={"c": "integer[]"})
+    print(json.dumps(column_drift(question, table, engine="postgres")))
+"""
+
+
+def test_a_spelling_of_thousands_of_characters_is_read_at_once() -> None:
+    """The type a model declares is free text. Each spelling here fails the pattern at its last
+    character after thousands of repeats of a part; `[ ]` once matched two ways, a blank before
+    or after its empty bound."""
+    spellings = [
+        "int4" + "[ ]" * 5000 + "x",
+        "int4" + " [ 3 ]" * 5000 + " x",
+        "a " * 5000 + "!",
+        "a" * 20000 + "!",
+        "t" + " with time zone" * 2000 + "!",
+        "numeric(" + "1," * 5000 + "x",
+        "numeric(1)" + " [ ]" * 5000 + "]",
+        "float(" + "9" * 5000 + ")",
+        "float(" + "0" * 5000 + "24)",
+    ]
+    root = Path(column_drift.__code__.co_filename).resolve().parents[2]
+    ended = subprocess.run(
+        [sys.executable, "-c", SPELLINGS_CHILD],
+        input=json.dumps(spellings),
+        env=dict(os.environ, PYTHONPATH=str(root)),
+        capture_output=True,
+        encoding="utf-8",
+        timeout=60,
+        check=False,
+    )
+
+    assert (ended.returncode, ended.stderr) == (0, "")
+    drifts = [json.loads(line) for line in ended.stdout.splitlines()]
+    assert drifts == [{"c": "integer[]"}] * len(spellings)
+
+
+def test_a_float_precision_of_thousands_of_digits_is_read_by_its_value() -> None:
+    """`int()` refuses more than 4300 digits; a precision past 53 is none, however many digits
+    it takes, and zeros before 24 still make it 24."""
+    too_wide = "float(" + "9" * 5000 + ")"
+    padded = "float(" + "0" * 5000 + "24)"
+
+    assert column_drift(*held_as(too_wide, "double precision"), engine="postgres") == {
+        "revenue": "double precision"
+    }
+    assert column_drift(*held_as(padded, "real"), engine="postgres") == {}
+
+
+def test_clickhouse_takes_none_of_postgres_s_names() -> None:
+    """ClickHouse's `BIGINT` is its `Int64`; read by PostgreSQL's aliases it would be the `Int8`
+    the engine holds (`int8` is `bigint` there), and a narrowed column would compare equal."""
+    assert column_drift(*held_as("BIGINT", "Int8"), engine="clickhouse") == {"revenue": "Int8"}
+    assert column_drift(*held_as("int4", "integer"), engine="clickhouse") == {"revenue": "integer"}
+
+
+def test_physical_on_postgres_grades_the_type_not_its_name(tmp_path: Path) -> None:
+    questions = questions_for(product(), snapshot_of(tmp_path))
+    questions.tables[0].columns = {
+        "date": "date",
+        "store_id": "int4",
+        "revenue": "decimal(18, 2)",
+        "gross_margin": "float8",
+    }
+    held = {
+        "date": "date",
+        "store_id": "integer",
+        "revenue": "numeric(18,2)",
+        "gross_margin": "real",
+    }
+    on_postgres = facts(physical_fact(columns=held)).model_copy(update={"engine": "postgres"})
+
+    findings = check_physical(questions, on_postgres)
+
+    assert [(item.code, item.subject) for item in findings] == [
+        ("physical.type_drift", "dm.sales_daily.gross_margin")
+    ]
+    assert "is real on" in findings[0].detail
+    assert "declares float8" in findings[0].detail

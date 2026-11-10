@@ -1398,17 +1398,34 @@ def test_a_postgres_reference_query_the_mart_no_longer_fits_is_an_unpriced_plan(
     )
 
 
-def test_a_type_spelled_otherwise_than_format_type_takes_a_42883_of_the_query_s_own() -> None:
-    """The Known boundary of unanswered-engine.md: a state is matched to a drift by its kind,
-    not by where the query failed, and `dwh.physical` compares type names as written. `float8`
-    against the catalog's `double precision` is a retype, so a `42883` that is the query's own
-    (a function missing altogether) is taken to mean that drift — hence «taken to mean»."""
+@pytest.mark.parametrize("engine", ["postgres", "greengage"])
+def test_a_42883_over_another_name_of_the_declared_type_ends_the_run(engine: str) -> None:
+    """ADR 0010, F2: `float8` is the `double precision` the catalog holds, so no drift accounts
+    for a `42883` that is the query's own (a function missing altogether), and it ends the run.
+    Verifier 133 compared type names as written and took it to mean `revenue` was retyped."""
     error = PostgresError("42883", "function median(numeric) does not exist")
+    catalog = [{"name": "date", "type": "date"}, {"name": "revenue", "type": "double precision"}]
+
+    with pytest.raises(RuntimeError) as raised:
+        collect(
+            pg_answering("EXPLAIN", error, catalog),
+            pg_priced_over({"date": "date", "revenue": "float8"}),
+            engine=engine,
+            target="stand",
+        )
+
+    assert raised.value is error
+
+
+def test_a_42883_over_a_type_of_another_name_and_another_type_is_still_taken_for_it() -> None:
+    """The other side of F2: `float4` is `real`, not the `double precision` the catalog holds,
+    so the retype accounts for the `42883` as before."""
+    error = PostgresError("42883", "function trunc(double precision, integer) does not exist")
     catalog = [{"name": "date", "type": "date"}, {"name": "revenue", "type": "double precision"}]
 
     facts = collect(
         pg_answering("EXPLAIN", error, catalog),
-        pg_priced_over({"date": "date", "revenue": "float8"}),
+        pg_priced_over({"date": "date", "revenue": "float4"}),
         engine="postgres",
         target="stand",
     )
@@ -1575,6 +1592,12 @@ def test_a_postgres_event_time_column_that_no_longer_fits_leaves_the_rows_counte
         ),
         # nor does a drift of another column
         (PostgresError("42703", 'column "date" does not exist'), PG_DROPPED, PG_DECLARED),
+        # `timestamp` is the `timestamp without time zone` the catalog holds (ADR 0010, F2)
+        (
+            PostgresError("42883", "function max(timestamp without time zone) does not exist"),
+            [{"name": "date", "type": "timestamp without time zone"}],
+            {"date": "timestamp"},
+        ),
     ],
     ids=[
         "syntax-over-drift",
@@ -1583,6 +1606,7 @@ def test_a_postgres_event_time_column_that_no_longer_fits_leaves_the_rows_counte
         "42703-over-a-retype",
         "42883-over-a-drop",
         "another-column-gone",
+        "42883-over-another-name",
     ],
 )
 def test_a_postgres_event_time_reading_that_failed_otherwise_still_ends_the_run(

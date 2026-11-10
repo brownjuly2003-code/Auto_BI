@@ -110,6 +110,7 @@ from zoneinfo import ZoneInfo, available_timezones
 from pydantic import Field
 
 from auto_bi.decision.spec import DecisionProductSpec
+from auto_bi.engine import sqlglot_dialect
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import Duration, NonBlankText, Timestamp, duration_seconds
 from auto_bi.semantic.gateway import MetricNode, SemanticSnapshot, TableNode
@@ -1287,7 +1288,8 @@ def column_drift(
     nothing else: environment_probe.py weighs an engine's `47 UNKNOWN_IDENTIFIER` and
     `43 ILLEGAL_TYPE_OF_ARGUMENT` (PostgreSQL: `42703`, `42883`) against the same reading, so
     a drift the probe takes a code for is one this check reports. Empty when the probe did not
-    read the catalog.
+    read the catalog. A type is held as declared when it is the same type by another spelling:
+    other spacing or case, or on a PostgreSQL kernel another of its names (`_type_key`).
     """
     if table.columns is None:
         return {}
@@ -1302,7 +1304,7 @@ def column_drift(
             # from the catalog does not prove absence with denied or unknown reach.
             # `check_security` reports the denied reach or the unobserved boundary.
             continue
-        if actual is None or _normalized(actual) != _normalized(declared):
+        if actual is None or _type_key(actual, engine) != _type_key(declared, engine):
             drift[column] = actual
     return drift
 
@@ -1310,6 +1312,98 @@ def column_drift(
 def _normalized(type_or_key: str) -> str:
     """`Decimal(18, 2)` and `decimal(18,2)` are one type; spacing and case are not content."""
     return "".join(type_or_key.split()).lower()
+
+
+#: PostgreSQL's other names for a type -> the name `format_type` prints, which is what the
+#: probe reads from `pg_attribute`: the "Aliases" column of the manual's table of data types,
+#: the serial types aside (a column's type is never `serial`), and `dec` and `char varying`,
+#: which its grammar reads the same way.
+_PG_ALIASES = {
+    "int": "integer",
+    "int4": "integer",
+    "int2": "smallint",
+    "int8": "bigint",
+    "float4": "real",
+    "float8": "double precision",
+    "bool": "boolean",
+    "dec": "numeric",
+    "decimal": "numeric",
+    "char": "character",
+    "varchar": "character varying",
+    "char varying": "character varying",
+    "varbit": "bit varying",
+}
+#: The two names that carry their zone in them.
+_PG_ZONED = {"timestamptz": "timestamp", "timetz": "time"}
+#: A PostgreSQL type as a model may write it, lowercased with single blanks: a name of one or
+#: more words, a modifier, the zone of a time type, array brackets. A quoted or
+#: schema-qualified name, or a modifier with parentheses of its own, is not read. Each
+#: repeated part matches its text one way only, and the zone, which the name could also take,
+#: occurs once: a blank two repeats could take makes a failed match retry every split, 2^n
+#: tries for n repeats, and the model's type is free text (`[ ]` was such a blank, before or
+#: after an empty bound).
+_PG_SPELLING = re.compile(
+    r"(?P<name>[a-z][a-z0-9_]*(?: [a-z][a-z0-9_]*)*?)"
+    r"(?: ?\((?P<modifier>[^()]*)\))?"
+    r"(?P<zone> with(?:out)? time zone)?"
+    r"(?P<array>(?: ?\[ ?(?:[0-9]+ ?)?\])*)"
+)
+
+
+def _type_key(spelling: str, engine: str) -> str:
+    """What two spellings of one type compare equal by (ADR 0010, F2): spacing and case are not
+    content on any engine, and on a PostgreSQL kernel neither is which of its names a model
+    writes. ClickHouse's own aliases are not PostgreSQL's — its `INT8` is `Int8`, not `bigint`
+    — so they are not applied there."""
+    if sqlglot_dialect(engine) == "postgres":
+        spelling = _pg_type(spelling)
+    return _normalized(spelling)
+
+
+def _pg_type(spelling: str) -> str:
+    """A PostgreSQL type as `format_type` prints it, from any name the engine takes for it:
+    `int4` is `integer`, `varchar(20)` is `character varying(20)`, `timestamp` is
+    `timestamp without time zone`, `float(24)` is `real`, `numeric(10)` is `numeric(10,0)`,
+    `char` is `character(1)`, `bpchar(3)` is `character(3)`, `int4[][]` is `integer[]`
+    (dimensions are not part of the type: `format_type` prints one pair of brackets, and the
+    count `attndims` keeps is not enforced). A spelling the pattern does not read is
+    returned as written, but for spacing and case, which `_normalized` drops anyway."""
+    text = " ".join(spelling.lower().split())
+    match = _PG_SPELLING.fullmatch(text)
+    if match is None:
+        return text
+    name, modifier, zone, array = match.group("name", "modifier", "zone", "array")
+    name = _PG_ALIASES.get(name, name)
+    parts = None if modifier is None else [part.strip() for part in modifier.split(",")]
+    if name == "bpchar" and parts is not None:
+        name = "character"  # with no length `bpchar` is unbounded, not `character(1)`
+    if name in _PG_ZONED:
+        if zone:
+            return text  # `timestamptz without time zone` names no type
+        name, zone = _PG_ZONED[name], " with time zone"
+    if name in ("timestamp", "time"):
+        zone = zone or " without time zone"
+    elif name == "float" and (precision := 53 if parts is None else _pg_precision(parts)):
+        # `float` is `float8`; `float(p)` is `float4` up to 24 binary digits, `float8` to 53
+        name, parts = ("real" if precision <= 24 else "double precision"), None
+    elif name == "numeric" and parts is not None and len(parts) == 1:
+        parts.append("0")  # a precision with no scale is scale 0
+    elif name == "character" and parts is None:
+        parts = ["1"]  # SQL: `character` with no length is `character(1)`
+    typmod = "" if parts is None else f"({','.join(parts)})"
+    return f"{name}{typmod}{zone or ''}{'[]' if array else ''}"
+
+
+def _pg_precision(parts: list[str]) -> int | None:
+    """The binary precision `float(p)` takes, 1 to 53; `None` for any other modifier."""
+    if len(parts) != 1 or not (parts[0].isascii() and parts[0].isdecimal()):
+        return None
+    # `int()` refuses more than 4300 digits, and the model's type is free text
+    digits = parts[0].lstrip("0")
+    if len(digits) > 2:
+        return None
+    precision = int(digits or "0")
+    return precision if 1 <= precision <= 53 else None
 
 
 def _hours(seconds: float) -> str:

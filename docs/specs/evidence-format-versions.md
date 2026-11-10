@@ -16,6 +16,18 @@ CHANGELOG names 1 → 2 and the transitions from verifier 7 → 8 and check 5 �
 Part of the idempotency key: a different verifier can derive a different verdict or
 evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 
+### Verifier 134
+
+a column's type on a PostgreSQL kernel is compared by the name `format_type` prints for it, not by
+the one the model writes (ADR 0010, F2): `float8` is `double precision`, `int4` is `integer`,
+`varchar(n)` is `character varying(n)`, `timestamp` is `timestamp without time zone`, and so are the
+other names of the manual's alias table but the serial types, `float(p)`, `numeric(p)`, `char` with
+no length, `bpchar(n)` and the brackets of an array of any dimensions. Verifier 133 graded such a
+pair `physical.type_drift` (review), and that drift accounted for a `42883` of the reference query
+or of `max()` of the event-time column, which now ends the run. ClickHouse types are compared as
+before. CHECK_VERSION moves to 84 with it: the rule of `dwh.physical` changed, and a run's identity
+holds the verifier version alone.
+
 ### Verifier 133
 
 a catalog question the engine refused is not read as an empty answer (ADR 0010, F1). A refused
@@ -954,6 +966,15 @@ Bumped when a check's meaning changes, so an old evidence bundle is not read as 
 had been graded by today's rule. Adding a *new* check is not such a change: no existing
 `CheckResult` is re-graded by it, and the verifier version is what stops a bundle written
 before it from being reused as a complete verification.
+
+### Check 84
+
+dwh.physical compares the type of a column on a PostgreSQL kernel (`postgres`, `greenplum`,
+`greengage`) by the name `format_type` prints for it, where rule 83 compared the names as written,
+spacing and case aside: a declared alias of the type the engine holds — `float8` for `double
+precision`, `int4` for `integer`, `varchar(n)` for `character varying(n)`, `timestamp` for
+`timestamp without time zone` — is no longer `physical.type_drift` (ADR 0010, F2). ClickHouse types
+are compared as before.
 
 ### Check 83
 

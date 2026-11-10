@@ -7,6 +7,22 @@
 Формат записи: дата, источник (срез, раунд ревью или прогон), что найдено, почему не исправлено
 сразу. Новые сверху.
 
+## 2026-11-09 — F2, синонимы типов PostgreSQL
+
+- **Псевдонимы типов ClickHouse.** ClickHouse тоже принимает другие имена типов (`INT` — `Int32`,
+  `BIGINT` — `Int64`, `DOUBLE` — `Float64`, `TEXT`/`VARCHAR` — `String`), а `system.columns`
+  печатает каноническое. Модель с `BIGINT` по колонке `Int64` получит `physical.type_drift`
+  (review), и этот «дрейф» объяснит `43`. Не сделано: ADR 0010 называет для F2 только PostgreSQL;
+  ошибка — в сторону review, не pass по изменённому числу.
+- **Написания PostgreSQL вне правила F2**: имя в кавычках или со схемой (`pg_catalog.int4`),
+  `integer array`, `national character varying`, `serial`/`bigserial` (тип колонки —
+  `integer`/`bigint`), `bit` без длины (`bit(1)`), `timestamp` против `timestamp(6) without time
+  zone`. Сравниваются как написаны: review `physical.type_drift` и «объяснённый» `42883`, как до
+  F2. Не сделано: редкие написания в объявлении модели; ошибка — в сторону review.
+- **`dec` в правиле точности `sql_contract`.** `_PG_DECIMAL` знает `numeric` и `decimal`, но не
+  `dec` (F2 читает его как `numeric`): `sum()` колонки `dec(18,2)` в доле считается неточным,
+  и выходит ложная advisory-находка `sql.ratio_inexact_term`. Только advisory; вне F2.
+
 ## 2026-11-09 — F1, ревью r1 (Opus) и разбор его находок
 
 - **Собственный review `dwh.physical` при отказанном каталоге колонок.** С verifier 133 отказ

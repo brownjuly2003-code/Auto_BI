@@ -1070,6 +1070,21 @@
 
 ### Fixed
 
+- **Другое имя того же типа PostgreSQL — не смена типа.** `dwh.physical` сравнивал объявленный тип
+  колонки с тем, что печатает `format_type`, как написано: модель с `float8` по колонке `double
+  precision`, `int4` по `integer`, `varchar(20)` по `character varying(20)` или `timestamp` по
+  `timestamp without time zone` получала `physical.type_drift` (review), и эта «смена типа»
+  объясняла `42883` плана и `max()` колонки времени события — ошибка самого запроса выдавалась за
+  дрейф витрины. Теперь на PostgreSQL, Greenplum и Greengage имена канонизируются перед сравнением:
+  таблица псевдонимов из документации PostgreSQL (кроме serial-типов), `float(p)`, `numeric(p)`,
+  `char` без длины, `bpchar(n)`, `timestamp`/`time` без зоны, массивы любой размерности. Такая пара — не дрейф, а `42883` по колонке того же типа
+  кончает прогон. ClickHouse сравнивается как прежде: его псевдонимы — свои (`INT8` — `Int8`, а не
+  `bigint`). Живьём на PostgreSQL 16 колонка в каждом написании читается через `format_type`
+  (`tests/test_decision_live_postgres.py`). Verifier 133 → 134, check 83 → 84: меняется правило
+  `dwh.physical`, а identity прогона держит только версию verifier
+  ([ADR 0010](docs/adr/0010-finish-line.md), F2; [spec](docs/specs/unanswered-engine.md)); pilot
+  `2026-11-06-dbt-formula-pin` перезаписан.
+
 - **Отказ читать каталог — «неизвестно», а не «нет».** Если роли гейта отказано в `pg_attribute`
   (PostgreSQL: `REVOKE SELECT ON pg_catalog.pg_attribute FROM PUBLIC`, `42501`) или в
   `system.columns` (ClickHouse), проба читала отказ как пустой каталог: каждая объявленная
