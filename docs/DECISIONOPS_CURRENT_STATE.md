@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-10 · **Версии evidence:** `VERIFIER_VERSION=134`, `CHECK_VERSION=84`
+**Обновлено:** 2026-11-13 · **Версии evidence:** `VERIFIER_VERSION=135`, `CHECK_VERSION=85`
 (что меняла каждая — [spec](specs/evidence-format-versions.md))
 
 Здесь только то, что работает, что не реализовано и что дальше. Поведение описывают
@@ -114,15 +114,16 @@ PEM вне checkout и evidence.
 ## Что делать дальше
 
 Финишная черта [ADR 0010](adr/0010-finish-line.md) пройдена 2026-11-10: F1–F6 сделаны,
-версия `0.6.0`, полный `ci_local` на финальном коммите — в
-[журнале статуса](history/DECISIONOPS_STATUS_LOG.md). Новая работа — только новым
-решением владельца и новым ADR; находки — в [бэклог](DECISIONOPS_BACKLOG.md).
+версия `0.6.0`. Решение владельца 2026-11-13 — [ADR 0012](adr/0012-post-finish-development.md):
+пункты D1–D6 в локальной ветке `decisionops-backlog` — D1 типы (сделан), D2 отношения и отказы
+(ложные вердикты из [бэклога](DECISIONOPS_BACKLOG.md)), D3 комментарий PR и GitHub Action,
+D4 покрытие dbt, D5 read-only MCP, D6 инвентарь Superset. Находки вне D1–D6 — в бэклог.
 
 Не начинать без нового решения:
 
 - PostgreSQL scanned bytes — только с trusted provider/extension и его контрактом.
 - Подпись самим capture runner — нужна trusted boundary, где private key недоступен вызывающему.
-- Scheduler, PostgreSQL runtime, REST/MCP, notifications, actions.
+- Scheduler, PostgreSQL runtime, REST, notifications, actions (кроме D3 и D5 ADR 0012).
 
 ## Решения для текущего scope
 

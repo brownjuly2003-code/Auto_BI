@@ -16,6 +16,27 @@ CHANGELOG names 1 → 2 and the transitions from verifier 7 → 8 and check 5 �
 Part of the idempotency key: a different verifier can derive a different verdict or
 evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 
+### Verifier 135
+
+a column's type is compared by the name the engine prints for it on ClickHouse too, and by more of
+a PostgreSQL kernel's names (ADR 0012, D1). On ClickHouse it is the name `system.columns` prints:
+`BIGINT` is `Int64`, `INT UNSIGNED` is `UInt32`, `DOUBLE` is `Float64`, `VARCHAR(n)` is `String`,
+`DECIMAL(p,s)` is `Decimal(p, s)`, `Decimal64(s)` is `Decimal(18, s)`, `BINARY(n)` is
+`FixedString(n)`, `TIMESTAMP(p)` is `DateTime64(p)`, and `Nullable`, `LowCardinality`, `Array` and
+`Map` are read through. On a PostgreSQL kernel the quoted and `pg_catalog`-qualified names, a
+declared serial type (`format_type` prints none, so a catalog's `serial4` is a type of its own),
+the `national` and `nchar` character types, `bit` with no length, the `ARRAY` keyword, zeros before
+a number and a time precision of six digits or more (what a time type with no precision keeps) are
+read too. Verifier 134 graded such a pair `physical.type_drift` (review), and that drift accounted
+for a `43` or `42883` of the reference query or of `max()` of the event-time column, which now ends
+the run. A quoted name, and on ClickHouse a string, inside a type is compared character by
+character, and a blank inside a name is content, where verifier 134 dropped every blank and case:
+`Enum8('a' = 1)` held as `Enum8('A' = 1)`, `"MyType"` as `"MYTYPE"` or `Int 64` as `Int64` is now
+`physical.type_drift`. A ratio term on a PostgreSQL kernel is exact by the same name: `sum()` of a
+`dec(18,2)`, `serial` or `pg_catalog.int8` column compiles, where verifier 134 left the ratio
+without reference SQL (`sql.ratio_inexact_term`), and an array of `numeric(p,s)` is no longer read
+as exact. CHECK_VERSION moves to 85 with it.
+
 ### Verifier 134
 
 a column's type on a PostgreSQL kernel is compared by the name `format_type` prints for it, not by
@@ -966,6 +987,21 @@ Bumped when a check's meaning changes, so an old evidence bundle is not read as 
 had been graded by today's rule. Adding a *new* check is not such a change: no existing
 `CheckResult` is re-graded by it, and the verifier version is what stops a bundle written
 before it from being reused as a complete verification.
+
+### Check 85
+
+dwh.physical compares the type of a ClickHouse column by the name `system.columns` prints for it,
+where rule 84 compared the names as written, spacing and case aside: `BIGINT` for `Int64`,
+`DECIMAL(18,2)` for `Decimal(18, 2)`, `Nullable(BIGINT)` for `Nullable(Int64)` are no longer
+`physical.type_drift`; on a PostgreSQL kernel it also takes the quoted and `pg_catalog`-qualified
+names, a declared serial type, the `national` and `nchar` character types, `bit` with no length,
+the `ARRAY` keyword, zeros before a number and a time precision of six digits or more (ADR 0012,
+D1). A quoted name, and on ClickHouse a string, inside a type is compared character by character,
+and a blank inside a name is content, where rule 84 dropped every blank and case: `Enum8('a' = 1)`
+held as `Enum8('A' = 1)` or `Int 64` as `Int64` is now `physical.type_drift`. sql.compile reads a
+ratio term on a PostgreSQL kernel as exact by the name `format_type` prints for its type:
+`dec(18,2)`, `serial` and `pg_catalog.int8` are exact and an array of `numeric(p,s)` is not, where
+rule 84 read the name before the parenthesis as written.
 
 ### Check 84
 

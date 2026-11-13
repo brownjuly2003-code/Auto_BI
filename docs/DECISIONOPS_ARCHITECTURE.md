@@ -698,7 +698,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=134`, `CHECK_VERSION=84`.
+`VERIFIER_VERSION=135`, `CHECK_VERSION=85`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -2473,11 +2473,31 @@ PostgreSQL (`postgres`, `greenplum`, `greengage`) `column_drift` сравнив�
 varying(n)`, `timestamp` — `timestamp without time zone`, `float(p)`, `numeric(p)`, `char` без
 длины, `bpchar(n)`, массив любой размерности — одна пара скобок, как печатает `format_type`). Прежде такая пара была `physical.type_drift` (review) и объясняла `42883` плана и
 `max()`, то есть ошибку самого запроса выдавала за дрейф витрины; теперь `42883` по колонке того же
-типа кончает прогон. Написание вне правила (имя в кавычках или со схемой, `serial`) сравнивается
-как написано. ClickHouse не трогается: его `INT8` — `Int8`, а у PostgreSQL `int8` — `bigint`.
+типа кончает прогон. Написание вне правила (имя в кавычках или со схемой, `serial`) сравнивалось
+как написано до D1. ClickHouse F2 не трогал: его `Int8` — 8-битное целое, а у PostgreSQL `int8` — `bigint`.
 Меняется правило проверки — bump check; verifier вместе с ним, потому что identity прогона держит
 только версию verifier. Таблица имён сверена живьём: колонка в каждом написании на PostgreSQL 16
 читается через `format_type`, как её читает проба.
+
+D1 (verifier 135, check 85, ADR 0012) доводит правило до имени, которое печатает движок, и на
+ClickHouse: модуль `verification/column_types.py` читает объявленное написание в имя
+`system.columns` (`BIGINT` — `Int64`, `INT(11) UNSIGNED` — `UInt32`, `DECIMAL(18,2)` —
+`Decimal(18, 2)`, `Decimal64(4)` — `Decimal(18, 4)`, `TIMESTAMP(3)` — `DateTime64(3)`, обёртки
+`Nullable`/`LowCardinality`/`Array`/`Map` насквозь) и в имя `format_type` на ядре PostgreSQL
+(имя в кавычках или с `pg_catalog`, `serial`, `national`/`nchar`, `bit`, ключевое слово `ARRAY`,
+нули перед числом, точность времени от шести цифр; `serial` — только на объявленной стороне:
+`format_type` не печатает serial, и `serial4` каталога — свой тип, например домен). Разбор
+ClickHouse — токены и рекурсивный спуск с пределом глубины, без регулярного выражения на весь
+тип; у PostgreSQL — регулярные выражения, каждое из которых сопоставляет текст одним способом.
+Чего правила не читают (`Tuple`, `Enum`, `TIME`, `DECIMAL()`), остаётся как написано — ошибка
+в сторону review. Сравнивает ключ `compared_name`: имя движка без пробелов у скобок, запятых и
+`=`; текст в кавычках — имя, а на ClickHouse и строка — посимвольно, пробел внутри имени —
+содержимое, регистр не сворачивается (у PostgreSQL непрочитанное имя вне кавычек
+сравнивается в нижнем регистре, как его сворачивает грамматика). До D1 сравнение убирало все пробелы и регистр и
+внутри строк, и `Enum8('a' = 1)` сходился с `Enum8('A' = 1)` — другим типом. Таблица имён
+сверена живьём на ClickHouse 24.8, PostgreSQL 16 и ядре 9.4.26. Тем же именем `sql.compile`
+решает, точен ли член доли на PostgreSQL; на ClickHouse — написание, как классы паритета
+(расхождение — запись бэклога для D4).
 
 F3 (ADR 0010) прогнал живой файл `tests/test_decision_live_postgres.py` целиком на временном
 PostgreSQL 9.4.26 — ядре Greenplum 6 и Greengage 6: 17 из 17, те же SQLSTATE за те же дрейфы,

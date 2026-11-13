@@ -1029,9 +1029,10 @@ def test_column_drift_is_what_physical_grades() -> None:
     assert column_drift(question, no_catalog, engine="clickhouse") == {}
 
 
-# --- one PostgreSQL type, any of its names (ADR 0010, F2) -----------------------
+# --- one PostgreSQL type, any of its names (ADR 0010, F2; ADR 0012, D1) ---------
 
-#: A spelling a model may declare -> the name `format_type` prints for the same type.
+#: A spelling a model may declare -> the name `format_type` prints for the same type, as the
+#: live test creates it on PostgreSQL 16 and the 9.4.26 kernel.
 PG_SAME_TYPE = [
     ("float8", "double precision"),
     ("FLOAT8", "double precision"),
@@ -1071,6 +1072,95 @@ PG_SAME_TYPE = [
     ("varchar(10)[3]", "character varying(10)[]"),
     ("int4[][]", "integer[]"),
     ("int4 [ 3 ] [ ]", "integer[]"),
+    # D1: a name quoted or qualified by `pg_catalog` is the catalog's own name for the type
+    ("pg_catalog.int4", "integer"),
+    ("PG_CATALOG.INT4", "integer"),
+    ('"pg_catalog"."int4"', "integer"),
+    ("pg_catalog . int4", "integer"),
+    ('"int4"', "integer"),
+    ('"int2"', "smallint"),
+    ("pg_catalog.int8", "bigint"),
+    ('"varchar"(20)', "character varying(20)"),
+    ("pg_catalog.varchar(020)", "character varying(20)"),
+    ('"numeric"(10)', "numeric(10,0)"),
+    ('"numeric"(18,2)', "numeric(18,2)"),
+    ("pg_catalog.numeric(10, 2)", "numeric(10,2)"),
+    ('"bpchar"', "bpchar"),
+    ("pg_catalog.bpchar(3)", "character(3)"),
+    ('"bit"', '"bit"'),
+    ("pg_catalog.bit", '"bit"'),
+    ('"bit"(3)', "bit(3)"),
+    ("pg_catalog.char", '"char"'),
+    ('pg_catalog."char"', '"char"'),
+    ('"timestamptz"', "timestamp with time zone"),
+    ('"time"(3)', "time(3) without time zone"),
+    ("pg_catalog.timetz(3)", "time(3) with time zone"),
+    ('"int4"[]', "integer[]"),
+    ('"int4" array', "integer[]"),
+    ("pg_catalog.int4 array", "integer[]"),
+    ('"char"[]', '"char"[]'),
+    # D1: `bit` with no length is `bit(1)`, as `character` is `character(1)`
+    ("bit", "bit(1)"),
+    ("bit(01)", "bit(1)"),
+    ("bit[]", "bit(1)[]"),
+    ("bit array", "bit(1)[]"),
+    # D1: the SQL `ARRAY` keyword, with or without its one bound
+    ("integer array", "integer[]"),
+    ("int4 ARRAY[3]", "integer[]"),
+    ("integer array [3]", "integer[]"),
+    ("varchar(10) array", "character varying(10)[]"),
+    ("double precision array", "double precision[]"),
+    ("timestamp with time zone array", "timestamp with time zone[]"),
+    # D1: the `national` and `nchar` forms of the character types
+    ("national character varying(3)", "character varying(3)"),
+    ("national char varying(3)", "character varying(3)"),
+    ("nchar varying(3)", "character varying(3)"),
+    ("national character(3)", "character(3)"),
+    ("nchar(3)", "character(3)"),
+    ("nchar", "character(1)"),
+    ("national char", "character(1)"),
+    ("nchar(3)[]", "character(3)[]"),
+    # D1: zeros before a number, and a time precision past six digits, which is cut to six
+    ("varchar(020)", "character varying(20)"),
+    ("numeric(018,02)", "numeric(18,2)"),
+    ("char(03)", "character(3)"),
+    ("float(053)", "double precision"),
+    ("dec", "numeric"),
+    ("dec(10)", "numeric(10,0)"),
+    ("timestamp(06)", "timestamp(6) without time zone"),
+    ("timestamp(7)", "timestamp(6) without time zone"),
+    ("timestamp(100)", "timestamp(6) without time zone"),
+    ("timestamptz(7)", "timestamp(6) with time zone"),
+    ("timetz(9)", "time(6) with time zone"),
+    ('"timestamp"(7)', "timestamp(6) without time zone"),
+    ("timestamp(6) array", "timestamp(6) without time zone[]"),
+    # D1: a quoted name's modifier; a precision past six digits, up to the grammar's largest
+    ('"varbit"(3)', "bit varying(3)"),
+    ("pg_catalog.timestamptz(7)", "timestamp(6) with time zone"),
+    ("timestamp(2147483647)", "timestamp(6) without time zone"),
+]
+#: A serial type a model may declare -> the integer type its sequence feeds, as `format_type`
+#: prints it. Read on the declared side only: `format_type` prints no serial type, so a catalog
+#: that holds `serial4` holds a type of its own — a domain may be called so (PostgreSQL 16 and
+#: the 9.4.26 kernel print `serial4` for one).
+PG_SERIAL_TYPE = [
+    ("serial", "integer"),
+    ("SERIAL4", "integer"),
+    ('"serial"', "integer"),
+    ("bigserial", "bigint"),
+    ("serial8", "bigint"),
+    ("smallserial", "smallint"),
+    ("serial2", "smallint"),
+]
+#: Two names `format_type` prints for one type: a time type keeps six fractional digits of a
+#: second with no precision given, and is the same type as the one given precision 6 (the live
+#: test stores one value in both).
+PG_SAME_PRINTED = [
+    ("timestamp without time zone", "timestamp(6) without time zone"),
+    ("timestamp with time zone", "timestamp(6) with time zone"),
+    ("time without time zone", "time(6) without time zone"),
+    ("time with time zone", "time(6) with time zone"),
+    ("timestamp without time zone[]", "timestamp(6) without time zone[]"),
 ]
 #: A spelling of a type other than the one the catalog holds. A name no alias covers, or one
 #: that names no type, is compared as written.
@@ -1099,12 +1189,61 @@ PG_OTHER_TYPE = [
     ("text", "character varying"),
     ('"char"', "character(1)"),
     ("char", '"char"'),
-    ("pg_catalog.int4", "integer"),
-    ("serial", "integer"),
-    ("integer array", "integer[]"),
-    ("national character varying(3)", "character varying(3)"),
     ("bpchar", "character(1)"),
     ("int4[3 4]", "integer[]"),
+    # D1: what the catalog is asked for as written names no type, or another one
+    ('"INT4"', "integer"),
+    ('"integer"', "integer"),
+    ('"decimal"(18,2)', "numeric(18,2)"),
+    ('"double precision"', "double precision"),
+    ("pg_catalog.integer", "integer"),
+    ('"PG_CATALOG".int4', "integer"),
+    ("public.int4", "integer"),
+    ('"bit"', "bit(1)"),
+    ("bit", '"bit"'),
+    ("pg_catalog.char(3)", "character(3)"),
+    ('"int4"(3)', "integer"),
+    ("pg_catalog.interval(3)", "interval(3)"),
+    ('"timestamp" with time zone', "timestamp with time zone"),
+    # D1: an array of serial, a serial with a modifier or a schema, another serial's width
+    ("serial[]", "integer[]"),
+    ("smallserial array", "smallint[]"),
+    ("serial(3)", "integer"),
+    ("pg_catalog.serial", "integer"),
+    ("bigserial", "integer"),
+    ("smallserial", "integer"),
+    ('"serial"[]', "integer"),
+    ('"serial"[]', "integer[]"),
+    ("serial with time zone", "integer"),
+    ("timestamp(7,2)", "timestamp without time zone"),
+    # D1: a quoted name is the catalog's as written, its case and blanks too, and a keyword-only
+    # name names no type there
+    ('"MYTYPE"', '"MyType"'),
+    ('"my type"', '"mytype"'),
+    ('"my  type"', '"my type"'),
+    ('"a (b)"', '"a(b)"'),
+    ('"bigint"', "bigint"),
+    ('"int"', "integer"),
+    ('"smallint"', "smallint"),
+    ('"real"', "real"),
+    ('"float"', "double precision"),
+    ('"dec"', "numeric"),
+    ('"decimal"', "numeric"),
+    ('"boolean"', "boolean"),
+    ('"character"', "character(1)"),
+    ('"nchar"', "character(1)"),
+    # D1: a blank inside a name or a number is content
+    ("doubleprecision", "double precision"),
+    ("big int", "bigint"),
+    ("numeric(1 8,2)", "numeric(18,2)"),
+    # D1: the `ARRAY` keyword after brackets, twice, or with an empty bound
+    ("integer array[]", "integer[]"),
+    ("integer array array", "integer[]"),
+    ("int4[] array", "integer[]"),
+    ("national varchar(3)", "character varying(3)"),
+    # D1: a precision under six digits, or one the grammar does not read as a number
+    ("timestamp(5)", "timestamp without time zone"),
+    ("timestamp(2147483648)", "timestamp(6) without time zone"),
 ]
 
 
@@ -1134,6 +1273,28 @@ def test_another_name_of_the_postgres_type_the_engine_holds_is_not_drift(
     assert column_drift(*held_as(held, declared), engine=engine) == {}
 
 
+@pytest.mark.parametrize(("declared", "held"), PG_SERIAL_TYPE)
+def test_a_declared_serial_is_the_integer_its_sequence_feeds(declared: str, held: str) -> None:
+    """A model's `serial` is the `integer` the catalog prints for the column; a catalog that
+    prints `serial` holds a type of that name, which a declared `integer` is not."""
+    assert column_drift(*held_as(declared, held), engine="postgres") == {}
+    assert column_drift(*held_as(held, declared), engine="greenplum") == {"revenue": declared}
+
+
+def test_a_catalog_s_serial4_is_not_a_declared_integer() -> None:
+    """`CREATE DOMAIN public.serial4 AS text`: `format_type` prints `serial4` for a column of
+    it, and the column holds text: not a declared `integer`, nor a declared `serial4`, which
+    is one."""
+    assert column_drift(*held_as("integer", "serial4"), engine="postgres") == {"revenue": "serial4"}
+    assert column_drift(*held_as("serial4", "serial4"), engine="postgres") == {"revenue": "serial4"}
+
+
+@pytest.mark.parametrize(("declared", "held"), PG_SAME_PRINTED)
+def test_a_time_type_of_six_digits_is_the_one_of_no_precision(declared: str, held: str) -> None:
+    assert column_drift(*held_as(declared, held), engine="postgres") == {}
+    assert column_drift(*held_as(held, declared), engine="greenplum") == {}
+
+
 @pytest.mark.parametrize(("declared", "held"), PG_OTHER_TYPE)
 def test_a_postgres_type_of_another_name_and_another_type_is_drift(
     declared: str, held: str
@@ -1146,14 +1307,32 @@ def test_a_postgres_type_of_another_name_and_another_type_is_drift(
 SPELLINGS_CHILD = """
 import json, sys
 from auto_bi.verification.environment import TableFacts, TableQuestion, column_drift
-for spelling in json.load(sys.stdin):
+engine, held, spellings = json.load(sys.stdin)
+for spelling in spellings:
     question = TableQuestion(
         table="dm.t", event_time_column="d", columns={"c": spelling},
         timezones=["UTC"], metric_refs=["metric://m/m@1"],
     )
-    table = TableFacts(table="dm.t", exists=True, readable=True, columns={"c": "integer[]"})
-    print(json.dumps(column_drift(question, table, engine="postgres")))
+    table = TableFacts(table="dm.t", exists=True, readable=True, columns={"c": held})
+    print(json.dumps(column_drift(question, table, engine=engine)))
 """
+
+
+def drifts_read_at_once(engine: str, held: str, spellings: list[str]) -> list[dict[str, Any]]:
+    """`column_drift` of each spelling against `held`, in a child process stopped after a
+    minute: a pattern that hangs fails the test instead of hanging the suite."""
+    root = Path(column_drift.__code__.co_filename).resolve().parents[2]
+    ended = subprocess.run(
+        [sys.executable, "-c", SPELLINGS_CHILD],
+        input=json.dumps([engine, held, spellings]),
+        env=dict(os.environ, PYTHONPATH=str(root)),
+        capture_output=True,
+        encoding="utf-8",
+        timeout=60,
+        check=False,
+    )
+    assert (ended.returncode, ended.stderr) == (0, "")
+    return [json.loads(line) for line in ended.stdout.splitlines()]
 
 
 def test_a_spelling_of_thousands_of_characters_is_read_at_once() -> None:
@@ -1170,21 +1349,44 @@ def test_a_spelling_of_thousands_of_characters_is_read_at_once() -> None:
         "numeric(1)" + " [ ]" * 5000 + "]",
         "float(" + "9" * 5000 + ")",
         "float(" + "0" * 5000 + "24)",
+        # D1: quoted and qualified names, the `ARRAY` keyword, a time precision
+        '"' + "a" * 20000 + '"',
+        "pg_catalog." + "a" * 20000 + "!",
+        "pg_catalog . " * 5000 + "int4",
+        '"int4"' + "[ ]" * 5000 + "x",
+        '"int4"(' + "1," * 5000 + "x",
+        "int4" + " array" * 5000,
+        "integer array" + " [ 3 ]" * 5000,
+        "timestamp(" + "9" * 5000 + ")",
+        "timestamp(" + "0" * 5000 + "6)",
+        "serial" + "[]" * 5000,
+        # D1: a qualified name the quote after it does not let end
+        "pg_catalog." + "a" * 200000 + '"',
     ]
-    root = Path(column_drift.__code__.co_filename).resolve().parents[2]
-    ended = subprocess.run(
-        [sys.executable, "-c", SPELLINGS_CHILD],
-        input=json.dumps(spellings),
-        env=dict(os.environ, PYTHONPATH=str(root)),
-        capture_output=True,
-        encoding="utf-8",
-        timeout=60,
-        check=False,
-    )
 
-    assert (ended.returncode, ended.stderr) == (0, "")
-    drifts = [json.loads(line) for line in ended.stdout.splitlines()]
+    drifts = drifts_read_at_once("postgres", "integer[]", spellings)
     assert drifts == [{"c": "integer[]"}] * len(spellings)
+
+
+def test_a_clickhouse_spelling_of_thousands_of_characters_is_read_at_once() -> None:
+    """ADR 0012, D1: ClickHouse's types nest, and the reader stops at a depth instead of at
+    the interpreter's stack; a number of thousands of digits is not converted."""
+    spellings = [
+        "Nullable(" * 5000 + "Int64" + ")" * 5000,
+        "Array(" * 5000 + "BIGINT",
+        "Tuple(" + "Int8, " * 20000 + "Int8)",
+        "INT(" + "9" * 5000 + ")",
+        "Int16(" + "0" * 5000 + "5)",
+        "Decimal(" + "1" * 5000 + ", 2)",
+        "DateTime64(" + "3, " * 5000 + "'UTC')",
+        "DOUBLE " * 5000 + "PRECISION",
+        "a " * 5000 + "!",
+        "(" * 5000,
+        "'" + "x" * 20000,
+    ]
+
+    drifts = drifts_read_at_once("clickhouse", "Int64", spellings)
+    assert drifts == [{"c": "Int64"}] * len(spellings)
 
 
 def test_a_float_precision_of_thousands_of_digits_is_read_by_its_value() -> None:
@@ -1204,6 +1406,222 @@ def test_clickhouse_takes_none_of_postgres_s_names() -> None:
     the engine holds (`int8` is `bigint` there), and a narrowed column would compare equal."""
     assert column_drift(*held_as("BIGINT", "Int8"), engine="clickhouse") == {"revenue": "Int8"}
     assert column_drift(*held_as("int4", "integer"), engine="clickhouse") == {"revenue": "integer"}
+
+
+# --- one ClickHouse type, any of its names (ADR 0012, D1) ----------------------
+
+#: A spelling a model may declare -> the type `system.columns` prints for it, as the live test
+#: creates it on ClickHouse 24.8.
+CH_SAME_TYPE = [
+    ("BIGINT", "Int64"),
+    ("bigint", "Int64"),
+    ("INT", "Int32"),
+    ("INTEGER", "Int32"),
+    ("MEDIUMINT", "Int32"),
+    ("SMALLINT", "Int16"),
+    ("TINYINT(1)", "Int8"),
+    ("INT(11)", "Int32"),
+    ("INT()", "Int32"),
+    ("INT(11) UNSIGNED", "UInt32"),
+    ("INT UNSIGNED(11)", "UInt32"),
+    ("BIGINT  UNSIGNED", "UInt64"),
+    ("TINYINT(1) UNSIGNED", "UInt8"),
+    ("SMALLINT(5) UNSIGNED", "UInt16"),
+    ("BIGINT(20) SIGNED", "Int64"),
+    ("SIGNED", "Int64"),
+    ("UNSIGNED", "UInt64"),
+    ("BIT", "UInt64"),
+    ("YEAR", "UInt16"),
+    ("BYTE(1)", "Int8"),
+    ("Int8(3)", "Int8"),
+    ("Int128(2)", "Int128"),
+    ("Int16(00000000000000000000000005)", "Int16"),
+    ("DOUBLE", "Float64"),
+    ("DOUBLE PRECISION", "Float64"),
+    ("Float64(1, -2)", "Float64"),
+    ("FLOAT", "Float32"),
+    ("FLOAT(53)", "Float32"),
+    ("REAL", "Float32"),
+    ("FLOAT()", "Float32"),
+    ("TEXT", "String"),
+    ("VARCHAR(255)", "String"),
+    ("NATIONAL CHARACTER VARYING(3)", "String"),
+    ("BLOB", "String"),
+    ("String(10)", "String"),
+    ("String()", "String"),
+    ("BINARY(16)", "FixedString(16)"),
+    ("FixedString(016)", "FixedString(16)"),
+    ("DECIMAL", "Decimal(10, 0)"),
+    ("DEC", "Decimal(10, 0)"),
+    ("NUMERIC(20)", "Decimal(20, 0)"),
+    ("FIXED(5,2)", "Decimal(5, 2)"),
+    ("decimal(18,2)", "Decimal(18, 2)"),
+    ("Decimal(018, 02)", "Decimal(18, 2)"),
+    ("DECIMAL(76, 76)", "Decimal(76, 76)"),
+    ("Decimal64(4)", "Decimal(18, 4)"),
+    ("Decimal256(76)", "Decimal(76, 76)"),
+    ("BOOL", "Bool"),
+    ("BOOLEAN", "Bool"),
+    ("TIMESTAMP", "DateTime"),
+    ("TIMESTAMP()", "DateTime"),
+    ("TIMESTAMP(0)", "DateTime"),
+    ("TIMESTAMP(9)", "DateTime64(9)"),
+    ("DateTime()", "DateTime"),
+    ("DateTime64", "DateTime64(3)"),
+    ("DateTime64()", "DateTime64(3)"),
+    ("DateTime64(03)", "DateTime64(3)"),
+    ("DateTime( 'UTC' )", "DateTime('UTC')"),
+    ("DateTime32('UTC')", "DateTime('UTC')"),
+    ("TIMESTAMP(0, 'UTC')", "DateTime('UTC')"),
+    ("DateTime(3, 'UTC')", "DateTime64(3, 'UTC')"),
+    ("DATETIME64(3,'Europe/Moscow')", "DateTime64(3, 'Europe/Moscow')"),
+    ("INET4", "IPv4"),
+    ("INET6", "IPv6"),
+    ("Nullable(BIGINT)", "Nullable(Int64)"),
+    ("Nullable(DOUBLE PRECISION)", "Nullable(Float64)"),
+    ("Array(Array(INT UNSIGNED))", "Array(Array(UInt32))"),
+    ("Array(BINARY(4))", "Array(FixedString(4))"),
+    ("Array(Nullable(DECIMAL(10,2)))", "Array(Nullable(Decimal(10, 2)))"),
+    ("LowCardinality(TEXT)", "LowCardinality(String)"),
+    ("LowCardinality(Nullable(VARCHAR(10)))", "LowCardinality(Nullable(String))"),
+    ("Map(TEXT, Nullable(BIGINT))", "Map(String, Nullable(Int64))"),
+    # D1: the rest of the aliases of `system.data_type_families`, and arguments the engine fills
+    ("SINGLE", "Float32"),
+    ("INT1", "Int8"),
+    ("SET", "UInt64"),
+    ("CHAR(10)", "String"),
+    ("BYTEA", "String"),
+    ("VARBINARY(16)", "String"),
+    ("VARCHAR2(10)", "String"),
+    ("TINYINT UNSIGNED", "UInt8"),
+    ("INTEGER UNSIGNED", "UInt32"),
+    ("INT1 UNSIGNED", "UInt8"),
+    ("SMALLINT SIGNED", "Int16"),
+    ("INT(11)UNSIGNED", "UInt32"),
+    ("Nullable(INT(11) UNSIGNED)", "Nullable(UInt32)"),
+    ("DATETIME(6)", "DateTime64(6)"),
+    ("Array(TIMESTAMP(3))", "Array(DateTime64(3))"),
+    ("Map(String, DateTime64)", "Map(String, DateTime64(3))"),
+    ("DateTime64(0,'UTC')", "DateTime64(0, 'UTC')"),
+    ("DateTime32()", "DateTime"),
+    ("FIXED", "Decimal(10, 0)"),
+    ("Decimal256(0)", "Decimal(76, 0)"),
+    # D1: a type the rules do not read compares as written, but for blanks next to a mark
+    ("Enum8('a'=1, 'b'=2)", "Enum8('a' = 1, 'b' = 2)"),
+    ("Tuple(a Int64,b String)", "Tuple(a Int64, b String)"),
+]
+#: A spelling of a type other than the one the catalog holds, or of none the engine takes.
+CH_OTHER_TYPE = [
+    ("BIGINT", "Int32"),
+    ("INT", "UInt32"),
+    ("INT UNSIGNED", "Int32"),
+    ("int8", "Int64"),
+    ("FLOAT", "Float64"),
+    ("DOUBLE", "Float32"),
+    ("TEXT", "FixedString(16)"),
+    ("BINARY(16)", "String"),
+    ("DECIMAL", "Decimal(18, 2)"),
+    ("DECIMAL(18)", "Decimal(18, 2)"),
+    ("DECIMAL()", "Decimal(10, 0)"),
+    ("Decimal64(2)", "Decimal(38, 2)"),
+    ("Decimal32(10)", "Decimal(9, 9)"),
+    ("TIMESTAMP", "DateTime64(3)"),
+    ("TIMESTAMP(3)", "DateTime"),
+    ("TIMESTAMP(10)", "DateTime64(9)"),
+    ("DateTime64", "DateTime64(6)"),
+    ("DateTime('UTC')", "DateTime"),
+    ("DateTime64('UTC')", "DateTime64(3, 'UTC')"),
+    ("DateTime64(0)", "DateTime"),
+    ("Nullable(BIGINT)", "Int64"),
+    ("BIGINT", "Nullable(Int64)"),
+    ("Bool(1)", "Bool"),
+    ("DOUBLE UNSIGNED", "Float64"),
+    ("YEAR(4) UNSIGNED", "UInt16"),
+    ("INT(11) ZEROFILL", "Int32"),
+    ("INT(11) SIGNED UNSIGNED", "Int32"),
+    ("DOUBLE(10) PRECISION", "Float64"),
+    ("NATIONAL(3) CHAR", "String"),
+    ("VARCHAR(99999999999999999999)", "String"),
+    ("FixedString(0)", "String"),
+    ("Array()", "Array(String)"),
+    ("Map(TEXT, BIGINT, INT)", "Map(String, Int64)"),
+    # D1: arguments the engine refuses
+    ("DECIMAL(2, 3)", "Decimal(2, 3)"),
+    ("DateTime32(3)", "DateTime64(3)"),
+    ("Decimal32(1, 2)", "Decimal(9, 1)"),
+    ("INT(11, 2)", "Int32"),
+    ("INT(-1)", "Int32"),
+    ("VARCHAR('x')", "String"),
+    ("INT('x')", "Int32"),
+    ("Array(BIGINT, TEXT)", "Array(Int64)"),
+    ("LowCardinality(TEXT, INT)", "LowCardinality(String)"),
+    ("Nullable(1)", "Nullable(UInt8)"),
+    ("DOUBLE(1,2,3)", "Float64"),
+    ("Decimal(18, 2, 1)", "Decimal(18, 2)"),
+    ("1", "UInt8"),
+    # D1: a blank inside a name is content, and so is a string or a name inside a type
+    ("Int 64", "Int64"),
+    ("Date Time", "DateTime"),
+    ("Nullable(Int 64)", "Nullable(Int64)"),
+    ("Enum8('active' = 1, 'inactive' = 2)", "Enum8('Active' = 1, 'Inactive' = 2)"),
+    ("Enum8('a  b' = 1)", "Enum8('a b' = 1)"),
+    ("Tuple(a Int64)", "Tuple(A Int64)"),
+    ("Tuple(a UInt8)", "Tuple(au Int8)"),
+    ("Enum8('a = b' = 1)", "Enum8('a=b' = 1)"),
+    ("Enum8('a\\' b  c' = 1)", "Enum8('a\\' b c' = 1)"),
+]
+#: A spelling of the type the catalog holds that the rules do not read: compared as written, it
+#: errs towards review. `TIME`, which 24.8 reads as `Int64` and later versions as a type of its
+#: own; the families whose arguments are not types or numbers alone (`Tuple`, `Enum`,
+#: `AggregateFunction`); a zone left empty and a trailing comma, which the engine drops. The
+#: live test creates each as written.
+CH_UNREAD = [
+    ("TIME", "Int64"),
+    ("Tuple(BIGINT, TEXT)", "Tuple(Int64, String)"),
+    ("ENUM('a' = 1)", "Enum8('a' = 1)"),
+    ("AggregateFunction(sum, BIGINT)", "AggregateFunction(sum, Int64)"),
+    ("DateTime('')", "DateTime"),
+    ("Decimal(18, 2,)", "Decimal(18, 2)"),
+]
+
+
+@pytest.mark.parametrize(("declared", "held"), CH_SAME_TYPE)
+def test_another_name_of_the_clickhouse_type_the_engine_holds_is_not_drift(
+    declared: str, held: str
+) -> None:
+    """`system.columns` prints one name per type and a model may write any the engine takes,
+    MySQL's and the SQL standard's among them; which side writes which does not matter."""
+    assert column_drift(*held_as(declared, held), engine="clickhouse") == {}
+    assert column_drift(*held_as(held, declared), engine="clickhouse") == {}
+
+
+@pytest.mark.parametrize(("declared", "held"), CH_OTHER_TYPE)
+def test_a_clickhouse_type_of_another_name_and_another_type_is_drift(
+    declared: str, held: str
+) -> None:
+    assert column_drift(*held_as(declared, held), engine="clickhouse") == {"revenue": held}
+
+
+@pytest.mark.parametrize(("declared", "held"), CH_UNREAD)
+def test_a_clickhouse_spelling_the_rules_do_not_read_errs_towards_review(
+    declared: str, held: str
+) -> None:
+    assert column_drift(*held_as(declared, held), engine="clickhouse") == {"revenue": held}
+
+
+def test_a_clickhouse_family_name_is_read_in_any_case() -> None:
+    """ClickHouse refuses `int64` for `Int64`, but the comparison has never read case: a
+    model's `int64` was `Int64` before ClickHouse's other names were read, and still is."""
+    assert column_drift(*held_as("int64", "Int64"), engine="clickhouse") == {}
+    assert column_drift(*held_as("nullable(bigint)", "Nullable(Int64)"), engine="clickhouse") == {}
+
+
+def test_an_engine_the_seam_does_not_know_compares_spacing_and_case_only() -> None:
+    """The dialect seam reads an engine it does not know as ClickHouse; the type comparison
+    does not guess, and reads neither engine's other names there."""
+    assert column_drift(*held_as("BIGINT", "Int64"), engine="duckdb") == {"revenue": "Int64"}
+    assert column_drift(*held_as("int4", "integer"), engine="duckdb") == {"revenue": "integer"}
+    assert column_drift(*held_as("decimal(18, 2)", "Decimal(18,2)"), engine="duckdb") == {}
 
 
 def test_physical_on_postgres_grades_the_type_not_its_name(tmp_path: Path) -> None:

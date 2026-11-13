@@ -38,7 +38,8 @@ baseline. DecisionOps запускается из checkout как `autobi-agent`
 | [ADR 0009](adr/0009-local-package-identity-no-publication.md) | Локальная идентичность пакета форка, без публикации | decision |
 | [ADR 0010](adr/0010-finish-line.md) | Финишная черта DecisionOps: пункты F1–F6 и заморозка | decision |
 | [ADR 0011](adr/0011-public-repository.md) | Код форка — в публичном репозитории baseline; пакет не публикуется | decision |
-| [DECISIONOPS_BACKLOG.md](DECISIONOPS_BACKLOG.md) | Находки после финишной черты; срез не открывают | backlog |
+| [ADR 0012](adr/0012-post-finish-development.md) | Развитие после финиша: пункты D1–D6 по бэклогу и рыночному срезу | decision |
+| [DECISIONOPS_BACKLOG.md](DECISIONOPS_BACKLOG.md) | Находки после финишной черты; срез открывает только решение владельца | backlog |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome не измеряется |
 | [Implementation history](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md) | Подробный хронологический журнал реализации | archive |
 | [Status log](history/DECISIONOPS_STATUS_LOG.md) | Запись каждого среза, сверху новые; пополняется | history |

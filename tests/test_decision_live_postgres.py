@@ -668,12 +668,14 @@ def test_a_materialized_view_mart_is_the_mart(stand: Stand, tmp_path: Path) -> N
 
 
 def test_each_name_the_gate_reads_as_another_is_the_one_format_type_prints(stand: Stand) -> None:
-    """ADR 0010, F2: `dwh.physical` takes a declared `float8` for the `double precision` the
-    catalog holds. Each spelling of `PG_SAME_TYPE` is created here as written and read back
-    through `format_type`, as the probe reads it — the table is the engine's, not the manual's."""
-    from tests.test_environment_checks import PG_SAME_TYPE
+    """ADR 0010, F2; ADR 0012, D1: `dwh.physical` takes a declared `float8` for the `double
+    precision` the catalog holds. Each spelling of `PG_SAME_TYPE` and `PG_SERIAL_TYPE` is created
+    here as written and read back through `format_type`, as the probe reads it — the table is the
+    engine's, not the manual's."""
+    from tests.test_environment_checks import PG_SAME_TYPE, PG_SERIAL_TYPE
 
-    columns = ", ".join(f"c{index} {declared}" for index, (declared, _) in enumerate(PG_SAME_TYPE))
+    pairs = PG_SAME_TYPE + PG_SERIAL_TYPE
+    columns = ", ".join(f"c{index} {declared}" for index, (declared, _) in enumerate(pairs))
     stand.run(f"CREATE TABLE dm.spellings ({columns})")
 
     printed = dict(
@@ -683,4 +685,42 @@ def test_each_name_the_gate_reads_as_another_is_the_one_format_type_prints(stand
         ).fetchall()
     )
 
-    assert printed == {f"c{index}": held for index, (_, held) in enumerate(PG_SAME_TYPE)}
+    assert printed == {f"c{index}": held for index, (_, held) in enumerate(pairs)}
+
+
+def _time_literal(printed: str) -> str:
+    """A value with seven fractional digits of a second, for a column of the type `printed`."""
+    day = "2020-01-01 " if printed.startswith("timestamp") else ""
+    zone = "+00" if " with time zone" in printed else ""
+    value = f"{day}00:00:00.1234567{zone}"
+    return f"'{{\"{value}\"}}'" if printed.endswith("[]") else f"'{value}'"
+
+
+def test_a_time_type_of_six_digits_keeps_what_one_of_no_precision_keeps(stand: Stand) -> None:
+    """ADR 0012, D1: with no precision a time type keeps six fractional digits of a second, so
+    `dwh.physical` takes `timestamp` for `timestamp(6)`. Each pair of `PG_SAME_PRINTED` is two
+    names `format_type` prints, and one value is stored the same in both."""
+    from tests.test_environment_checks import PG_SAME_PRINTED
+
+    names = [name for pair in PG_SAME_PRINTED for name in pair]
+    columns = ", ".join(f"c{index} {name}" for index, name in enumerate(names))
+    stand.run(f"CREATE TABLE dm.time_precision ({columns})")
+    values = ", ".join(_time_literal(name) for name in names)
+    stand.run(f"INSERT INTO dm.time_precision VALUES ({values})")
+
+    printed = [
+        kind
+        for (kind,) in stand.admin.execute(
+            "SELECT format_type(a.atttypid, a.atttypmod) FROM pg_attribute a "
+            "WHERE a.attrelid = 'dm.time_precision'::regclass AND a.attnum > 0 ORDER BY a.attnum"
+        ).fetchall()
+    ]
+    [row] = stand.admin.execute(
+        "SELECT "
+        + ", ".join(f"c{index}::text" for index in range(len(names)))
+        + " FROM dm.time_precision"
+    ).fetchall()
+
+    assert printed == names
+    assert list(row[0::2]) == list(row[1::2])
+    assert not any(".1234567" in text for text in row)

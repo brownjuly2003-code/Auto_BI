@@ -498,15 +498,15 @@ mart's drift. Since verifier 134 and check 84 (ADR 0010, F2), on an engine of th
   is `character(1)`, `bpchar(n)` is `character(n)`. A modifier is kept, and so is an array as the
   one pair of brackets `format_type` prints for any of its dimensions (`varchar(10)[3]` and
   `varchar(10)[][]` are `character varying(10)[]`);
-- a spelling the rule does not read — a quoted or schema-qualified name (`"char"`,
-  `pg_catalog.int4`), `integer array`, `national character varying`, `serial`, `bpchar` with
-  no length, `float(54)`, a zone after a name that carries one (`timestamptz without time
-  zone`), an array bound other than one number — SHALL be compared as written, spacing and
-  case aside, as before;
+- a spelling the rule does not read — `bpchar` with no length, `float(54)`, a zone after a
+  name that carries one (`timestamptz without time zone`), an array bound other than one
+  number, and until D1 (below) a quoted or schema-qualified name, `integer array`, `national
+  character varying` and `serial` — SHALL be compared as written, spacing and case aside, as
+  before (since D1 a quoted name is compared character by character, below);
 - a pair the rule reads as one type SHALL be no drift: `dwh.physical` does not grade it, and it
   accounts for no `42883`, which then ends the run as any state the catalog does not account for;
-- ClickHouse SHALL compare as before, spacing and case aside: its aliases are its own (its `INT8`
-  is `Int8`, PostgreSQL's `int8` is `bigint`), and `system.columns` prints the canonical name.
+- ClickHouse SHALL compare as before, spacing and case aside, until D1 (below): its aliases are
+  its own (ClickHouse's `Int8` is an 8-bit integer, PostgreSQL's `int8` is `bigint`).
 
 `tests/test_decision_live_postgres.py` creates a column in each spelling of the rule on PostgreSQL
 16 (once on the 9.4.26 kernel too, F3) and reads it back through `format_type`, as the probe does:
@@ -514,6 +514,57 @@ the names the rule maps to are the engine's, not the manual's. The rule is pinne
 and on each engine name of the family; a spelling of thousands of characters is read at once (each
 repeated part of the pattern matches its text one way only, so a failed match does not retry every
 split), and so is a `float(p)` of thousands of digits, past what `int()` converts.
+
+## One type, any of the names the engine takes (D1)
+
+Since verifier 135 and check 85 (ADR 0012, D1) the rule reads each declared spelling to the name
+the engine prints for its type (`auto_bi/verification/column_types.py`), on ClickHouse too:
+
+- on ClickHouse a declared type and `system.columns`' SHALL compare equal when both name one
+  type. The names read are the aliases of `system.data_type_families` of 24.8 (`BIGINT` and
+  `SIGNED` for `Int64`, `INT` for `Int32`, `INT UNSIGNED` for `UInt32`, `DOUBLE` for `Float64`,
+  `TEXT`, `VARCHAR` and the other character names for `String`, `BINARY(n)` for
+  `FixedString(n)`, `DEC`, `NUMERIC` and `FIXED` for `Decimal`, `TIMESTAMP` for `DateTime`,
+  `BOOLEAN` for `Bool`) and the rules of its types: a display width or a trailing `SIGNED` /
+  `UNSIGNED` of an integer goes (`INT(11) UNSIGNED` is `UInt32`), `DECIMAL` with no arguments is
+  `Decimal(10, 0)` and a precision alone is scale 0, `DecimalN(s)` is `Decimal(P, s)` of the
+  precision N bits hold, `DateTime` with a precision other than 0 is `DateTime64` of it,
+  `DateTime64` with none is `DateTime64(3)`, a zone is kept, `Nullable`, `LowCardinality`,
+  `Array` and `Map` are read through, and a family name is read in any case, as the comparison
+  read every name before D1;
+- on a PostgreSQL kernel the rule SHALL also read a quoted or `pg_catalog`-qualified name as
+  the catalog name it is (`"int4"` and `pg_catalog.int4` are `integer`; a quoted keyword such
+  as `"integer"`, `pg_catalog.serial` and a modifier on a name other than `numeric`, `varchar`,
+  `bpchar`, `bit`, `varbit` and the four time names are not read; `"char"` and an unbounded
+  `"bit"` stay types of their own), the serial types bare on the declared side (`serial` is
+  `integer`, `bigserial` is `bigint`; `format_type` prints no serial type, so a catalog's
+  `serial4` — a domain may be called so — is a type of its own), the `national` and `nchar`
+  character types, `bit` with no length as `bit(1)`, the `ARRAY` keyword with at most one bound
+  as the brackets, zeros before a number, and a precision of a time type of six digits or more as
+  none — six fractional digits are what a time type with no precision keeps;
+- a spelling the rules do not read — on ClickHouse `Tuple`, `Enum`, `Nested`,
+  `AggregateFunction`, `TIME` (24.8 reads it as `Int64`, later versions as a type of their own),
+  `DECIMAL()`, an argument the engine may not take, a zone left empty, a trailing comma —
+  SHALL be compared as written: blanks next to a parenthesis, a bracket, a comma or `=` aside,
+  and on a PostgreSQL kernel case outside a quote, as the grammar folds a name it does not quote;
+- a quoted name, and on ClickHouse a string, inside a type SHALL be compared character by
+  character, and a blank inside a name is content, where before D1 the comparison dropped every
+  blank and case:
+  `Enum8('a' = 1)` and `Enum8('A' = 1)`, `Tuple(a Int64)` and `Tuple(A Int64)`, `"MyType"` and
+  `"MYTYPE"`, `Int 64` and `Int64` are two spellings, and a pair of them is drift;
+- `sql.compile` SHALL read a ratio term on a PostgreSQL kernel as exact by the same name, so
+  `dec(18,2)`, `serial` and `pg_catalog.int8` are exact and an array of an exact type is not; a
+  ClickHouse term is read as written, as the parity classes of `semantic.metricflow_formula`
+  read it.
+
+`tests/test_decision_live_clickhouse.py` creates a column in each ClickHouse spelling of the
+tests' lists of one type — those the rule reads and those it leaves to review — on 24.8 and reads
+it back from `system.columns`, as the probe does, and checks the aliases the rule reads against
+`system.data_type_families`; `tests/test_decision_live_postgres.py` does so for the new
+PostgreSQL spellings through
+`format_type` on 16 and the 9.4.26 kernel, and stores one value with seven fractional digits
+in a time type of six digits and in one of no precision, which keep it the same. A spelling of
+thousands of characters, or of types nested thousands deep, is read at once.
 
 ## Runtime SQL guard refusal at the CLI boundary (T-80)
 

@@ -29,6 +29,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from auto_bi.agent import sqlgen
@@ -366,6 +367,83 @@ def test_a_postgres_float_term_is_named_not_compiled(tmp_path: Path) -> None:
     model = postgres_model(
         {"name": "weight", "type": "double precision", "role": "measure", "agg": "sum"}
     )
+    compiled = compile_metric_queries(snapshot_of(tmp_path, contract, model=model), [RATIO_REF])
+
+    assert compiled.queries == []
+    assert [item.code for item in compiled.findings] == ["sql.ratio_inexact_term"]
+
+
+def postgres_term(spelling: str) -> SemanticModel:
+    """The Greengage fixture with its `gross_margin` declared as `spelling`."""
+    model = postgres_model()
+    fact = model.tables[0].model_dump()
+    fact["columns"] = [
+        {**column, "type": spelling} if column["name"] == "gross_margin" else column
+        for column in fact["columns"]
+    ]
+    model.tables = [Table.model_validate(fact), *model.tables[1:]]
+    return model
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "dec(18,2)",
+        "DECIMAL(18, 2)",
+        "pg_catalog.numeric(18,2)",
+        '"numeric"(18,2)',
+        "int4",
+        "serial",
+        "bigserial",
+        "pg_catalog.int8",
+        '"int2"',
+    ],
+)
+def test_a_postgres_term_of_any_name_of_an_exact_type_compiles(
+    tmp_path: Path, spelling: str
+) -> None:
+    """ADR 0012, D1: a term is read as exact by the name `format_type` prints for its type,
+    the name `dwh.physical` compares it by; `dec(18,2)` is `numeric(18,2)` there too."""
+    compiled = compile_metric_queries(
+        snapshot_of(tmp_path, metric_contract(), model=postgres_term(spelling)), [RATIO_REF]
+    )
+
+    assert compiled.findings == []
+    assert [query.dialect for query in compiled.queries] == ["postgres"]
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "interval",
+        "integer[]",
+        "numeric(18,2)[]",
+        "numeric(18,2)x",
+        "int4 array",
+        '"integer"',
+        "float8",
+        "money",
+    ],
+)
+def test_a_postgres_term_of_no_exact_scalar_type_is_named(tmp_path: Path, spelling: str) -> None:
+    """An array of an exact type is not one, and a quoted keyword names no type."""
+    compiled = compile_metric_queries(
+        snapshot_of(tmp_path, metric_contract(), model=postgres_term(spelling)), [RATIO_REF]
+    )
+
+    assert compiled.queries == []
+    assert [item.code for item in compiled.findings] == ["sql.ratio_inexact_term"]
+
+
+@pytest.mark.parametrize("spelling", ["BIGINT", "DECIMAL(18,2)", "Nullable(BIGINT)"])
+def test_a_clickhouse_term_is_read_as_written(tmp_path: Path, spelling: str) -> None:
+    """ADR 0012, D1 leaves ClickHouse's other names in a ratio term to D4: the ratio classes
+    match the metricflow reading, which takes a ClickHouse type as written, so a `BIGINT` term
+    is named, not compiled."""
+    contract = ratio_contract(
+        denominator={"table": "dm.sales_daily", "column": "weight", "agg": "sum"}
+    )
+    model = model_with({"name": "weight", "type": spelling, "role": "measure", "agg": "sum"})
     compiled = compile_metric_queries(snapshot_of(tmp_path, contract, model=model), [RATIO_REF])
 
     assert compiled.queries == []

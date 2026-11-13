@@ -61,6 +61,7 @@ another way for the evidence that verifies it (§8.5).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from enum import Enum, auto
 from typing import NamedTuple
@@ -79,6 +80,7 @@ from auto_bi.semantic.model import Aggregation
 from auto_bi.severity import Severity
 from auto_bi.sql_render import SQLRenderRefusal, render_sql
 from auto_bi.strict import StrictModel
+from auto_bi.verification.column_types import canonical_type
 
 #: Formula kinds whose definition lives outside this contract kernel.
 _OPAQUE = frozenset({FormulaKind.EXTERNAL_REF, FormulaKind.REVIEWED_SQL})
@@ -104,10 +106,13 @@ _TYPE_PRESERVING = frozenset({Aggregation.SUM, Aggregation.MIN, Aggregation.MAX}
 _TYPE_WRAPPERS = ("Nullable", "LowCardinality")
 _INTEGER_PREFIXES = ("Int", "UInt")
 
-#: Postgres spells its exact types out in full, and matching them by prefix would read
-#: `interval` as an integer.
-_PG_DECIMAL = frozenset({"numeric", "decimal"})
-_PG_INTEGRAL = frozenset({"smallint", "integer", "bigint", "int", "int2", "int4", "int8"})
+#: A PostgreSQL kernel's exact types by the name `format_type` prints for them: a declared
+#: type is read to that name first (`column_types`), so `int4`, `dec(18,2)`, `serial` and
+#: `pg_catalog.int8` are among them. Matching by prefix would read `interval` as an integer.
+_PG_DECIMAL = frozenset({"numeric"})
+_PG_INTEGRAL = frozenset({"smallint", "integer", "bigint"})
+#: The precision and scale `format_type` prints after an exact type's name, and nothing else.
+_PG_MODIFIER = re.compile(r"\([0-9]+(?:,[0-9]+)?\)")
 
 
 class _Exactness(Enum):
@@ -465,9 +470,14 @@ def _exactness(dialect: str, column_type: str) -> _Exactness | None:
 
 def _base_type(dialect: str, column_type: str) -> str:
     """The declared type without what says nothing about exactness: `Nullable(LowCardinality(
-    String))` -> `String`, `NUMERIC(18,2)` -> `numeric`."""
+    String))` -> `String`, `NUMERIC(18,2)` -> `numeric`, `int4` -> `integer`. On a PostgreSQL
+    kernel only a precision and scale go: `numeric(18,2)[]` is an array, kept whole. A
+    ClickHouse type is read as written: the parity rows of `semantic.metricflow_formula` class
+    it so."""
     if dialect == _POSTGRES_DIALECT:
-        return column_type.split("(", 1)[0].strip().lower()
+        printed = canonical_type(column_type, dialect)
+        name, paren, modifier = printed.partition("(")
+        return name if not paren or _PG_MODIFIER.fullmatch(paren + modifier) else printed
     inner = column_type
     for wrapper in _TYPE_WRAPPERS:
         prefix, suffix = f"{wrapper}(", ")"
