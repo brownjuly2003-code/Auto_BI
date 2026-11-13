@@ -444,17 +444,21 @@ answered had given. Since verifier 133 (ADR 0010, F1):
 - an answered catalog with no rows SHALL be read as before — the engine's answer, which
   `column_drift` weighs as any other (ClickHouse leaves out what the role may not read).
 
-`dwh.physical` raises no review of its own over a refused catalog: it passes with coverage
-incomplete, as for a probe that did not ask, and where nothing was compared the owner report
-lists `physical.not_run` as not done. The refusal of `pg_attribute` refuses `has_column_privilege` asked over it too, so on
-PostgreSQL the review comes from `dwh.security`: `security.not_observed` for which columns the
-role may read. A role refused only the type question (column grants on `pg_attribute`), or a
-ClickHouse role refused `system.columns` alone, has its verdict decided by the other checks; a
-review of `dwh.physical`'s own is in the [backlog](../DECISIONOPS_BACKLOG.md).
+Verifier 133 to 135 raised no review of `dwh.physical`'s own over a refused catalog: it passed
+with coverage incomplete, as for a probe that did not ask, so a role refused only the type
+question (column grants on `pg_attribute`), or a ClickHouse role refused `system.columns` alone,
+had its verdict decided by the other checks, and a column retyped behind the refusal was not
+seen. Since verifier 136 and check 86 (ADR 0012, D2) a readable mart whose column catalog the
+engine refused and whose model declares columns SHALL be `physical.not_observed` (review), its
+detail naming the columns not compared; a mart the model declares no column of raises none, and
+one the role does not read is `dwh.access`'s alone, as before. The refusal of `pg_attribute`
+refuses `has_column_privilege` asked over it too, so on PostgreSQL `dwh.security` adds
+`security.not_observed` for which columns the role may read.
 
-The presence question of a PostgreSQL mart reads `pg_tables`, `pg_views` and, since verifier
-133, `pg_matviews`: a mart served as a materialized view (relkind `m`) is in neither of the first
-two, and verifier 132 graded it `access.table_absent` (block). Verifier 132 read the refusal of
+The presence question of a PostgreSQL mart reads `pg_tables`, `pg_views`, since verifier 133
+`pg_matviews` and since verifier 136 the foreign tables of `pg_class` (D2, below): a mart served
+as a materialized view (relkind `m`) is in neither of the first two, and verifier 132 graded it
+`access.table_absent` (block). Verifier 132 read the refusal of
 the first two (`REVOKE SELECT ON pg_catalog.pg_tables, pg_catalog.pg_views FROM PUBLIC`,
 `42501`) as "no row": `access.table_absent` (block) over a mart the role reads. Since verifier
 133 a refused presence question SHALL be followed by `to_regclass` of the mart's name, which
@@ -464,16 +468,19 @@ answered "no row" SHALL stay absent without the second question, which would res
 relation of that name, an index or a sequence too.
 
 `tests/test_decision_live_postgres.py` pins four cases live on PostgreSQL 16 (run once on the 9.4.26
-kernel too, F3) — the clean mart behind the revoked column catalog (`physical.not_run`,
-`security.not_observed`, `needs_review`), a column dropped behind it (exit 2, `UndefinedColumn`, no
-bundle), the clean mart behind the revoked table catalog, and the same rows served as a materialized
-view (both the clean stand's `pass`). The ClickHouse refusal of `system.columns` is pinned offline
-only; the live ClickHouse test does not refuse it. The ClickHouse presence question over
-`system.tables` is unchanged: a refusal there still reads as absent, the one silence the probe
-already shares with a mart out of reach (both block). Check grading is unchanged (check 83); ADR
-0010 named `CHECK_VERSION` for this item, but the rules of `dwh.physical` over unreported columns
-and of `dwh.access` over a present mart are the ones they had — what changed is the fact the probe
-reports, and that is the verifier's (as S7, S7b and S8).
+kernel too, F3) — the clean mart behind the revoked column catalog (`physical.not_run` until
+verifier 135 and `physical.not_observed` since 136, beside `security.not_observed`;
+`needs_review`), a column dropped behind it (exit 2, `UndefinedColumn`, no bundle), the clean mart
+behind the revoked table catalog, and the same rows served as a materialized view (both the clean
+stand's `pass`). The ClickHouse refusal of `system.columns` is pinned offline only: ClickHouse
+24.8 lists a user's own tables in `system.tables` and `system.columns` whatever is revoked on
+them (D2, below). The ClickHouse presence question over `system.tables` is unchanged: a refusal
+there still reads as absent, the one silence the probe already shares with a mart out of reach
+(both block). F1 left check grading unchanged (check 83); ADR 0010 named `CHECK_VERSION` for this
+item, but the rules of `dwh.physical` over unreported columns and of `dwh.access` over a present
+mart were the ones they had — what changed was the fact the probe reports, and that is the
+verifier's (as S7, S7b and S8). D2 changed the rule of `dwh.physical` over a refused catalog, and
+the check moved with it.
 
 ## One type, any of its PostgreSQL names (F2)
 
@@ -566,6 +573,63 @@ PostgreSQL spellings through
 in a time type of six digits and in one of no precision, which keep it the same. A spelling of
 thousands of characters, or of types nested thousands deep, is read at once.
 
+## The relations a mart may be, and a catalog the engine refused (D2)
+
+Since verifier 136 and check 86 (ADR 0012, D2):
+
+- the presence question of a PostgreSQL mart SHALL also read `pg_class` for a foreign table
+  (relkind `f`), which none of `pg_tables`, `pg_views` and `pg_matviews` lists; verifier 135
+  graded such a mart `access.table_absent` (block). It is then read, planned and graded as any
+  mart: `EXPLAIN` prices its `Foreign Scan` from the foreign table's statistics;
+- the `INSERT`, `UPDATE`, `DELETE` and `TRUNCATE` privileges of a materialized view (relkind
+  `m`) SHALL not be counted, for the current role and for each role `SET ROLE` reaches, and
+  neither SHALL its column grants: the current role is not asked them, and a reached role's
+  answer, which comes in the same question as its table grants, is not counted. PostgreSQL
+  refuses every `INSERT`, `UPDATE`, `DELETE` and `TRUNCATE` of it with `42809
+  wrong_object_type` whatever is granted, and verifier 135 graded such grants
+  `access.role_writable` (block). What changes such a view is `REFRESH MATERIALIZED VIEW`: its
+  ownership SHALL be weighed as for any mart, and so SHALL `MAINTAIN` on it, which PostgreSQL 17
+  added and which `GRANT ALL` and membership in `pg_maintain` carry — held, it is
+  `access.role_writable`; unanswered, a gap. An older server refuses the word (`unrecognized
+  privilege type`), so the question SHALL pick on `server_version_num` inside itself and answer
+  false below 17. On any other relation `MAINTAIN` — `VACUUM`, `ANALYZE`, `CLUSTER`, `REINDEX`,
+  `LOCK TABLE` — changes no row and SHALL not be weighed. A role whose only write grants are on
+  materialized views is read-only, and its evidence SHALL name them: `no INSERT, UPDATE, DELETE
+  or TRUNCATE privilege on any in-scope mart but a materialized view, no MAINTAIN privilege on a
+  materialized view and no INSERT or UPDATE privilege on any of their columns; SET ROLE reaches
+  no other role; dm.sales_daily is a materialized view, which takes no INSERT, UPDATE, DELETE or
+  TRUNCATE whatever is granted on it`;
+- a materialized view that holds no data — created or last refreshed `WITH NO DATA` — answers
+  every read with `55000 object_not_in_prerequisite_state`, and verifier 135 ended the run on
+  it (exit 2). A
+  `55000` from either read of a mart's rows — the count with `max()` of the event-time column, or
+  the count alone asked again after a column that no longer fits — SHALL be followed by
+  `pg_matviews.ispopulated` of the mart's name. `false` SHALL read the mart as present and
+  unreadable with `populated` false, which `dwh.access` grades `access.table_unpopulated`
+  (block); the other checks do not weigh an unreadable mart again. Any other answer — no row,
+  `true`, the question refused — SHALL leave the `55000` to end the run as before. Every table
+  reading records `populated`: `false` for such a view, `null` for any other;
+- a readable mart whose column catalog the engine refused SHALL be `physical.not_observed`
+  (review), as above (F1).
+
+On ClickHouse 24.8.14.39 a role refused `system.tables` and `system.columns` (`REVOKE SELECT ON
+system.tables`, the same on `system.columns`, under the default server configuration and under
+`access_control_improvements.select_from_system_db_requires_grant`) still sees its own tables
+in both: the refusal the backlog named could not be produced there.
+`tests/test_decision_live_clickhouse.py` pins, under the default configuration, that such a
+role's run is the clean stand's; the setting is server configuration no test switches, and was
+tried once by hand.
+
+`tests/test_decision_live_postgres.py` pins live, on PostgreSQL 16, the 9.4.26 kernel and
+17.12, the gate role refused each write the grants name on a materialized view
+(`WrongObjectType`) and the clean stand's run over it; `GRANT ALL` on the view, which below 17
+refreshes nothing (`InsufficientPrivilege`) and is the clean stand's run, while from 17 the gate
+role empties the view `WITH NO DATA` and fills it again — as it does as a member of
+`pg_maintain` — and the run blocks `access.role_writable`; a view created `WITH NO DATA`, which
+the gate role cannot count (`ObjectNotInPrerequisiteState`), graded `access.table_unpopulated`
+with a `block` verdict; and the mart's rows behind `file_fdw`, the clean stand's run, its plan
+pricing every row.
+
 ## Runtime SQL guard refusal at the CLI boundary (T-80)
 
 If `collect` raises `SQLGuardError` while `decision verify --dwh` asks about the
@@ -626,6 +690,18 @@ not establish that the current typed compiler emits that SQL from an ordinary in
 - An error ClickHouse relays from another engine — a table of the `PostgreSQL` or `MySQL` engine
   whose server refuses the read — is read by the ClickHouse code it carries, not by the refusal
   its message quotes (S8): under any code outside the refusal set it ends the run.
+- A PostgreSQL foreign table is read through its server (D2): a server that does not answer the
+  read ends the run with the error it relays, as any state outside the refusal set — live,
+  `file_fdw` over a file that is gone (`58P01 undefined_file`). The write
+  grants of a foreign table are counted as a table's: `postgres_fdw` writes through them, and a
+  wrapper that takes no write (`file_fdw` answers `0A000 feature_not_supported`) is still graded
+  `access.role_writable` — an error toward the block. What the server applies on its own side —
+  the grants and row security of the user it signs in as — is not observed: `dwh.access` and
+  `dwh.security` grade what the local catalog says of the foreign table.
+- `MAINTAIN` is weighed as `has_table_privilege` answers it, which, as for every write
+  privilege, does not ask for `USAGE` on the view's schema (D2): a role that holds it but cannot
+  reach the schema is graded writable — an error toward the block (17.12, live: `SET ROLE
+  pg_maintain` then `REFRESH` refused for the schema).
 - Other faults of the probe, including tokenizer failures that are not `SQLGuardError`,
   remain outside the named handlers and may end in a traceback with exit 1.
 - Other driver failures end the run through the existing handler. Server-side settings

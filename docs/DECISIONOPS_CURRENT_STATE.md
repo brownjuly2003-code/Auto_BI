@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-13 · **Версии evidence:** `VERIFIER_VERSION=135`, `CHECK_VERSION=85`
+**Обновлено:** 2026-11-13 · **Версии evidence:** `VERIFIER_VERSION=136`, `CHECK_VERSION=86`
 (что меняла каждая — [spec](specs/evidence-format-versions.md))
 
 Здесь только то, что работает, что не реализовано и что дальше. Поведение описывают
@@ -115,9 +115,9 @@ PEM вне checkout и evidence.
 
 Финишная черта [ADR 0010](adr/0010-finish-line.md) пройдена 2026-11-10: F1–F6 сделаны,
 версия `0.6.0`. Решение владельца 2026-11-13 — [ADR 0012](adr/0012-post-finish-development.md):
-пункты D1–D6 в локальной ветке `decisionops-backlog` — D1 типы (сделан), D2 отношения и отказы
-(ложные вердикты из [бэклога](DECISIONOPS_BACKLOG.md)), D3 комментарий PR и GitHub Action,
-D4 покрытие dbt, D5 read-only MCP, D6 инвентарь Superset. Находки вне D1–D6 — в бэклог.
+пункты D1–D6 в локальной ветке `decisionops-backlog` — D1 типы и D2 отношения и отказы
+(сделаны), D3 комментарий PR и GitHub Action, D4 покрытие dbt, D5 read-only MCP, D6 инвентарь
+Superset. Находки вне D1–D6 — в [бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:
 

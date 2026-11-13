@@ -1785,7 +1785,9 @@ def test_a_postgres_column_catalog_the_role_may_not_read_is_unknown_not_empty(
 ) -> None:
     """`REVOKE SELECT ON pg_catalog.pg_attribute FROM PUBLIC` refuses the gate's role the
     column list (`42501`). Verifier 132 read the refusal as an empty catalog: each declared
-    column gone, `physical.column_absent` (block) over a mart that holds them all."""
+    column gone, `physical.column_absent` (block) over a mart that holds them all; verifier
+    133 to 135 compared none of them and passed. Since verifier 136 the columns nobody saw
+    are `physical.not_observed` (review, ADR 0012, D2)."""
     engine = RefusingEngine(postgres_engine(), refused, sqlstate="42501")
     scope = questions(dict(PG_DECLARED))
 
@@ -1794,7 +1796,7 @@ def test_a_postgres_column_catalog_the_role_may_not_read_is_unknown_not_empty(
     table = facts.tables[0]
     assert (table.exists, table.readable, table.rows_seen) == (True, True, 600)
     assert table.columns is None
-    assert check_physical(scope, facts) == []
+    assert [finding.code for finding in check_physical(scope, facts)] == ["physical.not_observed"]
 
 
 def test_a_postgres_column_catalog_that_answers_no_row_is_still_an_answer() -> None:
@@ -1811,7 +1813,8 @@ def test_a_postgres_column_catalog_that_answers_no_row_is_still_an_answer() -> N
 
 def test_a_clickhouse_column_catalog_the_role_may_not_read_is_unknown_not_empty() -> None:
     """`system.columns` refused while the grants put every declared column in reach: read as
-    empty, the catalog made each of them gone, a block over a mart that holds them."""
+    empty, the catalog made each of them gone, a block over a mart that holds them; since
+    verifier 136 they are `physical.not_observed` (review), not gone (ADR 0012, D2)."""
     engine = RefusingEngine(clickhouse_engine(), "FROM system.columns")
     scope = questions({"date": "Date", "revenue": "Decimal(18, 2)"})
 
@@ -1821,7 +1824,7 @@ def test_a_clickhouse_column_catalog_the_role_may_not_read_is_unknown_not_empty(
     assert table.column_reads == {"date": True, "revenue": True}
     assert table.columns is None
     assert table.layout is not None  # `system.tables` answered: only the columns are unknown
-    assert check_physical(scope, facts) == []
+    assert [finding.code for finding in check_physical(scope, facts)] == ["physical.not_observed"]
 
 
 def test_a_clickhouse_column_catalog_that_answers_no_row_is_still_an_answer() -> None:

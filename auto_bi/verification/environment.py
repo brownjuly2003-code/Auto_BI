@@ -249,6 +249,11 @@ class TableFacts(StrictModel):
     event_time_column: NonBlankText | None = None
     exists: bool
     readable: bool
+    #: `False` for a materialized view that holds no data (`pg_matviews.ispopulated` false:
+    #: created or last refreshed `WITH NO DATA`): the mart is there, and every read of it fails
+    #: (`55000`) until it is refreshed, so it is not readable either. `None` for every other
+    #: mart, and in readings made before verifier 136.
+    populated: bool | None = None
     #: Rows behind the event-time reading. Zero is why `max_event_time` may be meaningless.
     rows_seen: int = Field(ge=0, default=0)
     #: A day `2026-08-24`, a UTC moment `2026-08-24T09:00:00Z`, or a clock with no zone
@@ -257,7 +262,8 @@ class TableFacts(StrictModel):
     #: no event-time column left to take `max()` of.
     max_event_time: str | None = None
     #: Column -> type as the engine spells it. `None` means the probe did not ask, or the
-    #: engine refused the catalog question: nothing is then compared, nothing is absent.
+    #: engine refused the catalog question: nothing is then compared, nothing is absent, and
+    #: a readable mart with declared columns is `physical.not_observed` (since verifier 136).
     columns: dict[str, str] | None = None
     layout: LayoutFacts | None = None
     #: Asked column -> may this session read it. `None` means the engine was not asked.
@@ -654,6 +660,20 @@ def check_access(
                     ),
                 )
             )
+        elif table.populated is False:
+            findings.append(
+                EnvironmentFinding(
+                    code="access.table_unpopulated",
+                    severity=Severity.BLOCK,
+                    subject=question.table,
+                    detail=(
+                        f"{question.table} on {facts.target} is a materialized view that "
+                        "holds no data (created or last refreshed WITH NO DATA): every read "
+                        "of it fails until it is refreshed, so the metrics "
+                        f"{', '.join(question.metric_refs)} cannot be computed there"
+                    ),
+                )
+            )
         elif not table.readable:
             findings.append(
                 EnvironmentFinding(
@@ -824,10 +844,37 @@ def check_physical(
         table = reading_for(question, questions, facts.tables)
         if table is None or not table.exists or not table.readable:
             continue  # `check_access` already said so; saying it twice weighs it twice
+        findings.extend(_unobserved_columns(question, table, facts))
         findings.extend(_column_findings(question, table, facts))
         findings.extend(_layout_findings(question, table, facts))
 
     return findings
+
+
+def _unobserved_columns(
+    question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """A catalog that did not answer has not established that the columns are as declared.
+
+    Read as a pass, a role refused only the column catalog (`pg_attribute`, `system.columns`)
+    would hide a retyped or dropped column behind the verdicts of the other checks (ADR 0012,
+    D2).
+    """
+    if table.columns is not None or not question.columns:
+        return []
+    return [
+        EnvironmentFinding(
+            code="physical.not_observed",
+            severity=Severity.REVIEW,
+            subject=question.table,
+            detail=(
+                f"{facts.target} did not answer which columns {question.table} has: "
+                f"{facts.role.name} cannot read that from this engine's catalog, so the "
+                f"declared types of {', '.join(sorted(question.columns))} were not compared "
+                "with the engine's — the check did not run rather than passing"
+            ),
+        )
+    ]
 
 
 def _column_findings(

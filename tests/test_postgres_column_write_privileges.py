@@ -30,6 +30,16 @@ MART = "dm.sales_daily"
 OUTSIDE = "dm.outside_scope"
 
 
+def maintain_sql(mart_literal: str, role: str = "") -> str:
+    """`MAINTAIN` asked only of a server that knows the word: PostgreSQL 16.15 and the 9.4.26
+    kernel refuse it (`unrecognized privilege type`), and answer false here (live)."""
+    holder = f"{role}, " if role else ""
+    return (
+        "CASE WHEN current_setting('server_version_num')::int >= 170000 "
+        f"THEN has_table_privilege({holder}{mart_literal}, 'MAINTAIN') ELSE false END AS maintain"
+    )
+
+
 def table_sql(mart: str) -> str:
     mart = '"' + mart.replace(".", '"."') + '"'
     privileges = ", ".join(
@@ -37,10 +47,12 @@ def table_sql(mart: str) -> str:
         for privilege in ("INSERT", "UPDATE", "DELETE", "TRUNCATE")
     )
     return (
-        f"SELECT {privileges}, pg_get_userbyid(c.relowner) AS owner_name, "
+        f"SELECT {privileges}, {maintain_sql(f"'{mart}'")}, "
+        "pg_get_userbyid(c.relowner) AS owner_name, "
         "pg_has_role(current_user, c.relowner, 'USAGE') AS owns_mart, "
         "pg_get_userbyid(n.nspowner) AS schema_owner_name, "
-        "pg_has_role(current_user, n.nspowner, 'USAGE') AS owns_schema "
+        "pg_has_role(current_user, n.nspowner, 'USAGE') AS owns_schema, "
+        "c.relkind AS relkind "
         f"FROM (SELECT to_regclass('{mart}') AS oid) mart "
         "LEFT JOIN pg_class c ON c.oid = mart.oid "
         "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace"
@@ -49,7 +61,7 @@ def table_sql(mart: str) -> str:
 
 def no_table_writes() -> dict[str, object]:
     return {
-        **dict.fromkeys(("insert", "update", "delete", "truncate"), False),
+        **dict.fromkeys(("insert", "update", "delete", "truncate", "maintain"), False),
         "owner_name": "mart_owner",
         "owns_mart": False,
         "schema_owner_name": "schema_owner",

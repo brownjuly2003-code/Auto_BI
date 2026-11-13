@@ -47,10 +47,13 @@ TABLE_WRITE = (
     "has_table_privilege('\"dm\".\"sales_daily\"', 'UPDATE') AS update, "
     "has_table_privilege('\"dm\".\"sales_daily\"', 'DELETE') AS delete, "
     "has_table_privilege('\"dm\".\"sales_daily\"', 'TRUNCATE') AS truncate, "
+    # the 9.4.26 kernel refuses the word `MAINTAIN`: the server picks, and answers false (live)
+    "CASE WHEN current_setting('server_version_num')::int >= 170000 "
+    "THEN has_table_privilege('\"dm\".\"sales_daily\"', 'MAINTAIN') ELSE false END AS maintain, "
     "pg_get_userbyid(c.relowner) AS owner_name, "
     "pg_has_role(current_user, c.relowner, 'USAGE') AS owns_mart, "
     "pg_get_userbyid(n.nspowner) AS schema_owner_name, "
-    "pg_has_role(current_user, n.nspowner, 'USAGE') AS owns_schema "
+    "pg_has_role(current_user, n.nspowner, 'USAGE') AS owns_schema, c.relkind AS relkind "
     'FROM (SELECT to_regclass(\'"dm"."sales_daily"\') AS oid) mart '
     "LEFT JOIN pg_class c ON c.oid = mart.oid "
     "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace"
@@ -70,7 +73,9 @@ MART_QUESTIONS = [
     "SELECT tablename FROM pg_tables WHERE schemaname = 'dm' AND tablename = 'sales_daily' "
     "UNION ALL SELECT viewname FROM pg_views WHERE schemaname = 'dm' AND viewname = 'sales_daily' "
     "UNION ALL SELECT matviewname FROM pg_matviews WHERE schemaname = 'dm' "
-    "AND matviewname = 'sales_daily'",
+    "AND matviewname = 'sales_daily' "
+    "UNION ALL SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = "
+    "c.relnamespace WHERE c.relkind = 'f' AND n.nspname = 'dm' AND c.relname = 'sales_daily'",
     "SELECT a.attname AS name, has_column_privilege(a.attrelid, a.attnum, 'SELECT') AS ok "
     'FROM pg_attribute a WHERE a.attrelid = to_regclass(\'"dm"."sales_daily"\') '
     "AND a.attnum > 0 AND NOT a.attisdropped AND a.attname IN ('date', 'revenue')",

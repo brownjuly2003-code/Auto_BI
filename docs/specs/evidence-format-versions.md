@@ -16,6 +16,24 @@ CHANGELOG names 1 → 2 and the transitions from verifier 7 → 8 and check 5 �
 Part of the idempotency key: a different verifier can derive a different verdict or
 evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 
+### Verifier 136
+
+the relations a PostgreSQL mart may be, and a column catalog the engine refused (ADR 0012, D2). A
+foreign table (relkind `f`), which none of `pg_tables`, `pg_views` and `pg_matviews` lists, is found
+through `pg_class`, where verifier 135 graded it `access.table_absent` (block). The INSERT, UPDATE,
+DELETE and TRUNCATE grants of a materialized view are not counted, because it takes none of them
+whatever is granted on it (`42809`): a role whose only write grants are on materialized views is
+read-only, and the clean evidence names the views, where verifier 135 graded it
+`access.role_writable` (block). What changes such a view is REFRESH: its ownership is weighed as for
+any mart, and so, from PostgreSQL 17, is `MAINTAIN` on it, which `GRANT ALL` and `pg_maintain`
+carry. A materialized view that holds no data (created or last refreshed `WITH NO DATA`) answers
+`count(*)` with `55000`; `pg_matviews.ispopulated` is asked then, and such a view is read as present
+and unreadable with `populated` false, `access.table_unpopulated` (block), where verifier 135 ended
+the run; any other `55000` still does. Every table reading records `populated`, `null` but for such
+a view. A readable mart whose column catalog the engine refused is `physical.not_observed` (review),
+where verifier 135 let `dwh.physical` pass with incomplete coverage. CHECK_VERSION moves to 86 with
+it.
+
 ### Verifier 135
 
 a column's type is compared by the name the engine prints for it on ClickHouse too, and by more of
@@ -987,6 +1005,13 @@ Bumped when a check's meaning changes, so an old evidence bundle is not read as 
 had been graded by today's rule. Adding a *new* check is not such a change: no existing
 `CheckResult` is re-graded by it, and the verifier version is what stops a bundle written
 before it from being reused as a complete verification.
+
+### Check 86
+
+dwh.access grades a reading with `populated` false, a materialized view that holds no data,
+`access.table_unpopulated` (block), where rule 85 had no such reading; dwh.physical grades a
+readable mart whose column catalog the engine did not answer `physical.not_observed` (review), where
+rule 85 passed it with incomplete coverage (ADR 0012, D2).
 
 ### Check 85
 

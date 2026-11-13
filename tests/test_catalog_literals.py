@@ -284,8 +284,9 @@ def test_ordinary_catalog_sql_bytes(engine: str) -> None:
     expected = (
         "a14068adf36a63adcfae83954b08453a8b0bd2c92345f2e947ef17071fcf0ae1"
         if engine == "clickhouse"
-        # verifier 133 (F1): the presence question also asks `pg_matviews`
-        else "c053f0cd633ab0ff39e3f69e2969ea42b34b585147c5a889e89d19e6c3d91adf"
+        # verifier 136 (D2): the presence question also asks `pg_class` for a foreign
+        # table, and the write questions read `relkind` and, from PostgreSQL 17, `MAINTAIN`
+        else "54e18f3171c698b1c44779ec774aee142de2e6753cd221f20775d3ae95b19005"
     )
     assert hashlib.sha256(encoded).hexdigest() == expected
 

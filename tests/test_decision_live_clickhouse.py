@@ -565,6 +565,27 @@ def test_the_engine_s_refusals_are_read_by_their_codes(
     assert environment_probe._refused(raised.value) is refused
 
 
+def test_system_tables_revoked_from_the_role_still_list_its_mart(
+    stand: Stand, tmp_path: Path
+) -> None:
+    """ADR 0012, D2: ClickHouse 24.8 lists a user's own tables in `system.tables` and
+    `system.columns` whatever is revoked on them. A role refused both still sees the mart, its
+    layout and its columns, and the run is the clean stand's: the refused column catalog of
+    PostgreSQL (`physical.not_observed`) has no counterpart to reproduce here."""
+    root = _product(stand, tmp_path)
+    stand.run(f"REVOKE SELECT ON system.tables FROM {GATE_USER}")
+    stand.run(f"REVOKE SELECT ON system.columns FROM {GATE_USER}")
+    grants = [str(row[0]) for row in stand.admin.query(f"SHOW GRANTS FOR {GATE_USER}").result_rows]
+    assert f"REVOKE SELECT ON system.tables FROM {GATE_USER}" in grants, grants
+    assert f"REVOKE SELECT ON system.columns FROM {GATE_USER}" in grants, grants
+
+    run = _verify(stand, root)
+
+    assert run.changed() == {}
+    assert run.codes() == {}
+    assert run.verdict == "pass"
+
+
 def test_each_name_the_gate_reads_as_another_is_the_one_system_columns_prints(
     stand: Stand,
 ) -> None:

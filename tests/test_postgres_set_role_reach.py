@@ -41,6 +41,7 @@ from tests.test_environment_probe import (
 )
 from tests.test_postgres_column_write_privileges import (
     column_sql,
+    maintain_sql,
     no_table_writes,
     pg_questions,
     role_engine,
@@ -92,11 +93,11 @@ def reachable_sql(mart: str, roles: list[str]) -> str:
     )
     listed = ", ".join(literal(role) for role in roles)
     return (
-        f"SELECT r.rolname AS name, {privileges}, {columns}, "
-        "pg_get_userbyid(c.relowner) AS owner_name, "
+        f"SELECT r.rolname AS name, {privileges}, {maintain_sql(literal(mart), 'r.oid')}, "
+        f"{columns}, pg_get_userbyid(c.relowner) AS owner_name, "
         "pg_has_role(r.oid, c.relowner, 'USAGE') AS owns_mart, "
         "pg_get_userbyid(n.nspowner) AS schema_owner_name, "
-        "pg_has_role(r.oid, n.nspowner, 'USAGE') AS owns_schema "
+        "pg_has_role(r.oid, n.nspowner, 'USAGE') AS owns_schema, c.relkind AS relkind "
         f"FROM pg_roles r LEFT JOIN pg_class c ON c.oid = to_regclass({literal(mart)}) "
         "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
         f"WHERE r.rolname IN ({listed}) ORDER BY r.rolname"

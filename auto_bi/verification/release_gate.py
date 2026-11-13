@@ -118,18 +118,6 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: What each verifier version changed: docs/specs/evidence-format-versions.md, newest first.
 #: A bump adds its entry there and here; here only the newest few stay (at most five,
 #: tests/test_evidence_format_versions.py). The newest:
-#: 131 — a reference query the PostgreSQL mart no longer fits is a fact about the mart too
-#: (slice S7b), as verifier 130 made it on ClickHouse: where the catalog accounts for the state —
-#: a column the query names that `dwh.physical` grades as gone for `42703 undefined_column`, or
-#: as retyped for `42883 undefined_function` — EXPLAIN leaves the plan unpriced, naming those
-#: columns, and its exact SELECT is not sent; `42501 insufficient_privilege` from the exact
-#: SELECT is a refusal; a `max()` of an event-time column whose drift accounts for the state
-#: leaves the rows counted and undated. The evidence names the SQLSTATE and its condition name
-#: alone, and a `42703`/`42883` the catalog does not account for still ends the run. On both
-#: engines that plan's evidence now says the drift is taken to mean the query no longer fits the
-#: mart: the drift answers the code by its kind, not by where the query failed. Verifier 130 let
-#: those answers end a PostgreSQL run with no report and no bundle; check grading is unchanged
-#: and CHECK_VERSION stays 83.
 #: 132 — ClickHouse refusals are read by the error code where the error carries one (slice S8):
 #: `497 ACCESS_DENIED`, `291 DATABASE_ACCESS_DENIED`, `60 UNKNOWN_TABLE` and
 #: `81 UNKNOWN_DATABASE` are refusals whatever the words around them, and any other code is not,
@@ -175,7 +163,22 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: `pg_catalog.int8` column compiles, where verifier 134 left the ratio without reference SQL
 #: (`sql.ratio_inexact_term`), and an array of `numeric(p,s)` is no longer read as exact.
 #: CHECK_VERSION moves to 85 with it.
-VERIFIER_VERSION = "135"
+#: 136 — the relations a PostgreSQL mart may be, and a column catalog the engine refused (ADR 0012,
+#: D2). A foreign table (relkind `f`), which none of `pg_tables`, `pg_views` and `pg_matviews`
+#: lists, is found through `pg_class`, where verifier 135 graded it `access.table_absent` (block).
+#: The INSERT, UPDATE, DELETE and TRUNCATE grants of a materialized view are not counted, because it
+#: takes none of them whatever is granted on it (`42809`): a role whose only write grants are on
+#: materialized views is read-only, and the clean evidence names the views, where verifier 135
+#: graded it `access.role_writable` (block). What changes such a view is REFRESH: its ownership is
+#: weighed as for any mart, and so, from PostgreSQL 17, is `MAINTAIN` on it, which `GRANT ALL` and
+#: `pg_maintain` carry. A materialized view that holds no data (created or last refreshed `WITH NO
+#: DATA`) answers `count(*)` with `55000`; `pg_matviews.ispopulated` is asked then, and such a view
+#: is read as present and unreadable with `populated` false, `access.table_unpopulated` (block),
+#: where verifier 135 ended the run; any other `55000` still does. Every table reading records
+#: `populated`, `null` but for such a view. A readable mart whose column catalog the engine refused
+#: is `physical.not_observed` (review), where verifier 135 let `dwh.physical` pass with incomplete
+#: coverage. CHECK_VERSION moves to 86 with it.
+VERIFIER_VERSION = "136"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -184,11 +187,6 @@ VERIFIER_VERSION = "135"
 #: What each check version changed: docs/specs/evidence-format-versions.md, newest first.
 #: A bump adds its entry there and here; here only the newest few stay (at most five,
 #: tests/test_evidence_format_versions.py). The newest:
-#: 81 — row-security findings and policy applicability respect the per-mart owner
-#: bypass: an owner without FORCE is neither filtered nor denied all rows by policies.
-#: A false row-security switch makes reported policies inapplicable to every session,
-#: including classification checks, and suppresses bypass findings. Bypass details name
-#: the established exemptions without claiming that consumers receive different rows.
 #: 82 — semantic.gaps grades the gaps of a formula a dbt semantic manifest defines (block where
 #: the artifact is missing or refused, the metric is missing from it, the pin, the relation or
 #: the time contradicts it; review where the match is unproven or the construct unsupported),
@@ -218,7 +216,11 @@ VERIFIER_VERSION = "135"
 #: name `format_type` prints for its type: `dec(18,2)`, `serial` and `pg_catalog.int8` are exact
 #: and an array of `numeric(p,s)` is not, where rule 84 read the name before the parenthesis as
 #: written.
-CHECK_VERSION = "85"
+#: 86 — dwh.access grades a reading with `populated` false, a materialized view that holds no data,
+#: `access.table_unpopulated` (block), where rule 85 had no such reading; dwh.physical grades a
+#: readable mart whose column catalog the engine did not answer `physical.not_observed` (review),
+#: where rule 85 passed it with incomplete coverage (ADR 0012, D2).
+CHECK_VERSION = "86"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and

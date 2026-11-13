@@ -531,7 +531,11 @@ def test_what_the_model_does_not_claim_is_not_compared(tmp_path: Path) -> None:
     assert check_physical(questions, facts(physical_fact())) == []
 
 
-def test_columns_the_probe_did_not_ask_about_are_not_findings(tmp_path: Path) -> None:
+def test_columns_the_engine_did_not_answer_about_are_unobserved_not_absent(
+    tmp_path: Path,
+) -> None:
+    """An empty catalog is an answer: the declared columns are gone. No catalog is none: they
+    are not gone, and not compared either — `physical.not_observed` (ADR 0012, D2)."""
     questions = questions_for(product(), snapshot_of(tmp_path))
 
     assert (
@@ -545,21 +549,21 @@ def test_columns_the_probe_did_not_ask_about_are_not_findings(tmp_path: Path) ->
         )
         != []
     )
-    assert (
-        check_physical(
-            questions,
-            facts(
-                TableFacts(
-                    table="dm.sales_daily",
-                    exists=True,
-                    readable=True,
-                    rows_seen=1,
-                    max_event_time="2026-08-25",
-                )
-            ),
-        )
-        == []
+    unobserved = check_physical(
+        questions,
+        facts(
+            TableFacts(
+                table="dm.sales_daily",
+                exists=True,
+                readable=True,
+                rows_seen=1,
+                max_event_time="2026-08-25",
+            )
+        ),
     )
+    assert [(item.code, item.severity) for item in unobserved] == [
+        ("physical.not_observed", Severity.REVIEW)
+    ]
 
 
 def test_a_mart_that_is_absent_says_nothing_about_its_columns(tmp_path: Path) -> None:
