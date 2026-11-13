@@ -46,7 +46,7 @@ if TYPE_CHECKING:  # a runtime import would close the loop: release_gate imports
 #:
 #: A *partial* outcome deliberately stays out: `sql.partially_compiled` says in its own detail
 #: how many of how many compiled, and filing it under "not done" would deny the part that was.
-_UNDONE = frozenset(
+UNDONE_CODES = frozenset(
     {
         "check.not_configured",
         "check.not_implemented",
@@ -109,7 +109,7 @@ def render_summary(
 
     # Every check lands in exactly one section: a finding repeated under two headings reads
     # as two findings, and an owner counting problems would count it twice.
-    graded = [check for check in checks if check.summary_code not in _UNDONE]
+    graded = [check for check in checks if check.summary_code not in UNDONE_CODES]
     unaffected = next(
         (
             check
@@ -136,7 +136,7 @@ def render_summary(
         review_checks,
         intro=review_intro,
     )
-    lines += _undone_section([check for check in checks if check.summary_code in _UNDONE])
+    lines += _undone_section([check for check in checks if check.summary_code in UNDONE_CODES])
     lines += _other_product_section(other_product_issues)
     lines += _reading_guide_section()
     lines += _table_section(checks)
@@ -171,28 +171,35 @@ def _literal(value: str) -> str:
     return "".join(f"\\{char}" if char in string.punctuation else char for char in visible)
 
 
-def _owner_action_section(verdict: Verdict, *, product_unaffected: bool) -> list[str]:
-    """Turn only the graded verdict and product-scope finding into the next gate action."""
+def owner_action(verdict: Verdict, *, product_unaffected: bool) -> str:
+    """The next gate action, from only the graded verdict and the product-scope finding.
+
+    The pull-request comment (`pull_request.py`) states the same sentence: a reader of the
+    comment and a reader of the bundle are told the same thing to do.
+    """
     if verdict is Verdict.BLOCK:
-        action = (
+        return (
             "Do not release this candidate. Resolve the blocking findings in this report, "
             "then run the release gate again."
         )
-    elif verdict is Verdict.NEEDS_REVIEW and product_unaffected:
-        action = (
+    if verdict is Verdict.NEEDS_REVIEW and product_unaffected:
+        return (
             "The `impact.none` finding says the semantic changes do not reach this product. "
             "Review the remaining human findings before deciding whether to release it."
         )
-    elif verdict is Verdict.NEEDS_REVIEW:
-        action = (
+    if verdict is Verdict.NEEDS_REVIEW:
+        return (
             "Review the human findings in this report and record the owner's decision before "
             "release."
         )
-    elif verdict is Verdict.PASS_WITH_ADVISORY:
-        action = "Release is not blocked by this gate. Read the advisory findings before release."
-    else:
-        action = "No owner action is required by the graded findings."
-    return ["", "## Owner action", "", action]
+    if verdict is Verdict.PASS_WITH_ADVISORY:
+        return "Release is not blocked by this gate. Read the advisory findings before release."
+    return "No owner action is required by the graded findings."
+
+
+def _owner_action_section(verdict: Verdict, *, product_unaffected: bool) -> list[str]:
+    """Turn only the graded verdict and product-scope finding into the next gate action."""
+    return ["", "## Owner action", "", owner_action(verdict, product_unaffected=product_unaffected)]
 
 
 def _severity_section(
@@ -311,4 +318,4 @@ def _detail(check: CheckResult) -> str:
     return _literal(check.detail)
 
 
-__all__ = ["SummaryFacts", "render_summary"]
+__all__ = ["UNDONE_CODES", "SummaryFacts", "owner_action", "render_summary"]

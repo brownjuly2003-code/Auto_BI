@@ -12,8 +12,7 @@
 **Стадия.** Release gate bootstrap завершён; impact доходит до чарта; read-only capture
 reviewed-запроса проверен на живых PostgreSQL и ClickHouse; evidence подписывается Ed25519
 (opt-in); offline investigation alpha разрешён. Закрыты этапы hardening (2026-11-03),
-мутационного smoke и внешнего источника формул dbt (ADR 0008, S1–S5d, 2026-11-07);
-финишная черта ADR 0010 пройдена 2026-11-10.
+мутационного smoke и внешнего источника формул dbt (ADR 0008, S1–S5d, 2026-11-07).
 Owner outcome (human/design-partner) не измеряется
 ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Код — в `main` публичного репозитория
 baseline, пакет `autobi-agent` `0.6.0` не публикуется
@@ -41,6 +40,8 @@ reviewed asset SQL -> read-only capture -> canonical ResultSet + attestation -> 
   кандидатного числа (без attestation — `provenance.unattested`), `assets.invalidated` сверяет
   reviewed-запрос со snapshot'ом ([spec](specs/asset-query-governance.md)).
   `--{side}-semantic-manifest` берёт формулы из dbt, `--signing-key` подписывает manifest.
+  `--pr-comment` — комментарий PR, его публикует `action.yml`
+  ([spec](specs/pull-request-comment.md)).
 - `auto_bi decision capture` — исполняет reviewed SQL positive asset'а read-only и пишет
   canonical result с attestation, привязанной к digest кандидатного snapshot'а.
 - `auto_bi decision evidence` — пересчитывает digest каждого artifact и проверяет подпись
@@ -115,15 +116,15 @@ PEM вне checkout и evidence.
 
 Финишная черта [ADR 0010](adr/0010-finish-line.md) пройдена 2026-11-10: F1–F6 сделаны,
 версия `0.6.0`. Решение владельца 2026-11-13 — [ADR 0012](adr/0012-post-finish-development.md):
-пункты D1–D6 в локальной ветке `decisionops-backlog` — D1 типы и D2 отношения и отказы
-(сделаны), D3 комментарий PR и GitHub Action, D4 покрытие dbt, D5 read-only MCP, D6 инвентарь
+пункты D1–D6 в локальной ветке `decisionops-backlog` — D1 типы, D2 отношения и отказы,
+D3 комментарий PR и GitHub Action (сделаны), D4 покрытие dbt, D5 read-only MCP, D6 инвентарь
 Superset. Находки вне D1–D6 — в [бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:
 
 - PostgreSQL scanned bytes — только с trusted provider/extension и его контрактом.
 - Подпись самим capture runner — нужна trusted boundary, где private key недоступен вызывающему.
-- Scheduler, PostgreSQL runtime, REST, notifications, actions (кроме D3 и D5 ADR 0012).
+- Scheduler, PostgreSQL runtime, REST, notifications, actions (кроме D5 ADR 0012).
 
 ## Решения для текущего scope
 

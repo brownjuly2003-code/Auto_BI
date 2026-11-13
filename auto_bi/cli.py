@@ -274,6 +274,12 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument(
         "--json", action="store_true", help="Emit the report as JSON and nothing else"
     )
+    verify.add_argument(
+        "--pr-comment",
+        default="",
+        help="Also write the run's pull-request comment (Markdown) to this file, outside the "
+        "evidence directory; written when the run stops before a verdict too",
+    )
 
     evidence = decision_sub.add_parser(
         "evidence",
@@ -773,13 +779,29 @@ def _decision_verify(args: argparse.Namespace) -> int:
 
     The exit code carries the verdict, never the operational status: a completed run that
     blocks exits 4, while a run that could not start exits 2 (invariant 8).
+
+    `--pr-comment` writes the run's pull-request comment (ADR 0012, D3) — after the bundle is
+    sealed, from what it holds — or, for a run that stops before a verdict or whose bundle
+    cannot be read back, the comment that says it has none, and exits 2. A path that names a
+    directory, lies in no directory or lies under the evidence directory is refused before
+    the run; a write the filesystem refuses after the run ends the command with exit 2, the
+    verdict printed above the error.
     """
     from datetime import UTC, datetime
 
     from auto_bi.decision.use_cases import VerifyError, VerifyRequest, verify
+    from auto_bi.evidence.inspect import EvidenceReadError
     from auto_bi.evidence.signing import EvidenceSignatureError, load_ed25519_signer
     from auto_bi.verification.model import EXIT_ERROR, exit_code_for
+    from auto_bi.verification.pull_request import comment_for_run, render_pull_request_failure
 
+    comment = args.pr_comment
+    if comment:
+        try:
+            _check_comment_target(comment, args.evidence)
+        except VerifyError as exc:
+            _say_error(exc)
+            return EXIT_ERROR
     created_at = args.created_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         signer = load_ed25519_signer(args.signing_key) if args.signing_key else None
@@ -803,6 +825,8 @@ def _decision_verify(args: argparse.Namespace) -> int:
         )
     except (VerifyError, EvidenceSignatureError) as exc:
         _say_error(exc)
+        if comment:
+            _write_comment(comment, render_pull_request_failure(str(exc)))
         return EXIT_ERROR
 
     if args.json:
@@ -814,7 +838,85 @@ def _decision_verify(args: argparse.Namespace) -> int:
         _say(f"run      {report.run_id}  evidence {report.evidence_digest}")
         _say(f"status   {report.operational_status.value}")
         _say(f"verdict: {report.verdict.value} ({len(report.blocking())} blocking check(s))")
+    if comment:
+        try:
+            text = comment_for_run(report, args.evidence, verifier=signer)
+        except (EvidenceReadError, ValueError) as exc:
+            # The bundle the run sealed and read back is not the one there now: a comment
+            # would state what nobody can find in it.
+            reason = f"cannot read the run's evidence back for --pr-comment: {exc}"
+            _say_error(reason)
+            _write_comment(comment, render_pull_request_failure(reason))
+            return EXIT_ERROR
+        if not _write_comment(comment, text):
+            return EXIT_ERROR
     return exit_code_for(report.verdict)
+
+
+def _check_comment_target(value: str, evidence: str) -> None:
+    """Refuse a `--pr-comment` file the comment could not be written to, before the run.
+
+    The comment is no evidence: written into the evidence directory it would lie among the
+    files of a bundle — or over one of them — so a path under it is refused too, however
+    it is spelled: through a link, or in another case where the filesystem folds case.
+    """
+    from pathlib import Path
+
+    from auto_bi import filesystem
+    from auto_bi.decision.use_cases import VerifyError
+
+    path = Path(value)
+    shown = filesystem.display_path(path)
+    try:
+        if filesystem.is_dir(path):
+            raise VerifyError(f"--pr-comment {shown} is a directory")
+        if not filesystem.is_dir(path.parent):
+            raise VerifyError(
+                f"--pr-comment {shown}: there is no directory "
+                f"{filesystem.display_path(path.parent)}"
+            )
+        resolved, root = path.resolve(), Path(evidence).resolve()
+        identity = filesystem.file_identity(root)
+        inside = resolved.is_relative_to(root) or (
+            identity is not None
+            and any(filesystem.file_identity(folder) == identity for folder in resolved.parents)
+        )
+    # Python 3.12 answers a loop of links with RuntimeError; later versions do not.
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise VerifyError(f"cannot write --pr-comment {shown}: {exc}") from None
+    if inside:
+        raise VerifyError(
+            f"--pr-comment {shown} is inside the evidence directory, and the comment is no "
+            "evidence"
+        )
+
+
+def _write_comment(value: str, text: str) -> bool:
+    """Write the comment whole or not at all — a reader never posts half of one — as UTF-8."""
+    import contextlib
+    import os
+    import tempfile
+    from pathlib import Path
+
+    from auto_bi import filesystem
+
+    path = Path(value)
+    try:
+        handle, temporary = tempfile.mkstemp(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(handle, "wb") as stream:
+                stream.write(text.encode("utf-8"))
+            os.replace(temporary, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
+            raise
+    except (OSError, ValueError) as exc:
+        _say_error(f"cannot write --pr-comment {filesystem.display_path(path)}: {exc}")
+        return False
+    return True
 
 
 def _decision_evidence(args: argparse.Namespace) -> int:

@@ -41,6 +41,12 @@ uv run auto_bi decision evidence .evidence
 Exit code несёт вердикт: `0` pass/advisory, `3` needs_review, `4` block, `2`
 usage-ошибка (падение никогда не выглядит как вынесенный вердикт).
 
+Для pull request `verify --pr-comment <file>` пишет комментарий: вердикт, затронутые продукты и
+чарты, главные находки и digest evidence. Composite Action [`action.yml`](action.yml) запускает
+гейт в workflow вашего репозитория и публикует этот комментарий в ваш PR вашим токеном
+(`pull-requests: write`); сам проект ничего не публикует. Контракт и пример workflow —
+[spec](docs/specs/pull-request-comment.md).
+
 - [Текущее состояние DecisionOps](docs/DECISIONOPS_CURRENT_STATE.md)
 - [Целевая архитектура](docs/DECISIONOPS_ARCHITECTURE.md)
 - [ADR: отдельный additive fork](docs/adr/0003-decisionops-additive-control-plane.md)

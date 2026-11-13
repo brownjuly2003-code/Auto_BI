@@ -216,6 +216,8 @@ auto_bi/
     provenance.py        откуда пришло кандидатное число: attestation и её проверка
     release_gate.py      orchestration only
     bi_contract.py       pure target compile contracts
+    pull_request.py      pull-request comment of a run, read back from its bundle (§12.4)
+  github_action.py       entry point of the composite GitHub Action `action.yml` (§12.4)
   evidence/
     model.py             bundle/claim/artifact schemas
     canonical.py         JCS bytes and digests
@@ -2580,6 +2582,55 @@ MCP отложен до стабильного REST/policy/evidence contract. А
 extension. Поэтому будущий MCP adapter возвращает явный run/task handle и
 привязывает его к authorization context, но эти transport детали не входят в
 domain state machine.
+
+### 12.4 Pull request (D3, ADR 0012)
+
+Изменение семантики ревьюят в pull request, и инструменты этого класса (dbt CI, Datafold, Recce —
+рыночный срез 2026-11-13) отвечают прямо там. Гейт отвечал exit code, строками stdout и bundle,
+чей `reports/summary.md` написан для владельца. D3 добавляет два слоя и не меняет ни вердиктов, ни
+версий evidence, ни байтов bundle: 11 прогонов пилотов дали те же digest'ы, что `9407f8c`, а тест
+сравнивает отчёт и каждый файл bundle прогона с `--pr-comment` и без него.
+
+`decision verify --pr-comment <file>` (`verification/pull_request.py`) пишет Markdown после того,
+как bundle запечатан и перепроверен: вердикт и факты прогона, фразу `owner_action` из summary,
+секции «что блокирует», «чьи числа», «что нужно человеку», advisory и «не сделано», свёрнутую
+таблицу всех проверок и команду `decision evidence --expect-digest`. Источник — проверки прогона и
+payload `impact.products`, прочитанный обратно из bundle с закреплённым digest'ом и ключом подписи;
+своих находок комментарий не добавляет. Чтение обратно, а не память процесса, — чтобы комментарий
+называл только то, что лежит в bundle: если payload не читается, пишется комментарий «no verdict»
+и exit 2, а не устаревший зелёный. Комментарий — не evidence: в bundle он не входит, путь внутри
+evidence-каталога — на любой глубине и в любом написании (ссылка, другой регистр там, где файловая
+система его не различает) — отклоняется до прогона, запись атомарна.
+
+Текст комментария — данные, а не ссылки GitHub: PR рендерит `@name` как уведомление, `#12`,
+`GH-12` и ссылку на issue — как запись в timeline этого issue. Значение — code span, непечатаемые
+символы напечатаны escape-последовательностями; слово детали с `@`, `#`, `://`, `gh-N` или `www.` —
+code span, в остальных словах экранируется ASCII-пунктуация; HTML — только `<details>`. Размер —
+60 000 единиц UTF-16 при лимите GitHub 65 536 символов: значения и списки обрезаются по капам,
+дальше секции выпадают с конца, и комментарий их называет; голова и футер помещаются в 8 192
+единицы при любых значениях.
+
+Composite Action `action.yml` — интеграция с CI, а не DecisionOps `actions` (proposal-only, по-прежнему
+выключены): BI он не трогает и пишет только комментарий в PR workflow'а, который его запустил,
+токеном этого workflow. `auto_bi/github_action.py` (stdlib) запускает `decision verify` дочерним
+процессом без токенов в окружении. Модуль и гейт запускаются изолированно (`python -I -X utf8`):
+рабочий каталог — checkout PR — и `PYTHONPATH` не входят в `sys.path`, иначе `auto_bi/` или
+`json.py` из PR исполнились бы вместо Action, с токеном в окружении. Раннер читает workflow-команды
+из обоих потоков шага, а предупреждение sqlglot цитирует SQL чарта из PR вместе с переводами строк,
+поэтому stderr гейта Action выводит после его выхода между `::stop-commands::<token>` и
+`::<token>::`; токен случаен и выбран после выхода гейта. `pull_request_target` отклоняется: он
+отдаёт write-токен и секреты базового репозитория job'у с файлами PR. Входы приходят как `DECISION_GATE_*` (не `AUTO_BI_*` — их читает
+`Settings`) и в скрипт не подставляются: `${{ }}` внутри `run:` — script injection. Один комментарий
+на продукт: маркер `sha256(product)[:16]` в первой строке и автор `comment-author`; чужой
+комментарий или маркер не в первой строке не правится. Токен уходит только на `GITHUB_API_URL` по
+https (http — только loopback), редиректы не следуются. Отказ GitHub (read-only токен форка) —
+warning; exit шага задают вердикт и `fail-on`, а прогон без вердикта роняет шаг при любом
+`fail-on`. Зависимости Action берёт из своего `uv.lock` (`uv run --frozen --no-dev --project
+"$GITHUB_ACTION_PATH"`), так что репозиторию пользователя Python-проект не нужен. Две границы
+остаются в бэклоге: под `--dwh` `Settings` дочитывает из `.env` checkout'а PR переменные, которых
+workflow не задал, а `setup-uv` берёт версию uv из `pyproject.toml` рабочего каталога. Тега,
+релиза и Marketplace нет — workflow пинит commit. Контракт и границы —
+[pull-request comment](specs/pull-request-comment.md).
 
 ## 13. Observability
 

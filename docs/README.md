@@ -87,6 +87,7 @@ baseline. DecisionOps запускается из checkout как `autobi-agent`
 | [postgres-kernel-row-security](specs/postgres-kernel-row-security.md) | A PostgreSQL-family kernel without row-level security |
 | [probe-execution-safety](specs/probe-execution-safety.md) | Read-only execution with finite probe limits |
 | [product-metric-pins](specs/product-metric-pins.md) | A product's metric pins in the candidate snapshot |
+| [pull-request-comment](specs/pull-request-comment.md) | A gate run's pull-request comment, and the action that posts it |
 | [recorded-result-keys](specs/recorded-result-keys.md) | Recorded results name supplied verified assets |
 | [repeated-delivery-entries](specs/repeated-delivery-entries.md) | An entry repeated in the delivery of a decision product |
 | [repeated-metric-contracts](specs/repeated-metric-contracts.md) | Two contracts of one metric id in a semantic ref |

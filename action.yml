@@ -1,0 +1,149 @@
+name: Auto_BI release gate
+description: >-
+  Run `auto_bi decision verify` on a semantic change and post its verdict, the products and
+  charts it reaches and the evidence digest as one pull request comment (ADR 0012, D3).
+  The comment and the step's exit status copy the gate's answer; the action adds no finding.
+
+inputs:
+  contracts:
+    description: Contract files or directories (YAML or JSON), one path a line.
+    required: true
+  base:
+    description: Base semantic ref, the semantics before the change - a directory holding model.yaml.
+    required: true
+  candidate:
+    description: Candidate semantic ref, the semantics of the change - a directory holding model.yaml.
+    required: true
+  product:
+    description: Product id, when the contracts hold several. It also keys the comment, so each product keeps one.
+    required: false
+    default: ""
+  dashboards:
+    description: Directory of delivered DashboardSpecs.
+    required: false
+    default: ""
+  assets:
+    description: Verified asset repository (file or directory).
+    required: false
+    default: ""
+  results:
+    description: Recorded candidate results.
+    required: false
+    default: ""
+  environment:
+    description: DWH/BI environment ref for the run key.
+    required: false
+    default: ""
+  dwh:
+    description: >-
+      Engine step 7 asks, read-only (clickhouse, greenplum, greengage or postgres); its connection
+      settings come from the job's AUTO_BI_* variables. Empty - no engine is asked.
+    required: false
+    default: ""
+  signing-key:
+    description: Ed25519 PKCS#8 private-key PEM that seals the evidence manifest; keep it outside the checkout.
+    required: false
+    default: ""
+  created-at:
+    description: RFC 3339 UTC bundle timestamp, for a byte-reproducible run.
+    required: false
+    default: ""
+  base-semantic-manifest:
+    description: dbt semantic_manifest.json the base ref's dbt formulas are resolved from.
+    required: false
+    default: ""
+  base-dbt-database:
+    description: dbt database of the base artifact's relations; empty for two-part names.
+    required: false
+    default: ""
+  candidate-semantic-manifest:
+    description: dbt semantic_manifest.json the candidate ref's dbt formulas are resolved from.
+    required: false
+    default: ""
+  candidate-dbt-database:
+    description: dbt database of the candidate artifact's relations; empty for two-part names.
+    required: false
+    default: ""
+  evidence:
+    description: Directory the evidence bundle is written to. Empty - a new directory under the runner's temporary directory.
+    required: false
+    default: ""
+  comment:
+    description: true - add or update the pull request comment; false - write the job summary only.
+    required: false
+    default: "true"
+  comment-author:
+    description: Login the token posts as. Only a comment of this author that starts with the product's marker is updated.
+    required: false
+    default: "github-actions[bot]"
+  fail-on:
+    description: >-
+      block - the step fails on BLOCK; review - on BLOCK or NEEDS_REVIEW; never - only when the gate
+      reaches no verdict, which fails the step whatever this says.
+    required: false
+    default: block
+  github-token:
+    description: Token that posts the comment; it needs pull-requests write. The gate's own process never sees it.
+    required: false
+    default: ${{ github.token }}
+  python-version:
+    description: Python the gate runs on.
+    required: false
+    default: "3.12"
+
+outputs:
+  verdict:
+    description: PASS, PASS_WITH_ADVISORY, NEEDS_REVIEW or BLOCK; empty when the gate reached no verdict.
+    value: ${{ steps.gate.outputs.verdict }}
+  exit-code:
+    description: Exit code of `auto_bi decision verify` (0, 3, 4; 2 when it reached no verdict).
+    value: ${{ steps.gate.outputs.exit-code }}
+  run-id:
+    description: Id of the run in the evidence bundle.
+    value: ${{ steps.gate.outputs.run-id }}
+  evidence-digest:
+    description: Digest of the sealed evidence manifest.
+    value: ${{ steps.gate.outputs.evidence-digest }}
+  evidence:
+    description: Directory the evidence bundle was written to.
+    value: ${{ steps.gate.outputs.evidence }}
+  report:
+    description: File holding the comment as posted, also when it was not.
+    value: ${{ steps.gate.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      with:
+        enable-cache: false
+
+    - name: Run the release gate
+      id: gate
+      shell: bash
+      env:
+        DECISION_GATE_CONTRACTS: ${{ inputs.contracts }}
+        DECISION_GATE_BASE: ${{ inputs.base }}
+        DECISION_GATE_CANDIDATE: ${{ inputs.candidate }}
+        DECISION_GATE_PRODUCT: ${{ inputs.product }}
+        DECISION_GATE_DASHBOARDS: ${{ inputs.dashboards }}
+        DECISION_GATE_ASSETS: ${{ inputs.assets }}
+        DECISION_GATE_RESULTS: ${{ inputs.results }}
+        DECISION_GATE_ENVIRONMENT: ${{ inputs.environment }}
+        DECISION_GATE_DWH: ${{ inputs.dwh }}
+        DECISION_GATE_SIGNING_KEY: ${{ inputs.signing-key }}
+        DECISION_GATE_CREATED_AT: ${{ inputs.created-at }}
+        DECISION_GATE_BASE_SEMANTIC_MANIFEST: ${{ inputs.base-semantic-manifest }}
+        DECISION_GATE_BASE_DBT_DATABASE: ${{ inputs.base-dbt-database }}
+        DECISION_GATE_CANDIDATE_SEMANTIC_MANIFEST: ${{ inputs.candidate-semantic-manifest }}
+        DECISION_GATE_CANDIDATE_DBT_DATABASE: ${{ inputs.candidate-dbt-database }}
+        DECISION_GATE_EVIDENCE: ${{ inputs.evidence }}
+        DECISION_GATE_COMMENT: ${{ inputs.comment }}
+        DECISION_GATE_COMMENT_AUTHOR: ${{ inputs.comment-author }}
+        DECISION_GATE_FAIL_ON: ${{ inputs.fail-on }}
+        DECISION_GATE_GITHUB_TOKEN: ${{ inputs.github-token }}
+        UV_PYTHON: ${{ inputs.python-version }}
+      run: |
+        export UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/auto-bi-gate-venv"
+        uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" python -I -X utf8 -m auto_bi.github_action
