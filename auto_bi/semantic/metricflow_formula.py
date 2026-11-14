@@ -39,7 +39,11 @@ The answer comes in steps, and a step that finds a gap is the last one:
    The relation and time of a simple metric that names one way to aggregate (a measure or
    aggregation parameters) are checked whatever else it holds; a simple metric naming both or
    neither, and a metric that is neither simple nor a ratio of simple metrics, are answered by
-   their construct gap.
+   their construct gap. A derived metric's is at its ``expr`` where that divides one of its
+   input metrics by another or by itself — MetricFlow writes the quotient as written,
+   without the ``NULLIF`` and the cast it gives a ratio metric, and the typed ratio is a
+   ratio metric's quotient — and at its type otherwise: the typed formula takes no
+   expression over metrics.
 4. **Parity.** A resolution relies on rows of the parity matrix — one per aggregate, dialect
    and class of the column's type, one per ratio form over two such terms, one per way of
    naming the column — each in its context ``<engine>.<event time>``: the engine the native
@@ -248,6 +252,26 @@ _VALUE_WORDS = frozenset(
 #: writing the artifact.
 _COUNT_WITHOUT_EXPR = "a count without an expression, which MetricFlow does not build"
 
+#: A derived metric's `expr` that divides one input metric by another or by itself: two
+#: references and a slash, spaces, tabs, line breaks and form feeds around them aside — white
+#: space PostgreSQL's lexer skips. Other characters are not: a non-ASCII space, which the lexer
+#: reads as part of a name, a vertical tab, a control character. A reference is one lower-case
+#: identifier and a column of the query MetricFlow divides in — an input's alias or, without
+#: one, its name: metricflow 0.213.0 keeps the input's alias on its metric spec and names the
+#: column `metric_spec.alias or metric_spec.element_name`
+#: (`metricflow_semantics/specs/dunder_column_association_resolver.py`).
+_BLANK = r"[ \t\n\r\f]*"
+_QUOTIENT = re.compile(f"{_BLANK}([a-z_][a-z0-9_]*){_BLANK}/{_BLANK}([a-z_][a-z0-9_]*){_BLANK}")
+
+#: What MetricFlow 0.213.0 does with a derived quotient: the record of
+#: `scripts/metricflow_derived.py` on PostgreSQL 16 holds the SQL and the outcome
+#: (`tests/fixtures/dbt_semantic_manifest/derived/result.json`).
+_DERIVED_QUOTIENT = (
+    "a derived quotient, which MetricFlow writes as written, without the NULLIF and the cast "
+    "it gives a ratio metric: on PostgreSQL a non-NULL numerator over a zero denominator fails "
+    "the query, and two integer terms divide with truncation"
+)
+
 #: The default `agg_params` of metricflow 0.213.0.
 _DEFAULT_AGG_PARAMS = {
     "percentile": None,
@@ -414,6 +438,14 @@ def resolve_formula(
     return FormulaResolution(formula, digest, (), rows)
 
 
+def _is_quotient(params: JsonObject) -> bool:
+    """Whether a derived metric's `expr` divides one of its input metrics by another or by
+    itself (`_QUOTIENT`): each reference an input's alias or, without one, its name."""
+    references = {item.get("alias") or item["name"] for item in params.get("metrics") or []}
+    found = _QUOTIENT.fullmatch(params.get("expr") or "")
+    return found is not None and set(found.groups()) <= references
+
+
 def _engine(declared: DeclaredTable) -> str:
     engine = declared.engine.lower()
     return _ENGINES.get(engine, engine) or UNDECLARED
@@ -505,7 +537,12 @@ class _Resolver:
             return self._aggregate(name)
         if metric["type"] == "ratio":
             return self._ratio(name, metric, path)
-        self._construct(f"{path}.type", f"a {metric['type']} metric")
+        # one gap, at the type or at a derived quotient's `expr`; nothing else of the metric is
+        # read, its inputs included: a contract that names an input is answered for that
+        if metric["type"] == "derived" and _is_quotient(metric["type_params"]):
+            self._construct(f"{path}.type_params.expr", _DERIVED_QUOTIENT)
+        else:
+            self._construct(f"{path}.type", f"a {metric['type']} metric")
         return None, frozenset()
 
     def _aggregate(self, name: str) -> tuple[MetricFormula | None, frozenset[str]]:

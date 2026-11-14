@@ -16,6 +16,17 @@ CHANGELOG names 1 → 2 and the transitions from verifier 7 → 8 and check 5 �
 Part of the idempotency key: a different verifier can derive a different verdict or
 evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 
+### Verifier 138
+
+a derived dbt metric whose `expr` divides one of its input metrics by another or by itself is
+graded at that `expr` (ADR 0012, D4b): MetricFlow 0.213.0 writes the quotient as written, without
+the NULLIF and the cast it gives a ratio metric, so on PostgreSQL a non-NULL numerator over a zero
+denominator fails the query and two integer terms divide with truncation. Verifier 137 graded it
+at the metric's type. The gap stays `gap.external_construct_unsupported` (review) and the formula
+`external_ref`; its path, `$.metrics[m].type_params.expr`, and its reason change, so the snapshot
+and every check that carries the gap can change. Check grading is unchanged and CHECK_VERSION
+stays 86.
+
 ### Verifier 137
 
 the formula of a V2 dbt metric resolves (ADR 0012, D4). The parity run proved the V2 rows in both

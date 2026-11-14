@@ -35,6 +35,7 @@ from auto_bi.semantic.metric_contract import MetricContract, MetricFormula
 from auto_bi.semantic.metricflow import ManifestRead, SemanticManifest, read_semantic_manifest
 from auto_bi.semantic.metricflow_formula import (
     _DEFAULT_AGG_PARAMS,
+    _DERIVED_QUOTIENT,
     _INPUT_MEASURE,
     _METRIC,
     _METRIC_INPUT,
@@ -1298,15 +1299,152 @@ def test_metric_time_granularity_dbt_wrote_is_a_construct() -> None:
     ("kind", "ref"),
     [
         ("legacy", "revenue_cum"),
-        ("legacy", "margin_derived"),
         ("wide_legacy", "visit_to_purchase"),
+        ("wide_legacy", "revenue_growth"),
         ("wide_v2", "revenue_growth"),
     ],
 )
 def test_metric_neither_simple_nor_ratio_is_answered_by_its_type(kind: str, ref: str) -> None:
     data = _data(kind)
-    assert _gaps(_resolve(data, ref)) == [
-        (CONSTRUCT_UNSUPPORTED, REVIEW, f"{_metric_path(data, ref)}.type")
+    resolution = _resolve(data, ref)
+    assert _gaps(resolution) == [(CONSTRUCT_UNSUPPORTED, REVIEW, f"{_metric_path(data, ref)}.type")]
+    kind_of = _metric(data, ref)["type"]
+    assert resolution.gaps[0].reason.endswith(f": a {kind_of} metric")
+
+
+def _derived(expr: str | None, *inputs: tuple[str, str | None]) -> dict[str, Any]:
+    """The legacy artifact with `margin_derived` (as dbt wrote it, `gross_margin_total /
+    revenue`) given `expr` and input metrics `(name, alias)`; no inputs keeps dbt's."""
+    data = _data("legacy")
+    params = _metric(data, "margin_derived")["type_params"]
+    params["expr"] = expr
+    if inputs:
+        params["metrics"] = [
+            {**params["metrics"][0], "name": name, "alias": alias} for name, alias in inputs
+        ]
+    return data
+
+
+def _derived_gaps(data: dict[str, Any]) -> list[tuple[str, str, str]]:
+    return _gaps(_resolve(data, "margin_derived"))
+
+
+def _at(where: str) -> list[tuple[str, str, str]]:
+    return [
+        (CONSTRUCT_UNSUPPORTED, REVIEW, f"{_metric_path(_data('legacy'), 'margin_derived')}{where}")
+    ]
+
+
+def test_a_derived_quotient_as_dbt_wrote_it_is_answered_at_its_expr() -> None:
+    data = _data("legacy")
+    assert _metric(data, "margin_derived")["type_params"]["expr"] == "gross_margin_total / revenue"
+    resolution = _resolve(data, "margin_derived")
+    assert resolution.formula is None and resolution.parity_rows == frozenset()
+    assert _gaps(resolution) == _at(".type_params.expr")
+    assert resolution.gaps[0].reason.endswith(f": {_DERIVED_QUOTIENT}")
+
+
+BOTH = (("gross_margin_total", None), ("revenue", None))
+
+
+@pytest.mark.parametrize(
+    ("expr", "inputs"),
+    [
+        ("gross_margin_total/revenue", BOTH),
+        ("  gross_margin_total \t/\n revenue  ", BOTH),
+        ("gross_margin_total\r/\frevenue\r\n", BOTH),
+        ("revenue / gross_margin_total", BOTH),
+        # one input over itself
+        ("revenue / revenue", BOTH),
+        ("revenue / revenue", (("revenue", None),)),
+        # an alias is the column the quotient reads, in place of the name
+        (
+            "top_value / bottom_value",
+            (("gross_margin_total", "top_value"), ("revenue", "bottom_value")),
+        ),
+        ("top_value / revenue", (("gross_margin_total", "top_value"), ("revenue", None))),
+        # an empty alias is none: MetricFlow names the column `alias or element_name`
+        ("gross_margin_total / revenue", (("gross_margin_total", ""), ("revenue", None))),
+        ("_a1 / b_2", (("gross_margin_total", "_a1"), ("revenue", "b_2"))),
+    ],
+)
+def test_each_quotient_of_inputs_is_answered_at_its_expr(
+    expr: str, inputs: tuple[tuple[str, str | None], ...]
+) -> None:
+    assert _derived_gaps(_derived(expr, *inputs)) == _at(".type_params.expr")
+
+
+@pytest.mark.parametrize(
+    ("expr", "inputs"),
+    [
+        # another expression over the inputs
+        ("gross_margin_total - revenue", BOTH),
+        ("gross_margin_total * revenue", BOTH),
+        ("gross_margin_total / revenue / revenue", BOTH),
+        ("(gross_margin_total) / revenue", BOTH),
+        ("gross_margin_total / (revenue)", BOTH),
+        ("gross_margin_total // revenue", BOTH),
+        ("2 * gross_margin_total / revenue", BOTH),
+        ("gross_margin_total / 2", BOTH),
+        ("gross_margin_total", BOTH),
+        ("", BOTH),
+        (None, BOTH),
+        # a reference that is not a column of the query: an unknown name, the name of an
+        # input that has an alias, a name in another case or quoted
+        ("gross_margin_total / cost", BOTH),
+        ("gross_margin_total / revenue", (("gross_margin_total", "top_value"), ("revenue", None))),
+        ("Gross_margin_total / revenue", BOTH),
+        ('"revenue" / revenue', BOTH),
+        ("gross_margin_total / revenue", (("gross_margin_total", None),)),
+        # white space other than spaces, tabs, line breaks and form feeds: a non-ASCII space,
+        # which PostgreSQL reads as part of a name, a vertical tab, a control character
+        ("gross_margin_total\u00a0/ revenue", BOTH),
+        ("gross_margin_total /\u2003revenue", BOTH),
+        ("gross_margin_total\v/ revenue", BOTH),
+        ("gross_margin_total\x1c/ revenue", BOTH),
+        # an alias that is not one lower-case identifier, written in `expr` as it is
+        ("Top / revenue", (("gross_margin_total", "Top"), ("revenue", None))),
+        ("1top / revenue", (("gross_margin_total", "1top"), ("revenue", None))),
+        ('"top" / revenue', (("gross_margin_total", '"top"'), ("revenue", None))),
+    ],
+)
+def test_another_derived_expression_is_answered_by_its_type(
+    expr: str | None, inputs: tuple[tuple[str, str | None], ...]
+) -> None:
+    assert _derived_gaps(_derived(expr, *inputs)) == _at(".type")
+
+
+def test_a_derived_metric_without_inputs_is_answered_by_its_type() -> None:
+    for metrics in ([], None):
+        data = _derived("gross_margin_total / revenue")
+        _metric(data, "margin_derived")["type_params"]["metrics"] = metrics
+        assert _derived_gaps(data) == _at(".type")
+
+
+def test_a_derived_quotient_reads_nothing_of_its_inputs_or_its_own_keys() -> None:
+    data = _data("legacy")
+    metric = _metric(data, "margin_derived")
+    metric["filter"] = copy.deepcopy(FILTER)
+    metric["time_granularity"] = "month"
+    top, bottom = metric["type_params"]["metrics"]
+    top["filter"] = copy.deepcopy(FILTER)
+    bottom.update(offset_window={"count": 7, "granularity": "day"}, offset_to_grain="month")
+    assert _derived_gaps(data) == _at(".type_params.expr")
+    # ... save that a private one is private, which is asked before
+    metric["type_params"]["is_private"] = True
+    assert _derived_gaps(data) == [
+        (PRIVATE_METRIC, REVIEW, f"{_metric_path(data, 'margin_derived')}.type_params.is_private"),
+        *_at(".type_params.expr"),
+    ]
+
+
+def test_a_quotient_is_a_derived_metrics_alone() -> None:
+    data = _data("legacy")
+    metric = _metric(data, "revenue_cum")
+    metric["type_params"]["expr"] = "revenue / revenue"
+    metric["type_params"]["metrics"] = [{"name": "revenue"}]
+    assert _gaps(_resolve(data, "revenue_cum")) == [
+        (CONSTRUCT_UNSUPPORTED, REVIEW, f"{_metric_path(data, 'revenue_cum')}.type")
     ]
 
 

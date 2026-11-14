@@ -392,6 +392,12 @@ for _type, _ref in (
     case(f"type.{_type}")(_metric_type(_ref))
 
 
+@case("derived.quotient")
+def _derived_quotient() -> Gaps:
+    # as dbt wrote it: `gross_margin_total / revenue`
+    return _gaps(_resolve(_data("legacy"), "margin_derived"))
+
+
 @case("ratio.input-type")
 def _ratio_input_type() -> Gaps:
     data = _data("legacy")
@@ -1025,7 +1031,19 @@ def test_where_the_resolver_ends_the_reading_early() -> None:
     _metric(data, "revenue_cum")["filter"] = copy.deepcopy(FILTER)
     assert _gaps(_resolve(data, "revenue_cum", **_AGAINST)) == [at(data, "revenue_cum", ".type")]
 
+    # a derived quotient: its `expr` alone, not its filter or what its inputs hold
+    data = _data("legacy")
+    derived = _metric(data, "margin_derived")
+    derived["filter"] = copy.deepcopy(FILTER)
+    derived["type_params"]["metrics"][0]["filter"] = copy.deepcopy(FILTER)
+    derived["type_params"]["metrics"][1]["offset_to_grain"] = "month"
+    assert _gaps(_resolve(data, "margin_derived", **_AGAINST)) == [
+        at(data, "margin_derived", ".type_params.expr")
+    ]
+
     # ... save that a private one is private: that is asked before the type
+    data = _data("legacy")
+    _metric(data, "revenue_cum")["filter"] = copy.deepcopy(FILTER)
     _metric(data, "revenue_cum")["type_params"]["is_private"] = True
     assert _gaps(_resolve(data, "revenue_cum", **_AGAINST)) == [
         (PRIVATE_METRIC, "review", f"{_metric_path(data, 'revenue_cum')}.type_params.is_private"),

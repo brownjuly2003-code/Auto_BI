@@ -15,8 +15,8 @@
     {
      "code": "gap.external_construct_unsupported",
      "severity": "review",
-     "path": "$.metrics[4].type",
-     "reason": "outside the subset a typed formula is resolved from: a derived metric"
+     "path": "$.metrics[4].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a derived quotient, which MetricFlow writes as written, without the NULLIF and the cast it gives a ratio metric: on PostgreSQL a non-NULL numerator over a zero denominator fails the query, and two integer terms divide with truncation"
     }
    ]
   },

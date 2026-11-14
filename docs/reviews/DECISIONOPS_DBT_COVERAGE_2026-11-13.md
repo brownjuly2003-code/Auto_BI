@@ -1,9 +1,9 @@
-# Покрытие dbt: V2-строки паритета — D4a (ADR 0012), 2026-11-13
+# Покрытие dbt: V2-строки паритета и derived-частное — D4 (ADR 0012), 2026-11-13
 
 Первая часть пункта D4 [ADR 0012](../adr/0012-post-finish-development.md) — «Derived- и
 ratio-метрики MetricFlow и V2-строки паритета; мера — доля метрик публичных проектов F4 без
-гэпов проекта»: V2-строки паритета. Derived-метрики — следующая часть, D4b. Исполнитель —
-Claude; ревью — Opus-субагенты (модель, не human acceptance). Предыдущий срез публичных проектов —
+гэпов проекта»: D4a — V2-строки паритета, D4b — derived-метрики (ниже). Исполнитель — Claude;
+ревью — Opus-субагенты (модель, не human acceptance). Предыдущий срез публичных проектов —
 [отчёт F4](DECISIONOPS_DBT_PUBLIC_2026-11-10.md).
 
 ## Прогон паритета V2
@@ -62,11 +62,56 @@ Claude; ревью — Opus-субагенты (модель, не human accepta
 `jaffle_shop`: у шести V2-метрик без `expr` снят гэп `v2.no-expr`. У записи
 `jaffle_sl_template` (отказ dbt) артефакта нет.
 
+## D4b: derived-метрики (2026-11-14)
+
+Derived-метрика MetricFlow — выражение над входными метриками: `type_params.expr` и
+`type_params.metrics` (имя, alias, filter, offset_window, offset_to_grain). Из семи derived
+публичных проектов частное входов одно — `average_order_value = lifetime_spend_pretax /
+count_lifetime_orders` (jaffle-shop); остальные — разность, сумма трёх, произведение на число и
+`(a - b) * 100 / b` со сдвигом окна.
+
+Проба на стенде — `scripts/metricflow_derived.py` (PostgreSQL 16.15, metricflow 0.213.0,
+dbt-core 1.12.6); запись и артефакт — `tests/fixtures/dbt_semantic_manifest/derived`, их держит
+`tests/test_metricflow_derived.py`. Проект над таблицей паритета держит derived-частные и
+ratio-метрики над теми же парами; MetricFlow даёт SQL каждой, PostgreSQL выполняет его над
+строками рецепта паритета.
+
+- Derived-частное MetricFlow пишет как написано: `amount_sum / qty_count`. Ratio — с приведением
+  обоих термов к `DOUBLE PRECISION` и знаменателем через `NULLIF(…, 0)`.
+- Ноль в знаменателе под числителем не NULL хотя бы в одной группе роняет весь запрос
+  derived-метрики: `division by zero`, SQLSTATE `22012`. Ratio в этой группе даёт NULL, в
+  остальных — частное.
+- Два целых терма делятся нацело: максимум `bigint`-колонки на count даёт 0 при 2 / 4, ratio —
+  0.5.
+- `numeric`-сумма на count без нуля совпадает с ratio в пределах ошибки double, и с alias тоже:
+  alias только называет колонку, которую читает выражение.
+
+Значит, derived-частное — не `typed_ratio`, частное ratio-метрики. Резолвер отвечает на него
+своим гэпом конструкции на `expr` — строка инвентаря `derived.quotient` (review,
+`$.metrics[m].type_params.expr`) с причиной из пробы; на остальные derived — прежней строкой
+`type.derived` на `type`. Формула остаётся `external_ref`. Частное — это `a / b` из двух ссылок,
+каждая — alias входа или, без него, имя; пробелы, табуляции, переводы строки и страницы не в
+счёт; скобки, другой регистр, число или третий терм — уже `type.derived`. Ни фильтр derived-метрики, ни входы (filter, offset) не
+читаются: метрика всё равно не разрешается, а вход, на который контракт ссылается сам, решается
+как своя метрика. Ratio-метрики над теми же парами разрешаются в `typed_ratio` на доказанных
+строках.
+
+Новой формы формулы для derived (`typed_derived`) D4b не вводит: это изменение контракта —
+отдельный ADR, в бэклоге.
+
+- Корпус S5b перепрогнан: 108 записей, 78 приняты, 30 отказаны dbt; классы инвентаря — Written
+  64, Refused 12, Not carried 2, No entry 14. Новая запись `c_derived_quotient` несёт
+  `derived.quotient`.
+- `again` на трёх записях: изменилась одна, `jaffle_shop`, — `average_order_value` перешла с
+  `type.derived` на `derived.quotient`. Мера не меняется: 10 из 54.
+- Verifier 137 → 138, check 86 ([версии](../specs/evidence-format-versions.md)): у той же
+  derived-метрики в снимке другие путь и причина гэпа.
+
 ## Итог
 
 | Запись | Метрик | Без гэпов проекта | Строки инвентаря (метрик с таким гэпом) |
 |---|---|---|---|
-| `jaffle_shop` | 23 | 9 | `metric.filter` 4; `type.cumulative` 1; `type.derived` 3; `v2.agg.median` 1; `v2.expr` 9 |
+| `jaffle_shop` | 23 | 9 | `derived.quotient` 1; `metric.filter` 4; `type.cumulative` 1; `type.derived` 2; `v2.agg.median` 1; `v2.expr` 9 |
 | `jaffle_sl_template_unnested` | 18 | 0 | `legacy.agg.percentile` 1; `legacy.agg_params.percentile / legacy.agg_params.use_approximate_percentile / legacy.agg_params.use_discrete_percentile` 1; `legacy.expr` 6; `measure-input.fill_nulls_with` 3; `measure-input.join_to_timespine` 1; `metric.filter` 3; `time.expression / time.name` 13; `type.cumulative` 2; `type.derived` 3 |
 | `metricflow_tutorial` | 13 | 1 | `legacy.agg.sum_boolean` 1; `legacy.expr` 8; `metric.filter` 2; `type.cumulative` 2; `type.derived` 1 |
 
@@ -86,8 +131,9 @@ Claude; ревью — Opus-субагенты (модель, не human accepta
   доказаны. Это проверено на артефактах стенда, не тестом; тест держит, что строки доказаны.
 - Остальные 44 останавливает гэп проекта, как в F4: выражение меры или V2-метрики, которое не
   одна колонка (`legacy.expr` 14, `v2.expr` 9), время из выражения (13), фильтр метрики (9),
-  derived (7), cumulative (5), `fill_nulls_with` (3), `median`, `percentile`, `sum_boolean`,
-  `join_to_timespine`. Каждый гэп — строка инвентаря, review.
+  derived (7: шесть `type.derived`, одно `derived.quotient`), cumulative (5),
+  `fill_nulls_with` (3), `median`, `percentile`, `sum_boolean`, `join_to_timespine`. Каждый
+  гэп — строка инвентаря, review.
 
 ## Границы
 
@@ -101,4 +147,7 @@ Claude; ревью — Opus-субагенты (модель, не human accepta
   `agg_time_dimension` метрики, отличный от умолчания модели (резолвер берёт время только
   у метрики, без него — review); ratio двух V2-термов без `expr` — его держат строки
   отношения и `v2.metric_without_expr` вместе, как у legacy.
-- Derived-метрики — D4b.
+- Derived-частное проверено на PostgreSQL; на ClickHouse проба не запускалась, и причина гэпа
+  говорит только о PostgreSQL.
+- Входы derived-метрики (filter, offset_window, offset_to_grain) резолвер не читает: гэп один,
+  на `expr` или на `type`.

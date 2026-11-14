@@ -4,9 +4,9 @@
   "dbt-postgres": "1.11.0",
   "metricflow": "0.213.0"
  },
- "recipe": "sha256:f3204a04260e6187fa86af727bf6c5569b9f705a575813a2f1cae85390fd74b4",
+ "recipe": "sha256:c75623bc8e003a4ac6931dcd0d27b125457db805636ccfff6705d008212d0f73",
  "artifacts": {
-  "legacy": "sha256:1ee6c9296ad6c9ab75a3666e5369abf0a1cb8a205b5910a949fba9dd3903db7b",
+  "legacy": "sha256:900912fed795a31b9ea294f0f4fdbf19368f030204d9e15ecfa21f1d6a96f802",
   "v2": "sha256:688120bcc5e47de8a0fb8d27e18e12b3f105a573564c42385e0b9dfd1e34da0a"
  },
  "outcomes": {
@@ -632,12 +632,22 @@
     }
    ]
   },
+  "c_derived_quotient": {
+   "gaps": [
+    {
+     "code": "gap.external_construct_unsupported",
+     "severity": "review",
+     "path": "$.metrics[52].type_params.expr",
+     "reason": "outside the subset a typed formula is resolved from: a derived quotient, which MetricFlow writes as written, without the NULLIF and the cast it gives a ratio metric: on PostgreSQL a non-NULL numerator over a zero denominator fails the query, and two integer terms divide with truncation"
+    }
+   ]
+  },
   "c_type_conversion": {
    "gaps": [
     {
      "code": "gap.external_construct_unsupported",
      "severity": "review",
-     "path": "$.metrics[52].type",
+     "path": "$.metrics[53].type",
      "reason": "outside the subset a typed formula is resolved from: a conversion metric"
     }
    ]
@@ -647,7 +657,7 @@
     {
      "code": "gap.external_construct_unsupported",
      "severity": "review",
-     "path": "$.metrics[53].type",
+     "path": "$.metrics[54].type",
      "reason": "outside the subset a typed formula is resolved from: a ratio over a cumulative metric"
     }
    ]
@@ -657,7 +667,7 @@
     {
      "code": "gap.external_parity_unproven",
      "severity": "review",
-     "path": "$.metrics[56]",
+     "path": "$.metrics[57]",
      "reason": "no parity run has shown MetricFlow and the reference SQL to agree on postgres.date:ratio.legacy.average.decimal/legacy.sum.decimal"
     }
    ]
@@ -667,7 +677,7 @@
     {
      "code": "gap.external_construct_unsupported",
      "severity": "review",
-     "path": "$.metrics[57]",
+     "path": "$.metrics[58]",
      "reason": "outside the subset a typed formula is resolved from: a term the typed formula does not take: the grain table is not a lower-case schema.table name"
     }
    ]
@@ -707,7 +717,7 @@
     {
      "code": "gap.external_additivity_unproven",
      "severity": "review",
-     "path": "$.metrics[61].type",
+     "path": "$.metrics[62].type",
      "reason": "a ratio does not add up by sum, and the contract declares the metric additive"
     }
    ]

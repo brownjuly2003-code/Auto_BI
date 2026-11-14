@@ -640,6 +640,17 @@ def _legacy_entries() -> list[Entry]:
             ),
             "type.derived",
         ),
+        _legacy(
+            _metric(
+                "c_derived_quotient",
+                {
+                    "expr": "gross_margin_total / revenue",
+                    "metrics": [{"name": "gross_margin_total"}, {"name": "revenue"}],
+                },
+                "derived",
+            ),
+            "derived.quotient",
+        ),
         # dbt takes a conversion only between counts.
         _legacy(
             _metric(

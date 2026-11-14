@@ -193,6 +193,11 @@ TELLS: dict[str, Tell] = {
         f"type.{kind}": _construct(f"a {kind} metric")
         for kind in ("cumulative", "derived", "conversion")
     },
+    "derived.quotient": _construct(
+        "a derived quotient, which MetricFlow writes as written, without the NULLIF and the cast"
+        " it gives a ratio metric: on PostgreSQL a non-NULL numerator over a zero denominator"
+        " fails the query, and two integer terms divide with truncation"
+    ),
     "ratio.input-type": _says(re.escape(CONSTRUCT) + r"a ratio over a \w+ metric"),
     **{f"ratio.{side}-missing": _construct(f"a ratio without a {side}") for side in SIDES},
     "params.numerator": _construct("a numerator"),
