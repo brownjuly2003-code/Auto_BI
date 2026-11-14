@@ -47,6 +47,13 @@ usage-ошибка (падение никогда не выглядит как �
 (`pull-requests: write`); сам проект ничего не публикует. Контракт и пример workflow —
 [spec](docs/specs/pull-request-comment.md).
 
+Для AI-агентов `uv run auto_bi decision mcp [--evidence .evidence]` — read-only MCP-сервер на
+stdio: инструменты `validate`, `impact` (чьи продукты, дашборды и чарты задевает изменение
+семантики — до запуска гейта), `verify` (только с `--evidence`), `evidence` и `runs` отвечают
+тем, что печатают их команды: JSON `--json`, список `runs` — под ключом `runs`, текст
+артефакта — под `payload`. В BI не пишет, движок не спрашивает. Контракт и пример
+конфигурации клиента — [spec](docs/specs/mcp-server.md).
+
 - [Текущее состояние DecisionOps](docs/DECISIONOPS_CURRENT_STATE.md)
 - [Целевая архитектура](docs/DECISIONOPS_ARCHITECTURE.md)
 - [ADR: отдельный additive fork](docs/adr/0003-decisionops-additive-control-plane.md)

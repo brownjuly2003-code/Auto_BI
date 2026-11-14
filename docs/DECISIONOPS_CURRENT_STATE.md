@@ -46,8 +46,9 @@ reviewed asset SQL -> read-only capture -> canonical ResultSet + attestation -> 
   canonical result с attestation, привязанной к digest кандидатного snapshot'а.
 - `auto_bi decision evidence` — пересчитывает digest каждого artifact и проверяет подпись
   против pinned `--trust-key` ([ADR 0005](adr/0005-ed25519-evidence-trust-root.md)).
-- `auto_bi decision pin` — печатает pin каждой метрики dbt `semantic_manifest.json`;
-  `auto_bi decision runs` — список локальных прогонов без проверки целостности.
+- `decision pin` — pin метрик `semantic_manifest.json`; `decision runs` — прогоны без
+  проверки целостности; `decision mcp` — команды и `impact` как read-only MCP на stdio
+  ([spec](specs/mcp-server.md)).
 - Без `--dwh` engine checks дают `check.not_configured`; с `--dwh` (`clickhouse`, `greenplum`,
   `greengage`, `postgres`) —
   `dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`, `dwh.cost`.
@@ -85,7 +86,7 @@ investigation: четыре pure version-pinned skill над supplied canonical 
   exact-query scanned bytes (ARCHITECTURE §8.2).
 - Gate сам не исполняет **verified-asset SQL** — это делает `decision capture`. Подпись
   аутентифицирует producer и bundle, но не доказывает, что capture runner исполнил запрос.
-- Production-certified brief, scheduler, PostgreSQL platform runtime, REST/MCP/actions,
+- Production-certified brief, scheduler, PostgreSQL platform runtime, REST/actions,
   **Ossie**, **MetricFlow** как движок запросов и **column-level lineage** не реализованы. Из
   dbt читаются только формулы `semantic_manifest.json`; каждая причина остаться `external_ref` —
   строка [инвентаря](specs/dbt-formula-inventory.md); три публичных проекта новых не дали.
@@ -117,7 +118,7 @@ PEM вне checkout и evidence.
 Финишная черта [ADR 0010](adr/0010-finish-line.md) пройдена 2026-11-10: F1–F6 сделаны,
 версия `0.6.0`. Решение владельца 2026-11-13 — [ADR 0012](adr/0012-post-finish-development.md):
 D1–D6 в локальной ветке `decisionops-backlog` — сделаны D1 типы, D2 отношения и отказы,
-D3 комментарий PR и Action, D4a V2-паритет, D4b derived; далее D5 read-only MCP, D6
+D3 комментарий PR и Action, D4a V2-паритет, D4b derived, D5 MCP; далее D6
 инвентарь Superset. Находки вне D1–D6 — в [бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:

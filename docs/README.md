@@ -78,6 +78,7 @@ baseline. DecisionOps запускается из checkout как `autobi-agent`
 | [evidence-ref-ids](specs/evidence-ref-ids.md) | The ids of evidence named after a ref |
 | [generated-sql](specs/generated-sql.md) | Generated SQL preserves identifier and string characters |
 | [investigation-exact-arithmetic](specs/investigation-exact-arithmetic.md) | Exact arithmetic of the offline investigation skills |
+| [mcp-server](specs/mcp-server.md) | The decision commands as tools of a read-only MCP server |
 | [metric-freshness-snapshot](specs/metric-freshness-snapshot.md) | A metric's declared freshness in the canonical snapshot and its diff |
 | [metric-join-paths-snapshot](specs/metric-join-paths-snapshot.md) | A metric's declared join paths in the canonical snapshot and its diff |
 | [metrics-links](specs/metrics-links.md) | A symbolic link below `metrics/` is frozen as the text git commits for it |

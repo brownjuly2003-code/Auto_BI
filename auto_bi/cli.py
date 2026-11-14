@@ -320,6 +320,30 @@ def main(argv: list[str] | None = None) -> int:
     runs.add_argument("path", help="Evidence root containing run directories")
     runs.add_argument("--json", action="store_true", help="Emit the catalogue as JSON")
 
+    mcp = decision_sub.add_parser(
+        "mcp",
+        help="Serve the decision commands to an AI agent over MCP (stdio): validate, impact, "
+        "evidence, runs, and verify when --evidence names where its bundles go",
+    )
+    mcp.add_argument(
+        "--evidence",
+        default="",
+        help="Directory the verify tool writes its evidence bundles to; without it the "
+        "server offers no verify and writes nothing",
+    )
+    mcp.add_argument(
+        "--signing-key",
+        default="",
+        help="Ed25519 PKCS#8 private-key PEM the verify tool seals manifests with",
+    )
+    mcp.add_argument(
+        "--trust-key",
+        action="append",
+        default=[],
+        help="Trusted Ed25519 public-key PEM the evidence tool checks signatures with; repeat "
+        "during key rotation",
+    )
+
     investigate = decision_sub.add_parser(
         "investigate",
         help="Run a typed investigation over canonical results (offline, no DWH/BI/LLM)",
@@ -384,6 +408,8 @@ def main(argv: list[str] | None = None) -> int:
             return _decision_pin(args)
         if args.decision_command == "investigate":
             return _decision_investigate(args)
+        if args.decision_command == "mcp":
+            return _decision_mcp(args)
         return _decision_validate(args.paths, args.json)
     return 0
 
@@ -594,6 +620,39 @@ def _decision_investigate(args: argparse.Namespace) -> int:
     _say(f"plan     {artifacts.plan.digest()}")
     _say(f"brief    {artifacts.brief.digest()}")
     _say("trust    exploratory; human acceptance not measured")
+    return 0
+
+
+def _decision_mcp(args: argparse.Namespace) -> int:
+    """`auto_bi decision mcp` — the decision commands as tools of an MCP server (ADR 0012, D5).
+
+    The server answers on standard input and output until the client closes standard input,
+    then exits 0. The keys are read before it starts, and a key that cannot be read, or a
+    signing key given without the directory whose bundles it would seal, ends the command
+    with exit 2 before the first message.
+    """
+    from pathlib import Path
+
+    from auto_bi.evidence.signing import (
+        EvidenceSignatureError,
+        load_ed25519_signer,
+        load_ed25519_trust_store,
+    )
+    from auto_bi.mcp.server import serve_stdio
+    from auto_bi.mcp.tools import ToolBox
+    from auto_bi.verification.model import EXIT_ERROR
+
+    if args.signing_key and not args.evidence:
+        _say_error("--signing-key is given without --evidence")
+        return EXIT_ERROR
+    try:
+        signer = load_ed25519_signer(args.signing_key) if args.signing_key else None
+        verifier = load_ed25519_trust_store(args.trust_key) if args.trust_key else None
+    except EvidenceSignatureError as exc:
+        _say_error(exc)
+        return EXIT_ERROR
+    evidence = Path(args.evidence) if args.evidence else None
+    serve_stdio(ToolBox(evidence_dir=evidence, signer=signer, verifier=verifier))
     return 0
 
 

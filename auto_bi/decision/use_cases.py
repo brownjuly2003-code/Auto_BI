@@ -16,6 +16,10 @@ default and the caller that does hold a read-only client decides when to hand on
 to one run directory is a filesystem question, and `evidence/inspect.py` — which decides
 whether a bundle is still trustworthy — must not have to answer it.
 
+`impact` is the `impact.products` step of `verify` without the run (ADR 0012, D5): whom a
+change of semantics reaches, read and refused by the readers `verify` uses, with no verdict
+and no bundle. The MCP server (`auto_bi/mcp/`) offers it as a tool.
+
 A **semantic ref** is a directory holding `model.yaml`, with metric contracts in an
 optional `metrics/` beside it. A **dashboard spec** is named after the ref that pins it —
 `weekly_margin@7.yaml` for `dashboard://weekly_margin@7` — so a product pinned to version 7
@@ -39,6 +43,7 @@ import yaml
 from pydantic import TypeAdapter, ValidationError
 
 from auto_bi import filesystem
+from auto_bi.decision.impact import ImpactReport, resolve_impact
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import (
     LoadedContracts,
@@ -53,8 +58,15 @@ from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
 from auto_bi.ir.spec import DashboardSpec
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import Timestamp
-from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot, SnapshotRead
+from auto_bi.semantic.diff import diff_snapshots
+from auto_bi.semantic.gateway import (
+    NativeModelSource,
+    SemanticGap,
+    SemanticSnapshot,
+    SnapshotRead,
+)
 from auto_bi.semantic.model import SemanticModel
+from auto_bi.strict import StrictModel
 from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
@@ -62,6 +74,7 @@ from auto_bi.verification.environment import (
 )
 from auto_bi.verification.reconcile import ResultSet
 from auto_bi.verification.release_gate import (
+    UNTRUSTWORTHY_GAPS,
     EvidenceReadBackError,
     GateInputs,
     GateReport,
@@ -94,6 +107,8 @@ _SPEC_SUFFIXES = (".yaml", ".yml", ".json")
 _MAX_UNREAD_NAMED = 3
 #: How many product files the schema refused it names before it counts the rest.
 _MAX_REFUSED_NAMED = 3
+#: How many gaps an impact refused for them names before it counts the rest.
+_MAX_UNTRUSTWORTHY_NAMED = 3
 
 #: The moment a run or a capture is stated to be of, as a manifest and an attestation take it.
 _MOMENT: TypeAdapter[str] = TypeAdapter(Timestamp)
@@ -266,6 +281,94 @@ def verify(request: VerifyRequest) -> GateReport:
         ) from None
 
 
+@dataclass(frozen=True)
+class ImpactRequest:
+    """What `impact` reads: the inputs of `VerifyRequest` a semantic diff and its reach need.
+
+    No evidence directory, assets, results or engine: `impact` writes nothing and asks
+    nothing, and grades nothing either (ADR 0012, D5).
+    """
+
+    contract_paths: Sequence[str | Path]
+    base: str | Path
+    candidate: str | Path
+    dashboards_dir: str | Path | None = None
+    #: Narrows the products in scope to this one; empty is every product the paths hold.
+    product_id: str = ""
+    base_dbt: DbtArtifact | None = None
+    candidate_dbt: DbtArtifact | None = None
+
+
+class SnapshotGaps(StrictModel):
+    """What each semantic ref declares that its snapshot does not carry."""
+
+    base: list[SemanticGap]
+    candidate: list[SemanticGap]
+
+
+class ImpactAnswer(StrictModel):
+    """Whom a change of semantics reaches, resolved as `decision verify` resolves it.
+
+    `impact` is the report `resolve_impact` gives over the products in scope; for one product
+    it is the payload of the gate's `impact.products` check. Beside it go what the gate grades
+    before it: `validation`, where a product file the schema refused is named — that product
+    is in no scope — and `gaps`, where what a snapshot could not represent is named, for a
+    change there is in no diff. Neither is graded here: `impact` gives no verdict.
+    """
+
+    validation: ValidationReport
+    gaps: SnapshotGaps
+    impact: ImpactReport
+
+
+def impact(request: ImpactRequest) -> ImpactAnswer:
+    """The semantic diff of two refs and whom it reaches, without a run (ADR 0012, D5).
+
+    The refs, their dbt artifacts and the dashboards are read and refused as `verify` reads
+    and refuses them. The products in scope are the one named, or every product of the paths
+    in id order. A ref holding a gap the gate computes no diff over (`UNTRUSTWORTHY_GAPS`) is
+    refused, the gaps named: the gate skips its diff and impact steps for it, and this answer
+    would be the diff the gate does not trust.
+    """
+    loaded = load_contracts(request.contract_paths)
+    if request.product_id:
+        products = [_select_product(loaded, request.product_id)]
+    elif loaded.products:
+        products = [loaded.products[key] for key in sorted(loaded.products)]
+    else:
+        raise _no_product(loaded)
+
+    base = _snapshot(Path(request.base), request.base_dbt, _BASE_DBT).snapshot
+    candidate = _snapshot(Path(request.candidate), request.candidate_dbt, _CANDIDATE_DBT).snapshot
+    untrustworthy = [gap for gap in (*base.gaps, *candidate.gaps) if gap.code in UNTRUSTWORTHY_GAPS]
+    if untrustworthy:
+        named = ", ".join(
+            f"{gap.code} at {gap.path}" for gap in untrustworthy[:_MAX_UNTRUSTWORTHY_NAMED]
+        )
+        rest = len(untrustworthy) - _MAX_UNTRUSTWORTHY_NAMED
+        more = f" (+{rest} more)" if rest > 0 else ""
+        raise VerifyError(
+            f"no semantic diff over a snapshot with {len(untrustworthy)} gap(s) the gate "
+            f"computes none over: {named}{more}"
+        )
+
+    dashboards: dict[str, DashboardSpec] = {}
+    for product in products:
+        dashboards.update(_load_dashboards(request.dashboards_dir, product))
+    report = resolve_impact(
+        diff_snapshots(base, candidate),
+        products,
+        dashboards=dashboards,
+        # Both sides, as the gate gives them (`decision/impact.py`).
+        metrics=[*base.graph.metrics, *candidate.graph.metrics],
+    )
+    return ImpactAnswer(
+        validation=loaded.report,
+        gaps=SnapshotGaps(base=list(base.gaps), candidate=list(candidate.gaps)),
+        impact=report,
+    )
+
+
 def capture_result(request: CaptureRequest) -> CaptureReport:
     """Execute one selected asset and write a new gate-ready recorded-results YAML file."""
     # What the capture is attested with is settled first: no file is read and no engine is
@@ -365,10 +468,7 @@ def _select_product(loaded: LoadedContracts, product_id: str) -> DecisionProduct
             )
         return product
     if not products:
-        raise VerifyError(
-            "no decision product contract found in the given paths"
-            f"{_refused_products(loaded.refused_products)}{_unread_paths(loaded.report)}"
-        )
+        raise _no_product(loaded)
     if len(products) > 1:
         known = ", ".join(sorted(products))
         raise VerifyError(
@@ -376,6 +476,14 @@ def _select_product(loaded: LoadedContracts, product_id: str) -> DecisionProduct
             "name the one to verify with --product"
         )
     return next(iter(products.values()))
+
+
+def _no_product(loaded: LoadedContracts) -> VerifyError:
+    """The refusal of paths that hold no product: what was read and is none, what was not read."""
+    return VerifyError(
+        "no decision product contract found in the given paths"
+        f"{_refused_products(loaded.refused_products)}{_unread_paths(loaded.report)}"
+    )
 
 
 def _refused_products(refused: Sequence[RefusedProduct]) -> str:

@@ -140,7 +140,7 @@ flowchart TB
     EV --> FS["Filesystem evidence store"]
     EV -. pilot .-> OBJ["Object storage port"]
     DR -. later .-> JOB["JobStore / workers"]
-    EV -. later .-> MCP["Read-only MCP"]
+    MCP["Read-only MCP · stdio"] --> UC
 ```
 
 ### 4.1 Trust boundaries
@@ -202,7 +202,7 @@ auto_bi/
     spec.py              DecisionProductSpec и lifecycle enums
     validate.py          cross-contract validation
     impact.py            product/owner/chart impact и эскалация review→block
-    use_cases.py         validate / verify application services
+    use_cases.py         validate / verify / impact application services
   semantic/
     metric_contract.py   governed metric definition
     gateway.py           source protocols, snapshot, gaps
@@ -232,14 +232,16 @@ auto_bi/
     application.py       offline orchestration and local plan/results/brief artifacts
   jobs/                  starts only after recurring use is proven
   actions/               proposal-only, post-MVP
-  mcp/                   read-only, post-REST contract
+  mcp/
+    server.py            MCP on stdio: 2026-07-28 per request + legacy initialize
+    tools.py             validate / impact / verify / evidence / runs as tools
 ```
 
 Карта сочетает реализованные seams и явно отложенные модули. Пять functional modules
 offline investigation alpha получают готовые canonical results,
 не получает `QueryExecutor`, DWH/BI adapter, LLM или сетевой transport и пишет новый
-локальный каталог. `jobs`, `actions` и `mcp` остаются gated placeholders архитектуры,
-а не обещанием текущей реализации.
+локальный каталог. `jobs` и `actions` остаются gated placeholders архитектуры,
+а не обещанием текущей реализации; `mcp` — read-only сервер D5 (§12.3).
 
 `refs.py` и `scalars.py` лежат рядом с существующим `strict.py` как shared kernel:
 это грамматика идентичности и скаляров из §7.1, у них нет доменного состояния и они
@@ -2577,11 +2579,30 @@ offline verify, общий загрузчик настроек и v1-коман�
 
 ### 12.3 MCP
 
-MCP отложен до стабильного REST/policy/evidence contract. Актуальная версия
-2026-07-28 стала stateless; долгие операции используют отдельное Tasks
-extension. Поэтому будущий MCP adapter возвращает явный run/task handle и
-привязывает его к authorization context, но эти transport детали не входят в
-domain state machine.
+Семантический слой стал входом AI-агентов через MCP (ADR 0012): агент, который меняет метрику,
+доходил до гейта только через shell. D5 — `auto_bi decision mcp`, read-only MCP-сервер на stdio
+поверх тех же use cases, что CLI (`auto_bi/mcp/`, [spec](specs/mcp-server.md)). Решения и почему:
+
+- **Без SDK.** Сервер инструментов на stdio — один файл JSON-RPC (`server.py`); SDK `mcp` тянет
+  web-стек в lock. Сервер dual-era: версия 2026-07-28 stateless — версия протокола и capabilities
+  клиента в `_meta` каждого запроса, `server/discover`; старые клиенты — `initialize` (2025-11-25,
+  2025-06-18) на процесс.
+- **Инструмент = команда.** `validate`, `verify`, `evidence`, `runs` отвечают тем JSON, что их
+  команда печатает с `--json` (список `runs` — под ключом `runs`, текст артефакта — под
+  `payload`); `isError` — ровно там, где команда выходит с 2 (плюс artifact
+  с чужим digest'ом). Вердикт `block` — ответ, не ошибка. Новый use case `impact` — шаг
+  `impact.products` гейта без прогона: агент узнаёт, чьи числа задевает изменение, до запуска
+  гейта; тест держит равенство с payload гейта.
+- **Запись — одна и у оператора.** `verify` есть, только если сервер запущен с `--evidence`, и
+  пишет bundle туда; ключи подписи и доверия — конфигурация сервера, не аргументы вызова. BI и
+  движок не достижимы: `--dwh` в MCP нет.
+- **stdout — только протокол.** Сервер держит дубликат stdout под сообщения и направляет stdout
+  процесса в stderr: ни `print` библиотеки, ни запись в дескриптор 1, ни печать до старта,
+  которую держит буфер `sys.stdout`, не ломают поток.
+
+Сервер не песочница: пути читаются как в CLI, правами запустившего. Долгие операции (Tasks
+extension), прогресс, отмена, `outputSchema` и HTTP-транспорт не реализованы — запросы
+обслуживаются по одному, по порядку (бэклог).
 
 ### 12.4 Pull request (D3, ADR 0012)
 
