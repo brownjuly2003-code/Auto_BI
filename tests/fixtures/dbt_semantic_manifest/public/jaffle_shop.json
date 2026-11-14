@@ -39,12 +39,6 @@
   "count_lifetime_orders": {
    "gaps": [
     {
-     "code": "gap.external_construct_unsupported",
-     "severity": "review",
-     "path": "$.metrics[1].type_params.expr",
-     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
-    },
-    {
      "code": "gap.external_time_mismatch",
      "severity": "block",
      "path": "$.semantic_models[1].dimensions[1].name",
@@ -259,12 +253,6 @@
   "lifetime_spend": {
    "gaps": [
     {
-     "code": "gap.external_construct_unsupported",
-     "severity": "review",
-     "path": "$.metrics[3].type_params.expr",
-     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
-    },
-    {
      "code": "gap.external_time_mismatch",
      "severity": "block",
      "path": "$.semantic_models[1].dimensions[1].name",
@@ -280,12 +268,6 @@
   },
   "lifetime_spend_pretax": {
    "gaps": [
-    {
-     "code": "gap.external_construct_unsupported",
-     "severity": "review",
-     "path": "$.metrics[2].type_params.expr",
-     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
-    },
     {
      "code": "gap.external_time_mismatch",
      "severity": "block",
@@ -353,12 +335,6 @@
   "order_cost": {
    "gaps": [
     {
-     "code": "gap.external_construct_unsupported",
-     "severity": "review",
-     "path": "$.metrics[12].type_params.expr",
-     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
-    },
-    {
      "code": "gap.external_time_mismatch",
      "severity": "block",
      "path": "$.semantic_models[2].dimensions[1].name",
@@ -384,12 +360,6 @@
   },
   "order_total": {
    "gaps": [
-    {
-     "code": "gap.external_construct_unsupported",
-     "severity": "review",
-     "path": "$.metrics[5].type_params.expr",
-     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
-    },
     {
      "code": "gap.external_time_mismatch",
      "severity": "block",
@@ -454,12 +424,6 @@
   },
   "tax_paid": {
    "gaps": [
-    {
-     "code": "gap.external_construct_unsupported",
-     "severity": "review",
-     "path": "$.metrics[11].type_params.expr",
-     "reason": "outside the subset a typed formula is resolved from: a V2 metric without an expression"
-    },
     {
      "code": "gap.external_time_mismatch",
      "severity": "block",

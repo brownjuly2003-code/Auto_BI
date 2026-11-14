@@ -41,13 +41,21 @@ Its float term is a ``count`` or a ``count_distinct``: under another aggregate a
 no reference SQL, as an ``average`` term has none (``sql.ratio_inexact_term``) — the ratios
 with an ``average`` term are in the matrix to show it, and their rows stay unproven. The
 control pairs of other aggregates and forms (`CONTROLS`) must differ in number on a key where
-both sides hold one, or the run fails. V2 metrics are not in the matrix: dbt-core 1.12.6 writes
-no granularity for a V2 time dimension, so none of them resolves.
+both sides hold one, or the run fails.
+
+Each dialect is a dbt project of its own over the same table: the legacy one (semantic models
+with measures, metrics apart) in ``OUT``, the V2 one (the semantic model and its metrics on the
+model) in ``OUT/v2``. A V2 metric has the aggregates and ratio forms of a legacy one, each
+spelled with its own ``expr``; three are named after their column and have none (`BARE`), and
+one sets ``fill_nulls_with: 0`` (`FILLED`), which dbt-core 1.12.6 writes as null. The V2 time
+dimension is spelled ``dimension: {type: time}`` with ``granularity: day``: dbt-core 1.12.6
+writes no granularity for ``dimension: time``, and a V2 metric over it does not resolve.
 
 Steps (the Mac stand, `docs/reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md`)::
 
-    python scripts/metricflow_parity.py project OUT          # dbt project, data, native models
+    python scripts/metricflow_parity.py project OUT          # dbt projects, data, native models
     (cd OUT && dbt parse)                                    # in the dbt/MetricFlow environment
+    (cd OUT/v2 && dbt parse)
     psql ... -f OUT/data.postgres.sql                        # a throwaway PostgreSQL database
     python scripts/metricflow_parity.py run --project OUT --mf-python PY --psql PSQL \\
         --conninfo "host=... port=... dbname=parity" --clickhouse CLICKHOUSE --out result.json
@@ -82,6 +90,9 @@ from auto_bi.verification.sql_contract import compile_metric_queries
 REPO = Path(__file__).resolve().parent.parent
 #: The script `run` hands MetricFlow's planning to, in MetricFlow's environment.
 BRIDGE = REPO / "scripts" / "metricflow_parity_sql.py"
+#: Each dialect's dbt project, as a place in the project `project` writes.
+PLACES = {"legacy": Path("."), "v2": Path("v2")}
+DIALECTS = tuple(PLACES)
 
 DATABASE = "parity"
 SCHEMA = "dm"
@@ -104,6 +115,11 @@ AGGREGATES = ("sum", "count", "count_distinct", "min", "max", "average")
 ADDITIVE = ("sum", "count")
 #: A ratio's columns: any two, the same one included, of one nullability or not.
 RATIO_SIDES = tuple((top, bottom) for top in COLUMNS for bottom in COLUMNS)
+#: V2 metrics without `expr`, each named after the column MetricFlow reads, and its aggregate:
+#: not a `count`, which MetricFlow does not build without `expr`.
+BARE = {"amount": "sum", "qty": "count_distinct", "price_nn": "max"}
+#: A V2 sum of `amount` that sets `fill_nulls_with: 0`: dbt-core 1.12.6 writes it as null.
+FILLED = "v2_amount_sum_filled"
 
 #: The grain table as each context's native model declares it, and as the run loads it.
 DECLARED = {
@@ -195,12 +211,20 @@ def table_rows() -> tuple[tuple[Any, ...], ...]:
     return tuple(found)
 
 
-def _simple_name(column: str, agg: str) -> str:
-    return f"{column}_{agg}"
+def _prefix(dialect: str) -> str:
+    """What a metric's name starts with in the dialect's project: the run tells the two
+    projects' metrics apart by name."""
+    return "" if dialect == "legacy" else f"{dialect}_"
 
 
-def _ratio_name(top: str, top_agg: str, bottom: str, bottom_agg: str) -> str:
-    return f"r_{top}_{top_agg}_by_{bottom}_{bottom_agg}"
+def _simple_name(column: str, agg: str, dialect: str = "legacy") -> str:
+    return f"{_prefix(dialect)}{column}_{agg}"
+
+
+def _ratio_name(
+    top: str, top_agg: str, bottom: str, bottom_agg: str, dialect: str = "legacy"
+) -> str:
+    return f"{_prefix(dialect)}r_{top}_{top_agg}_by_{bottom}_{bottom_agg}"
 
 
 def _side_aggregates(column: str) -> tuple[str, ...]:
@@ -208,26 +232,36 @@ def _side_aggregates(column: str) -> tuple[str, ...]:
     return ("count", "count_distinct") if CLASSES[column] == "float" else AGGREGATES
 
 
-def _term(column: str, agg: str) -> str:
-    return f"legacy.{agg}.{CLASSES[column]}"
+def _term(column: str, agg: str, dialect: str = "legacy") -> str:
+    return f"{dialect}.{agg}.{CLASSES[column]}"
 
 
-def subjects(context: str) -> dict[str, str]:
-    """The row each metric of the matrix is built to test in the context."""
+def subjects(context: str, dialect: str | None = None) -> dict[str, str]:
+    """The row each metric of the matrix is built to test in the context: the metrics of one
+    dialect's project, or of both."""
+    if dialect is None:
+        return {name: row for each in DIALECTS for name, row in subjects(context, each).items()}
     found = {
-        _simple_name(column, agg): f"{context}:{_term(column, agg)}"
+        _simple_name(column, agg, dialect): f"{context}:{_term(column, agg, dialect)}"
         for column in COLUMNS
         for agg in AGGREGATES
     }
-    found["qty_bare"] = f"{context}:legacy.measure_without_expr"
-    found["amount_created"] = f"{context}:legacy.metric_expr"
-    # dbt writes the measure's name as the metric's `expr` here: both ways at once
-    found["price"] = f"{context}:legacy.metric_expr"
+    if dialect == "legacy":
+        found["qty_bare"] = f"{context}:legacy.measure_without_expr"
+        found["amount_created"] = f"{context}:legacy.metric_expr"
+        # dbt writes the measure's name as the metric's `expr` here: both ways at once
+        found["price"] = f"{context}:legacy.metric_expr"
+    else:
+        found.update({column: f"{context}:v2.metric_without_expr" for column in BARE})
+        found[FILLED] = f"{context}:{_term('amount', 'sum', dialect)}"
     for top, bottom in RATIO_SIDES:
         for top_agg in _side_aggregates(top):
             for bottom_agg in _side_aggregates(bottom):
-                name = _ratio_name(top, top_agg, bottom, bottom_agg)
-                found[name] = f"{context}:ratio.{_term(top, top_agg)}/{_term(bottom, bottom_agg)}"
+                name = _ratio_name(top, top_agg, bottom, bottom_agg, dialect)
+                found[name] = (
+                    f"{context}:ratio.{_term(top, top_agg, dialect)}"
+                    f"/{_term(bottom, bottom_agg, dialect)}"
+                )
     return found
 
 
@@ -242,6 +276,9 @@ CONTROLS = (
     ("r_qty_max_by_amount_min", "r_qty_min_by_amount_max"),
     # the rule of an average on ClickHouse still tells a mean over values from one over rows
     ("amount_average", "amount_nn_average"),
+    # and MetricFlow's V2 SQL is told apart as well
+    ("v2_amount_sum", "v2_amount_max"),
+    ("v2_r_amount_sum_by_qty_sum", "v2_r_amount_sum_by_qty_count"),
 )
 
 
@@ -287,30 +324,62 @@ def _metrics() -> list[dict[str, Any]]:
     return metrics
 
 
-def project_files() -> dict[str, str]:
-    """The dbt project, the data and the native models of the matrix: path -> text."""
-    files: dict[str, str] = {}
-    files["dbt_project.yml"] = (
-        "name: parity\nversion: '1.0'\nconfig-version: 2\nprofile: parity\n"
-        "model-paths: ['models']\n"
+def _v2_metrics() -> list[dict[str, Any]]:
+    """The metrics of the V2 project: on the model, as V2 spells them."""
+    metrics: list[dict[str, Any]] = [
+        {"name": _simple_name(column, agg, "v2"), "type": "simple", "agg": agg, "expr": column}
+        for column in COLUMNS
+        for agg in AGGREGATES
+    ]
+    metrics += [{"name": column, "type": "simple", "agg": agg} for column, agg in BARE.items()]
+    metrics.append(
+        {"name": FILLED, "type": "simple", "agg": "sum", "expr": "amount", "fill_nulls_with": 0}
     )
-    files["profiles.yml"] = (
-        "parity:\n  target: dev\n  outputs:\n    dev:\n      type: postgres\n"
-        "      host: localhost\n      user: parity\n      password: parity\n      port: 5432\n"
-        f"      dbname: {DATABASE}\n      schema: {SCHEMA}\n      threads: 1\n"
-    )
+    for top, bottom in RATIO_SIDES:
+        for top_agg in _side_aggregates(top):
+            for bottom_agg in _side_aggregates(bottom):
+                metrics.append(
+                    {
+                        "name": _ratio_name(top, top_agg, bottom, bottom_agg, "v2"),
+                        "type": "ratio",
+                        "numerator": _simple_name(top, top_agg, "v2"),
+                        "denominator": _simple_name(bottom, bottom_agg, "v2"),
+                    }
+                )
+    return metrics
+
+
+def _dbt_files(name: str) -> dict[str, str]:
+    """What each dialect's project holds alike: settings, profile, the table and time spine."""
     types = DECLARED["postgres.date"].column_types
-    columns = ", ".join(f"cast(null as {types[name]}) as {name}" for name in COLUMNS)
-    files[f"models/{TABLE}.sql"] = f"select cast(null as date) as date, 1 as store_id, {columns}\n"
-    files["models/metricflow_time_spine.sql"] = "select cast('2026-01-01' as date) as date_day\n"
+    columns = ", ".join(f"cast(null as {types[column]}) as {column}" for column in COLUMNS)
+    return {
+        "dbt_project.yml": (
+            f"name: {name}\nversion: '1.0'\nconfig-version: 2\nprofile: parity\n"
+            "model-paths: ['models']\n"
+        ),
+        "profiles.yml": (
+            "parity:\n  target: dev\n  outputs:\n    dev:\n      type: postgres\n"
+            "      host: localhost\n      user: parity\n      password: parity\n      port: 5432\n"
+            f"      dbname: {DATABASE}\n      schema: {SCHEMA}\n      threads: 1\n"
+        ),
+        f"models/{TABLE}.sql": f"select cast(null as date) as date, 1 as store_id, {columns}\n",
+        "models/metricflow_time_spine.sql": "select cast('2026-01-01' as date) as date_day\n",
+    }
+
+
+_TIME_SPINE = {
+    "name": "metricflow_time_spine",
+    "time_spine": {"standard_granularity_column": "date_day"},
+    "columns": [{"name": "date_day", "granularity": "day"}],
+}
+
+
+def project_files() -> dict[str, str]:
+    """The dbt projects, the data and the native models of the matrix: path -> text."""
+    files = _dbt_files("parity")
     schema = {
-        "models": [
-            {
-                "name": "metricflow_time_spine",
-                "time_spine": {"standard_granularity_column": "date_day"},
-                "columns": [{"name": "date_day", "granularity": "day"}],
-            }
-        ],
+        "models": [_TIME_SPINE],
         "semantic_models": [
             {
                 "name": TABLE,
@@ -331,6 +400,26 @@ def project_files() -> dict[str, str]:
         "metrics": _metrics(),
     }
     files["models/schema.yml"] = json.dumps(schema, indent=1) + "\n"
+    place = PLACES["v2"].as_posix()
+    files.update({f"{place}/{name}": text for name, text in _dbt_files("parity_v2").items()})
+    v2_schema = {
+        "models": [
+            _TIME_SPINE,
+            {
+                "name": TABLE,
+                "semantic_model": {"enabled": True},
+                "agg_time_dimension": EVENT_TIME,
+                "primary_entity": "sale",
+                "columns": [
+                    {"name": EVENT_TIME, "granularity": "day", "dimension": {"type": "time"}},
+                    {"name": "store_id", "dimension": {"type": "categorical"}},
+                    *({"name": column} for column in COLUMNS),
+                ],
+                "metrics": _v2_metrics(),
+            },
+        ]
+    }
+    files[f"{place}/models/schema.yml"] = json.dumps(v2_schema, indent=1) + "\n"
     files["data.postgres.sql"] = _postgres_data()
     files["data.clickhouse.sql"] = _clickhouse_data()
     for context, declared in DECLARED.items():
@@ -502,21 +591,32 @@ class Stand:
         return self.postgres(_keyed(sql, keys, value))
 
 
+def artifact(project: Path, dialect: str) -> Path:
+    """The semantic manifest `dbt parse` writes for the dialect's project."""
+    return project / PLACES[dialect] / "target" / "semantic_manifest.json"
+
+
 def run(project: Path, mf_python: str, psql: str, conninfo: str, clickhouse: str, out: Path) -> int:
-    raw = (project / "target" / "semantic_manifest.json").read_bytes()
-    read = read_semantic_manifest(raw)
-    if read.manifest is None:
-        print(json.dumps([problem.__dict__ for problem in read.problems], indent=1))
-        return 2
-    if sorted(subjects(CONTEXTS[0])) != read.manifest.metric_names():
-        raise SystemExit("the artifact holds other metrics than the matrix builds")
+    reads: dict[str, Any] = {}
+    for dialect in DIALECTS:
+        read = read_semantic_manifest(artifact(project, dialect).read_bytes())
+        if read.manifest is None:
+            print(json.dumps([problem.__dict__ for problem in read.problems], indent=1))
+            return 2
+        if sorted(subjects(CONTEXTS[0], dialect)) != read.manifest.metric_names():
+            raise SystemExit(f"the {dialect} artifact holds other metrics than the matrix builds")
+        reads[dialect] = read
     data = (project / "data.clickhouse.sql").read_text(encoding="utf-8")
     stand = Stand(psql, conninfo, clickhouse, data)
     _check_inputs(project, stand)
 
-    resolved = {context: _resolve_all(read, context) for context in CONTEXTS}
-    asked = sorted({name for _, contracts in resolved.values() for name in contracts})
-    mf_sql = _metricflow_sql(mf_python, project / "target" / "semantic_manifest.json", asked)
+    resolved = {context: _resolve_all(reads, context) for context in CONTEXTS}
+    mf_sql: dict[str, str] = {}
+    for dialect in DIALECTS:
+        # each project's metrics, asked of its own artifact
+        own = subjects(CONTEXTS[0], dialect)
+        asked = sorted({name for _, found in resolved.values() for name in found if name in own})
+        mf_sql.update(_metricflow_sql(mf_python, artifact(project, dialect), asked))
     # MetricFlow's side is one query per metric, whichever contexts compare with it
     metricflow: dict[str, list[dict[str, Any]]] = {}
     contexts: dict[str, dict[str, Any]] = {}
@@ -558,9 +658,10 @@ def run(project: Path, mf_python: str, psql: str, conninfo: str, clickhouse: str
         "versions": {
             "postgres": postgres_version[0]["v"],
             "clickhouse": stand.on_clickhouse("SELECT version() AS v")[0]["v"],
-            "metricflow": _metricflow_version(mf_python),
+            "metricflow": _version(mf_python, "metricflow"),
+            "dbt-core": _version(mf_python, "dbt-core"),
         },
-        "artifact_digest": read.artifact_digest,
+        "artifact_digests": {dialect: read.artifact_digest for dialect, read in reads.items()},
         "recipe": recipe(),
         "clickhouse_settings": _clickhouse_settings(stand),
         "clickhouse_types": _clickhouse_types(stand),
@@ -614,37 +715,38 @@ class _Compared:
 
 
 def _resolve_all(
-    read: Any, context: str
+    reads: dict[str, Any], context: str
 ) -> tuple[dict[str, dict[str, Any]], dict[str, MetricContract]]:
-    """Each metric's case in the context, and the contracts of those whose formula resolved
-    relying on the row the metric tests."""
-    manifest = read.manifest
-    expected = subjects(context)
+    """Each metric's case in the context, of every dialect's artifact, and the contracts of
+    those whose formula resolved relying on the row the metric tests."""
     cases: dict[str, dict[str, Any]] = {}
     contracts: dict[str, MetricContract] = {}
-    for name in manifest.metric_names():
-        contract = metric_contract(manifest, name)
-        # every row taken as proven: what is asked is the formula, not whether to trust it
-        resolution = resolve_formula(
-            contract,
-            read,
-            database=DATABASE,
-            declared=DECLARED[context],
-            proven=frozenset(expected.values()),
-        )
-        case: dict[str, Any] = {"subject": expected[name]}
-        cases[name] = case
-        if resolution.formula is None:
-            case["outcome"] = "unresolved"
-            case["gaps"] = [[gap.code, gap.path] for gap in resolution.gaps]
-            continue
-        case["rows"] = sorted(resolution.parity_rows)
-        case["formula"] = resolution.formula.model_dump(mode="json", exclude_none=True)
-        case["rule"] = rule(context, case["formula"])
-        if expected[name] not in resolution.parity_rows:
-            case["outcome"] = "subject_not_relied_on"
-            continue
-        contracts[name] = contract.model_copy(update={"formula": resolution.formula})
+    for dialect, read in reads.items():
+        manifest = read.manifest
+        expected = subjects(context, dialect)
+        for name in manifest.metric_names():
+            contract = metric_contract(manifest, name)
+            # every row taken as proven: what is asked is the formula, not whether to trust it
+            resolution = resolve_formula(
+                contract,
+                read,
+                database=DATABASE,
+                declared=DECLARED[context],
+                proven=frozenset(expected.values()),
+            )
+            case: dict[str, Any] = {"subject": expected[name]}
+            cases[name] = case
+            if resolution.formula is None:
+                case["outcome"] = "unresolved"
+                case["gaps"] = [[gap.code, gap.path] for gap in resolution.gaps]
+                continue
+            case["rows"] = sorted(resolution.parity_rows)
+            case["formula"] = resolution.formula.model_dump(mode="json", exclude_none=True)
+            case["rule"] = rule(context, case["formula"])
+            if expected[name] not in resolution.parity_rows:
+                case["outcome"] = "subject_not_relied_on"
+                continue
+            contracts[name] = contract.model_copy(update={"formula": resolution.formula})
     return cases, contracts
 
 
@@ -730,8 +832,11 @@ def metric_contract(manifest: Any, name: str) -> MetricContract:
 
 
 def _agg_of(manifest: Any, name: str) -> str:
-    measure = manifest.metric(name)["type_params"]["measure"]["name"]
-    return str(manifest.measure(measure)[1]["agg"])
+    """A simple metric's aggregate: of its measure (legacy), or its own (V2)."""
+    params = manifest.metric(name)["type_params"]
+    if params.get("metric_aggregation_params") is not None:
+        return str(params["metric_aggregation_params"]["agg"])
+    return str(manifest.measure(params["measure"]["name"])[1]["agg"])
 
 
 def _reference_sql(model: Path, contracts: dict[str, MetricContract]) -> dict[str, str]:
@@ -762,9 +867,10 @@ def _metricflow_sql(mf_python: str, artifact: Path, metrics: list[str]) -> dict[
     return answer
 
 
-def _metricflow_version(mf_python: str) -> str:
+def _version(mf_python: str, package: str) -> str:
+    """The version of a package of MetricFlow's environment."""
     done = subprocess.run(
-        [mf_python, "-c", "import importlib.metadata as m; print(m.version('metricflow'))"],
+        [mf_python, "-c", f"import importlib.metadata as m; print(m.version({package!r}))"],
         capture_output=True,
         text=True,
         check=True,

@@ -118,13 +118,6 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: What each verifier version changed: docs/specs/evidence-format-versions.md, newest first.
 #: A bump adds its entry there and here; here only the newest few stay (at most five,
 #: tests/test_evidence_format_versions.py). The newest:
-#: 132 — ClickHouse refusals are read by the error code where the error carries one (slice S8):
-#: `497 ACCESS_DENIED`, `291 DATABASE_ACCESS_DENIED`, `60 UNKNOWN_TABLE` and
-#: `81 UNKNOWN_DATABASE` are refusals whatever the words around them, and any other code is not,
-#: even where the message quotes a refusal's words — a `47 UNKNOWN_IDENTIFIER` for a column
-#: called `access_denied_at` is weighed as the drift it accounts for, or ends the run. The
-#: wording is read only for an error that carries neither a code nor a SQLSTATE. Verifier 131
-#: took such an answer for a refusal; check grading is unchanged and CHECK_VERSION stays 83.
 #: 133 — a catalog question the engine refused is not read as an empty answer (ADR 0010, F1). A
 #: refused `pg_attribute` or `system.columns` question leaves the mart's columns unknown, so
 #: `dwh.physical` compares none of them and no drift accounts for a `42703`/`47` of the reference
@@ -178,7 +171,18 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: `populated`, `null` but for such a view. A readable mart whose column catalog the engine refused
 #: is `physical.not_observed` (review), where verifier 135 let `dwh.physical` pass with incomplete
 #: coverage. CHECK_VERSION moves to 86 with it.
-VERIFIER_VERSION = "136"
+#: 137 — the formula of a V2 dbt metric resolves (ADR 0012, D4). The parity run proved the V2 rows
+#: in both contexts, `postgres.date` and `clickhouse.date`: each aggregation and class, a metric
+#: without `expr` and a ratio of two V2 terms. Such a formula resolves, and its node carries the
+#: typed formula that impact and reference SQL read, where verifier 136 left it `external_ref` with
+#: `gap.external_parity_unproven` (review). A V2 metric without `expr` reads its name as its column,
+#: as MetricFlow does, where verifier 136 graded every such metric
+#: `gap.external_construct_unsupported` (review); a name that is not one lower-case column, such as
+#: `null` or `true`, still is that gap. So is a `count` without `expr` in either dialect, because
+#: MetricFlow 0.213.0 builds no such count: verifier 136 resolved a legacy one as a count of the
+#: measure's name. A ratio of a legacy term and a V2 one stays unproven. Snapshots, the diff and
+#: every check over such a metric can change; check grading is unchanged and CHECK_VERSION stays 86.
+VERIFIER_VERSION = "137"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

@@ -67,6 +67,7 @@ from tests.test_metricflow_formula import (
     _metric,
     _metric_path,
     _model,
+    _over_both_dialects,
     _read,
     _relate,
     _resolve,
@@ -521,6 +522,11 @@ def _legacy_measure_name() -> Gaps:
     return _same([_measure_renamed(name) for name in ("null", "Gross_Margin")])
 
 
+@case("legacy.count-no-expr")
+def _legacy_count_no_expr() -> Gaps:
+    return _legacy_measure(agg="count", expr=None)()
+
+
 @case("legacy.metric-expr")
 def _legacy_metric_expr() -> Gaps:
     def held(metric: str, expr: str) -> Gaps:
@@ -561,7 +567,29 @@ def _v2_expression(expr: str | None) -> Callable[[], Gaps]:
     return make
 
 
-case("v2.no-expr")(_v2_expression(None))
+def _v2_metric_renamed(name: str) -> Gaps:
+    data = _v2_with_granularity()
+    _metric(data, "revenue")["type_params"]["expr"] = None
+    _metric(data, "revenue")["name"] = name
+    # and the metrics naming it
+    _metric(data, "gross_margin_pct")["type_params"]["denominator"]["name"] = name
+    _metric(data, "revenue_cum")["type_params"]["cumulative_type_params"]["metric"]["name"] = name
+    return _gaps(_resolve(data, "gross_margin_pct"))
+
+
+@case("v2.metric-name")
+def _v2_metric_name() -> Gaps:
+    # the empty string is a name as much as another
+    return _same([_v2_metric_renamed(name) for name in ("null", "Revenue", "true", "")])
+
+
+@case("v2.count-no-expr")
+def _v2_count_no_expr() -> Gaps:
+    data = _v2_with_granularity()
+    params = _metric(data, "revenue")["type_params"]
+    params["expr"] = None
+    params["metric_aggregation_params"]["agg"] = "count"
+    return _gaps(_resolve(data, "revenue"))
 
 
 @case("v2.expr")
@@ -658,9 +686,9 @@ def _parity_ratio_float() -> Gaps:
     return _parity(ref="gross_margin_pct", types={"gross_margin": "double precision"})
 
 
-@case("parity.v2")
-def _parity_v2() -> Gaps:
-    return _parity("v2")
+@case("parity.ratio-dialects")
+def _parity_ratio_dialects() -> Gaps:
+    return _gaps(_resolve(_over_both_dialects(), "gross_margin_pct", proven=PROVEN_PARITY))
 
 
 # --- the tests ------------------------------------------------------------------------
@@ -716,8 +744,12 @@ def test_an_engine_the_rows_are_proven_on_resolves() -> None:
     tables = [SALES, *OTHER_ENGINES]
     proven = [table for table in tables if _relies_on(table) <= PROVEN_PARITY]
     assert [_engine(table) for table in proven] == ["postgres", "clickhouse"]
+    ratio = "gross_margin_pct"
     for table in proven:
         assert _parity(declared=table) == [], table
+        # a V2 metric as well, and a ratio of each dialect
+        for kind, ref in (("v2", "revenue"), ("v2", "gross_margin_pct"), ("legacy", ratio)):
+            assert _parity(kind, ref, declared=table) == [], (table, kind, ref)
 
 
 def test_a_context_proven_in_part_names_the_rows_it_lacks() -> None:

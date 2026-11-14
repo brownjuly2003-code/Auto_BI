@@ -16,6 +16,20 @@ CHANGELOG names 1 → 2 and the transitions from verifier 7 → 8 and check 5 �
 Part of the idempotency key: a different verifier can derive a different verdict or
 evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 
+### Verifier 137
+
+the formula of a V2 dbt metric resolves (ADR 0012, D4). The parity run proved the V2 rows in both
+contexts, `postgres.date` and `clickhouse.date`: each aggregation and class, a metric without `expr`
+and a ratio of two V2 terms. Such a formula resolves, and its node carries the typed formula that
+impact and reference SQL read, where verifier 136 left it `external_ref` with
+`gap.external_parity_unproven` (review). A V2 metric without `expr` reads its name as its column, as
+MetricFlow does, where verifier 136 graded every such metric `gap.external_construct_unsupported`
+(review); a name that is not one lower-case column, such as `null` or `true`, still is that gap. So
+is a `count` without `expr` in either dialect, because MetricFlow 0.213.0 builds no such count:
+verifier 136 resolved a legacy one as a count of the measure's name. A ratio of a legacy term and a
+V2 one stays unproven. Snapshots, the diff and every check over such a metric can change; check
+grading is unchanged and CHECK_VERSION stays 86.
+
 ### Verifier 136
 
 the relations a PostgreSQL mart may be, and a column catalog the engine refused (ADR 0012, D2). A

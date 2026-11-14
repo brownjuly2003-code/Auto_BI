@@ -58,7 +58,9 @@ or a name, a description, a label, metadata, config or a measure's ``create_metr
 of any other is a construct.
 A legacy metric names its measure, whose ``expr`` (or, without one, its name) is the column; a
 legacy metric ``expr`` is taken only where it says the same as the measure's (dbt writes one
-for ``create_metric``). A V2 metric carries ``metric_aggregation_params`` and its own ``expr``.
+for ``create_metric``). A V2 metric carries ``metric_aggregation_params`` and its own ``expr``
+(or, without one, its name, the column MetricFlow reads then). A ``count`` without ``expr`` is
+a construct in either dialect: MetricFlow builds none, and asks for ``expr: 1`` to count rows.
 
 The typed formula's table is the contract's grain table, which the relation check has made the
 semantic model's; its column and aggregate come from dbt. A gap carries the JSON path of what
@@ -166,34 +168,47 @@ CLICKHOUSE_CLASSES: Mapping[str, str] = {
 #: The contexts of the recorded run: PostgreSQL and ClickHouse, a `date` event time column
 #: among the grain keys.
 _RUNS = ("postgres.date", "clickhouse.date")
-#: Ratio terms the run compared: a float term under `sum`, `min`, `max` or `average`, and any
-#: term under `average`, have no reference SQL (`sql.ratio_inexact_term`).
-_RATIO_TERMS = (
-    *(
-        f"legacy.{agg}.{kind}"
-        for agg in ("sum", "count", "count_distinct", "min", "max")
-        for kind in ("decimal", "integer")
-    ),
-    "legacy.count.float",
-    "legacy.count_distinct.float",
-)
+
+
+def _ratio_terms(dialect: str) -> tuple[str, ...]:
+    """Ratio terms of a dialect the run compared: a float term under `sum`, `min`, `max` or
+    `average`, and any term under `average`, have no reference SQL (`sql.ratio_inexact_term`).
+    A ratio is over two terms of one dialect: one project of the run holds each."""
+    return (
+        *(
+            f"{dialect}.{agg}.{kind}"
+            for agg in ("sum", "count", "count_distinct", "min", "max")
+            for kind in ("decimal", "integer")
+        ),
+        f"{dialect}.count.float",
+        f"{dialect}.count_distinct.float",
+    )
+
 
 #: Rows of the parity matrix a run has shown MetricFlow and the reference SQL to agree on:
 #: `scripts/metricflow_parity.py` on PostgreSQL 16.15 and ClickHouse 24.8.14.39 with
-#: metricflow 0.213.0, its result `tests/fixtures/dbt_semantic_manifest/parity/result.json`.
-#: No V2 metric resolves, and no V2 row is here.
+#: metricflow 0.213.0 and dbt-core 1.12.6, its result
+#: `tests/fixtures/dbt_semantic_manifest/parity/result.json`. A V2 row was proven on a V2 time
+#: dimension spelled `dimension: {type: time}`, which dbt-core 1.12.6 gives its granularity.
 PROVEN_PARITY: frozenset[str] = frozenset(
     row
     for run in _RUNS
     for row in (
         *(
-            f"{run}:legacy.{agg}.{kind}"
+            f"{run}:{dialect}.{agg}.{kind}"
+            for dialect in (LEGACY, V2)
             for agg in ("sum", "count", "count_distinct", "min", "max", "average")
             for kind in ("decimal", "integer", "float")
         ),
-        f"{run}:legacy.measure_without_expr",
-        f"{run}:legacy.metric_expr",
-        *(f"{run}:ratio.{top}/{bottom}" for top in _RATIO_TERMS for bottom in _RATIO_TERMS),
+        f"{run}:{LEGACY}.measure_without_expr",
+        f"{run}:{LEGACY}.metric_expr",
+        f"{run}:{V2}.metric_without_expr",
+        *(
+            f"{run}:ratio.{top}/{bottom}"
+            for dialect in (LEGACY, V2)
+            for top in _ratio_terms(dialect)
+            for bottom in _ratio_terms(dialect)
+        ),
     )
 )
 
@@ -227,6 +242,11 @@ _VALUE_WORDS = frozenset(
         "user",
     }
 )
+
+#: A `count` without `expr`: MetricFlow 0.213.0 builds none (`ConvertCountToSumRule`, and its
+#: V2 twin). dbt-core 1.12.6 refuses a legacy one, and fails `dbt parse` on a V2 one after
+#: writing the artifact.
+_COUNT_WITHOUT_EXPR = "a count without an expression, which MetricFlow does not build"
 
 #: The default `agg_params` of metricflow 0.213.0.
 _DEFAULT_AGG_PARAMS = {
@@ -581,7 +601,7 @@ class _Resolver:
         if measure_input is not None and aggregation is None:
             return self._legacy(params, params_path, measure_input)
         if aggregation is not None and measure_input is None:
-            return self._v2(params, params_path, aggregation)
+            return self._v2(name, params, params_path, aggregation)
         self._construct(
             params_path,
             "a simple metric with both a measure and aggregation " "parameters, or neither",
@@ -603,7 +623,11 @@ class _Resolver:
             self._construct(f"{path}.non_additive_dimension", "a non-additive dimension")
 
         expression = measure.get("expr")
-        if expression is None:
+        column: str | None
+        if expression is None and measure["agg"] == "count":
+            self._construct(f"{path}.expr", _COUNT_WITHOUT_EXPR)
+            column = None
+        elif expression is None:
             # dbt reads the measure's name as its column
             column = self._column(measure["name"], f"{path}.name")
             rows.add(f"{LEGACY}.measure_without_expr")
@@ -629,7 +653,9 @@ class _Resolver:
         rows.add(form)
         return _Term(model, time, column, agg, measure["agg"], form, f"{path}.agg", frozenset(rows))
 
-    def _v2(self, params: JsonObject, params_path: str, aggregation: JsonObject) -> _Term:
+    def _v2(
+        self, name: str, params: JsonObject, params_path: str, aggregation: JsonObject
+    ) -> _Term:
         if params.get("input_measures", []) != []:
             self._construct(f"{params_path}.input_measures", "input measures of a V2 metric")
         path = f"{params_path}.metric_aggregation_params"
@@ -637,10 +663,16 @@ class _Resolver:
         self._agg_params(aggregation.get("agg_params"), f"{path}.agg_params")
         if aggregation.get("non_additive_dimension") is not None:
             self._construct(f"{path}.non_additive_dimension", "a non-additive dimension")
+        rows: set[str] = set()
         expression = params.get("expr")
-        column: str | None = None
-        if expression is None:
-            self._construct(f"{params_path}.expr", "a V2 metric without an expression")
+        column: str | None
+        if expression is None and aggregation["agg"] == "count":
+            self._construct(f"{params_path}.expr", _COUNT_WITHOUT_EXPR)
+            column = None
+        elif expression is None:
+            # MetricFlow reads the metric's name as its column
+            column = self._column(name, f"{self._manifest.metric_path(name)}.name")
+            rows.add(f"{V2}.metric_without_expr")
         else:
             column = self._column(expression, f"{params_path}.expr")
         model = aggregation["semantic_model"]
@@ -648,8 +680,9 @@ class _Resolver:
             model, aggregation.get("agg_time_dimension"), f"{path}.agg_time_dimension"
         )
         form = self._form(V2, aggregation["agg"], column)
+        rows.add(form)
         return _Term(
-            model, time, column, agg, aggregation["agg"], form, f"{path}.agg", frozenset({form})
+            model, time, column, agg, aggregation["agg"], form, f"{path}.agg", frozenset(rows)
         )
 
     def _form(self, dialect: str, agg: str, column: str | None) -> str:
