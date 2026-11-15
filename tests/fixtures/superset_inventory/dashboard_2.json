@@ -1,0 +1,431 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "compare_lag": "5",
+    "compare_suffix": "over 5Y",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [],
+    "limit": "25",
+    "markup_type": "markdown",
+    "metric": "sum__num",
+    "row_limit": 50000,
+    "slice_id": 11,
+    "time_range": "100 years ago : now",
+    "viz_type": "big_number"
+   },
+   "id": 11,
+   "slice_name": "Participants"
+  },
+  {
+   "form_data": {
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [
+     "gender"
+    ],
+    "limit": "25",
+    "markup_type": "markdown",
+    "metric": "sum__num",
+    "row_limit": 50000,
+    "slice_id": 12,
+    "time_range": "100 years ago : now",
+    "viz_type": "pie"
+   },
+   "id": 12,
+   "slice_name": "Genders"
+  },
+  {
+   "form_data": {
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [
+     "name"
+    ],
+    "limit": "25",
+    "markup_type": "markdown",
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "num",
+       "type": "BIGINT"
+      },
+      "expressionType": "SIMPLE",
+      "label": "Births",
+      "optionName": "metric_11"
+     }
+    ],
+    "rich_tooltip": true,
+    "row_limit": 50000,
+    "show_legend": true,
+    "slice_id": 13,
+    "time_range": "100 years ago : now",
+    "viz_type": "line"
+   },
+   "id": 13,
+   "slice_name": "Trends"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": [
+       "other"
+      ],
+      "expressionType": "SIMPLE",
+      "filterOptionName": "2745eae5",
+      "operator": "NOT IN",
+      "subject": "state"
+     }
+    ],
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [
+     "state"
+    ],
+    "limit": "25",
+    "markup_type": "markdown",
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "num_boys",
+       "type": "BIGINT(20)"
+      },
+      "expressionType": "SIMPLE",
+      "label": "Boys",
+      "optionName": "metric_11"
+     },
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "num_girls",
+       "type": "BIGINT(20)"
+      },
+      "expressionType": "SIMPLE",
+      "label": "Girls",
+      "optionName": "metric_12"
+     }
+    ],
+    "row_limit": 50000,
+    "slice_id": 14,
+    "time_range": "100 years ago : now",
+    "viz_type": "dist_bar"
+   },
+   "id": 14,
+   "slice_name": "Genders by State"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "girl",
+      "expressionType": "SIMPLE",
+      "operator": "==",
+      "subject": "gender"
+     }
+    ],
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [
+     "name"
+    ],
+    "limit": "25",
+    "markup_type": "markdown",
+    "metrics": [
+     "sum__num"
+    ],
+    "row_limit": 50,
+    "slice_id": 15,
+    "time_range": "100 years ago : now",
+    "timeseries_limit_metric": "sum__num",
+    "viz_type": "table"
+   },
+   "id": 15,
+   "slice_name": "Girls"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "girl",
+      "expressionType": "SIMPLE",
+      "operator": "==",
+      "subject": "gender"
+     }
+    ],
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [],
+    "limit": "100",
+    "markup_type": "markdown",
+    "metric": "sum__num",
+    "rotation": "square",
+    "row_limit": 50000,
+    "series": "name",
+    "size_from": "10",
+    "size_to": "70",
+    "slice_id": 16,
+    "time_range": "100 years ago : now",
+    "viz_type": "word_cloud"
+   },
+   "id": 16,
+   "slice_name": "Girl Name Cloud"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "boy",
+      "expressionType": "SIMPLE",
+      "operator": "==",
+      "subject": "gender"
+     }
+    ],
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [
+     "name"
+    ],
+    "limit": "25",
+    "markup_type": "markdown",
+    "metrics": [
+     "sum__num"
+    ],
+    "row_limit": 50,
+    "slice_id": 17,
+    "time_range": "100 years ago : now",
+    "timeseries_limit_metric": "sum__num",
+    "viz_type": "table"
+   },
+   "id": 17,
+   "slice_name": "Boys"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "boy",
+      "expressionType": "SIMPLE",
+      "operator": "==",
+      "subject": "gender"
+     }
+    ],
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [],
+    "limit": "100",
+    "markup_type": "markdown",
+    "metric": "sum__num",
+    "rotation": "square",
+    "row_limit": 50000,
+    "series": "name",
+    "size_from": "10",
+    "size_to": "70",
+    "slice_id": 18,
+    "time_range": "100 years ago : now",
+    "viz_type": "word_cloud"
+   },
+   "id": 18,
+   "slice_name": "Boy Name Cloud"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "girl",
+      "expressionType": "SIMPLE",
+      "operator": "==",
+      "subject": "gender"
+     }
+    ],
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "comparison_type": "values",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [
+     "name"
+    ],
+    "limit": 10,
+    "markup_type": "markdown",
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "num",
+       "type": "BIGINT"
+      },
+      "expressionType": "SIMPLE",
+      "label": "Births",
+      "optionName": "metric_11"
+     }
+    ],
+    "row_limit": 50000,
+    "slice_id": 19,
+    "stacked_style": "expand",
+    "time_grain_sqla": "P1D",
+    "time_range": "100 years ago : now",
+    "viz_type": "area",
+    "x_axis_forma": "smart_date"
+   },
+   "id": 19,
+   "slice_name": "Top 10 Girl Name Share"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "boy",
+      "expressionType": "SIMPLE",
+      "operator": "==",
+      "subject": "gender"
+     }
+    ],
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "comparison_type": "values",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [
+     "name"
+    ],
+    "limit": 10,
+    "markup_type": "markdown",
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "num",
+       "type": "BIGINT"
+      },
+      "expressionType": "SIMPLE",
+      "label": "Births",
+      "optionName": "metric_11"
+     }
+    ],
+    "row_limit": 50000,
+    "slice_id": 20,
+    "stacked_style": "expand",
+    "time_grain_sqla": "P1D",
+    "time_range": "100 years ago : now",
+    "viz_type": "area",
+    "x_axis_forma": "smart_date"
+   },
+   "id": 20,
+   "slice_name": "Top 10 Boy Name Share"
+  },
+  {
+   "form_data": {
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "datasource": "2__table",
+    "granularity_sqla": "ds",
+    "groupby": [],
+    "groupbyColumns": [
+     "state"
+    ],
+    "groupbyRows": [
+     "name"
+    ],
+    "limit": "25",
+    "markup_type": "markdown",
+    "metrics": [
+     "sum__num"
+    ],
+    "row_limit": 50000,
+    "slice_id": 21,
+    "time_range": "100 years ago : now",
+    "viz_type": "pivot_table_v2"
+   },
+   "id": 21,
+   "slice_name": "Pivot Table v2"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T10:20:01.197019",
+  "dashboard_title": "USA Births Names",
+  "id": 2,
+  "json_metadata": "{\n    \"label_colors\": {\n        \"Girls\": \"#FF69B4\",\n        \"Boys\": \"#ADD8E6\",\n        \"girl\": \"#FF69B4\",\n        \"boy\": \"#ADD8E6\"\n    }\n}",
+  "slug": "births"
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "gender",
+     "expression": null,
+     "is_dttm": false,
+     "type": "VARCHAR(16)"
+    },
+    {
+     "column_name": "name",
+     "expression": null,
+     "is_dttm": false,
+     "type": "VARCHAR(255)"
+    },
+    {
+     "column_name": "num",
+     "expression": null,
+     "is_dttm": false,
+     "type": "BIGINT"
+    },
+    {
+     "column_name": "state",
+     "expression": null,
+     "is_dttm": false,
+     "type": "VARCHAR(10)"
+    },
+    {
+     "column_name": "num_boys",
+     "expression": null,
+     "is_dttm": false,
+     "type": "BIGINT"
+    },
+    {
+     "column_name": "num_girls",
+     "expression": null,
+     "is_dttm": false,
+     "type": "BIGINT"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 2,
+   "metrics": [
+    {
+     "expression": "SUM(num)",
+     "metric_name": "sum__num"
+    }
+   ],
+   "schema": "main",
+   "sql": null,
+   "table_name": "birth_names"
+  }
+ ]
+}

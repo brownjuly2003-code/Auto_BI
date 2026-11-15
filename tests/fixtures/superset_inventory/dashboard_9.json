@@ -1,0 +1,1330 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "forecastInterval": 0.8,
+    "forecastPeriods": 10,
+    "groupby": [
+     "deal_size"
+    ],
+    "legendOrientation": "top",
+    "legendType": "scroll",
+    "metrics": [
+     "count"
+    ],
+    "only_total": true,
+    "order_desc": true,
+    "orientation": "vertical",
+    "rich_tooltip": true,
+    "row_limit": 10000,
+    "show_empty_columns": true,
+    "show_legend": true,
+    "slice_id": 39,
+    "sort_series_type": "sum",
+    "time_grain_sqla": "P1M",
+    "tooltipTimeFormat": "smart_date",
+    "truncateXAxis": true,
+    "truncate_metric": true,
+    "viz_type": "echarts_timeseries_bar",
+    "x_axis": "order_date",
+    "x_axis_sort_asc": true,
+    "x_axis_sort_series": "name",
+    "x_axis_sort_series_ascending": true,
+    "x_axis_time_format": "smart_date",
+    "x_axis_title_margin": 15,
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_format": "SMART_NUMBER",
+    "y_axis_title_margin": 15,
+    "y_axis_title_position": "Left"
+   },
+   "id": 39,
+   "slice_name": "Bar"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "groupby": [
+     "status"
+    ],
+    "legendMargin": 50,
+    "legendOrientation": "top",
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "percent_calculation_type": "first_step",
+    "row_limit": 10,
+    "show_labels": true,
+    "show_legend": true,
+    "show_tooltip_labels": true,
+    "slice_id": 40,
+    "sort_by_metric": true,
+    "tooltip_label_type": 5,
+    "viz_type": "funnel"
+   },
+   "id": 40,
+   "slice_name": "Funnel"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "all_columns": [
+     "order_date",
+     "product_line",
+     "status",
+     "price_each",
+     "sales"
+    ],
+    "allow_render_html": true,
+    "annotation_layers": [],
+    "color_pn": true,
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "groupby": [],
+    "order_by_cols": [],
+    "order_desc": true,
+    "percent_metrics": [],
+    "query_mode": "raw",
+    "row_limit": 1000,
+    "server_page_length": 10,
+    "show_cell_bars": true,
+    "slice_id": 41,
+    "table_timestamp_format": "smart_date",
+    "temporal_columns_lookup": {
+     "order_date": true
+    },
+    "time_grain_sqla": "P1D",
+    "viz_type": "table"
+   },
+   "id": 41,
+   "slice_name": "Table"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "bins": 10,
+    "color_scheme": "supersetAndPresetColors",
+    "column": "quantity_ordered",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "groupby": [
+     "deal_size"
+    ],
+    "normalize": false,
+    "row_limit": 10000,
+    "show_legend": true,
+    "show_value": false,
+    "slice_id": 42,
+    "viz_type": "histogram_v2"
+   },
+   "id": 42,
+   "slice_name": "Histogram"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "forecastInterval": 0.8,
+    "forecastPeriods": 10,
+    "groupby": [
+     "product_line"
+    ],
+    "legendOrientation": "top",
+    "legendType": "scroll",
+    "markerSize": 6,
+    "metrics": [
+     "count"
+    ],
+    "only_total": true,
+    "opacity": 0.2,
+    "order_desc": true,
+    "rich_tooltip": true,
+    "row_limit": 10000,
+    "seriesType": "line",
+    "show_empty_columns": true,
+    "show_legend": true,
+    "slice_id": 43,
+    "sort_series_type": "sum",
+    "time_grain_sqla": "P1M",
+    "tooltipTimeFormat": "smart_date",
+    "truncateXAxis": true,
+    "truncate_metric": true,
+    "viz_type": "echarts_timeseries_line",
+    "x_axis": "order_date",
+    "x_axis_sort_asc": true,
+    "x_axis_sort_series": "name",
+    "x_axis_sort_series_ascending": true,
+    "x_axis_time_format": "smart_date",
+    "x_axis_title_margin": 15,
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_format": "SMART_NUMBER",
+    "y_axis_title_margin": 15,
+    "y_axis_title_position": "Left"
+   },
+   "id": 43,
+   "slice_name": "Line"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "date_format": "smart_date",
+    "extra_form_data": {},
+    "groupby": [
+     "product_line"
+    ],
+    "innerRadius": 30,
+    "label_type": "key",
+    "labels_outside": true,
+    "legendOrientation": "top",
+    "legendType": "scroll",
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "advanced_data_type": null,
+      "certification_details": null,
+      "certified_by": null,
+      "column_name": "sales",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 734,
+      "is_certified": false,
+      "is_dttm": false,
+      "python_date_format": null,
+      "type": "DOUBLE PRECISION",
+      "type_generic": 0,
+      "verbose_name": null,
+      "warning_markdown": null
+     },
+     "datasourceWarning": false,
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "label": "SUM(sales)",
+     "optionName": "metric_m2fycvcvjie_4gnezrycwmb",
+     "sqlExpression": null
+    },
+    "number_format": "SMART_NUMBER",
+    "outerRadius": 70,
+    "row_limit": 100,
+    "show_labels": true,
+    "show_labels_threshold": 5,
+    "show_legend": true,
+    "slice_id": 44,
+    "sort_by_metric": true,
+    "viz_type": "pie"
+   },
+   "id": 44,
+   "slice_name": "Pie"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "baseEdgeWidth": 3,
+    "baseNodeSize": 20,
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "edgeLength": 400,
+    "edgeSymbol": "none,arrow",
+    "extra_form_data": {},
+    "friction": 0.2,
+    "gravity": 0.3,
+    "layout": "circular",
+    "legendOrientation": "top",
+    "legendType": "scroll",
+    "metric": "count",
+    "repulsion": 1000,
+    "roam": true,
+    "row_limit": 10000,
+    "selectedMode": "single",
+    "show_legend": true,
+    "slice_id": 45,
+    "source": "deal_size",
+    "target": "product_line",
+    "viz_type": "graph_chart"
+   },
+   "id": 45,
+   "slice_name": "Graph"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "child_label_position": "top",
+    "datasource": "8__table",
+    "extra_form_data": {},
+    "id": "id",
+    "layout": "radial",
+    "metric": "count",
+    "name": "name",
+    "node_label_position": "top",
+    "parent": "parent",
+    "roam": false,
+    "root_node_id": "1",
+    "row_limit": 1000,
+    "slice_id": 46,
+    "symbol": "emptyCircle",
+    "symbolSize": 7,
+    "viz_type": "tree_chart"
+   },
+   "id": 46,
+   "slice_name": "Tree"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_picker": {
+     "a": 1,
+     "b": 135,
+     "g": 122,
+     "r": 0
+    },
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "header_font_size": 0.4,
+    "metric": "count",
+    "rolling_type": "None",
+    "show_trend_line": true,
+    "slice_id": 47,
+    "start_y_axis_at_zero": true,
+    "subheader_font_size": 0.15,
+    "time_format": "smart_date",
+    "time_grain_sqla": "P1M",
+    "viz_type": "big_number",
+    "x_axis": "order_date",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 47,
+   "slice_name": "Big Number with Trendline"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "aggregateFunction": "Sum",
+    "annotation_layers": [],
+    "colOrder": "key_a_to_z",
+    "datasource": "17__table",
+    "date_format": "smart_date",
+    "extra_form_data": {},
+    "groupbyColumns": [
+     "product_line"
+    ],
+    "groupbyRows": [
+     "country",
+     "city"
+    ],
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "advanced_data_type": null,
+       "certification_details": null,
+       "certified_by": null,
+       "column_name": "sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 734,
+       "is_certified": false,
+       "is_dttm": false,
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "type_generic": 0,
+       "verbose_name": null,
+       "warning_markdown": null
+      },
+      "datasourceWarning": false,
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "label": "SUM(sales)",
+      "optionName": "metric_psnoaxdky5h_ojfgcygk97c",
+      "sqlExpression": null
+     }
+    ],
+    "metricsLayout": "COLUMNS",
+    "order_desc": true,
+    "rowOrder": "key_a_to_z",
+    "row_limit": 10000,
+    "slice_id": 48,
+    "temporal_columns_lookup": {
+     "order_date": true
+    },
+    "time_grain_sqla": "P1D",
+    "valueFormat": "SMART_NUMBER",
+    "viz_type": "pivot_table_v2"
+   },
+   "id": 48,
+   "slice_name": "Pivot Table"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "date_format": "smart_date",
+    "extra_form_data": {},
+    "groupby": [
+     "product_line"
+    ],
+    "is_circle": true,
+    "label_position": "top",
+    "label_type": "value",
+    "legendMargin": "",
+    "legendOrientation": "top",
+    "legendType": "scroll",
+    "metrics": [
+     "count",
+     {
+      "aggregate": "AVG",
+      "column": {
+       "advanced_data_type": null,
+       "certification_details": null,
+       "certified_by": null,
+       "column_name": "price_each",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 733,
+       "is_certified": false,
+       "is_dttm": false,
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "type_generic": 0,
+       "verbose_name": null,
+       "warning_markdown": null
+      },
+      "datasourceWarning": false,
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "label": "AVG(price_each)",
+      "optionName": "metric_ethqy44wrel_gsqbm609hxt",
+      "sqlExpression": null
+     },
+     {
+      "aggregate": "AVG",
+      "column": {
+       "advanced_data_type": null,
+       "certification_details": null,
+       "certified_by": null,
+       "column_name": "sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 734,
+       "is_certified": false,
+       "is_dttm": false,
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "type_generic": 0,
+       "verbose_name": null,
+       "warning_markdown": null
+      },
+      "datasourceWarning": false,
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "label": "AVG(sales)",
+      "optionName": "metric_r5emvf2ybfe_blvnta3absu",
+      "sqlExpression": null
+     }
+    ],
+    "number_format": "SMART_NUMBER",
+    "row_limit": 10,
+    "show_labels": false,
+    "show_legend": true,
+    "slice_id": 49,
+    "viz_type": "radar"
+   },
+   "id": 49,
+   "slice_name": "Radar"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "header_font_size": 0.4,
+    "metric": "count",
+    "slice_id": 50,
+    "subheader_font_size": 0.15,
+    "time_format": "smart_date",
+    "viz_type": "big_number_total",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 50,
+   "slice_name": "Big Number"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "bottom_margin": "auto",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "groupby": "deal_size",
+    "left_margin": "auto",
+    "legend_type": "continuous",
+    "linear_color_scheme": "superset_seq_1",
+    "metric": "count",
+    "normalize_across": "heatmap",
+    "row_limit": 10000,
+    "show_legend": true,
+    "show_percentage": true,
+    "show_values": true,
+    "slice_id": 51,
+    "sort_x_axis": "alpha_asc",
+    "sort_y_axis": "alpha_asc",
+    "time_grain_sqla": "P1D",
+    "value_bounds": [
+     null,
+     null
+    ],
+    "viz_type": "heatmap_v2",
+    "x_axis": "product_line",
+    "x_axis_time_format": "smart_date",
+    "xscale_interval": -1,
+    "y_axis_format": "SMART_NUMBER",
+    "yscale_interval": -1
+   },
+   "id": 51,
+   "slice_name": "Heatmap"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "animation": true,
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "end_angle": -45,
+    "extra_form_data": {},
+    "font_size": 13,
+    "groupby": [
+     "deal_size"
+    ],
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "overlap": true,
+    "round_cap": false,
+    "row_limit": 10,
+    "show_axis_tick": false,
+    "show_pointer": true,
+    "show_progress": true,
+    "show_split_line": false,
+    "slice_id": 52,
+    "split_number": 10,
+    "start_angle": 225,
+    "value_formatter": "{value}",
+    "viz_type": "gauge_chart"
+   },
+   "id": 52,
+   "slice_name": "Gauge"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "forecastInterval": 0.8,
+    "forecastPeriods": 10,
+    "groupby": [
+     "deal_size"
+    ],
+    "legendOrientation": "top",
+    "legendType": "scroll",
+    "markerSize": 6,
+    "metrics": [
+     "count"
+    ],
+    "only_total": true,
+    "order_desc": true,
+    "rich_tooltip": true,
+    "row_limit": 10000,
+    "show_empty_columns": true,
+    "show_legend": true,
+    "slice_id": 53,
+    "sort_series_type": "sum",
+    "time_grain_sqla": "P1D",
+    "tooltipTimeFormat": "smart_date",
+    "truncateXAxis": true,
+    "truncate_metric": true,
+    "viz_type": "echarts_timeseries_scatter",
+    "x_axis": "order_date",
+    "x_axis_sort_asc": true,
+    "x_axis_sort_series": "name",
+    "x_axis_sort_series_ascending": true,
+    "x_axis_time_format": "smart_date",
+    "x_axis_title_margin": 15,
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_format": "SMART_NUMBER",
+    "y_axis_title_margin": 15,
+    "y_axis_title_position": "Left"
+   },
+   "id": 53,
+   "slice_name": "Scatter Plot"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "metric": "count",
+    "row_limit": 10000,
+    "slice_id": 54,
+    "source": "product_line",
+    "target": "deal_size",
+    "viz_type": "sankey_v2"
+   },
+   "id": 54,
+   "slice_name": "Sankey"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "forecastInterval": 0.8,
+    "forecastPeriods": 10,
+    "groupby": [
+     "deal_size"
+    ],
+    "legendOrientation": "top",
+    "legendType": "scroll",
+    "markerSize": 6,
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "advanced_data_type": null,
+       "certification_details": null,
+       "certified_by": null,
+       "column_name": "sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 734,
+       "is_certified": false,
+       "is_dttm": false,
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "type_generic": 0,
+       "verbose_name": null,
+       "warning_markdown": null
+      },
+      "datasourceWarning": false,
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "label": "SUM(sales)",
+      "optionName": "metric_thuvfstatme_5o1pircsnev",
+      "sqlExpression": null
+     }
+    ],
+    "only_total": true,
+    "opacity": 0.2,
+    "order_desc": true,
+    "rich_tooltip": true,
+    "row_limit": 10000,
+    "seriesType": "line",
+    "show_empty_columns": true,
+    "show_legend": true,
+    "slice_id": 55,
+    "sort_series_type": "sum",
+    "time_grain_sqla": "P1W",
+    "tooltipTimeFormat": "smart_date",
+    "truncateXAxis": true,
+    "truncate_metric": true,
+    "viz_type": "echarts_area",
+    "x_axis": "order_date",
+    "x_axis_sort_asc": true,
+    "x_axis_sort_series": "name",
+    "x_axis_sort_series_ascending": true,
+    "x_axis_time_format": "smart_date",
+    "x_axis_title_margin": 15,
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_format": "SMART_NUMBER",
+    "y_axis_title_margin": 15,
+    "y_axis_title_position": "Left"
+   },
+   "id": 55,
+   "slice_name": "Area"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "metric": "count",
+    "rotation": "square",
+    "row_limit": 100,
+    "series": "customer_name",
+    "size_from": 10,
+    "size_to": 70,
+    "slice_id": 56,
+    "viz_type": "word_cloud"
+   },
+   "id": 56,
+   "slice_name": "Word Cloud"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "columns": [
+     "order_date"
+    ],
+    "datasource": "17__table",
+    "date_format": "smart_date",
+    "extra_form_data": {},
+    "groupby": [
+     "product_line"
+    ],
+    "metrics": [
+     "count"
+    ],
+    "number_format": "SMART_NUMBER",
+    "slice_id": 57,
+    "temporal_columns_lookup": {
+     "order_date": true
+    },
+    "time_grain_sqla": "P1D",
+    "viz_type": "box_plot",
+    "whiskerOptions": "Tukey",
+    "x_axis_title_margin": 15,
+    "x_ticks_layout": "auto",
+    "y_axis_title_margin": 15,
+    "y_axis_title_position": "Left"
+   },
+   "id": 57,
+   "slice_name": "Box Plot"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "datasource": "17__table",
+    "decrease_color": {
+     "a": 1,
+     "b": 85,
+     "g": 67,
+     "r": 224
+    },
+    "extra_form_data": {},
+    "groupby": [],
+    "increase_color": {
+     "a": 1,
+     "b": 137,
+     "g": 193,
+     "r": 90
+    },
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "advanced_data_type": null,
+      "certification_details": null,
+      "certified_by": null,
+      "column_name": "sales",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 734,
+      "is_certified": false,
+      "is_dttm": false,
+      "python_date_format": null,
+      "type": "DOUBLE PRECISION",
+      "type_generic": 0,
+      "verbose_name": null,
+      "warning_markdown": null
+     },
+     "datasourceWarning": false,
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "label": "SUM(sales)",
+     "optionName": "metric_uufmfvmm7_zhsh1h4vbh",
+     "sqlExpression": null
+    },
+    "row_limit": 10000,
+    "show_value": true,
+    "slice_id": 58,
+    "time_grain_sqla": "P3M",
+    "total_color": {
+     "a": 1,
+     "b": 102,
+     "g": 102,
+     "r": 102
+    },
+    "viz_type": "waterfall",
+    "x_axis": "order_date",
+    "x_axis_time_format": "smart_date",
+    "x_ticks_layout": "auto",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 58,
+   "slice_name": "Waterfall"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "adhoc_filters_b": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "comparison_type_b": "values",
+    "datasource": "17__table",
+    "extra_form_data": {},
+    "groupby": [],
+    "groupby_b": [],
+    "legendOrientation": "top",
+    "legendType": "scroll",
+    "markerSize": 6,
+    "markerSizeB": 6,
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "advanced_data_type": null,
+       "certification_details": null,
+       "certified_by": null,
+       "column_name": "sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 734,
+       "is_certified": false,
+       "is_dttm": false,
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "type_generic": 0,
+       "verbose_name": null,
+       "warning_markdown": null
+      },
+      "datasourceWarning": false,
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "label": "SUM(sales)",
+      "optionName": "metric_b9hph4jr9i_nayy40sodwl",
+      "sqlExpression": null
+     }
+    ],
+    "metrics_b": [
+     "count"
+    ],
+    "opacity": 0.2,
+    "opacityB": 0.2,
+    "order_desc": true,
+    "order_desc_b": true,
+    "rich_tooltip": true,
+    "row_limit": 10000,
+    "row_limit_b": 10000,
+    "seriesType": "line",
+    "seriesTypeB": "bar",
+    "show_legend": true,
+    "slice_id": 59,
+    "time_grain_sqla": "P1M",
+    "tooltipTimeFormat": "smart_date",
+    "truncateXAxis": true,
+    "truncate_metric": true,
+    "truncate_metric_b": true,
+    "viz_type": "mixed_timeseries",
+    "x_axis": "order_date",
+    "x_axis_time_format": "smart_date",
+    "x_axis_title_margin": 15,
+    "yAxisIndex": 1,
+    "yAxisIndexB": 0,
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_bounds_secondary": [
+     null,
+     null
+    ],
+    "y_axis_format": "SMART_NUMBER",
+    "y_axis_format_secondary": "SMART_NUMBER",
+    "y_axis_title_margin": 15,
+    "y_axis_title_position": "Left"
+   },
+   "id": 59,
+   "slice_name": "Mixed"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "columns": [
+     "year",
+     "product_line"
+    ],
+    "datasource": "17__table",
+    "date_format": "smart_date",
+    "extra_form_data": {},
+    "label_type": "key",
+    "linear_color_scheme": "superset_seq_1",
+    "metric": "count",
+    "number_format": "~g",
+    "row_limit": 10000,
+    "show_labels": true,
+    "show_labels_threshold": 5,
+    "slice_id": 60,
+    "viz_type": "sunburst_v2"
+   },
+   "id": 60,
+   "slice_name": "Sunburst"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "entity": "deal_size",
+    "extra_form_data": {},
+    "legendOrientation": "top",
+    "legendType": "scroll",
+    "max_bubble_size": "25",
+    "opacity": 0.6,
+    "order_desc": true,
+    "row_limit": 10000,
+    "series": "product_line",
+    "show_legend": true,
+    "size": "count",
+    "slice_id": 61,
+    "tooltipSizeFormat": "SMART_NUMBER",
+    "truncateXAxis": true,
+    "viz_type": "bubble_v2",
+    "x": {
+     "aggregate": "SUM",
+     "column": {
+      "advanced_data_type": null,
+      "certification_details": null,
+      "certified_by": null,
+      "column_name": "quantity_ordered",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 739,
+      "is_certified": false,
+      "is_dttm": false,
+      "python_date_format": null,
+      "type": "BIGINT",
+      "type_generic": 0,
+      "verbose_name": null,
+      "warning_markdown": null
+     },
+     "datasourceWarning": false,
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "label": "SUM(quantity_ordered)",
+     "optionName": "metric_ieq28dvzapm_wsnd3sj3trn",
+     "sqlExpression": null
+    },
+    "xAxisFormat": "SMART_NUMBER",
+    "x_axis_title_margin": 30,
+    "y": {
+     "aggregate": "COUNT_DISTINCT",
+     "column": {
+      "advanced_data_type": null,
+      "certification_details": null,
+      "certified_by": null,
+      "column_name": "country",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 754,
+      "is_certified": false,
+      "is_dttm": false,
+      "python_date_format": null,
+      "type": "TEXT",
+      "type_generic": 1,
+      "verbose_name": null,
+      "warning_markdown": null
+     },
+     "datasourceWarning": false,
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "label": "COUNT_DISTINCT(country)",
+     "optionName": "metric_2pvgxo9w3dc_fazapv2jd65",
+     "sqlExpression": null
+    },
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_format": "SMART_NUMBER",
+    "y_axis_title_margin": 30
+   },
+   "id": 61,
+   "slice_name": "Bubble"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "date_format": "smart_date",
+    "extra_form_data": {},
+    "groupby": [
+     "year",
+     "product_line"
+    ],
+    "label_type": "key_value",
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "row_limit": 10000,
+    "show_labels": true,
+    "show_upper_labels": true,
+    "slice_id": 62,
+    "viz_type": "treemap_v2"
+   },
+   "id": 62,
+   "slice_name": "TreeMap"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T10:21:33.006111",
+  "dashboard_title": "Featured Charts",
+  "id": 9,
+  "json_metadata": "{\"color_scheme\": \"supersetAndPresetColors\", \"refresh_frequency\": 0, \"expanded_slices\": {}, \"label_colors\": {}, \"timed_refresh_immune_slices\": [], \"cross_filters_enabled\": true}",
+  "slug": null
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "order_date",
+     "expression": null,
+     "is_dttm": true,
+     "type": "TIMESTAMP WITHOUT TIME ZONE"
+    },
+    {
+     "column_name": "price_each",
+     "expression": null,
+     "is_dttm": false,
+     "type": "DOUBLE PRECISION"
+    },
+    {
+     "column_name": "sales",
+     "expression": null,
+     "is_dttm": false,
+     "type": "DOUBLE PRECISION"
+    },
+    {
+     "column_name": "quantity_ordered",
+     "expression": null,
+     "is_dttm": false,
+     "type": "BIGINT"
+    },
+    {
+     "column_name": "year",
+     "expression": null,
+     "is_dttm": false,
+     "type": "BIGINT"
+    },
+    {
+     "column_name": "customer_name",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "deal_size",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "status",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "product_line",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "country",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 17,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": null,
+   "table_name": "cleaned_sales_data"
+  },
+  {
+   "columns": [],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 8,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "public",
+   "sql": "SELECT 1 as \"id\", null as \"parent\", 'USA' as \"name\", 1 as \"count\"\nUNION SELECT 2, 1, 'CA', 10\nUNION SELECT 3, 1, 'NY', 15\nUNION SELECT 4, 1, 'TX', 20\nUNION SELECT 5, 1, 'FL', 12\nUNION SELECT 6, 2, 'Los Angeles', 5\nUNION SELECT 7, 2, 'San Francisco', 8\nUNION SELECT 8, 3, 'New York City', 18\nUNION SELECT 9, 3, 'Buffalo', 3\nUNION SELECT 10, 4, 'Houston', 14\nUNION SELECT 11, 4, 'Dallas', 9\nUNION SELECT 12, 5, 'Miami', 6",
+   "table_name": "hierarchical_dataset"
+  }
+ ]
+}

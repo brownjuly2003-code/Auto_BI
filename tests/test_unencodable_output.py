@@ -632,13 +632,15 @@ def test_no_decision_command_prints_past_the_one_function() -> None:
     }
 
     # The settings helper introduced by T-68, the run catalogue introduced by T-106, the pins
-    # of a dbt artifact (ADR 0008, slice S4) and the MCP server (ADR 0012, D5), whose refusals
-    # are said before it serves, follow the same output boundary.
+    # of a dbt artifact (ADR 0008, slice S4), the MCP server (ADR 0012, D5), whose refusals
+    # are said before it serves, and the Superset inventory (D6) follow the same output
+    # boundary.
     assert set(prints) == COMMANDS | {
         "_decision_settings",
         "_decision_runs",
         "_decision_pin",
         "_decision_mcp",
+        "_decision_inventory",
     }
     # The one payload of an artifact, which is printed as it is or not at all.
     assert {name: calls for name, calls in prints.items() if calls} == {

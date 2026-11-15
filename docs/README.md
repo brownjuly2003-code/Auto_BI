@@ -96,6 +96,7 @@ baseline. DecisionOps запускается из checkout как `autobi-agent`
 | [run-identity](specs/run-identity.md) | Run identity — the idempotency key covers every static gate input |
 | [schema-refused-products](specs/schema-refused-products.md) | The run of a product its schema refuses says why |
 | [stated-run-facts](specs/stated-run-facts.md) | What a command line states of a run |
+| [superset-inventory](specs/superset-inventory.md) | The delivered Superset dashboards as the specs the gate reads |
 | [unanswered-engine](specs/unanswered-engine.md) | An engine a run was to ask and that did not answer |
 | [unencodable-output](specs/unencodable-output.md) | An answer on a stream that encodes less |
 | [unreadable-inputs](specs/unreadable-inputs.md) | Files a command cannot read |

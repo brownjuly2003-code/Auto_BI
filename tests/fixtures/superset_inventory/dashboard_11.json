@@ -1,0 +1,1184 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "0",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_qzz67uip1ue_jw3rr6tzo3a",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "is_software_dev"
+     }
+    ],
+    "all_columns": [],
+    "annotation_layers": [],
+    "color_pn": true,
+    "datasource": "9__table",
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "school_degree"
+    ],
+    "metrics": [
+     "count"
+    ],
+    "order_by_cols": [],
+    "order_desc": true,
+    "percent_metrics": [
+     {
+      "aggregate": "COUNT",
+      "column": {
+       "column_name": "school_degree",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 1574,
+       "is_dttm": false,
+       "python_date_format": null,
+       "type": "TEXT",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "isNew": false,
+      "label": "COUNT(school_degree)",
+      "optionName": "metric_vsilrouxw3q_iactbbmvdv",
+      "sqlExpression": null
+     }
+    ],
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "query_mode": "aggregate",
+    "row_limit": null,
+    "show_cell_bars": true,
+    "slice_id": 82,
+    "table_timestamp_format": "smart_date",
+    "time_grain_sqla": "P1D",
+    "time_range": "No filter",
+    "viz_type": "table"
+   },
+   "id": 82,
+   "slice_name": "Highest degree held"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "0",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_yccan09xctb_wjwt23qhknf",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "is_software_dev"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "9__table",
+    "donut": true,
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "willing_to_relocate"
+    ],
+    "innerRadius": 44,
+    "label_type": "key",
+    "labels_outside": true,
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "outerRadius": 69,
+    "queryFields": {
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": null,
+    "show_labels": true,
+    "show_legend": false,
+    "slice_id": 83,
+    "time_range": "No filter",
+    "viz_type": "pie"
+   },
+   "id": 83,
+   "slice_name": "✈️ Relocation ability"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "all_columns": [],
+    "annotation_layers": [],
+    "color_pn": true,
+    "datasource": "9__table",
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "developer_type"
+    ],
+    "metrics": [
+     "count"
+    ],
+    "order_by_cols": [],
+    "order_desc": true,
+    "percent_metrics": [],
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "query_mode": "aggregate",
+    "row_limit": 10000,
+    "show_cell_bars": true,
+    "slice_id": 84,
+    "table_timestamp_format": "smart_date",
+    "time_grain_sqla": "P1D",
+    "time_range": "No filter",
+    "viz_type": "table"
+   },
+   "id": 84,
+   "slice_name": "Breakdown of Developer Type"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_picker": {
+     "a": 1,
+     "b": 135,
+     "g": 122,
+     "r": 0
+    },
+    "country_fieldtype": "name",
+    "datasource": "9__table",
+    "entity": "country_citizen",
+    "granularity_sqla": "time_start",
+    "linear_color_scheme": "preset_div_1",
+    "max_bubble_size": "25",
+    "metric": "count",
+    "queryFields": {
+     "entity": "groupby",
+     "metric": "metrics",
+     "secondary_metric": "metrics"
+    },
+    "row_limit": null,
+    "secondary_metric": {
+     "aggregate": "COUNT",
+     "column": {
+      "column_name": "country_live",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 1570,
+      "is_dttm": false,
+      "python_date_format": null,
+      "type": "TEXT",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "COUNT(country_live)",
+     "optionName": "metric_azxwoyei39f_d7xgzshjnw6",
+     "sqlExpression": null
+    },
+    "show_bubbles": true,
+    "slice_id": 85,
+    "time_range": "No filter",
+    "viz_type": "world_map"
+   },
+   "id": 85,
+   "slice_name": "Country of Citizenship"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "0",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_qzz67uip1ue_jw3rr6tzo3a",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "is_software_dev"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "9__table",
+    "donut": true,
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "job_location_preference"
+    ],
+    "innerRadius": 44,
+    "label_type": "key",
+    "labels_outside": true,
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "outerRadius": 69,
+    "queryFields": {
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": null,
+    "show_labels": true,
+    "show_legend": false,
+    "slice_id": 86,
+    "time_range": "No filter",
+    "viz_type": "pie"
+   },
+   "id": 86,
+   "slice_name": "Work Location Preference"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "9__table",
+    "donut": true,
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "ethnic_minority"
+    ],
+    "innerRadius": 44,
+    "label_line": true,
+    "label_type": "key",
+    "labels_outside": true,
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "outerRadius": 69,
+    "queryFields": {
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": 10000,
+    "show_labels": true,
+    "show_legend": false,
+    "slice_id": 87,
+    "time_range": "No filter",
+    "viz_type": "pie"
+   },
+   "id": 87,
+   "slice_name": "Are you an ethnic minority in your city?"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "1",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_s1jzmdwgeg_p3er4w56uy",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "is_software_dev"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "200000",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_ojzq4njnuog_zj0dux944z",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "<=",
+      "sqlExpression": null,
+      "subject": "last_yr_income"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "columns": [],
+    "datasource": "9__table",
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "school_degree"
+    ],
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "last_yr_income",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 1589,
+       "is_dttm": false,
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "isNew": false,
+      "label": "SUM(last_yr_income)",
+      "optionName": "metric_bgqj8nnvz8k_07w8bbh1bc6q",
+      "sqlExpression": null
+     }
+    ],
+    "number_format": "SMART_NUMBER",
+    "queryFields": {
+     "columns": "groupby",
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "slice_id": 88,
+    "time_grain_sqla": null,
+    "time_range": "No filter",
+    "viz_type": "box_plot",
+    "whiskerOptions": "Tukey",
+    "x_ticks_layout": "45°"
+   },
+   "id": 88,
+   "slice_name": "Degrees vs Income"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "0",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_s1jzmdwgeg_p3er4w56uy",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "is_software_dev"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "NULL",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_rdlajraxs0f_lgyfv4rvdh",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "job_pref"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "9__table",
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "job_pref"
+    ],
+    "label_colors": {},
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "row_limit": 10,
+    "slice_id": 89,
+    "time_range": "No filter",
+    "treemap_ratio": 1.618033988749895,
+    "viz_type": "treemap_v2"
+   },
+   "id": 89,
+   "slice_name": "Preferred Employment Style"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "0",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_3f8ug0vnqk1_oy0mvl0izdc",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "is_software_dev"
+     }
+    ],
+    "annotation_layers": [],
+    "datasource": "9__table",
+    "granularity_sqla": "time_start",
+    "header_font_size": 0.4,
+    "metric": "count",
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "slice_id": 90,
+    "subheader_font_size": 0.15,
+    "time_range": "No filter",
+    "viz_type": "big_number_total",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 90,
+   "slice_name": "Number of Aspiring Developers"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "0",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_v65f0j14bk_35oi0g94srk",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "is_software_dev"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "NULL",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_qb5ionb8wcq_ki4aimey4do",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "school_degree"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "NULL",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_3n0z71frg5c_xqnl179to7",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "job_pref"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "time_start"
+     }
+    ],
+    "annotation_layers": [],
+    "bottom_margin": "auto",
+    "datasource": "9__table",
+    "groupby": "school_degree",
+    "left_margin": "auto",
+    "legend_type": "continuous",
+    "linear_color_scheme": "blue_white_yellow",
+    "metric": "count",
+    "normalize_across": "heatmap",
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "row_limit": null,
+    "show_legend": true,
+    "show_percentage": true,
+    "slice_id": 91,
+    "sort_x_axis": "alpha_asc",
+    "sort_y_axis": "alpha_asc",
+    "value_bounds": [
+     null,
+     null
+    ],
+    "viz_type": "heatmap_v2",
+    "x_axis": "job_pref",
+    "xscale_interval": null,
+    "y_axis_format": "SMART_NUMBER",
+    "yscale_interval": null
+   },
+   "id": 91,
+   "slice_name": "How do you prefer to work?"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "Currently A Developer",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_fvi0jg9aii_2lekqrhy7qk",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "developer_type"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "100000",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_khdc3iypzjg_3g6h02b4f2p",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "<=",
+      "sqlExpression": null,
+      "subject": "last_yr_income"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "time_start"
+     }
+    ],
+    "annotation_layers": [],
+    "bins": 10,
+    "color_scheme": "supersetColors",
+    "column": "last_yr_income",
+    "datasource": "9__table",
+    "groupby": [],
+    "label_colors": {},
+    "row_limit": null,
+    "slice_id": 92,
+    "viz_type": "histogram_v2"
+   },
+   "id": 92,
+   "slice_name": "Last Year Income Distribution"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "Currently A Developer",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_fvi0jg9aii_2lekqrhy7qk",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "developer_type"
+     }
+    ],
+    "annotation_layers": [],
+    "datasource": "9__table",
+    "granularity_sqla": "time_start",
+    "header_font_size": 0.4,
+    "metric": {
+     "aggregate": "COUNT",
+     "column": {
+      "column_name": "is_software_dev",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 1463,
+      "is_dttm": false,
+      "python_date_format": null,
+      "type": "DOUBLE PRECISION",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "COUNT(is_software_dev)",
+     "optionName": "metric_9i1kctig9yr_sizo6ihd2o",
+     "sqlExpression": null
+    },
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "slice_id": 93,
+    "subheader_font_size": 0.15,
+    "time_range": "No filter",
+    "viz_type": "big_number_total",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 93,
+   "slice_name": "Current Developers: Is this your first development job?"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "1",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_9hkcdqhiqor_84pk01t2k9",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "is_software_dev"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "NULL",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_d5l1qwsthl_okyuouvmors",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "first_time_developer"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "NULL",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_95548uvadi_f990s8nzl4",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "communite_time"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "time_start"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "9__table",
+    "label_colors": {},
+    "metric": "count",
+    "queryFields": {
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": 10000,
+    "slice_id": 94,
+    "source": "first_time_developer",
+    "target": "communite_time",
+    "viz_type": "sankey_v2"
+   },
+   "id": 94,
+   "slice_name": "First Time Developer & Commute Time"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "NULL",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_ameaka2efjv_rfv1et5nwng",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "lang_at_home"
+     }
+    ],
+    "all_columns": [],
+    "annotation_layers": [],
+    "color_pn": true,
+    "datasource": "9__table",
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "lang_at_home"
+    ],
+    "metrics": [
+     "count"
+    ],
+    "order_by_cols": [],
+    "order_desc": true,
+    "percent_metrics": [],
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "query_mode": "aggregate",
+    "row_limit": "15",
+    "show_cell_bars": true,
+    "slice_id": 95,
+    "table_timestamp_format": "smart_date",
+    "time_grain_sqla": "P1D",
+    "time_range": "No filter",
+    "viz_type": "table"
+   },
+   "id": 95,
+   "slice_name": "Top 15 Languages Spoken at Home"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "time_start"
+     }
+    ],
+    "annotation_layers": [],
+    "bins": 25,
+    "color_scheme": "supersetColors",
+    "column": "age",
+    "datasource": "9__table",
+    "groupby": [],
+    "label_colors": {},
+    "row_limit": 10000,
+    "slice_id": 96,
+    "viz_type": "histogram_v2",
+    "x_axis_title": "age",
+    "y_axis_title": "count"
+   },
+   "id": 96,
+   "slice_name": "Age distribution of respondents"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "Aspiring Developer",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_dfz5l631lx_lb7f2rlmjdl",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "developer_type"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "200000",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_6nmi4fk837u_6lvcpn3zzvf",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "<=",
+      "sqlExpression": null,
+      "subject": "expected_earn"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "time_start"
+     }
+    ],
+    "annotation_layers": [],
+    "bins": 10,
+    "color_scheme": "supersetColors",
+    "column": "expected_earn",
+    "datasource": "9__table",
+    "groupby": [],
+    "label_colors": {
+     "0": "#FCC700",
+     "1": "#A868B7",
+     "15": "#3CCCCB",
+     "30": "#A38F79",
+     "45": "#8FD3E4",
+     "<NULL>": "#5AC189",
+     "Female": "#454E7C",
+     "From Home": "#1FA8C9",
+     "I": "#FEC0A1",
+     "In an Office (with Other Developers)": "#9EE5E5",
+     "Less": "#ACE1C4",
+     "Male": "#666666",
+     "More": "#A1A6BD",
+     "No": "#666666",
+     "No Answer": "#D3B3DA",
+     "No Preference": "#D1C6BC",
+     "No,": "#FF7F44",
+     "No, not an ethnic minority": "#1FA8C9",
+     "No: Not Willing to": "#FDE380",
+     "Ph.D.": "#FCC700",
+     "Prefer": "#5AC189",
+     "Prefer not to say": "#E04355",
+     "Yes": "#FF7F44",
+     "Yes,": "#1FA8C9",
+     "Yes, an ethnic minority": "#454E7C",
+     "Yes: Willing To": "#EFA1AA",
+     "age": "#1FA8C9",
+     "associate's degree": "#A868B7",
+     "bachelor's degree": "#3CCCCB",
+     "expected_earn": "#B2B2B2",
+     "high school diploma or equivalent (GED)": "#A38F79",
+     "last_yr_income": "#E04355",
+     "master's degree (non-professional)": "#8FD3E4",
+     "no high school (secondary school)": "#A1A6BD",
+     "professional degree (MBA, MD, JD, etc.)": "#ACE1C4",
+     "some college credit, no degree": "#FEC0A1",
+     "some high school": "#B2B2B2",
+     "trade, technical, or vocational training": "#EFA1AA"
+    },
+    "row_limit": null,
+    "slice_id": 97,
+    "viz_type": "histogram_v2"
+   },
+   "id": 97,
+   "slice_name": "How much do you expect to earn? ($0 - 100k)"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "NULL",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_of9xf5uks2_5pisp1se9r5",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "ethnic_minority"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "NULL",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_9ikn7htywfm_2579he7pk5x",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "gender"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "time_start"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "9__table",
+    "label_colors": {},
+    "metric": "count",
+    "queryFields": {
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": null,
+    "slice_id": 98,
+    "source": "ethnic_minority",
+    "target": "gender",
+    "viz_type": "sankey_v2"
+   },
+   "id": 98,
+   "slice_name": "Ethnic Minority & Gender"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "Currently A Developer",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_fvi0jg9aii_2lekqrhy7qk",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "developer_type"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "NULL",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_r5execgs1q8_hbav07lele",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "communite_time"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "9__table",
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "communite_time"
+    ],
+    "label_colors": {},
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "row_limit": null,
+    "slice_id": 99,
+    "time_range": "No filter",
+    "treemap_ratio": 1.618033988749895,
+    "viz_type": "treemap_v2"
+   },
+   "id": 99,
+   "slice_name": "Commute Time"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "Currently A Developer",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_fvi0jg9aii_2lekqrhy7qk",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "developer_type"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "9__table",
+    "donut": true,
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "first_time_developer"
+    ],
+    "innerRadius": 43,
+    "label_type": "key",
+    "labels_outside": true,
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "outerRadius": 69,
+    "queryFields": {
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": null,
+    "show_labels": true,
+    "show_legend": false,
+    "slice_id": 100,
+    "time_range": "No filter",
+    "viz_type": "pie"
+   },
+   "id": 100,
+   "slice_name": "First Time Developer?"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "9__table",
+    "donut": true,
+    "granularity_sqla": "time_start",
+    "groupby": [
+     "gender"
+    ],
+    "innerRadius": 44,
+    "label_line": true,
+    "label_type": "key",
+    "labels_outside": true,
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "outerRadius": 69,
+    "queryFields": {
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": 10000,
+    "show_labels": true,
+    "show_legend": false,
+    "slice_id": 101,
+    "time_range": "No filter",
+    "viz_type": "pie"
+   },
+   "id": 101,
+   "slice_name": "Gender"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "1",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_s1jzmdwgeg_p3er4w56uy",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "==",
+      "sqlExpression": null,
+      "subject": "is_software_dev"
+     }
+    ],
+    "annotation_layers": [],
+    "color_picker": {
+     "a": 1,
+     "b": 135,
+     "g": 122,
+     "r": 0
+    },
+    "country_fieldtype": "name",
+    "datasource": "9__table",
+    "entity": "country_live",
+    "granularity_sqla": "time_start",
+    "linear_color_scheme": "superset_seq_1",
+    "max_bubble_size": "25",
+    "metric": "count",
+    "queryFields": {
+     "entity": "groupby",
+     "metric": "metrics",
+     "secondary_metric": "metrics"
+    },
+    "row_limit": 10000,
+    "secondary_metric": {
+     "aggregate": "COUNT",
+     "column": {
+      "column_name": "country_live",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 1570,
+      "is_dttm": false,
+      "python_date_format": null,
+      "type": "TEXT",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "COUNT(country_live)",
+     "optionName": "metric_980jcnefhlk_ar87s15pwro",
+     "sqlExpression": null
+    },
+    "show_bubbles": true,
+    "slice_id": 102,
+    "time_range": "No filter",
+    "viz_type": "world_map"
+   },
+   "id": 102,
+   "slice_name": "Location of Current Developers"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T10:21:33.012961",
+  "dashboard_title": "FCC New Coder Survey 2018",
+  "id": 11,
+  "json_metadata": "{\"timed_refresh_immune_slices\": [], \"expanded_slices\": {}, \"refresh_frequency\": 0, \"default_filters\": \"{}\", \"color_scheme\": \"supersetColors\", \"label_colors\": {\"0\": \"#FCC700\", \"1\": \"#A868B7\", \"15\": \"#3CCCCB\", \"30\": \"#A38F79\", \"45\": \"#8FD3E4\", \"age\": \"#1FA8C9\", \"Yes,\": \"#1FA8C9\", \"Female\": \"#454E7C\", \"Prefer\": \"#5AC189\", \"No,\": \"#FF7F44\", \"Male\": \"#666666\", \"Prefer not to say\": \"#E04355\", \"Ph.D.\": \"#FCC700\", \"associate's degree\": \"#A868B7\", \"bachelor's degree\": \"#3CCCCB\", \"high school diploma or equivalent (GED)\": \"#A38F79\", \"master's degree (non-professional)\": \"#8FD3E4\", \"no high school (secondary school)\": \"#A1A6BD\", \"professional degree (MBA, MD, JD, etc.)\": \"#ACE1C4\", \"some college credit, no degree\": \"#FEC0A1\", \"some high school\": \"#B2B2B2\", \"trade, technical, or vocational training\": \"#EFA1AA\", \"No, not an ethnic minority\": \"#1FA8C9\", \"Yes, an ethnic minority\": \"#454E7C\", \"<NULL>\": \"#5AC189\", \"Yes\": \"#FF7F44\", \"No\": \"#666666\", \"last_yr_income\": \"#E04355\", \"More\": \"#A1A6BD\", \"Less\": \"#ACE1C4\", \"I\": \"#FEC0A1\", \"expected_earn\": \"#B2B2B2\", \"Yes: Willing To\": \"#EFA1AA\", \"No: Not Willing to\": \"#FDE380\", \"No Answer\": \"#D3B3DA\", \"In an Office (with Other Developers)\": \"#9EE5E5\", \"No Preference\": \"#D1C6BC\", \"From Home\": \"#1FA8C9\"}}",
+  "slug": null
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "job_location_preference",
+     "expression": "case \nwhen job_lctn_pref is Null then 'No Answer' \nwhen job_lctn_pref = 'from home' then 'From Home'\nwhen job_lctn_pref = 'no preference' then 'No Preference'\nwhen job_lctn_pref = 'in an office with other developers' then 'In an Office (with Other Developers)'\nelse job_lctn_pref\nend ",
+     "is_dttm": false,
+     "type": null
+    },
+    {
+     "column_name": "ethnic_minority",
+     "expression": "CASE \nWHEN is_ethnic_minority = 0 THEN 'No, not an ethnic minority' \nWHEN is_ethnic_minority = 1 THEN 'Yes, an ethnic minority' \nELSE 'No Answer'\nEND",
+     "is_dttm": false,
+     "type": "STRING"
+    },
+    {
+     "column_name": "willing_to_relocate",
+     "expression": "CASE \nWHEN job_relocate = 0 THEN 'No: Not Willing to' \nWHEN job_relocate = 1 THEN 'Yes: Willing To'\nELSE 'No Answer'\nEND",
+     "is_dttm": false,
+     "type": "STRING"
+    },
+    {
+     "column_name": "developer_type",
+     "expression": "CASE WHEN is_software_dev = 0 THEN 'Aspiring Developer' WHEN is_software_dev = 1 THEN 'Currently A Developer' END",
+     "is_dttm": false,
+     "type": "STRING"
+    },
+    {
+     "column_name": "first_time_developer",
+     "expression": "CASE \nWHEN is_first_dev_job = 0 THEN 'No' \nWHEN is_first_dev_job = 1 THEN 'Yes' \nELSE 'No Answer'\nEND",
+     "is_dttm": false,
+     "type": null
+    },
+    {
+     "column_name": "gender",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "last_yr_income",
+     "expression": null,
+     "is_dttm": false,
+     "type": "DOUBLE PRECISION"
+    },
+    {
+     "column_name": "is_software_dev",
+     "expression": null,
+     "is_dttm": false,
+     "type": "DOUBLE PRECISION"
+    },
+    {
+     "column_name": "expected_earn",
+     "expression": null,
+     "is_dttm": false,
+     "type": "DOUBLE PRECISION"
+    },
+    {
+     "column_name": "time_start",
+     "expression": null,
+     "is_dttm": true,
+     "type": "DATETIME"
+    },
+    {
+     "column_name": "lang_at_home",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "job_pref",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "country_citizen",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "school_degree",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "communite_time",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "country_live",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 9,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": "",
+   "table_name": "FCC 2018 Survey"
+  }
+ ]
+}

@@ -7,12 +7,11 @@
 [specs](README.md#поведенческие-контракты-decisionops), дизайн —
 [архитектура](DECISIONOPS_ARCHITECTURE.md), срезы —
 [журнал статуса](history/DECISIONOPS_STATUS_LOG.md).
-Прежний подробный текст файла — `git show 5f7b487:docs/DECISIONOPS_CURRENT_STATE.md`.
 
 **Стадия.** Release gate bootstrap завершён; impact доходит до чарта; read-only capture
 reviewed-запроса проверен на живых PostgreSQL и ClickHouse; evidence подписывается Ed25519
-(opt-in); offline investigation alpha разрешён. Закрыты этапы hardening (2026-11-03),
-мутационного smoke и внешнего источника формул dbt (ADR 0008, S1–S5d, 2026-11-07).
+(opt-in); offline investigation alpha разрешён. Закрыты этапы hardening, мутационного
+smoke и формул dbt (ADR 0008).
 Owner outcome (human/design-partner) не измеряется
 ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Код — в `main` публичного репозитория
 baseline, пакет `autobi-agent` `0.6.0` не публикуется
@@ -48,7 +47,8 @@ reviewed asset SQL -> read-only capture -> canonical ResultSet + attestation -> 
   против pinned `--trust-key` ([ADR 0005](adr/0005-ed25519-evidence-trust-root.md)).
 - `decision pin` — pin метрик `semantic_manifest.json`; `decision runs` — прогоны без
   проверки целостности; `decision mcp` — команды и `impact` как read-only MCP на stdio
-  ([spec](specs/mcp-server.md)).
+  ([spec](specs/mcp-server.md)); `decision inventory` — спеки `--dashboards` из Superset
+  ([spec](specs/superset-inventory.md)).
 - Без `--dwh` engine checks дают `check.not_configured`; с `--dwh` (`clickhouse`, `greenplum`,
   `greengage`, `postgres`) —
   `dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`, `dwh.cost`.
@@ -75,7 +75,8 @@ investigation: четыре pure version-pinned skill над supplied canonical 
   до плитки формула не разрешается (`chart.formula_untyped`).
 - Chart-разрешение — не lineage: `computes_metric` для operator SQL не заявляется,
   неразобранный SQL — `chart.opaque_sql`; детектор скрытого чтения знает именованный набор
-  конструкций, конструкция вне него — дыра детектора.
+  конструкций, конструкция вне него — дыра детектора. Инвентарь Superset типизирует лишь
+  точные формы IR, прочее — завышающий SQL (`chart.sql_partial`); >12 чартов — отказ.
 - Governance reviewed-запроса отвечает «объявлено ли поле», а не «откуда значение»; что нельзя
   приписать без догадки, — `asset.query_fields_unchecked`. Связывание с `WITH` и CTE
   консервативно там, где оно неоднозначно (ARCHITECTURE §7.5).
@@ -117,9 +118,8 @@ PEM вне checkout и evidence.
 
 Финишная черта [ADR 0010](adr/0010-finish-line.md) пройдена 2026-11-10: F1–F6 сделаны,
 версия `0.6.0`. Решение владельца 2026-11-13 — [ADR 0012](adr/0012-post-finish-development.md):
-D1–D6 в локальной ветке `decisionops-backlog` — сделаны D1 типы, D2 отношения и отказы,
-D3 комментарий PR и Action, D4a V2-паритет, D4b derived, D5 MCP; далее D6
-инвентарь Superset. Находки вне D1–D6 — в [бэклог](DECISIONOPS_BACKLOG.md).
+D1–D6 сделаны в локальной ветке `decisionops-backlog`; дальше — по решению владельца.
+Находки вне D1–D6 — в [бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:
 

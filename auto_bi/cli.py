@@ -314,6 +314,36 @@ def main(argv: list[str] | None = None) -> int:
     pin.add_argument("metrics", nargs="*", help="dbt metric names (default: every metric)")
     pin.add_argument("--json", action="store_true", help="Emit the pins as JSON and nothing else")
 
+    inventory = decision_sub.add_parser(
+        "inventory",
+        help="Read Superset dashboards into the DashboardSpecs `verify --dashboards` reads",
+    )
+    inventory.add_argument(
+        "semantic",
+        help="Semantic ref the specs are validated against: a directory holding model.yaml",
+    )
+    inventory.add_argument(
+        "--dashboard",
+        action="append",
+        default=[],
+        required=True,
+        metavar="REF=ID",
+        help="A delivered dashboard ref and the Superset dashboard id or slug it is; repeatable",
+    )
+    inventory.add_argument(
+        "--output", required=True, help="New directory the specs and inventory.json go to"
+    )
+    inventory.add_argument(
+        "--database",
+        type=int,
+        metavar="ID",
+        help="Id of the Superset database the semantic model describes; a dashboard with a "
+        "chart on another database is refused",
+    )
+    inventory.add_argument(
+        "--json", action="store_true", help="Emit the report as JSON and nothing else"
+    )
+
     runs = decision_sub.add_parser(
         "runs", help="List local runs without checking evidence integrity"
     )
@@ -410,6 +440,8 @@ def main(argv: list[str] | None = None) -> int:
             return _decision_investigate(args)
         if args.decision_command == "mcp":
             return _decision_mcp(args)
+        if args.decision_command == "inventory":
+            return _decision_inventory(args)
         return _decision_validate(args.paths, args.json)
     return 0
 
@@ -654,6 +686,89 @@ def _decision_mcp(args: argparse.Namespace) -> int:
     evidence = Path(args.evidence) if args.evidence else None
     serve_stdio(ToolBox(evidence_dir=evidence, signer=signer, verifier=verifier))
     return 0
+
+
+def _decision_inventory(args: argparse.Namespace) -> int:
+    """`auto_bi decision inventory` — the specs of delivered Superset dashboards (ADR 0012, D6).
+
+    Superset is the configured one (`AUTO_BI_SUPERSET_URL`, `_USER`, `_PASSWORD`). Exit 0
+    when every named dashboard was written, 3 when one was not — each is named with why —
+    and 2 when the inventory could not be taken: an argument, the model, the output, an
+    `AUTO_BI_SUPERSET_URL` that is not a URL, a Superset that did not answer or answered in a
+    shape not its own, or a write that failed.
+    """
+    from pathlib import Path
+
+    import httpx
+
+    from auto_bi.adapters.superset.client import SupersetClient
+    from auto_bi.decision.use_cases import (
+        INVENTORY_REPORT,
+        InventoryRequest,
+        VerifyError,
+        inventory,
+    )
+    from auto_bi.inventory.superset import ChartForm, RestSupersetSource
+    from auto_bi.verification.model import EXIT_ERROR
+
+    pairs: list[tuple[str, str]] = []
+    for item in args.dashboard:
+        ref, separator, ident = item.partition("=")
+        if not separator:
+            _say_error(f"--dashboard {item!r}: expected REF=SUPERSET_ID")
+            return EXIT_ERROR
+        pairs.append((ref, ident))
+    clients: list[SupersetClient] = []
+
+    def source() -> RestSupersetSource:
+        settings = _decision_settings()
+        try:
+            client = SupersetClient(
+                settings.superset_url, settings.superset_user, settings.superset_password
+            )
+        except (httpx.InvalidURL, TypeError, ValueError) as error:
+            # Only the class: the address may carry a user and a password.
+            raise VerifyError(
+                f"cannot reach Superset: AUTO_BI_SUPERSET_URL is not a URL "
+                f"({type(error).__name__})"
+            ) from None
+        clients.append(client)
+        return RestSupersetSource(client)
+
+    _quiet_driver_log("sqlglot")
+    try:
+        report = inventory(
+            InventoryRequest(
+                semantic=args.semantic,
+                dashboards=pairs,
+                output=args.output,
+                source=source,
+                database=args.database,
+            )
+        )
+    except VerifyError as exc:
+        _say_error(exc)
+        return EXIT_ERROR
+    finally:
+        for client in clients:
+            client.close()
+
+    if args.json:
+        _say_json(report.model_dump(mode="json"))
+    else:
+        for dashboard in report.dashboards:
+            if dashboard.written is None:
+                _say_one_line(f"refused  {dashboard.ref}  ({dashboard.superset})")
+                for refusal in dashboard.refusals:
+                    _say_one_line(f"  - {refusal}")
+                continue
+            typed = sum(chart.form is ChartForm.TYPED for chart in dashboard.charts)
+            _say_one_line(
+                f"wrote    {dashboard.written}  ({dashboard.superset}: "
+                f"{typed} typed, {len(dashboard.charts) - typed} read as SQL)"
+            )
+        _say_one_line(f"report   {Path(args.output) / INVENTORY_REPORT}")
+    return 3 if report.refused else 0
 
 
 def _quiet_driver_log(name: str) -> None:
@@ -945,8 +1060,7 @@ def _check_comment_target(value: str, evidence: str) -> None:
         raise VerifyError(f"cannot write --pr-comment {shown}: {exc}") from None
     if inside:
         raise VerifyError(
-            f"--pr-comment {shown} is inside the evidence directory, and the comment is no "
-            "evidence"
+            f"--pr-comment {shown} is inside the evidence directory, and the comment is no evidence"
         )
 
 
@@ -1309,8 +1423,7 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
             health = adapter.healthcheck()
             if not health.ok:
                 print(
-                    f"{target}: недоступен ({health.message}) — {len(target_rows)} строк "
-                    "пропущено"
+                    f"{target}: недоступен ({health.message}) — {len(target_rows)} строк пропущено"
                 )
                 skipped_total += len(target_rows)
                 continue

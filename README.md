@@ -54,6 +54,13 @@ stdio: инструменты `validate`, `impact` (чьи продукты, д�
 артефакта — под `payload`. В BI не пишет, движок не спрашивает. Контракт и пример
 конфигурации клиента — [spec](docs/specs/mcp-server.md).
 
+Чтобы не писать спеки доставленных дашбордов руками, `uv run auto_bi decision inventory
+<semantic> --dashboard dashboard://path@1=<id|slug> --output <new dir> [--database <id>]` читает их
+из Superset 4.1.2 (после логина — только GET) и пишет спеки туда, где их читает
+`verify --dashboards`: чарт IR-формы — типизированный, остальные — как читающий SQL
+(`chart.sql_partial`); с `--database` дашборд с чартом на другой базе Superset отказывается.
+Контракт — [spec](docs/specs/superset-inventory.md).
+
 - [Текущее состояние DecisionOps](docs/DECISIONOPS_CURRENT_STATE.md)
 - [Целевая архитектура](docs/DECISIONOPS_ARCHITECTURE.md)
 - [ADR: отдельный additive fork](docs/adr/0003-decisionops-additive-control-plane.md)

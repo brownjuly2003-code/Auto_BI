@@ -1,0 +1,665 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "2003-01-01T00:00:00 : 2005-06-01T00:00:00",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "contributionMode": "row",
+    "datasource": "17__table",
+    "groupby": [
+     "product_line"
+    ],
+    "label_colors": {},
+    "markerEnabled": false,
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 917,
+       "is_dttm": false,
+       "optionName": "_col_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "isNew": false,
+      "label": "(Sales)",
+      "optionName": "metric_3is69ofceho_6d0ezok7ry6",
+      "sqlExpression": null
+     }
+    ],
+    "opacity": 0.7,
+    "order_desc": true,
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "rich_tooltip": true,
+    "rolling_type": "None",
+    "row_limit": null,
+    "show_legend": true,
+    "slice_id": 111,
+    "stack": "Stack",
+    "time_grain_sqla": "P1M",
+    "truncateYAxis": true,
+    "viz_type": "echarts_area",
+    "xAxisLabelRotation": 0,
+    "x_axis": "order_date",
+    "x_axis_time_format": "smart_date",
+    "x_axis_title_margin": "auto",
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_format": "SMART_NUMBER",
+    "zoomable": false
+   },
+   "id": 111,
+   "slice_name": "Proportion of Revenue by Product Line"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "17__table",
+    "donut": true,
+    "granularity_sqla": "order_date",
+    "groupby": [
+     "product_line"
+    ],
+    "innerRadius": 41,
+    "label_line": true,
+    "label_type": "key",
+    "labels_outside": true,
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "sales",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 917,
+      "is_dttm": false,
+      "optionName": "_col_Sales",
+      "python_date_format": null,
+      "type": "DOUBLE PRECISION",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "(Sales)",
+     "optionName": "metric_3sk6pfj3m7i_64h77bs4sly",
+     "sqlExpression": null
+    },
+    "number_format": "SMART_NUMBER",
+    "outerRadius": 65,
+    "queryFields": {
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": null,
+    "show_labels": true,
+    "show_labels_threshold": 2,
+    "show_legend": false,
+    "slice_id": 112,
+    "time_range": "No filter",
+    "viz_type": "pie"
+   },
+   "id": 112,
+   "slice_name": "Overall Sales (By Product Line)"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "datasource": "17__table",
+    "granularity_sqla": "order_date",
+    "groupby": [
+     "product_line"
+    ],
+    "horizon_color_scale": "series",
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 917,
+       "is_dttm": false,
+       "optionName": "_col_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "isNew": false,
+      "label": "(Sales)",
+      "optionName": "metric_e3kxby3hnjs_nfd4adbcnsn",
+      "sqlExpression": null
+     }
+    ],
+    "order_desc": true,
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "row_limit": null,
+    "series_height": "25",
+    "slice_id": 113,
+    "time_range": "No filter",
+    "viz_type": "horizon"
+   },
+   "id": 113,
+   "slice_name": "Seasonality of Revenue (per Product Line)"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "bottom_margin": 100,
+    "datasource": "17__table",
+    "groupby": "product_line",
+    "left_margin": 75,
+    "legend_type": "continuous",
+    "linear_color_scheme": "schemePuBuGn",
+    "metric": "count",
+    "normalize_across": "heatmap",
+    "normalized": true,
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "row_limit": null,
+    "show_legend": true,
+    "show_percentage": true,
+    "show_values": true,
+    "slice_id": 114,
+    "sort_x_axis": "alpha_asc",
+    "sort_y_axis": "alpha_asc",
+    "value_bounds": [
+     null,
+     null
+    ],
+    "viz_type": "heatmap_v2",
+    "x_axis": "deal_size",
+    "xscale_interval": null,
+    "y_axis_format": "SMART_NUMBER",
+    "yscale_interval": null
+   },
+   "id": 114,
+   "slice_name": "Number of Deals (for each Combination)"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "contributionMode": null,
+    "datasource": "17__table",
+    "groupby": [
+     "product_line"
+    ],
+    "label_colors": {
+     "Classic Cars": "#5AC189",
+     "Motorcycles": "#666666",
+     "Planes": "#FCC700",
+     "QuantityOrdered": "#454E7C",
+     "SUM(Sales)": "#1FA8C9",
+     "Ships": "#A868B7",
+     "Trains": "#3CCCCB",
+     "Trucks and Buses": "#E04355",
+     "Vintage Cars": "#FF7F44"
+    },
+    "markerEnabled": false,
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 917,
+       "is_dttm": false,
+       "optionName": "_col_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "isNew": false,
+      "label": "SUM(Sales)",
+      "optionName": "metric_tjn8bh6y44_7o4etwsqhal",
+      "sqlExpression": null
+     }
+    ],
+    "order_desc": true,
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "rich_tooltip": true,
+    "rolling_type": null,
+    "row_limit": 10000,
+    "show_extra_controls": false,
+    "show_legend": true,
+    "slice_id": 115,
+    "stack": "Stack",
+    "time_compare": null,
+    "time_grain_sqla": "P3M",
+    "truncateYAxis": true,
+    "viz_type": "echarts_timeseries_bar",
+    "xAxisLabelRotation": 45,
+    "x_axis": "order_date",
+    "x_axis_time_format": "%m/%d/%Y",
+    "x_axis_title": "Quarter starting",
+    "x_axis_title_margin": 30,
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_format": null,
+    "y_axis_title": "Revenue ($)",
+    "y_axis_title_margin": 30,
+    "zoomable": false
+   },
+   "id": 115,
+   "slice_name": "Quarterly Sales (By Product Line)"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "datasource": "17__table",
+    "granularity_sqla": "order_date",
+    "header_font_size": 0.4,
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "sales",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 917,
+      "is_dttm": false,
+      "optionName": "_col_Sales",
+      "python_date_format": null,
+      "type": "DOUBLE PRECISION",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "(Sales)",
+     "optionName": "metric_twq59hf4ej_g70qjfmehsq",
+     "sqlExpression": null
+    },
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "slice_id": 116,
+    "subheader": "",
+    "subheader_font_size": 0.15,
+    "time_range": "No filter",
+    "viz_type": "big_number_total",
+    "y_axis_format": "$,.2f"
+   },
+   "id": 116,
+   "slice_name": "Total Revenue"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "2003-01-01T00:00:00 : 2005-06-01T00:00:00",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "contributionMode": null,
+    "datasource": "17__table",
+    "groupby": [
+     "deal_size"
+    ],
+    "label_colors": {},
+    "markerEnabled": false,
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 917,
+       "is_dttm": false,
+       "optionName": "_col_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "isNew": false,
+      "label": "(Sales)",
+      "optionName": "metric_3is69ofceho_6d0ezok7ry6",
+      "sqlExpression": null
+     }
+    ],
+    "order_desc": true,
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "rich_tooltip": true,
+    "rolling_type": "None",
+    "row_limit": null,
+    "show_legend": true,
+    "slice_id": 117,
+    "stack": "Stack",
+    "time_grain_sqla": "P1M",
+    "truncateYAxis": true,
+    "viz_type": "echarts_timeseries_bar",
+    "xAxisLabelRotation": 0,
+    "x_axis": "order_date",
+    "x_axis_time_format": "smart_date",
+    "x_axis_title_margin": "auto",
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_format": "SMART_NUMBER",
+    "y_axis_title_margin": "auto",
+    "zoomable": false
+   },
+   "id": 117,
+   "slice_name": "Revenue by Deal Size"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "order_date"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "contributionMode": null,
+    "datasource": "17__table",
+    "groupby": [],
+    "label_colors": {
+     "Classic Cars": "#5AC189",
+     "Motorcycles": "#666666",
+     "Planes": "#FCC700",
+     "QuantityOrdered": "#454E7C",
+     "SUM(Sales)": "#1FA8C9",
+     "Ships": "#A868B7",
+     "Trains": "#3CCCCB",
+     "Trucks and Buses": "#E04355",
+     "Vintage Cars": "#FF7F44"
+    },
+    "markerEnabled": false,
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 917,
+       "is_dttm": false,
+       "optionName": "_col_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "isNew": false,
+      "label": "SUM(Sales)",
+      "optionName": "metric_tjn8bh6y44_7o4etwsqhal",
+      "sqlExpression": null
+     }
+    ],
+    "order_desc": true,
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "rich_tooltip": true,
+    "rolling_type": null,
+    "row_limit": 10000,
+    "show_legend": false,
+    "slice_id": 118,
+    "stack": null,
+    "time_compare": null,
+    "time_grain_sqla": "P3M",
+    "truncateYAxis": true,
+    "viz_type": "echarts_timeseries_bar",
+    "xAxisLabelRotation": 0,
+    "x_axis": "order_date",
+    "x_axis_time_format": "%m/%d/%Y",
+    "x_axis_title": "Quarter starting",
+    "x_axis_title_margin": 30,
+    "y_axis_bounds": [
+     null,
+     null
+    ],
+    "y_axis_format": null,
+    "y_axis_title": "Total Sales",
+    "y_axis_title_margin": 30,
+    "zoomable": false
+   },
+   "id": 118,
+   "slice_name": "Quarterly Sales"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "datasource": "17__table",
+    "granularity_sqla": "order_date",
+    "header_font_size": 0.4,
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "quantity_ordered",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 914,
+      "is_dttm": false,
+      "python_date_format": null,
+      "type": "BIGINT",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "SUM(Sales)",
+     "optionName": "metric_twq59hf4ej_g70qjfmehsq",
+     "sqlExpression": null
+    },
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "slice_id": 119,
+    "subheader": "",
+    "subheader_font_size": 0.15,
+    "time_range": "No filter",
+    "viz_type": "big_number_total",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 119,
+   "slice_name": "Total Items Sold"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "all_columns": [],
+    "annotation_layers": [],
+    "color_pn": true,
+    "datasource": "17__table",
+    "granularity_sqla": "order_date",
+    "groupby": [
+     "product_line"
+    ],
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "quantity_ordered",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 914,
+       "is_dttm": false,
+       "optionName": "_col_QuantityOrdered",
+       "python_date_format": null,
+       "type": "BIGINT",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": true,
+      "isNew": false,
+      "label": "# of Products Sold",
+      "optionName": "metric_skdbciwba6g_z1r5w1pxlqj",
+      "sqlExpression": null
+     }
+    ],
+    "order_by_cols": [],
+    "order_desc": true,
+    "percent_metrics": null,
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "query_mode": "aggregate",
+    "row_limit": null,
+    "show_cell_bars": true,
+    "slice_id": 120,
+    "table_timestamp_format": "smart_date",
+    "time_grain_sqla": "P1D",
+    "time_range": "No filter",
+    "viz_type": "table"
+   },
+   "id": 120,
+   "slice_name": "Total Items Sold (By Product Line)"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T10:21:32.996718",
+  "dashboard_title": "Sales Dashboard",
+  "id": 7,
+  "json_metadata": "{\"timed_refresh_immune_slices\": [], \"expanded_slices\": {}, \"refresh_frequency\": 0, \"default_filters\": \"{}\", \"color_scheme\": \"supersetColors\", \"label_colors\": {\"Medium\": \"#1FA8C9\", \"Small\": \"#454E7C\", \"Large\": \"#5AC189\", \"SUM(SALES)\": \"#1FA8C9\", \"Classic Cars\": \"#454E7C\", \"Vintage Cars\": \"#5AC189\", \"Motorcycles\": \"#FF7F44\", \"Trucks and Buses\": \"#666666\", \"Planes\": \"#E04355\", \"Ships\": \"#FCC700\", \"Trains\": \"#A868B7\"}}",
+  "slug": null
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "order_date",
+     "expression": null,
+     "is_dttm": true,
+     "type": "TIMESTAMP WITHOUT TIME ZONE"
+    },
+    {
+     "column_name": "sales",
+     "expression": null,
+     "is_dttm": false,
+     "type": "DOUBLE PRECISION"
+    },
+    {
+     "column_name": "quantity_ordered",
+     "expression": null,
+     "is_dttm": false,
+     "type": "BIGINT"
+    },
+    {
+     "column_name": "deal_size",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    },
+    {
+     "column_name": "product_line",
+     "expression": null,
+     "is_dttm": false,
+     "type": "TEXT"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 17,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": null,
+   "table_name": "cleaned_sales_data"
+  }
+ ]
+}

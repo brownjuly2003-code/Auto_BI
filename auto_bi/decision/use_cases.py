@@ -34,13 +34,15 @@ side, `decision capture` one for the candidate, and both read it with one loader
 from __future__ import annotations
 
 import os
+import secrets
+import shutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import TypeAdapter, ValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 
 from auto_bi import filesystem
 from auto_bi.decision.impact import ImpactReport, resolve_impact
@@ -55,8 +57,17 @@ from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.evidence.manifest import MANIFEST_PATH, EvidenceConflictError
 from auto_bi.evidence.signing import EvidenceSignatureError, EvidenceSigner
 from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
+from auto_bi.inventory.superset import (
+    SUPERSET_VERSION,
+    InventoriedDashboard,
+    SupersetAnswerError,
+    SupersetSource,
+    SupersetSourceError,
+    dump_spec,
+    inventory_dashboard,
+)
 from auto_bi.ir.spec import DashboardSpec
-from auto_bi.refs import ContractRef
+from auto_bi.refs import ContractRef, RefError, RefKind
 from auto_bi.scalars import Timestamp
 from auto_bi.semantic.diff import diff_snapshots
 from auto_bi.semantic.gateway import (
@@ -429,6 +440,137 @@ def capture_result(request: CaptureRequest) -> CaptureReport:
         row_count=len(recorded.result.rows),
         candidate_digest=candidate.canonical_digest,
     )
+
+
+INVENTORY_REPORT = "inventory.json"
+
+
+@dataclass(frozen=True)
+class InventoryRequest:
+    #: The semantic ref whose `model.yaml` the gate will validate the written specs against.
+    semantic: str | Path
+    #: `(dashboard ref, Superset dashboard id or slug)`, in the order named.
+    dashboards: Sequence[tuple[str, str]]
+    #: A directory that does not exist yet: the inventory is all it will hold.
+    output: str | Path
+    #: Called once, after every argument was taken: an inventory refused for one asks nothing.
+    source: Callable[[], SupersetSource]
+    #: The Superset database the model describes. A chart on another one refuses its dashboard:
+    #: a table of the same name there is not the table the model names. `None` checks nothing.
+    database: int | None = None
+
+
+class InventoryReport(StrictModel):
+    superset_version: str = SUPERSET_VERSION
+    dashboards: list[InventoriedDashboard] = Field(default_factory=list)
+
+    @property
+    def refused(self) -> list[InventoriedDashboard]:
+        return [dashboard for dashboard in self.dashboards if dashboard.written is None]
+
+
+def inventory(request: InventoryRequest) -> InventoryReport:
+    """Read the named Superset dashboards into the specs `verify --dashboards` reads (D6).
+
+    Each spec is written at the path the gate looks for its ref, so the output directory is
+    the `--dashboards` of a run. A dashboard the inventory does not read whole is not written
+    and the report says why; the gate then says the spec is missing. The output is a new
+    directory, made only once everything was read: no spec of an earlier inventory stays in
+    it to be read as this one's, and an inventory that failed leaves none behind.
+    """
+    pairs = list(request.dashboards)
+    if not pairs:
+        raise VerifyError("name at least one dashboard: --dashboard REF=SUPERSET_ID")
+    paths: dict[str, tuple[str, ...]] = {}
+    for ref, ident in pairs:
+        try:
+            parsed = ContractRef.parse(ref)
+        except RefError as exc:
+            raise VerifyError(f"--dashboard {ref!r}: {exc}") from None
+        if parsed.kind is not RefKind.DASHBOARD or parsed.version is None:
+            raise VerifyError(f"--dashboard {ref!r}: expected dashboard://path@version")
+        if not ident.strip():
+            raise VerifyError(f"--dashboard {ref!r}: name the Superset dashboard id or slug")
+        try:
+            ident.encode("utf-8")
+        except UnicodeEncodeError:
+            # A byte of an argument that is not UTF-8 reaches Python as a lone surrogate, which
+            # no request path can carry.
+            raise VerifyError(
+                f"--dashboard {ref!r}: the Superset id or slug is not UTF-8 text"
+            ) from None
+        if ref in paths:
+            raise VerifyError(f"--dashboard {ref!r} is named twice")
+        *directories, name = parsed.path
+        paths[ref] = (*directories, f"{name}@{parsed.version}.yaml")
+    output = Path(request.output)
+    try:
+        taken = filesystem.exists(output)
+    except OSError as exc:
+        raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
+    if taken:
+        raise VerifyError(f"output already exists: {output}; the inventory writes a new directory")
+    model = _load_model(Path(request.semantic) / MODEL_FILE)
+
+    source = request.source()
+    report = InventoryReport()
+    specs: dict[str, DashboardSpec] = {}
+    for ref, ident in pairs:
+        try:
+            read = inventory_dashboard(ref, ident, source, model, database=request.database)
+        except SupersetSourceError as exc:
+            raise VerifyError(f"cannot read Superset dashboard {ident!r}: {exc}") from None
+        except SupersetAnswerError as exc:
+            raise VerifyError(f"Superset dashboard {ident!r}: {exc}") from None
+        if read.spec is not None:
+            specs[ref] = read.spec
+            read.record.written = "/".join(paths[ref])
+        report.dashboards.append(read.record)
+    _write_inventory(output, report, {paths[ref]: spec for ref, spec in specs.items()})
+    return report
+
+
+def _write_inventory(
+    output: Path, report: InventoryReport, specs: Mapping[tuple[str, ...], DashboardSpec]
+) -> None:
+    """Every file in a directory beside *output*, then the directory renamed to it.
+
+    The directory is made as `mkdir` makes one, under the umask the output would be made
+    under — not with `mkdtemp`'s owner-only mode, which the rename would carry to the
+    output. Whatever stops the writing, an interrupt included, takes the directory with it.
+    """
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        staging = output.parent / f".{output.name}.{secrets.token_hex(8)}"
+        staging.mkdir()
+    except OSError as exc:
+        raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
+    try:
+        for parts, spec in specs.items():
+            path = staging.joinpath(*parts)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(dump_spec(spec))
+        try:
+            text = report.model_dump_json(indent=2)
+        except ValueError:
+            # JSON's `\ud800` escape carries a lone surrogate in from an answer, and pydantic
+            # writes no such text; the report does not say which, as it cannot be written.
+            raise VerifyError(
+                f"cannot write the inventory to {output}: a text Superset answered is not "
+                "Unicode (a lone surrogate)"
+            ) from None
+        (staging / INVENTORY_REPORT).write_bytes((text + "\n").encode("utf-8"))
+        if filesystem.exists(output):
+            raise VerifyError(
+                f"output already exists: {output}; the inventory writes a new directory"
+            )
+        staging.rename(output)
+    except OSError as exc:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
 
 
 def _probe(

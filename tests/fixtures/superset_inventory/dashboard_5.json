@@ -1,0 +1,577 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "align_pn": false,
+    "all_columns": [],
+    "annotation_layers": [],
+    "color_pn": true,
+    "datasource": "19__table",
+    "granularity_sqla": "updated",
+    "groupby": [
+     "tz"
+    ],
+    "include_search": false,
+    "metrics": [
+     "count"
+    ],
+    "order_by_cols": [],
+    "order_desc": true,
+    "page_length": 0,
+    "percent_metrics": [],
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "query_mode": "aggregate",
+    "row_limit": 10,
+    "show_cell_bars": true,
+    "slice_id": 73,
+    "table_timestamp_format": "smart_date",
+    "time_grain_sqla": "P1D",
+    "time_range": "No filter",
+    "viz_type": "table"
+   },
+   "id": 73,
+   "slice_name": "Top Timezones"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "16__table",
+    "groupby": [
+     "channel_name"
+    ],
+    "label_colors": {},
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "row_limit": null,
+    "slice_id": 74,
+    "time_range": "No filter",
+    "treemap_ratio": 1.618033988749895,
+    "viz_type": "treemap_v2"
+   },
+   "id": 74,
+   "slice_name": "Members per Channel"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_picker": {
+     "a": 1,
+     "b": 135,
+     "g": 122,
+     "r": 0
+    },
+    "compare_lag": 1,
+    "compare_suffix": "WoW",
+    "datasource": "13__table",
+    "granularity_sqla": "ts",
+    "header_font_size": 0.4,
+    "metric": "count",
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "rolling_type": "None",
+    "show_trend_line": true,
+    "slice_id": 75,
+    "start_y_axis_at_zero": true,
+    "subheader_font_size": 0.15,
+    "time_grain_sqla": "P1W",
+    "time_range": "No filter",
+    "time_range_fixed": false,
+    "viz_type": "big_number",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 75,
+   "slice_name": "Weekly Messages"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_picker": {
+     "a": 1,
+     "b": 135,
+     "g": 122,
+     "r": 0
+    },
+    "compare_lag": 1,
+    "compare_suffix": "MoM",
+    "datasource": "10__table",
+    "granularity_sqla": "date",
+    "header_font_size": 0.4,
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "new_members",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 1849,
+      "is_dttm": false,
+      "optionName": "_col_New Members",
+      "python_date_format": null,
+      "type": "BIGINT",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "SUM(New Members)",
+     "optionName": "metric_7pksdivmphp_bicn1fji7en",
+     "sqlExpression": null
+    },
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "rolling_type": "None",
+    "show_trend_line": true,
+    "slice_id": 76,
+    "start_y_axis_at_zero": true,
+    "subheader_font_size": 0.15,
+    "time_grain_sqla": "P1M",
+    "time_range": "No filter",
+    "viz_type": "big_number",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 76,
+   "slice_name": "New Members per Month"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "columns": "channel_2",
+    "datasource": "18__table",
+    "groupby": "channel_1",
+    "label_colors": {},
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "cnt",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 1777,
+      "is_dttm": false,
+      "optionName": "_col_cnt",
+      "python_date_format": null,
+      "type": "INT",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "SUM(cnt)",
+     "optionName": "metric_i1djbl8i2y_2vdl690dkyu",
+     "sqlExpression": null
+    },
+    "queryFields": {
+     "columns": "groupby",
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": 1000,
+    "slice_id": 77,
+    "time_range": "No filter",
+    "viz_type": "chord",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 77,
+   "slice_name": "Cross Channel Relationship"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "github-notifications",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_7ud3u2eujnw_1pmeehxvw0b",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "!=",
+      "sqlExpression": null,
+      "subject": "name"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "ts"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "contributionMode": null,
+    "datasource": "15__table",
+    "groupby": [
+     "name"
+    ],
+    "label_colors": {
+     "0": "#1FA8C9",
+     "1": "#454E7C",
+     "announcements": "#A868B7",
+     "apache-releases": "#666666",
+     "beginners": "#666666",
+     "commits": "#E04355",
+     "community-feedback": "#EFA1AA",
+     "contributing": "#8FD3E4",
+     "cypress-tests": "#FDE380",
+     "dashboard-filters": "#FCC700",
+     "dashboard-level-access": "#D1C6BC",
+     "dashboards": "#3CCCCB",
+     "design": "#1FA8C9",
+     "developers": "#9EE5E5",
+     "embedded-dashboards": "#ACE1C4",
+     "feature-requests": "#454E7C",
+     "general": "#3CCCCB",
+     "github-notifications": "#E04355",
+     "globalnav_search": "#A1A6BD",
+     "graduation": "#A1A6BD",
+     "helm-k8-deployment": "#FEC0A1",
+     "introductions": "#5AC189",
+     "jobs": "#FF7F44",
+     "localization": "#5AC189",
+     "newsletter": "#FF7F44",
+     "product_feedback": "#D3B3DA",
+     "pull-requests": "#A38F79",
+     "superset-champions": "#FCC700",
+     "superset_prod_reports": "#A868B7",
+     "superset_stage_alerts": "#A38F79",
+     "support": "#8FD3E4",
+     "visualization_plugins": "#B2B2B2"
+    },
+    "limit": 10,
+    "logAxis": false,
+    "markerEnabled": false,
+    "metrics": [
+     "count"
+    ],
+    "min_periods": 0,
+    "opacity": 0.7,
+    "order_desc": true,
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "rich_tooltip": true,
+    "rolling_periods": 14,
+    "rolling_type": "mean",
+    "row_limit": 1000,
+    "show_extra_controls": false,
+    "show_legend": true,
+    "slice_id": 78,
+    "stack": "Stream",
+    "time_grain_sqla": "P1D",
+    "truncateXAxis": true,
+    "truncateYAxis": true,
+    "viz_type": "echarts_area",
+    "xAxisLabelRotation": 0,
+    "x_axis": "ts",
+    "x_axis_time_format": "smart_date",
+    "x_axis_title_margin": "auto",
+    "y_axis_bounds": [
+     0,
+     null
+    ],
+    "y_axis_format": "SMART_NUMBER",
+    "zoomable": false
+   },
+   "id": 78,
+   "slice_name": "Messages per Channel"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "datasource": "19__table",
+    "granularity_sqla": "updated",
+    "header_font_size": 0.4,
+    "metric": "count",
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "slice_id": 79,
+    "subheader": "Slack Members",
+    "subheader_font_size": 0.125,
+    "time_range": "No filter",
+    "viz_type": "big_number_total",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 79,
+   "slice_name": "Number of Members"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_picker": {
+     "a": 1,
+     "b": 135,
+     "g": 122,
+     "r": 0
+    },
+    "compare_lag": 1,
+    "compare_suffix": "WoW",
+    "datasource": "23__table",
+    "granularity_sqla": "ts",
+    "header_font_size": 0.4,
+    "metric": "count",
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "rolling_type": "None",
+    "show_trend_line": true,
+    "slice_id": 80,
+    "start_y_axis_at_zero": true,
+    "subheader_font_size": 0.15,
+    "time_grain_sqla": "P1W",
+    "time_range": "2020-08-05T00:00:00 : 2020-09-06T00:00:00",
+    "time_range_fixed": false,
+    "viz_type": "big_number",
+    "y_axis_format": "SMART_NUMBER"
+   },
+   "id": 80,
+   "slice_name": "Weekly Threads"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "bottom_margin": "auto",
+    "datasource": "18__table",
+    "groupby": "channel_2",
+    "left_margin": "auto",
+    "legend_type": "continuous",
+    "linear_color_scheme": "schemeBlues",
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "cnt",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 1777,
+      "is_dttm": false,
+      "optionName": "_col_cnt",
+      "python_date_format": null,
+      "type": "INT",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "SUM(cnt)",
+     "optionName": "metric_i1djbl8i2y_2vdl690dkyu",
+     "sqlExpression": null
+    },
+    "normalize_across": "heatmap",
+    "row_limit": 1000,
+    "show_legend": true,
+    "show_percentage": false,
+    "show_values": true,
+    "slice_id": 81,
+    "sort_x_axis": "alpha_asc",
+    "sort_y_axis": "alpha_asc",
+    "value_bounds": [
+     null,
+     null
+    ],
+    "viz_type": "heatmap_v2",
+    "x_axis": "channel_1",
+    "xscale_interval": null,
+    "y_axis_format": "SMART_NUMBER",
+    "yscale_interval": null
+   },
+   "id": 81,
+   "slice_name": "Cross Channel Relationship heatmap"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T10:21:32.991327",
+  "dashboard_title": "Slack Dashboard",
+  "id": 5,
+  "json_metadata": "{\"timed_refresh_immune_slices\": [], \"expanded_slices\": {}, \"refresh_frequency\": 0, \"default_filters\": \"{}\", \"color_scheme\": \"supersetColors\", \"label_colors\": {\"0\": \"#1FA8C9\", \"1\": \"#454E7C\", \"introductions\": \"#5AC189\", \"jobs\": \"#FF7F44\", \"apache-releases\": \"#666666\", \"commits\": \"#E04355\", \"dashboard-filters\": \"#FCC700\", \"announcements\": \"#A868B7\", \"general\": \"#3CCCCB\", \"superset_stage_alerts\": \"#A38F79\", \"contributing\": \"#8FD3E4\", \"graduation\": \"#A1A6BD\", \"embedded-dashboards\": \"#ACE1C4\", \"helm-k8-deployment\": \"#FEC0A1\", \"visualization_plugins\": \"#B2B2B2\", \"community-feedback\": \"#EFA1AA\", \"cypress-tests\": \"#FDE380\", \"product_feedback\": \"#D3B3DA\", \"developers\": \"#9EE5E5\", \"dashboard-level-access\": \"#D1C6BC\", \"design\": \"#1FA8C9\", \"feature-requests\": \"#454E7C\", \"localization\": \"#5AC189\", \"newsletter\": \"#FF7F44\", \"beginners\": \"#666666\", \"github-notifications\": \"#E04355\", \"superset-champions\": \"#FCC700\", \"superset_prod_reports\": \"#A868B7\", \"dashboards\": \"#3CCCCB\", \"pull-requests\": \"#A38F79\", \"support\": \"#8FD3E4\", \"globalnav_search\": \"#A1A6BD\"}}",
+  "slug": null
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "tz",
+     "expression": null,
+     "is_dttm": false,
+     "type": "VARCHAR"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 19,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": null,
+   "table_name": "users"
+  },
+  {
+   "columns": [
+    {
+     "column_name": "channel_name",
+     "expression": null,
+     "is_dttm": false,
+     "type": null
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 16,
+   "metrics": [
+    {
+     "expression": "count(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": "SELECT c.name AS channel_name, u.name AS member_name FROM channel_members cm JOIN channels c ON cm.channel_id = c.id JOIN users u ON cm.user_id = u.id",
+   "table_name": "members_channels_2"
+  },
+  {
+   "columns": [],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 13,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": null,
+   "table_name": "messages"
+  },
+  {
+   "columns": [
+    {
+     "column_name": "new_members",
+     "expression": null,
+     "is_dttm": false,
+     "type": "LONGLONG"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 10,
+   "metrics": [],
+   "schema": "main",
+   "sql": "SELECT date, total_membership - lag(total_membership) OVER (ORDER BY date) AS new_members FROM exported_stats",
+   "table_name": "new_members_daily"
+  },
+  {
+   "columns": [
+    {
+     "column_name": "channel_1",
+     "expression": null,
+     "is_dttm": false,
+     "type": "STRING"
+    },
+    {
+     "column_name": "channel_2",
+     "expression": null,
+     "is_dttm": false,
+     "type": "STRING"
+    },
+    {
+     "column_name": "cnt",
+     "expression": null,
+     "is_dttm": false,
+     "type": "INT"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 18,
+   "metrics": [],
+   "schema": "main",
+   "sql": "SELECT uc1.name as channel_1, uc2.name as channel_2, count(*) AS cnt FROM users_channels uc1 JOIN users_channels uc2 ON uc1.user_id = uc2.user_id GROUP BY uc1.name, uc2.name HAVING uc1.name <> uc2.name\n",
+   "table_name": "users_channels-uzooNNtSRO"
+  },
+  {
+   "columns": [
+    {
+     "column_name": "ts",
+     "expression": null,
+     "is_dttm": true,
+     "type": "DATETIME"
+    },
+    {
+     "column_name": "name",
+     "expression": null,
+     "is_dttm": false,
+     "type": "VAR_STRING"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 15,
+   "metrics": [
+    {
+     "expression": "count(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": "SELECT m.ts, c.name, m.text FROM messages m JOIN channels c ON m.channel_id = c.id",
+   "table_name": "messages_channels"
+  },
+  {
+   "columns": [],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 23,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": null,
+   "table_name": "threads"
+  }
+ ]
+}
