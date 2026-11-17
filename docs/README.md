@@ -6,7 +6,7 @@
 2. **Auto_BI v0.5.0** — унаследованный baseline «запрос → дашборд».
 
 Это разделение важно: опубликованный пакет `autobi-agent==0.5.0` относится только к
-baseline. DecisionOps запускается из checkout как `autobi-agent` версии `0.6.0`: код — в этом
+baseline. DecisionOps запускается из checkout как `autobi-agent` версии `0.7.0`: код — в этом
 репозитории, пакет в индексы не публикуется ([ADR 0011](adr/0011-public-repository.md)).
 
 ## С чего начать

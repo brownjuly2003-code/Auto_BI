@@ -1,0 +1,49 @@
+tables:
+- name: dm.sales_daily
+  description: Дневные продажи
+  grain:
+  - date
+  - store_id
+  columns:
+  - name: date
+    type: Date
+    role: time
+  - name: store_id
+    type: UInt32
+    role: dimension
+    fk: dm.stores.id
+  - name: region
+    type: String
+    role: dimension
+  - name: category
+    type: String
+    role: dimension
+  - name: revenue
+    type: Decimal(18, 2)
+    role: measure
+    description: Выручка, руб
+    agg: sum
+  - name: gross_margin
+    type: Decimal(18, 2)
+    role: measure
+    agg: sum
+  physical:
+    engine: clickhouse
+    table_engine: MergeTree
+    sorting_key:
+    - date
+    - store_id
+    partition_key: toYYYYMM(date)
+  classification: internal
+- name: dm.stores
+  grain:
+  - id
+  columns:
+  - name: id
+    type: UInt32
+    role: dimension
+  physical:
+    engine: clickhouse
+joins:
+- left: dm.sales_daily.store_id
+  right: dm.stores.id

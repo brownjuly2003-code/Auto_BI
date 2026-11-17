@@ -14,7 +14,7 @@ reviewed-запроса проверен на живых PostgreSQL и ClickHous
 smoke и формул dbt (ADR 0008).
 Owner outcome (human/design-partner) не измеряется
 ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Код — в `main` публичного репозитория
-baseline, пакет `autobi-agent` `0.6.0` не публикуется
+baseline; в checkout — `autobi-agent` `0.7.0`, без публикации пакета и тега
 ([ADR 0011](adr/0011-public-repository.md)).
 
 ## Коротко
