@@ -95,6 +95,7 @@ CI installs `mutmut==3.6.0` and mutates the cumulative ordered scope
 `tests/test_sql_guard_mutation_cte_gates.py`,
 `tests/test_sql_guard_mutation_postgres_reads.py`,
 `tests/test_sql_guard_parse_depth.py`,
+`tests/test_sql_guard_parser_refusal.py`,
 `tests/test_sql_guard_postgres_cast_output.py`,
 `tests/test_sql_guard_postgres_group_by.py`,
 `tests/test_sql_guard_postgres_order_by.py`,
@@ -112,7 +113,7 @@ CI installs `mutmut==3.6.0` and mutates the cumulative ordered scope
 `tests/test_sqlgen_yoy.py`,
 `tests/test_superset_adapter.py`,
 `tests/test_verified_assets.py`, and
-`tests/test_x3_retention.py`. The selection now contains 76 modules. The preceding
+`tests/test_x3_retention.py`. The selection now contains 77 modules. The preceding
 71-module selection measured on 2026-11-03 on
 Mac with 4 cores, Python 3.13, mutmut 3.6.0 (`mutmut run --max-children 4`) produced
 3011 mutants: 2614 killed, 2 timeout, 356 survived, and 39 no_tests, in

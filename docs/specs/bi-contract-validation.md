@@ -44,7 +44,8 @@ its spec validates.
   retains its depth explanation. Exceptions in our AST handling still propagate; process-control
   exceptions are not findings. The try boundary covers only the third-party parser call.
 
-Tests: `tests/test_entry_sql.py`, `tests/test_sql_guard_parse_depth.py`.
+Tests: `tests/test_sql_guard_parser_refusal.py` (the guard refusal itself),
+`tests/test_entry_sql.py` (entry points), `tests/test_sql_guard_parse_depth.py`.
 
 ### Scenario: an unknown measure column blocks on Superset
 

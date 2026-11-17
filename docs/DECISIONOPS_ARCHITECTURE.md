@@ -444,7 +444,8 @@ PostgreSQL-текста ClickHouse-грамматикой либо отверг�
 числовые координаты при наличии, без SQL и текста исключения. Ошибки обработки AST вне
 вызова парсера остаются ошибками кода. Для невалидного `raw_sql` это `bi.spec_invalid`
 (block) и bundle; impact сохраняет `chart.opaque_sql`
-([spec](specs/bi-contract-validation.md), `tests/test_entry_sql.py`).
+([spec](specs/bi-contract-validation.md), `tests/test_sql_guard_parser_refusal.py`,
+`tests/test_entry_sql.py`).
 
 Reviewed-запрос — якорь provenance-цепочки (§8.4.1), и стоит он ровно столько, сколько
 стоит его привязка к governed-модели: запрос по `dm.sales_daily_v2` даёт attested число,

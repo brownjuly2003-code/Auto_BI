@@ -33,6 +33,9 @@
   блокируется через `bi.spec_invalid`, прогон пишет bundle. Общий `verify` подавляет логгер
   sqlglot на CLI, Action и MCP и восстанавливает его состояние. Verifier 138 → 139, check
   остаётся 86.
+- **Мутационный гейт:** guard-тесты отказов парсера E1 вынесены в
+  `tests/test_sql_guard_parser_refusal.py` и вошли в выборку mutmut (77 модулей);
+  выживших в `_parser_refusal` нет, baseline `_parse_one_select` 2 → 0.
 - **Публикация кода:** форк опубликован в `main` публичного репозитория baseline
   ([ADR 0011](docs/adr/0011-public-repository.md)): GitHub `main` и PR #99 влиты
   merge-коммитом; в `main` код идёт pull request'ом с обязательными проверками, без force push.
