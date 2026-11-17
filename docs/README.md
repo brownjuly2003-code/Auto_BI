@@ -39,6 +39,7 @@ baseline. DecisionOps запускается из checkout как `autobi-agent`
 | [ADR 0010](adr/0010-finish-line.md) | Финишная черта DecisionOps: пункты F1–F6 и заморозка | decision |
 | [ADR 0011](adr/0011-public-repository.md) | Код форка — в публичном репозитории baseline; пакет не публикуется | decision |
 | [ADR 0012](adr/0012-post-finish-development.md) | Развитие после финиша: пункты D1–D6 по бэклогу и рыночному срезу | decision |
+| [ADR 0013](adr/0013-entry-points-to-proven-path.md) | От точек входа к пройденному пути: основной путь E1–E3, расширения E4–E7 | decision |
 | [DECISIONOPS_BACKLOG.md](DECISIONOPS_BACKLOG.md) | Находки после финишной черты; срез открывает только решение владельца | backlog |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome не измеряется |
 | [Implementation history](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md) | Подробный хронологический журнал реализации | archive |

@@ -116,10 +116,10 @@ PEM вне checkout и evidence.
 
 ## Что делать дальше
 
-Финишная черта [ADR 0010](adr/0010-finish-line.md) пройдена 2026-11-10: F1–F6 сделаны,
-версия `0.6.0`. Решение владельца 2026-11-13 — [ADR 0012](adr/0012-post-finish-development.md):
-D1–D6 сделаны в локальной ветке `decisionops-backlog`; дальше — по решению владельца.
-Находки вне D1–D6 — в [бэклог](DECISIONOPS_BACKLOG.md).
+Финиш [ADR 0010](adr/0010-finish-line.md) — 2026-11-10, `0.6.0`. D1–D6
+[ADR 0012](adr/0012-post-finish-development.md) — в локальной ветке `decisionops-backlog`.
+План [ADR 0013](adr/0013-entry-points-to-proven-path.md) принят 2026-11-17: основной путь
+E1–E3, расширения E4–E7; находки вне плана — в [бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:
 
@@ -130,8 +130,8 @@ D1–D6 сделаны в локальной ветке `decisionops-backlog`; �
 ## Решения для текущего scope
 
 1. Development gate — модельное ревью Astra xhigh
-   ([ADR 0006](adr/0006-modelled-review-development-gate.md)); пока у владельца нет лимита
-   Codex — независимый Opus-субагент и мутанты (его выбор 2026-11-07). Human evidence и
-   production acceptance им не заявляются.
+   ([ADR 0006](adr/0006-modelled-review-development-gate.md)), с 2026-11-17 Astra xhigh и
+   исполнитель срезов (слово владельца); плюс мутанты. Human evidence и production acceptance
+   им не заявляются.
 2. Evidence: `integrity=content_hashed` или opt-in `integrity=signed` (Ed25519, ADR 0005).
 3. Investigation alpha ограничен supplied results и локальными artifacts.
