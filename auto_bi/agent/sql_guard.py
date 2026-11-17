@@ -77,14 +77,27 @@ class SQLGuardError(Exception):
     pass
 
 
+def _parser_refusal(error: Exception, where: str) -> str:
+    """Name a third-party parser failure without its message, tokens or SQL excerpt."""
+    place = "position unavailable"
+    if isinstance(error, sqlglot.errors.ParseError) and error.errors:
+        line, column = error.errors[0].get("line"), error.errors[0].get("col")
+        if type(line) is int and type(column) is int:
+            place = f"line {line}, column {column}"
+    kind = type(error).__name__
+    if isinstance(error, RecursionError):
+        return f"SQL statement nests deeper than this parser reads ({kind} at {where}; {place})"
+    return f"SQL does not parse: {kind} at {where}; {place}"
+
+
 def _parse_one_select(sql: str, *, dialect: str = DIALECT) -> exp.Expression:
     """Parse exactly one SELECT or set-operation statement or raise SQLGuardError."""
     try:
         statements = sqlglot.parse(sql, read=dialect)
-    except (sqlglot.errors.ParseError, RecursionError) as e:
-        if isinstance(e, RecursionError):
-            raise SQLGuardError("SQL statement nests deeper than this parser reads") from e
-        raise SQLGuardError(f"SQL does not parse: {e}") from e
+    except Exception as error:
+        # Malformed SQL also makes sqlglot raise TokenError, AttributeError, ValueError
+        # and IndexError. Only its call is guarded; our AST handling below still raises.
+        raise SQLGuardError(_parser_refusal(error, "sqlglot.parse")) from error
 
     statements = [s for s in statements if s is not None]
     if len(statements) != 1:
@@ -1312,7 +1325,11 @@ def _postgres_sort_token_info(
     sql: str, dialect: str
 ) -> tuple[frozenset[int] | None, dict[int, str]]:
     """Track unary plus offsets and quoted function spellings erased by sqlglot."""
-    tokens = sqlglot.Dialect.get_or_raise(dialect).tokenize(sql)
+    parser = sqlglot.Dialect.get_or_raise(dialect)
+    try:
+        tokens = parser.tokenize(sql)
+    except Exception as error:
+        raise SQLGuardError(_parser_refusal(error, "sqlglot.tokenize")) from error
     offsets: set[int] = set()
     quoted_function_names: dict[int, str] = {}
     has_plus = False

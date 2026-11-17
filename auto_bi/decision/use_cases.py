@@ -36,7 +36,8 @@ from __future__ import annotations
 import os
 import secrets
 import shutil
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -227,6 +228,21 @@ class CaptureReport:
     candidate_digest: str
 
 
+@contextmanager
+def _quiet_sqlglot() -> Iterator[None]:
+    """Suppress SQL-bearing dependency diagnostics for the whole synchronous use case."""
+    import logging
+
+    logger = logging.getLogger("sqlglot")
+    disabled = logger.disabled
+    logger.disabled = True
+    try:
+        yield
+    finally:
+        logger.disabled = disabled
+
+
+@_quiet_sqlglot()
 def verify(request: VerifyRequest) -> GateReport:
     """Load everything §8.1 names and run the gate over it."""
     # What the request states of the run itself is settled before anything is read. A moment

@@ -3183,6 +3183,58 @@ def test_sql_the_parser_fails_on_refuses_the_dashboard_by_the_failure(
     ]
 
 
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (
+            sqlglot.errors.ParseError("private-parser-text", errors=[{"line": 3, "col": 7}]),
+            "it does not parse (line 3, column 7)",
+        ),
+        (sqlglot.errors.TokenError("private-parser-text"), "it does not parse"),
+        (
+            AttributeError("private-parser-text"),
+            "it does not parse (the parser failed with AttributeError)",
+        ),
+        (
+            ValueError("private-parser-text"),
+            "it does not parse (the parser failed with ValueError)",
+        ),
+        (
+            IndexError("private-parser-text"),
+            "it does not parse (the parser failed with IndexError)",
+        ),
+        (
+            RecursionError("private-parser-text"),
+            "SQL statement nests deeper than this parser reads",
+        ),
+    ],
+    ids=[
+        "ParseError",
+        "TokenError",
+        "AttributeError",
+        "ValueError",
+        "IndexError",
+        "RecursionError",
+    ],
+)
+def test_parser_failures_keep_the_head_inventory_refusal(
+    monkeypatch: pytest.MonkeyPatch, error: Exception, reason: str
+) -> None:
+    """The inventory.json refusal stays as in 63c9d1b through the real guard boundary."""
+
+    def parse(*args: Any, **kwargs: Any) -> Any:
+        raise error
+
+    monkeypatch.setattr(sqlglot, "parse", parse)
+
+    read = _read({"rolling_type": "mean"})
+
+    assert read.spec is None
+    record = json.loads(read.record.model_dump_json())
+    assert record["refusals"] == [f"chart_122: its read SQL is not one plain SELECT: {reason}"]
+    assert "private-parser-text" not in read.record.model_dump_json()
+
+
 @pytest.mark.parametrize("error", [AttributeError, ValueError, IndexError, RecursionError])
 def test_any_failure_of_the_guard_refuses_the_dashboard_by_its_class(
     monkeypatch: pytest.MonkeyPatch, error: type[Exception]

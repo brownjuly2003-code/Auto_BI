@@ -69,7 +69,7 @@ def test_verified_asset_registry_reports_parser_depth_as_validation_error(
         )
     assert isinstance(error.value.__cause__, ValidationError)
     assert "nest" in str(error.value)
-    assert "RecursionError" not in str(error.value)
+    assert "RecursionError at sqlglot.parse" in str(error.value)
 
 
 def test_chart_impact_keeps_a_deep_raw_sql_tile_opaque(tmp_path: Path) -> None:

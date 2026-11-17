@@ -14,7 +14,8 @@ The action passes its inputs as ``DECISION_GATE_*`` variables — never ``AUTO_B
 2. runs the gate as a child process, ``decision verify --json --pr-comment``, each input
    as ``--flag=value`` and the contract paths last. The child inherits the environment the
    connection settings of ``--dwh`` live in, less every ``DECISION_GATE_*`` variable and
-   the GitHub token variables: a token is the action's, never the gate's. It runs isolated
+   the GitHub token variables: a token is the action's, never the gate's. Every child is
+   forced into ``AUTO_BI_NO_ENV_FILE=1`` so no checkout dotenv supplies settings. It runs isolated
    (``-I``), as `action.yml` runs this module: no module of the checked-out pull request,
    in the working directory or on ``PYTHONPATH``, is imported in place of the gate's.
    What it writes to standard error is set in the log between ``stop-commands`` lines,
@@ -219,12 +220,14 @@ def verify_argv(config: Config, evidence: str, comment: Path) -> list[str]:
 
 
 def child_env(environ: Mapping[str, str]) -> dict[str, str]:
-    """The gate's environment: the job's, less the action's inputs and the token variables."""
-    return {
+    """The job's settings without tokens or any checkout dotenv, for every child command."""
+    env = {
         name: given
         for name, given in environ.items()
         if not name.upper().startswith(PREFIX) and name.upper() not in TOKEN_VARIABLES
     }
+    env["AUTO_BI_NO_ENV_FILE"] = "1"
+    return env
 
 
 def exit_for(code: int, fail_on: str) -> int:

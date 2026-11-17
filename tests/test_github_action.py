@@ -295,6 +295,7 @@ def test_the_gate_inherits_the_job_less_the_inputs_and_the_tokens() -> None:
         "PATH": "/bin",
         "AUTO_BI_CLICKHOUSE_HOST": "warehouse",
         "GITHUB_REPOSITORY": "owner/repo",
+        "AUTO_BI_NO_ENV_FILE": "1",
     }
 
 
@@ -902,11 +903,11 @@ def test_the_action_runs_the_gate_and_keeps_one_comment_per_product_across_runs(
     _no_token(out)
 
 
-def test_the_gate_s_stderr_reaches_the_log_as_text_and_the_checkout_is_not_imported(
+def test_the_gate_suppresses_chart_sql_in_both_streams_and_does_not_import_the_checkout(
     tmp_path: Path, capfd: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The real gate, on a chart whose SQL is written into a parser warning, from a checkout
-    that is the working directory and on ``PYTHONPATH``."""
+    """The real gate suppresses chart SQL warnings and emits only its verdict, even from a
+    decoy checkout that is the working directory and on ``PYTHONPATH``."""
     dashboard = yaml.safe_load(
         (OVERLAY / "dashboards" / "weekly_margin@7.yaml").read_text(encoding="utf-8")
     )
@@ -929,11 +930,13 @@ def test_the_gate_s_stderr_reaches_the_log_as_text_and_the_checkout_is_not_impor
     assert main(env) == 4
 
     out, err = capfd.readouterr()
-    before, inside, after = _window(out)
-    assert "\n::warning title=Auto_BI release gate::pass, written by the chart SQL\n" in inside
-    assert "\n::add-mask::block" in inside
-    assert before == "" and err == ""
-    assert after.startswith("verdict: block (exit 4), run ") and after.count("\n") == 1
+    for stream in (out, err):
+        assert "SHOW TABLES" not in stream
+        assert "::warning title=Auto_BI release gate::pass, written by the chart SQL" not in stream
+        assert "::add-mask::block" not in stream
+        assert "::stop-commands::" not in stream
+    assert err == ""
+    assert out.startswith("verdict: block (exit 4), run ") and out.count("\n") == 1
 
 
 def test_the_module_runs_as_the_action_runs_it(tmp_path: Path) -> None:

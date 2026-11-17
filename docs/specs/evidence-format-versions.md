@@ -16,6 +16,17 @@ CHANGELOG names 1 → 2 and the transitions from verifier 7 → 8 and check 5 �
 Part of the idempotency key: a different verifier can derive a different verdict or
 evidence artifact from the same inputs, so its bundles must not be reused (§7.6).
 
+### Verifier 139
+
+parser failures on malformed SQL are SQLGuardError refusals, including TokenError,
+AttributeError, ValueError and IndexError (ADR 0013, E1). A delivered raw_sql chart now completes
+with bi.spec_invalid (block) and a bundle where verifier 138 could abort without a verdict.
+Parser refusal text names the exception class and parser boundary, with numeric coordinates when
+available, never SQL or the exception message. RecursionError keeps its depth explanation.
+The existing bi.contract grading rule is unchanged: a spec the SELECT-only guard refuses blocks;
+CHECK_VERSION stays 86. Diagnostics and the availability of evidence change, so prior bundles
+must not be reused.
+
 ### Verifier 138
 
 a derived dbt metric whose `expr` divides one of its input metrics by another or by itself is

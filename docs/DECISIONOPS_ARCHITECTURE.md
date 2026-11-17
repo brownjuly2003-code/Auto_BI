@@ -439,8 +439,12 @@ verified asset с `INSERT` — сломанный reviewed-артефакт, и 
 (`is_known_engine`): `sqlglot_dialect` подставляет v1-движок незнакомому имени, и охрана
 PostgreSQL-текста ClickHouse-грамматикой либо отвергла бы валидный SQL, либо — хуже —
 пропустила бы как SELECT то, что не разобрала.
-Если парсер не может прочитать запрос из-за глубины вложенности, граница контракта возвращает
-тот же guard rejection, а не выпускает `RecursionError`.
+Любая ошибка непосредственно вызова парсера sqlglot, включая `TokenError`, `AttributeError`,
+`ValueError`, `IndexError` и `RecursionError`, становится `SQLGuardError`: класс и место,
+числовые координаты при наличии, без SQL и текста исключения. Ошибки обработки AST вне
+вызова парсера остаются ошибками кода. Для невалидного `raw_sql` это `bi.spec_invalid`
+(block) и bundle; impact сохраняет `chart.opaque_sql`
+([spec](specs/bi-contract-validation.md), `tests/test_entry_sql.py`).
 
 Reviewed-запрос — якорь provenance-цепочки (§8.4.1), и стоит он ровно столько, сколько
 стоит его привязка к governed-модели: запрос по `dm.sales_daily_v2` даёт attested число,
@@ -702,7 +706,7 @@ Content address статического входа — digest его точно
 читался как гранёный сегодняшним правилом. Добавление **новой** проверки — не такой случай:
 ни один прежний `CheckResult` ею не переоценивается, а от чтения bundle без неё как полной
 верификации защищает как раз verifier version. Текущие значения:
-`VERIFIER_VERSION=138`, `CHECK_VERSION=86`.
+`VERIFIER_VERSION=139`, `CHECK_VERSION=86`.
 
 `reports/summary.md` отдельно называет `other_product_issues` из `contracts.validate`,
 с source/code/reported severity/subject/message и явным пояснением, что они не влияют
@@ -753,6 +757,16 @@ support/caveats и непустой список evidence refs. Bundle assembler
 - JSON evidence bundle;
 - derived Markdown summary;
 - стабильный process exit code.
+
+Общий синхронный use case `verify` подавляет логгер `sqlglot` от загрузки входов до
+завершения bundle и восстанавливает его состояние даже при ошибке. Это одна граница для
+CLI, Action и MCP (`tests/test_entry_sql.py`). Локальный CLI сохраняет `.env`; режим
+`AUTO_BI_NO_ENV_FILE=1` исключает файл до создания настроек. Action принудительно включает
+его для каждой дочерней команды. Внешний `uv run --no-env-file` исключает предварительную
+загрузку dotenv самим uv, даже при `UV_ENV_FILE` из workflow или runner; версию uv Action
+берёт из `.uv-version` своего репозитория
+([spec](specs/pull-request-comment.md), `tests/test_entry_settings.py`,
+`tests/test_action_metadata.py`).
 
 ### 8.2 Последовательность
 
@@ -2553,12 +2567,14 @@ Greenplum: свои каталоги, MPP, распределение и пла�
 переносы и terminal controls. Отказ не становится `cost.not_measured` или verdict.
 Перед `collect`, после catalog connection factory, CLI добавляет один `NullHandler`
 логгеру `sqlglot`: его parser warnings тоже могут раскрыть SQL через `logging.lastResort`.
-Гарантия одной строки относится к обычному CLI без настроенного logging; пользовательские
-handlers, levels и propagation сохранены, и их вывод остаётся ответственностью приложения.
+С E1 общий `verify` подавляет этот логгер на всём прогоне, включая пользовательские handlers,
+и восстанавливает состояние по завершении. Прямые вызовы collector/runtime вне `verify`
+сохраняют настройки логирования приложения.
 Guard, прямые collector/runtime вызовы, порядок соединений и catalog queries,
 успешные payload и версии 98/73 сохранены. Каталоги и создание runtime connection
 могут предшествовать отказу; запрещённый runtime SQL не исполняется. Перехват не
-покрывает catalog connection factory и посторонние исключения, включая `TokenError`.
+покрывает catalog connection factory и посторонние исключения нашего кода; `TokenError`
+непосредственно парсера с E1 становится `SQLGuardError`.
 Проверка подставляет SQL через `PlanQuestion` и использует настоящий guard с fake DWH;
 такой output обычного typed compiler не доказан.
 
@@ -2646,10 +2662,13 @@ Composite Action `action.yml` — интеграция с CI, а не DecisionOp
 комментарий или маркер не в первой строке не правится. Токен уходит только на `GITHUB_API_URL` по
 https (http — только loopback), редиректы не следуются. Отказ GitHub (read-only токен форка) —
 warning; exit шага задают вердикт и `fail-on`, а прогон без вердикта роняет шаг при любом
-`fail-on`. Зависимости Action берёт из своего `uv.lock` (`uv run --frozen --no-dev --project
-"$GITHUB_ACTION_PATH"`), так что репозиторию пользователя Python-проект не нужен. Две границы
-остаются в бэклоге: под `--dwh` `Settings` дочитывает из `.env` checkout'а PR переменные, которых
-workflow не задал, а `setup-uv` берёт версию uv из `pyproject.toml` рабочего каталога. Тега,
+`fail-on`. Зависимости Action берёт из своего `uv.lock` (`uv run --no-env-file --frozen --no-dev --project
+"$GITHUB_ACTION_PATH"`), так что репозиторию пользователя Python-проект не нужен. С E1 все
+дочерние команды получают `AUTO_BI_NO_ENV_FILE=1`, а внешний uv получает `--no-env-file`:
+файл `.env` checkout'а не читается и при `UV_ENV_FILE` из workflow или runner
+(`tests/test_entry_settings.py`, `tests/test_action_metadata.py`).
+`setup-uv` получает явную версию из `.uv-version` самого Action; тот же источник задаёт uv
+для locked-проверки его `uv.lock` в CI. Тега,
 релиза и Marketplace нет — workflow пинит commit. Контракт и границы —
 [pull-request comment](specs/pull-request-comment.md).
 

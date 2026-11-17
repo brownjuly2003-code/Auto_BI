@@ -7,6 +7,13 @@
 
 ### Changed
 
+- **E1 — закалка входов** (ADR 0013): Action принудительно отключает `.env` через
+  `AUTO_BI_NO_ENV_FILE=1`, а его внешний `uv run` — через `--no-env-file`; тот же режим доступен всем командам CLI, локальное поведение по
+  умолчанию сохранено. Версия uv читается из `.uv-version` самого Action и проверяется с его
+  lock в CI. Ошибки sqlglot на битом SQL — безопасные отказы guard; чарт блокируется через
+  `bi.spec_invalid`, прогон пишет bundle. Общий `verify` подавляет логгер sqlglot на CLI,
+  Action и MCP и восстанавливает его состояние. Verifier 138 → 139, check остаётся 86.
+
 - **Код форка опубликован в `main` публичного репозитория baseline**
   ([ADR 0011](docs/adr/0011-public-repository.md)). GitHub `main` и PR #99 влиты merge-коммитом;
   в `main` код идёт pull request'ом с обязательными проверками, без force push. Пакет

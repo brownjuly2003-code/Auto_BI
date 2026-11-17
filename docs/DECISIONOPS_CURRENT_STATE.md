@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-14 · **Версии evidence:** `VERIFIER_VERSION=138`, `CHECK_VERSION=86`
+**Обновлено:** 2026-11-17 · **Версии evidence:** `VERIFIER_VERSION=139`, `CHECK_VERSION=86`
 (что меняла каждая — [spec](specs/evidence-format-versions.md))
 
 Здесь только то, что работает, что не реализовано и что дальше. Поведение описывают
@@ -117,9 +117,10 @@ PEM вне checkout и evidence.
 ## Что делать дальше
 
 Финиш [ADR 0010](adr/0010-finish-line.md) — 2026-11-10, `0.6.0`. D1–D6
-[ADR 0012](adr/0012-post-finish-development.md) — в локальной ветке `decisionops-backlog`.
+[ADR 0012](adr/0012-post-finish-development.md) и E1 — в локальной ветке `decisionops-backlog`.
 План [ADR 0013](adr/0013-entry-points-to-proven-path.md) принят 2026-11-17: основной путь
-E1–E3, расширения E4–E7; находки вне плана — в [бэклог](DECISIONOPS_BACKLOG.md).
+E1–E3 (E2 — публикация, по слову владельца), расширения E4–E7; прочее — в
+[бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:
 

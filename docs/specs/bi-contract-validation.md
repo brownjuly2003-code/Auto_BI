@@ -30,6 +30,22 @@ before. The validator's rules SHALL NOT change in this capability, and other che
 impact included) SHALL read a delivered dashboard as before: only `bi.contract` grades whether
 its spec validates.
 
+### Scenario: malformed operator SQL is a finding, not a crashed run (E1)
+
+- **GIVEN** a delivered `raw_sql` chart with an unclosed quote, a malformed quoted function call,
+  or SQL on which sqlglot raises `ParseError`, `TokenError`, `AttributeError`, `ValueError`,
+  `IndexError` or `RecursionError`
+- **WHEN** CLI, Action or MCP runs `verify`
+- **THEN** the parser call raises `SQLGuardError`, validation names the chart in `invalid`,
+  `bi.contract` blocks with `bi.spec_invalid`, nothing is compiled for that dashboard, and a
+  verifiable bundle is written. The refusal names the exception class and `sqlglot.parse`
+  (`sqlglot.tokenize` for the secondary PostgreSQL token pass), plus numeric line/column when
+  supplied or `position unavailable`; it never copies SQL or the parser's message. Depth refusal
+  retains its depth explanation. Exceptions in our AST handling still propagate; process-control
+  exceptions are not findings. The try boundary covers only the third-party parser call.
+
+Tests: `tests/test_entry_sql.py`, `tests/test_sql_guard_parse_depth.py`.
+
 ### Scenario: an unknown measure column blocks on Superset
 
 - **GIVEN** a product delivering one dashboard whose `big_number` chart `kpi` has the measure

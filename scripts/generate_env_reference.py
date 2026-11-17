@@ -32,6 +32,14 @@ ENV_PREFIX = "AUTO_BI_"
 # Non-prefixed companion vars operators also need (documented, not Settings fields).
 EXTRA_ENV_ROWS: list[tuple[str, str, str]] = [
     (
+        "AUTO_BI_NO_ENV_FILE",
+        "Set to exactly `1` in the process environment before starting any CLI command "
+        "to make `get_settings()` ignore `.env` entirely. Environment variables and defaults "
+        "still apply. Other values keep local `.env` loading. Settings are cached per process; "
+        "the Action forces `1` for every child command.",
+        "(unset)",
+    ),
+    (
         "ANTHROPIC_API_KEY",
         "Anthropic SDK key when ``llm_provider=anthropic``. "
         "Also accepted as ``AUTO_BI_ANTHROPIC_API_KEY``.",

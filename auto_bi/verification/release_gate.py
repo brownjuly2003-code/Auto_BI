@@ -118,15 +118,6 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: What each verifier version changed: docs/specs/evidence-format-versions.md, newest first.
 #: A bump adds its entry there and here; here only the newest few stay (at most five,
 #: tests/test_evidence_format_versions.py). The newest:
-#: 134 — a column's type on a PostgreSQL kernel is compared by the name `format_type` prints for it,
-#: not by the one the model writes (ADR 0010, F2): `float8` is `double precision`, `int4` is
-#: `integer`, `varchar(n)` is `character varying(n)`, `timestamp` is `timestamp without time zone`,
-#: and so are the other names of the manual's alias table but the serial types, `float(p)`,
-#: `numeric(p)`, `char` with no length, `bpchar(n)` and the brackets of an array of any dimensions.
-#: Verifier 133 graded such a pair `physical.type_drift` (review), and that drift accounted for a
-#: `42883` of the reference query or of `max()` of the event-time column, which now ends the run.
-#: ClickHouse types are compared as before. CHECK_VERSION moves to 84 with it: the rule of
-#: `dwh.physical` changed, and a run's identity holds the verifier version alone.
 #: 135 — a column's type is compared by the name the engine prints for it on ClickHouse too, and by
 #: more of a PostgreSQL kernel's names (ADR 0012, D1). On ClickHouse it is the name
 #: `system.columns` prints: `BIGINT` is `Int64`, `INT UNSIGNED` is `UInt32`, `DOUBLE` is `Float64`,
@@ -180,7 +171,15 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: gap stays `gap.external_construct_unsupported` (review) and the formula `external_ref`; its path,
 #: `$.metrics[m].type_params.expr`, and its reason change, so the snapshot and every check that
 #: carries the gap can change. Check grading is unchanged and CHECK_VERSION stays 86.
-VERIFIER_VERSION = "138"
+#: 139 — parser failures on malformed SQL are SQLGuardError refusals, including TokenError,
+#: AttributeError, ValueError and IndexError (ADR 0013, E1). A delivered raw_sql chart now completes
+#: with bi.spec_invalid (block) and a bundle where verifier 138 could abort without a verdict.
+#: Parser refusal text names the exception class and parser boundary, with numeric coordinates when
+#: available, never SQL or the exception message. RecursionError keeps its depth explanation.
+#: The existing bi.contract grading rule is unchanged: a spec the SELECT-only guard refuses blocks;
+#: CHECK_VERSION stays 86. Diagnostics and the availability of evidence change, so prior bundles
+#: must not be reused.
+VERIFIER_VERSION = "139"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing

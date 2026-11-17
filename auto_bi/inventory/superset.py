@@ -1196,8 +1196,11 @@ def _guard_reason(error: Exception) -> str:
         return f"it does not parse (line {place.get('line')}, column {place.get('col')})"
     if isinstance(cause, SqlglotError):
         return "it does not parse"
-    if not isinstance(error, SQLGuardError):
-        return f"it does not parse (the parser failed with {type(error).__name__})"
+    if isinstance(error, SQLGuardError) and isinstance(cause, RecursionError):
+        # The guard already wrapped this failure before E1; keep the inventory wording.
+        return "SQL statement nests deeper than this parser reads"
+    if cause is not None:
+        return f"it does not parse (the parser failed with {type(cause).__name__})"
     return _plain(str(error))
 
 

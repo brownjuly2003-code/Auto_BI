@@ -110,7 +110,7 @@ left out; a limit below 8,192 is refused.
 
 The composite action SHALL install uv pinned to the commit the project's CI pins and run
 `python -I -X utf8 -m auto_bi.github_action` from the lock of the action
-(`uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH"`) in an environment under
+(`uv run --no-env-file --frozen --no-dev --project "$GITHUB_ACTION_PATH"`) in an environment under
 `RUNNER_TEMP`, on the Python of `python-version` (3.12 unless given). Isolated: the working
 directory — the checkout of the pull request — is not on its path, nor is `PYTHONPATH`, and no
 `PYTHON*` variable applies, so no module of the pull request is imported in place of the
@@ -283,28 +283,37 @@ The module SHALL:
   the job summary holds it. `pull_request_target` is refused; another trigger that hands secrets
   to a job checking out the pull request's files — `workflow_run` with the head checked out — is
   the workflow's to guard: the action does not see what was checked out.
-- With `dwh`, `decision verify` reads its `AUTO_BI_*` settings from the environment and then from
-  a `.env` file in the working directory, the checkout of the pull request. A workflow that runs
-  the gate on an engine sets every connection variable itself — host, port, database, user,
-  password — so that a `.env` of the pull request sets none of them (backlog).
-- `astral-sh/setup-uv` without a `version` takes uv's version from a `required-version` in the
-  `pyproject.toml` or `uv.toml` of the working directory, and the latest one otherwise: a pull
-  request can choose which released uv installs the action's frozen environment; a uv that cannot
-  read the lock fails the step (backlog).
+- The Action passes `--no-env-file` to the outer `uv run`, so uv cannot load the checkout's
+  dotenv even if the workflow or runner sets `UV_ENV_FILE` (`tests/test_action_metadata.py`).
+  It also forces `AUTO_BI_NO_ENV_FILE=1` for every child command. `get_settings()` then
+  constructs Settings without a dotenv source file: even an unreadable `.env` in the checkout
+  is never opened. Only process environment variables and defaults apply. A direct CLI caller
+  can set the same switch before starting any command; its default still reads local `.env`,
+  with environment variables taking precedence. Settings are cached for the process lifetime.
+- `astral-sh/setup-uv` receives an explicit `version`, read from `.uv-version` under
+  `github.action_path`, never from the working directory. This exact version is also the source
+  for CI's dependency-resolution job, whose locked case runs `uv lock --check` and
+  `uv sync --frozen --no-dev` against the Action repository's lock. Update that source when
+  refreshing the lock with a different installer; no `required-version` restricts local uv,
+  the Mac gate or `ci_local`. Live installation on GitHub remains an E2 check.
 - Between the `stop-commands` lines the runner runs no command, but a line of the gate's standard
   error still reaches the log as the gate wrote it, where it may look like a line of the runner's
   own.
-- A workflow that runs `decision verify` itself, not through the action, gets the gate's standard
-  error as it is: sqlglot's warning about a chart's SQL it does not support quotes that SQL, line
-  breaks kept, on a stream the runner reads workflow commands from (backlog).
+- The shared `verify` use case suppresses the `sqlglot` logger from input loading through bundle
+  writing, including impact, reference SQL, BI validation and the DWH probe. CLI, Action and MCP
+  all use this boundary; neither fallback logging nor configured handlers receive these records.
+  The previous logger state is restored on return or exception. Malformed chart SQL is a guard
+  refusal and `bi.spec_invalid` (block) with a bundle; parser diagnostics name the exception class
+  and parser boundary, numeric coordinates when available, and never quote SQL. Input SQL may
+  still be part of evidence: this is a diagnostic-stream guarantee, not bundle redaction.
 - The marker keys a comment to the `product` input alone: two jobs of one pull request that verify
   one product — on two environments — share one comment, the last run's. Two runs at once can
   each find none and each add one.
 - The comment names the bundle by its digest and does not carry it: a workflow that wants the
   bundle kept uploads the `evidence` directory itself.
 - `decision verify` that ends in an exception it does not handle (exit 1) leaves the comment file
-  as it was — a chart's SQL with a quote it does not close is one (backlog). The action reads such
-  a run as one that wrote no comment because its work directory is new each run.
+  as it was. The action reads such a run as one that wrote no comment because its work directory
+  is new each run.
 - The action is not published: no tag, no release, no Marketplace listing. A workflow uses it by
   the commit it pins.
 
