@@ -22,3 +22,10 @@ paths = [
   '''^tests/test_prompt_data\.py$''',
   '''^tests/test_safe_error\.py$''',
 ]
+
+[[allowlists]]
+description = "Synthetic credential stand-in the Superset inventory report must not repeat"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexes = ['''^DUMMY-SECRET-42$''']
+paths = ['''^tests/test_superset_inventory\.py$''']
