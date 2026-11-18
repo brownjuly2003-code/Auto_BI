@@ -50,6 +50,15 @@ Astra (gpt-6-astra) xhigh. Ревью — Astra xhigh read-only: r1 «приня
   [бэклог](../DECISIONOPS_BACKLOG.md)); ref из map печатается в ошибке пары — спека сужена:
   ref и id — идентификаторы, сообщение то же, что у `--dashboard`; оговорка о втором сбое
   отката. **r2** — «принять».
+- **`ci_local`** (`--event pull_request`, Linux-контейнер) на `38a67a8`: `quality` и
+  `quality-py-latest` — PASS (pytest 13532 passed, мутационный гейт 2946/3044, в пределах
+  baseline), `codeql`, `gitleaks`, `eval-live-sentinel` — OK. Сеть раннера не достала pypi.org,
+  ghcr.io и зеркало apt (таймауты, DNS): упали `browser-offline-e2e`, `dependency-audit`,
+  `dependency-resolution`, `docker`, установка Playwright в `integration` и `demo-image`. Каждая
+  прошла отдельным перезапуском с `--runner linux` (`docker`, `demo-image` и `integration` — с
+  `--docker`); `dependency-resolution` — INCOMPLETE на непокрытом `Install uv`, как в E2.
+  `decisionops-gate-demo/gate` в `ci_local` падает на «Check out the base», как в E2: job
+  работает только на GitHub. Не покрыт `windows-cli-smoke` (windows-latest).
 - **Не сделано:** демонстрационный PR на снимке на GitHub — основной путь ADR 0013 закрывается
   им; SHA в шаблоне — после публикации.
 
