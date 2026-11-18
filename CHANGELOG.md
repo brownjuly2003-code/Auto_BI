@@ -48,6 +48,13 @@
 
 - **Пример гейта** `examples/decisionops-gate/`: семантика и контракты timezone-пилота,
   chart-impact overlay, локальные команды и заранее записанные исходы для демонстрационного PR.
+- **E2 — гейт на GitHub:** workflow `.github/workflows/decisionops-gate-demo.yml` зовёт Action
+  по SHA коммита `main` на PR, которые трогают пример. Демонстрационный PR #104 (не слит)
+  дал записанные заранее исходы: `pass_with_advisory` без изменения семантики, `block` на смене
+  timezone. Комментарий в обоих прогонах один, bundle скачан и проверен digest'ом из
+  комментария, uv Action не зависит от checkout PR. MCP-сессия с внешним клиентом (MCP Python
+  SDK 2.3.0) сверена с CLI. Запись — `docs/pilot/2026-11-17-e2-github-demo/`, вместе с bundle
+  прогона `block`.
 
 ## [0.6.0] - 2026-11-10
 
