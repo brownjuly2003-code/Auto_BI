@@ -1,0 +1,59 @@
+{
+  "cli": {
+    "artifact_exit": 0,
+    "bundle_tree": "cf186325607dcdf8745588ffa470458cd13735a4aea10bdb5f8aea273a7d2399",
+    "evidence_exit": 0,
+    "manifest_digest": "sha256:162da218277a8b0974937c3180b34d334e99bcd8aa3cf431dd02653177ca8908",
+    "runs_exit": 0,
+    "validate_exit": 0,
+    "verify_exit": 4
+  },
+  "client": {
+    "name": "mcp (MCP Python SDK)",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.11",
+    "version": "2.3.0"
+  },
+  "compare": {
+    "legacy": {
+      "any_isError": false,
+      "bundle_bytes_equal_cli": true,
+      "evidence": true,
+      "evidence_artifact": true,
+      "impact_is_bundle_payload": true,
+      "runs": true,
+      "validate": true,
+      "verify": true
+    },
+    "modern": {
+      "any_isError": false,
+      "bundle_bytes_equal_cli": true,
+      "evidence": true,
+      "evidence_artifact": true,
+      "impact_is_bundle_payload": true,
+      "runs": true,
+      "validate": true,
+      "verify": true
+    }
+  },
+  "protocols": {
+    "legacy": "2025-11-25",
+    "modern": "2026-07-28"
+  },
+  "tools": {
+    "legacy": [
+      "validate",
+      "impact",
+      "verify",
+      "evidence",
+      "runs"
+    ],
+    "modern": [
+      "validate",
+      "impact",
+      "verify",
+      "evidence",
+      "runs"
+    ]
+  }
+}

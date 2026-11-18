@@ -117,10 +117,10 @@ PEM вне checkout и evidence.
 ## Что делать дальше
 
 Финиш [ADR 0010](adr/0010-finish-line.md) — 2026-11-10, `0.6.0`. D1–D6
-[ADR 0012](adr/0012-post-finish-development.md) и E1 — в локальной ветке `decisionops-backlog`.
-План [ADR 0013](adr/0013-entry-points-to-proven-path.md) принят 2026-11-17: основной путь
-E1–E3 (E2 — публикация, по слову владельца), расширения E4–E7; прочее — в
-[бэклог](DECISIONOPS_BACKLOG.md).
+[ADR 0012](adr/0012-post-finish-development.md), E1 и E2
+[ADR 0013](adr/0013-entry-points-to-proven-path.md) — в `main`; гейт прошёл путь на GitHub
+([запись E2](pilot/2026-11-17-e2-github-demo/README.md)). Дальше — E3 в ветке от `main`,
+push — по слову владельца; E4–E7 и [бэклог](DECISIONOPS_BACKLOG.md) — потом.
 
 Не начинать без нового решения:
 

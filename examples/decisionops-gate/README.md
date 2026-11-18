@@ -43,8 +43,8 @@ uv run auto_bi decision verify examples/decisionops-gate/contracts/weekly_margin
 | `yaml-comment` | `pass_with_advisory` | 0 | 0 | 0 | 8 | 15 | `success` |
 | `timezone-change` | `block` | 4 | 1 | 1 | 8 | 15 | `failure` |
 
-Демонстрационный workflow `.github/workflows/decisionops-gate-demo.yml` добавляется
-отдельным PR после публикации Action. Он читает candidate из checkout головы PR
+Демонстрационный workflow [`decisionops-gate-demo.yml`](../../.github/workflows/decisionops-gate-demo.yml)
+зовёт Action по SHA коммита `main`, без `dwh` и секретов. Он читает candidate из checkout головы PR
 (`pull_request.head.sha`), base — через `git worktree add` на `pull_request.base.sha`
 во временный каталог раннера. Products, метрики и dashboards — из примера в голове PR;
 base-семантика — из примера в базовом коммите. Заранее подготовленных каталогов нет.
@@ -56,6 +56,7 @@ base-семантика — из примера в базовом коммите
 
 Bundle каждого прогона с вердиктом, включая `block`, workflow загружает артефактом
 `decisionops-pr-<номер PR>-<run id>-<attempt>` на 14 дней. Последний шаг записывает digest
-и имя артефакта в job summary. Реальные обновление комментария, скачивание и проверка bundle,
-а также независимость uv от checkout PR ещё должны быть записаны на GitHub по E2
-[ADR 0013](../../docs/adr/0013-entry-points-to-proven-path.md).
+и имя артефакта в job summary. Оба прогона демонстрационного PR #104 совпали с таблицей выше.
+Там же записаны обновление одного комментария, проверка скачанного bundle и независимость uv
+от checkout PR: [запись E2](../../docs/pilot/2026-11-17-e2-github-demo/README.md)
+([ADR 0013](../../docs/adr/0013-entry-points-to-proven-path.md)).
