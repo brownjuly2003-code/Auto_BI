@@ -319,6 +319,9 @@ The module SHALL:
 
 ## Usage
 
+The working example of this template is [the demo workflow](../../.github/workflows/decisionops-gate-demo.yml)
+over `examples/decisionops-gate/` (E2, ADR 0013).
+
 ```yaml
 on: pull_request
 permissions:
