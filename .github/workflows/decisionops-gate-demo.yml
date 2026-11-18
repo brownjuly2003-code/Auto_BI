@@ -1,0 +1,84 @@
+name: DecisionOps gate demo
+
+on:
+  pull_request:
+    paths: ['examples/decisionops-gate/**']
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: decisionops-gate-demo-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ARTIFACT_NAME: decisionops-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check out the base
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git worktree add --detach "$RUNNER_TEMP/decisionops-base" "$BASE_SHA"
+
+      - name: Verify the semantic change
+        id: gate
+        uses: brownjuly2003-code/Auto_BI@6cbc7dc065b6e83604066f09509aedd9d9cfe658 # E2: pinned to the head commit of the publication pull request
+        with:
+          contracts: |
+            examples/decisionops-gate/contracts/weekly_margin.yaml
+            examples/decisionops-gate/contracts/weekly_revenue.yaml
+            examples/decisionops-gate/semantic/metrics
+          base: ${{ runner.temp }}/decisionops-base/examples/decisionops-gate/semantic
+          candidate: examples/decisionops-gate/semantic
+          dashboards: examples/decisionops-gate/dashboards
+          product: decision://sales/weekly_margin
+          environment: github-demo
+          fail-on: block
+          comment: 'true'
+
+      - name: Keep the evidence bundle
+        if: ${{ always() && steps.gate.outputs.verdict != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ steps.gate.outputs.evidence }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record the verdict and step status
+        if: ${{ always() }}
+        shell: bash
+        env:
+          GATE_VERDICT: ${{ steps.gate.outputs.verdict }}
+          GATE_EXIT_CODE: ${{ steps.gate.outputs.exit-code }}
+          GATE_OUTCOME: ${{ steps.gate.outcome }}
+          EVIDENCE_DIGEST: ${{ steps.gate.outputs.evidence-digest }}
+          FAIL_ON: block
+        run: |
+          python - <<'PY'
+          import os
+
+          rows = [
+              ("Verdict", os.environ["GATE_VERDICT"] or "no verdict"),
+              ("Gate exit code", os.environ["GATE_EXIT_CODE"] or "unavailable"),
+              ("Gate step outcome (fail-on: " + os.environ["FAIL_ON"] + ")", os.environ["GATE_OUTCOME"]),
+              ("Evidence digest", os.environ["EVIDENCE_DIGEST"] or "unavailable"),
+              ("Artifact name", os.environ["ARTIFACT_NAME"]),
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8", newline="\n") as summary:
+              summary.write("\n### DecisionOps demo run\n\n| Fact | Value |\n|---|---|\n")
+              for label, value in rows:
+                  summary.write(f"| {label} | `{value}` |\n")
+          PY
