@@ -130,6 +130,26 @@ def test_full_sha_is_the_checkout_output(
     output().write.assert_called_once_with("sha=" + sha + "\n")
 
 
+def test_the_template_pins_the_commit_the_demo_action_runs(
+    workflow: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    step = next(s for s in workflow["jobs"]["snapshot"]["steps"] if s.get("id") == "pin")
+    sha = step["env"]["INVENTORY_SHA"]
+    demo = yaml.safe_load(
+        (REPO / ".github/workflows/decisionops-gate-demo.yml").read_text(encoding="utf-8")
+    )
+    gate = next(s for s in demo["jobs"]["gate"]["steps"] if s.get("id") == "gate")
+    # One published E3 commit: the head of its publication pull request (a parent in `main`).
+    assert gate["uses"] == "brownjuly2003-code/Auto_BI@" + sha
+    monkeypatch.setenv("INVENTORY_SHA", sha)
+    monkeypatch.setenv("GITHUB_OUTPUT", "pin-output")
+    output = mock_open()
+    monkeypatch.setattr("builtins.open", output)
+    exec(compile(_python(step), "workflow-pin", "exec"), {})
+    output().write.assert_called_once_with("sha=" + sha + "\n")
+
+
 def test_pr_target_is_refused_before_any_configuration_or_files(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

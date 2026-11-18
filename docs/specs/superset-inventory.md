@@ -40,9 +40,10 @@ is supplied outside `.github/workflows` and **has not been run on GitHub**. It S
   checkout the model and mapping from that branch;
 - checkout Auto_BI by a full reviewed commit SHA, and read uv's pin from that checkout;
   use its frozen lock, isolated Python and both `--no-env-file` and `AUTO_BI_NO_ENV_FILE=1`
-  for inventory. The template deliberately fails before the code checkout until its
-  `REPLACE_WITH_REVIEWED_E3_COMMIT_SHA` marker is replaced by a published E3 SHA; a branch,
-  tag, malformed SHA or all-zero SHA is refused. E3 cannot pin its own uncommitted code;
+  for inventory. The template pins the published E3 commit, the head of its publication
+  pull request, which a merge commit keeps in `main`; the demo workflow's Action pins the
+  same commit. A branch, tag, malformed SHA, all-zero SHA or the former
+  `REPLACE_WITH_REVIEWED_E3_COMMIT_SHA` marker is refused before the code checkout;
 - scope Superset secrets to the inventory step through the `superset-inventory` GitHub
   environment; install dependencies before that step and use `--no-sync` during it;
 - grant only `permissions: contents: read`, persist no checkout credentials, pin third-party

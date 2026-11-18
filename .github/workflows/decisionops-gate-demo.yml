@@ -34,7 +34,7 @@ jobs:
 
       - name: Verify the semantic change
         id: gate
-        uses: brownjuly2003-code/Auto_BI@6cbc7dc065b6e83604066f09509aedd9d9cfe658 # E2: pinned to the head commit of the publication pull request
+        uses: brownjuly2003-code/Auto_BI@af93ee4a51e55b4bab92eb38f3ba14edce47b7ce # E3: pinned to the head commit of the publication pull request
         with:
           contracts: |
             examples/decisionops-gate/contracts/weekly_margin.yaml
