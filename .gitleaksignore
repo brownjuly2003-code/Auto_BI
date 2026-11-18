@@ -8,3 +8,4 @@ d8056cde7a0f7b632dfd8a098a33317312e630e4:tests/test_deployment_profile.py:generi
 960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_safe_error.py:generic-api-key:45
 960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_deployment_profile.py:generic-api-key:152
 960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_deployment_profile.py:generic-api-key:153
+ff7ae835a450674aa4619e1fa0708f3f69a1cda3:tests/test_superset_inventory.py:generic-api-key:3309

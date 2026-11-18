@@ -6,7 +6,7 @@
 2. **Auto_BI v0.5.0** — унаследованный baseline «запрос → дашборд».
 
 Это разделение важно: опубликованный пакет `autobi-agent==0.5.0` относится только к
-baseline. DecisionOps запускается из checkout как `autobi-agent` версии `0.6.0`: код — в этом
+baseline. DecisionOps запускается из checkout как `autobi-agent` версии `0.7.0`: код — в этом
 репозитории, пакет в индексы не публикуется ([ADR 0011](adr/0011-public-repository.md)).
 
 ## С чего начать
@@ -38,7 +38,9 @@ baseline. DecisionOps запускается из checkout как `autobi-agent`
 | [ADR 0009](adr/0009-local-package-identity-no-publication.md) | Локальная идентичность пакета форка, без публикации | decision |
 | [ADR 0010](adr/0010-finish-line.md) | Финишная черта DecisionOps: пункты F1–F6 и заморозка | decision |
 | [ADR 0011](adr/0011-public-repository.md) | Код форка — в публичном репозитории baseline; пакет не публикуется | decision |
-| [DECISIONOPS_BACKLOG.md](DECISIONOPS_BACKLOG.md) | Находки после финишной черты; срез не открывают | backlog |
+| [ADR 0012](adr/0012-post-finish-development.md) | Развитие после финиша: пункты D1–D6 по бэклогу и рыночному срезу | decision |
+| [ADR 0013](adr/0013-entry-points-to-proven-path.md) | От точек входа к пройденному пути: основной путь E1–E3, расширения E4–E7 | decision |
+| [DECISIONOPS_BACKLOG.md](DECISIONOPS_BACKLOG.md) | Находки после финишной черты; срез открывает только решение владельца | backlog |
 | [Bootstrap plan](history/DECISIONOPS_BOOTSTRAP.md) | Исходные задачи 1–8 и acceptance criteria | history; owner outcome не измеряется |
 | [Implementation history](history/DECISIONOPS_IMPLEMENTATION_HISTORY.md) | Подробный хронологический журнал реализации | archive |
 | [Status log](history/DECISIONOPS_STATUS_LOG.md) | Запись каждого среза, сверху новые; пополняется | history |
@@ -77,6 +79,7 @@ baseline. DecisionOps запускается из checkout как `autobi-agent`
 | [evidence-ref-ids](specs/evidence-ref-ids.md) | The ids of evidence named after a ref |
 | [generated-sql](specs/generated-sql.md) | Generated SQL preserves identifier and string characters |
 | [investigation-exact-arithmetic](specs/investigation-exact-arithmetic.md) | Exact arithmetic of the offline investigation skills |
+| [mcp-server](specs/mcp-server.md) | The decision commands as tools of a read-only MCP server |
 | [metric-freshness-snapshot](specs/metric-freshness-snapshot.md) | A metric's declared freshness in the canonical snapshot and its diff |
 | [metric-join-paths-snapshot](specs/metric-join-paths-snapshot.md) | A metric's declared join paths in the canonical snapshot and its diff |
 | [metrics-links](specs/metrics-links.md) | A symbolic link below `metrics/` is frozen as the text git commits for it |
@@ -86,6 +89,7 @@ baseline. DecisionOps запускается из checkout как `autobi-agent`
 | [postgres-kernel-row-security](specs/postgres-kernel-row-security.md) | A PostgreSQL-family kernel without row-level security |
 | [probe-execution-safety](specs/probe-execution-safety.md) | Read-only execution with finite probe limits |
 | [product-metric-pins](specs/product-metric-pins.md) | A product's metric pins in the candidate snapshot |
+| [pull-request-comment](specs/pull-request-comment.md) | A gate run's pull-request comment, and the action that posts it |
 | [recorded-result-keys](specs/recorded-result-keys.md) | Recorded results name supplied verified assets |
 | [repeated-delivery-entries](specs/repeated-delivery-entries.md) | An entry repeated in the delivery of a decision product |
 | [repeated-metric-contracts](specs/repeated-metric-contracts.md) | Two contracts of one metric id in a semantic ref |
@@ -93,6 +97,7 @@ baseline. DecisionOps запускается из checkout как `autobi-agent`
 | [run-identity](specs/run-identity.md) | Run identity — the idempotency key covers every static gate input |
 | [schema-refused-products](specs/schema-refused-products.md) | The run of a product its schema refuses says why |
 | [stated-run-facts](specs/stated-run-facts.md) | What a command line states of a run |
+| [superset-inventory](specs/superset-inventory.md) | The delivered Superset dashboards as the specs the gate reads |
 | [unanswered-engine](specs/unanswered-engine.md) | An engine a run was to ask and that did not answer |
 | [unencodable-output](specs/unencodable-output.md) | An answer on a stream that encodes less |
 | [unreadable-inputs](specs/unreadable-inputs.md) | Files a command cannot read |

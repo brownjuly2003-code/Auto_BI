@@ -11,8 +11,9 @@ roles is refused, not reused.
 Without `AUTO_BI_LIVE_PG_HOST` the file is skipped. The `integration` job of
 `.github/workflows/ci.yml` sets it and starts the server from `postgres:16`, the major version
 whose answers docs/specs/unanswered-engine.md records. The file ran as it is, once, on a
-PostgreSQL 9.4.26 too, the kernel of Greenplum 6 and Greengage 6 (ADR 0010, F3); no CI job
-starts that kernel, so nothing keeps the file running there.
+PostgreSQL 9.4.26 too, the kernel of Greenplum 6 and Greengage 6 (ADR 0010, F3), and on a
+PostgreSQL 17.12, the first major with `MAINTAIN` (ADR 0012, D2); no CI job starts either,
+so nothing keeps the file running there.
 """
 
 from __future__ import annotations
@@ -43,6 +44,10 @@ MAJOR = 16
 #: The kernel of Greenplum 6 and Greengage 6: the file ran once on a throwaway vanilla
 #: PostgreSQL 9.4.26 on the Mac (ADR 0010, F3), and no CI job starts one.
 KERNEL = "9.4"
+#: The first major with `MAINTAIN`, which lets a role refresh a materialized view it does not
+#: own: the file ran on a throwaway vanilla PostgreSQL 17.12 on the Mac (ADR 0012, D2), and no
+#: CI job starts one.
+MAINTAINED = "17"
 #: Greenplum and Greengage report that kernel too, but plan and answer as MPP databases whose
 #: answers are not recorded: a server naming either is refused.
 FORKS = ("Greenplum", "Greengage")
@@ -119,6 +124,7 @@ class Stand:
     server: Server
     admin: Any = field(repr=False)  # psycopg connection to DATABASE, signed in as the admin
     gate_password: str = field(repr=False)
+    version: int  # `server_version_num`: 160015 is 16.15, 90426 is 9.4.26
 
     def run(self, sql: str) -> None:
         self.admin.execute(sql)
@@ -140,6 +146,8 @@ class Run:
     details: dict[str, list[str]]
     #: the facts `dwh.cost` sealed: a plan and, where a runtime bound is declared, an execution
     cost: dict[str, Any]
+    #: the facts `dwh.access` sealed: the role and what it reads of each mart
+    access: dict[str, Any]
 
     def changed(self) -> dict[str, tuple[str, str]]:
         """Each check whose answer differs from the clean stand's; a check gone or new fails."""
@@ -178,7 +186,7 @@ def stand() -> Iterator[Stand]:
         version = int(root.execute("SHOW server_version_num").fetchone()[0])
         first, second = divmod(version // 100, 100)  # 160015 is 16, 90426 is 9.4
         major = str(first) if first >= 10 else f"{first}.{second}"
-        recorded = (str(MAJOR), KERNEL)
+        recorded = (str(MAJOR), KERNEL, MAINTAINED)
         assert major in recorded, f"PostgreSQL {version}, the recorded answers are of {recorded}"
         named = root.execute("SELECT version()").fetchone()[0]
         assert not any(fork in named for fork in FORKS), f"{named}: not a vanilla kernel"
@@ -205,7 +213,7 @@ def stand() -> Iterator[Stand]:
                 try:
                     for statement in SCHEMA:
                         admin.execute(statement)
-                    yield Stand(server=server, admin=admin, gate_password=password)
+                    yield Stand(server=server, admin=admin, gate_password=password, version=version)
                 finally:
                     admin.close()
             finally:
@@ -334,6 +342,7 @@ def _verify(
     findings: dict[str, list[str]] = {}
     details: dict[str, list[str]] = {}
     cost: dict[str, Any] = {}
+    access: dict[str, Any] = {}
     for path in sorted((run_dir / "checks").glob("check-dwh.*.json")):
         payload = json.loads(path.read_text("utf-8"))
         check_id = path.stem.removeprefix("check-")
@@ -341,12 +350,15 @@ def _verify(
         details[check_id] = [finding["detail"] for finding in payload["findings"]]
         if check_id == "dwh.cost":
             cost = payload["facts"]
+        if check_id == "dwh.access":
+            access = payload["facts"]
     return Run(
         verdict=report["verdict"],
         checks={c["check_id"]: (c["status"], c["summary_code"]) for c in report["checks"]},
         findings=findings,
         details=details,
         cost=cost,
+        access=access,
     )
 
 
@@ -592,17 +604,22 @@ def test_a_column_catalog_the_role_may_not_read_marks_no_column_absent(
 ) -> None:
     """ADR 0010, F1: the gate's role is refused the column list (`42501`). Verifier 132 read
     that as an empty catalog and blocked on every declared column of a mart that holds them
-    all; now no column is compared, and which columns the role may read is not observed."""
+    all; verifier 133 to 135 compared none of them and passed `dwh.physical`. Since verifier
+    136 the columns nobody saw are `physical.not_observed` (ADR 0012, D2), and which columns
+    the role may read is not observed either."""
     root = _product(stand, tmp_path)
     stand.run(REVOKE_COLUMN_CATALOG)
 
     run = _verify(stand, root)
 
     assert run.changed() == {
-        "dwh.physical": ("pass", "physical.not_run"),
+        "dwh.physical": ("review", "physical.not_observed"),
         "dwh.security": ("review", "security.not_observed"),
     }
-    assert run.codes() == {"dwh.security": ["security.not_observed"]}
+    assert run.codes() == {
+        "dwh.physical": ["physical.not_observed"],
+        "dwh.security": ["security.not_observed"],
+    }
     [plan] = run.cost["plans"]
     assert plan["scanned_rows"] == ROWS
     assert run.verdict == "needs_review"
@@ -667,13 +684,239 @@ def test_a_materialized_view_mart_is_the_mart(stand: Stand, tmp_path: Path) -> N
     assert run.verdict == "pass"
 
 
-def test_each_name_the_gate_reads_as_another_is_the_one_format_type_prints(stand: Stand) -> None:
-    """ADR 0010, F2: `dwh.physical` takes a declared `float8` for the `double precision` the
-    catalog holds. Each spelling of `PG_SAME_TYPE` is created here as written and read back
-    through `format_type`, as the probe reads it — the table is the engine's, not the manual's."""
-    from tests.test_environment_checks import PG_SAME_TYPE
+def _as_view(stand: Stand, *, data: bool = True) -> None:
+    """The mart's rows moved behind a materialized view of the mart's name."""
+    stand.run("ALTER TABLE dm.sales_daily RENAME TO sales_daily_rows")
+    stand.run(
+        "CREATE MATERIALIZED VIEW dm.sales_daily AS SELECT * FROM dm.sales_daily_rows"
+        + ("" if data else " WITH NO DATA")
+    )
 
-    columns = ", ".join(f"c{index} {declared}" for index, (declared, _) in enumerate(PG_SAME_TYPE))
+
+def _signed_in(stand: Stand, user: str) -> Any:
+    """A connection to the stand's database as `user`, whose password is the gate's."""
+    import psycopg
+
+    return psycopg.connect(
+        host=stand.server.host,
+        port=stand.server.port,
+        user=user,
+        password=stand.gate_password,
+        dbname=DATABASE,
+        autocommit=True,
+    )
+
+
+#: The access evidence of a clean run whose mart is a materialized view: its write grants are
+#: none, and no role here may refresh it.
+VIEW_CLEAN = (
+    "no INSERT, UPDATE, DELETE or TRUNCATE privilege on any in-scope mart but a materialized "
+    "view, no MAINTAIN privilege on a materialized view and no INSERT or UPDATE privilege on "
+    "any of their columns; SET ROLE reaches no other role; dm.sales_daily is a materialized "
+    "view, which takes no INSERT, UPDATE, DELETE or TRUNCATE whatever is granted on it"
+)
+REFRESH = "REFRESH MATERIALIZED VIEW dm.sales_daily"
+
+#: Each write a grant can name; a materialized view refuses every one of them.
+VIEW_WRITES = (
+    f"INSERT INTO dm.sales_daily (date, revenue) VALUES (date '{DAY}', 1)",
+    "UPDATE dm.sales_daily SET revenue = 0",
+    "DELETE FROM dm.sales_daily",
+    "TRUNCATE dm.sales_daily",
+)
+
+
+def test_write_grants_on_a_materialized_view_mart_write_nothing(
+    stand: Stand, tmp_path: Path
+) -> None:
+    """ADR 0012, D2: `has_table_privilege` answers each write granted on a materialized view,
+    and the engine refuses each of them (`42809`). Verifier 135 blocked `access.role_writable`
+    on a role that cannot write the mart; the grants are no write, and the run is the clean
+    stand's, its evidence naming the view."""
+    import psycopg
+
+    root = _product(stand, tmp_path)
+    _as_view(stand)
+    stand.run(f"GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON dm.sales_daily TO {GATE_USER}")
+    stand.run(f"GRANT INSERT (revenue), UPDATE (revenue) ON dm.sales_daily TO {GATE_USER}")
+    stand.run("ANALYZE dm.sales_daily")
+    with _signed_in(stand, GATE_USER) as gate:
+        for write in VIEW_WRITES:
+            with pytest.raises(psycopg.errors.WrongObjectType):
+                gate.execute(write)
+
+    run = _verify(stand, root)
+
+    assert run.changed() == {}
+    assert run.codes() == {}
+    assert run.access["role"]["evidence"] == VIEW_CLEAN
+    assert run.verdict == "pass"
+
+
+@pytest.mark.parametrize("grant", ["all", "pg_maintain"])
+def test_a_role_that_may_refresh_a_materialized_view_mart_blocks(
+    stand: Stand, tmp_path: Path, grant: str
+) -> None:
+    """ADR 0012, D2: from PostgreSQL 17 `GRANT ALL` on a materialized view carries `MAINTAIN`,
+    as membership in `pg_maintain` does, and its holder refreshes the view — empties it `WITH
+    NO DATA`, fills it again — without owning it: `access.role_writable`. Below 17 the grant
+    refreshes nothing (`42501`: only the owner may), and the run is the clean stand's."""
+    import psycopg
+
+    maintained = stand.version >= 170000
+    if grant == "pg_maintain" and not maintained:
+        pytest.skip("pg_maintain came with PostgreSQL 17")
+    root = _product(stand, tmp_path)
+    _as_view(stand)
+    if grant == "all":
+        stand.run(f"GRANT ALL ON dm.sales_daily TO {GATE_USER}")
+    else:
+        stand.run(f"GRANT SELECT ON dm.sales_daily TO {GATE_USER}")
+        stand.run(f"GRANT pg_maintain TO {GATE_USER}")
+    with _signed_in(stand, GATE_USER) as gate:
+        if maintained:
+            gate.execute(f"{REFRESH} WITH NO DATA")
+            gate.execute(REFRESH)
+        else:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                gate.execute(REFRESH)
+    stand.run("ANALYZE dm.sales_daily")
+
+    run = _verify(stand, root)
+
+    if maintained:
+        assert run.changed() == {
+            "dwh.access": ("block", "access.role_writable"),
+            "dwh.cost": ("review", "cost.not_measured"),
+        }
+        assert run.access["role"]["evidence"] == "granted MAINTAIN on dm.sales_daily"
+        assert run.verdict == "block"
+    else:
+        assert run.changed() == {}
+        assert run.access["role"]["evidence"] == VIEW_CLEAN
+        assert run.verdict == "pass"
+
+
+def test_a_role_set_role_reaches_that_may_maintain_a_materialized_view_mart_blocks(
+    stand: Stand, tmp_path: Path
+) -> None:
+    """ADR 0012, D2: a member of `pg_maintain` that does not inherit it holds no `MAINTAIN` and
+    refreshes nothing as itself; `SET ROLE pg_maintain` refreshes once that role may use the
+    schema. The collector asks every role `SET ROLE` reaches, the predefined ones too, and weighs
+    the privilege, not the schema (docs/specs/unanswered-engine.md, "Known boundaries"): while
+    the schema refuses the refresh, the run blocks all the same."""
+    import psycopg
+
+    if stand.version < 170000:
+        pytest.skip("pg_maintain came with PostgreSQL 17")
+    refused_root = _product(stand, tmp_path / "refused")
+    granted_root = _product(stand, tmp_path / "granted")
+    _as_view(stand)
+    stand.run(f"GRANT SELECT ON dm.sales_daily TO {GATE_USER}")
+    stand.run(f"GRANT pg_maintain TO {GATE_USER} WITH INHERIT FALSE")
+    stand.run("ANALYZE dm.sales_daily")
+    with _signed_in(stand, GATE_USER) as gate:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="materialized view"):
+            gate.execute(REFRESH)
+        gate.execute("SET ROLE pg_maintain")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="schema dm"):
+            gate.execute(REFRESH)
+
+        refused = _verify(stand, refused_root)
+
+        stand.run("GRANT USAGE ON SCHEMA dm TO pg_maintain")
+        gate.execute(REFRESH)
+    stand.run("ANALYZE dm.sales_daily")
+
+    granted = _verify(stand, granted_root)
+
+    for run in (refused, granted):
+        assert run.changed() == {
+            "dwh.access": ("block", "access.role_writable"),
+            "dwh.cost": ("review", "cost.not_measured"),
+        }
+        assert run.access["role"]["evidence"] == (
+            "granted MAINTAIN on dm.sales_daily through SET ROLE pg_maintain"
+        )
+        assert run.verdict == "block"
+
+
+def test_a_materialized_view_mart_created_with_no_data_blocks(stand: Stand, tmp_path: Path) -> None:
+    """ADR 0012, D2: a materialized view created `WITH NO DATA` answers every read `55000`
+    until its owner refreshes it. Verifier 135 let that end the run (exit 2); it is
+    `access.table_unpopulated`, a block the bundle records."""
+    import psycopg
+
+    root = _product(stand, tmp_path)
+    _as_view(stand, data=False)
+    stand.run(f"GRANT SELECT ON dm.sales_daily TO {GATE_USER}")
+    with (
+        _signed_in(stand, GATE_USER) as gate,
+        pytest.raises(psycopg.errors.ObjectNotInPrerequisiteState),
+    ):
+        gate.execute("SELECT count(*) FROM dm.sales_daily")
+
+    run = _verify(stand, root)
+
+    # Nothing reads from the mart, so no other check weighs it again: `dwh.access` said so
+    assert run.changed() == {
+        "dwh.access": ("block", "access.table_unpopulated"),
+        "dwh.freshness": ("pass", "freshness.not_run"),
+        "dwh.physical": ("pass", "physical.not_run"),
+        "dwh.security": ("pass", "security.not_run"),
+        "dwh.cost": ("pass", "cost.not_run"),
+    }
+    assert run.codes() == {"dwh.access": ["access.table_unpopulated"]}
+    [mart] = [table for table in run.access["tables"] if table["table"] == "dm.sales_daily"]
+    assert (mart["exists"], mart["readable"], mart["populated"]) == (True, False, False)
+    assert run.verdict == "block"
+
+
+def test_a_foreign_table_mart_is_the_mart(stand: Stand, tmp_path: Path) -> None:
+    """ADR 0012, D2: a foreign table is in none of `pg_tables`, `pg_views` and `pg_matviews`.
+    Verifier 135 blocked `access.table_absent`; the mart's rows read through `file_fdw` are
+    the clean stand's run. The server writes the file into the database's own directory,
+    which `DROP DATABASE` removes with the database, on the stand and in a container alike."""
+    from psycopg import sql
+
+    root = _product(stand, tmp_path)
+    stand.run("ALTER TABLE dm.sales_daily RENAME TO sales_daily_rows")
+    directory = stand.admin.execute(
+        "SELECT current_setting('data_directory') || '/' || "
+        "regexp_replace(pg_relation_filepath('dm.sales_daily_rows'), '/[^/]*$', '')"
+    ).fetchone()[0]
+    rows = sql.Literal(f"{directory}/sales_daily.csv")
+    stand.run(sql.SQL("COPY dm.sales_daily_rows TO {} WITH (FORMAT csv)").format(rows))
+    stand.run("CREATE EXTENSION file_fdw")
+    stand.run("CREATE SERVER sales_files FOREIGN DATA WRAPPER file_fdw")
+    stand.run(
+        sql.SQL(
+            "CREATE FOREIGN TABLE dm.sales_daily (date date, store_id integer, region text, "
+            "category text, revenue numeric(18,2), gross_margin numeric(18,2)) "
+            "SERVER sales_files OPTIONS (filename {}, format 'csv')"
+        ).format(rows)
+    )
+    stand.run(f"GRANT SELECT ON dm.sales_daily TO {GATE_USER}")
+    stand.run("ANALYZE dm.sales_daily")
+
+    run = _verify(stand, root)
+
+    assert run.changed() == {}
+    assert run.codes() == {}
+    [plan] = run.cost["plans"]
+    assert plan["scanned_rows"] == ROWS
+    assert run.verdict == "pass"
+
+
+def test_each_name_the_gate_reads_as_another_is_the_one_format_type_prints(stand: Stand) -> None:
+    """ADR 0010, F2; ADR 0012, D1: `dwh.physical` takes a declared `float8` for the `double
+    precision` the catalog holds. Each spelling of `PG_SAME_TYPE` and `PG_SERIAL_TYPE` is created
+    here as written and read back through `format_type`, as the probe reads it — the table is the
+    engine's, not the manual's."""
+    from tests.test_environment_checks import PG_SAME_TYPE, PG_SERIAL_TYPE
+
+    pairs = PG_SAME_TYPE + PG_SERIAL_TYPE
+    columns = ", ".join(f"c{index} {declared}" for index, (declared, _) in enumerate(pairs))
     stand.run(f"CREATE TABLE dm.spellings ({columns})")
 
     printed = dict(
@@ -683,4 +926,42 @@ def test_each_name_the_gate_reads_as_another_is_the_one_format_type_prints(stand
         ).fetchall()
     )
 
-    assert printed == {f"c{index}": held for index, (_, held) in enumerate(PG_SAME_TYPE)}
+    assert printed == {f"c{index}": held for index, (_, held) in enumerate(pairs)}
+
+
+def _time_literal(printed: str) -> str:
+    """A value with seven fractional digits of a second, for a column of the type `printed`."""
+    day = "2020-01-01 " if printed.startswith("timestamp") else ""
+    zone = "+00" if " with time zone" in printed else ""
+    value = f"{day}00:00:00.1234567{zone}"
+    return f"'{{\"{value}\"}}'" if printed.endswith("[]") else f"'{value}'"
+
+
+def test_a_time_type_of_six_digits_keeps_what_one_of_no_precision_keeps(stand: Stand) -> None:
+    """ADR 0012, D1: with no precision a time type keeps six fractional digits of a second, so
+    `dwh.physical` takes `timestamp` for `timestamp(6)`. Each pair of `PG_SAME_PRINTED` is two
+    names `format_type` prints, and one value is stored the same in both."""
+    from tests.test_environment_checks import PG_SAME_PRINTED
+
+    names = [name for pair in PG_SAME_PRINTED for name in pair]
+    columns = ", ".join(f"c{index} {name}" for index, name in enumerate(names))
+    stand.run(f"CREATE TABLE dm.time_precision ({columns})")
+    values = ", ".join(_time_literal(name) for name in names)
+    stand.run(f"INSERT INTO dm.time_precision VALUES ({values})")
+
+    printed = [
+        kind
+        for (kind,) in stand.admin.execute(
+            "SELECT format_type(a.atttypid, a.atttypmod) FROM pg_attribute a "
+            "WHERE a.attrelid = 'dm.time_precision'::regclass AND a.attnum > 0 ORDER BY a.attnum"
+        ).fetchall()
+    ]
+    [row] = stand.admin.execute(
+        "SELECT "
+        + ", ".join(f"c{index}::text" for index in range(len(names)))
+        + " FROM dm.time_precision"
+    ).fetchall()
+
+    assert printed == names
+    assert list(row[0::2]) == list(row[1::2])
+    assert not any(".1234567" in text for text in row)

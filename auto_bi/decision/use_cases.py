@@ -16,6 +16,10 @@ default and the caller that does hold a read-only client decides when to hand on
 to one run directory is a filesystem question, and `evidence/inspect.py` — which decides
 whether a bundle is still trustworthy — must not have to answer it.
 
+`impact` is the `impact.products` step of `verify` without the run (ADR 0012, D5): whom a
+change of semantics reaches, read and refused by the readers `verify` uses, with no verdict
+and no bundle. The MCP server (`auto_bi/mcp/`) offers it as a tool.
+
 A **semantic ref** is a directory holding `model.yaml`, with metric contracts in an
 optional `metrics/` beside it. A **dashboard spec** is named after the ref that pins it —
 `weekly_margin@7.yaml` for `dashboard://weekly_margin@7` — so a product pinned to version 7
@@ -30,15 +34,19 @@ side, `decision capture` one for the candidate, and both read it with one loader
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Mapping, Sequence
+import secrets
+import shutil
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import TypeAdapter, ValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 
 from auto_bi import filesystem
+from auto_bi.decision.impact import ImpactReport, resolve_impact
 from auto_bi.decision.spec import DecisionProductSpec
 from auto_bi.decision.validate import (
     LoadedContracts,
@@ -50,11 +58,27 @@ from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.evidence.manifest import MANIFEST_PATH, EvidenceConflictError
 from auto_bi.evidence.signing import EvidenceSignatureError, EvidenceSigner
 from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
+from auto_bi.inventory.superset import (
+    SUPERSET_VERSION,
+    InventoriedDashboard,
+    SupersetAnswerError,
+    SupersetSource,
+    SupersetSourceError,
+    dump_spec,
+    inventory_dashboard,
+)
 from auto_bi.ir.spec import DashboardSpec
-from auto_bi.refs import ContractRef
+from auto_bi.refs import ContractRef, RefError, RefKind
 from auto_bi.scalars import Timestamp
-from auto_bi.semantic.gateway import NativeModelSource, SemanticSnapshot, SnapshotRead
+from auto_bi.semantic.diff import diff_snapshots
+from auto_bi.semantic.gateway import (
+    NativeModelSource,
+    SemanticGap,
+    SemanticSnapshot,
+    SnapshotRead,
+)
 from auto_bi.semantic.model import SemanticModel
+from auto_bi.strict import StrictModel
 from auto_bi.verification.environment import (
     EnvironmentFacts,
     EnvironmentQuestions,
@@ -62,6 +86,7 @@ from auto_bi.verification.environment import (
 )
 from auto_bi.verification.reconcile import ResultSet
 from auto_bi.verification.release_gate import (
+    UNTRUSTWORTHY_GAPS,
     EvidenceReadBackError,
     GateInputs,
     GateReport,
@@ -94,6 +119,8 @@ _SPEC_SUFFIXES = (".yaml", ".yml", ".json")
 _MAX_UNREAD_NAMED = 3
 #: How many product files the schema refused it names before it counts the rest.
 _MAX_REFUSED_NAMED = 3
+#: How many gaps an impact refused for them names before it counts the rest.
+_MAX_UNTRUSTWORTHY_NAMED = 3
 
 #: The moment a run or a capture is stated to be of, as a manifest and an attestation take it.
 _MOMENT: TypeAdapter[str] = TypeAdapter(Timestamp)
@@ -201,6 +228,21 @@ class CaptureReport:
     candidate_digest: str
 
 
+@contextmanager
+def _quiet_sqlglot() -> Iterator[None]:
+    """Suppress SQL-bearing dependency diagnostics for the whole synchronous use case."""
+    import logging
+
+    logger = logging.getLogger("sqlglot")
+    disabled = logger.disabled
+    logger.disabled = True
+    try:
+        yield
+    finally:
+        logger.disabled = disabled
+
+
+@_quiet_sqlglot()
 def verify(request: VerifyRequest) -> GateReport:
     """Load everything §8.1 names and run the gate over it."""
     # What the request states of the run itself is settled before anything is read. A moment
@@ -266,6 +308,94 @@ def verify(request: VerifyRequest) -> GateReport:
         ) from None
 
 
+@dataclass(frozen=True)
+class ImpactRequest:
+    """What `impact` reads: the inputs of `VerifyRequest` a semantic diff and its reach need.
+
+    No evidence directory, assets, results or engine: `impact` writes nothing and asks
+    nothing, and grades nothing either (ADR 0012, D5).
+    """
+
+    contract_paths: Sequence[str | Path]
+    base: str | Path
+    candidate: str | Path
+    dashboards_dir: str | Path | None = None
+    #: Narrows the products in scope to this one; empty is every product the paths hold.
+    product_id: str = ""
+    base_dbt: DbtArtifact | None = None
+    candidate_dbt: DbtArtifact | None = None
+
+
+class SnapshotGaps(StrictModel):
+    """What each semantic ref declares that its snapshot does not carry."""
+
+    base: list[SemanticGap]
+    candidate: list[SemanticGap]
+
+
+class ImpactAnswer(StrictModel):
+    """Whom a change of semantics reaches, resolved as `decision verify` resolves it.
+
+    `impact` is the report `resolve_impact` gives over the products in scope; for one product
+    it is the payload of the gate's `impact.products` check. Beside it go what the gate grades
+    before it: `validation`, where a product file the schema refused is named — that product
+    is in no scope — and `gaps`, where what a snapshot could not represent is named, for a
+    change there is in no diff. Neither is graded here: `impact` gives no verdict.
+    """
+
+    validation: ValidationReport
+    gaps: SnapshotGaps
+    impact: ImpactReport
+
+
+def impact(request: ImpactRequest) -> ImpactAnswer:
+    """The semantic diff of two refs and whom it reaches, without a run (ADR 0012, D5).
+
+    The refs, their dbt artifacts and the dashboards are read and refused as `verify` reads
+    and refuses them. The products in scope are the one named, or every product of the paths
+    in id order. A ref holding a gap the gate computes no diff over (`UNTRUSTWORTHY_GAPS`) is
+    refused, the gaps named: the gate skips its diff and impact steps for it, and this answer
+    would be the diff the gate does not trust.
+    """
+    loaded = load_contracts(request.contract_paths)
+    if request.product_id:
+        products = [_select_product(loaded, request.product_id)]
+    elif loaded.products:
+        products = [loaded.products[key] for key in sorted(loaded.products)]
+    else:
+        raise _no_product(loaded)
+
+    base = _snapshot(Path(request.base), request.base_dbt, _BASE_DBT).snapshot
+    candidate = _snapshot(Path(request.candidate), request.candidate_dbt, _CANDIDATE_DBT).snapshot
+    untrustworthy = [gap for gap in (*base.gaps, *candidate.gaps) if gap.code in UNTRUSTWORTHY_GAPS]
+    if untrustworthy:
+        named = ", ".join(
+            f"{gap.code} at {gap.path}" for gap in untrustworthy[:_MAX_UNTRUSTWORTHY_NAMED]
+        )
+        rest = len(untrustworthy) - _MAX_UNTRUSTWORTHY_NAMED
+        more = f" (+{rest} more)" if rest > 0 else ""
+        raise VerifyError(
+            f"no semantic diff over a snapshot with {len(untrustworthy)} gap(s) the gate "
+            f"computes none over: {named}{more}"
+        )
+
+    dashboards: dict[str, DashboardSpec] = {}
+    for product in products:
+        dashboards.update(_load_dashboards(request.dashboards_dir, product))
+    report = resolve_impact(
+        diff_snapshots(base, candidate),
+        products,
+        dashboards=dashboards,
+        # Both sides, as the gate gives them (`decision/impact.py`).
+        metrics=[*base.graph.metrics, *candidate.graph.metrics],
+    )
+    return ImpactAnswer(
+        validation=loaded.report,
+        gaps=SnapshotGaps(base=list(base.gaps), candidate=list(candidate.gaps)),
+        impact=report,
+    )
+
+
 def capture_result(request: CaptureRequest) -> CaptureReport:
     """Execute one selected asset and write a new gate-ready recorded-results YAML file."""
     # What the capture is attested with is settled first: no file is read and no engine is
@@ -328,6 +458,137 @@ def capture_result(request: CaptureRequest) -> CaptureReport:
     )
 
 
+INVENTORY_REPORT = "inventory.json"
+
+
+@dataclass(frozen=True)
+class InventoryRequest:
+    #: The semantic ref whose `model.yaml` the gate will validate the written specs against.
+    semantic: str | Path
+    #: `(dashboard ref, Superset dashboard id or slug)`, in the order named.
+    dashboards: Sequence[tuple[str, str]]
+    #: A directory that does not exist yet: the inventory is all it will hold.
+    output: str | Path
+    #: Called once, after every argument was taken: an inventory refused for one asks nothing.
+    source: Callable[[], SupersetSource]
+    #: The Superset database the model describes. A chart on another one refuses its dashboard:
+    #: a table of the same name there is not the table the model names. `None` checks nothing.
+    database: int | None = None
+
+
+class InventoryReport(StrictModel):
+    superset_version: str = SUPERSET_VERSION
+    dashboards: list[InventoriedDashboard] = Field(default_factory=list)
+
+    @property
+    def refused(self) -> list[InventoriedDashboard]:
+        return [dashboard for dashboard in self.dashboards if dashboard.written is None]
+
+
+def inventory(request: InventoryRequest) -> InventoryReport:
+    """Read the named Superset dashboards into the specs `verify --dashboards` reads (D6).
+
+    Each spec is written at the path the gate looks for its ref, so the output directory is
+    the `--dashboards` of a run. A dashboard the inventory does not read whole is not written
+    and the report says why; the gate then says the spec is missing. The output is a new
+    directory, made only once everything was read: no spec of an earlier inventory stays in
+    it to be read as this one's, and an inventory that failed leaves none behind.
+    """
+    pairs = list(request.dashboards)
+    if not pairs:
+        raise VerifyError("name at least one dashboard: --dashboard REF=SUPERSET_ID")
+    paths: dict[str, tuple[str, ...]] = {}
+    for ref, ident in pairs:
+        try:
+            parsed = ContractRef.parse(ref)
+        except RefError as exc:
+            raise VerifyError(f"--dashboard {ref!r}: {exc}") from None
+        if parsed.kind is not RefKind.DASHBOARD or parsed.version is None:
+            raise VerifyError(f"--dashboard {ref!r}: expected dashboard://path@version")
+        if not ident.strip():
+            raise VerifyError(f"--dashboard {ref!r}: name the Superset dashboard id or slug")
+        try:
+            ident.encode("utf-8")
+        except UnicodeEncodeError:
+            # A byte of an argument that is not UTF-8 reaches Python as a lone surrogate, which
+            # no request path can carry.
+            raise VerifyError(
+                f"--dashboard {ref!r}: the Superset id or slug is not UTF-8 text"
+            ) from None
+        if ref in paths:
+            raise VerifyError(f"--dashboard {ref!r} is named twice")
+        *directories, name = parsed.path
+        paths[ref] = (*directories, f"{name}@{parsed.version}.yaml")
+    output = Path(request.output)
+    try:
+        taken = filesystem.exists(output)
+    except OSError as exc:
+        raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
+    if taken:
+        raise VerifyError(f"output already exists: {output}; the inventory writes a new directory")
+    model = _load_model(Path(request.semantic) / MODEL_FILE)
+
+    source = request.source()
+    report = InventoryReport()
+    specs: dict[str, DashboardSpec] = {}
+    for ref, ident in pairs:
+        try:
+            read = inventory_dashboard(ref, ident, source, model, database=request.database)
+        except SupersetSourceError as exc:
+            raise VerifyError(f"cannot read Superset dashboard {ident!r}: {exc}") from None
+        except SupersetAnswerError as exc:
+            raise VerifyError(f"Superset dashboard {ident!r}: {exc}") from None
+        if read.spec is not None:
+            specs[ref] = read.spec
+            read.record.written = "/".join(paths[ref])
+        report.dashboards.append(read.record)
+    _write_inventory(output, report, {paths[ref]: spec for ref, spec in specs.items()})
+    return report
+
+
+def _write_inventory(
+    output: Path, report: InventoryReport, specs: Mapping[tuple[str, ...], DashboardSpec]
+) -> None:
+    """Every file in a directory beside *output*, then the directory renamed to it.
+
+    The directory is made as `mkdir` makes one, under the umask the output would be made
+    under — not with `mkdtemp`'s owner-only mode, which the rename would carry to the
+    output. Whatever stops the writing, an interrupt included, takes the directory with it.
+    """
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        staging = output.parent / f".{output.name}.{secrets.token_hex(8)}"
+        staging.mkdir()
+    except OSError as exc:
+        raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
+    try:
+        for parts, spec in specs.items():
+            path = staging.joinpath(*parts)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(dump_spec(spec))
+        try:
+            text = report.model_dump_json(indent=2)
+        except ValueError:
+            # JSON's `\ud800` escape carries a lone surrogate in from an answer, and pydantic
+            # writes no such text; the report does not say which, as it cannot be written.
+            raise VerifyError(
+                f"cannot write the inventory to {output}: a text Superset answered is not "
+                "Unicode (a lone surrogate)"
+            ) from None
+        (staging / INVENTORY_REPORT).write_bytes((text + "\n").encode("utf-8"))
+        if filesystem.exists(output):
+            raise VerifyError(
+                f"output already exists: {output}; the inventory writes a new directory"
+            )
+        staging.rename(output)
+    except OSError as exc:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
 def _probe(
     probe: EnvironmentProbe | None, product: DecisionProductSpec, candidate: SemanticSnapshot
 ) -> EnvironmentFacts | None:
@@ -365,10 +626,7 @@ def _select_product(loaded: LoadedContracts, product_id: str) -> DecisionProduct
             )
         return product
     if not products:
-        raise VerifyError(
-            "no decision product contract found in the given paths"
-            f"{_refused_products(loaded.refused_products)}{_unread_paths(loaded.report)}"
-        )
+        raise _no_product(loaded)
     if len(products) > 1:
         known = ", ".join(sorted(products))
         raise VerifyError(
@@ -376,6 +634,14 @@ def _select_product(loaded: LoadedContracts, product_id: str) -> DecisionProduct
             "name the one to verify with --product"
         )
     return next(iter(products.values()))
+
+
+def _no_product(loaded: LoadedContracts) -> VerifyError:
+    """The refusal of paths that hold no product: what was read and is none, what was not read."""
+    return VerifyError(
+        "no decision product contract found in the given paths"
+        f"{_refused_products(loaded.refused_products)}{_unread_paths(loaded.report)}"
+    )
 
 
 def _refused_products(refused: Sequence[RefusedProduct]) -> str:

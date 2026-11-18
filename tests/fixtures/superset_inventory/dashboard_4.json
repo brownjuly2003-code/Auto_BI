@@ -1,0 +1,423 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "color_picker": {
+     "a": 0.82,
+     "b": 3,
+     "g": 0,
+     "r": 205
+    },
+    "datasource": "3__table",
+    "granularity_sqla": null,
+    "groupby": [],
+    "mapbox_style": "mapbox://styles/mapbox/light-v9",
+    "max_radius": 250,
+    "min_radius": 1,
+    "multiplier": 10,
+    "point_radius_fixed": {
+     "type": "metric",
+     "value": "count"
+    },
+    "point_unit": "square_m",
+    "row_limit": 5000,
+    "size": "count",
+    "slice_id": 32,
+    "spatial": {
+     "latCol": "LAT",
+     "lonCol": "LON",
+     "type": "latlong"
+    },
+    "time_grain_sqla": null,
+    "time_range": " : ",
+    "viewport": {
+     "bearing": -4.952916738791771,
+     "latitude": 37.78926922909199,
+     "longitude": -122.42613341901688,
+     "pitch": 4.750411100577438,
+     "zoom": 12.729132798697304
+    },
+    "viz_type": "deck_scatter"
+   },
+   "id": 32,
+   "slice_name": "Deck.gl Scatterplot"
+  },
+  {
+   "form_data": {
+    "color_picker": {
+     "a": 1,
+     "b": 0,
+     "g": 255,
+     "r": 14
+    },
+    "datasource": "3__table",
+    "granularity_sqla": null,
+    "grid_size": 20,
+    "groupby": [],
+    "mapbox_style": "mapbox://styles/mapbox/dark-v9",
+    "point_radius": "Auto",
+    "point_radius_fixed": {
+     "type": "fix",
+     "value": 2000
+    },
+    "point_unit": "square_m",
+    "row_limit": 5000,
+    "size": "count",
+    "slice_id": 33,
+    "spatial": {
+     "latCol": "LAT",
+     "lonCol": "LON",
+     "type": "latlong"
+    },
+    "time_grain_sqla": null,
+    "time_range": "No filter",
+    "viewport": {
+     "bearing": -4.952916738791771,
+     "latitude": 37.76024135844065,
+     "longitude": -122.41827069521386,
+     "pitch": 4.750411100577438,
+     "zoom": 14.161641703941438
+    },
+    "viz_type": "deck_screengrid"
+   },
+   "id": 33,
+   "slice_name": "Deck.gl Screen grid"
+  },
+  {
+   "form_data": {
+    "color_picker": {
+     "a": 1,
+     "b": 0,
+     "g": 255,
+     "r": 14
+    },
+    "datasource": "3__table",
+    "extruded": true,
+    "granularity_sqla": null,
+    "grid_size": 40,
+    "groupby": [],
+    "mapbox_style": "mapbox://styles/mapbox/streets-v9",
+    "point_radius": "Auto",
+    "point_radius_fixed": {
+     "type": "fix",
+     "value": 2000
+    },
+    "point_radius_unit": "Pixels",
+    "row_limit": 5000,
+    "size": "count",
+    "slice_id": 34,
+    "spatial": {
+     "latCol": "LAT",
+     "lonCol": "LON",
+     "type": "latlong"
+    },
+    "time_grain_sqla": null,
+    "time_range": "No filter",
+    "viewport": {
+     "bearing": -2.3984797349335167,
+     "latitude": 37.789795085160335,
+     "longitude": -122.40632230075536,
+     "pitch": 54.08961642447763,
+     "zoom": 13.835465702403654
+    },
+    "viz_type": "deck_hex"
+   },
+   "id": 34,
+   "slice_name": "Deck.gl Hexagons"
+  },
+  {
+   "form_data": {
+    "autozoom": false,
+    "color_picker": {
+     "a": 1,
+     "b": 0,
+     "g": 255,
+     "r": 14
+    },
+    "datasource": "3__table",
+    "extruded": true,
+    "granularity_sqla": null,
+    "grid_size": 120,
+    "groupby": [],
+    "mapbox_style": "mapbox://styles/mapbox/satellite-streets-v9",
+    "point_radius": "Auto",
+    "point_radius_fixed": {
+     "type": "fix",
+     "value": 2000
+    },
+    "point_radius_unit": "Pixels",
+    "row_limit": 5000,
+    "size": "count",
+    "slice_id": 35,
+    "spatial": {
+     "latCol": "LAT",
+     "lonCol": "LON",
+     "type": "latlong"
+    },
+    "time_grain_sqla": null,
+    "time_range": "No filter",
+    "viewport": {
+     "bearing": 155.80099696026355,
+     "latitude": 37.7942314882596,
+     "longitude": -122.42066918995666,
+     "pitch": 53.470800300695146,
+     "zoom": 12.699690845482069
+    },
+    "viz_type": "deck_grid"
+   },
+   "id": 35,
+   "slice_name": "Deck.gl Grid"
+  },
+  {
+   "form_data": {
+    "datasource": "5__table",
+    "extruded": true,
+    "fill_color_picker": {
+     "a": 1,
+     "b": 73,
+     "g": 65,
+     "r": 3
+    },
+    "filled": true,
+    "granularity_sqla": null,
+    "js_columns": [],
+    "js_data_mutator": "",
+    "js_onclick_href": "",
+    "js_tooltip": "",
+    "legend_format": ".1s",
+    "legend_position": "tr",
+    "line_column": "contour",
+    "line_type": "json",
+    "line_width": 10,
+    "line_width_unit": "meters",
+    "linear_color_scheme": "oranges",
+    "mapbox_style": "mapbox://styles/mapbox/light-v9",
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "population",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 1332,
+      "is_dttm": false,
+      "optionName": "_col_population",
+      "python_date_format": null,
+      "type": "BIGINT",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": true,
+     "label": "Population",
+     "optionName": "metric_t2v4qbfiz1_w6qgpx4h2p",
+     "sqlExpression": null
+    },
+    "multiplier": 0.1,
+    "point_radius_fixed": {
+     "type": "metric",
+     "value": {
+      "aggregate": null,
+      "column": null,
+      "expressionType": "SQL",
+      "hasCustomLabel": null,
+      "label": "Density",
+      "optionName": "metric_c5rvwrzoo86_293h6yrv2ic",
+      "sqlExpression": "SUM(population)/SUM(area)"
+     }
+    },
+    "reverse_long_lat": false,
+    "slice_id": 36,
+    "stroke_color_picker": {
+     "a": 1,
+     "b": 135,
+     "g": 122,
+     "r": 0
+    },
+    "stroked": false,
+    "time_grain_sqla": null,
+    "time_range": " : ",
+    "viewport": {
+     "altitude": 1.5,
+     "bearing": 37.89506450385642,
+     "height": 906,
+     "latitude": 37.752020331384834,
+     "longitude": -122.43388541747726,
+     "maxLatitude": 85.05113,
+     "maxPitch": 60,
+     "maxZoom": 20,
+     "minLatitude": -85.05113,
+     "minPitch": 0,
+     "minZoom": 0,
+     "pitch": 60,
+     "width": 667,
+     "zoom": 11.133995608594631
+    },
+    "viz_type": "deck_polygon"
+   },
+   "id": 36,
+   "slice_name": "Deck.gl Polygons"
+  },
+  {
+   "form_data": {
+    "color_picker": {
+     "a": 1,
+     "b": 135,
+     "g": 122,
+     "r": 0
+    },
+    "datasource": "6__table",
+    "end_spatial": {
+     "latCol": "LATITUDE_DEST",
+     "lonCol": "LONGITUDE_DEST",
+     "type": "latlong"
+    },
+    "granularity_sqla": null,
+    "mapbox_style": "mapbox://styles/mapbox/light-v9",
+    "row_limit": 5000,
+    "slice_id": 37,
+    "start_spatial": {
+     "latCol": "LATITUDE",
+     "lonCol": "LONGITUDE",
+     "type": "latlong"
+    },
+    "stroke_width": 1,
+    "time_grain_sqla": null,
+    "time_range": " : ",
+    "viewport": {
+     "altitude": 1.5,
+     "bearing": 8.546256357301871,
+     "height": 642,
+     "latitude": 44.596651438714254,
+     "longitude": -91.84340711201104,
+     "maxLatitude": 85.05113,
+     "maxPitch": 60,
+     "maxZoom": 20,
+     "minLatitude": -85.05113,
+     "minPitch": 0,
+     "minZoom": 0,
+     "pitch": 60,
+     "width": 997,
+     "zoom": 2.929837070560775
+    },
+    "viz_type": "deck_arc"
+   },
+   "id": 37,
+   "slice_name": "Deck.gl Arcs"
+  },
+  {
+   "form_data": {
+    "color_picker": {
+     "a": 1,
+     "b": 135,
+     "g": 122,
+     "r": 0
+    },
+    "datasource": "7__table",
+    "js_columns": [
+     "color"
+    ],
+    "js_data_mutator": "data => data.map(d => ({\n    ...d,\n    color: colors.hexToRGB(d.extraProps.color)\n}));",
+    "js_onclick_href": "",
+    "js_tooltip": "",
+    "line_column": "path_json",
+    "line_type": "json",
+    "line_width": 150,
+    "mapbox_style": "mapbox://styles/mapbox/light-v9",
+    "reverse_long_lat": false,
+    "row_limit": 5000,
+    "slice_id": 38,
+    "time_grain_sqla": null,
+    "time_range": " : ",
+    "viewport": {
+     "altitude": 1.5,
+     "bearing": 0,
+     "height": 1094,
+     "latitude": 37.73671752604488,
+     "longitude": -122.18885402582598,
+     "maxLatitude": 85.05113,
+     "maxPitch": 60,
+     "maxZoom": 20,
+     "minLatitude": -85.05113,
+     "minPitch": 0,
+     "minZoom": 0,
+     "pitch": 0,
+     "width": 669,
+     "zoom": 9.51847667620428
+    },
+    "viz_type": "deck_path"
+   },
+   "id": 38,
+   "slice_name": "Deck.gl Path"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T10:20:19.395795",
+  "dashboard_title": "deck.gl Demo",
+  "id": 4,
+  "json_metadata": null,
+  "slug": "deck"
+ },
+ "datasets": [
+  {
+   "columns": [],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 3,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": null,
+   "table_name": "long_lat"
+  },
+  {
+   "columns": [
+    {
+     "column_name": "population",
+     "expression": null,
+     "is_dttm": false,
+     "type": "BIGINT"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 5,
+   "metrics": [],
+   "schema": "main",
+   "sql": null,
+   "table_name": "sf_population_polygons"
+  },
+  {
+   "columns": [],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 6,
+   "metrics": [],
+   "schema": "main",
+   "sql": null,
+   "table_name": "flights"
+  },
+  {
+   "columns": [],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 7,
+   "metrics": [],
+   "schema": "main",
+   "sql": null,
+   "table_name": "bart_lines"
+  }
+ ]
+}

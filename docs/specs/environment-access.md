@@ -142,7 +142,9 @@ memberships, are not asked about; and the ClickHouse `readonly=1/2` rule rests o
 24.8.14.39 behaviour above, and a version that applies a role's settings on a role switch was
 not checked. Ownership checks cover only the in-scope mart and its schema; they do not
 ask about ownership, DML grants or row security of a view mart's base tables, a mart's
-partitions or its inheritance children. The powers available by changing memberships
+partitions or its inheritance children; of a foreign-table mart (since verifier 136), what its
+server applies on its own side — the grants and row security of the user it signs in as — is
+not observed either. The powers available by changing memberships
 are not asked about either. For a view mart the owner-bypass fact means only that the
 current role holds the view owner's privileges with FORCE off. It concerns the view's
 own policies, which a view does not have; its base tables' policies are not asked about.
@@ -464,6 +466,16 @@ privilege SHALL make `RoleFacts.read_only` false, with evidence naming the privi
 held on columns, and the mart. A privilege the table-level question already reported SHALL NOT
 be reported again as a column privilege. The question SHALL cover the whole mart, not only the
 columns the in-scope metrics read. The collector SHALL NOT attempt a write to find out.
+
+A materialized view is the one mart this does not hold for (since verifier 136, ADR 0012, D2 —
+[unanswered engine](unanswered-engine.md)): PostgreSQL refuses each `INSERT`, `UPDATE`,
+`DELETE` and `TRUNCATE` of it whatever is granted (`42809`), so for the current role and for
+each role `SET ROLE` reaches its table-level write answers SHALL NOT be counted, and neither
+SHALL its column grants: the current role's columns SHALL NOT be asked, and a reached role's
+column answer, which comes in the same question, SHALL NOT be counted. What changes such a view
+is `REFRESH`: its ownership SHALL be weighed as for any mart, and so SHALL `MAINTAIN` on it,
+which PostgreSQL 17 added and which lets its holder refresh a view it does not own; the
+question SHALL answer false below 17, where the word is refused.
 
 ### Scenario: a column-only UPDATE grant blocks
 
@@ -1028,7 +1040,10 @@ Historical bundles are not rewritten.
 When the PostgreSQL-family role is found read-only, its evidence SHALL say that no in-scope mart
 grants it `INSERT`, `UPDATE`, `DELETE` or `TRUNCATE`, that no column of those marts grants it
 `INSERT` or `UPDATE`, and which roles reachable through `SET ROLE` were checked the same way —
-or that `SET ROLE` reaches no other role.
+or that `SET ROLE` reaches no other role. Where in-scope marts are materialized views, whose write
+grants are not counted, it SHALL say so of the marts (`… on any in-scope mart but a materialized
+view, no MAINTAIN privilege on a materialized view …`) and name each such view (since verifier
+136).
 
 ### Scenario: the read-only evidence mentions the column privileges
 

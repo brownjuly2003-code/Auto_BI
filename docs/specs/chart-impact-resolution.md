@@ -35,6 +35,12 @@ field the change touches, qualifying a bare column with the query's own base tab
 
 ## Requirement: an operator SQL tile is read from its SQL, not skipped
 
+Parser exceptions on malformed SQL, including `TokenError`, `AttributeError`, `ValueError`
+and `IndexError`, SHALL leave the tile `chart.opaque_sql`; BI validation separately blocks it
+as `bi.spec_invalid` and the run writes a bundle. The guard's refusal names the parser error
+class and boundary without quoting SQL (E1; `tests/test_sql_guard_parser_refusal.py`,
+`tests/test_entry_sql.py`).
+
 The system SHALL resolve the field reads of a tile carrying operator `raw_sql` from that SQL,
 attributing a column only where the statement itself leaves no choice, and SHALL report a
 chart gap naming the tile when its SQL cannot be parsed or when part of what it reads could not

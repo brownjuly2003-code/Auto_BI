@@ -1,0 +1,170 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "compare_lag": "10",
+    "compare_suffix": "o10Y",
+    "country_fieldtype": "cca3",
+    "datasource": "1__table",
+    "entity": "country_code",
+    "granularity_sqla": "year",
+    "groupby": [],
+    "limit": 100,
+    "markup_type": "markdown",
+    "metrics": [
+     "sum__SP_POP_TOTL",
+     "sum__SP_RUR_TOTL_ZS",
+     "sum__SH_DYN_AIDS"
+    ],
+    "row_limit": 50000,
+    "secondary_metric": "sum__SP_POP_TOTL",
+    "series": "country_name",
+    "show_bubbles": true,
+    "slice_id": 10,
+    "time_range": "2011-01-01 : 2012-01-01",
+    "viz_type": "para"
+   },
+   "id": 10,
+   "slice_name": "Parallel Coordinates"
+  },
+  {
+   "form_data": {
+    "all_columns": [
+     "occupancy"
+    ],
+    "all_columns_x": "LON",
+    "all_columns_y": "LAT",
+    "datasource": "3__table",
+    "granularity_sqla": "day",
+    "mapbox_style": "mapbox://styles/mapbox/light-v9",
+    "row_limit": 500000,
+    "slice_id": 30,
+    "time_range": "2014-01-01 : now",
+    "viz_type": "mapbox"
+   },
+   "id": 30,
+   "slice_name": "Mapbox Long/Lat"
+  },
+  {
+   "form_data": {
+    "datasource": "4__table",
+    "entity": "DEPT_ID",
+    "granularity_sqla": "",
+    "metric": {
+     "aggregate": "AVG",
+     "column": {
+      "column_name": "2004",
+      "type": "INT"
+     },
+     "expressionType": "SIMPLE",
+     "label": "Boys",
+     "optionName": "metric_112342"
+    },
+    "row_limit": 500000,
+    "select_country": "france",
+    "slice_id": 31,
+    "time_range": " : ",
+    "viz_type": "country_map"
+   },
+   "id": 31,
+   "slice_name": "Birth in France by department in 2016"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T10:20:19.361537",
+  "dashboard_title": "Misc Charts",
+  "id": 3,
+  "json_metadata": null,
+  "slug": "misc_charts"
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "country_name",
+     "expression": null,
+     "is_dttm": false,
+     "type": "VARCHAR(255)"
+    },
+    {
+     "column_name": "country_code",
+     "expression": null,
+     "is_dttm": false,
+     "type": "VARCHAR(3)"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 1,
+   "metrics": [
+    {
+     "expression": "sum(\"SP_POP_TOTL\")",
+     "metric_name": "sum__SP_POP_TOTL"
+    },
+    {
+     "expression": "sum(\"SH_DYN_AIDS\")",
+     "metric_name": "sum__SH_DYN_AIDS"
+    },
+    {
+     "expression": "sum(\"SP_RUR_TOTL_ZS\")",
+     "metric_name": "sum__SP_RUR_TOTL_ZS"
+    }
+   ],
+   "schema": "main",
+   "sql": null,
+   "table_name": "wb_health_population"
+  },
+  {
+   "columns": [
+    {
+     "column_name": "LON",
+     "expression": null,
+     "is_dttm": false,
+     "type": "FLOAT"
+    },
+    {
+     "column_name": "occupancy",
+     "expression": null,
+     "is_dttm": false,
+     "type": "FLOAT"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 3,
+   "metrics": [],
+   "schema": "main",
+   "sql": null,
+   "table_name": "long_lat"
+  },
+  {
+   "columns": [
+    {
+     "column_name": "DEPT_ID",
+     "expression": null,
+     "is_dttm": false,
+     "type": "VARCHAR(10)"
+    },
+    {
+     "column_name": "2004",
+     "expression": null,
+     "is_dttm": false,
+     "type": "BIGINT"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 4,
+   "metrics": [],
+   "schema": "main",
+   "sql": null,
+   "table_name": "birth_france_by_region"
+  }
+ ]
+}

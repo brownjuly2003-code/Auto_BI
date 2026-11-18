@@ -54,7 +54,11 @@ def test_public_physical_detail_reports_only_observed_comparisons(
             partition_key=question.layout.partition_key,
         )
         if coverage == "none":
-            table.columns = None
+            # The catalog answered and lists none of the declared columns, whose reach is
+            # unknown: nothing compared, nothing gone. A refused catalog would be
+            # `physical.not_observed` (ADR 0012, D2), tested below.
+            table.columns = {}
+            table.column_reads = None
             table.layout = LayoutFacts()
         elif coverage == "engine_only":
             table.layout = LayoutFacts(table_engine=question.layout.table_engine)
@@ -95,7 +99,10 @@ def test_public_physical_code_requires_a_declared_comparison(tmp_path: Path, cov
         observed = environment()
         table = observed.tables[0]
         question = scope.tables[0]
-        table.columns = None
+        # Answered, with every declared column out of sight (reach unknown): compared
+        # none, gone none; refused, it would be `physical.not_observed` (ADR 0012, D2).
+        table.columns = {}
+        table.column_reads = None
         table.layout = None
         if coverage == "unasked":
             table.columns = {"unasked": "String"}
@@ -183,7 +190,7 @@ def test_public_physical_findings_keep_precedence(
         observed = environment()
         table = observed.tables[0]
         question = scope.tables[0]
-        table.columns = None
+        table.columns = dict(question.columns)
         table.layout = None
         if finding == "column_absent":
             table.columns = {}
@@ -343,8 +350,9 @@ def test_a_column_catalog_the_role_may_not_read_marks_no_column_absent(
     """ADR 0010, F1, through the gate. The engine's catalog lists `date` and `revenue` of the
     four columns the product reads: answered, the other two are gone and block. Refused, it
     was read as empty until verifier 133 — all four gone, a block over a mart whose rows the
-    gate counted and whose columns it never saw; now none of them is compared. On PostgreSQL
-    the same refusal leaves the role's reach unread, and that is what asks for review."""
+    gate counted and whose columns it never saw. Verifier 133 to 135 compared none of them and
+    passed; since verifier 136 that is `physical.not_observed` (review, ADR 0012, D2). On
+    PostgreSQL the same refusal also leaves the role's reach unread, `security.not_observed`."""
     asked = base()
     run_query = RefusingEngine(asked, catalog, sqlstate=sqlstate) if refused else asked
 
@@ -355,14 +363,13 @@ def test_a_column_catalog_the_role_may_not_read_marks_no_column_absent(
     check = next(item for item in report.checks if item.check_id == "dwh.physical")
     findings = _check_payload(tmp_path, report, "dwh.physical")["findings"]
     if refused:
-        assert check.status is CheckStatus.PASS
-        # ClickHouse still answered the layout from `system.tables`; PostgreSQL reports none
-        assert check.summary_code == (
-            "physical.as_declared" if engine == "clickhouse" else "physical.not_run"
-        )
-        assert findings == []
-        assert "0 of 4 declared column types" in check.detail
-        assert "coverage is incomplete" in check.detail
+        assert check.status is CheckStatus.REVIEW
+        assert check.summary_code == "physical.not_observed"
+        assert [(item["code"], item["subject"]) for item in findings] == [
+            ("physical.not_observed", "dm.sales_daily")
+        ]
+        assert check.detail.startswith("127.0.0.1:8124/dm did not answer which columns ")
+        assert "column_absent" not in check.detail
         if engine == "postgres":
             security = next(item for item in report.checks if item.check_id == "dwh.security")
             assert (security.status, security.summary_code) == (

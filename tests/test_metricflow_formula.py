@@ -32,9 +32,10 @@ import yaml
 from auto_bi.evidence.canonical import digest_bytes, sha256_digest
 from auto_bi.semantic.gateway import NativeModelSource
 from auto_bi.semantic.metric_contract import MetricContract, MetricFormula
-from auto_bi.semantic.metricflow import ManifestRead, read_semantic_manifest
+from auto_bi.semantic.metricflow import ManifestRead, SemanticManifest, read_semantic_manifest
 from auto_bi.semantic.metricflow_formula import (
     _DEFAULT_AGG_PARAMS,
+    _DERIVED_QUOTIENT,
     _INPUT_MEASURE,
     _METRIC,
     _METRIC_INPUT,
@@ -85,6 +86,7 @@ EVERY_ROW = frozenset(
     for row in (
         "legacy.measure_without_expr",
         "legacy.metric_expr",
+        "v2.metric_without_expr",
         *TERMS,
         *(f"ratio.{top}/{bottom}" for top in TERMS for bottom in TERMS),
     )
@@ -246,7 +248,9 @@ def _measure_input(name: str) -> dict[str, Any]:
 
 
 def _v2_with_granularity(kind: str = "v2") -> dict[str, Any]:
-    """A V2 artifact as dbt would write it if it kept the time dimension's granularity."""
+    """A V2 artifact as dbt-core 1.12.6 writes it for a time dimension spelled
+    `dimension: {type: time}` with its granularity, as the parity run's V2 project spells it:
+    the fixture spells it `dimension: time`, which dbt writes without one."""
     data = _data(kind)
     dimension = _model(data, "sales_daily")["dimensions"][0]
     assert dimension["name"] == "date" and dimension["type_params"] is None
@@ -390,9 +394,51 @@ def test_v2_metrics_resolve_once_their_time_has_a_granularity() -> None:
     assert ratio.parity_rows == _rows("v2.sum.decimal", "ratio.v2.sum.decimal/v2.sum.decimal")
     stores = _resolve(data, "active_stores")
     assert stores.formula == _aggregate("store_id", "count_distinct")
-    # no V2 row is proven
-    unproven = _resolve(data, "revenue", proven=PROVEN_PARITY)
-    assert _gaps(unproven) == [(PARITY_UNPROVEN, REVIEW, _metric_path(data, "revenue"))]
+    # the rows the recorded run proved are enough for all of them
+    for ref, resolution in (
+        ("revenue", revenue),
+        ("gross_margin_pct", ratio),
+        ("active_stores", stores),
+    ):
+        default = _resolve(data, ref, proven=PROVEN_PARITY)
+        assert (default.formula, default.gaps) == (resolution.formula, ()), ref
+
+
+def _over_both_dialects() -> dict[str, Any]:
+    """The legacy artifact with `gross_margin_total` a V2 metric: `gross_margin_pct` is a ratio
+    of a V2 metric over a legacy one."""
+    data = _data("legacy")
+    params = _metric(data, "gross_margin_total")["type_params"]
+    params.update(
+        measure=None,
+        input_measures=[],
+        expr="gross_margin",
+        metric_aggregation_params={
+            "semantic_model": "sales_daily",
+            "agg": "sum",
+            "agg_params": None,
+            "agg_time_dimension": "date",
+            "non_additive_dimension": None,
+        },
+    )
+    ratio = _metric(data, "gross_margin_pct")["type_params"]
+    ratio["input_measures"] = [
+        measure for measure in ratio["input_measures"] if measure["name"] != "gross_margin"
+    ]
+    return data
+
+
+def test_a_ratio_over_both_dialects_is_unproven() -> None:
+    # each project of the recorded run holds one dialect, and no ratio over two was compared
+    data = _over_both_dialects()
+    row = "ratio.v2.sum.decimal/legacy.sum.decimal"
+    resolution = _resolve(data, "gross_margin_pct")
+    assert resolution.gaps == ()
+    assert resolution.formula == _ratio(("gross_margin", "sum"), ("revenue", "sum"))
+    assert resolution.parity_rows == _rows("v2.sum.decimal", "legacy.sum.decimal", row)
+    unproven = _resolve(data, "gross_margin_pct", proven=PROVEN_PARITY)
+    assert _gaps(unproven) == [(PARITY_UNPROVEN, REVIEW, _metric_path(data, "gross_margin_pct"))]
+    assert unproven.gaps[0].reason.endswith(f"to agree on {CONTEXT}:{row}")
 
 
 def test_v2_time_dimension_without_granularity_is_review() -> None:
@@ -415,13 +461,57 @@ def test_v2_metric_takes_no_default_time() -> None:
     ]
 
 
-def test_v2_metric_without_expression_is_a_construct() -> None:
+def test_v2_metric_without_expression_reads_its_name_as_the_column() -> None:
+    # as MetricFlow does: the parity run's V2 metrics named after their column
+    data = _v2_with_granularity("wide_v2")
+    _metric(data, "revenue")["type_params"]["expr"] = None
+    resolution = _resolve(data, "revenue")
+    assert resolution.gaps == ()
+    assert resolution.formula == _aggregate("revenue", "sum")
+    assert resolution.parity_rows == _rows("v2.sum.decimal", "v2.metric_without_expr")
+    assert _resolve(data, "revenue", proven=PROVEN_PARITY).gaps == ()
+    # a name the native model declares no column for: a class no run proved
+    _metric(data, "revenue_min")["type_params"]["expr"] = None
+    other = _resolve(data, "revenue_min")
+    assert other.formula == _aggregate("revenue_min", "min")
+    assert other.parity_rows == _rows("v2.min.undeclared", "v2.metric_without_expr")
+    unproven = _resolve(data, "revenue_min", proven=PROVEN_PARITY)
+    assert _gaps(unproven) == [(PARITY_UNPROVEN, REVIEW, _metric_path(data, "revenue_min"))]
+    assert unproven.gaps[0].reason.endswith(f"to agree on {CONTEXT}:v2.min.undeclared")
+
+
+@pytest.mark.parametrize("name", ["null", "Revenue", "true", "current_date"])
+def test_v2_metric_name_read_as_a_column_must_be_one(name: str) -> None:
     data = _v2_with_granularity()
     _metric(data, "revenue")["type_params"]["expr"] = None
-    path = _metric_path(data, "revenue")
-    assert _gaps(_resolve(data, "revenue")) == [
-        (CONSTRUCT_UNSUPPORTED, REVIEW, f"{path}.type_params.expr")
+    _metric(data, "revenue")["name"] = name
+    # and the metrics naming it
+    _metric(data, "gross_margin_pct")["type_params"]["denominator"]["name"] = name
+    _metric(data, "revenue_cum")["type_params"]["cumulative_type_params"]["metric"]["name"] = name
+    assert _gaps(_resolve(data, "gross_margin_pct")) == [
+        (CONSTRUCT_UNSUPPORTED, REVIEW, f"{_metric_path(data, name)}.name")
     ]
+
+
+def test_count_without_expression_is_a_construct_in_either_dialect() -> None:
+    # MetricFlow builds no `count` without `expr` (`ConvertCountToSumRule`, and its V2 twin) and
+    # asks for `expr: 1` to count rows; dbt-core 1.12.6 refuses a legacy one, and writes the
+    # artifact of a V2 one before it fails
+    legacy = _data("wide_legacy")
+    _measure(legacy, "sales_rows")["expr"] = None
+    found = _resolve(legacy, "sales_rows")
+    assert _gaps(found) == [
+        (CONSTRUCT_UNSUPPORTED, REVIEW, f"{_measure_path(legacy, 'sales_rows')}.expr")
+    ]
+    assert found.gaps[0].reason.endswith(
+        "a count without an expression, which MetricFlow does not build"
+    )
+    v2 = _v2_with_granularity("wide_v2")
+    _metric(v2, "sales_rows")["type_params"]["expr"] = None
+    path = f"{_metric_path(v2, 'sales_rows')}.type_params.expr"
+    assert _gaps(_resolve(v2, "sales_rows")) == [(CONSTRUCT_UNSUPPORTED, REVIEW, path)]
+    # a count with an expression stays one over its column
+    assert _resolve(_data("wide_legacy"), "sales_rows").formula == _aggregate("store_id", "count")
 
 
 def test_v2_metric_with_input_measures_is_a_construct() -> None:
@@ -1209,15 +1299,152 @@ def test_metric_time_granularity_dbt_wrote_is_a_construct() -> None:
     ("kind", "ref"),
     [
         ("legacy", "revenue_cum"),
-        ("legacy", "margin_derived"),
         ("wide_legacy", "visit_to_purchase"),
+        ("wide_legacy", "revenue_growth"),
         ("wide_v2", "revenue_growth"),
     ],
 )
 def test_metric_neither_simple_nor_ratio_is_answered_by_its_type(kind: str, ref: str) -> None:
     data = _data(kind)
-    assert _gaps(_resolve(data, ref)) == [
-        (CONSTRUCT_UNSUPPORTED, REVIEW, f"{_metric_path(data, ref)}.type")
+    resolution = _resolve(data, ref)
+    assert _gaps(resolution) == [(CONSTRUCT_UNSUPPORTED, REVIEW, f"{_metric_path(data, ref)}.type")]
+    kind_of = _metric(data, ref)["type"]
+    assert resolution.gaps[0].reason.endswith(f": a {kind_of} metric")
+
+
+def _derived(expr: str | None, *inputs: tuple[str, str | None]) -> dict[str, Any]:
+    """The legacy artifact with `margin_derived` (as dbt wrote it, `gross_margin_total /
+    revenue`) given `expr` and input metrics `(name, alias)`; no inputs keeps dbt's."""
+    data = _data("legacy")
+    params = _metric(data, "margin_derived")["type_params"]
+    params["expr"] = expr
+    if inputs:
+        params["metrics"] = [
+            {**params["metrics"][0], "name": name, "alias": alias} for name, alias in inputs
+        ]
+    return data
+
+
+def _derived_gaps(data: dict[str, Any]) -> list[tuple[str, str, str]]:
+    return _gaps(_resolve(data, "margin_derived"))
+
+
+def _at(where: str) -> list[tuple[str, str, str]]:
+    return [
+        (CONSTRUCT_UNSUPPORTED, REVIEW, f"{_metric_path(_data('legacy'), 'margin_derived')}{where}")
+    ]
+
+
+def test_a_derived_quotient_as_dbt_wrote_it_is_answered_at_its_expr() -> None:
+    data = _data("legacy")
+    assert _metric(data, "margin_derived")["type_params"]["expr"] == "gross_margin_total / revenue"
+    resolution = _resolve(data, "margin_derived")
+    assert resolution.formula is None and resolution.parity_rows == frozenset()
+    assert _gaps(resolution) == _at(".type_params.expr")
+    assert resolution.gaps[0].reason.endswith(f": {_DERIVED_QUOTIENT}")
+
+
+BOTH = (("gross_margin_total", None), ("revenue", None))
+
+
+@pytest.mark.parametrize(
+    ("expr", "inputs"),
+    [
+        ("gross_margin_total/revenue", BOTH),
+        ("  gross_margin_total \t/\n revenue  ", BOTH),
+        ("gross_margin_total\r/\frevenue\r\n", BOTH),
+        ("revenue / gross_margin_total", BOTH),
+        # one input over itself
+        ("revenue / revenue", BOTH),
+        ("revenue / revenue", (("revenue", None),)),
+        # an alias is the column the quotient reads, in place of the name
+        (
+            "top_value / bottom_value",
+            (("gross_margin_total", "top_value"), ("revenue", "bottom_value")),
+        ),
+        ("top_value / revenue", (("gross_margin_total", "top_value"), ("revenue", None))),
+        # an empty alias is none: MetricFlow names the column `alias or element_name`
+        ("gross_margin_total / revenue", (("gross_margin_total", ""), ("revenue", None))),
+        ("_a1 / b_2", (("gross_margin_total", "_a1"), ("revenue", "b_2"))),
+    ],
+)
+def test_each_quotient_of_inputs_is_answered_at_its_expr(
+    expr: str, inputs: tuple[tuple[str, str | None], ...]
+) -> None:
+    assert _derived_gaps(_derived(expr, *inputs)) == _at(".type_params.expr")
+
+
+@pytest.mark.parametrize(
+    ("expr", "inputs"),
+    [
+        # another expression over the inputs
+        ("gross_margin_total - revenue", BOTH),
+        ("gross_margin_total * revenue", BOTH),
+        ("gross_margin_total / revenue / revenue", BOTH),
+        ("(gross_margin_total) / revenue", BOTH),
+        ("gross_margin_total / (revenue)", BOTH),
+        ("gross_margin_total // revenue", BOTH),
+        ("2 * gross_margin_total / revenue", BOTH),
+        ("gross_margin_total / 2", BOTH),
+        ("gross_margin_total", BOTH),
+        ("", BOTH),
+        (None, BOTH),
+        # a reference that is not a column of the query: an unknown name, the name of an
+        # input that has an alias, a name in another case or quoted
+        ("gross_margin_total / cost", BOTH),
+        ("gross_margin_total / revenue", (("gross_margin_total", "top_value"), ("revenue", None))),
+        ("Gross_margin_total / revenue", BOTH),
+        ('"revenue" / revenue', BOTH),
+        ("gross_margin_total / revenue", (("gross_margin_total", None),)),
+        # white space other than spaces, tabs, line breaks and form feeds: a non-ASCII space,
+        # which PostgreSQL reads as part of a name, a vertical tab, a control character
+        ("gross_margin_total\u00a0/ revenue", BOTH),
+        ("gross_margin_total /\u2003revenue", BOTH),
+        ("gross_margin_total\v/ revenue", BOTH),
+        ("gross_margin_total\x1c/ revenue", BOTH),
+        # an alias that is not one lower-case identifier, written in `expr` as it is
+        ("Top / revenue", (("gross_margin_total", "Top"), ("revenue", None))),
+        ("1top / revenue", (("gross_margin_total", "1top"), ("revenue", None))),
+        ('"top" / revenue', (("gross_margin_total", '"top"'), ("revenue", None))),
+    ],
+)
+def test_another_derived_expression_is_answered_by_its_type(
+    expr: str | None, inputs: tuple[tuple[str, str | None], ...]
+) -> None:
+    assert _derived_gaps(_derived(expr, *inputs)) == _at(".type")
+
+
+def test_a_derived_metric_without_inputs_is_answered_by_its_type() -> None:
+    for metrics in ([], None):
+        data = _derived("gross_margin_total / revenue")
+        _metric(data, "margin_derived")["type_params"]["metrics"] = metrics
+        assert _derived_gaps(data) == _at(".type")
+
+
+def test_a_derived_quotient_reads_nothing_of_its_inputs_or_its_own_keys() -> None:
+    data = _data("legacy")
+    metric = _metric(data, "margin_derived")
+    metric["filter"] = copy.deepcopy(FILTER)
+    metric["time_granularity"] = "month"
+    top, bottom = metric["type_params"]["metrics"]
+    top["filter"] = copy.deepcopy(FILTER)
+    bottom.update(offset_window={"count": 7, "granularity": "day"}, offset_to_grain="month")
+    assert _derived_gaps(data) == _at(".type_params.expr")
+    # ... save that a private one is private, which is asked before
+    metric["type_params"]["is_private"] = True
+    assert _derived_gaps(data) == [
+        (PRIVATE_METRIC, REVIEW, f"{_metric_path(data, 'margin_derived')}.type_params.is_private"),
+        *_at(".type_params.expr"),
+    ]
+
+
+def test_a_quotient_is_a_derived_metrics_alone() -> None:
+    data = _data("legacy")
+    metric = _metric(data, "revenue_cum")
+    metric["type_params"]["expr"] = "revenue / revenue"
+    metric["type_params"]["metrics"] = [{"name": "revenue"}]
+    assert _gaps(_resolve(data, "revenue_cum")) == [
+        (CONSTRUCT_UNSUPPORTED, REVIEW, f"{_metric_path(data, 'revenue_cum')}.type")
     ]
 
 
@@ -1452,6 +1679,31 @@ def _result() -> dict[str, Any]:
     return result
 
 
+def _artifact(script: ModuleType, dialect: str) -> Path:
+    """The recorded artifact of the dialect's project: the legacy one in `parity/`, the V2 one
+    in `parity/v2/`."""
+    return PARITY / script.PLACES[dialect] / "semantic_manifest.json"
+
+
+def _reads(script: ModuleType) -> dict[str, ManifestRead]:
+    return {
+        dialect: read_semantic_manifest(_artifact(script, dialect).read_bytes())
+        for dialect in script.DIALECTS
+    }
+
+
+def _manifest(read: ManifestRead) -> SemanticManifest:
+    assert read.manifest is not None, read.problems
+    return read.manifest
+
+
+def _dialects(script: ModuleType, context: str) -> dict[str, str]:
+    """Each metric of the matrix -> the dialect whose project holds it."""
+    return {
+        name: dialect for dialect in script.DIALECTS for name in script.subjects(context, dialect)
+    }
+
+
 def _sides(values: list[list[Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """A metric's recorded values as the rows of each side: the reference's, MetricFlow's."""
     ours = [{"k1": day, "k2": int(store), "v": ref} for day, store, ref, _ in values]
@@ -1461,16 +1713,31 @@ def _sides(values: list[list[Any]]) -> tuple[list[dict[str, Any]], list[dict[str
 
 def test_proven_parity_is_the_recorded_run() -> None:
     script, result = _script(), _result()
-    raw = (PARITY / "semantic_manifest.json").read_bytes()
-    assert result["artifact_digest"] == digest_bytes(raw)
+    assert result["artifact_digests"] == {
+        dialect: digest_bytes(_artifact(script, dialect).read_bytes())
+        for dialect in script.DIALECTS
+    }
     assert result["versions"]["metricflow"] == "0.213.0"
+    assert result["versions"]["dbt-core"] == "1.12.6"
     assert result["versions"]["postgres"].startswith("PostgreSQL 16.15 ")
     assert result["versions"]["clickhouse"] == "24.8.14.39"
     assert result["clickhouse_settings"] == script.CLICKHOUSE_SETTINGS
     assert frozenset(result["proven"]) == PROVEN_PARITY
-    # the numbers ADR 0008 states for the run
+    # the numbers ADR 0008 states for the run: in each context, 164 rows of the legacy dialect
+    # and 163 of V2, each ratio over two terms of one
     counts = Counter(row.split(":", 1)[0] for row in PROVEN_PARITY)
-    assert counts == {"postgres.date": 164, "clickhouse.date": 164}
+    assert counts == {"postgres.date": 327, "clickhouse.date": 327}
+    dialects: Counter[tuple[str, str]] = Counter()
+    for row in PROVEN_PARITY:
+        context, form = row.split(":", 1)
+        found = {term.split(".", 1)[0] for term in form.removeprefix("ratio.").split("/")}
+        assert len(found) == 1, row
+        dialects[context, found.pop()] += 1
+    assert dialects == {
+        (context, dialect): count
+        for context in ("postgres.date", "clickhouse.date")
+        for dialect, count in (("legacy", 164), ("v2", 163))
+    }
 
 
 def test_recorded_types_are_those_a_class_computes_in() -> None:
@@ -1502,14 +1769,16 @@ def test_recorded_types_are_those_a_class_computes_in() -> None:
 
 def test_recorded_run_is_its_own_proof() -> None:
     script, result = _script(), _result()
-    read = read_semantic_manifest((PARITY / "semantic_manifest.json").read_bytes())
-    assert read.manifest is not None
+    reads = _reads(script)
     assert sorted(result["contexts"]) == sorted(script.CONTEXTS)
     proven: set[str] = set()
     for context, found in result["contexts"].items():
         cases = found["metrics"]
         subjects = script.subjects(context)
-        assert sorted(subjects) == read.manifest.metric_names() == sorted(cases)
+        # each dialect's project holds the metrics of its own, and every one was asked
+        for dialect, read in reads.items():
+            assert sorted(script.subjects(context, dialect)) == _manifest(read).metric_names()
+        assert sorted(subjects) == sorted(cases)
         assert script._proven(cases) == set(found["proven"])
         assert all(row.startswith(f"{context}:") for row in found["proven"])
         proven |= set(found["proven"])
@@ -1565,7 +1834,11 @@ def test_an_average_on_clickhouse_is_compared_as_a_double() -> None:
     # key, not the numeric MetricFlow's PostgreSQL gives (itself rounded at its scale: not the
     # exact mean either), and lies within the rule
     cases = contexts["clickhouse.date"]["metrics"]
-    for name in ("amount_average", "qty_average", "amount_nn_average", "qty_nn_average"):
+    for name in (
+        script._simple_name(column, "average", dialect)
+        for dialect in script.DIALECTS
+        for column in ("amount", "qty", "amount_nn", "qty_nn")
+    ):
         inexact = [
             (ours, theirs)
             for _, _, ours, theirs in cases[name]["values"]
@@ -1579,12 +1852,13 @@ def test_an_average_on_clickhouse_is_compared_as_a_double() -> None:
 
 def test_recorded_formulas_are_what_resolution_gives_now() -> None:
     script, result = _script(), _result()
-    read = read_semantic_manifest((PARITY / "semantic_manifest.json").read_bytes())
-    assert read.manifest is not None
+    reads = _reads(script)
     for context, found in result["contexts"].items():
         every = frozenset(script.subjects(context).values())
+        dialects = _dialects(script, context)
         for name, case in found["metrics"].items():
-            contract = script.metric_contract(read.manifest, name)
+            read = reads[dialects[name]]
+            contract = script.metric_contract(_manifest(read), name)
             assert contract.additivity.value == (
                 "additive"
                 if case["formula"].get("aggregate", {}).get("agg") in ("sum", "count")
@@ -1751,6 +2025,55 @@ def test_controls_the_adr_names_differ_as_it_says() -> None:
         assert value(ratio, ("2026-01-04", "1"), 3) == Decimal("142857142857.14285")
 
 
+def test_each_dialect_has_metrics_and_rows_of_its_own() -> None:
+    script = _script()
+    for context in script.CONTEXTS:
+        legacy, v2 = (script.subjects(context, dialect) for dialect in script.DIALECTS)
+        # the run tells the two projects' metrics apart by name
+        assert not set(legacy) & set(v2)
+        assert script.subjects(context) == {**legacy, **v2}
+        for dialect, found in zip(script.DIALECTS, (legacy, v2), strict=True):
+            for row in found.values():
+                form = row.removeprefix(f"{context}:").removeprefix("ratio.")
+                assert all(term.startswith(f"{dialect}.") for term in form.split("/")), row
+
+
+def test_v2_metrics_without_expression_or_with_a_fill_are_as_dbt_writes_them() -> None:
+    script, result = _script(), _result()
+    manifest = _manifest(_reads(script)["v2"])
+    written = json.loads(script.project_files()["v2/models/schema.yml"])
+    yaml_metrics = {
+        metric["name"]: metric for model in written["models"] for metric in model.get("metrics", [])
+    }
+    # named after its column, without `expr`, and not a `count`, which MetricFlow does not
+    # build without one: MetricFlow reads the column by the name
+    assert "count" not in script.BARE.values()
+    for column, agg in script.BARE.items():
+        assert "expr" not in yaml_metrics[column]
+        params = manifest.metric(column)["type_params"]
+        assert params["expr"] is None
+        assert params["metric_aggregation_params"]["agg"] == agg
+    # `fill_nulls_with: 0` in the YAML, null in the artifact
+    assert yaml_metrics[script.FILLED]["fill_nulls_with"] == 0
+    assert manifest.metric(script.FILLED)["type_params"]["fill_nulls_with"] is None
+    for context, found in result["contexts"].items():
+        cases = found["metrics"]
+        for column, agg in script.BARE.items():
+            case = cases[column]
+            assert case["outcome"] == "pass", (context, column)
+            aggregate = {"table": "dm.sales", "column": column, "agg": agg}
+            assert case["formula"]["aggregate"] == aggregate
+            assert f"{context}:v2.metric_without_expr" in case["rows"]
+        # NULL stays NULL on both sides where `amount` is all NULL in the group: the values of
+        # the sum without the fill
+        filled = cases[script.FILLED]["values"]
+        assert filled == cases[script._simple_name("amount", "sum", "v2")]["values"]
+        assert [row[:2] for row in filled if row[2] is None and row[3] is None] == [
+            ["2026-01-01", "2"],
+            ["2026-01-05", "1"],
+        ]
+
+
 def _term_value(values: list[Fraction], agg: str) -> Fraction | None:
     """The aggregate of a group's values, None where it has none and the aggregate is NULL."""
     if agg in ("count", "count_distinct"):
@@ -1865,13 +2188,15 @@ def test_a_proven_ratio_row_holds_over_each_nullability_of_its_terms() -> None:
     every = {(top, bottom) for top in (True, False) for bottom in (True, False)}
     for context, found in result["contexts"].items():
         held: dict[str, set[tuple[bool, bool]]] = {}
-        for top, bottom in script.RATIO_SIDES:
-            for top_agg in script._side_aggregates(top):
-                for bottom_agg in script._side_aggregates(bottom):
-                    case = found["metrics"][script._ratio_name(top, top_agg, bottom, bottom_agg)]
-                    if case["outcome"] == "pass":
-                        nullable = (top in script.NULLABLE, bottom in script.NULLABLE)
-                        held.setdefault(case["subject"], set()).add(nullable)
+        for dialect in script.DIALECTS:
+            for top, bottom in script.RATIO_SIDES:
+                for top_agg in script._side_aggregates(top):
+                    for bottom_agg in script._side_aggregates(bottom):
+                        name = script._ratio_name(top, top_agg, bottom, bottom_agg, dialect)
+                        case = found["metrics"][name]
+                        if case["outcome"] == "pass":
+                            nullable = (top in script.NULLABLE, bottom in script.NULLABLE)
+                            held.setdefault(case["subject"], set()).add(nullable)
         ratios = [row for row in found["proven"] if row.startswith(f"{context}:ratio.")]
         assert ratios and sorted(held) == ratios, context
         for row in ratios:
@@ -1880,13 +2205,15 @@ def test_a_proven_ratio_row_holds_over_each_nullability_of_its_terms() -> None:
 
 def test_both_sides_group_by_the_grain_keys() -> None:
     script, result = _script(), _result()
-    read = read_semantic_manifest((PARITY / "semantic_manifest.json").read_bytes())
-    assert read.manifest is not None
-    model = read.manifest.semantic_model(script.TABLE)
     assert script.KEYS == (script.EVENT_TIME, "store_id")
-    assert model["defaults"]["agg_time_dimension"] == script.EVENT_TIME
-    assert "store_id" in [dimension["name"] for dimension in model["dimensions"]]
-    assert ("metric_time__day", f"{model['primary_entity']}__store_id") == script.GROUP_BY
+    for dialect, read in _reads(script).items():
+        model = _manifest(read).semantic_model(script.TABLE)
+        assert model["defaults"]["agg_time_dimension"] == script.EVENT_TIME, dialect
+        dimensions = {dimension["name"]: dimension for dimension in model["dimensions"]}
+        assert "store_id" in dimensions, dialect
+        assert ("metric_time__day", f"{model['primary_entity']}__store_id") == script.GROUP_BY
+        # the time a day, in V2 as `dimension: {type: time}` with `granularity: day` writes it
+        assert dimensions[script.EVENT_TIME]["type_params"]["time_granularity"] == "day", dialect
     # every compared metric has one value per (day, store) group of the data on either side
     keys = {(day, str(store)) for day, store, *_ in script.ROWS}
     for context, found in result["contexts"].items():
@@ -2046,8 +2373,7 @@ def _reference_bodies(context: str) -> dict[str, str]:
     """The reference SQL of each formula the context recorded, compiled here from the
     context's native model and the script's contract carrying that formula."""
     script = _script()
-    read = read_semantic_manifest((PARITY / "semantic_manifest.json").read_bytes())
-    assert read.manifest is not None
+    reads, dialects = _reads(script), _dialects(script, context)
     engine = script.DECLARED[context].engine
     refs = {}
     with tempfile.TemporaryDirectory() as folder:
@@ -2055,7 +2381,8 @@ def _reference_bodies(context: str) -> dict[str, str]:
         model.write_text(script.project_files()[f"model.{engine}.yaml"], encoding="utf-8")
         (Path(folder) / "contracts").mkdir()
         for name, case in _result()["contexts"][context]["metrics"].items():
-            contract = script.metric_contract(read.manifest, name).model_copy(
+            manifest = _manifest(reads[dialects[name]])
+            contract = script.metric_contract(manifest, name).model_copy(
                 update={"formula": MetricFormula.model_validate(case["formula"])}
             )
             (Path(folder) / "contracts" / f"{name}.yaml").write_text(
@@ -2099,10 +2426,13 @@ def _replay(
     settings: dict[str, str] | None = None,
     wrong: str = "",
     asked: Counter[str] | None = None,
+    bridged: dict[str, list[str]] | None = None,
 ) -> ModuleType:
-    """The script with its project written under `project` and its subprocesses answered from
-    the recorded run. The bridge plans `MF <metric>` for each metric asked. psql gives its
-    version, the table's columns with their types and NOT NULL (`postgres_columns`; by default
+    """The script with its project written under `project`, the recorded artifacts in it, and
+    its subprocesses answered from the recorded run. The bridge plans `MF <metric>` for each
+    metric asked of a dialect's artifact, one of its own, and records them in `bridged`;
+    MetricFlow's environment gives the recorded versions of metricflow and dbt-core. psql gives
+    its version, the table's columns with their types and NOT NULL (`postgres_columns`; by default
     the declared types, NOT NULL on the keys and the twins) and rows (`postgres_rows`, the
     recipe's by default), and the values of a query keyed as one side groups: MetricFlow's
     recorded ones, counted in `asked`, the first of `wrong` another number; the reference's
@@ -2115,9 +2445,18 @@ def _replay(
     script, result = _script(), _result()
     recorded = result["contexts"]
     script.write_project(project)
-    (project / "target").mkdir()
-    artifact = project / "target" / "semantic_manifest.json"
-    artifact.write_bytes((PARITY / "semantic_manifest.json").read_bytes())
+    artifacts = {}
+    for dialect in script.DIALECTS:
+        artifact = script.artifact(project, dialect)
+        artifact.parent.mkdir()
+        artifact.write_bytes(_artifact(script, dialect).read_bytes())
+        artifacts[str(artifact)] = dialect
+    planned_by: dict[str, list[str]] = {} if bridged is None else bridged
+    versions = {
+        f"import importlib.metadata as m; print(m.version({package!r}))": version
+        for package, version in result["versions"].items()
+        if package in ("metricflow", "dbt-core")
+    }
     data = script.project_files()["data.clickhouse.sql"]
     counted: Counter[str] = Counter() if asked is None else asked
     # MetricFlow's values of a metric are one in every context that compared it
@@ -2238,11 +2577,15 @@ def _replay(
             return SimpleNamespace(stdout="".join(f"{line}\n" for line in clickhouse(argv)))
         assert argv[0] == "mf-python"
         if argv[1] == "-c":
-            assert argv[2:] == ["import importlib.metadata as m; print(m.version('metricflow'))"]
-            return SimpleNamespace(stdout=result["versions"]["metricflow"] + "\n")
+            assert len(argv) == 3 and argv[2] in versions, argv
+            return SimpleNamespace(stdout=versions[argv[2]] + "\n")
         assert argv[1:] == [str(REPO / "scripts" / "metricflow_parity_sql.py")]
         request = json.loads(kwargs["input"])
-        assert request["artifact"] == str(artifact)
+        dialect = artifacts[request["artifact"]]
+        # a project's metrics, asked of its own artifact, once
+        assert set(request["metrics"]) <= set(script.subjects(script.CONTEXTS[0], dialect))
+        assert dialect not in planned_by
+        planned_by[dialect] = request["metrics"]
         assert request["group_by"] == list(script.GROUP_BY)
         planned = {name: f"MF {name}" for name in request["metrics"]}
         return SimpleNamespace(stdout=json.dumps(planned))
@@ -2267,7 +2610,8 @@ def test_run_compares_the_reference_with_metricflow_as_recorded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     asked: Counter[str] = Counter()
-    script = _replay(monkeypatch, tmp_path, asked=asked)
+    bridged: dict[str, list[str]] = {}
+    script = _replay(monkeypatch, tmp_path, asked=asked, bridged=bridged)
     assert _run(script, tmp_path) == 0
     assert _ran(tmp_path) == _result()
     # MetricFlow's query of a metric runs once, whichever contexts compare with it
@@ -2278,6 +2622,10 @@ def test_run_compares_the_reference_with_metricflow_as_recorded(
         if case["outcome"] == "pass"
     }
     assert asked == Counter(dict.fromkeys(compared, 1))
+    # each project's artifact is asked for the SQL of each of its metrics
+    assert bridged == {
+        dialect: sorted(script.subjects(script.CONTEXTS[0], dialect)) for dialect in script.DIALECTS
+    }
 
 
 def test_run_records_a_metric_that_disagrees_and_what_falls_with_it(
@@ -2299,6 +2647,9 @@ def test_run_records_a_metric_that_disagrees_and_what_falls_with_it(
         assert not fallen & set(found["proven"])
         assert not fallen & set(result["proven"])
         assert f"{context}:legacy.sum.decimal" in found["proven"]
+        # the V2 metric of the same column and aggregate is MetricFlow's other SQL: it stands
+        assert cases["v2_qty_sum"]["outcome"] == "pass"
+        assert f"{context}:v2.sum.integer" in found["proven"]
 
 
 @pytest.mark.parametrize(
@@ -2378,8 +2729,21 @@ def test_run_refuses_settings_and_files_other_than_the_recipe(
     script = _replay(monkeypatch, tmp_path / "settings", settings=approximate)
     with pytest.raises(SystemExit, match="other settings than the recipe's"):
         _run(script, tmp_path / "settings")
-    script = _replay(monkeypatch, tmp_path / "files")
-    with (tmp_path / "files" / "model.clickhouse.yaml").open("a", encoding="utf-8") as model:
-        model.write("# changed\n")
-    with pytest.raises(SystemExit, match=r"model\.clickhouse\.yaml is not the recipe's"):
-        _run(script, tmp_path / "files")
+    for index, name in enumerate(("model.clickhouse.yaml", "v2/models/schema.yml")):
+        project = tmp_path / f"files{index}"
+        script = _replay(monkeypatch, project)
+        with (project / name).open("a", encoding="utf-8") as changed:
+            changed.write("# changed\n")
+        with pytest.raises(SystemExit, match=f"{re.escape(name)} is not the recipe's"):
+            _run(script, project)
+
+
+def test_run_refuses_an_artifact_of_other_metrics(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for dialect, other in (("v2", "legacy"), ("legacy", "v2")):
+        project = tmp_path / dialect
+        script = _replay(monkeypatch, project)
+        script.artifact(project, dialect).write_bytes(_artifact(script, other).read_bytes())
+        with pytest.raises(SystemExit, match=f"the {dialect} artifact holds other metrics"):
+            _run(script, project)

@@ -1,53 +1,76 @@
 # Auto_BI DecisionOps
 
-Additive fork проверенного Auto_BI v0.5.0; продолжает историю этого репозитория. Цель —
-self-hosted control plane для выпуска проверяемых аналитических продуктов; первый
-вертикальный продукт — **Analytics Release & Evidence Gate**. Навигатор по двум слоям
-проекта — [docs/README.md](docs/README.md).
+**Analytics Release & Evidence Gate** проверяет, что изменение аналитической семантики не
+ломает governed-числа: сравнивает контракты и снимки, показывает затронутые продукты и чарты,
+пишет вердикт и content-addressed evidence. Входы и границы — в
+[текущем состоянии](docs/DECISIONOPS_CURRENT_STATE.md) и
+[архитектуре](docs/DECISIONOPS_ARCHITECTURE.md).
 
-> **Пакет DecisionOps не публикуется** ([ADR 0011](docs/adr/0011-public-repository.md)): код лежит
-> в этом репозитории, но `pip install autobi-agent` устанавливает опубликованный baseline
-> v0.5.0. Здесь тот же дистрибутив версии `0.6.0`. Используйте `uv sync` и запускайте CLI
-> через `uv run auto_bi`.
+> **Пакет DecisionOps не публикуется** ([ADR 0011](docs/adr/0011-public-repository.md)).
+> `pip install autobi-agent` устанавливает baseline v0.5.0. В этом checkout — `0.7.0`,
+> без тега ([ADR 0013](docs/adr/0013-entry-points-to-proven-path.md)); окружение готовится
+> через `uv sync`, CLI запускается через `uv run auto_bi`.
 
-Первый вертикальный путь работает offline: `auto_bi decision
-validate` (cross-contract проверка), `auto_bi decision verify` (полный гейт §8.2
-с content-addressed, opt-in Ed25519-signed evidence bundle) и `auto_bi decision evidence`
-(чтение bundle с пересчётом каждого content address и проверкой pinned public trust root)
-реализованы и запускаются на файлах в Git,
-без DWH, BI и LLM. Шаг §8.2 7 реализован целиком: с `--dwh` гейт спрашивает движок
-read-only ролью (`dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`,
-`dwh.cost`); без `--dwh` проверки движка отвечают `check.not_configured`. Шаг 6
-компилирует reference-запрос метрики только там, где семантика точна офлайн, и
-называет гэп там, где нет. Шаг 8 сверяет не только числа: кандидатный результат несёт
-attestation (какой запрос, на какой семантике, где и когда сняли), и `results.provenance`
-сверяет её snapshot, среду и digest запроса с reviewed `reference_query` asset'а — число
-без attestation называется `provenance.unattested`, а не проходит молча. Сам этот
-reviewed-запрос стоит столько, сколько стоит его привязка к модели, поэтому шаг 5 сверяет
-его таблицы с кандидатным snapshot'ом: запрос по неуправляемой витрине —
-`asset.query_ungoverned`. Технический pilot verifier 7 на реальном timezone change
-завершён; human owner outcome не измеряется — по решению владельца это не цель проекта
-([ADR 0007](docs/adr/0007-human-outcome-out-of-scope.md)), детали — в текущем состоянии.
-Унаследованный v1 runtime сохранён без функциональных изменений.
+- CLI: `decision validate` проверяет согласованность контрактов, `decision verify` выносит
+  вердикт и записывает bundle, `decision evidence` пересчитывает digest каждого артефакта.
+- Pull request: `verify --pr-comment` пишет вердикт, impact и digest;
+  composite Action [`action.yml`](action.yml) публикует или обновляет комментарий.
+  Входы и права workflow — [spec](docs/specs/pull-request-comment.md).
+- AI-клиент: `decision mcp` предоставляет `validate`, `impact`, `evidence`, `runs` через
+  read-only MCP на stdio, `verify` — только с `--evidence <dir>` —
+  [spec](docs/specs/mcp-server.md).
+- Superset: `decision inventory` читает дашборды и пишет спеки для `verify --dashboards` —
+  [spec](docs/specs/superset-inventory.md).
 
-```bash
-uv run auto_bi decision validate contracts/
-uv run auto_bi decision verify contracts/ --base semantic/base --candidate semantic/head \
-        --evidence .evidence --dashboards dashboards/
-uv run auto_bi decision evidence .evidence
-# opt-in: --signing-key /secure/private.pem; при чтении: --trust-key public.pem
+Без `--dwh` проверки движка дают `check.not_configured`; с ним read-only проверяются
+`dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`, `dwh.cost`.
+Exit code гейта: `0` — pass/advisory, `3` — needs_review, `4` — block, `2` — ошибка без
+вердикта. Проверка целостности `evidence` имеет собственный вердикт: `pass` не отменяет
+`block` проверенного изменения. Human owner outcome не измеряется
+([ADR 0007](docs/adr/0007-human-outcome-out-of-scope.md)).
+
+## Быстрый прогон пилота
+
+Команды выполняются из корня checkout после подготовки окружения. Нужны только файлы
+репозитория: без DWH, BI, LLM, assets и записанных results. Пилот меняет `timezone` метрики
+`gross_margin_pct` с `Europe/Moscow` на `UTC`; overlay добавляет разрешение impact до чарта.
+Для первого прогона используйте новые каталоги evidence, указанные ниже.
+
+<!-- e2:validate -->
+```sh
+uv run auto_bi decision validate docs/pilot/2026-08-25-ch-tz-margin/contracts --json
 ```
 
-Exit code несёт вердикт: `0` pass/advisory, `3` needs_review, `4` block, `2`
-usage-ошибка (падение никогда не выглядит как вынесенный вердикт).
+<!-- e2:unchanged -->
+```sh
+uv run auto_bi decision verify docs/pilot/2026-08-25-ch-tz-margin/contracts --base docs/pilot/2026-08-25-ch-tz-margin/base --candidate docs/pilot/2026-08-25-ch-tz-margin/base --dashboards docs/pilot/2026-09-12-owner-review-chart-impact/dashboards --product decision://sales/weekly_margin --evidence .evidence/e2-pilot-unchanged --json
+```
 
-- [Текущее состояние DecisionOps](docs/DECISIONOPS_CURRENT_STATE.md)
-- [Целевая архитектура](docs/DECISIONOPS_ARCHITECTURE.md)
-- [ADR: отдельный additive fork](docs/adr/0003-decisionops-additive-control-plane.md)
-- [ADR: synthetic proxy и граница offline alpha](docs/adr/0004-synthetic-proxy-offline-investigation.md)
-- [ADR: Ed25519 trust root для evidence](docs/adr/0005-ed25519-evidence-trust-root.md)
-- [План bootstrap](docs/history/DECISIONOPS_BOOTSTRAP.md)
-- [Исходный стратегический срез](docs/history/DECISIONOPS_STRATEGY_2026-08-21.md)
+<!-- e2:changed -->
+```sh
+uv run auto_bi decision verify docs/pilot/2026-08-25-ch-tz-margin/contracts --base docs/pilot/2026-08-25-ch-tz-margin/base --candidate docs/pilot/2026-08-25-ch-tz-margin/candidate --dashboards docs/pilot/2026-09-12-owner-review-chart-impact/dashboards --product decision://sales/weekly_margin --evidence .evidence/e2-pilot-changed --json
+```
+
+Последняя команда гейта ожидаемо выходит с `4`. После неё отдельно проверьте записанный
+bundle (его `manifest_digest` должен совпасть с `evidence_digest` отчёта `verify`):
+
+<!-- e2:evidence -->
+```sh
+uv run auto_bi decision evidence .evidence/e2-pilot-changed --json
+```
+
+Ожидаемые исходы; числа относятся к проверкам, а не отдельным findings:
+
+| Команда | Вердикт | Exit code | Block | Review | Advisory | Всего | Статус шага Action |
+|---|---|---:|---:|---:|---:|---:|---|
+| `validate` | `pass` | 0 | - | - | - | - | `-` |
+| `unchanged` | `pass_with_advisory` | 0 | 0 | 0 | 8 | 15 | `-` |
+| `changed` | `block` | 4 | 1 | 1 | 8 | 15 | `-` |
+| `evidence` | `pass` | 0 | - | - | - | - | `-` |
+
+Каталог `examples/decisionops-gate/` содержит исходную семантику для демонстрационного PR и
+отдельный README с исходами и политикой `fail-on`. Навигатор по гейту и унаследованному
+runtime — [docs/README.md](docs/README.md). Auto_BI v0.5.0 сохранён ниже.
 
 ## Auto_BI v0.5.0 baseline (унаследованный runtime)
 

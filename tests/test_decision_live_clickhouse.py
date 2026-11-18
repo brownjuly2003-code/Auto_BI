@@ -563,3 +563,67 @@ def test_the_engine_s_refusals_are_read_by_their_codes(
 
     assert clickhouse_error_code(raised.value) == code
     assert environment_probe._refused(raised.value) is refused
+
+
+def test_system_tables_revoked_from_the_role_still_list_its_mart(
+    stand: Stand, tmp_path: Path
+) -> None:
+    """ADR 0012, D2: ClickHouse 24.8 lists a user's own tables in `system.tables` and
+    `system.columns` whatever is revoked on them. A role refused both still sees the mart, its
+    layout and its columns, and the run is the clean stand's: the refused column catalog of
+    PostgreSQL (`physical.not_observed`) has no counterpart to reproduce here."""
+    root = _product(stand, tmp_path)
+    stand.run(f"REVOKE SELECT ON system.tables FROM {GATE_USER}")
+    stand.run(f"REVOKE SELECT ON system.columns FROM {GATE_USER}")
+    grants = [str(row[0]) for row in stand.admin.query(f"SHOW GRANTS FOR {GATE_USER}").result_rows]
+    assert f"REVOKE SELECT ON system.tables FROM {GATE_USER}" in grants, grants
+    assert f"REVOKE SELECT ON system.columns FROM {GATE_USER}" in grants, grants
+
+    run = _verify(stand, root)
+
+    assert run.changed() == {}
+    assert run.codes() == {}
+    assert run.verdict == "pass"
+
+
+def test_each_name_the_gate_reads_as_another_is_the_one_system_columns_prints(
+    stand: Stand,
+) -> None:
+    """ADR 0012, D1: `dwh.physical` takes a declared `BIGINT` for the `Int64` the catalog
+    holds. Each spelling of `CH_SAME_TYPE` is created here as written and read back from
+    `system.columns`, as the probe reads it — the table is the engine's, not the manual's. The
+    spellings of `CH_UNREAD` are the type they are compared with too, which the rules leave to
+    review."""
+    from tests.test_environment_checks import CH_SAME_TYPE, CH_UNREAD
+
+    pairs = CH_SAME_TYPE + CH_UNREAD
+    columns = ", ".join(f"c{index} {declared}" for index, (declared, _) in enumerate(pairs))
+    stand.run(f"CREATE TABLE dm.spellings ({columns}) ENGINE = Memory")
+
+    printed = dict(
+        stand.admin.query(
+            "SELECT name, type FROM system.columns WHERE database = 'dm' AND table = 'spellings'"
+        ).result_rows
+    )
+
+    assert printed == {f"c{index}": held for index, (_, held) in enumerate(pairs)}
+
+
+def test_the_aliases_the_gate_reads_are_the_engine_s(stand: Stand) -> None:
+    """ADR 0012, D1: `column_types` reads ClickHouse's other names by `system.data_type_families`
+    of the pinned version — every alias there, in any case, but `TIME` and `ENUM`, which the
+    rules leave as written."""
+    from auto_bi.verification.column_types import _CH_ALIASES
+
+    rows = stand.admin.query(
+        "SELECT name, alias_to, case_insensitive FROM system.data_type_families "
+        "WHERE alias_to != ''"
+    ).result_rows
+    engine = {name.upper(): family for name, family, _ in rows}
+
+    assert all(case_insensitive for _, _, case_insensitive in rows)
+    assert {name: engine.pop(name) for name in ("TIME", "ENUM")} == {
+        "TIME": "Int64",
+        "ENUM": "Enum",
+    }
+    assert engine == _CH_ALIASES

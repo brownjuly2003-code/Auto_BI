@@ -1121,6 +1121,7 @@ def _postgres_role(
     writable: list[str] = []
     unreported: list[str] = []
     ownership_answers: list[tuple[dict[str, Any], str, str]] = []
+    matviews: list[str] = []
     for question in questions.tables:
         privileges = ", ".join(
             f"has_table_privilege({_pg_relation_literal(question.table)}, "
@@ -1129,13 +1130,22 @@ def _postgres_role(
         )
         granted = _ask(
             run_query,
-            f"SELECT {privileges}, {_pg_ownership_sql('current_user')} "
+            f"SELECT {privileges}, {_pg_maintain_sql(_pg_relation_literal(question.table))}, "
+            f"{_pg_ownership_sql('current_user')}, c.relkind AS relkind "
             f"FROM (SELECT to_regclass({_pg_relation_literal(question.table)}) AS oid) mart "
             "LEFT JOIN pg_class c ON c.oid = mart.oid "
             "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace",
         )
         table_grants = granted[0] if granted else {}
         ownership_answers.append((table_grants, question.table, f"current role {name}"))
+        if _pg_matview(table_grants):
+            # A materialized view takes no INSERT, UPDATE, DELETE or TRUNCATE whatever is
+            # granted (`42809`, PostgreSQL 16 and the 9.4.26 kernel, live): REFRESH changes it,
+            # which takes its ownership — weighed as for any mart — or, from PostgreSQL 17,
+            # `MAINTAIN` (ADR 0012, D2).
+            matviews.append(question.table)
+            _pg_maintain_evidence(table_grants, question.table, None, writable, unreported)
+            continue
         missing_table = [p for p in _PG_WRITE_PRIVILEGES if table_grants.get(p.lower()) is None]
         if missing_table:
             unreported.append(f"table {'/'.join(missing_table)} privileges on {question.table}")
@@ -1175,13 +1185,64 @@ def _postgres_role(
             else (
                 f"unreported {'; '.join(unreported)}, so read-only access is not established"
                 if unreported
-                else (
-                    "no INSERT, UPDATE, DELETE or TRUNCATE privilege on any in-scope mart "
-                    "and no INSERT or UPDATE privilege on any of their columns" + reach_clause
-                )
+                else _pg_read_only_evidence(reach_clause, list(dict.fromkeys(matviews)))
             )
         ),
         bypasses_row_security=bypasses,
+    )
+
+
+def _pg_matview(answer: dict[str, Any]) -> bool:
+    """Whether the catalog answered that the mart is a materialized view (relkind `m`)."""
+    return str(answer.get("relkind") or "") == "m"
+
+
+def _pg_maintain_sql(mart: str, role: str | None = None) -> str:
+    """Whether `role` (the current role if `None`) holds `MAINTAIN` on the quoted `mart`.
+
+    PostgreSQL 17 added the privilege — `GRANT ALL` and membership in `pg_maintain` carry it
+    too — and with it `REFRESH MATERIALIZED VIEW` by a role that does not own the view, which
+    recomputes or empties the rows the gate reads. An older server refuses the word, so the
+    server picks inside the question, as `_PG_REACHABLE_ROLES` does: below 17 no role holds
+    it, and the answer is false rather than unanswered.
+    """
+    holder = f"{role}, " if role else ""
+    return (
+        "CASE WHEN current_setting('server_version_num')::int >= 170000 "
+        f"THEN has_table_privilege({holder}{mart}, 'MAINTAIN') ELSE false END AS maintain"
+    )
+
+
+def _pg_maintain_evidence(
+    row: dict[str, Any], mart: str, role: str | None, writable: list[str], unreported: list[str]
+) -> None:
+    """Weigh `MAINTAIN` on a materialized view: its holder refreshes the view, which writes it.
+    On any other relation it changes no row (VACUUM, ANALYZE, CLUSTER, REINDEX, LOCK TABLE)."""
+    held = row.get("maintain")
+    if held is None:
+        unreported.append(f"MAINTAIN privilege{f' of {role}' if role else ''} on {mart}")
+    elif _truthy(held):
+        writable.append(f"MAINTAIN on {mart}{f' through SET ROLE {role}' if role else ''}")
+
+
+def _pg_read_only_evidence(reach_clause: str, matviews: list[str]) -> str:
+    """The clean evidence; the materialized views, whose write grants were not counted, named."""
+    if not matviews:
+        return (
+            "no INSERT, UPDATE, DELETE or TRUNCATE privilege on any in-scope mart "
+            "and no INSERT or UPDATE privilege on any of their columns" + reach_clause
+        )
+    named = (
+        f"{matviews[0]} is a materialized view, which takes no INSERT, UPDATE, DELETE or "
+        "TRUNCATE whatever is granted on it"
+        if len(matviews) == 1
+        else f"{', '.join(matviews)} are materialized views, which take no INSERT, UPDATE, "
+        "DELETE or TRUNCATE whatever is granted on them"
+    )
+    return (
+        "no INSERT, UPDATE, DELETE or TRUNCATE privilege on any in-scope mart but a materialized "
+        "view, no MAINTAIN privilege on a materialized view and no INSERT or UPDATE privilege "
+        f"on any of their columns{reach_clause}; {named}"
     )
 
 
@@ -1252,6 +1313,11 @@ def _pg_set_role_write_privileges(
                 if answer_row is None:
                     unreported.append(f"write privileges of {role} on {mart}")
                     continue
+                if _pg_matview(answer_row):
+                    # no grant but MAINTAIN writes a materialized view; ownership is asked
+                    _pg_maintain_evidence(answer_row, mart, role, writable, unreported)
+                    continue
+
                 missing_table = [
                     privilege
                     for privilege in _PG_WRITE_PRIVILEGES
@@ -1331,8 +1397,10 @@ def _pg_reachable_privilege_sql(mart: str, roles: list[str]) -> str:
     )
     listed = ", ".join(_literal(role) for role in roles)
     return (
-        f"SELECT r.rolname AS name, {privileges}, {columns}, {_pg_ownership_sql('r.oid')} "
-        "FROM pg_roles r LEFT JOIN pg_class c ON c.oid = "
+        f"SELECT r.rolname AS name, {privileges}, "
+        f"{_pg_maintain_sql(_pg_relation_literal(mart), 'r.oid')}, {columns}, "
+        f"{_pg_ownership_sql('r.oid')}, "
+        "c.relkind AS relkind FROM pg_roles r LEFT JOIN pg_class c ON c.oid = "
         f"to_regclass({_pg_relation_literal(mart)}) "
         "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
         f"WHERE r.rolname IN ({listed}) ORDER BY r.rolname"
@@ -1352,7 +1420,12 @@ def _postgres_table(
         f"{_literal(schema)} AND viewname = {_literal(name)} "
         # A materialized view is in neither of the two above (relkind `m`).
         "UNION ALL SELECT matviewname FROM pg_matviews WHERE schemaname = "
-        f"{_literal(schema)} AND matviewname = {_literal(name)}",
+        f"{_literal(schema)} AND matviewname = {_literal(name)} "
+        # Nor is a foreign table (relkind `f`), which no catalog view but `pg_class` lists
+        # (PostgreSQL 16 and the 9.4.26 kernel, live; ADR 0012, D2).
+        "UNION ALL SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = "
+        f"c.relnamespace WHERE c.relkind = 'f' AND n.nspname = {_literal(schema)} "
+        f"AND c.relname = {_literal(name)}",
     )
     if present is None:
         # The catalog views were refused, not empty: read as "no row", the refusal named a mart
@@ -1388,6 +1461,17 @@ def _postgres_table(
             owner_bypasses_row_security=owner_bypass,
             row_policies=policies,
         )
+    unpopulated = TableFacts(
+        table=table,
+        event_time_column=question.event_time_column,
+        exists=True,
+        readable=False,
+        populated=False,
+        column_reads=reads,
+        row_security_enabled=security,
+        owner_bypasses_row_security=owner_bypass,
+        row_policies=policies,
+    )
     unfit: Exception | None = None
     try:
         reading = _ask(
@@ -1396,11 +1480,20 @@ def _postgres_table(
             f"max_event_time FROM {_qualified(schema, name)}",
         )
     except Exception as error:  # re-raised below unless the event-time column no longer fits
+        if _pg_unpopulated(run_query, error, schema, name):
+            return unpopulated
         if _unfit(error, postgres=True) is None:
             raise
         # As on ClickHouse: the rows are still there to count, and nothing dates them.
         unfit = error
-        reading = _ask(run_query, f"SELECT count(*) AS rows_seen FROM {_qualified(schema, name)}")
+        try:
+            reading = _ask(
+                run_query, f"SELECT count(*) AS rows_seen FROM {_qualified(schema, name)}"
+            )
+        except Exception as second:  # re-raised unless the view holds no data
+            if not _pg_unpopulated(run_query, second, schema, name):
+                raise
+            return unpopulated
     if not reading:
         # As on ClickHouse, a `max()` the engine could not run is not weighed here: a role
         # refused even `count(*)` is `access.table_unreadable`, a block whatever became of
@@ -1439,6 +1532,25 @@ def _postgres_table(
         row_policies=policies,
     )
     return _undated(unfit, question, facts, postgres=True)
+
+
+def _pg_unpopulated(run_query: RunQuery, error: Exception, schema: str, name: str) -> bool:
+    """Whether `error` is the `55000` of a materialized view that holds no data.
+
+    A view created or last refreshed `WITH NO DATA` answers every query with `55000` until it
+    is refreshed (PostgreSQL 16 and the 9.4.26 kernel, live); `55000` is not the view's alone,
+    so `pg_matviews` is asked whether the mart is one that holds no data (ADR 0012, D2).
+    """
+    if postgres_sqlstate(error) != "55000":
+        return False
+    answer = _ask(
+        run_query,
+        "SELECT ispopulated FROM pg_matviews WHERE schemaname = "
+        f"{_literal(schema)} AND matviewname = {_literal(name)}",
+    )
+    if not answer:  # no such view, or the question refused: the error is what it was
+        return False
+    return answer[0].get("ispopulated") is False
 
 
 def _pg_column_reads(

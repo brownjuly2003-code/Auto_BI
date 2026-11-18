@@ -28,6 +28,7 @@ from auto_bi.verification.model import Verdict
 from auto_bi.verification.release_gate import idempotency_key
 from auto_bi.yaml_document import load_yaml_document
 from tests.test_decision_verify import (
+    CATALOG,
     PRODUCT_ID,
     Case,
     environment,
@@ -103,7 +104,10 @@ def test_a_stamp_moves_the_run_and_no_graded_answer(tmp_path: Path) -> None:
         case.with_asset().with_results(ROWS)
         source = NativeModelSource(case.candidate / "model.yaml", case.candidate / "metrics")
         snapshots.append(source.snapshot())
-        reports.append(case.run(product_id=PRODUCT_ID, probe=probing(environment())))
+        # The clean stand's answer, its column catalog with it: a catalog that did not answer is
+        # `physical.not_observed` (review) since verifier 136, whatever the stamp
+        clean = environment(columns=CATALOG)
+        reports.append(case.run(product_id=PRODUCT_ID, probe=probing(clean)))
 
     assert len({snapshot.canonical_digest for snapshot in snapshots}) == 1
     assert len({snapshot.source_digest for snapshot in snapshots}) == 3

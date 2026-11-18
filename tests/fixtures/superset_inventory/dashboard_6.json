@@ -1,0 +1,790 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "22__table",
+    "granularity_sqla": "year",
+    "groupby": [
+     "genre"
+    ],
+    "label_colors": {
+     "0": "#1FA8C9",
+     "1": "#454E7C",
+     "2600": "#666666",
+     "3DO": "#B2B2B2",
+     "3DS": "#D1C6BC",
+     "Action": "#1FA8C9",
+     "Adventure": "#454E7C",
+     "DC": "#A38F79",
+     "DS": "#8FD3E4",
+     "Europe": "#5AC189",
+     "Fighting": "#5AC189",
+     "GB": "#FDE380",
+     "GBA": "#ACE1C4",
+     "GC": "#5AC189",
+     "GEN": "#3CCCCB",
+     "GG": "#EFA1AA",
+     "Japan": "#FF7F44",
+     "Microsoft Game Studios": "#D1C6BC",
+     "Misc": "#FF7F44",
+     "N64": "#1FA8C9",
+     "NES": "#9EE5E5",
+     "NG": "#A1A6BD",
+     "Nintendo": "#D3B3DA",
+     "North America": "#666666",
+     "Other": "#E04355",
+     "PC": "#EFA1AA",
+     "PCFX": "#FDE380",
+     "PS": "#A1A6BD",
+     "PS2": "#FCC700",
+     "PS3": "#3CCCCB",
+     "PS4": "#B2B2B2",
+     "PSP": "#FEC0A1",
+     "PSV": "#FCC700",
+     "Platform": "#666666",
+     "Puzzle": "#E04355",
+     "Racing": "#FCC700",
+     "Role-Playing": "#A868B7",
+     "SAT": "#A868B7",
+     "SCD": "#8FD3E4",
+     "SNES": "#454E7C",
+     "Shooter": "#3CCCCB",
+     "Simulation": "#A38F79",
+     "Sports": "#8FD3E4",
+     "Strategy": "#A1A6BD",
+     "TG16": "#FEC0A1",
+     "Take-Two Interactive": "#9EE5E5",
+     "WS": "#ACE1C4",
+     "Wii": "#A38F79",
+     "WiiU": "#E04355",
+     "X360": "#A868B7",
+     "XB": "#D3B3DA",
+     "XOne": "#FF7F44"
+    },
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "row_limit": null,
+    "slice_id": 63,
+    "time_range": "No filter",
+    "treemap_ratio": 1.618033988749895,
+    "viz_type": "treemap_v2"
+   },
+   "id": 63,
+   "slice_name": "Games per Genre"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "all_columns": [
+     "rank",
+     "name",
+     "global_sales",
+     "platform",
+     "genre",
+     "publisher",
+     "year"
+    ],
+    "annotation_layers": [],
+    "color_pn": false,
+    "datasource": "22__table",
+    "granularity_sqla": "year",
+    "groupby": [],
+    "metrics": [
+     "count"
+    ],
+    "order_by_cols": [],
+    "order_desc": true,
+    "page_length": null,
+    "percent_metrics": [],
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "query_mode": "raw",
+    "row_limit": 10,
+    "show_cell_bars": false,
+    "slice_id": 65,
+    "table_timestamp_format": "smart_date",
+    "time_grain_sqla": "P1D",
+    "time_range": "No filter",
+    "viz_type": "table"
+   },
+   "id": 65,
+   "slice_name": "Publishers With Most Titles"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "year"
+     }
+    ],
+    "annotation_layers": [],
+    "bottom_margin": "auto",
+    "datasource": "22__table",
+    "groupby": "genre",
+    "left_margin": "auto",
+    "legend_type": "continuous",
+    "linear_color_scheme": "blue_white_yellow",
+    "metric": "count",
+    "normalize_across": "heatmap",
+    "queryFields": {
+     "metric": "metrics"
+    },
+    "row_limit": 10000,
+    "show_legend": true,
+    "show_percentage": true,
+    "show_values": true,
+    "slice_id": 66,
+    "sort_x_axis": "alpha_asc",
+    "sort_y_axis": "alpha_asc",
+    "value_bounds": [
+     null,
+     null
+    ],
+    "viz_type": "heatmap_v2",
+    "x_axis": "platform",
+    "xscale_interval": null,
+    "y_axis_format": "SMART_NUMBER",
+    "yscale_interval": null
+   },
+   "id": 66,
+   "slice_name": "Popular Genres Across Platforms"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "year"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "contributionMode": null,
+    "datasource": "22__table",
+    "groupby": [],
+    "label_colors": {
+     "0": "#1FA8C9",
+     "1": "#454E7C",
+     "2600": "#666666",
+     "3DO": "#B2B2B2",
+     "3DS": "#D1C6BC",
+     "Action": "#1FA8C9",
+     "Adventure": "#454E7C",
+     "DC": "#A38F79",
+     "DS": "#8FD3E4",
+     "Europe": "#5AC189",
+     "Fighting": "#5AC189",
+     "GB": "#FDE380",
+     "GBA": "#ACE1C4",
+     "GC": "#5AC189",
+     "GEN": "#3CCCCB",
+     "GG": "#EFA1AA",
+     "Japan": "#FF7F44",
+     "Microsoft Game Studios": "#D1C6BC",
+     "Misc": "#FF7F44",
+     "N64": "#1FA8C9",
+     "NES": "#9EE5E5",
+     "NG": "#A1A6BD",
+     "Nintendo": "#D3B3DA",
+     "North America": "#666666",
+     "Other": "#E04355",
+     "PC": "#EFA1AA",
+     "PCFX": "#FDE380",
+     "PS": "#A1A6BD",
+     "PS2": "#FCC700",
+     "PS3": "#3CCCCB",
+     "PS4": "#B2B2B2",
+     "PSP": "#FEC0A1",
+     "PSV": "#FCC700",
+     "Platform": "#666666",
+     "Puzzle": "#E04355",
+     "Racing": "#FCC700",
+     "Role-Playing": "#A868B7",
+     "SAT": "#A868B7",
+     "SCD": "#8FD3E4",
+     "SNES": "#454E7C",
+     "Shooter": "#3CCCCB",
+     "Simulation": "#A38F79",
+     "Sports": "#8FD3E4",
+     "Strategy": "#A1A6BD",
+     "TG16": "#FEC0A1",
+     "Take-Two Interactive": "#9EE5E5",
+     "WS": "#ACE1C4",
+     "Wii": "#A38F79",
+     "WiiU": "#E04355",
+     "X360": "#A868B7",
+     "XB": "#D3B3DA",
+     "XOne": "#FF7F44"
+    },
+    "markerEnabled": false,
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "na_sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 883,
+       "is_dttm": false,
+       "optionName": "_col_NA_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": true,
+      "isNew": false,
+      "label": "North America",
+      "optionName": "metric_3pl6jwmyd72_p9o4j2xxgyp",
+      "sqlExpression": null
+     },
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "eu_sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 884,
+       "is_dttm": false,
+       "optionName": "_col_EU_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": true,
+      "isNew": false,
+      "label": "Europe",
+      "optionName": "metric_e8rdyfxxjdu_6dgyhf7xcne",
+      "sqlExpression": null
+     },
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "jp_sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 885,
+       "is_dttm": false,
+       "optionName": "_col_JP_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": true,
+      "isNew": false,
+      "label": "Japan",
+      "optionName": "metric_6gesefugzy6_517l3wowdwu",
+      "sqlExpression": null
+     },
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "other_sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 886,
+       "is_dttm": false,
+       "optionName": "_col_Other_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": true,
+      "isNew": false,
+      "label": "Other",
+      "optionName": "metric_cf6kbre28f_2sg5b5pfq5a",
+      "sqlExpression": null
+     }
+    ],
+    "order_bars": false,
+    "queryFields": {
+     "columns": "groupby",
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "row_limit": null,
+    "show_extra_controls": true,
+    "show_legend": true,
+    "show_value": false,
+    "slice_id": 67,
+    "stack": "Stack",
+    "truncateYAxis": true,
+    "viz_type": "echarts_timeseries_bar",
+    "xAxisLabelRotation": 0,
+    "x_axis": "genre",
+    "x_axis_title": "Genre",
+    "x_axis_title_margin": 30,
+    "y_axis_format": "SMART_NUMBER",
+    "zoomable": false
+   },
+   "id": 67,
+   "slice_name": "Total Sales per Market (Grouped by Genre)"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "all_columns": [
+     "name",
+     "global_sales",
+     "platform",
+     "genre",
+     "publisher",
+     "year"
+    ],
+    "annotation_layers": [],
+    "color_pn": false,
+    "datasource": "22__table",
+    "granularity_sqla": "year",
+    "groupby": [
+     "name"
+    ],
+    "include_search": true,
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "global_sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 887,
+       "is_dttm": false,
+       "optionName": "_col_Global_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": false,
+      "isNew": false,
+      "label": "SUM(Global_Sales)",
+      "optionName": "metric_pkpvgdsf70d_pnqv77v0x2p",
+      "sqlExpression": null
+     }
+    ],
+    "order_by_cols": [
+     "[\"global_sales\", false]"
+    ],
+    "order_desc": true,
+    "page_length": "15",
+    "percent_metrics": [],
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "query_mode": "raw",
+    "row_limit": null,
+    "show_cell_bars": false,
+    "slice_id": 68,
+    "table_filter": false,
+    "table_timestamp_format": "smart_date",
+    "time_grain_sqla": "P1D",
+    "time_range": "No filter",
+    "viz_type": "table"
+   },
+   "id": 68,
+   "slice_name": "Games"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "25",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_znxs4o61aod_n5blgxo29r",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "<=",
+      "sqlExpression": null,
+      "subject": "rank"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "22__table",
+    "donut": true,
+    "granularity_sqla": "year",
+    "groupby": [
+     "publisher"
+    ],
+    "innerRadius": 45,
+    "label_line": true,
+    "label_type": "key",
+    "labels_outside": true,
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "global_sales",
+      "description": null,
+      "expression": null,
+      "filterable": true,
+      "groupby": true,
+      "id": 887,
+      "is_dttm": false,
+      "optionName": "_col_Global_Sales",
+      "python_date_format": null,
+      "type": "DOUBLE PRECISION",
+      "verbose_name": null
+     },
+     "expressionType": "SIMPLE",
+     "hasCustomLabel": false,
+     "isNew": false,
+     "label": "SUM(Global_Sales)",
+     "optionName": "metric_k2rqz0zqhkf_49hu4kq9h3u",
+     "sqlExpression": null
+    },
+    "number_format": "SMART_NUMBER",
+    "outerRadius": 67,
+    "queryFields": {
+     "groupby": "groupby",
+     "metric": "metrics"
+    },
+    "row_limit": null,
+    "show_labels": true,
+    "show_legend": false,
+    "slice_id": 69,
+    "time_range": "No filter",
+    "viz_type": "pie"
+   },
+   "id": 69,
+   "slice_name": "Most Dominant Platforms"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "datasource": "22__table",
+    "granularity_sqla": "year",
+    "groupby": [
+     "platform"
+    ],
+    "label_colors": {
+     "2600": "#D1C6BC",
+     "3DO": "#A38F79",
+     "3DS": "#B2B2B2",
+     "Action": "#ACE1C4",
+     "Adventure": "#5AC189",
+     "COUNT(*)": "#1FA8C9",
+     "DC": "#666666",
+     "DS": "#E04355",
+     "Fighting": "#D1C6BC",
+     "GB": "#A1A6BD",
+     "GBA": "#A868B7",
+     "GC": "#D3B3DA",
+     "GEN": "#FF7F44",
+     "GG": "#8FD3E4",
+     "Microsoft Game Studios": "#FCC700",
+     "Misc": "#D3B3DA",
+     "N64": "#EFA1AA",
+     "NES": "#FEC0A1",
+     "NG": "#FCC700",
+     "Nintendo": "#666666",
+     "PC": "#8FD3E4",
+     "PCFX": "#A1A6BD",
+     "PS": "#FCC700",
+     "PS2": "#454E7C",
+     "PS3": "#FF7F44",
+     "PS4": "#A38F79",
+     "PSP": "#3CCCCB",
+     "PSV": "#454E7C",
+     "Platform": "#FDE380",
+     "Puzzle": "#454E7C",
+     "Racing": "#9EE5E5",
+     "Role-Playing": "#EFA1AA",
+     "SAT": "#5AC189",
+     "SCD": "#E04355",
+     "SNES": "#FDE380",
+     "Shooter": "#B2B2B2",
+     "Simulation": "#1FA8C9",
+     "Sports": "#FEC0A1",
+     "Strategy": "#FF7F44",
+     "TG16": "#3CCCCB",
+     "Take-Two Interactive": "#E04355",
+     "WS": "#A868B7",
+     "Wii": "#666666",
+     "WiiU": "#1FA8C9",
+     "X360": "#5AC189",
+     "XB": "#ACE1C4",
+     "XOne": "#9EE5E5"
+    },
+    "metric": "count",
+    "number_format": "SMART_NUMBER",
+    "queryFields": {
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "row_limit": 10,
+    "slice_id": 70,
+    "time_range": "No filter",
+    "treemap_ratio": 1.618033988749895,
+    "viz_type": "treemap_v2"
+   },
+   "id": 70,
+   "slice_name": "# of Games That Hit 100k in Sales By Release Year"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "10",
+      "expressionType": "SIMPLE",
+      "filterOptionName": "filter_juemdnqji5_d6fm8tuf4rc",
+      "isExtra": false,
+      "isNew": false,
+      "operator": "<=",
+      "sqlExpression": null,
+      "subject": "rank"
+     },
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "year"
+     }
+    ],
+    "annotation_layers": [],
+    "color_scheme": "supersetColors",
+    "comparison_type": "values",
+    "contributionMode": "row",
+    "datasource": "22__table",
+    "groupby": [],
+    "label_colors": {},
+    "markerEnabled": false,
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "na_sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 883,
+       "is_dttm": false,
+       "optionName": "_col_NA_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": true,
+      "isNew": false,
+      "label": "North America",
+      "optionName": "metric_a943v7wg5g_0mm03hrsmpf",
+      "sqlExpression": null
+     },
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "eu_sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 884,
+       "is_dttm": false,
+       "optionName": "_col_EU_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": true,
+      "isNew": false,
+      "label": "Europe",
+      "optionName": "metric_bibau54x0rb_dwrjtqkbyso",
+      "sqlExpression": null
+     },
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "jp_sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 885,
+       "is_dttm": false,
+       "optionName": "_col_JP_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": true,
+      "isNew": false,
+      "label": "Japan",
+      "optionName": "metric_06whpr2oyhw_4l88xxu6zvd",
+      "sqlExpression": null
+     },
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "other_sales",
+       "description": null,
+       "expression": null,
+       "filterable": true,
+       "groupby": true,
+       "id": 886,
+       "is_dttm": false,
+       "optionName": "_col_Other_Sales",
+       "python_date_format": null,
+       "type": "DOUBLE PRECISION",
+       "verbose_name": null
+      },
+      "expressionType": "SIMPLE",
+      "hasCustomLabel": true,
+      "isNew": false,
+      "label": "Other",
+      "optionName": "metric_pcx05ioxums_ibr16zvi74",
+      "sqlExpression": null
+     }
+    ],
+    "queryFields": {
+     "columns": "groupby",
+     "groupby": "groupby",
+     "metrics": "metrics"
+    },
+    "row_limit": null,
+    "show_legend": true,
+    "slice_id": 72,
+    "stack": "Stack",
+    "truncateYAxis": true,
+    "viz_type": "echarts_timeseries_bar",
+    "xAxisLabelRotation": 0,
+    "x_axis": "name",
+    "x_axis_title_margin": "auto",
+    "y_axis_format": "SMART_NUMBER",
+    "zoomable": false
+   },
+   "id": 72,
+   "slice_name": "Top 10 Games: Proportion of Sales in Markets"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T10:21:32.993972",
+  "dashboard_title": "Video Game Sales",
+  "id": 6,
+  "json_metadata": "{\"timed_refresh_immune_slices\": [], \"expanded_slices\": {}, \"refresh_frequency\": 0, \"default_filters\": \"{}\", \"color_scheme\": \"supersetColors\", \"label_colors\": {\"0\": \"#1FA8C9\", \"1\": \"#454E7C\", \"2600\": \"#666666\", \"Europe\": \"#5AC189\", \"Japan\": \"#FF7F44\", \"North America\": \"#666666\", \"Other\": \"#E04355\", \"PS2\": \"#FCC700\", \"X360\": \"#A868B7\", \"PS3\": \"#3CCCCB\", \"Wii\": \"#A38F79\", \"DS\": \"#8FD3E4\", \"PS\": \"#A1A6BD\", \"GBA\": \"#ACE1C4\", \"PSP\": \"#FEC0A1\", \"PS4\": \"#B2B2B2\", \"PC\": \"#EFA1AA\", \"GB\": \"#FDE380\", \"XB\": \"#D3B3DA\", \"NES\": \"#9EE5E5\", \"3DS\": \"#D1C6BC\", \"N64\": \"#1FA8C9\", \"SNES\": \"#454E7C\", \"GC\": \"#5AC189\", \"XOne\": \"#FF7F44\", \"WiiU\": \"#E04355\", \"PSV\": \"#FCC700\", \"SAT\": \"#A868B7\", \"GEN\": \"#3CCCCB\", \"DC\": \"#A38F79\", \"SCD\": \"#8FD3E4\", \"NG\": \"#A1A6BD\", \"WS\": \"#ACE1C4\", \"TG16\": \"#FEC0A1\", \"3DO\": \"#B2B2B2\", \"GG\": \"#EFA1AA\", \"PCFX\": \"#FDE380\", \"Nintendo\": \"#D3B3DA\", \"Take-Two Interactive\": \"#9EE5E5\", \"Microsoft Game Studios\": \"#D1C6BC\", \"Action\": \"#1FA8C9\", \"Adventure\": \"#454E7C\", \"Fighting\": \"#5AC189\", \"Misc\": \"#FF7F44\", \"Platform\": \"#666666\", \"Puzzle\": \"#E04355\", \"Racing\": \"#FCC700\", \"Role-Playing\": \"#A868B7\", \"Shooter\": \"#3CCCCB\", \"Simulation\": \"#A38F79\", \"Sports\": \"#8FD3E4\", \"Strategy\": \"#A1A6BD\"}}",
+  "slug": null
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "year",
+     "expression": null,
+     "is_dttm": true,
+     "type": "BIGINT"
+    },
+    {
+     "column_name": "na_sales",
+     "expression": null,
+     "is_dttm": false,
+     "type": "FLOAT64"
+    },
+    {
+     "column_name": "eu_sales",
+     "expression": null,
+     "is_dttm": false,
+     "type": "FLOAT64"
+    },
+    {
+     "column_name": "global_sales",
+     "expression": null,
+     "is_dttm": false,
+     "type": "FLOAT64"
+    },
+    {
+     "column_name": "jp_sales",
+     "expression": null,
+     "is_dttm": false,
+     "type": "FLOAT64"
+    },
+    {
+     "column_name": "other_sales",
+     "expression": null,
+     "is_dttm": false,
+     "type": "FLOAT64"
+    },
+    {
+     "column_name": "rank",
+     "expression": null,
+     "is_dttm": false,
+     "type": "BIGINT"
+    },
+    {
+     "column_name": "genre",
+     "expression": null,
+     "is_dttm": false,
+     "type": "STRING"
+    },
+    {
+     "column_name": "name",
+     "expression": null,
+     "is_dttm": false,
+     "type": "STRING"
+    },
+    {
+     "column_name": "platform",
+     "expression": null,
+     "is_dttm": false,
+     "type": "STRING"
+    },
+    {
+     "column_name": "publisher",
+     "expression": null,
+     "is_dttm": false,
+     "type": "STRING"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 22,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "main",
+   "sql": "",
+   "table_name": "video_game_sales"
+  }
+ ]
+}

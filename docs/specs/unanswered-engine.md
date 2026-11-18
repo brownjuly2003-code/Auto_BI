@@ -444,17 +444,21 @@ answered had given. Since verifier 133 (ADR 0010, F1):
 - an answered catalog with no rows SHALL be read as before — the engine's answer, which
   `column_drift` weighs as any other (ClickHouse leaves out what the role may not read).
 
-`dwh.physical` raises no review of its own over a refused catalog: it passes with coverage
-incomplete, as for a probe that did not ask, and where nothing was compared the owner report
-lists `physical.not_run` as not done. The refusal of `pg_attribute` refuses `has_column_privilege` asked over it too, so on
-PostgreSQL the review comes from `dwh.security`: `security.not_observed` for which columns the
-role may read. A role refused only the type question (column grants on `pg_attribute`), or a
-ClickHouse role refused `system.columns` alone, has its verdict decided by the other checks; a
-review of `dwh.physical`'s own is in the [backlog](../DECISIONOPS_BACKLOG.md).
+Verifier 133 to 135 raised no review of `dwh.physical`'s own over a refused catalog: it passed
+with coverage incomplete, as for a probe that did not ask, so a role refused only the type
+question (column grants on `pg_attribute`), or a ClickHouse role refused `system.columns` alone,
+had its verdict decided by the other checks, and a column retyped behind the refusal was not
+seen. Since verifier 136 and check 86 (ADR 0012, D2) a readable mart whose column catalog the
+engine refused and whose model declares columns SHALL be `physical.not_observed` (review), its
+detail naming the columns not compared; a mart the model declares no column of raises none, and
+one the role does not read is `dwh.access`'s alone, as before. The refusal of `pg_attribute`
+refuses `has_column_privilege` asked over it too, so on PostgreSQL `dwh.security` adds
+`security.not_observed` for which columns the role may read.
 
-The presence question of a PostgreSQL mart reads `pg_tables`, `pg_views` and, since verifier
-133, `pg_matviews`: a mart served as a materialized view (relkind `m`) is in neither of the first
-two, and verifier 132 graded it `access.table_absent` (block). Verifier 132 read the refusal of
+The presence question of a PostgreSQL mart reads `pg_tables`, `pg_views`, since verifier 133
+`pg_matviews` and since verifier 136 the foreign tables of `pg_class` (D2, below): a mart served
+as a materialized view (relkind `m`) is in neither of the first two, and verifier 132 graded it
+`access.table_absent` (block). Verifier 132 read the refusal of
 the first two (`REVOKE SELECT ON pg_catalog.pg_tables, pg_catalog.pg_views FROM PUBLIC`,
 `42501`) as "no row": `access.table_absent` (block) over a mart the role reads. Since verifier
 133 a refused presence question SHALL be followed by `to_regclass` of the mart's name, which
@@ -464,16 +468,19 @@ answered "no row" SHALL stay absent without the second question, which would res
 relation of that name, an index or a sequence too.
 
 `tests/test_decision_live_postgres.py` pins four cases live on PostgreSQL 16 (run once on the 9.4.26
-kernel too, F3) — the clean mart behind the revoked column catalog (`physical.not_run`,
-`security.not_observed`, `needs_review`), a column dropped behind it (exit 2, `UndefinedColumn`, no
-bundle), the clean mart behind the revoked table catalog, and the same rows served as a materialized
-view (both the clean stand's `pass`). The ClickHouse refusal of `system.columns` is pinned offline
-only; the live ClickHouse test does not refuse it. The ClickHouse presence question over
-`system.tables` is unchanged: a refusal there still reads as absent, the one silence the probe
-already shares with a mart out of reach (both block). Check grading is unchanged (check 83); ADR
-0010 named `CHECK_VERSION` for this item, but the rules of `dwh.physical` over unreported columns
-and of `dwh.access` over a present mart are the ones they had — what changed is the fact the probe
-reports, and that is the verifier's (as S7, S7b and S8).
+kernel too, F3) — the clean mart behind the revoked column catalog (`physical.not_run` until
+verifier 135 and `physical.not_observed` since 136, beside `security.not_observed`;
+`needs_review`), a column dropped behind it (exit 2, `UndefinedColumn`, no bundle), the clean mart
+behind the revoked table catalog, and the same rows served as a materialized view (both the clean
+stand's `pass`). The ClickHouse refusal of `system.columns` is pinned offline only: ClickHouse
+24.8 lists a user's own tables in `system.tables` and `system.columns` whatever is revoked on
+them (D2, below). The ClickHouse presence question over `system.tables` is unchanged: a refusal
+there still reads as absent, the one silence the probe already shares with a mart out of reach
+(both block). F1 left check grading unchanged (check 83); ADR 0010 named `CHECK_VERSION` for this
+item, but the rules of `dwh.physical` over unreported columns and of `dwh.access` over a present
+mart were the ones they had — what changed was the fact the probe reports, and that is the
+verifier's (as S7, S7b and S8). D2 changed the rule of `dwh.physical` over a refused catalog, and
+the check moved with it.
 
 ## One type, any of its PostgreSQL names (F2)
 
@@ -498,15 +505,15 @@ mart's drift. Since verifier 134 and check 84 (ADR 0010, F2), on an engine of th
   is `character(1)`, `bpchar(n)` is `character(n)`. A modifier is kept, and so is an array as the
   one pair of brackets `format_type` prints for any of its dimensions (`varchar(10)[3]` and
   `varchar(10)[][]` are `character varying(10)[]`);
-- a spelling the rule does not read — a quoted or schema-qualified name (`"char"`,
-  `pg_catalog.int4`), `integer array`, `national character varying`, `serial`, `bpchar` with
-  no length, `float(54)`, a zone after a name that carries one (`timestamptz without time
-  zone`), an array bound other than one number — SHALL be compared as written, spacing and
-  case aside, as before;
+- a spelling the rule does not read — `bpchar` with no length, `float(54)`, a zone after a
+  name that carries one (`timestamptz without time zone`), an array bound other than one
+  number, and until D1 (below) a quoted or schema-qualified name, `integer array`, `national
+  character varying` and `serial` — SHALL be compared as written, spacing and case aside, as
+  before (since D1 a quoted name is compared character by character, below);
 - a pair the rule reads as one type SHALL be no drift: `dwh.physical` does not grade it, and it
   accounts for no `42883`, which then ends the run as any state the catalog does not account for;
-- ClickHouse SHALL compare as before, spacing and case aside: its aliases are its own (its `INT8`
-  is `Int8`, PostgreSQL's `int8` is `bigint`), and `system.columns` prints the canonical name.
+- ClickHouse SHALL compare as before, spacing and case aside, until D1 (below): its aliases are
+  its own (ClickHouse's `Int8` is an 8-bit integer, PostgreSQL's `int8` is `bigint`).
 
 `tests/test_decision_live_postgres.py` creates a column in each spelling of the rule on PostgreSQL
 16 (once on the 9.4.26 kernel too, F3) and reads it back through `format_type`, as the probe does:
@@ -514,6 +521,114 @@ the names the rule maps to are the engine's, not the manual's. The rule is pinne
 and on each engine name of the family; a spelling of thousands of characters is read at once (each
 repeated part of the pattern matches its text one way only, so a failed match does not retry every
 split), and so is a `float(p)` of thousands of digits, past what `int()` converts.
+
+## One type, any of the names the engine takes (D1)
+
+Since verifier 135 and check 85 (ADR 0012, D1) the rule reads each declared spelling to the name
+the engine prints for its type (`auto_bi/verification/column_types.py`), on ClickHouse too:
+
+- on ClickHouse a declared type and `system.columns`' SHALL compare equal when both name one
+  type. The names read are the aliases of `system.data_type_families` of 24.8 (`BIGINT` and
+  `SIGNED` for `Int64`, `INT` for `Int32`, `INT UNSIGNED` for `UInt32`, `DOUBLE` for `Float64`,
+  `TEXT`, `VARCHAR` and the other character names for `String`, `BINARY(n)` for
+  `FixedString(n)`, `DEC`, `NUMERIC` and `FIXED` for `Decimal`, `TIMESTAMP` for `DateTime`,
+  `BOOLEAN` for `Bool`) and the rules of its types: a display width or a trailing `SIGNED` /
+  `UNSIGNED` of an integer goes (`INT(11) UNSIGNED` is `UInt32`), `DECIMAL` with no arguments is
+  `Decimal(10, 0)` and a precision alone is scale 0, `DecimalN(s)` is `Decimal(P, s)` of the
+  precision N bits hold, `DateTime` with a precision other than 0 is `DateTime64` of it,
+  `DateTime64` with none is `DateTime64(3)`, a zone is kept, `Nullable`, `LowCardinality`,
+  `Array` and `Map` are read through, and a family name is read in any case, as the comparison
+  read every name before D1;
+- on a PostgreSQL kernel the rule SHALL also read a quoted or `pg_catalog`-qualified name as
+  the catalog name it is (`"int4"` and `pg_catalog.int4` are `integer`; a quoted keyword such
+  as `"integer"`, `pg_catalog.serial` and a modifier on a name other than `numeric`, `varchar`,
+  `bpchar`, `bit`, `varbit` and the four time names are not read; `"char"` and an unbounded
+  `"bit"` stay types of their own), the serial types bare on the declared side (`serial` is
+  `integer`, `bigserial` is `bigint`; `format_type` prints no serial type, so a catalog's
+  `serial4` — a domain may be called so — is a type of its own), the `national` and `nchar`
+  character types, `bit` with no length as `bit(1)`, the `ARRAY` keyword with at most one bound
+  as the brackets, zeros before a number, and a precision of a time type of six digits or more as
+  none — six fractional digits are what a time type with no precision keeps;
+- a spelling the rules do not read — on ClickHouse `Tuple`, `Enum`, `Nested`,
+  `AggregateFunction`, `TIME` (24.8 reads it as `Int64`, later versions as a type of their own),
+  `DECIMAL()`, an argument the engine may not take, a zone left empty, a trailing comma —
+  SHALL be compared as written: blanks next to a parenthesis, a bracket, a comma or `=` aside,
+  and on a PostgreSQL kernel case outside a quote, as the grammar folds a name it does not quote;
+- a quoted name, and on ClickHouse a string, inside a type SHALL be compared character by
+  character, and a blank inside a name is content, where before D1 the comparison dropped every
+  blank and case:
+  `Enum8('a' = 1)` and `Enum8('A' = 1)`, `Tuple(a Int64)` and `Tuple(A Int64)`, `"MyType"` and
+  `"MYTYPE"`, `Int 64` and `Int64` are two spellings, and a pair of them is drift;
+- `sql.compile` SHALL read a ratio term on a PostgreSQL kernel as exact by the same name, so
+  `dec(18,2)`, `serial` and `pg_catalog.int8` are exact and an array of an exact type is not; a
+  ClickHouse term is read as written, as the parity classes of `semantic.metricflow_formula`
+  read it.
+
+`tests/test_decision_live_clickhouse.py` creates a column in each ClickHouse spelling of the
+tests' lists of one type — those the rule reads and those it leaves to review — on 24.8 and reads
+it back from `system.columns`, as the probe does, and checks the aliases the rule reads against
+`system.data_type_families`; `tests/test_decision_live_postgres.py` does so for the new
+PostgreSQL spellings through
+`format_type` on 16 and the 9.4.26 kernel, and stores one value with seven fractional digits
+in a time type of six digits and in one of no precision, which keep it the same. A spelling of
+thousands of characters, or of types nested thousands deep, is read at once.
+
+## The relations a mart may be, and a catalog the engine refused (D2)
+
+Since verifier 136 and check 86 (ADR 0012, D2):
+
+- the presence question of a PostgreSQL mart SHALL also read `pg_class` for a foreign table
+  (relkind `f`), which none of `pg_tables`, `pg_views` and `pg_matviews` lists; verifier 135
+  graded such a mart `access.table_absent` (block). It is then read, planned and graded as any
+  mart: `EXPLAIN` prices its `Foreign Scan` from the foreign table's statistics;
+- the `INSERT`, `UPDATE`, `DELETE` and `TRUNCATE` privileges of a materialized view (relkind
+  `m`) SHALL not be counted, for the current role and for each role `SET ROLE` reaches, and
+  neither SHALL its column grants: the current role is not asked them, and a reached role's
+  answer, which comes in the same question as its table grants, is not counted. PostgreSQL
+  refuses every `INSERT`, `UPDATE`, `DELETE` and `TRUNCATE` of it with `42809
+  wrong_object_type` whatever is granted, and verifier 135 graded such grants
+  `access.role_writable` (block). What changes such a view is `REFRESH MATERIALIZED VIEW`: its
+  ownership SHALL be weighed as for any mart, and so SHALL `MAINTAIN` on it, which PostgreSQL 17
+  added and which `GRANT ALL` and membership in `pg_maintain` carry — held, it is
+  `access.role_writable`; unanswered, a gap. An older server refuses the word (`unrecognized
+  privilege type`), so the question SHALL pick on `server_version_num` inside itself and answer
+  false below 17. On any other relation `MAINTAIN` — `VACUUM`, `ANALYZE`, `CLUSTER`, `REINDEX`,
+  `LOCK TABLE` — changes no row and SHALL not be weighed. A role whose only write grants are on
+  materialized views is read-only, and its evidence SHALL name them: `no INSERT, UPDATE, DELETE
+  or TRUNCATE privilege on any in-scope mart but a materialized view, no MAINTAIN privilege on a
+  materialized view and no INSERT or UPDATE privilege on any of their columns; SET ROLE reaches
+  no other role; dm.sales_daily is a materialized view, which takes no INSERT, UPDATE, DELETE or
+  TRUNCATE whatever is granted on it`;
+- a materialized view that holds no data — created or last refreshed `WITH NO DATA` — answers
+  every read with `55000 object_not_in_prerequisite_state`, and verifier 135 ended the run on
+  it (exit 2). A
+  `55000` from either read of a mart's rows — the count with `max()` of the event-time column, or
+  the count alone asked again after a column that no longer fits — SHALL be followed by
+  `pg_matviews.ispopulated` of the mart's name. `false` SHALL read the mart as present and
+  unreadable with `populated` false, which `dwh.access` grades `access.table_unpopulated`
+  (block); the other checks do not weigh an unreadable mart again. Any other answer — no row,
+  `true`, the question refused — SHALL leave the `55000` to end the run as before. Every table
+  reading records `populated`: `false` for such a view, `null` for any other;
+- a readable mart whose column catalog the engine refused SHALL be `physical.not_observed`
+  (review), as above (F1).
+
+On ClickHouse 24.8.14.39 a role refused `system.tables` and `system.columns` (`REVOKE SELECT ON
+system.tables`, the same on `system.columns`, under the default server configuration and under
+`access_control_improvements.select_from_system_db_requires_grant`) still sees its own tables
+in both: the refusal the backlog named could not be produced there.
+`tests/test_decision_live_clickhouse.py` pins, under the default configuration, that such a
+role's run is the clean stand's; the setting is server configuration no test switches, and was
+tried once by hand.
+
+`tests/test_decision_live_postgres.py` pins live, on PostgreSQL 16, the 9.4.26 kernel and
+17.12, the gate role refused each write the grants name on a materialized view
+(`WrongObjectType`) and the clean stand's run over it; `GRANT ALL` on the view, which below 17
+refreshes nothing (`InsufficientPrivilege`) and is the clean stand's run, while from 17 the gate
+role empties the view `WITH NO DATA` and fills it again — as it does as a member of
+`pg_maintain` — and the run blocks `access.role_writable`; a view created `WITH NO DATA`, which
+the gate role cannot count (`ObjectNotInPrerequisiteState`), graded `access.table_unpopulated`
+with a `block` verdict; and the mart's rows behind `file_fdw`, the clean stand's run, its plan
+pricing every row.
 
 ## Runtime SQL guard refusal at the CLI boundary (T-80)
 
@@ -575,6 +690,18 @@ not establish that the current typed compiler emits that SQL from an ordinary in
 - An error ClickHouse relays from another engine — a table of the `PostgreSQL` or `MySQL` engine
   whose server refuses the read — is read by the ClickHouse code it carries, not by the refusal
   its message quotes (S8): under any code outside the refusal set it ends the run.
+- A PostgreSQL foreign table is read through its server (D2): a server that does not answer the
+  read ends the run with the error it relays, as any state outside the refusal set — live,
+  `file_fdw` over a file that is gone (`58P01 undefined_file`). The write
+  grants of a foreign table are counted as a table's: `postgres_fdw` writes through them, and a
+  wrapper that takes no write (`file_fdw` answers `0A000 feature_not_supported`) is still graded
+  `access.role_writable` — an error toward the block. What the server applies on its own side —
+  the grants and row security of the user it signs in as — is not observed: `dwh.access` and
+  `dwh.security` grade what the local catalog says of the foreign table.
+- `MAINTAIN` is weighed as `has_table_privilege` answers it, which, as for every write
+  privilege, does not ask for `USAGE` on the view's schema (D2): a role that holds it but cannot
+  reach the schema is graded writable — an error toward the block (17.12, live: `SET ROLE
+  pg_maintain` then `REFRESH` refused for the schema).
 - Other faults of the probe, including tokenizer failures that are not `SQLGuardError`,
   remain outside the named handlers and may end in a traceback with exit 1.
 - Other driver failures end the run through the existing handler. Server-side settings

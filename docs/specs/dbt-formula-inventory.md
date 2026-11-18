@@ -85,9 +85,11 @@ every one found is reported. The relation and the time are those of the semantic
 metric aggregates in. Three constructs end the reading early, and what it would find after them
 is not looked for:
 
-- a metric of another type is answered by its type alone (`type.*`), and by `private` where it
-  is private, which is asked before the type: a cumulative metric over another table stays
-  review, not block;
+- a metric of another type is answered by its type alone (`type.*`) — a derived metric whose
+  `expr` divides an input by an input by that `expr` (`derived.quotient`) — and by
+  `private` where it is private, which is asked before the type: a cumulative metric over
+  another table stays review, not block, and neither the filter of a derived metric nor what
+  its inputs hold is read;
 - a ratio without a side, or over a metric that is not simple, or over one with both or neither
   way to aggregate, is answered by that, by the ratio's own keys and by the rest of what its
   sides hold, time included — without the relation, `ratio.models`, `ratio.times`,
@@ -132,7 +134,8 @@ constructs, and each is reported, short of the three that end the reading early 
 | Id | What | Gap | Severity | Path |
 |---|---|---|---|---|
 | `type.cumulative` | A cumulative metric | `gap.external_construct_unsupported` | review | `$.metrics[m].type` |
-| `type.derived` | A derived metric | `gap.external_construct_unsupported` | review | `$.metrics[m].type` |
+| `type.derived` | A derived metric whose `expr` does not divide an input by an input (`derived.quotient`): `revenue - revenue_prev`, `2 * revenue`, `(a - b) / b` | `gap.external_construct_unsupported` | review | `$.metrics[m].type` |
+| `derived.quotient` | A derived metric whose `expr` divides one of its input metrics by another or by itself, `a / b` — each one lower-case identifier, an input's alias or, without one, its name, as MetricFlow names the columns it divides; spaces, tabs, line breaks and form feeds aside, nothing else: MetricFlow 0.213.0 writes the quotient as written, without the `NULLIF` and the cast it gives a ratio metric, so on PostgreSQL a non-NULL numerator over a zero denominator fails the query and two integer terms divide with truncation (below) | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.expr` |
 | `type.conversion` | A conversion metric | `gap.external_construct_unsupported` | review | `$.metrics[m].type` |
 | `ratio.input-type` | A ratio whose numerator or denominator is not a simple metric; the path is the input's | `gap.external_construct_unsupported` | review | `$.metrics[n].type` |
 | `ratio.numerator-missing` | A ratio without a numerator | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.numerator` |
@@ -176,6 +179,7 @@ constructs, and each is reported, short of the three that end the reading early 
 | `legacy.non-additive-dimension` | A measure's `non_additive_dimension` | `gap.external_construct_unsupported` | review | `$.semantic_models[s].measures[j].non_additive_dimension` |
 | `legacy.expr` | A measure `expr` that is not one lower-case column: an expression, a quoted or upper-case name, a value word such as `null` or `true` | `gap.external_construct_unsupported` | review | `$.semantic_models[s].measures[j].expr` |
 | `legacy.measure-name` | A measure without `expr` whose name — the column dbt reads then — is not one lower-case column: a value word such as `null`, an upper-case name | `gap.external_construct_unsupported` | review | `$.semantic_models[s].measures[j].name` |
+| `legacy.count-no-expr` | A measure aggregated by `count` without `expr`: MetricFlow 0.213.0 builds no such count, and asks for `expr: 1` to count rows | `gap.external_construct_unsupported` | review | `$.semantic_models[s].measures[j].expr` |
 | `legacy.metric-expr` | A legacy metric `expr` other than its measure's column | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.expr` |
 | `v2.input-measures` | A V2 metric with `input_measures` | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.input_measures` |
 | `v2.agg.sum_boolean` | A V2 metric aggregated by `sum_boolean` | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.metric_aggregation_params.agg` |
@@ -185,18 +189,39 @@ constructs, and each is reported, short of the three that end the reading early 
 | `v2.agg_params.use_discrete_percentile` | A V2 metric's `agg_params.use_discrete_percentile: true` | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.metric_aggregation_params.agg_params` |
 | `v2.agg_params.use_approximate_percentile` | A V2 metric's `agg_params.use_approximate_percentile: true` | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.metric_aggregation_params.agg_params` |
 | `v2.non-additive-dimension` | A V2 metric's `non_additive_dimension` | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.metric_aggregation_params.non_additive_dimension` |
-| `v2.no-expr` | A V2 metric without `expr` | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.expr` |
+| `v2.metric-name` | A V2 metric without `expr` whose name — the column MetricFlow reads then — is not one lower-case column: a value word such as `null` or `true`, an upper-case name | `gap.external_construct_unsupported` | review | `$.metrics[m].name` |
+| `v2.count-no-expr` | A V2 metric aggregated by `count` without `expr`, which MetricFlow 0.213.0 does not build either | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.expr` |
 | `v2.expr` | A V2 metric `expr` that is not one lower-case column | `gap.external_construct_unsupported` | review | `$.metrics[m].type_params.expr` |
 | `formula.table` | The contract's grain table is not a lower-case `schema.table` name, which a typed term does not take | `gap.external_construct_unsupported` | review | `$.metrics[m]` |
+
+A derived quotient is not the typed ratio, whose quotient is a ratio metric's: D4b of
+[ADR 0012](../adr/0012-post-finish-development.md) recorded what MetricFlow does with one
+([report](../reviews/DECISIONOPS_DBT_COVERAGE_2026-11-13.md)). `scripts/metricflow_derived.py`
+writes a project over the parity table that holds derived quotients and the ratio metrics over
+the same two metrics; with the artifact dbt-core 1.12.6 parses from it, the script asks
+MetricFlow 0.213.0 for the SQL of each metric and runs it on PostgreSQL 16.15 over the parity
+recipe's rows; `tests/fixtures/dbt_semantic_manifest/derived` keeps the artifact and the
+record, and `tests/test_metricflow_derived.py` holds them to the recipe's rows and to the
+resolver. The derived metric's SQL divides the two columns as written
+(`amount_sum / qty_count`), the ratio's casts both to `DOUBLE PRECISION` and the denominator
+through `NULLIF(…, 0)`. A sum over a count that is 0 in a group where the sum is not NULL
+fails the derived query as a whole, SQLSTATE `22012`, where the ratio is NULL in that group; the maximum of an integer column over a count, both `bigint`, gives 0 for
+2 / 4, where the ratio gives 0.5; a `numeric` sum over a count without a zero agrees with the
+ratio, within a double's error — with aliases too, which name the columns the quotient reads. The
+ratio metrics over the same pairs resolve to typed ratios on proven rows. The quotient is no
+row of the parity matrix: the typed formula has no form for it, and a contract change to give it
+one is outside D4b.
 
 ## Parity
 
 Asked last, and only of a formula with no other gap (ADR 0008, item 7). A resolution relies on
 rows of the parity matrix in its context `<engine>.<event time>`; a row no recorded run proved is
 review `gap.external_parity_unproven` at the metric, and the reason names the rows: a row
-proven in a context does not prove another there. Proven today are 164 rows in the context
-`clickhouse.date` and 164 rows in the context `postgres.date`
-([parity report](../reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md)).
+proven in a context does not prove another there. Proven today are 327 rows in the context
+`clickhouse.date` and 327 rows in the context `postgres.date`
+([legacy run](../reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md),
+[V2 run](../reviews/DECISIONOPS_DBT_COVERAGE_2026-11-13.md)): in each, 164 rows of the legacy
+dialect and 163 of V2.
 
 | Id | What | Gap | Severity | Path |
 |---|---|---|---|---|
@@ -206,7 +231,7 @@ proven in a context does not prove another there. Proven today are 164 rows in t
 | `parity.column-type` | The aggregated column is of a type outside the classes `decimal`, `integer` and `float` — `text`, `date`, an array — or of no declared type | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 | `parity.ratio-average` | A ratio term under `average` | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 | `parity.ratio-float` | A ratio term under `sum`, `min` or `max` over a `float` column | `gap.external_parity_unproven` | review | `$.metrics[m]` |
-| `parity.v2` | A V2 metric: no V2 row was run — no V2 metric of the corpus gets this far (`time.no-granularity`); one whose time dimension is spelled `dimension: {type: time}` does | `gap.external_parity_unproven` | review | `$.metrics[m]` |
+| `parity.ratio-dialects` | A ratio of a legacy metric and a V2 one: the run proved ratios of two terms of one dialect | `gap.external_parity_unproven` | review | `$.metrics[m]` |
 
 ## What dbt-core 1.12.6 writes
 
@@ -228,15 +253,16 @@ has at the gap's path. One gap can be two rows: the `agg_params` of a percentile
 `use_discrete_percentile: true` are `legacy.agg_params.percentile` and
 `legacy.agg_params.use_discrete_percentile`.
 
-**Written** (63) — an entry carries the row.
+**Written** (64) — an entry carries the row.
 
 `relation.table`, `relation.database`, `time.none-v2`, `time.expression`, `time.name`,
 `time.column-name`, `time.column-expr`, `time.no-granularity`, `time.granularity`, `ratio.models`,
 `ratio.times`, `additivity.aggregate-legacy`, `additivity.aggregate-v2`, `additivity.ratio`,
-`private`, `type.cumulative`, `type.derived`, `type.conversion`, `ratio.input-type`,
-`metric.filter`, `metric.time_granularity`, `params.window`, `params.grain_to_date`,
-`params.metrics`, `params.conversion_type_params`, `params.join_to_timespine`, `params.numerator`,
-`params.denominator`, `params.measure`, `params.expr`, `measure-input.filter`,
+`private`, `type.cumulative`, `type.derived`, `derived.quotient`, `type.conversion`,
+`ratio.input-type`, `metric.filter`, `metric.time_granularity`, `params.window`,
+`params.grain_to_date`, `params.metrics`, `params.conversion_type_params`,
+`params.join_to_timespine`, `params.numerator`, `params.denominator`, `params.measure`,
+`params.expr`, `measure-input.filter`,
 `measure-input.alias`, `measure-input.join_to_timespine`, `measure-input.fill_nulls_with`,
 `metric-input.numerator.filter`, `metric-input.numerator.alias`,
 `metric-input.numerator.offset_window`, `metric-input.numerator.offset_to_grain`,
@@ -247,32 +273,34 @@ has at the gap's path. One gap can be two rows: the `agg_params` of a percentile
 `legacy.agg_params.use_approximate_percentile`, `legacy.non-additive-dimension`, `legacy.expr`,
 `legacy.measure-name`, `legacy.metric-expr`, `v2.agg.sum_boolean`, `v2.agg.percentile`,
 `v2.agg.median`, `v2.agg_params.percentile`, `v2.agg_params.use_discrete_percentile`,
-`v2.agg_params.use_approximate_percentile`, `v2.non-additive-dimension`, `v2.no-expr`, `v2.expr`,
-`formula.table`, `parity.ratio-average`.
+`v2.agg_params.use_approximate_percentile`, `v2.non-additive-dimension`, `v2.metric-name`,
+`v2.expr`, `formula.table`, `parity.ratio-average`.
 
-**Refused** (10) — dbt refuses every entry built for the row.
+**Refused** (12) — dbt refuses every entry built for the row.
 
 `time.none-legacy`, `time.not-time`, `ratio.numerator-missing`, `ratio.denominator-missing`,
 `ratio.input-measures`, `metric.datatype`, `params.metric_aggregation_params`,
-`simple.both-or-neither`, `legacy.input-measures`, `v2.input-measures`.
+`simple.both-or-neither`, `legacy.input-measures`, `legacy.count-no-expr`, `v2.input-measures`,
+`v2.count-no-expr`.
 
-**Not carried** (3) — dbt accepts an entry built for the row, and none carries it.
+**Not carried** (2) — dbt accepts an entry built for the row, and none carries it.
 
-`params.cumulative_type_params`, `params.fill_nulls_with`, `parity.v2`.
+`params.cumulative_type_params`, `params.fill_nulls_with`.
 
-**No entry** (13) — no entry is built for the row: it turns on the artifact as a whole, on
+**No entry** (14) — no entry is built for the row: it turns on the artifact as a whole, on
 what dbt-core 1.12.6 writes the same for every entry, or on what the corpus holds the same for
 every entry — the contract's reference, pin, event time and grain keys, the database declared
 with the artifact, the project's quoting, and the native model's declaration of the grain
 table. dbt writes a semantic model's `relation_name` as the relation of the model it refers to,
 rendered by the adapter from the same database, schema and alias under the project's quoting:
 `relation.name` needs an artifact edited after dbt, `relation.name-unproven` an adapter or a
-quoting other than dbt-postgres's default, which quotes each part.
+quoting other than dbt-postgres's default, which quotes each part. `parity.ratio-dialects` needs
+a project of both dialects, and the corpus parses each dialect as a project of its own.
 
 `artifact.missing`, `artifact.invalid`, `artifact.version`, `artifact.ref`, `artifact.pin`,
 `relation.database-undeclared`, `relation.name`, `relation.name-unproven`, `parity.engine`,
 `parity.event-time-type`, `parity.event-time-outside-grain`, `parity.column-type`,
-`parity.ratio-float`.
+`parity.ratio-float`, `parity.ratio-dialects`.
 
 What dbt does with the constructs it does not carry:
 
@@ -288,14 +316,19 @@ What dbt does with the constructs it does not carry:
 - A V2 `percentile_type` of `discrete` sets `use_discrete_percentile`, `continuous` sets
   `use_approximate_percentile`, and another value — `approximate_continuous` — neither. The
   resolver leaves each percentile to review all the same (`v2.agg.percentile`).
-- A name dbt reserves (`null`) or with an upper-case letter is refused; `true` as a measure's
-  name and `current_date` as a time dimension's are taken, and give `legacy.measure-name` and
-  `time.name`.
+- A measure's or a dimension's name dbt reserves (`null`), and any name with an upper-case
+  letter, is refused; `true` as a measure's name, `current_date` as a time dimension's, and
+  `null` and `true` as a V2 metric's — dbt reserves no metric name — are taken, and give
+  `legacy.measure-name`, `time.name` and `v2.metric-name`.
+- A `count` without `expr`, which MetricFlow 0.213.0 does not build (it asks for `expr: 1`), is
+  refused: a legacy measure by dbt's validation; a V2 metric after dbt-core 1.12.6 has written
+  the artifact, when `dbt parse` fails converting it to an OSI document.
 - No V2 metric of the corpus resolves: dbt writes no `type_params` for a V2 time dimension
   spelled `dimension: time`, as the corpus spells it, so each V2 metric stops at
   `time.no-granularity` — but the one whose semantic model sets no aggregation time dimension
-  (`time.none-v2`) — and none reaches `parity.v2`. Spelled `dimension: {type: time}`, as
-  jaffle-shop spells it (below), the dimension gets `time_granularity: day`.
+  (`time.none-v2`). Spelled `dimension: {type: time}`, as jaffle-shop (below) and the parity
+  run spell it, the dimension gets `time_granularity: day`, and a V2 metric with no other gap
+  resolves.
 
 ## Public projects
 
@@ -310,9 +343,18 @@ reads each artifact, and every gap the projects give, for 54 metrics, is a row a
 their constructs is outside the inventory. dbt runs with `--no-version-check`, so jaffle-shop,
 which requires dbt `>=2.0.0`, is read by dbt-core 1.12.6. Its V2 time dimensions, spelled
 `dimension: {type: time}` with `granularity: day`, get `time_granularity: day`: time no longer
-stops a V2 metric of such a project, and one with no other gap reaches `parity.v2`.
+stops a V2 metric of such a project, and one with no other gap resolves.
 `tests/fixtures/dbt_semantic_manifest/public` keeps the records, not the artifacts (neither
 jaffle repository carries a licence), and `tests/test_dbt_public.py` holds them to the rows.
+D4 of [ADR 0012](../adr/0012-post-finish-development.md) resolved the records again on the
+artifacts the stand kept — `scripts/dbt_corpus.py again`, which checks the artifact's digest
+against the record — not parsing the projects again
+([report](../reviews/DECISIONOPS_DBT_COVERAGE_2026-11-13.md)): ten of the 54 metrics have no
+gap of their project, where F4 found four — the other six are jaffle-shop's V2 metrics
+without `expr` — and with a contract on its own table each of the ten resolves, on rows the
+parity run proved. D4b resolved them again once a derived quotient had a row of its own: one
+record changed, `jaffle_shop`, whose `average_order_value` (`lifetime_spend_pretax /
+count_lifetime_orders`) is `derived.quotient`, where it was `type.derived`.
 
 ## What the artifact does not show
 
@@ -323,8 +365,10 @@ metric review: at `time.no-granularity`, or at `time.none-v2` where its semantic
 aggregation time dimension. It does not guard the first: spelled `dimension: {type: time}`
 with `granularity: day`, the dimension gets its granularity from dbt-core 1.12.6 itself (F4,
 jaffle-shop), and the schema version tells nothing apart — `dsi_package_version` marks the
-package, not the schema (ADR 0008, item 6). Such a V2 metric with no other gap stops at
-`parity.v2` only, since no V2 row is proven. A V2 row joins the matrix only through a recorded
-parity run (the matrix is the run's `proven`), and that run compares MetricFlow with the
-reference SQL on the artifact as written: the fill value it lost is lost on both sides, so the
-run has to check that value apart.
+package, not the schema (ADR 0008, item 6). Such a V2 metric with no other gap resolves, on
+the V2 rows the parity run proved. Nor does it need guarding: MetricFlow reads the artifact as
+written and loses the fill value too. The run checked that apart — its V2 project fills a sum
+with `0` (`v2_amount_sum_filled`), dbt-core 1.12.6 writes `fill_nulls_with: null`, and
+MetricFlow and the reference give it the values of the same sum without the fill, NULL in a
+group whose column is all NULL. Where an artifact keeps the value, `params.fill_nulls_with`
+holds the metric review.

@@ -26,6 +26,8 @@ against a contract on ``dm.public_grain``. That is no table of the project: the 
 contract decides — the grain table, the event time column — are the contract's, the others
 the project's (``tests/test_dbt_public.py``). Like every dbt call here, it runs with
 ``--no-version-check``: a project that requires another dbt is read by this one all the same.
+``again`` reads and resolves the kept artifact of such a record anew, dbt not run, once the
+reader or the resolver has changed; the artifact must be the one the record names.
 
 Steps (the Mac stand)::
 
@@ -33,6 +35,7 @@ Steps (the Mac stand)::
     python scripts/dbt_corpus.py public --dbt DBT --project DIR [--add DIR=PLACE ...] \\
         [--flag NAME=JSON ...] \\
         --source "REPOSITORY@REVISION" --out RECORD [--artifact ARTIFACT]
+    python scripts/dbt_corpus.py again --record RECORD --artifact ARTIFACT
 
 ``DBT`` is the ``dbt`` of an environment with dbt-core and dbt-postgres. No database is
 reached: ``dbt parse`` alone, after ``dbt deps`` for a public project with packages, which
@@ -536,6 +539,13 @@ def _legacy_entries() -> list[Entry]:
             _measured(f"c_legacy_measure_name_{index}", _sum(name, None), "legacy.measure-name")
         )
     entries.append(
+        _measured(
+            "c_legacy_count_no_expr",
+            {"name": "c_count_no_expr", "agg": "count"},
+            "legacy.count-no-expr",
+        )
+    )
+    entries.append(
         _legacy(
             _simple("c_legacy_metric_expr", params={"expr": "gross_margin"}), "legacy.metric-expr"
         )
@@ -629,6 +639,17 @@ def _legacy_entries() -> list[Entry]:
                 "derived",
             ),
             "type.derived",
+        ),
+        _legacy(
+            _metric(
+                "c_derived_quotient",
+                {
+                    "expr": "gross_margin_total / revenue",
+                    "metrics": [{"name": "gross_margin_total"}, {"name": "revenue"}],
+                },
+                "derived",
+            ),
+            "derived.quotient",
         ),
         # dbt takes a conversion only between counts.
         _legacy(
@@ -751,8 +772,6 @@ def _v2_entries() -> list[Entry]:
     percentile = ("v2.agg.percentile", "v2.agg_params.percentile", NO_GRANULARITY)
     entries = [
         _v2("c_v2_plain", NO_GRANULARITY, also=()),
-        # Parity is asked of a formula with no other gap, and every V2 metric has one.
-        _v2("c_parity_v2", "parity.v2"),
         _v2("c_v2_agg_sum_boolean", "v2.agg.sum_boolean", agg="sum_boolean", expr="is_promo"),
         _v2(
             "c_v2_agg_percentile",
@@ -803,7 +822,7 @@ def _v2_entries() -> list[Entry]:
             "v2.non-additive-dimension",
             non_additive_dimension={"name": EVENT_TIME, "window_agg": "max"},
         ),
-        _v2("c_v2_no_expr", "v2.no-expr", expr=None),
+        _v2("c_v2_count_no_expr", "v2.count-no-expr", agg="count", expr=None),
         _v2("c_v2_expr_0", "v2.expr", expr="revenue - gross_margin"),
         _v2("c_v2_expr_1", "v2.expr", expr=1),
         _v2("c_v2_private", "private", hidden=True),
@@ -816,6 +835,9 @@ def _v2_entries() -> list[Entry]:
         _v2("c_v2_params_grain_to_date", "params.grain_to_date", grain_to_date="month"),
         _v2("c_v2_simple_neither", "simple.both-or-neither", also=(), agg=None),
     ]
+    # A metric without `expr` whose name is no column of the resolver's: a word SQL reads as a
+    # value — dbt reserves no metric name — and an upper-case one.
+    entries += [_v2(name, "v2.metric-name", expr=None) for name in ("null", "Gross_Margin", "true")]
     entries.append(
         Entry(
             "c_v2_params_metric_aggregation_params",
@@ -1015,6 +1037,7 @@ _CREATED = re.compile(r"created_at=[0-9.]+")
 _FILE = re.compile(r"FilePath\(searched_path='([^']*)', relative_path='([^']*)'[^)]*\)")
 _YAML = re.compile(r"( @ \w+: )\{.*\}( - at path)")
 _LONG = 300
+_TRACEBACK = "Traceback (most recent call last):"
 
 
 def _environment(home: Path) -> dict[str, str]:
@@ -1030,7 +1053,8 @@ def _environment(home: Path) -> dict[str, str]:
 
 
 def _excerpt(output: str, where: Path) -> str:
-    """dbt's reasons, from its first warning or error: no times, no file stamps, long lines cut."""
+    """dbt's reasons, from its first warning or error to a traceback, which is Python's and
+    names the paths of the run: no times, no file stamps, long lines cut."""
     lines = []
     for raw in output.splitlines():
         line = _TIMESTAMP.sub("", raw).rstrip().replace(str(where), "<project>")
@@ -1043,7 +1067,8 @@ def _excerpt(output: str, where: Path) -> str:
     start = next(
         (i for i, line in enumerate(lines) if line.startswith(("[WARNING]", "[ERROR]"))), 0
     )
-    return "\n".join(lines[start : start + 12])
+    end = next((i for i in range(start, len(lines)) if lines[i].startswith(_TRACEBACK)), len(lines))
+    return "\n".join(lines[start : min(end, start + 12)])
 
 
 def _dbt(dbt: str, args: Sequence[str], home: Path) -> subprocess.CompletedProcess[str]:
@@ -1243,18 +1268,41 @@ def public(
         if artifact is not None:
             artifact.parent.mkdir(parents=True, exist_ok=True)
             artifact.write_bytes(raw)
-        read = read_semantic_manifest(raw)
-        record["artifact"] = digest_bytes(raw)
-        record["problems"] = [
-            {"code": p.code, "path": p.path, "reason": p.reason} for p in read.problems
-        ]
-        if read.manifest is not None:
-            names = sorted(metric["name"] for metric in json.loads(raw)["metrics"])
-            record["outcomes"] = {name: outcome(read, name, PUBLIC_TABLE) for name in names}
+        record.update(_resolved(raw))
+    _write(out, record)
+    return 0
+
+
+def _resolved(raw: bytes) -> dict[str, Any]:
+    """What the reader and the resolver say of the artifact of a public project."""
+    read = read_semantic_manifest(raw)
+    found: dict[str, Any] = {
+        "artifact": digest_bytes(raw),
+        "problems": [{"code": p.code, "path": p.path, "reason": p.reason} for p in read.problems],
+    }
+    if read.manifest is not None:
+        names = sorted(metric["name"] for metric in json.loads(raw)["metrics"])
+        found["outcomes"] = {name: outcome(read, name, PUBLIC_TABLE) for name in names}
+    return found
+
+
+def _write(out: Path, record: dict[str, Any]) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(record, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
     )
+
+
+def again(record: Path, artifact: Path) -> int:
+    """Read and resolve again the artifact a public record was made from, kept with `public
+    --artifact`: dbt is not run, and what the record says of dbt and the project stays. The
+    artifact must be the one the record names."""
+    found = json.loads(record.read_bytes())
+    raw = artifact.read_bytes()
+    if found.get("artifact") != digest_bytes(raw):
+        raise SystemExit(f"{artifact} is not the artifact {record} was made from")
+    kept = {key: value for key, value in found.items() if key not in ("problems", "outcomes")}
+    _write(record, {**kept, **_resolved(raw)})
     return 0
 
 
@@ -1306,7 +1354,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     reading.add_argument("--out", type=Path, required=True)
     reading.add_argument("--artifact", type=Path, help="where to keep the artifact dbt wrote")
+    rereading = commands.add_parser(
+        "again", help="read and resolve again the kept artifact of a public record"
+    )
+    rereading.add_argument("--record", type=Path, required=True)
+    rereading.add_argument("--artifact", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.command == "again":
+        return again(args.record, args.artifact)
     if args.command == "public":
         names = [name for name, _ in args.flag]
         if len(set(names)) != len(names):

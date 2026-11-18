@@ -1,0 +1,65 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "annotation_layers": [],
+    "datasource": "11__table",
+    "granularity_sqla": "dttm",
+    "groupby": [],
+    "limit": "100",
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "value"
+     },
+     "expressionType": "SIMPLE",
+     "label": "Value"
+    },
+    "rotation": "square",
+    "row_limit": 50000,
+    "series": "short_phrase",
+    "size_from": "10",
+    "size_to": "70",
+    "slice_id": 103,
+    "time_range": "100 years ago : now",
+    "viz_type": "word_cloud"
+   },
+   "id": 103,
+   "slice_name": "Unicode Cloud"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T10:21:33.010405",
+  "dashboard_title": "Unicode Test",
+  "id": 10,
+  "json_metadata": "{}",
+  "slug": "unicode-test"
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "short_phrase",
+     "expression": "",
+     "is_dttm": false,
+     "type": "VARCHAR(10)"
+    },
+    {
+     "column_name": "value",
+     "expression": "",
+     "is_dttm": false,
+     "type": "FLOAT"
+    }
+   ],
+   "database": {
+    "backend": "sqlite",
+    "id": 1
+   },
+   "id": 11,
+   "metrics": [],
+   "schema": "main",
+   "sql": null,
+   "table_name": "unicode_test"
+  }
+ ]
+}

@@ -10,7 +10,9 @@ metric needs. The artifacts stay on the stand — neither jaffle repository carr
 `tests/fixtures/dbt_semantic_manifest/public` keeps the records. These tests hold the records to
 the script and to the inventory: every gap a project gives, not one the contract decides, is one
 row of `docs/specs/dbt-formula-inventory.md`, told by the resolver's reason; and they hold the
-table of the report to the records.
+table of the report to the records. A change of the resolver is answered by resolving the
+records again on the artifacts the stand kept (`again`, ADR 0012 D4), not by parsing the
+projects again.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from tests.test_dbt_corpus import CORPUS, RAW, RESULT, SCRIPT, TELLS, UNNESTED, 
 from tests.test_metricflow_formula import FIXTURES, REPO
 
 PUBLIC = FIXTURES / "public"
-REPORT = REPO / "docs" / "reviews" / "DECISIONOPS_DBT_PUBLIC_2026-11-10.md"
+REPORT = REPO / "docs" / "reviews" / "DECISIONOPS_DBT_COVERAGE_2026-11-13.md"
 RECORDS: dict[str, dict[str, Any]] = {
     path.stem: json.loads(path.read_bytes()) for path in sorted(PUBLIC.glob("*.json"))
 }
@@ -115,7 +117,7 @@ def test_a_metric_free_of_project_gaps_stops_at_the_contracts_table() -> None:
                     name,
                     metric,
                 )
-    assert free == 4
+    assert free == 10
 
 
 def test_the_records_are_of_the_versions_of_the_corpus() -> None:
@@ -203,18 +205,34 @@ def test_the_report_names_each_metric_only_the_contract_stops() -> None:
         for metric, found in record["outcomes"].items()
         if not _own(found.get("gaps", []))
     ]
-    assert len(free) == 4
+    assert len(free) == 10
     assert [metric for metric in free if f"`{metric}`" not in text] == []
     total = sum(len(record["outcomes"]) for record in READ.values())
-    assert f"Из {total} метрик гэпов проекта нет у четырёх" in text
+    assert f"Из {total} метрик гэпов проекта нет у десяти" in text
     assert f"Остальные {total - len(free)}" in text
 
 
-def test_no_v2_row_of_the_parity_matrix_is_proven() -> None:
-    """Why the report says the V2 metrics free of project gaps would stop at `parity.v2` on a
-    table of their own: the corpus's proven rows are legacy rows only."""
-    assert SCRIPT.PROVEN_PARITY
-    assert [row for row in SCRIPT.PROVEN_PARITY if "v2." in row] == []
+#: The rows of the parity matrix the report says the metrics free of project gaps reach with a
+#: contract on their own table (PostgreSQL, the metric's column `numeric(18,2)`), as the stand's
+#: artifacts answer: the records keep no artifact, so the resolution is not repeated here.
+OWN_TABLE_ROWS = (
+    "postgres.date:legacy.measure_without_expr",
+    "postgres.date:legacy.sum.decimal",
+    "postgres.date:v2.average.decimal",
+    "postgres.date:v2.count_distinct.decimal",
+    "postgres.date:v2.metric_without_expr",
+    "postgres.date:v2.sum.decimal",
+)
+
+
+def test_the_rows_a_free_metric_reaches_on_its_own_table_are_proven() -> None:
+    """Why the report says each metric free of project gaps would resolve on a table of its
+    own: the rows it reaches there are proven, the V2 ones too — F4 stopped such a V2 metric at
+    `parity.v2`, when no V2 row was."""
+    text = REPORT.read_text(encoding="utf-8")
+    for row in OWN_TABLE_ROWS:
+        assert row in SCRIPT.PROVEN_PARITY, row
+        assert f"`{row}`" in text, row
 
 
 # --- the script's `public`, with dbt answering as told ------------------------------------
@@ -311,6 +329,67 @@ def test_public_parses_a_copy_with_its_flags_and_records_the_resolver(
         "artifact": digest_bytes(RAW["legacy"]),
         "problems": [],
         "outcomes": {name: SCRIPT.outcome(read, name, SCRIPT.PUBLIC_TABLE) for name in names},
+    }
+
+
+def test_again_resolves_a_record_anew_on_the_artifact_it_was_made_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _dbt_answering(monkeypatch)
+    out, artifact = tmp_path / "shop.json", tmp_path / "kept" / "semantic_manifest.json"
+    assert SCRIPT.public("dbt", _project(tmp_path), out, source="here@1", artifact=artifact) == 0
+    made, ran = out.read_bytes(), len(calls)
+    stale = json.loads(made)
+    stale["problems"] = [{"code": "gap.old", "path": "$", "reason": "old"}]
+    stale["outcomes"] = {"old": {"gaps": []}}
+    out.write_text(json.dumps(stale), encoding="utf-8", newline="\n")
+    assert SCRIPT.main(["again", "--record", str(out), "--artifact", str(artifact)]) == 0
+    assert out.read_bytes() == made
+    assert len(calls) == ran
+
+
+def test_again_takes_only_the_artifact_the_record_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _dbt_answering(monkeypatch)
+    out, artifact = tmp_path / "shop.json", tmp_path / "kept" / "semantic_manifest.json"
+    assert SCRIPT.public("dbt", _project(tmp_path), out, source="here@1", artifact=artifact) == 0
+    made = out.read_bytes()
+    other = tmp_path / "other.json"
+    other.write_bytes(RAW["v2"])
+    with pytest.raises(SystemExit, match="is not the artifact"):
+        SCRIPT.again(out, other)
+    assert out.read_bytes() == made
+    # nor any for a record of a project dbt refused, which names none
+    refused = tmp_path / "refused.json"
+    refused.write_text(json.dumps({"source": "here@1", "refused": "no"}), encoding="utf-8")
+    with pytest.raises(SystemExit, match="is not the artifact"):
+        SCRIPT.again(refused, artifact)
+
+
+def test_again_keeps_no_outcome_of_an_artifact_the_reader_no_longer_reads(tmp_path: Path) -> None:
+    """A record made when the reader read its artifact, which the reader now refuses: the
+    outcomes go with the reading, and the reader's problems take their place."""
+    raw = b"{}"
+    artifact, out = tmp_path / "semantic_manifest.json", tmp_path / "shop.json"
+    artifact.write_bytes(raw)
+    made = {
+        "source": "here@1",
+        "flags": {},
+        "require_dbt_version": None,
+        "versions": RESULT["versions"],
+        "artifact": digest_bytes(raw),
+        "problems": [],
+        "outcomes": {"old": {"gaps": []}},
+    }
+    out.write_text(json.dumps(made), encoding="utf-8", newline="\n")
+    assert SCRIPT.again(out, artifact) == 0
+    read = SCRIPT.read_semantic_manifest(raw)
+    assert read.manifest is None and read.problems
+    kept = ("source", "flags", "require_dbt_version", "versions", "artifact")
+    assert json.loads(out.read_bytes()) == {
+        **{key: made[key] for key in kept},
+        "problems": [{"code": p.code, "path": p.path, "reason": p.reason} for p in read.problems],
     }
 
 

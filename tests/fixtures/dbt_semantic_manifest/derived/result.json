@@ -1,0 +1,419 @@
+{
+ "artifact_digest": "sha256:b1c6dcced03f3735fc13b501b7ff9e3a47e4cec6d6267101ab80e46148a3d4ef",
+ "metrics": {
+  "d_amount_sum_by_qty_count": {
+   "outcome": {
+    "error": "22012"
+   },
+   "sql": "-- Compute Metrics via Expressions\n-- Write to DataTable\nSELECT\n  metric_time__day\n  , sale__store_id\n  , amount_sum / qty_count AS d_amount_sum_by_qty_count\nFROM (\n  -- Aggregate Inputs for Simple Metrics\n  -- Compute Metrics via Expressions\n  SELECT\n    metric_time__day\n    , sale__store_id\n    , SUM(__amount_sum) AS amount_sum\n    , SUM(__qty_count) AS qty_count\n  FROM (\n    -- Read Elements From Semantic Model 'sales'\n    -- Metric Time Dimension 'date'\n    -- Select: ['__amount_sum', '__qty_count', 'sale__store_id', 'metric_time__day']\n    -- Select: ['__amount_sum', '__qty_count', 'sale__store_id', 'metric_time__day']\n    SELECT\n      DATE_TRUNC('day', date) AS metric_time__day\n      , store_id AS sale__store_id\n      , amount AS __amount_sum\n      , CASE WHEN qty IS NOT NULL THEN 1 ELSE 0 END AS __qty_count\n    FROM \"parity\".\"dm\".\"sales\" sales_src_10000\n  ) subq_3\n  GROUP BY\n    metric_time__day\n    , sale__store_id\n) subq_5"
+  },
+  "d_amount_sum_by_qty_nn_count": {
+   "outcome": {
+    "rows": [
+     [
+      "2026-01-01",
+      1,
+      "10.1250000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-01",
+      2,
+      null,
+      "numeric"
+     ],
+     [
+      "2026-01-02",
+      1,
+      "-2.6250000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-02",
+      2,
+      "3.3300000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-02",
+      3,
+      "0E-20",
+      "numeric"
+     ],
+     [
+      "2026-01-04",
+      1,
+      "500000000000.00000000",
+      "numeric"
+     ],
+     [
+      "2026-01-04",
+      2,
+      "7.7700000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-05",
+      1,
+      null,
+      "numeric"
+     ],
+     [
+      "2026-01-05",
+      2,
+      "-1.00000000000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-06",
+      1,
+      "133333.336666666667",
+      "numeric"
+     ]
+    ]
+   },
+   "sql": "-- Compute Metrics via Expressions\n-- Write to DataTable\nSELECT\n  metric_time__day\n  , sale__store_id\n  , amount_sum / qty_nn_count AS d_amount_sum_by_qty_nn_count\nFROM (\n  -- Aggregate Inputs for Simple Metrics\n  -- Compute Metrics via Expressions\n  SELECT\n    metric_time__day\n    , sale__store_id\n    , SUM(__amount_sum) AS amount_sum\n    , SUM(__qty_nn_count) AS qty_nn_count\n  FROM (\n    -- Read Elements From Semantic Model 'sales'\n    -- Metric Time Dimension 'date'\n    -- Select: ['__amount_sum', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    -- Select: ['__amount_sum', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    SELECT\n      DATE_TRUNC('day', date) AS metric_time__day\n      , store_id AS sale__store_id\n      , amount AS __amount_sum\n      , CASE WHEN qty_nn IS NOT NULL THEN 1 ELSE 0 END AS __qty_nn_count\n    FROM \"parity\".\"dm\".\"sales\" sales_src_10000\n  ) subq_3\n  GROUP BY\n    metric_time__day\n    , sale__store_id\n) subq_5"
+  },
+  "d_amount_sum_by_qty_nn_count_aliased": {
+   "outcome": {
+    "rows": [
+     [
+      "2026-01-01",
+      1,
+      "10.1250000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-01",
+      2,
+      null,
+      "numeric"
+     ],
+     [
+      "2026-01-02",
+      1,
+      "-2.6250000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-02",
+      2,
+      "3.3300000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-02",
+      3,
+      "0E-20",
+      "numeric"
+     ],
+     [
+      "2026-01-04",
+      1,
+      "500000000000.00000000",
+      "numeric"
+     ],
+     [
+      "2026-01-04",
+      2,
+      "7.7700000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-05",
+      1,
+      null,
+      "numeric"
+     ],
+     [
+      "2026-01-05",
+      2,
+      "-1.00000000000000000000",
+      "numeric"
+     ],
+     [
+      "2026-01-06",
+      1,
+      "133333.336666666667",
+      "numeric"
+     ]
+    ]
+   },
+   "sql": "-- Compute Metrics via Expressions\n-- Write to DataTable\nSELECT\n  metric_time__day\n  , sale__store_id\n  , top_value / bottom_value AS d_amount_sum_by_qty_nn_count_aliased\nFROM (\n  -- Aggregate Inputs for Simple Metrics\n  -- Compute Metrics via Expressions\n  SELECT\n    metric_time__day\n    , sale__store_id\n    , SUM(__amount_sum) AS top_value\n    , SUM(__qty_nn_count) AS bottom_value\n  FROM (\n    -- Read Elements From Semantic Model 'sales'\n    -- Metric Time Dimension 'date'\n    -- Select: ['__amount_sum', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    -- Select: ['__amount_sum', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    SELECT\n      DATE_TRUNC('day', date) AS metric_time__day\n      , store_id AS sale__store_id\n      , amount AS __amount_sum\n      , CASE WHEN qty_nn IS NOT NULL THEN 1 ELSE 0 END AS __qty_nn_count\n    FROM \"parity\".\"dm\".\"sales\" sales_src_10000\n  ) subq_3\n  GROUP BY\n    metric_time__day\n    , sale__store_id\n) subq_5"
+  },
+  "d_qty_nn_max_by_qty_nn_count": {
+   "outcome": {
+    "rows": [
+     [
+      "2026-01-01",
+      1,
+      "0",
+      "bigint"
+     ],
+     [
+      "2026-01-01",
+      2,
+      "0",
+      "bigint"
+     ],
+     [
+      "2026-01-02",
+      1,
+      "0",
+      "bigint"
+     ],
+     [
+      "2026-01-02",
+      2,
+      "3",
+      "bigint"
+     ],
+     [
+      "2026-01-02",
+      3,
+      "0",
+      "bigint"
+     ],
+     [
+      "2026-01-04",
+      1,
+      "2",
+      "bigint"
+     ],
+     [
+      "2026-01-04",
+      2,
+      "0",
+      "bigint"
+     ],
+     [
+      "2026-01-05",
+      1,
+      "3",
+      "bigint"
+     ],
+     [
+      "2026-01-05",
+      2,
+      "-3",
+      "bigint"
+     ],
+     [
+      "2026-01-06",
+      1,
+      "33333333333333333",
+      "bigint"
+     ]
+    ]
+   },
+   "sql": "-- Compute Metrics via Expressions\n-- Write to DataTable\nSELECT\n  metric_time__day\n  , sale__store_id\n  , qty_nn_max / qty_nn_count AS d_qty_nn_max_by_qty_nn_count\nFROM (\n  -- Aggregate Inputs for Simple Metrics\n  -- Compute Metrics via Expressions\n  SELECT\n    metric_time__day\n    , sale__store_id\n    , MAX(__qty_nn_max) AS qty_nn_max\n    , SUM(__qty_nn_count) AS qty_nn_count\n  FROM (\n    -- Read Elements From Semantic Model 'sales'\n    -- Metric Time Dimension 'date'\n    -- Select: ['__qty_nn_max', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    -- Select: ['__qty_nn_max', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    SELECT\n      DATE_TRUNC('day', date) AS metric_time__day\n      , store_id AS sale__store_id\n      , qty_nn AS __qty_nn_max\n      , CASE WHEN qty_nn IS NOT NULL THEN 1 ELSE 0 END AS __qty_nn_count\n    FROM \"parity\".\"dm\".\"sales\" sales_src_10000\n  ) subq_3\n  GROUP BY\n    metric_time__day\n    , sale__store_id\n) subq_5"
+  },
+  "r_amount_sum_by_qty_count": {
+   "outcome": {
+    "rows": [
+     [
+      "2026-01-01",
+      1,
+      "13.5",
+      "double precision"
+     ],
+     [
+      "2026-01-01",
+      2,
+      null,
+      "double precision"
+     ],
+     [
+      "2026-01-02",
+      1,
+      "-2.625",
+      "double precision"
+     ],
+     [
+      "2026-01-02",
+      2,
+      "3.33",
+      "double precision"
+     ],
+     [
+      "2026-01-02",
+      3,
+      "0",
+      "double precision"
+     ],
+     [
+      "2026-01-04",
+      1,
+      "500000000000",
+      "double precision"
+     ],
+     [
+      "2026-01-04",
+      2,
+      null,
+      "double precision"
+     ],
+     [
+      "2026-01-05",
+      1,
+      null,
+      "double precision"
+     ],
+     [
+      "2026-01-05",
+      2,
+      "-1",
+      "double precision"
+     ],
+     [
+      "2026-01-06",
+      1,
+      "133333.33666666667",
+      "double precision"
+     ]
+    ]
+   },
+   "sql": "-- Compute Metrics via Expressions\n-- Write to DataTable\nSELECT\n  metric_time__day\n  , sale__store_id\n  , CAST(amount_sum AS DOUBLE PRECISION) / CAST(NULLIF(qty_count, 0) AS DOUBLE PRECISION) AS r_amount_sum_by_qty_count\nFROM (\n  -- Aggregate Inputs for Simple Metrics\n  -- Compute Metrics via Expressions\n  SELECT\n    metric_time__day\n    , sale__store_id\n    , SUM(__amount_sum) AS amount_sum\n    , SUM(__qty_count) AS qty_count\n  FROM (\n    -- Read Elements From Semantic Model 'sales'\n    -- Metric Time Dimension 'date'\n    -- Select: ['__amount_sum', '__qty_count', 'sale__store_id', 'metric_time__day']\n    -- Select: ['__amount_sum', '__qty_count', 'sale__store_id', 'metric_time__day']\n    SELECT\n      DATE_TRUNC('day', date) AS metric_time__day\n      , store_id AS sale__store_id\n      , amount AS __amount_sum\n      , CASE WHEN qty IS NOT NULL THEN 1 ELSE 0 END AS __qty_count\n    FROM \"parity\".\"dm\".\"sales\" sales_src_10000\n  ) subq_3\n  GROUP BY\n    metric_time__day\n    , sale__store_id\n) subq_5"
+  },
+  "r_amount_sum_by_qty_nn_count": {
+   "outcome": {
+    "rows": [
+     [
+      "2026-01-01",
+      1,
+      "10.125",
+      "double precision"
+     ],
+     [
+      "2026-01-01",
+      2,
+      null,
+      "double precision"
+     ],
+     [
+      "2026-01-02",
+      1,
+      "-2.625",
+      "double precision"
+     ],
+     [
+      "2026-01-02",
+      2,
+      "3.33",
+      "double precision"
+     ],
+     [
+      "2026-01-02",
+      3,
+      "0",
+      "double precision"
+     ],
+     [
+      "2026-01-04",
+      1,
+      "500000000000",
+      "double precision"
+     ],
+     [
+      "2026-01-04",
+      2,
+      "7.77",
+      "double precision"
+     ],
+     [
+      "2026-01-05",
+      1,
+      null,
+      "double precision"
+     ],
+     [
+      "2026-01-05",
+      2,
+      "-1",
+      "double precision"
+     ],
+     [
+      "2026-01-06",
+      1,
+      "133333.33666666667",
+      "double precision"
+     ]
+    ]
+   },
+   "sql": "-- Compute Metrics via Expressions\n-- Write to DataTable\nSELECT\n  metric_time__day\n  , sale__store_id\n  , CAST(amount_sum AS DOUBLE PRECISION) / CAST(NULLIF(qty_nn_count, 0) AS DOUBLE PRECISION) AS r_amount_sum_by_qty_nn_count\nFROM (\n  -- Aggregate Inputs for Simple Metrics\n  -- Compute Metrics via Expressions\n  SELECT\n    metric_time__day\n    , sale__store_id\n    , SUM(__amount_sum) AS amount_sum\n    , SUM(__qty_nn_count) AS qty_nn_count\n  FROM (\n    -- Read Elements From Semantic Model 'sales'\n    -- Metric Time Dimension 'date'\n    -- Select: ['__amount_sum', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    -- Select: ['__amount_sum', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    SELECT\n      DATE_TRUNC('day', date) AS metric_time__day\n      , store_id AS sale__store_id\n      , amount AS __amount_sum\n      , CASE WHEN qty_nn IS NOT NULL THEN 1 ELSE 0 END AS __qty_nn_count\n    FROM \"parity\".\"dm\".\"sales\" sales_src_10000\n  ) subq_3\n  GROUP BY\n    metric_time__day\n    , sale__store_id\n) subq_5"
+  },
+  "r_qty_nn_max_by_qty_nn_count": {
+   "outcome": {
+    "rows": [
+     [
+      "2026-01-01",
+      1,
+      "0.5",
+      "double precision"
+     ],
+     [
+      "2026-01-01",
+      2,
+      "0",
+      "double precision"
+     ],
+     [
+      "2026-01-02",
+      1,
+      "0",
+      "double precision"
+     ],
+     [
+      "2026-01-02",
+      2,
+      "3",
+      "double precision"
+     ],
+     [
+      "2026-01-02",
+      3,
+      "0",
+      "double precision"
+     ],
+     [
+      "2026-01-04",
+      1,
+      "2",
+      "double precision"
+     ],
+     [
+      "2026-01-04",
+      2,
+      "0",
+      "double precision"
+     ],
+     [
+      "2026-01-05",
+      1,
+      "3",
+      "double precision"
+     ],
+     [
+      "2026-01-05",
+      2,
+      "-3",
+      "double precision"
+     ],
+     [
+      "2026-01-06",
+      1,
+      "33333333333333332",
+      "double precision"
+     ]
+    ]
+   },
+   "sql": "-- Compute Metrics via Expressions\n-- Write to DataTable\nSELECT\n  metric_time__day\n  , sale__store_id\n  , CAST(qty_nn_max AS DOUBLE PRECISION) / CAST(NULLIF(qty_nn_count, 0) AS DOUBLE PRECISION) AS r_qty_nn_max_by_qty_nn_count\nFROM (\n  -- Aggregate Inputs for Simple Metrics\n  -- Compute Metrics via Expressions\n  SELECT\n    metric_time__day\n    , sale__store_id\n    , MAX(__qty_nn_max) AS qty_nn_max\n    , SUM(__qty_nn_count) AS qty_nn_count\n  FROM (\n    -- Read Elements From Semantic Model 'sales'\n    -- Metric Time Dimension 'date'\n    -- Select: ['__qty_nn_max', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    -- Select: ['__qty_nn_max', '__qty_nn_count', 'sale__store_id', 'metric_time__day']\n    SELECT\n      DATE_TRUNC('day', date) AS metric_time__day\n      , store_id AS sale__store_id\n      , qty_nn AS __qty_nn_max\n      , CASE WHEN qty_nn IS NOT NULL THEN 1 ELSE 0 END AS __qty_nn_count\n    FROM \"parity\".\"dm\".\"sales\" sales_src_10000\n  ) subq_3\n  GROUP BY\n    metric_time__day\n    , sale__store_id\n) subq_5"
+  }
+ },
+ "recipe": "sha256:7c48d21936022e58a325769e9bc7a7428c819dc94f8272be28f142cae366c054",
+ "versions": {
+  "dbt-core": "1.12.6",
+  "metricflow": "0.213.0",
+  "postgres": "PostgreSQL 16.15 (Homebrew) on x86_64-apple-darwin22.6.0, compiled by Apple clang version 14.0.3 (clang-1403.0.22.14.1), 64-bit"
+ }
+}

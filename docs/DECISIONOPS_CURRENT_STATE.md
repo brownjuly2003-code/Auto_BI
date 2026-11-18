@@ -1,22 +1,20 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-10 · **Версии evidence:** `VERIFIER_VERSION=134`, `CHECK_VERSION=84`
+**Обновлено:** 2026-11-17 · **Версии evidence:** `VERIFIER_VERSION=139`, `CHECK_VERSION=86`
 (что меняла каждая — [spec](specs/evidence-format-versions.md))
 
 Здесь только то, что работает, что не реализовано и что дальше. Поведение описывают
 [specs](README.md#поведенческие-контракты-decisionops), дизайн —
 [архитектура](DECISIONOPS_ARCHITECTURE.md), срезы —
 [журнал статуса](history/DECISIONOPS_STATUS_LOG.md).
-Прежний подробный текст файла — `git show 5f7b487:docs/DECISIONOPS_CURRENT_STATE.md`.
 
 **Стадия.** Release gate bootstrap завершён; impact доходит до чарта; read-only capture
 reviewed-запроса проверен на живых PostgreSQL и ClickHouse; evidence подписывается Ed25519
-(opt-in); offline investigation alpha разрешён. Закрыты этапы hardening (2026-11-03),
-мутационного smoke и внешнего источника формул dbt (ADR 0008, S1–S5d, 2026-11-07);
-финишная черта ADR 0010 пройдена 2026-11-10.
+(opt-in); offline investigation alpha разрешён. Закрыты этапы hardening, мутационного
+smoke и формул dbt (ADR 0008).
 Owner outcome (human/design-partner) не измеряется
 ([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Код — в `main` публичного репозитория
-baseline, пакет `autobi-agent` `0.6.0` не публикуется
+baseline; в checkout — `autobi-agent` `0.7.0`, без публикации пакета и тега
 ([ADR 0011](adr/0011-public-repository.md)).
 
 ## Коротко
@@ -41,12 +39,16 @@ reviewed asset SQL -> read-only capture -> canonical ResultSet + attestation -> 
   кандидатного числа (без attestation — `provenance.unattested`), `assets.invalidated` сверяет
   reviewed-запрос со snapshot'ом ([spec](specs/asset-query-governance.md)).
   `--{side}-semantic-manifest` берёт формулы из dbt, `--signing-key` подписывает manifest.
+  `--pr-comment` — комментарий PR, его публикует `action.yml`
+  ([spec](specs/pull-request-comment.md)).
 - `auto_bi decision capture` — исполняет reviewed SQL positive asset'а read-only и пишет
   canonical result с attestation, привязанной к digest кандидатного snapshot'а.
 - `auto_bi decision evidence` — пересчитывает digest каждого artifact и проверяет подпись
   против pinned `--trust-key` ([ADR 0005](adr/0005-ed25519-evidence-trust-root.md)).
-- `auto_bi decision pin` — печатает pin каждой метрики dbt `semantic_manifest.json`;
-  `auto_bi decision runs` — список локальных прогонов без проверки целостности.
+- `decision pin` — pin метрик `semantic_manifest.json`; `decision runs` — прогоны без
+  проверки целостности; `decision mcp` — команды и `impact` как read-only MCP на stdio
+  ([spec](specs/mcp-server.md)); `decision inventory` — спеки `--dashboards` из Superset
+  ([spec](specs/superset-inventory.md)).
 - Без `--dwh` engine checks дают `check.not_configured`; с `--dwh` (`clickhouse`, `greenplum`,
   `greengage`, `postgres`) —
   `dwh.access`, `dwh.freshness`, `dwh.physical`, `dwh.security`, `dwh.cost`.
@@ -73,7 +75,8 @@ investigation: четыре pure version-pinned skill над supplied canonical 
   до плитки формула не разрешается (`chart.formula_untyped`).
 - Chart-разрешение — не lineage: `computes_metric` для operator SQL не заявляется,
   неразобранный SQL — `chart.opaque_sql`; детектор скрытого чтения знает именованный набор
-  конструкций, конструкция вне него — дыра детектора.
+  конструкций, конструкция вне него — дыра детектора. Инвентарь Superset типизирует лишь
+  точные формы IR, прочее — завышающий SQL (`chart.sql_partial`); >12 чартов — отказ.
 - Governance reviewed-запроса отвечает «объявлено ли поле», а не «откуда значение»; что нельзя
   приписать без догадки, — `asset.query_fields_unchecked`. Связывание с `WITH` и CTE
   консервативно там, где оно неоднозначно (ARCHITECTURE §7.5).
@@ -84,7 +87,7 @@ investigation: четыре pure version-pinned skill над supplied canonical 
   exact-query scanned bytes (ARCHITECTURE §8.2).
 - Gate сам не исполняет **verified-asset SQL** — это делает `decision capture`. Подпись
   аутентифицирует producer и bundle, но не доказывает, что capture runner исполнил запрос.
-- Production-certified brief, scheduler, PostgreSQL platform runtime, REST/MCP/actions,
+- Production-certified brief, scheduler, PostgreSQL platform runtime, REST/actions,
   **Ossie**, **MetricFlow** как движок запросов и **column-level lineage** не реализованы. Из
   dbt читаются только формулы `semantic_manifest.json`; каждая причина остаться `external_ref` —
   строка [инвентаря](specs/dbt-formula-inventory.md); три публичных проекта новых не дали.
@@ -113,22 +116,23 @@ PEM вне checkout и evidence.
 
 ## Что делать дальше
 
-Финишная черта [ADR 0010](adr/0010-finish-line.md) пройдена 2026-11-10: F1–F6 сделаны,
-версия `0.6.0`, полный `ci_local` на финальном коммите — в
-[журнале статуса](history/DECISIONOPS_STATUS_LOG.md). Новая работа — только новым
-решением владельца и новым ADR; находки — в [бэклог](DECISIONOPS_BACKLOG.md).
+Финиш [ADR 0010](adr/0010-finish-line.md) — 2026-11-10, `0.6.0`. D1–D6
+[ADR 0012](adr/0012-post-finish-development.md) и E1 — в локальной ветке `decisionops-backlog`.
+План [ADR 0013](adr/0013-entry-points-to-proven-path.md) принят 2026-11-17: основной путь
+E1–E3 (E2 — публикация, по слову владельца), расширения E4–E7; прочее — в
+[бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:
 
 - PostgreSQL scanned bytes — только с trusted provider/extension и его контрактом.
 - Подпись самим capture runner — нужна trusted boundary, где private key недоступен вызывающему.
-- Scheduler, PostgreSQL runtime, REST/MCP, notifications, actions.
+- Scheduler, PostgreSQL runtime, REST, notifications, actions (кроме D5 ADR 0012).
 
 ## Решения для текущего scope
 
 1. Development gate — модельное ревью Astra xhigh
-   ([ADR 0006](adr/0006-modelled-review-development-gate.md)); пока у владельца нет лимита
-   Codex — независимый Opus-субагент и мутанты (его выбор 2026-11-07). Human evidence и
-   production acceptance им не заявляются.
+   ([ADR 0006](adr/0006-modelled-review-development-gate.md)), с 2026-11-17 Astra xhigh и
+   исполнитель срезов (слово владельца); плюс мутанты. Human evidence и production acceptance
+   им не заявляются.
 2. Evidence: `integrity=content_hashed` или opt-in `integrity=signed` (Ed25519, ADR 0005).
 3. Investigation alpha ограничен supplied results и локальными artifacts.

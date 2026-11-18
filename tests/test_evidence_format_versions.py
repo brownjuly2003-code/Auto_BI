@@ -31,8 +31,8 @@ MOST_KEPT_IN_CODE = 5
 #: The bound sits right below the code's window, so an entry the code lets go is pinned at once;
 #: an edit to an old entry is a decision to update the digest here, not a slip.
 FROZEN = {
-    "Verifier": (129, "a32273fabaf66e5e8fb44ade3174457f786007e04634890e0ab31d68cb31223f"),
-    "Check": (80, "20cd547a0b4760023412e74340f5fbd9d75e18cf2247c6a966c36ffefb05abd7"),
+    "Verifier": (134, "6b20b50ff856ab3ea2f88e9d5a513c0d5e05fe74733a6455d87238eaa16e33ea"),
+    "Check": (81, "624ad44cf7f2b30d9d284cb10a6a5649cde0b79b14c43e2cf8830fea24a860c8"),
 }
 _CODE_ENTRY = re.compile(r"^#: (\d+) — (.*)$")
 

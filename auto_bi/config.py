@@ -572,6 +572,11 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    # Read the switch before constructing Settings: a checkout's dotenv must never
+    # choose whether it is read. Like other settings, this is fixed for the process.
+    if os.environ.get("AUTO_BI_NO_ENV_FILE") == "1":
+        # BaseSettings accepts this option; the generated Settings signature omits it.
+        return Settings(_env_file=None)  # type: ignore[call-arg]
     return Settings()
 
 
@@ -586,7 +591,7 @@ def unknown_env_settings(environ: Mapping[str, str] | None = None) -> list[str]:
     """
     env = os.environ if environ is None else environ
     prefix = str(Settings.model_config.get("env_prefix", "")).upper()
-    known: set[str] = set()
+    known: set[str] = {"AUTO_BI_NO_ENV_FILE"}
     for name, field in Settings.model_fields.items():
         known.add(f"{prefix}{name}".upper())
         if isinstance(field.validation_alias, str):

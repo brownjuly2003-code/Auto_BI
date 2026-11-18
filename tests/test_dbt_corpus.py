@@ -87,6 +87,11 @@ REFUSALS = {
     " doesn't exist as a time dimension",
     "c_ratio_numerator_missing": "Both a numerator and denominator must be specified",
     "c_ratio_denominator_missing": "Both a numerator and denominator must be specified",
+    "c_legacy_count_no_expr": "Measure 'c_count_no_expr' uses a COUNT aggregation, which"
+    " requires an expr to be provided",
+    "c_v2_count_no_expr": "Metric 'c_v2_count_no_expr' uses a COUNT aggregation, which"
+    " requires an expr to be provided",
+    "Gross_Margin": "Invalid name `Gross_Margin` - names may only contain lower case",
 }
 #: Each entry dbt accepts and writes without the key that makes its row: the key under
 #: `type_params`, written as null.
@@ -108,7 +113,8 @@ class _ParityRow(NamedTuple):
     """A row of the parity matrix, `<engine>.<event time>:<form>`: a ratio's form has two
     terms, a simple metric's one, each `<dialect>.<aggregate>.<class of the column's type>`; a
     legacy metric whose measure has no `expr`, or which has an `expr` of its own, has a row of
-    its own besides, `legacy.measure_without_expr` or `legacy.metric_expr`."""
+    its own besides, `legacy.measure_without_expr` or `legacy.metric_expr`, and a V2 metric
+    without `expr` one, `v2.metric_without_expr`."""
 
     engine: str
     time: str
@@ -122,7 +128,8 @@ _TERM = r"(?:legacy|v2)\.\w+\.\w+"
 #: resolver writes the engine as it is declared, lower-cased; the corpus declares `postgres`.
 _MATRIX_ROW = re.compile(
     rf"(\w+)\.(\w+):"
-    rf"(?:ratio\.({_TERM})/({_TERM})|({_TERM}|legacy\.(?:measure_without_expr|metric_expr)))"
+    rf"(?:ratio\.({_TERM})/({_TERM})"
+    rf"|({_TERM}|legacy\.(?:measure_without_expr|metric_expr)|v2\.metric_without_expr))"
 )
 
 
@@ -186,14 +193,25 @@ TELLS: dict[str, Tell] = {
         f"type.{kind}": _construct(f"a {kind} metric")
         for kind in ("cumulative", "derived", "conversion")
     },
+    "derived.quotient": _construct(
+        "a derived quotient, which MetricFlow writes as written, without the NULLIF and the cast"
+        " it gives a ratio metric: on PostgreSQL a non-NULL numerator over a zero denominator"
+        " fails the query, and two integer terms divide with truncation"
+    ),
     "ratio.input-type": _says(re.escape(CONSTRUCT) + r"a ratio over a \w+ metric"),
     **{f"ratio.{side}-missing": _construct(f"a ratio without a {side}") for side in SIDES},
     "params.numerator": _construct("a numerator"),
     "params.denominator": _construct("a denominator"),
     "params.expr": _construct("an expression"),
+    "legacy.expr": _construct("a column that is not one lower-case identifier"),
     "legacy.metric-expr": _construct("a metric expression other than the measure's"),
-    "v2.no-expr": _construct("a V2 metric without an expression"),
     "v2.expr": _construct("a column that is not one lower-case identifier"),
+    **{
+        f"{dialect}.count-no-expr": _construct(
+            "a count without an expression, which MetricFlow does not build"
+        )
+        for dialect in ("legacy", "v2")
+    },
     **{
         f"{dialect}.agg.{agg}": _construct(f"aggregation {agg}")
         for dialect in ("legacy", "v2")
@@ -223,7 +241,9 @@ TELLS: dict[str, Tell] = {
             term[1:] in {("sum", "float"), ("min", "float"), ("max", "float")} for term in row.terms
         )
     ),
-    "parity.v2": _parity(lambda row: any(term[0] == "v2" for term in row.terms)),
+    "parity.ratio-dialects": _parity(
+        lambda row: row.ratio and len({term[0] for term in row.terms}) > 1
+    ),
 }
 
 
@@ -455,16 +475,12 @@ def test_dbt_refuses_each_entry_for_the_construct_it_carries() -> None:
 def test_an_entry_misses_its_row_only_where_dbt_drops_the_key_or_stops_v2_short() -> None:
     missing = {entry.metric for entry in SCRIPT.ENTRIES if _verdict(entry) == "misses"}
     # `approximate_continuous` sets neither key: test_a_v2_percentile_type_sets_one_key_or_neither
-    assert missing == set(DROPPED) | {"c_parity_v2", "c_v2_percentile_type_other"}
+    assert missing == set(DROPPED) | {"c_v2_percentile_type_other"}
     for name, key in DROPPED.items():
         entry = ENTRIES[name]
         params = entry.add["metrics"][-1].get("type_params", entry.add["metrics"][-1])
         assert params[key] is not None, name
         assert _metric(entry.dialect, name)["type_params"][key] is None, name
-    # Parity is asked of a formula with no other gap, and no V2 metric gets that far.
-    assert [_triple(gap) for gap in RESULT["outcomes"]["c_parity_v2"]["gaps"]] == [
-        _row(SCRIPT.NO_GRANULARITY)
-    ]
 
 
 def test_a_v2_percentile_type_sets_one_key_or_neither() -> None:
@@ -510,6 +526,10 @@ def test_a_name_sql_reads_as_a_value_is_taken_and_given_its_row() -> None:
         ("current_date", "time", None)
     ]
     assert _verdict(ENTRIES["c_time_name_2"]) == "carries"
+    # dbt reserves no metric name: a V2 metric named `null` is taken as well
+    for name in ("null", "true"):
+        assert _metric("v2", name)["type_params"]["expr"] is None
+        assert _verdict(ENTRIES[name]) == "carries"
 
 
 def test_no_v2_metric_resolves() -> None:
@@ -525,7 +545,6 @@ def test_no_v2_metric_resolves() -> None:
             gaps = {_triple(gap) for gap in outcome["gaps"]}
             stops = _row(SCRIPT.NO_GRANULARITY) in gaps
             assert stops != (entry.aims == ("time.none-v2",)), entry.metric
-            assert _row("parity.v2") not in gaps, entry.metric
 
 
 # --- the rows -----------------------------------------------------------------------------
@@ -554,7 +573,7 @@ def test_a_gap_that_is_no_row_keeps_its_entry_from_carrying(
     entry = ENTRIES["c_metric_filter"]
     gaps = RESULT["outcomes"][entry.metric]["gaps"]
     assert _verdict(entry) == "carries"
-    row = ROWS["parity.v2"]
+    row = ROWS["parity.engine"]
     proven = {
         "code": row.code,
         "severity": row.severity,
@@ -627,7 +646,13 @@ def test_a_reason_tells_its_row_only_whole(ident: str, said: Callable[[str], str
             "undeclared.undeclared:legacy.count.undeclared",
             {"parity.engine", "parity.event-time-type", "parity.column-type"},
         ),
-        ("postgres.date:v2.sum.decimal", {"parity.v2"}),
+        ("postgres.date:ratio.v2.sum.decimal/legacy.sum.decimal", {"parity.ratio-dialects"}),
+        ("postgres.date:ratio.legacy.max.integer/v2.sum.decimal", {"parity.ratio-dialects"}),
+        (
+            "postgres.date:ratio.v2.average.decimal/legacy.sum.float",
+            {"parity.ratio-average", "parity.ratio-float", "parity.ratio-dialects"},
+        ),
+        ("greenplum.date:v2.metric_without_expr", {"parity.engine"}),
         (
             "postgres.date:legacy.sum.text,"
             " postgres.date:ratio.legacy.min.float/legacy.sum.decimal",
@@ -637,6 +662,9 @@ def test_a_reason_tells_its_row_only_whole(ident: str, said: Callable[[str], str
         ("greengage.date:legacy.sum.decimal", {"parity.engine"}),
         # an engine the run proved rows on is not what keeps a row unproven
         ("clickhouse.date:legacy.metric_expr", set()),
+        ("postgres.date:v2.sum.decimal", set()),
+        ("postgres.date:v2.metric_without_expr", set()),
+        ("postgres.date:ratio.v2.sum.decimal/v2.count.integer", set()),
         ("clickhouse.date:ratio.legacy.sum.decimal/legacy.max.float", {"parity.ratio-float"}),
         # what the resolver does not write names no row of the matrix
         ("postgres.date:ratio.legacy.average", set()),
@@ -644,6 +672,8 @@ def test_a_reason_tells_its_row_only_whole(ident: str, said: Callable[[str], str
         ("postgres.date:ratio.legacy.sum.float/legacy.sum.decimal/legacy.sum.decimal", set()),
         ("postgres.date:ratio.legacy.metric_expr/legacy.sum.float", set()),
         ("postgres.date:v2.sum", set()),
+        ("postgres.date:v2.measure_without_expr", set()),
+        ("postgres.date:legacy.metric_without_expr", set()),
         ("postgres.date:v2.sum.decimal.text", set()),
         ("postgres.date:v3.sum.text", set()),
         ("postgres.date:legacy.sum.text and more", set()),
@@ -657,7 +687,7 @@ def test_a_reason_tells_its_row_only_whole(ident: str, said: Callable[[str], str
     ],
 )
 def test_a_parity_gap_is_each_row_a_matrix_row_it_names_holds(named: str, rows: set[str]) -> None:
-    row = ROWS["parity.v2"]
+    row = ROWS["parity.engine"]
     gap = {
         "code": row.code,
         "severity": row.severity,
@@ -706,6 +736,28 @@ def test_the_excerpt_keeps_dbts_reasons_and_nothing_of_the_run(tmp_path: Path) -
         "  Invalid metrics config given in models/schema.yml @ metrics: {…} - at path []: no",
         f"  {'x' * 148} … {'x' * 150}",
         *[f"  line {index}" for index in range(6)],
+    ]
+
+
+def test_the_excerpt_ends_where_a_traceback_after_dbts_first_reason_begins(
+    tmp_path: Path,
+) -> None:
+    where = tmp_path / "c_metric"
+    output = "\n".join(
+        [
+            "12:00:01  Running with dbt=1.12.6",
+            "Traceback (most recent call last):",
+            '  File "/tmp/venv/lib/dbt/a.py", line 1, in f',
+            "12:00:03  [ERROR]: Encountered an error:",
+            "Metric 'c_metric' uses a COUNT aggregation",
+            "Traceback (most recent call last):",
+            '  File "/tmp/venv/lib/dbt/cli/requires.py", line 198, in wrapper',
+            "ModelTransformError: Metric 'c_metric' uses a COUNT aggregation",
+        ]
+    )
+    assert SCRIPT._excerpt(output, where).split("\n") == [
+        "[ERROR]: Encountered an error:",
+        "Metric 'c_metric' uses a COUNT aggregation",
     ]
 
 

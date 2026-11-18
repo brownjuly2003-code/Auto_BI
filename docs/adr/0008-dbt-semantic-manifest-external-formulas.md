@@ -122,13 +122,21 @@ Conversion- и private-метрик и natural entities в корпусе нет
    - simple-метрика без фильтра, агрегат `sum`, `count`, `count_distinct`, `min`, `max`,
      `average` (→ `avg`), `agg_params` по умолчанию, без `non_additive_dimension`,
      `join_to_timespine: false`, без `fill_nulls_with`, выражение — голое имя колонки
-     (legacy — `expr` measure) → `typed_aggregate`;
+     (legacy — `expr` measure, V2 — `expr` метрики; без выражения — имя, кроме `count`,
+     ниже) → `typed_aggregate`;
    - ratio, где числитель и знаменатель — такие simple-метрики, а входы без `filter`, `alias`,
      `offset_window`, `offset_to_grain` → `typed_ratio`.
 
    Колонка legacy-метрики — `expr` measure; у measure без `expr` dbt пишет `expr: null`, и
-   колонкой MetricFlow читает имя measure. `expr` legacy-метрики (dbt пишет его для
-   `create_metric`) принимается, только если говорит то же, что measure.
+   колонкой MetricFlow читает имя measure. Колонка V2-метрики — её `expr`, а без `expr` —
+   имя метрики, как у MetricFlow (D4a [ADR 0012](0012-post-finish-development.md)); имя,
+   которое не одна колонка в нижнем регистре или которое SQL читает как значение (`null`,
+   `true`), — гэп конструкции. Исключение в обоих диалектах — `count` без `expr`:
+   MetricFlow 0.213.0 такого count не строит (legacy-меру dbt-core 1.12.6 отвергает при
+   валидации, на V2-метрике `dbt parse` падает, уже записав артефакт), и это гэп
+   конструкции (`legacy.count-no-expr`, `v2.count-no-expr`), а не `count` имени. `expr`
+   legacy-метрики (dbt пишет его для `create_metric`) принимается, только если говорит то
+   же, что measure.
 
    Гарантия — структурный перевод: агрегат, колонка, таблица, числитель и знаменатель. Что
    MetricFlow и reference SQL контракта дают одно число, проверяет матрица паритета (S2, S5c,
@@ -139,8 +147,9 @@ Conversion- и private-метрик и natural entities в корпусе нет
    grain, и строки у них одни, только когда колонка — ключ, хранящий дни. Форма — агрегат
    диалекта над классом типа колонки (`legacy.sum.decimal`), ratio из двух таких
    (`ratio.legacy.sum.decimal/legacy.count.integer`), колонка по имени measure
-   (`legacy.measure_without_expr`), `expr` метрики (`legacy.metric_expr`). Класс говорит, в чём
-   движок считает агрегат над колонкой и что такое день колонки времени. Классы PostgreSQL —
+   (`legacy.measure_without_expr`) или V2-метрики (`v2.metric_without_expr`), `expr`
+   метрики (`legacy.metric_expr`). Класс говорит, в чём движок считает агрегат над колонкой
+   и что такое день колонки времени. Классы PostgreSQL —
    `decimal`, `integer`, `float`, `date` (имена типов и их псевдонимы — `_PG_CLASSES`).
    Классы ClickHouse — по типу, как его пишет движок в `system.columns`
    (`CLICKHOUSE_CLASSES`): `decimal` — `Decimal(P, 2)` при P ≤ 38, `integer` — `Int8`,
@@ -191,8 +200,8 @@ Conversion- и private-метрик и natural entities в корпусе нет
    nullability своих термов (дополнение S5d). Ratio наследует ограничения reference SQL: терм
    `average` и float-терм под `sum`, `min` или `max` дают advisory `sql.ratio_inexact_term` без SQL, а `count` и
    `count_distinct` над float-колонкой — SQL. Поэтому float-терм ratio в матрице — только
-   `count` и `count_distinct`, а формы ratio с `average` в ней есть и не доказаны. Доказано 328
-   строк: 164 в контексте `postgres.date`, 164 в `clickhouse.date`.
+   `count` и `count_distinct`, а формы ratio с `average` в ней есть и не доказаны. Доказано 654
+   строки: по 327 в контекстах `postgres.date` и `clickhouse.date`, из них 164 legacy и 163 V2.
    Матрицей не проверены Greenplum, событийное время `timestamp`, вне ключей grain или с NULL
    (на PostgreSQL его класс — `date`: тип nullability не называет), колонки `text` и `date`
    под агрегатом. На ClickHouse вне доказательства и значения, которые два движка при одном
@@ -205,11 +214,15 @@ Conversion- и private-метрик и natural entities в корпусе нет
    Доказательство — для настроек, которые прогон задаёт и записывает, — значений ClickHouse
    24.8 по умолчанию: `count_distinct_implementation = uniqExact` (иначе `count(DISTINCT)`
    бывает приближённым), `aggregate_functions_null_for_empty = 0`,
-   `decimal_check_overflow = 1`, `cast_keep_nullable = 0`; сервер с другими — вне его. V2 в
-   матрицу не входит: dbt-core 1.12.6 не пишет гранулярность time dimension V2 в написании
-   `dimension: time` (п. 8; в написании `dimension: {type: time}` пишет — F4 ADR 0010), и ни
-   одна V2-метрика не разрешается: V2-строк в матрице нет (`parity.v2`). Прогон 2026-11-07 (PostgreSQL 16.15, ClickHouse 24.8.14.39,
-   metricflow 0.213.0) и его границы —
+   `decimal_check_overflow = 1`, `cast_keep_nullable = 0`; сервер с другими — вне его. V2 вошёл в
+   матрицу в D4a [ADR 0012](0012-post-finish-development.md): второй проект прогона — те же
+   метрики в синтаксисе V2 со временем `dimension: {type: time}` и `granularity: day`, которому
+   dbt-core 1.12.6 пишет гранулярность (написанию `dimension: time` — нет, п. 8); V2-метрика без
+   `expr` — колонка её имени (`v2.metric_without_expr`); ratio — над двумя термами одного
+   диалекта, отношение legacy- и V2-терма не доказано (`parity.ratio-dialects`). Прогон
+   2026-11-13 (PostgreSQL 16.15, ClickHouse 24.8.14.39, metricflow 0.213.0, dbt-core 1.12.6) —
+   [отчёт D4a](../reviews/DECISIONOPS_DBT_COVERAGE_2026-11-13.md); прогон 2026-11-07, только
+   legacy, и его границы —
    [отчёт](../reviews/DECISIONOPS_METRICFLOW_PARITY_CLICKHOUSE_2026-11-07.md); прогон
    2026-11-04, только PostgreSQL, по прежнему рецепту (его fixtures — в дереве `8fd576c`) —
    [отчёт](../reviews/DECISIONOPS_METRICFLOW_PARITY_CHECKS_2026-11-04.md). Результат с digest
@@ -271,14 +284,16 @@ Conversion- и private-метрик и natural entities в корпусе нет
    1.12.6: каждую отдельно, потом принятые вместе; метрика в общем артефакте разрешается так
    же, как на своём проекте, иначе прогон останавливается. Артефакты принятых записей и ответ
    резолвера по каждой лежат в `tests/fixtures/dbt_semantic_manifest/corpus`
-   ([отчёт](../reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md)). Из 89 строк dbt пишет 63 и
-   отвергает 10: незнакомые ключи legacy и V2 — JSON-схемой, остальное — собственными
-   проверками. 3 строки он принимает, но не доносит: `cumulative_type_params` legacy
-   simple-метрики и `fill_nulls_with` V2 пишет как `null`, а до паритета не доходит ни одна
-   V2-метрика. Ещё 13 строк зависят от артефакта целиком, от того, что dbt пишет одинаково
-   для всех записей (`relation_name`), или от контекста, который корпус держит одним. Строки,
-   которых dbt-core 1.12.6 не пишет, остаются: артефакт другой версии или другого автора может
-   их нести.
+   ([отчёт](../reviews/DECISIONOPS_DBT_CORPUS_2026-11-07.md)). После D4a из 91 строки dbt
+   пишет 63 и отвергает 12: незнакомые ключи legacy и V2 — JSON-схемой, остальное —
+   собственными проверками; `count` без `expr` у legacy-меры отвергает валидация, а на
+   V2-метрике `dbt parse` падает, уже записав артефакт. 2 строки он принимает, но не
+   доносит: `cumulative_type_params` legacy simple-метрики и `fill_nulls_with` V2 пишет как
+   `null`. Ещё 14 строк зависят от артефакта целиком, от того, что dbt пишет одинаково для
+   всех записей (`relation_name`), или от контекста, который корпус держит одним; среди них
+   `parity.ratio-dialects`: ему нужен проект обоих диалектов, а корпус разбирает каждый
+   диалект своим проектом. Строки, которых dbt-core 1.12.6 не пишет, остаются: артефакт
+   другой версии или другого автора может их нести.
 9. **Без ложной эквивалентности.** Узел метрики несёт binding: source, ref, revision и digest
    замыкания. Любое изменение определения в dbt — поддержанное или нет — сдвигает canonical
    digest, и diff его называет. Неподдержанная конструкция никогда не сводится к типизированной

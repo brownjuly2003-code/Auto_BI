@@ -349,6 +349,8 @@ def test_clean_wording_uses_only_attributed_layout_readings(reverse: bool) -> No
 # T-127 adds mart/schema ownership columns and joins, plus the owner/FORCE RLS answer.
 # T-131 quotes schema and table inside PostgreSQL relation arguments.
 # Verifier 133 (F1): the PostgreSQL presence question also asks `pg_matviews`.
+# Verifier 136 (D2): it also asks `pg_class` for a foreign table, and the write questions
+# read `relkind` and, from PostgreSQL 17, `MAINTAIN`.
 REPLAYS = [
     (
         "clickhouse",
@@ -376,28 +378,28 @@ REPLAYS = [
         "made",
         {},
         20,
-        "be2476c885441760c90ff4881fbe3e281293b14b1e362bab6ec76e89751ce69a",
+        "c3ac6e30409cd04741723d1d3fbfde6122ada52861949b6578ff18b818d89cc3",
     ),
     (
         "greengage",
         "absent",
         {"pg_tables": []},
         8,
-        "7f0e1e46292df2753d343da63a0fc0dc93691e5430ce7e48389c04d3ba8827b2",
+        "344e1bd397d09b4a8ba56716cf91704e3e9c7103f3656be501750fa5657dd8cd",
     ),
     (
         "greengage",
         "no_privilege",
         {"has_any_column_privilege": [{"ok": False}]},
         16,
-        "d36279a31f8deef79c30bf730c5b810c23a53b1379551b1ea451ca3b0fbc2f1d",
+        "0270149333877ae462909753d445fb301dfc4f2d0e994abc24f82c1932a2ed77",
     ),
     (
         "greengage",
         "refused",
         {"count(*)": []},
         18,
-        "17c7234e9557a94db1a48eb82f036d66eefc53183e06e1782b375b401f1a2bae",
+        "7201a8542ac9abf478d9eb75714eb3ab1e43358fcce50e82d8e39b8078a848e0",
     ),
 ]
 

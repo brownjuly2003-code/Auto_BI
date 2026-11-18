@@ -498,7 +498,10 @@ def test_view_ownership_uses_pg_class_without_table_kind_filter() -> None:
     assert facts.tables[0].row_policies == []
     assert check_security(scope, facts) == []
     sql = next(sql for sql in engine.asked if "has_table_privilege" in sql)
-    assert "pg_class" in sql and "relkind" not in sql
+    # The kind is read (a materialized view's write grants are none, ADR 0012, D2), never
+    # filtered on: the ownership of a view is asked as a table's is.
+    assert "pg_class" in sql and "WHERE" not in sql
+    assert sql.count("relkind") == 2 and "c.relkind AS relkind" in sql
     assert all(
         catalog not in sql
         for sql in engine.asked

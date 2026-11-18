@@ -423,6 +423,14 @@ def test_the_gate_says_which_steps_it_did_not_run(tmp_path: Path) -> None:
 #: The columns the in-scope metric is made of, all of them in reach of the read-only role.
 IN_REACH = {"date": True, "store_id": True, "revenue": True, "gross_margin": True}
 
+#: The same columns as the stand's catalog answers them, each of the type the model declares.
+CATALOG = {
+    "date": "Date",
+    "store_id": "UInt32",
+    "revenue": "Decimal(18, 2)",
+    "gross_margin": "Decimal(18, 2)",
+}
+
 
 def environment(
     *,
@@ -435,8 +443,13 @@ def environment(
     row_security_enabled: bool | None = None,
     plans: list[PlanFacts] | None = None,
     executions: list[ExecutionFacts] | None = None,
+    columns: dict[str, str] | None = None,
 ) -> EnvironmentFacts:
-    """One probe's answer, as `environment_probe` would have built it from the stand."""
+    """One probe's answer, as `environment_probe` would have built it from the stand.
+
+    `columns` is the column catalog's answer; left `None`, the catalog did not answer, and a
+    readable mart is `physical.not_observed` (review) since verifier 136.
+    """
     return EnvironmentFacts(
         engine="clickhouse",
         target="127.0.0.1:8124/dm",
@@ -455,6 +468,7 @@ def environment(
                 column_reads=dict(IN_REACH) if column_reads is None else column_reads,
                 row_policies=[] if row_policies is None else row_policies,
                 row_security_enabled=row_security_enabled,
+                columns=columns,
             )
         ],
         plans=plans or [],
@@ -500,7 +514,9 @@ def test_a_row_policy_makes_the_readings_partial_and_asks_for_a_human(tmp_path: 
                         applies_to_session=True,
                         expression="store_id = 1",
                     )
-                ]
+                ],
+                # the catalog answered: the review below is the row policy's alone
+                columns=CATALOG,
             )
         )
     )
@@ -564,7 +580,9 @@ def test_a_role_that_can_write_blocks_the_release(tmp_path: Path) -> None:
 def test_a_stale_mart_asks_for_a_human_and_does_not_block(tmp_path: Path) -> None:
     case = Case(tmp_path).with_asset().with_results([["Москва", "0.4120"], ["Казань", "0.377"]])
 
-    report = case.run(probe=probing(environment(max_event_time="2026-08-01T06:00:00Z")))
+    report = case.run(
+        probe=probing(environment(max_event_time="2026-08-01T06:00:00Z", columns=CATALOG))
+    )
 
     assert summary_of(report, "dwh.freshness") == "freshness.stale"
     assert report.verdict is Verdict.NEEDS_REVIEW
@@ -1225,7 +1243,7 @@ def test_a_plan_over_its_ceiling_asks_for_a_human(tmp_path: Path) -> None:
     that owner's call."""
     case = Case(tmp_path).with_candidate(contract=budgeted_contract(max_scanned_rows=500))
 
-    report = case.run(probe=probing(environment(plans=[estimate(600)])))
+    report = case.run(probe=probing(environment(plans=[estimate(600)], columns=CATALOG)))
 
     assert status_of(report, "dwh.cost") is CheckStatus.REVIEW
     assert summary_of(report, "dwh.cost") == "cost.over_budget"
@@ -1279,7 +1297,7 @@ def test_a_runtime_timeout_inside_the_ceiling_passes(tmp_path: Path) -> None:
 def test_a_runtime_ceiling_the_probe_did_not_measure_needs_review(tmp_path: Path) -> None:
     case = Case(tmp_path).with_candidate(contract=budgeted_contract(timeout_ms=30_000))
 
-    report = case.run(probe=probing(environment()))
+    report = case.run(probe=probing(environment(columns=CATALOG)))
 
     assert status_of(report, "dwh.cost") is CheckStatus.REVIEW
     assert summary_of(report, "dwh.cost") == "cost.not_measured"

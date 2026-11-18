@@ -51,9 +51,6 @@
     "auto_bi.agent.sql_guard.x__owner_key": {
       "survived": 1
     },
-    "auto_bi.agent.sql_guard.x__parse_one_select": {
-      "survived": 2
-    },
     "auto_bi.agent.sql_guard.x__postgres_grouping_output": {
       "survived": 3
     },
@@ -109,5 +106,5 @@
       "survived": 6
     }
   },
-  "measured": "2026-11-08; Mac 4 cores; Python 3.13; mutmut 3.6.0 run --max-children 4; 76 test modules; mutmut-only warning filters; PYTHONHASHSEED=0; 1073 s; functions with unchanged tests keep the max of this run, the previous Mac runs and the Linux CI container run"
+  "measured": "2026-11-08; Mac 4 cores; Python 3.13; mutmut 3.6.0 run --max-children 4; 76 test modules; mutmut-only warning filters; PYTHONHASHSEED=0; 1073 s; functions with unchanged tests keep the max of this run, the previous Mac runs and the Linux CI container run; 2026-11-17 (E2): tests/test_sql_guard_parser_refusal.py joined the selection (77 modules), targeted Mac run of _parser_refusal, _parse_one_select and _postgres_sort_token_info (Python 3.12, seed 0): 0, 0 and 3 survived"
 }

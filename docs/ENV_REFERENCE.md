@@ -97,12 +97,13 @@ Deployment profile validation (`local` / `demo` / `production`) is described in
 
 | Variable | Notes | Default |
 |---|---|---|
+| `AUTO_BI_NO_ENV_FILE` | Set to exactly `1` in the process environment before starting any CLI command to make `get_settings()` ignore `.env` entirely. Environment variables and defaults still apply. Other values keep local `.env` loading. Settings are cached per process; the Action forces `1` for every child command. | (unset) |
 | `ANTHROPIC_API_KEY` | Anthropic SDK key when ``llm_provider=anthropic``. Also accepted as ``AUTO_BI_ANTHROPIC_API_KEY``. | (empty) |
 | `MISTRAL_API_KEY` | Mistral API key when ``llm_provider=mistral``. Also accepted as ``AUTO_BI_MISTRAL_API_KEY``. | (empty) |
 
 ## Counts
 
 - Settings fields / `AUTO_BI_*` keys: **74**
-- Companion vars listed above: **2**
+- Companion vars listed above: **3**
 
 <!-- generate_env_reference:end -->

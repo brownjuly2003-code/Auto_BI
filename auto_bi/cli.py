@@ -274,6 +274,12 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument(
         "--json", action="store_true", help="Emit the report as JSON and nothing else"
     )
+    verify.add_argument(
+        "--pr-comment",
+        default="",
+        help="Also write the run's pull-request comment (Markdown) to this file, outside the "
+        "evidence directory; written when the run stops before a verdict too",
+    )
 
     evidence = decision_sub.add_parser(
         "evidence",
@@ -308,11 +314,65 @@ def main(argv: list[str] | None = None) -> int:
     pin.add_argument("metrics", nargs="*", help="dbt metric names (default: every metric)")
     pin.add_argument("--json", action="store_true", help="Emit the pins as JSON and nothing else")
 
+    inventory = decision_sub.add_parser(
+        "inventory",
+        help="Read Superset dashboards into the DashboardSpecs `verify --dashboards` reads",
+    )
+    inventory.add_argument(
+        "semantic",
+        help="Semantic ref the specs are validated against: a directory holding model.yaml",
+    )
+    inventory.add_argument(
+        "--dashboard",
+        action="append",
+        default=[],
+        required=True,
+        metavar="REF=ID",
+        help="A delivered dashboard ref and the Superset dashboard id or slug it is; repeatable",
+    )
+    inventory.add_argument(
+        "--output", required=True, help="New directory the specs and inventory.json go to"
+    )
+    inventory.add_argument(
+        "--database",
+        type=int,
+        metavar="ID",
+        help="Id of the Superset database the semantic model describes; a dashboard with a "
+        "chart on another database is refused",
+    )
+    inventory.add_argument(
+        "--json", action="store_true", help="Emit the report as JSON and nothing else"
+    )
+
     runs = decision_sub.add_parser(
         "runs", help="List local runs without checking evidence integrity"
     )
     runs.add_argument("path", help="Evidence root containing run directories")
     runs.add_argument("--json", action="store_true", help="Emit the catalogue as JSON")
+
+    mcp = decision_sub.add_parser(
+        "mcp",
+        help="Serve the decision commands to an AI agent over MCP (stdio): validate, impact, "
+        "evidence, runs, and verify when --evidence names where its bundles go",
+    )
+    mcp.add_argument(
+        "--evidence",
+        default="",
+        help="Directory the verify tool writes its evidence bundles to; without it the "
+        "server offers no verify and writes nothing",
+    )
+    mcp.add_argument(
+        "--signing-key",
+        default="",
+        help="Ed25519 PKCS#8 private-key PEM the verify tool seals manifests with",
+    )
+    mcp.add_argument(
+        "--trust-key",
+        action="append",
+        default=[],
+        help="Trusted Ed25519 public-key PEM the evidence tool checks signatures with; repeat "
+        "during key rotation",
+    )
 
     investigate = decision_sub.add_parser(
         "investigate",
@@ -378,6 +438,10 @@ def main(argv: list[str] | None = None) -> int:
             return _decision_pin(args)
         if args.decision_command == "investigate":
             return _decision_investigate(args)
+        if args.decision_command == "mcp":
+            return _decision_mcp(args)
+        if args.decision_command == "inventory":
+            return _decision_inventory(args)
         return _decision_validate(args.paths, args.json)
     return 0
 
@@ -591,6 +655,122 @@ def _decision_investigate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _decision_mcp(args: argparse.Namespace) -> int:
+    """`auto_bi decision mcp` — the decision commands as tools of an MCP server (ADR 0012, D5).
+
+    The server answers on standard input and output until the client closes standard input,
+    then exits 0. The keys are read before it starts, and a key that cannot be read, or a
+    signing key given without the directory whose bundles it would seal, ends the command
+    with exit 2 before the first message.
+    """
+    from pathlib import Path
+
+    from auto_bi.evidence.signing import (
+        EvidenceSignatureError,
+        load_ed25519_signer,
+        load_ed25519_trust_store,
+    )
+    from auto_bi.mcp.server import serve_stdio
+    from auto_bi.mcp.tools import ToolBox
+    from auto_bi.verification.model import EXIT_ERROR
+
+    if args.signing_key and not args.evidence:
+        _say_error("--signing-key is given without --evidence")
+        return EXIT_ERROR
+    try:
+        signer = load_ed25519_signer(args.signing_key) if args.signing_key else None
+        verifier = load_ed25519_trust_store(args.trust_key) if args.trust_key else None
+    except EvidenceSignatureError as exc:
+        _say_error(exc)
+        return EXIT_ERROR
+    evidence = Path(args.evidence) if args.evidence else None
+    serve_stdio(ToolBox(evidence_dir=evidence, signer=signer, verifier=verifier))
+    return 0
+
+
+def _decision_inventory(args: argparse.Namespace) -> int:
+    """`auto_bi decision inventory` — the specs of delivered Superset dashboards (ADR 0012, D6).
+
+    Superset is the configured one (`AUTO_BI_SUPERSET_URL`, `_USER`, `_PASSWORD`). Exit 0
+    when every named dashboard was written, 3 when one was not — each is named with why —
+    and 2 when the inventory could not be taken: an argument, the model, the output, an
+    `AUTO_BI_SUPERSET_URL` that is not a URL, a Superset that did not answer or answered in a
+    shape not its own, or a write that failed.
+    """
+    from pathlib import Path
+
+    import httpx
+
+    from auto_bi.adapters.superset.client import SupersetClient
+    from auto_bi.decision.use_cases import (
+        INVENTORY_REPORT,
+        InventoryRequest,
+        VerifyError,
+        inventory,
+    )
+    from auto_bi.inventory.superset import ChartForm, RestSupersetSource
+    from auto_bi.verification.model import EXIT_ERROR
+
+    pairs: list[tuple[str, str]] = []
+    for item in args.dashboard:
+        ref, separator, ident = item.partition("=")
+        if not separator:
+            _say_error(f"--dashboard {item!r}: expected REF=SUPERSET_ID")
+            return EXIT_ERROR
+        pairs.append((ref, ident))
+    clients: list[SupersetClient] = []
+
+    def source() -> RestSupersetSource:
+        settings = _decision_settings()
+        try:
+            client = SupersetClient(
+                settings.superset_url, settings.superset_user, settings.superset_password
+            )
+        except (httpx.InvalidURL, TypeError, ValueError) as error:
+            # Only the class: the address may carry a user and a password.
+            raise VerifyError(
+                f"cannot reach Superset: AUTO_BI_SUPERSET_URL is not a URL "
+                f"({type(error).__name__})"
+            ) from None
+        clients.append(client)
+        return RestSupersetSource(client)
+
+    _quiet_driver_log("sqlglot")
+    try:
+        report = inventory(
+            InventoryRequest(
+                semantic=args.semantic,
+                dashboards=pairs,
+                output=args.output,
+                source=source,
+                database=args.database,
+            )
+        )
+    except VerifyError as exc:
+        _say_error(exc)
+        return EXIT_ERROR
+    finally:
+        for client in clients:
+            client.close()
+
+    if args.json:
+        _say_json(report.model_dump(mode="json"))
+    else:
+        for dashboard in report.dashboards:
+            if dashboard.written is None:
+                _say_one_line(f"refused  {dashboard.ref}  ({dashboard.superset})")
+                for refusal in dashboard.refusals:
+                    _say_one_line(f"  - {refusal}")
+                continue
+            typed = sum(chart.form is ChartForm.TYPED for chart in dashboard.charts)
+            _say_one_line(
+                f"wrote    {dashboard.written}  ({dashboard.superset}: "
+                f"{typed} typed, {len(dashboard.charts) - typed} read as SQL)"
+            )
+        _say_one_line(f"report   {Path(args.output) / INVENTORY_REPORT}")
+    return 3 if report.refused else 0
+
+
 def _quiet_driver_log(name: str) -> None:
     """Keep dependency warnings off the error stream a decision command answers on.
 
@@ -773,13 +953,29 @@ def _decision_verify(args: argparse.Namespace) -> int:
 
     The exit code carries the verdict, never the operational status: a completed run that
     blocks exits 4, while a run that could not start exits 2 (invariant 8).
+
+    `--pr-comment` writes the run's pull-request comment (ADR 0012, D3) — after the bundle is
+    sealed, from what it holds — or, for a run that stops before a verdict or whose bundle
+    cannot be read back, the comment that says it has none, and exits 2. A path that names a
+    directory, lies in no directory or lies under the evidence directory is refused before
+    the run; a write the filesystem refuses after the run ends the command with exit 2, the
+    verdict printed above the error.
     """
     from datetime import UTC, datetime
 
     from auto_bi.decision.use_cases import VerifyError, VerifyRequest, verify
+    from auto_bi.evidence.inspect import EvidenceReadError
     from auto_bi.evidence.signing import EvidenceSignatureError, load_ed25519_signer
     from auto_bi.verification.model import EXIT_ERROR, exit_code_for
+    from auto_bi.verification.pull_request import comment_for_run, render_pull_request_failure
 
+    comment = args.pr_comment
+    if comment:
+        try:
+            _check_comment_target(comment, args.evidence)
+        except VerifyError as exc:
+            _say_error(exc)
+            return EXIT_ERROR
     created_at = args.created_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         signer = load_ed25519_signer(args.signing_key) if args.signing_key else None
@@ -803,6 +999,8 @@ def _decision_verify(args: argparse.Namespace) -> int:
         )
     except (VerifyError, EvidenceSignatureError) as exc:
         _say_error(exc)
+        if comment:
+            _write_comment(comment, render_pull_request_failure(str(exc)))
         return EXIT_ERROR
 
     if args.json:
@@ -814,7 +1012,84 @@ def _decision_verify(args: argparse.Namespace) -> int:
         _say(f"run      {report.run_id}  evidence {report.evidence_digest}")
         _say(f"status   {report.operational_status.value}")
         _say(f"verdict: {report.verdict.value} ({len(report.blocking())} blocking check(s))")
+    if comment:
+        try:
+            text = comment_for_run(report, args.evidence, verifier=signer)
+        except (EvidenceReadError, ValueError) as exc:
+            # The bundle the run sealed and read back is not the one there now: a comment
+            # would state what nobody can find in it.
+            reason = f"cannot read the run's evidence back for --pr-comment: {exc}"
+            _say_error(reason)
+            _write_comment(comment, render_pull_request_failure(reason))
+            return EXIT_ERROR
+        if not _write_comment(comment, text):
+            return EXIT_ERROR
     return exit_code_for(report.verdict)
+
+
+def _check_comment_target(value: str, evidence: str) -> None:
+    """Refuse a `--pr-comment` file the comment could not be written to, before the run.
+
+    The comment is no evidence: written into the evidence directory it would lie among the
+    files of a bundle — or over one of them — so a path under it is refused too, however
+    it is spelled: through a link, or in another case where the filesystem folds case.
+    """
+    from pathlib import Path
+
+    from auto_bi import filesystem
+    from auto_bi.decision.use_cases import VerifyError
+
+    path = Path(value)
+    shown = filesystem.display_path(path)
+    try:
+        if filesystem.is_dir(path):
+            raise VerifyError(f"--pr-comment {shown} is a directory")
+        if not filesystem.is_dir(path.parent):
+            raise VerifyError(
+                f"--pr-comment {shown}: there is no directory "
+                f"{filesystem.display_path(path.parent)}"
+            )
+        resolved, root = path.resolve(), Path(evidence).resolve()
+        identity = filesystem.file_identity(root)
+        inside = resolved.is_relative_to(root) or (
+            identity is not None
+            and any(filesystem.file_identity(folder) == identity for folder in resolved.parents)
+        )
+    # Python 3.12 answers a loop of links with RuntimeError; later versions do not.
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise VerifyError(f"cannot write --pr-comment {shown}: {exc}") from None
+    if inside:
+        raise VerifyError(
+            f"--pr-comment {shown} is inside the evidence directory, and the comment is no evidence"
+        )
+
+
+def _write_comment(value: str, text: str) -> bool:
+    """Write the comment whole or not at all — a reader never posts half of one — as UTF-8."""
+    import contextlib
+    import os
+    import tempfile
+    from pathlib import Path
+
+    from auto_bi import filesystem
+
+    path = Path(value)
+    try:
+        handle, temporary = tempfile.mkstemp(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(handle, "wb") as stream:
+                stream.write(text.encode("utf-8"))
+            os.replace(temporary, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
+            raise
+    except (OSError, ValueError) as exc:
+        _say_error(f"cannot write --pr-comment {filesystem.display_path(path)}: {exc}")
+        return False
+    return True
 
 
 def _decision_evidence(args: argparse.Namespace) -> int:
@@ -1148,8 +1423,7 @@ def _prune(session: str | None, dry_run: bool, model_path: str) -> int:
             health = adapter.healthcheck()
             if not health.ok:
                 print(
-                    f"{target}: недоступен ({health.message}) — {len(target_rows)} строк "
-                    "пропущено"
+                    f"{target}: недоступен ({health.message}) — {len(target_rows)} строк пропущено"
                 )
                 skipped_total += len(target_rows)
                 continue

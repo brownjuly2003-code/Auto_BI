@@ -22,6 +22,9 @@ _GITLEAKS_SAFE_FINGERPRINTS = frozenset(
         "960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_safe_error.py:generic-api-key:45",
         "960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_deployment_profile.py:generic-api-key:152",
         "960fafb8fa6ebe95f882005212df470e3960eb8a:tests/test_deployment_profile.py:generic-api-key:153",
+        # D6: the inventory report's credential stand-in; gitleaks-action's 8.24.3 does not
+        # apply .gitleaks.toml [[allowlists]] (docs/DECISIONOPS_BACKLOG.md, 2026-11-17 E2).
+        "ff7ae835a450674aa4619e1fa0708f3f69a1cda3:tests/test_superset_inventory.py:generic-api-key:3309",
     }
 )
 
@@ -142,7 +145,7 @@ def test_codeowners_mentions_maintainer() -> None:
 
 
 def test_gitleaks_ignore_is_exact_safe_fingerprints_only() -> None:
-    """Pin .gitleaksignore to eight safe fingerprints; block broad TOML suppression."""
+    """Pin .gitleaksignore to nine safe fingerprints; block broad TOML suppression."""
     ignore_path = REPO / ".gitleaksignore"
     assert ignore_path.is_file(), "root .gitleaksignore must exist"
 
@@ -153,7 +156,7 @@ def test_gitleaks_ignore_is_exact_safe_fingerprints_only() -> None:
             continue
         active.add(line)
     assert active == _GITLEAKS_SAFE_FINGERPRINTS, (
-        f".gitleaksignore active lines must be exactly the eight safe CI fingerprints; "
+        f".gitleaksignore active lines must be exactly the nine safe CI fingerprints; "
         f"got {sorted(active)}"
     )
 

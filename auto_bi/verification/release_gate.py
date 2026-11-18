@@ -118,55 +118,68 @@ API_VERSION = "auto-bi.io/v2alpha1"
 #: What each verifier version changed: docs/specs/evidence-format-versions.md, newest first.
 #: A bump adds its entry there and here; here only the newest few stay (at most five,
 #: tests/test_evidence_format_versions.py). The newest:
-#: 130 — a reference query the mart no longer fits is a fact about the mart, not a broken run
-#: (ClickHouse, slice S7): where the catalog accounts for the code — a column the query names that
-#: `dwh.physical` grades as gone for `47 UNKNOWN_IDENTIFIER`, or as retyped for
-#: `43 ILLEGAL_TYPE_OF_ARGUMENT` — EXPLAIN ESTIMATE leaves the plan unpriced, naming those columns,
-#: and its exact SELECT is not sent; `497 ACCESS_DENIED` from the exact SELECT is a refusal; a
-#: `max()` of an event-time column whose drift accounts for the code leaves the rows counted and
-#: undated. The evidence names the code alone, and a `43`/`47` the catalog does not account for
-#: still ends the run. `freshness.unknown` over rows with no newest event time says the rows are
-#: there. Verifier 129 let those answers end the run with no report and no bundle, so the drift
-#: `dwh.physical` reports was never reported; check grading is unchanged and CHECK_VERSION stays 83.
-#: 131 — a reference query the PostgreSQL mart no longer fits is a fact about the mart too
-#: (slice S7b), as verifier 130 made it on ClickHouse: where the catalog accounts for the state —
-#: a column the query names that `dwh.physical` grades as gone for `42703 undefined_column`, or
-#: as retyped for `42883 undefined_function` — EXPLAIN leaves the plan unpriced, naming those
-#: columns, and its exact SELECT is not sent; `42501 insufficient_privilege` from the exact
-#: SELECT is a refusal; a `max()` of an event-time column whose drift accounts for the state
-#: leaves the rows counted and undated. The evidence names the SQLSTATE and its condition name
-#: alone, and a `42703`/`42883` the catalog does not account for still ends the run. On both
-#: engines that plan's evidence now says the drift is taken to mean the query no longer fits the
-#: mart: the drift answers the code by its kind, not by where the query failed. Verifier 130 let
-#: those answers end a PostgreSQL run with no report and no bundle; check grading is unchanged
-#: and CHECK_VERSION stays 83.
-#: 132 — ClickHouse refusals are read by the error code where the error carries one (slice S8):
-#: `497 ACCESS_DENIED`, `291 DATABASE_ACCESS_DENIED`, `60 UNKNOWN_TABLE` and
-#: `81 UNKNOWN_DATABASE` are refusals whatever the words around them, and any other code is not,
-#: even where the message quotes a refusal's words — a `47 UNKNOWN_IDENTIFIER` for a column
-#: called `access_denied_at` is weighed as the drift it accounts for, or ends the run. The
-#: wording is read only for an error that carries neither a code nor a SQLSTATE. Verifier 131
-#: took such an answer for a refusal; check grading is unchanged and CHECK_VERSION stays 83.
-#: 133 — a catalog question the engine refused is not read as an empty answer (ADR 0010, F1). A
-#: refused `pg_attribute` or `system.columns` question leaves the mart's columns unknown, so
-#: `dwh.physical` compares none of them and no drift accounts for a `42703`/`47` of the reference
-#: query or of `max()` of the event-time column, which then ends the run. Verifier 132 graded each
-#: declared column whose reach was not denied `physical.column_absent` (block) — on ClickHouse only
-#: with the grants answered — and that drift accounted for those codes. A refused
-#: `pg_tables`/`pg_views` presence question is now followed by `to_regclass`, where verifier 132
-#: graded a mart the role reads `access.table_absent` (block), and it asks `pg_matviews` too, where
-#: verifier 132 graded a mart served as a materialized view the same. An answered catalog with no
-#: rows is read as before; check grading is unchanged and CHECK_VERSION stays 83.
-#: 134 — a column's type on a PostgreSQL kernel is compared by the name `format_type` prints for it,
-#: not by the one the model writes (ADR 0010, F2): `float8` is `double precision`, `int4` is
-#: `integer`, `varchar(n)` is `character varying(n)`, `timestamp` is `timestamp without time zone`,
-#: and so are the other names of the manual's alias table but the serial types, `float(p)`,
-#: `numeric(p)`, `char` with no length, `bpchar(n)` and the brackets of an array of any dimensions.
-#: Verifier 133 graded such a pair `physical.type_drift` (review), and that drift accounted for a
-#: `42883` of the reference query or of `max()` of the event-time column, which now ends the run.
-#: ClickHouse types are compared as before. CHECK_VERSION moves to 84 with it: the rule of
-#: `dwh.physical` changed, and a run's identity holds the verifier version alone.
-VERIFIER_VERSION = "134"
+#: 135 — a column's type is compared by the name the engine prints for it on ClickHouse too, and by
+#: more of a PostgreSQL kernel's names (ADR 0012, D1). On ClickHouse it is the name
+#: `system.columns` prints: `BIGINT` is `Int64`, `INT UNSIGNED` is `UInt32`, `DOUBLE` is `Float64`,
+#: `VARCHAR(n)` is `String`, `DECIMAL(p,s)` is `Decimal(p, s)`, `Decimal64(s)` is `Decimal(18, s)`,
+#: `BINARY(n)` is `FixedString(n)`, `TIMESTAMP(p)` is `DateTime64(p)`, and `Nullable`,
+#: `LowCardinality`, `Array` and `Map` are read through. On a PostgreSQL kernel the quoted and
+#: `pg_catalog`-qualified names, a declared serial type (`format_type` prints none, so a catalog's
+#: `serial4` is a type of its own), the `national` and `nchar` character types, `bit` with no
+#: length, the `ARRAY` keyword, zeros before a number and a time precision of six digits or more
+#: (what a time type with no precision keeps) are read too. Verifier 134 graded such a pair
+#: `physical.type_drift` (review), and that drift accounted for a `43` or `42883` of the reference
+#: query or of `max()` of the event-time column, which now ends the run. A quoted name, and on
+#: ClickHouse a string, inside a type is compared character by character, and a blank inside a name
+#: is content, where verifier 134 dropped every blank and case: `Enum8('a' = 1)` held as `Enum8('A'
+#: = 1)`, `"MyType"` as `"MYTYPE"` or `Int 64` as `Int64` is now `physical.type_drift`. A ratio
+#: term on a PostgreSQL kernel is exact by the same name: `sum()` of a `dec(18,2)`, `serial` or
+#: `pg_catalog.int8` column compiles, where verifier 134 left the ratio without reference SQL
+#: (`sql.ratio_inexact_term`), and an array of `numeric(p,s)` is no longer read as exact.
+#: CHECK_VERSION moves to 85 with it.
+#: 136 — the relations a PostgreSQL mart may be, and a column catalog the engine refused (ADR 0012,
+#: D2). A foreign table (relkind `f`), which none of `pg_tables`, `pg_views` and `pg_matviews`
+#: lists, is found through `pg_class`, where verifier 135 graded it `access.table_absent` (block).
+#: The INSERT, UPDATE, DELETE and TRUNCATE grants of a materialized view are not counted, because it
+#: takes none of them whatever is granted on it (`42809`): a role whose only write grants are on
+#: materialized views is read-only, and the clean evidence names the views, where verifier 135
+#: graded it `access.role_writable` (block). What changes such a view is REFRESH: its ownership is
+#: weighed as for any mart, and so, from PostgreSQL 17, is `MAINTAIN` on it, which `GRANT ALL` and
+#: `pg_maintain` carry. A materialized view that holds no data (created or last refreshed `WITH NO
+#: DATA`) answers `count(*)` with `55000`; `pg_matviews.ispopulated` is asked then, and such a view
+#: is read as present and unreadable with `populated` false, `access.table_unpopulated` (block),
+#: where verifier 135 ended the run; any other `55000` still does. Every table reading records
+#: `populated`, `null` but for such a view. A readable mart whose column catalog the engine refused
+#: is `physical.not_observed` (review), where verifier 135 let `dwh.physical` pass with incomplete
+#: coverage. CHECK_VERSION moves to 86 with it.
+#: 137 — the formula of a V2 dbt metric resolves (ADR 0012, D4). The parity run proved the V2 rows
+#: in both contexts, `postgres.date` and `clickhouse.date`: each aggregation and class, a metric
+#: without `expr` and a ratio of two V2 terms. Such a formula resolves, and its node carries the
+#: typed formula that impact and reference SQL read, where verifier 136 left it `external_ref` with
+#: `gap.external_parity_unproven` (review). A V2 metric without `expr` reads its name as its column,
+#: as MetricFlow does, where verifier 136 graded every such metric
+#: `gap.external_construct_unsupported` (review); a name that is not one lower-case column, such as
+#: `null` or `true`, still is that gap. So is a `count` without `expr` in either dialect, because
+#: MetricFlow 0.213.0 builds no such count: verifier 136 resolved a legacy one as a count of the
+#: measure's name. A ratio of a legacy term and a V2 one stays unproven. Snapshots, the diff and
+#: every check over such a metric can change; check grading is unchanged and CHECK_VERSION stays 86.
+#: 138 — a derived dbt metric whose `expr` divides one of its input metrics by another or by itself
+#: is graded at that `expr` (ADR 0012, D4b): MetricFlow 0.213.0 writes the quotient as written,
+#: without the NULLIF and the cast it gives a ratio metric, so on PostgreSQL a non-NULL numerator
+#: over a zero denominator fails the query and two integer terms divide with truncation.
+#: Verifier 137 graded it at the metric's type. The
+#: gap stays `gap.external_construct_unsupported` (review) and the formula `external_ref`; its path,
+#: `$.metrics[m].type_params.expr`, and its reason change, so the snapshot and every check that
+#: carries the gap can change. Check grading is unchanged and CHECK_VERSION stays 86.
+#: 139 — parser failures on malformed SQL are SQLGuardError refusals, including TokenError,
+#: AttributeError, ValueError and IndexError (ADR 0013, E1). A delivered raw_sql chart now completes
+#: with bi.spec_invalid (block) and a bundle where verifier 138 could abort without a verdict.
+#: Parser refusal text names the exception class and parser boundary, with numeric coordinates when
+#: available, never SQL or the exception message. RecursionError keeps its depth explanation.
+#: The existing bi.contract grading rule is unchanged: a spec the SELECT-only guard refuses blocks;
+#: CHECK_VERSION stays 86. Diagnostics and the availability of evidence change, so prior bundles
+#: must not be reused.
+VERIFIER_VERSION = "139"
 
 #: Bumped when a check's meaning changes, so an old evidence bundle is not read as if it
 #: had been graded by today's rule. Adding a *new* check is not such a change: no existing
@@ -175,11 +188,6 @@ VERIFIER_VERSION = "134"
 #: What each check version changed: docs/specs/evidence-format-versions.md, newest first.
 #: A bump adds its entry there and here; here only the newest few stay (at most five,
 #: tests/test_evidence_format_versions.py). The newest:
-#: 81 — row-security findings and policy applicability respect the per-mart owner
-#: bypass: an owner without FORCE is neither filtered nor denied all rows by policies.
-#: A false row-security switch makes reported policies inapplicable to every session,
-#: including classification checks, and suppresses bypass findings. Bypass details name
-#: the established exemptions without claiming that consumers receive different rows.
 #: 82 — semantic.gaps grades the gaps of a formula a dbt semantic manifest defines (block where
 #: the artifact is missing or refused, the metric is missing from it, the pin, the relation or
 #: the time contradicts it; review where the match is unproven or the construct unsupported),
@@ -196,7 +204,24 @@ VERIFIER_VERSION = "134"
 #: `double precision`, `int4` for `integer`, `varchar(n)` for `character varying(n)`, `timestamp`
 #: for `timestamp without time zone` — is no longer `physical.type_drift` (ADR 0010, F2).
 #: ClickHouse types are compared as before.
-CHECK_VERSION = "84"
+#: 85 — dwh.physical compares the type of a ClickHouse column by the name `system.columns` prints
+#: for it, where rule 84 compared the names as written, spacing and case aside: `BIGINT` for
+#: `Int64`, `DECIMAL(18,2)` for `Decimal(18, 2)`, `Nullable(BIGINT)` for `Nullable(Int64)` are no
+#: longer `physical.type_drift`; on a PostgreSQL kernel it also takes the quoted and
+#: `pg_catalog`-qualified names, a declared serial type, the `national` and `nchar` character
+#: types, `bit` with no length, the `ARRAY` keyword, zeros before a number and a time precision of
+#: six digits or more (ADR 0012, D1). A quoted name, and on ClickHouse a string, inside a type is
+#: compared character by character, and a blank inside a name is content, where rule 84 dropped
+#: every blank and case: `Enum8('a' = 1)` held as `Enum8('A' = 1)` or `Int 64` as `Int64` is now
+#: `physical.type_drift`. sql.compile reads a ratio term on a PostgreSQL kernel as exact by the
+#: name `format_type` prints for its type: `dec(18,2)`, `serial` and `pg_catalog.int8` are exact
+#: and an array of `numeric(p,s)` is not, where rule 84 read the name before the parenthesis as
+#: written.
+#: 86 — dwh.access grades a reading with `populated` false, a materialized view that holds no data,
+#: `access.table_unpopulated` (block), where rule 85 had no such reading; dwh.physical grades a
+#: readable mart whose column catalog the engine did not answer `physical.not_observed` (review),
+#: where rule 85 passed it with incomplete coverage (ADR 0012, D2).
+CHECK_VERSION = "86"
 
 #: Gaps over which a diff would be fiction. A metric contract that failed to parse is simply
 #: absent from the candidate graph, so the graph does not represent its source *at all*, and

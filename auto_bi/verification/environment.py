@@ -110,7 +110,7 @@ from zoneinfo import ZoneInfo, available_timezones
 from pydantic import Field
 
 from auto_bi.decision.spec import DecisionProductSpec
-from auto_bi.engine import sqlglot_dialect
+from auto_bi.engine import is_known_engine, sqlglot_dialect
 from auto_bi.refs import ContractRef
 from auto_bi.scalars import Duration, NonBlankText, Timestamp, duration_seconds
 from auto_bi.semantic.gateway import MetricNode, SemanticSnapshot, TableNode
@@ -118,6 +118,7 @@ from auto_bi.semantic.metric_contract import MetricBudget
 from auto_bi.semantic.model import DataClassification
 from auto_bi.severity import Severity
 from auto_bi.strict import StrictModel
+from auto_bi.verification.column_types import compared_name
 from auto_bi.verification.sql_contract import compile_metric_queries
 
 #: `server_version_num` of PostgreSQL 9.5, the first kernel with row-level security.
@@ -248,6 +249,11 @@ class TableFacts(StrictModel):
     event_time_column: NonBlankText | None = None
     exists: bool
     readable: bool
+    #: `False` for a materialized view that holds no data (`pg_matviews.ispopulated` false:
+    #: created or last refreshed `WITH NO DATA`): the mart is there, and every read of it fails
+    #: (`55000`) until it is refreshed, so it is not readable either. `None` for every other
+    #: mart, and in readings made before verifier 136.
+    populated: bool | None = None
     #: Rows behind the event-time reading. Zero is why `max_event_time` may be meaningless.
     rows_seen: int = Field(ge=0, default=0)
     #: A day `2026-08-24`, a UTC moment `2026-08-24T09:00:00Z`, or a clock with no zone
@@ -256,7 +262,8 @@ class TableFacts(StrictModel):
     #: no event-time column left to take `max()` of.
     max_event_time: str | None = None
     #: Column -> type as the engine spells it. `None` means the probe did not ask, or the
-    #: engine refused the catalog question: nothing is then compared, nothing is absent.
+    #: engine refused the catalog question: nothing is then compared, nothing is absent, and
+    #: a readable mart with declared columns is `physical.not_observed` (since verifier 136).
     columns: dict[str, str] | None = None
     layout: LayoutFacts | None = None
     #: Asked column -> may this session read it. `None` means the engine was not asked.
@@ -653,6 +660,20 @@ def check_access(
                     ),
                 )
             )
+        elif table.populated is False:
+            findings.append(
+                EnvironmentFinding(
+                    code="access.table_unpopulated",
+                    severity=Severity.BLOCK,
+                    subject=question.table,
+                    detail=(
+                        f"{question.table} on {facts.target} is a materialized view that "
+                        "holds no data (created or last refreshed WITH NO DATA): every read "
+                        "of it fails until it is refreshed, so the metrics "
+                        f"{', '.join(question.metric_refs)} cannot be computed there"
+                    ),
+                )
+            )
         elif not table.readable:
             findings.append(
                 EnvironmentFinding(
@@ -823,10 +844,37 @@ def check_physical(
         table = reading_for(question, questions, facts.tables)
         if table is None or not table.exists or not table.readable:
             continue  # `check_access` already said so; saying it twice weighs it twice
+        findings.extend(_unobserved_columns(question, table, facts))
         findings.extend(_column_findings(question, table, facts))
         findings.extend(_layout_findings(question, table, facts))
 
     return findings
+
+
+def _unobserved_columns(
+    question: TableQuestion, table: TableFacts, facts: EnvironmentFacts
+) -> list[EnvironmentFinding]:
+    """A catalog that did not answer has not established that the columns are as declared.
+
+    Read as a pass, a role refused only the column catalog (`pg_attribute`, `system.columns`)
+    would hide a retyped or dropped column behind the verdicts of the other checks (ADR 0012,
+    D2).
+    """
+    if table.columns is not None or not question.columns:
+        return []
+    return [
+        EnvironmentFinding(
+            code="physical.not_observed",
+            severity=Severity.REVIEW,
+            subject=question.table,
+            detail=(
+                f"{facts.target} did not answer which columns {question.table} has: "
+                f"{facts.role.name} cannot read that from this engine's catalog, so the "
+                f"declared types of {', '.join(sorted(question.columns))} were not compared "
+                "with the engine's — the check did not run rather than passing"
+            ),
+        )
+    ]
 
 
 def _column_findings(
@@ -1289,7 +1337,8 @@ def column_drift(
     `43 ILLEGAL_TYPE_OF_ARGUMENT` (PostgreSQL: `42703`, `42883`) against the same reading, so
     a drift the probe takes a code for is one this check reports. Empty when the probe did not
     read the catalog. A type is held as declared when it is the same type by another spelling:
-    other spacing or case, or on a PostgreSQL kernel another of its names (`_type_key`).
+    another of its names the engine takes, or more blanks between its words or blanks next to
+    a parenthesis, a bracket, a comma or `=`, none inside a quote (`_type_key`).
     """
     if table.columns is None:
         return {}
@@ -1304,7 +1353,7 @@ def column_drift(
             # from the catalog does not prove absence with denied or unknown reach.
             # `check_security` reports the denied reach or the unobserved boundary.
             continue
-        if actual is None or _type_key(actual, engine) != _type_key(declared, engine):
+        if actual is None or _type_key(actual, engine, printed=True) != _type_key(declared, engine):
             drift[column] = actual
     return drift
 
@@ -1314,96 +1363,17 @@ def _normalized(type_or_key: str) -> str:
     return "".join(type_or_key.split()).lower()
 
 
-#: PostgreSQL's other names for a type -> the name `format_type` prints, which is what the
-#: probe reads from `pg_attribute`: the "Aliases" column of the manual's table of data types,
-#: the serial types aside (a column's type is never `serial`), and `dec` and `char varying`,
-#: which its grammar reads the same way.
-_PG_ALIASES = {
-    "int": "integer",
-    "int4": "integer",
-    "int2": "smallint",
-    "int8": "bigint",
-    "float4": "real",
-    "float8": "double precision",
-    "bool": "boolean",
-    "dec": "numeric",
-    "decimal": "numeric",
-    "char": "character",
-    "varchar": "character varying",
-    "char varying": "character varying",
-    "varbit": "bit varying",
-}
-#: The two names that carry their zone in them.
-_PG_ZONED = {"timestamptz": "timestamp", "timetz": "time"}
-#: A PostgreSQL type as a model may write it, lowercased with single blanks: a name of one or
-#: more words, a modifier, the zone of a time type, array brackets. A quoted or
-#: schema-qualified name, or a modifier with parentheses of its own, is not read. Each
-#: repeated part matches its text one way only, and the zone, which the name could also take,
-#: occurs once: a blank two repeats could take makes a failed match retry every split, 2^n
-#: tries for n repeats, and the model's type is free text (`[ ]` was such a blank, before or
-#: after an empty bound).
-_PG_SPELLING = re.compile(
-    r"(?P<name>[a-z][a-z0-9_]*(?: [a-z][a-z0-9_]*)*?)"
-    r"(?: ?\((?P<modifier>[^()]*)\))?"
-    r"(?P<zone> with(?:out)? time zone)?"
-    r"(?P<array>(?: ?\[ ?(?:[0-9]+ ?)?\])*)"
-)
-
-
-def _type_key(spelling: str, engine: str) -> str:
-    """What two spellings of one type compare equal by (ADR 0010, F2): spacing and case are not
-    content on any engine, and on a PostgreSQL kernel neither is which of its names a model
-    writes. ClickHouse's own aliases are not PostgreSQL's — its `INT8` is `Int8`, not `bigint`
-    — so they are not applied there."""
-    if sqlglot_dialect(engine) == "postgres":
-        spelling = _pg_type(spelling)
-    return _normalized(spelling)
-
-
-def _pg_type(spelling: str) -> str:
-    """A PostgreSQL type as `format_type` prints it, from any name the engine takes for it:
-    `int4` is `integer`, `varchar(20)` is `character varying(20)`, `timestamp` is
-    `timestamp without time zone`, `float(24)` is `real`, `numeric(10)` is `numeric(10,0)`,
-    `char` is `character(1)`, `bpchar(3)` is `character(3)`, `int4[][]` is `integer[]`
-    (dimensions are not part of the type: `format_type` prints one pair of brackets, and the
-    count `attndims` keeps is not enforced). A spelling the pattern does not read is
-    returned as written, but for spacing and case, which `_normalized` drops anyway."""
-    text = " ".join(spelling.lower().split())
-    match = _PG_SPELLING.fullmatch(text)
-    if match is None:
-        return text
-    name, modifier, zone, array = match.group("name", "modifier", "zone", "array")
-    name = _PG_ALIASES.get(name, name)
-    parts = None if modifier is None else [part.strip() for part in modifier.split(",")]
-    if name == "bpchar" and parts is not None:
-        name = "character"  # with no length `bpchar` is unbounded, not `character(1)`
-    if name in _PG_ZONED:
-        if zone:
-            return text  # `timestamptz without time zone` names no type
-        name, zone = _PG_ZONED[name], " with time zone"
-    if name in ("timestamp", "time"):
-        zone = zone or " without time zone"
-    elif name == "float" and (precision := 53 if parts is None else _pg_precision(parts)):
-        # `float` is `float8`; `float(p)` is `float4` up to 24 binary digits, `float8` to 53
-        name, parts = ("real" if precision <= 24 else "double precision"), None
-    elif name == "numeric" and parts is not None and len(parts) == 1:
-        parts.append("0")  # a precision with no scale is scale 0
-    elif name == "character" and parts is None:
-        parts = ["1"]  # SQL: `character` with no length is `character(1)`
-    typmod = "" if parts is None else f"({','.join(parts)})"
-    return f"{name}{typmod}{zone or ''}{'[]' if array else ''}"
-
-
-def _pg_precision(parts: list[str]) -> int | None:
-    """The binary precision `float(p)` takes, 1 to 53; `None` for any other modifier."""
-    if len(parts) != 1 or not (parts[0].isascii() and parts[0].isdecimal()):
-        return None
-    # `int()` refuses more than 4300 digits, and the model's type is free text
-    digits = parts[0].lstrip("0")
-    if len(digits) > 2:
-        return None
-    precision = int(digits or "0")
-    return precision if 1 <= precision <= 53 else None
+def _type_key(spelling: str, engine: str, *, printed: bool = False) -> str:
+    """What two spellings of one type compare equal by (ADR 0010, F2; ADR 0012, D1): which of
+    its names the engine takes a model writes is not content — the key is the name the engine
+    prints, a time precision of six digits or more on a PostgreSQL kernel read as none
+    (`column_types.compared_name`; `printed` for the catalog's own). Each engine's names
+    are its own: ClickHouse's `Int8` is an 8-bit integer, a PostgreSQL kernel's `int8` is
+    `bigint`. A quoted name or a string is content as written: `Enum8('a' = 1)` is not
+    `Enum8('A' = 1)`. An engine the seam does not know gets spacing and case only."""
+    if not is_known_engine(engine):
+        return _normalized(spelling)
+    return compared_name(spelling, sqlglot_dialect(engine), printed=printed)
 
 
 def _hours(seconds: float) -> str:

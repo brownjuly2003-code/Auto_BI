@@ -1,0 +1,233 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "date"
+     }
+    ],
+    "datasource": "25__table",
+    "header_font_size": 0.4,
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "revenue"
+     },
+     "expressionType": "SIMPLE",
+     "label": "SUM(revenue)"
+    },
+    "slice_id": 121,
+    "viz_type": "big_number_total"
+   },
+   "id": 121,
+   "slice_name": "Выручка"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "date"
+     }
+    ],
+    "datasource": "25__table",
+    "groupby": [
+     "store_id"
+    ],
+    "metric": {
+     "aggregate": "SUM",
+     "column": {
+      "column_name": "revenue"
+     },
+     "expressionType": "SIMPLE",
+     "label": "SUM(revenue)"
+    },
+    "row_limit": 100,
+    "show_legend": true,
+    "slice_id": 122,
+    "viz_type": "pie"
+   },
+   "id": 122,
+   "slice_name": "Выручка по магазинам"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "date"
+     }
+    ],
+    "datasource": "25__table",
+    "groupby": [],
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "revenue"
+      },
+      "expressionType": "SIMPLE",
+      "label": "SUM(revenue)"
+     }
+    ],
+    "row_limit": 10000,
+    "slice_id": 123,
+    "time_grain_sqla": "P1W",
+    "viz_type": "echarts_timeseries_line",
+    "x_axis": "date"
+   },
+   "id": 123,
+   "slice_name": "Выручка по неделям"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "date"
+     }
+    ],
+    "datasource": "25__table",
+    "groupby": [
+     "store_id"
+    ],
+    "metrics": [
+     "count"
+    ],
+    "query_mode": "aggregate",
+    "row_limit": 1000,
+    "slice_id": 124,
+    "viz_type": "table"
+   },
+   "id": 124,
+   "slice_name": "Строк по магазинам"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "date"
+     }
+    ],
+    "datasource": "25__table",
+    "metrics": [
+     {
+      "expressionType": "SQL",
+      "label": "avg_check",
+      "sqlExpression": "SUM(revenue) / NULLIF(SUM(orders), 0)"
+     }
+    ],
+    "row_limit": 10000,
+    "slice_id": 125,
+    "time_grain_sqla": "P1M",
+    "viz_type": "echarts_timeseries_bar",
+    "x_axis": "date"
+   },
+   "id": 125,
+   "slice_name": "Средний чек"
+  },
+  {
+   "form_data": {
+    "all_columns": [
+     "week",
+     "revenue"
+    ],
+    "datasource": "26__table",
+    "query_mode": "raw",
+    "row_limit": 1000,
+    "slice_id": 126,
+    "viz_type": "table"
+   },
+   "id": 126,
+   "slice_name": "Недельная выручка (SQL)"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-14T11:01:08.621262",
+  "dashboard_title": "D6 live",
+  "id": 12,
+  "json_metadata": null,
+  "slug": "d6-live"
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "date",
+     "expression": null,
+     "is_dttm": true,
+     "type": "DATE"
+    },
+    {
+     "column_name": "store_id",
+     "expression": null,
+     "is_dttm": false,
+     "type": "UINT32"
+    },
+    {
+     "column_name": "revenue",
+     "expression": null,
+     "is_dttm": false,
+     "type": "DECIMAL(18, 2)"
+    }
+   ],
+   "database": {
+    "backend": "clickhousedb",
+    "id": 2
+   },
+   "id": 25,
+   "metrics": [
+    {
+     "expression": "COUNT(*)",
+     "metric_name": "count"
+    }
+   ],
+   "schema": "dm",
+   "sql": null,
+   "table_name": "sales_daily"
+  },
+  {
+   "columns": [
+    {
+     "column_name": "week",
+     "expression": null,
+     "is_dttm": true,
+     "type": "Date"
+    },
+    {
+     "column_name": "revenue",
+     "expression": null,
+     "is_dttm": false,
+     "type": "Decimal(38, 2)"
+    }
+   ],
+   "database": {
+    "backend": "clickhousedb",
+    "id": 2
+   },
+   "id": 26,
+   "metrics": [],
+   "schema": "dm",
+   "sql": "SELECT toStartOfWeek(date) AS week, sum(revenue) AS revenue\nFROM dm.sales_daily\nGROUP BY week",
+   "table_name": "d6_weekly_revenue"
+  }
+ ]
+}
