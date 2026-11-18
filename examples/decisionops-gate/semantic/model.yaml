@@ -1,3 +1,4 @@
+# E3 demo: a comment only; the semantic digest does not change.
 tables:
 - name: dm.sales_daily
   description: Дневные продажи
