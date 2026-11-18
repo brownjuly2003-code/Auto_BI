@@ -29,7 +29,7 @@ jobs:
         id: pin
         shell: bash
         env:
-          INVENTORY_SHA: REPLACE_WITH_REVIEWED_E3_COMMIT_SHA
+          INVENTORY_SHA: af93ee4a51e55b4bab92eb38f3ba14edce47b7ce # E3: pinned to the head commit of the publication pull request
         run: |
           python -I - <<'PY'
           import os

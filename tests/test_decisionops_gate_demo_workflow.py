@@ -72,7 +72,7 @@ def test_pinned_action_runs_the_documented_example_with_block_policy(workflow) -
     assert gate["uses"].startswith("brownjuly2003-code/Auto_BI@")
     # The placeholder of the writer is not a commit GitHub can fetch (r2 P1).
     assert not gate["uses"].endswith("@" + "0" * 40)
-    assert "# E2: pinned to the head commit of the publication pull request" in WORKFLOW.read_text(
+    assert "# E3: pinned to the head commit of the publication pull request" in WORKFLOW.read_text(
         encoding="utf-8"
     )
     expected_contracts = [
