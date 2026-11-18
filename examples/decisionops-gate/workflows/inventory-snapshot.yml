@@ -1,0 +1,110 @@
+# Template only; not run on GitHub. Copy into the consumer's .github/workflows/.
+# Set the reviewed E3 commit SHA below after publication; until then the pin check fails.
+# Configure environment superset-inventory with a Superset account that can only read
+# the named dashboards. Adjust inputs/semantic, inputs/superset-map.json and database 2.
+# An operator downloads the artifact and proposes the snapshot in a separate PR.
+name: Superset inventory snapshot
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: superset-inventory
+    steps:
+      - name: Check out the default branch model and mapping
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: inputs
+          persist-credentials: false
+
+      - name: Require a reviewed inventory commit
+        id: pin
+        shell: bash
+        env:
+          INVENTORY_SHA: REPLACE_WITH_REVIEWED_E3_COMMIT_SHA
+        run: |
+          python -I - <<'PY'
+          import os
+          import re
+
+          sha = os.environ["INVENTORY_SHA"]
+          if not re.fullmatch(r"[0-9a-f]{40}", sha) or sha == "0" * 40:
+              print("Set INVENTORY_SHA to the reviewed E3 commit before using this template.")
+              raise SystemExit(2)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8", newline="\n") as output:
+              output.write("sha=" + sha + "\n")
+          PY
+
+      - name: Check out the pinned inventory code
+        id: code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: brownjuly2003-code/Auto_BI
+          ref: ${{ steps.pin.outputs.sha }}
+          path: inventory-code
+          persist-credentials: false
+
+      - name: Read uv pin from the pinned inventory checkout
+        id: uv-version
+        shell: bash
+        run: |
+          read -r version < "$GITHUB_WORKSPACE/inventory-code/.uv-version"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install uv
+        id: uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: ${{ steps.uv-version.outputs.version }}
+          enable-cache: false
+
+      - name: Install the pinned lock without Superset credentials
+        id: install
+        shell: bash
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/inventory-venv
+          UV_PYTHON: '3.12'
+        run: uv run --no-env-file --frozen --no-dev --project "$GITHUB_WORKSPACE/inventory-code" python -I -X utf8 -c "pass"
+
+      - name: Take the snapshot
+        id: inventory
+        shell: bash
+        env:
+          AUTO_BI_NO_ENV_FILE: '1'
+          AUTO_BI_SUPERSET_URL: ${{ secrets.SUPERSET_URL }}
+          AUTO_BI_SUPERSET_USER: ${{ secrets.SUPERSET_USER }}
+          AUTO_BI_SUPERSET_PASSWORD: ${{ secrets.SUPERSET_PASSWORD }}
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/inventory-venv
+          UV_PYTHON: '3.12'
+        run: |
+          python -I - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          code = subprocess.run([
+              "uv", "run", "--no-env-file", "--frozen", "--no-sync", "--no-dev", "--project",
+              str(workspace / "inventory-code"), "python", "-I", "-X", "utf8", "-m", "auto_bi.cli",
+              "decision", "inventory", str(workspace / "inputs/semantic"),
+              "--map", str(workspace / "inputs/superset-map.json"), "--database", "2",
+              "--output", str(Path(os.environ["RUNNER_TEMP"]) / "inventory-snapshot"),
+          ], check=False).returncode
+          raise SystemExit(0 if code in (0, 3) else code)
+          PY
+
+      - name: Keep the complete or partial snapshot for operator review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: superset-inventory-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/inventory-snapshot
+          if-no-files-found: error
+          retention-days: 14

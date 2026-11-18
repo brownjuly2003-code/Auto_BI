@@ -120,7 +120,15 @@ def test_example_scenarios_survive_the_demo_semantic_edit(
         capsys,
     )
     assert code == 0
-    assert "dashboard://weekly_margin@7#margin_by_region" in json.dumps(impact)
+    # The snapshot's margin tile is a ratio SQL metric the inventory does not type: the change
+    # names the dashboard, and the two SQL tiles are named as read in part, not as computing it.
+    assert [i["dashboards"] for i in impact["impacts"]] == [["dashboard://weekly_margin@7"]]
+    assert [i["charts"] for i in impact["impacts"]] == [[]]
+    assert {(g["code"], g["subject"]) for g in impact["chart_gaps"]} == {
+        (code, f"dashboard://weekly_margin@7#{chart}")
+        for code in ("chart.metric_unread", "chart.sql_partial")
+        for chart in ("chart_2", "chart_3")
+    }
 
 
 def test_readme_quick_run_executes_every_documented_command(

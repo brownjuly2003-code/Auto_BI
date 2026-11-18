@@ -33,9 +33,12 @@ side, `decision capture` one for the candidate, and both read it with one loader
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import shutil
+import stat
+import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -59,6 +62,7 @@ from auto_bi.evidence.manifest import MANIFEST_PATH, EvidenceConflictError
 from auto_bi.evidence.signing import EvidenceSignatureError, EvidenceSigner
 from auto_bi.evidence.store import ArtifactStoreError, FilesystemArtifactStore
 from auto_bi.inventory.superset import (
+    READER_VERSION,
     SUPERSET_VERSION,
     InventoriedDashboard,
     SupersetAnswerError,
@@ -467,17 +471,21 @@ class InventoryRequest:
     semantic: str | Path
     #: `(dashboard ref, Superset dashboard id or slug)`, in the order named.
     dashboards: Sequence[tuple[str, str]]
-    #: A directory that does not exist yet: the inventory is all it will hold.
+    #: New directory, or an inventory-owned directory when `replace` is explicit.
     output: str | Path
     #: Called once, after every argument was taken: an inventory refused for one asks nothing.
     source: Callable[[], SupersetSource]
     #: The Superset database the model describes. A chart on another one refuses its dashboard:
     #: a table of the same name there is not the table the model names. `None` checks nothing.
     database: int | None = None
+    #: Alternative to `dashboards`: a repository-owned UTF-8 JSON mapping.
+    mapping: str | Path | None = None
+    replace: bool = False
 
 
 class InventoryReport(StrictModel):
     superset_version: str = SUPERSET_VERSION
+    reader_version: int = Field(default=READER_VERSION, ge=1, strict=True)
     dashboards: list[InventoriedDashboard] = Field(default_factory=list)
 
     @property
@@ -485,16 +493,44 @@ class InventoryReport(StrictModel):
         return [dashboard for dashboard in self.dashboards if dashboard.written is None]
 
 
-def inventory(request: InventoryRequest) -> InventoryReport:
-    """Read the named Superset dashboards into the specs `verify --dashboards` reads (D6).
+def _unique_inventory_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
 
-    Each spec is written at the path the gate looks for its ref, so the output directory is
-    the `--dashboards` of a run. A dashboard the inventory does not read whole is not written
-    and the report says why; the gate then says the spec is missing. The output is a new
-    directory, made only once everything was read: no spec of an earlier inventory stays in
-    it to be read as this one's, and an inventory that failed leaves none behind.
-    """
-    pairs = list(request.dashboards)
+
+class _InventoryMappingEntry(StrictModel):
+    ref: str
+    superset: str
+
+
+class _InventoryMapping(StrictModel):
+    dashboards: list[_InventoryMappingEntry]
+
+
+def _inventory_pairs(request: InventoryRequest) -> list[tuple[str, str]]:
+    if request.mapping is None:
+        return list(request.dashboards)
+    if request.dashboards:
+        raise VerifyError("--map and --dashboard cannot be combined")
+    try:
+        text = Path(request.mapping).read_text(encoding="utf-8")
+        parsed = json.loads(text, object_pairs_hook=_unique_inventory_keys)
+        mapping = _InventoryMapping.model_validate(parsed, strict=True)
+    except (OSError, ValueError, RecursionError):
+        # Neither parser excerpts nor pydantic input values belong in an error stream.
+        raise VerifyError(
+            f"--map {str(request.mapping)!r}: expected UTF-8 JSON with only dashboards, "
+            "a list of objects with only ref and superset strings; no duplicate keys"
+        ) from None
+    return [(entry.ref, entry.superset) for entry in mapping.dashboards]
+
+
+def _inventory_paths(pairs: Sequence[tuple[str, str]]) -> dict[str, tuple[str, ...]]:
+    """One validation path for flags, the mapping file and the old snapshot manifest."""
     if not pairs:
         raise VerifyError("name at least one dashboard: --dashboard REF=SUPERSET_ID")
     paths: dict[str, tuple[str, ...]] = {}
@@ -503,6 +539,11 @@ def inventory(request: InventoryRequest) -> InventoryReport:
             parsed = ContractRef.parse(ref)
         except RefError as exc:
             raise VerifyError(f"--dashboard {ref!r}: {exc}") from None
+        except ValueError:
+            # `int()` refuses a version longer than Python's digit limit with a plain ValueError.
+            raise VerifyError(
+                f"--dashboard {ref!r}: malformed version pin: too many digits"
+            ) from None
         if parsed.kind is not RefKind.DASHBOARD or parsed.version is None:
             raise VerifyError(f"--dashboard {ref!r}: expected dashboard://path@version")
         if not ident.strip():
@@ -519,12 +560,31 @@ def inventory(request: InventoryRequest) -> InventoryReport:
             raise VerifyError(f"--dashboard {ref!r} is named twice")
         *directories, name = parsed.path
         paths[ref] = (*directories, f"{name}@{parsed.version}.yaml")
-    output = Path(request.output)
+    return paths
+
+
+def inventory(request: InventoryRequest) -> InventoryReport:
+    """Read the named Superset dashboards into the specs `verify --dashboards` reads (D6, E3).
+
+    Each spec is written at the path the gate looks for its ref, so the output directory is
+    the `--dashboards` of a run. A dashboard the inventory does not read whole is not written
+    and the report says why; the gate then says the spec is missing. The output is published
+    only once everything was read and written beside it: no spec of an earlier inventory stays
+    in it to be read as this one's, and an inventory that failed leaves none behind. With
+    `replace`, the output is a snapshot this inventory wrote, checked before Superset is asked
+    and kept as it was unless the new one is published whole.
+    """
+    pairs = _inventory_pairs(request)
+    paths = _inventory_paths(pairs)
+    # Keep siblings beside '.' and '..' too; abspath does not follow a final symlink.
+    output = Path(os.path.abspath(request.output))
     try:
         taken = filesystem.exists(output)
+        previous = _inventory_snapshot(output) if request.replace else None
     except OSError as exc:
-        raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
-    if taken:
+        action = "replace inventory" if request.replace else "write the inventory to"
+        raise VerifyError(f"cannot {action} {output}: {exc}") from None
+    if taken and not request.replace:
         raise VerifyError(f"output already exists: {output}; the inventory writes a new directory")
     model = _load_model(Path(request.semantic) / MODEL_FILE)
 
@@ -542,12 +602,107 @@ def inventory(request: InventoryRequest) -> InventoryReport:
             specs[ref] = read.spec
             read.record.written = "/".join(paths[ref])
         report.dashboards.append(read.record)
-    _write_inventory(output, report, {paths[ref]: spec for ref, spec in specs.items()})
+    _write_inventory(output, report, {paths[ref]: spec for ref, spec in specs.items()}, previous)
     return report
 
 
+def _inventory_entry(path: Path, *, directory: bool) -> bool:
+    info = path.lstat()
+    if sys.platform == "win32" and info.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+        return False
+    return (
+        stat.S_ISDIR(info.st_mode)
+        if directory
+        else stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+    )
+
+
+def _inventory_snapshot(output: Path) -> dict[str, bytes]:
+    """Read only inventory-owned files, with no links or unlisted directories.
+
+    Retain bytes until backup cleanup completes: a failed partial deletion must be reversible.
+    The report authorizes paths, not arbitrary files named by a forged `written` value.
+    """
+    owned = "--replace takes a directory an inventory wrote"
+    try:
+        if not _inventory_entry(output, directory=True):
+            raise VerifyError(f"cannot replace inventory {output}: unexpected entry '.'")
+    except FileNotFoundError:
+        raise VerifyError(
+            f"cannot replace inventory {output}: it does not exist; {owned}"
+        ) from None
+    manifest = output / INVENTORY_REPORT
+    try:
+        if not _inventory_entry(manifest, directory=False):
+            raise VerifyError(
+                f"cannot replace inventory {output}: unexpected entry {INVENTORY_REPORT!r}"
+            )
+    except FileNotFoundError:
+        raise VerifyError(
+            f"cannot replace inventory {output}: missing entry {INVENTORY_REPORT!r}; {owned}"
+        ) from None
+    data = manifest.read_bytes()
+    try:
+        text = data.decode("utf-8")
+        parsed = json.loads(text, object_pairs_hook=_unique_inventory_keys)
+        if not isinstance(parsed, dict) or not {"superset_version", "dashboards"} <= parsed.keys():
+            raise ValueError("not a report")
+        report = InventoryReport.model_validate_json(text, strict=True)
+        paths = _inventory_paths([(item.ref, item.superset) for item in report.dashboards])
+        files = {INVENTORY_REPORT}
+        directories: set[str] = set()
+        for item in report.dashboards:
+            if item.written is None:
+                if not item.refusals:
+                    raise ValueError("no refusal")
+                continue
+            parts = paths[item.ref]
+            if item.written != "/".join(parts) or item.refusals:
+                raise ValueError("not the ref's written path")
+            files.add(item.written)
+            directories.update("/".join(parts[:n]) for n in range(1, len(parts)))
+    except (ValueError, VerifyError, RecursionError):
+        raise VerifyError(
+            f"cannot replace inventory {output}: invalid {INVENTORY_REPORT}"
+        ) from None
+
+    found: dict[str, bytes] = {}
+
+    def visit(directory: Path) -> None:
+        # `os.listdir` raises what it is refused, on every interpreter (test_refused_evidence).
+        for entry in sorted(directory / name for name in os.listdir(directory)):
+            name = entry.relative_to(output).as_posix()
+            is_directory = name in directories
+            if (name not in files and not is_directory) or not _inventory_entry(
+                entry, directory=is_directory
+            ):
+                raise VerifyError(f"cannot replace inventory {output}: unexpected entry {name!r}")
+            if is_directory:
+                visit(entry)
+            else:
+                found[name] = entry.read_bytes()
+
+    visit(output)
+    if missing := sorted(files - found.keys()):
+        raise VerifyError(f"cannot replace inventory {output}: missing entry {missing[0]!r}")
+    return found
+
+
+def _restore_inventory(backup: Path, previous: Mapping[str, bytes]) -> None:
+    """Repair only files removed during backup cleanup, before renaming the backup back."""
+    backup.mkdir(exist_ok=True)
+    for name, data in previous.items():
+        path = backup / name
+        if not filesystem.exists(path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+
+
 def _write_inventory(
-    output: Path, report: InventoryReport, specs: Mapping[tuple[str, ...], DashboardSpec]
+    output: Path,
+    report: InventoryReport,
+    specs: Mapping[tuple[str, ...], DashboardSpec],
+    previous: Mapping[str, bytes] | None = None,
 ) -> None:
     """Every file in a directory beside *output*, then the directory renamed to it.
 
@@ -555,13 +710,20 @@ def _write_inventory(
     under — not with `mkdtemp`'s owner-only mode, which the rename would carry to the
     output. Whatever stops the writing, an interrupt included, takes the directory with it.
     """
+    staging = output.parent / f".{output.name}.{secrets.token_hex(8)}"
+    backup = staging.with_name(staging.name + ".previous")
+    retiring = False
+    publishing = False
+    staging_owned = False
+    moving_previous = False
     try:
         output.parent.mkdir(parents=True, exist_ok=True)
-        staging = output.parent / f".{output.name}.{secrets.token_hex(8)}"
-        staging.mkdir()
-    except OSError as exc:
-        raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
-    try:
+        staging_owned = True
+        try:
+            staging.mkdir()
+        except FileExistsError:
+            staging_owned = False
+            raise
         for parts, spec in specs.items():
             path = staging.joinpath(*parts)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -576,16 +738,52 @@ def _write_inventory(
                 "Unicode (a lone surrogate)"
             ) from None
         (staging / INVENTORY_REPORT).write_bytes((text + "\n").encode("utf-8"))
-        if filesystem.exists(output):
+        if previous is not None:
+            # Recheck after the remote read, before moving anything the operator owns.
+            if _inventory_snapshot(output) != previous:
+                raise VerifyError(
+                    f"cannot replace inventory {output}: snapshot changed during read"
+                )
+            try:
+                backup.lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                raise VerifyError(f"cannot replace inventory {output}: backup already exists")
+            moving_previous = True
+            output.rename(backup)
+        elif filesystem.exists(output):
             raise VerifyError(
                 f"output already exists: {output}; the inventory writes a new directory"
             )
+        publishing = True
         staging.rename(output)
-    except OSError as exc:
-        shutil.rmtree(staging, ignore_errors=True)
-        raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
-    except BaseException:
-        shutil.rmtree(staging, ignore_errors=True)
+        if previous is not None:
+            retiring = True
+            shutil.rmtree(backup)
+    except BaseException as exc:
+        # Inspect paths as well as flags: an interrupt can arrive just after rename returns.
+        try:
+            if previous is not None and moving_previous and (retiring or filesystem.exists(backup)):
+                if retiring:
+                    _restore_inventory(backup, previous)
+                if filesystem.exists(output):
+                    output.rename(staging)
+                backup.rename(output)
+            elif previous is None and publishing and not filesystem.exists(staging):
+                # Only our completed rename can remove staging.
+                output.rename(staging)
+            if staging_owned and filesystem.exists(staging):
+                shutil.rmtree(staging)
+        except OSError as recovery:
+            # A second filesystem failure cannot be made transactional. Keep recovery material
+            # rather than deleting it, and still cross the CLI's exit-2 boundary safely.
+            raise VerifyError(
+                f"cannot restore inventory {output}: {recovery}; recovery paths: "
+                f"{backup}, {staging}"
+            ) from None
+        if isinstance(exc, OSError):
+            raise VerifyError(f"cannot write the inventory to {output}: {exc}") from None
         raise
 
 

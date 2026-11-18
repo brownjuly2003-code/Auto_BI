@@ -65,6 +65,9 @@ from auto_bi.verification.bi_contract import SupersetContractCompiler
 #: The Superset the mapping below was read off (docker/superset/Dockerfile, CLAUDE.md inv. 7).
 SUPERSET_VERSION = "4.1.2"
 
+#: D6 is reader 1. Increment when the mapping of Superset answers to specs/reasons changes.
+READER_VERSION = 1
+
 #: `DashboardSpec.charts` holds at most this many tiles.
 MAX_CHARTS = 12
 

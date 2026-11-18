@@ -1,0 +1,5 @@
+{
+  "dashboards": [
+    {"ref": "dashboard://weekly_margin@7", "superset": "weekly-margin"}
+  ]
+}

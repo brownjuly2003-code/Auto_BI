@@ -1,0 +1,143 @@
+{
+ "charts": [
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "date"
+     }
+    ],
+    "datasource": "1__table",
+    "groupby": [],
+    "metrics": [
+     {
+      "aggregate": "SUM",
+      "column": {
+       "column_name": "revenue"
+      },
+      "expressionType": "SIMPLE",
+      "label": "SUM(revenue)"
+     }
+    ],
+    "row_limit": 10000,
+    "slice_id": 1,
+    "viz_type": "echarts_timeseries_bar",
+    "x_axis": "region"
+   },
+   "id": 1,
+   "slice_name": "Выручка по регионам"
+  },
+  {
+   "form_data": {
+    "adhoc_filters": [
+     {
+      "clause": "WHERE",
+      "comparator": "No filter",
+      "expressionType": "SIMPLE",
+      "operator": "TEMPORAL_RANGE",
+      "subject": "date"
+     }
+    ],
+    "datasource": "1__table",
+    "groupby": [],
+    "metrics": [
+     {
+      "expressionType": "SQL",
+      "label": "gross_margin_pct",
+      "sqlExpression": "SUM(gross_margin) / SUM(revenue)"
+     }
+    ],
+    "row_limit": 10000,
+    "slice_id": 2,
+    "viz_type": "echarts_timeseries_bar",
+    "x_axis": "region"
+   },
+   "id": 2,
+   "slice_name": "Маржа по регионам"
+  },
+  {
+   "form_data": {
+    "all_columns": [
+     "region",
+     "revenue"
+    ],
+    "datasource": "2__table",
+    "query_mode": "raw",
+    "row_limit": 1000,
+    "slice_id": 3,
+    "viz_type": "table"
+   },
+   "id": 3,
+   "slice_name": "Операторский срез"
+  }
+ ],
+ "dashboard": {
+  "changed_on": "2026-11-18T11:26:30.268993",
+  "dashboard_title": "Недельная маржа",
+  "id": 1,
+  "json_metadata": null,
+  "slug": "weekly-margin"
+ },
+ "datasets": [
+  {
+   "columns": [
+    {
+     "column_name": "date",
+     "expression": null,
+     "is_dttm": true,
+     "type": "DATE"
+    },
+    {
+     "column_name": "region",
+     "expression": null,
+     "is_dttm": false,
+     "type": "STRING"
+    },
+    {
+     "column_name": "revenue",
+     "expression": null,
+     "is_dttm": false,
+     "type": "DECIMAL(18, 2)"
+    }
+   ],
+   "database": {
+    "backend": "clickhousedb",
+    "id": 1
+   },
+   "id": 1,
+   "metrics": [],
+   "schema": "dm",
+   "sql": null,
+   "table_name": "sales_daily"
+  },
+  {
+   "columns": [
+    {
+     "column_name": "region",
+     "expression": null,
+     "is_dttm": false,
+     "type": "String"
+    },
+    {
+     "column_name": "revenue",
+     "expression": null,
+     "is_dttm": false,
+     "type": "Decimal(38, 2)"
+    }
+   ],
+   "database": {
+    "backend": "clickhousedb",
+    "id": 1
+   },
+   "id": 2,
+   "metrics": [],
+   "schema": "dm",
+   "sql": "SELECT region, sum(revenue) AS revenue\nFROM dm.sales_daily\nGROUP BY region",
+   "table_name": "weekly_margin_operator"
+  }
+ ]
+}

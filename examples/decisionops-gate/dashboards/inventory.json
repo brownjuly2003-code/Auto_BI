@@ -1,0 +1,48 @@
+{
+  "superset_version": "4.1.2",
+  "reader_version": 1,
+  "dashboards": [
+    {
+      "ref": "dashboard://weekly_margin@7",
+      "superset": "weekly-margin",
+      "superset_id": 1,
+      "title": "Недельная маржа",
+      "changed_on": "2026-11-18T11:26:30.268993",
+      "written": "weekly_margin@7.yaml",
+      "charts": [
+        {
+          "chart": "chart_1",
+          "superset_id": 1,
+          "viz_type": "echarts_timeseries_bar",
+          "form": "typed",
+          "reasons": [],
+          "database": 1,
+          "backend": "clickhousedb"
+        },
+        {
+          "chart": "chart_2",
+          "superset_id": 2,
+          "viz_type": "echarts_timeseries_bar",
+          "form": "read_sql",
+          "reasons": [
+            "form_data carries a SQL expression"
+          ],
+          "database": 1,
+          "backend": "clickhousedb"
+        },
+        {
+          "chart": "chart_3",
+          "superset_id": 3,
+          "viz_type": "table",
+          "form": "read_sql",
+          "reasons": [
+            "the dataset is virtual (its own SQL)"
+          ],
+          "database": 1,
+          "backend": "clickhousedb"
+        }
+      ],
+      "refusals": []
+    }
+  ]
+}
