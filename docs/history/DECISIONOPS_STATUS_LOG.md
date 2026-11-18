@@ -67,7 +67,13 @@ Verifier и check не менялись: 139 и 86.
 - **Не сделано.** Bundle прогона 1 в репозиторий не положен: ADR требует только `block`, а его
   digest записан. Job summary через API не читается, значения взяты из лога шага, который его
   пишет. Прочие проверки PR #104 идут на uv 0.13.9 из головы PR и в запись не входят.
-- **Проверки:** CI_LOCAL_RESULT
+- **Проверки.** Полный `ci_local` (`--event pull_request`, Linux-контейнер) на `b3ebfe0`: 62
+  PASS. Pytest — 13420 passed, покрытие — 96,95 %, мутационный гейт — 2946/3044, в пределах
+  baseline. Не покрыты `windows-cli-smoke` (windows-latest) и `Install uv` трёх job
+  `dependency-resolution`. Job `decisionops-gate-demo/gate` в `ci_local` падает на «Check out the
+  base»: раннер не даёт payload `pull_request` (`BASE_SHA` пуст) и распаковывает дерево без
+  `.git`. Этот job работает только на GitHub; PR записи меняет README примера и запускает его
+  там.
 
 Дальше — E3 (инвентарь как вход прогона PR) в новой локальной ветке от `main`; push и слияние —
 по слову владельца.
