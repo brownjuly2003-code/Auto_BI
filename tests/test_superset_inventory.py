@@ -3019,7 +3019,7 @@ def test_the_report_holds_the_keys_the_spec_names(tmp_path: Path) -> None:
     inventory(_request(tmp_path, [("dashboard://w@1", "12"), ("dashboard://big@1", "11")]))
 
     report = json.loads((tmp_path / "out" / INVENTORY_REPORT).read_text(encoding="utf-8"))
-    assert list(report) == ["superset_version", "dashboards"]
+    assert list(report) == ["superset_version", "reader_version", "dashboards"]
     for dashboard in report["dashboards"]:
         assert list(dashboard) == [
             "ref",

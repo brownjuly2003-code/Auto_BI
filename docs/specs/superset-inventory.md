@@ -15,6 +15,72 @@ The reader is `auto_bi/inventory/superset.py`; the use case is `inventory` in
 `auto_bi/decision/use_cases.py`. The Superset is the one pinned (4.1.2), reached through the
 settings `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_USER` and `AUTO_BI_SUPERSET_PASSWORD`.
 
+## Requirement: a repository snapshot is the PR run's inventory input (E3)
+
+The input sequence SHALL be: Superset answers → `decision inventory` against the semantic
+model of the **default branch** → a repository snapshot (spec files and `inventory.json`) →
+`decision verify --dashboards <snapshot> --pr-comment <file>` or the Action's `dashboards` input.
+An operator, or a trusted manually dispatched workflow of the default branch, takes the
+snapshot using a Superset account restricted to reading the named dashboards. The operator
+reviews the result and proposes the snapshot in a separate PR. The PR job SHALL receive no
+Superset credentials; neither `action.yml` nor the demo PR workflow references them or
+`secrets.`. `pull_request_target` remains forbidden by the Action and the workflows.
+
+The snapshot can lag behind BI. Freshness is the producer's responsibility, **not a verdict**:
+the gate reads the supplied specs, does not contact Superset and cannot see later BI changes.
+`inventory.json` metadata (including `changed_on` and `reader_version`) does not grade a run.
+A delivered ref without a spec, whether refused by inventory or absent from the mapping,
+SHALL be `bi.spec_missing`. Refresh with exit 3 removes the formerly written spec of a now
+refused dashboard, so the gate cannot keep using it.
+
+The [trusted workflow template](../../examples/decisionops-gate/workflows/inventory-snapshot.yml)
+is supplied outside `.github/workflows` and **has not been run on GitHub**. It SHALL:
+
+- accept only `workflow_dispatch`, with a job condition admitting only the default branch;
+  checkout the model and mapping from that branch;
+- checkout Auto_BI by a full reviewed commit SHA, and read uv's pin from that checkout;
+  use its frozen lock, isolated Python and both `--no-env-file` and `AUTO_BI_NO_ENV_FILE=1`
+  for inventory. The template deliberately fails before the code checkout until its
+  `REPLACE_WITH_REVIEWED_E3_COMMIT_SHA` marker is replaced by a published E3 SHA; a branch,
+  tag, malformed SHA or all-zero SHA is refused. E3 cannot pin its own uncommitted code;
+- scope Superset secrets to the inventory step through the `superset-inventory` GitHub
+  environment; install dependencies before that step and use `--no-sync` during it;
+- grant only `permissions: contents: read`, persist no checkout credentials, pin third-party
+  actions by SHA, and upload an artifact for 14 days. It never writes the repository;
+- treat inventory exits 0 and 3 as snapshot success; exit 2 and any other failure prevent
+  artifact upload. The artifact is input to the operator's separate PR, not automatic publication.
+
+Offline tests: `tests/test_inventory_snapshot.py::test_rest_snapshot_refresh_to_pr_comment`,
+`tests/test_inventory_snapshot_workflow.py`, and the existing Action event-refusal tests.
+
+## Requirement: a checked-in mapping uses the same dashboard rules as flags
+
+`--map FILE` SHALL read UTF-8 JSON of exactly this shape (ids are **strings**, also when numeric):
+
+```json
+{
+  "dashboards": [
+    {"ref": "dashboard://sales/overview@1", "superset": "sales-overview"},
+    {"ref": "dashboard://sales/regions@1", "superset": "7"}
+  ]
+}
+```
+
+Only `dashboards` is allowed at the top level, only `ref` and `superset` in each entry; both
+strings are required. Duplicate JSON keys, unknown keys, wrong types, unreadable/non-UTF-8
+files and malformed JSON SHALL be exit 2. No source-body excerpt is printed for these failures.
+A pair rule refused after the file has parsed names the ref as `--dashboard` does: refs and
+Superset ids are identifiers, and the message is the flag's, word for word.
+The nonempty list, unique refs, pinned `dashboard://path@version` grammar, nonblank Superset
+id/slug and its UTF-8 encodability SHALL be checked by the **same function** as `--dashboard`.
+All mapping validation precedes any access to Superset or `--output`.
+
+`--map` and `--dashboard` are mutually exclusive; exactly one is required. `--database ID`
+is allowed with either and retains its D6 meaning; the map contains no database id and no
+credentials. Entry order is retained in the report. Tests: the mapping cases in
+`tests/test_inventory_snapshot.py`, including identical flag/map refusal messages and the
+database mismatch returning exit 3.
+
 ## Requirement: the inventory asks Superset by GET after its login
 
 For each `--dashboard REF=ID_OR_SLUG` (REF is `dashboard://path@version`) the inventory SHALL read
@@ -159,33 +225,86 @@ For each written dashboard the inventory SHALL write `<out>/<segments>/<name>@<v
 its ref — the path `decision verify --dashboards <out>` reads — and the spec SHALL read back as
 the `DashboardSpec` it was written from: SQL kept as a block where YAML can, double-quoted where
 a block would not read back (a text holding U+0085). It SHALL write `<out>/inventory.json`:
-`superset_version` and, per dashboard, `ref`, `superset`, `superset_id`, `title`, `changed_on`,
+`superset_version`, `reader_version` and, per dashboard, `ref`, `superset`, `superset_id`, `title`, `changed_on`,
 `written` (the path relative to the output, null when refused), `charts` (`chart`,
 `superset_id`, `viz_type`, `form`, `reasons`, and the Superset `database` and `backend` of its
 dataset) and `refusals`.
 
-The output SHALL be a new directory: one that exists is refused before Superset is asked.
+Without `--replace`, output SHALL be a new directory: one that exists is refused before Superset is asked.
 The files SHALL be written into a staging directory beside it, made under the umask as the
 output would be, and renamed at the end. An answer of Superset that does not come leaves nothing;
 a failure of the write or an interrupt leaves neither the output nor the staging directory, only
 the directories made above the output.
 
+## Requirement: explicit replacement preserves the previous snapshot on failure
+
+`--replace` SHALL require an existing inventory-owned directory; a missing output or a directory
+without `inventory.json` is refused as such (exit 2), not reported as a failed write. Before contacting Superset,
+its `inventory.json` must parse as an `InventoryReport` with `superset_version` and `dashboards`;
+duplicate keys and unknown fields are refused. Each `written` must equal the canonical path
+for its pinned ref, all written files must exist, and only those regular files, the report and
+their necessary parent directories may exist. A refused entry has no `written` and names a
+refusal. Symlinks (including the output itself), hard-linked files, Windows reparse points,
+special files, foreign files and extra directories SHALL be refused with exit 2 before any
+mutation. The first unexpected entry in sorted depth-first order is named and escaped.
+This is a structural ownership check, not cryptographic proof of the producer's identity.
+
+For exits 0 and 3, replacement SHALL publish a complete new tree, never merge into the old one:
+
+1. Read and retain the old snapshot's bytes. Read Superset and fully write the new snapshot
+   into sibling `.<output-name>.<random-16-hex>` under the usual umask.
+2. Recheck the old tree and bytes before publication; changes during the remote read are refused.
+3. Rename old output to sibling `<staging-name>.previous`, then staging to output.
+4. Remove the backup. Bytes retained until cleanup finishes allow a partially removed backup
+   to be repaired if cleanup fails, then renamed back. No backup or staging remains on success.
+
+An argument/model/Superset/write error SHALL return exit 2 with the old bytes intact. An
+`OSError` or `KeyboardInterrupt` during publication SHALL restore the old snapshot by rename
+and remove staging; an interrupt then propagates. On Windows an open file can refuse the
+directory rename: exit 2, old snapshot still in place. The caller must serialize writers and
+not modify the snapshot while it is being replaced.
+
+Power loss or a process killed without exception handling is outside rollback: before the
+first rename, old output and possibly staging remain; between renames, output is absent and
+the complete old tree is `.previous`, with the new tree at staging; after the second rename,
+output is new and `.previous` may remain (possibly partly removed during cleanup). No automatic
+recovery or durable `fsync` transaction is claimed. The operator must inspect these paths before
+another refresh. A **second filesystem failure during rollback** is also outside the byte/cleanup
+guarantee: it is exit 2 with recovery paths named, and surviving recovery material is retained.
+
+Tests in `tests/test_inventory_snapshot.py` inject failures before and after writes, both
+renames and cleanup, including partial backup deletion, and check bytes plus sibling entries.
+They also cover unowned/malformed/missing snapshots, links and Windows open-file refusal.
+
+## Requirement: the inventory records the reader version independently
+
+`reader_version` SHALL be a positive integer, initially **1** for the D6 reader. Increment it
+when the mapping from Superset answers and semantic model to specs, chart forms, reasons or
+refusals changes. Packaging, mapping-file input and transactional publication do not change
+that mapping: E3 writes version 1. `superset_version` remains `4.1.2`; `VERIFIER_VERSION` and
+`CHECK_VERSION` do not change. Replacement SHALL accept a D6 report without `reader_version`
+as reader 1; the new report explicitly writes the current reader version. A future positive
+version is accepted if the rest of the report still satisfies the same ownership contract.
+Tests: `test_map_accepts_database_and_writes_reader_version`, `test_replace_whole_snapshot_including_d6`
+and the report-key contract in `tests/test_superset_inventory.py`.
+
 ## Requirement: the exit code says what was written
 
-`auto_bi decision inventory <semantic> --dashboard REF=ID_OR_SLUG [--dashboard ...] --output NEW_DIR
-[--database ID] [--json]` takes the directory holding `model.yaml` of the semantic ref; `--database`
+`auto_bi decision inventory <semantic> (--map FILE | --dashboard REF=ID_OR_SLUG [--dashboard ...])
+--output DIR [--replace] [--database ID] [--json]` takes the directory holding `model.yaml` of the semantic ref; `--database`
 is the id of the Superset database that model describes. It SHALL exit:
 
 - 0 when every named dashboard was written;
 - 3 when a dashboard was refused: each refused one is named with why, and the gate will report
   `bi.spec_missing` for it;
 - 2 when the inventory could not be taken: an argument (a `--dashboard` that is not `REF=ID`, an
-  id or slug that is not UTF-8 text), a model the gate cannot read, an output that exists, a
+  id or slug that is not UTF-8 text, an invalid mapping), a model the gate cannot read, an output
+  that exists without `--replace` or fails replacement ownership checks, a
   Superset address that is not a URL, Superset unreachable, a login refused, an HTTP error, an
   answer not shaped as Superset's, a write that fails — a text of an answer that is not Unicode
   (a lone surrogate, which JSON's `\uD800` escape carries) cannot be written to `inventory.json`,
-  and nothing is. An arguments error SHALL ask Superset nothing. One `error:` line is printed, except for
-  what argparse refuses (a missing `--dashboard` or `--output`, a `--database` that is not an
+  and nothing new is published. An arguments error SHALL ask Superset nothing. One `error:` line is printed, except for
+  what argparse refuses (missing/both `--map`/`--dashboard`, missing `--output`, a `--database` that is not an
   integer): it prints its usage and its own error line.
 
 The answer is, per dashboard, `wrote    <path>  (<superset>: <n> typed, <m> read as SQL)` or
@@ -219,7 +338,7 @@ printed escaped; the dashboard title appears only in `--json`, JSON-escaped.
 
 ### Scenario: an output that exists
 
-- **GIVEN** `--output` names a directory that exists
+- **GIVEN** `--output` names a directory that exists and `--replace` is absent
 - **WHEN** the inventory runs
 - **THEN** the exit is 2 and Superset is not asked
 
@@ -264,10 +383,14 @@ printed escaped; the dashboard title appears only in `--json`, JSON-escaped.
 ## Usage
 
 ```bash
-uv run auto_bi decision inventory semantic/head \
-    --dashboard dashboard://sales/overview@1=sales-overview \
-    --dashboard dashboard://sales/regions@1=7 \
+# From a checkout of the default branch; superset-map.json has the shape above.
+AUTO_BI_NO_ENV_FILE=1 uv run --no-env-file auto_bi decision inventory semantic \
+    --map superset-map.json \
     --database 2 --output dashboards
+# Later, replace a previously generated snapshot, including all refusals:
+AUTO_BI_NO_ENV_FILE=1 uv run --no-env-file auto_bi decision inventory semantic \
+    --map superset-map.json --database 2 --output dashboards --replace
+# Commit the reviewed snapshot in a separate PR; the PR job only reads files:
 uv run auto_bi decision verify contracts/ --base semantic/base --candidate semantic/head \
-    --evidence .evidence --dashboards dashboards
+    --evidence .evidence --dashboards dashboards --pr-comment comment.md
 ```

@@ -1,9 +1,6 @@
-title: Недельная маржа — owner review chart impact
-target_bi: superset
-filters:
-- column: dm.sales_daily.date
+title: Недельная маржа
 charts:
-- id: revenue_by_region
+- id: chart_1
   title: Выручка по регионам
   viz: bar
   query:
@@ -13,22 +10,29 @@ charts:
     measures:
     - column: revenue
       agg: sum
-- id: margin_by_region
+    limit: 10000
+- id: chart_2
   title: Маржа по регионам
-  viz: bar
-  query:
-    table: dm.sales_daily
-    dimensions:
-    - region
-    measures:
-    - column: gross_margin
-      agg: sum
-      denominator:
-        column: revenue
-        agg: sum
-- id: operator_table
-  title: Операторский срез
   viz: table
   query:
     table: dm.sales_daily
-    raw_sql: SELECT region, sum(revenue) FROM dm.sales_daily GROUP BY region
+    raw_sql: |-
+      SELECT
+      *,
+      (
+      SUM(gross_margin) / SUM(revenue)
+      )
+      FROM dm.sales_daily
+- id: chart_3
+  title: Операторский срез
+  viz: table
+  query:
+    table: dm.weekly_margin_operator
+    raw_sql: |-
+      SELECT
+      *
+      FROM (
+      SELECT region, sum(revenue) AS revenue
+      FROM dm.sales_daily
+      GROUP BY region
+      ) AS virtual_table

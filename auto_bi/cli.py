@@ -322,16 +322,22 @@ def main(argv: list[str] | None = None) -> int:
         "semantic",
         help="Semantic ref the specs are validated against: a directory holding model.yaml",
     )
-    inventory.add_argument(
+    inventory_input = inventory.add_mutually_exclusive_group(required=True)
+    inventory_input.add_argument(
         "--dashboard",
         action="append",
         default=[],
-        required=True,
         metavar="REF=ID",
         help="A delivered dashboard ref and the Superset dashboard id or slug it is; repeatable",
     )
+    inventory_input.add_argument(
+        "--map", dest="mapping", metavar="FILE", help="UTF-8 JSON dashboard mapping file"
+    )
     inventory.add_argument(
-        "--output", required=True, help="New directory the specs and inventory.json go to"
+        "--output", required=True, help="Directory the specs and inventory.json go to"
+    )
+    inventory.add_argument(
+        "--replace", action="store_true", help="Replace an existing inventory snapshot whole"
     )
     inventory.add_argument(
         "--database",
@@ -744,6 +750,8 @@ def _decision_inventory(args: argparse.Namespace) -> int:
                 output=args.output,
                 source=source,
                 database=args.database,
+                mapping=args.mapping,
+                replace=args.replace,
             )
         )
     except VerifyError as exc:

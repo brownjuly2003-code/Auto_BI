@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-17 · **Версии evidence:** `VERIFIER_VERSION=139`, `CHECK_VERSION=86`
+**Обновлено:** 2026-11-18 · **Версии evidence:** `VERIFIER_VERSION=139`, `CHECK_VERSION=86`
 (что меняла каждая — [spec](specs/evidence-format-versions.md))
 
 Здесь только то, что работает, что не реализовано и что дальше. Поведение описывают
@@ -11,10 +11,8 @@
 **Стадия.** Release gate bootstrap завершён; impact доходит до чарта; read-only capture
 reviewed-запроса проверен на живых PostgreSQL и ClickHouse; evidence подписывается Ed25519
 (opt-in); offline investigation alpha разрешён. Закрыты этапы hardening, мутационного
-smoke и формул dbt (ADR 0008).
-Owner outcome (human/design-partner) не измеряется
-([ADR 0007](adr/0007-human-outcome-out-of-scope.md)). Код — в `main` публичного репозитория
-baseline; в checkout — `autobi-agent` `0.7.0`, без публикации пакета и тега
+smoke и формул dbt (ADR 0008). Код — в `main` публичного репозитория
+baseline; в checkout — `autobi-agent` `0.8.0`, без публикации пакета и тега
 ([ADR 0011](adr/0011-public-repository.md)).
 
 ## Коротко
@@ -93,7 +91,8 @@ investigation: четыре pure version-pinned skill над supplied canonical 
   строка [инвентаря](specs/dbt-formula-inventory.md); три публичных проекта новых не дали.
   Ограничения этапа: число проблем reader не ограничено; `--*-dbt-database` не записана в
   provenance; сомнительное написание `relation_name` — review.
-- Human owner outcome не измеряется (ADR 0007); proxy- и Astra-review его не заменяют.
+- Owner outcome (human/design-partner) не измеряется ([ADR 0007](adr/0007-human-outcome-out-of-scope.md));
+  proxy- и Astra-review его не заменяют.
 
 ## Быстрая проверка
 
@@ -119,8 +118,9 @@ PEM вне checkout и evidence.
 Финиш [ADR 0010](adr/0010-finish-line.md) — 2026-11-10, `0.6.0`. D1–D6
 [ADR 0012](adr/0012-post-finish-development.md), E1 и E2
 [ADR 0013](adr/0013-entry-points-to-proven-path.md) — в `main`; гейт прошёл путь на GitHub
-([запись E2](pilot/2026-11-17-e2-github-demo/README.md)). Дальше — E3 в ветке от `main`,
-push — по слову владельца; E4–E7 и [бэклог](DECISIONOPS_BACKLOG.md) — потом.
+([запись E2](pilot/2026-11-17-e2-github-demo/README.md)). E3 — в ветке
+([запись](pilot/2026-11-18-e3-inventory-snapshot/README.md)); push и демо-PR — по слову
+владельца. E4–E7 и [бэклог](DECISIONOPS_BACKLOG.md) — потом.
 
 Не начинать без нового решения:
 
