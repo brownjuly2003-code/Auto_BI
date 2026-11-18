@@ -10,6 +10,39 @@
 > Новая запись среза добавляется сверху, полным текстом. С 2026-11-04 это единственное место
 > записи о срезе: ни `CLAUDE.md`, ни `DECISIONOPS_CURRENT_STATE.md` её не дублируют.
 
+## 2026-11-18 — E3 на GitHub: `0.8.0` и демонстрационный PR на снимке (ADR 0013)
+
+Слово владельца 2026-11-18 — выбор «Публикуй E3, потом E4a»: `ci_local` → push → PR → слияние
+после проверок → SHA в шаблоне → демо-PR на снимке; затем E4a локально. Публикация,
+демонстрация и запись — Claude. Verifier и check не менялись: 139 и 86. Основной путь ADR 0013
+(E1–E3) закрыт: путь от pull request до вердикта, затронутого дашборда и проверяемого evidence
+пройден на GitHub на снимке инвентаря
+([запись](../pilot/2026-11-18-e3-inventory-snapshot/README.md), раздел «На GitHub»).
+
+- **Публикация.** PR #106 (`e3-inventory-snapshot`, голова `af93ee4`, `0.8.0` без тега) —
+  16 проверок GitHub зелёные, слит merge-коммитом `cbf2994`. Демонстрационный workflow прошёл
+  на нём с пином E2 `6cbc7dc`: `pass_with_advisory`, 0/0/7/15.
+- **Пин.** PR #107 (`e3-pin`, слит `7ca6237`): `INVENTORY_SHA` шаблона снимка и Action
+  демонстрационного workflow — `af93ee4`; тест держит оба пина одним коммитом и прогоняет на нём
+  проверку шаблона. GitHub скачал Action `af93ee4` уже в прогоне на #107.
+- **Демонстрационный PR #108** (`e3-demo-pr`, не слит). Прогон 1 (`fbfd6c0`, комментарий YAML) —
+  `pass_with_advisory`, exit 0, 0/0/7/15, шаг `success`; прогон 2 (`c4997b3`, timezone
+  `Europe/Moscow` → `UTC`) — `block`, exit 4, 1/1/7/15, шаг и job `failure`. Оба — как записано
+  заранее в README примера и как дал локальный `verify` перед push. Комментарий один (id
+  `6986367916`), обновлён прогоном 2. Прогон 2 называет дашборд снимка
+  `dashboard://weekly_margin@7`, плитку — нет (`chart.metric_unread` 2, `chart.sql_partial` 2; E4b).
+- **Bundle.** Оба артефакта скачаны и проверены `decision evidence --expect-digest` с digest из
+  комментария: exit 0, `content_hashed`; чужой digest — exit 4. Bundle `block` лежит в записи байт
+  в байт; `tests/test_e3_github_demo_record.py` держит запись на нём и на комментариях.
+- **`ci_local`.** Перед #106 на `af93ee4`: 58 passed, 2 failed, 6 uncovered; `quality` — 13533
+  passed, покрытие 96.94 %, мутационный гейт 2946/3044. `demo-image` упал на сети раннера: из VM
+  не отвечает один из четырёх адресов Fastly pypi.org (`151.101.64.223`), три перезапуска — так
+  же. Шаги job вручную в той же VM с pypi.org на доступном адресе (`docker build --add-host`)
+  прошли; на GitHub job зелёный. `decisionops-gate-demo/gate` вне GitHub падает на «Check out the
+  base», как в E2. Перед #107 — `ci_local --job ci/quality`: PASS (13534 passed).
+- **Не сделано:** шаблон снимка на GitHub не запускался (нужен Superset, доступный из GitHub);
+  плитка маржи на снимке не названа — E4b. Закрыть PR #104 (E2) и #108 — решение владельца.
+
 ## 2026-11-18 — E3: инвентарь как вход прогона PR (ADR 0013), локально
 
 Третий срез по [ADR 0013](../adr/0013-entry-points-to-proven-path.md). Слово владельца

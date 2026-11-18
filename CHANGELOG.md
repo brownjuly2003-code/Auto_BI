@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **E3 на GitHub:** шаблон снимка и Action демонстрационного workflow закреплены на
+  опубликованном коммите E3 `af93ee4`. Демонстрационный PR #108 (не слит) прошёл на
+  снимке инвентаря: `pass_with_advisory`, затем `block` на смене timezone, один комментарий,
+  bundle проверен digest'ом из комментария. Запись —
+  `docs/pilot/2026-11-18-e3-inventory-snapshot/`, вместе с bundle прогона `block`.
+
 ## [0.8.0] - 2026-11-18
 
 Версия checkout для публикации E3 ([ADR 0013](docs/adr/0013-entry-points-to-proven-path.md),

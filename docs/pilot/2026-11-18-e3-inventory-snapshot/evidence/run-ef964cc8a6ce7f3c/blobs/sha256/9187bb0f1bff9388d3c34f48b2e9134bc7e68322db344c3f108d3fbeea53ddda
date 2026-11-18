@@ -1,0 +1,1 @@
+{"sql":"SELECT\n*\nFROM (\nSELECT region, sum(revenue) AS revenue\nFROM dm.sales_daily\nGROUP BY region\n) AS virtual_table","table_name":"auto_bi__недельная_маржа__chart_3__9419ea43"}

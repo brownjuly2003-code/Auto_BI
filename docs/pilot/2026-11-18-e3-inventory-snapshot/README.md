@@ -3,8 +3,8 @@
 Запись пункта E3 [ADR 0013](../../adr/0013-entry-points-to-proven-path.md): снимок инвентаря
 Superset в репозитории как вход `dashboards` прогона pull request. Контракт —
 [спека инвентаря](../../specs/superset-inventory.md), разделы E3. Ветка `e3-inventory-snapshot`
-от `main` `26b6495`. Демонстрационный PR на GitHub по снимку ещё не прогонялся: push и PR —
-по слову владельца (ADR 0013, п. 5).
+от `main` `26b6495`, опубликована как `0.8.0` (PR #106). Демонстрационный PR #108 прошёл на
+снимке на GitHub — раздел «На GitHub»; этим основной путь ADR 0013 закрыт.
 
 ## Что добавлено
 
@@ -19,8 +19,8 @@ Superset в репозитории как вход `dashboards` прогона p
   `VERIFIER_VERSION` и `CHECK_VERSION` не менялись: вердикты E3 не трогает.
 - [Шаблон доверенного workflow](../../../examples/decisionops-gate/workflows/inventory-snapshot.yml):
   только `workflow_dispatch` ветки по умолчанию, код инвентаря по полному SHA, секреты Superset —
-  только шагу инвентаря, `contents: read`, результат — артефакт. На GitHub не запускался; до
-  публикации коммита E3 он отказывает на маркере SHA.
+  только шагу инвентаря, `contents: read`, результат — артефакт. На GitHub не запускался;
+  закрепляет опубликованный коммит E3 `af93ee4` (PR #107).
 - [Пример](../../../examples/decisionops-gate/README.md): `dashboards/` — снимок со стенда
   вместо ручной спеки E2, `superset-map.json`, раздел «Снимок дашбордов».
 
@@ -126,10 +126,62 @@ region`) и `stores` (3).
   P2, закрыты: шаг с секретами и рабочий каталог, длинная версия ref, ref в ошибках map,
   оговорка об откате), r2 «принять».
 
+## На GitHub: публикация и демонстрационный PR #108
+
+Слово владельца 2026-11-18 — выбор «Публикуй E3, потом E4a». Версия `0.8.0`, без тега и
+публикации пакета (ADR 0013, п. 5).
+
+- **PR #106** (`e3-inventory-snapshot`, голова `af93ee4`) — 16 проверок GitHub зелёные, слит
+  merge-коммитом `cbf2994`. Демонстрационный workflow прошёл и на нём, ещё с пином E2
+  `6cbc7dc`: `pass_with_advisory`, 0 / 0 / 7 / 15.
+- **PR #107** (`e3-pin`, слит `7ca6237`) — шаблон снимка (`INVENTORY_SHA`) и Action
+  демонстрационного workflow закреплены на `af93ee4`; тест держит оба пина одним коммитом.
+- **PR #108** (`e3-demo-pr`) не сливается. Исходы записаны заранее — таблица
+  [примера](../../../examples/decisionops-gate/README.md); перед каждым push локальный
+  `decision verify` на тех же входах дал тот же вердикт и те же счётчики. Base — пример из
+  `main` `7ca6237`; `dashboards` — снимок примера.
+
+| | Прогон 1 | Прогон 2 |
+|---|---|---|
+| Коммит головы | `fbfd6c0`: комментарий YAML в `model.yaml` | `c4997b3`: `gross_margin_pct` `time.timezone` `Europe/Moscow` → `UTC` |
+| `pull_request.base.sha` | `7ca6237` | `7ca6237` |
+| Action | `brownjuly2003-code/Auto_BI@af93ee4…`, uv 0.8.23 | тот же |
+| Workflow run | `44359744528` | `44359980051` |
+| Записано заранее | `yaml-comment`: `pass_with_advisory`, 0, `success` | `timezone-change`: `block`, 4, `failure` |
+| Вердикт | `pass_with_advisory` | `block` |
+| Код выхода гейта | 0 | 4 |
+| Статус шага гейта (`fail-on: block`) | `success` | `failure` |
+| Статус job | `success` | `failure` |
+| Checks block / review / advisory / всего | 0 / 0 / 7 / 15 | 1 / 1 / 7 / 15 |
+| Run гейта | `run-d876cd78cd433d80` | `run-ef964cc8a6ce7f3c` |
+| Evidence digest | `sha256:5c4827d8e9e320e399e6156830c7429a7c2916b6fcc94bb97b208cbbe5c571d3` | `sha256:03113fdd2c30fd7f2658ddccce04b9a0e2f410cd50d54516b6caedb8478c308a` |
+| Семантика base | `sha256:d017cca0ab3352e2b139f1a43d3ee3829bd761cd9d0387d8619870f9a09e51e2` | та же |
+| Семантика candidate | та же, что base | `sha256:524d638e4aef23edaf16534bb739d80f101f44c28030d638b11b6263cfc71996` |
+| Артефакт | `decisionops-pr-108-44359744528-1`, 13 896 B | `decisionops-pr-108-44359980051-1`, 14 954 B |
+| Артефакт хранится до | 2026-12-02T17:32:32Z | 2026-12-02T17:33:39Z |
+
+- **Один комментарий.** API комментариев PR #108 возвращает один комментарий
+  `github-actions[bot]`: id `6986367916`, маркер `auto-bi-decision-gate:cde7d76ca177c4b5`.
+  Создан 17:32:31Z прогоном 1, обновлён 17:33:38Z прогоном 2. Тело после каждого прогона —
+  [`pr-comment/after-run-1.md`](pr-comment/after-run-1.md) и
+  [`pr-comment/after-run-2.md`](pr-comment/after-run-2.md).
+- **Затронутое.** Прогон 2 называет `metric.time_changed` по `metric://sales/gross_margin_pct`
+  (поднят из review: от метрики зависит governed-продукт) и дашборд снимка
+  `dashboard://weekly_margin@7`. Плитку он не называет: «0 delivered chart(s) named»,
+  `chart.metric_unread` 2, `chart.sql_partial` 2 — граница из «Вердиктов на снимке».
+- **Bundle.** Оба артефакта скачаны `gh run download` и проверены
+  `auto_bi decision evidence <run> --expect-digest <digest из комментария>`: exit 0,
+  `content_hashed`, verifier 139. Digest прогона 1 на bundle прогона 2 отвергнут, exit 4. Bundle
+  прогона 2 лежит в [`evidence/run-ef964cc8a6ce7f3c/`](evidence/run-ef964cc8a6ce7f3c/reports/summary.md)
+  байт в байт, как скачан; `tests/test_e3_github_demo_record.py` держит запись на нём.
+- **`ci_local` перед push #106** на `af93ee4`: 58 passed, 2 failed, 6 uncovered. `demo-image`
+  упал на сети раннера: из VM не отвечает один из четырёх адресов Fastly pypi.org
+  (`151.101.64.223`), три перезапуска — так же; шаги job вручную в той же VM с pypi.org на
+  доступном адресе (`docker build --add-host`) прошли, на GitHub job зелёный.
+  `decisionops-gate-demo/gate` вне GitHub падает на «Check out the base», как в E2. Перед
+  #107 — `ci_local --job ci/quality`: PASS.
 ## Не сделано
 
-- **Демонстрационный PR на снимке на GitHub.** Требование ADR 0013: «демонстрационный PR
-  проходит на нём ещё раз», и основной путь закрыт, когда путь пройден на GitHub. Нужны слово
-  владельца на push, PR со срезом и прогоны демонстрационного PR.
-- **Шаблон workflow на GitHub не запускался.** SHA ставится после публикации коммита E3.
+- **Шаблон workflow на GitHub не запускался:** ему нужен Superset, доступный из GitHub, и
+  окружение `superset-inventory` с секретами. Закреплённый SHA и отказы проверены offline.
 - **Плитка маржи на снимке не названа** — см. «Вердикты на снимке»; E4.
