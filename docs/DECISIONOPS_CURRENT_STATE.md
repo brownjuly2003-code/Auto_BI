@@ -12,7 +12,7 @@
 reviewed-запроса проверен на живых PostgreSQL и ClickHouse; evidence подписывается Ed25519
 (opt-in); offline investigation alpha разрешён. Закрыты этапы hardening, мутационного
 smoke и формул dbt (ADR 0008). Код — в `main` публичного репозитория
-baseline; в checkout — `autobi-agent` `0.7.0`, без публикации пакета и тега
+baseline; в checkout — `autobi-agent` `0.8.0`, без публикации пакета и тега
 ([ADR 0011](adr/0011-public-repository.md)).
 
 ## Коротко

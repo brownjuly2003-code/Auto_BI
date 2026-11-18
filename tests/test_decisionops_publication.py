@@ -27,6 +27,16 @@ def test_current_version_is_one_across_package_lock_and_docs() -> None:
     assert package_row and f"`{__version__}`" in package_row.group(0)
 
 
+def test_the_0_8_0_release_notes_name_e3_and_keep_the_evidence_versions() -> None:
+    changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
+    release = _changelog_section(changelog, "## [0.8.0] - 2026-11-18")
+    assert re.search(r"^- \*\*E3\b", release, re.MULTILINE)
+    assert "examples/decisionops-gate" in release
+    # E3 changes no verdict: the release names the versions it kept.
+    for fact in ("`VERIFIER_VERSION=139`", "`CHECK_VERSION=86`", "Тег не ставится"):
+        assert fact in release, fact
+
+
 def test_the_0_7_0_release_notes_name_every_published_slice() -> None:
     changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
     release = _changelog_section(changelog, "## [0.7.0] - 2026-11-17")

@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-18
+
+Версия checkout для публикации E3 ([ADR 0013](docs/adr/0013-entry-points-to-proven-path.md),
+п. 5). Тег не ставится, пакет `autobi-agent` в индексы не публикуется. Версии evidence не
+менялись: `VERIFIER_VERSION=139`, `CHECK_VERSION=86`.
+
 ### Added
 
 - **E3 — снимок инвентаря для прогона PR:** строгий JSON `decision inventory --map`,
