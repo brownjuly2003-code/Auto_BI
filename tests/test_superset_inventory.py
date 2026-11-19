@@ -119,6 +119,21 @@ class Recorded:
         found: Sequence[Mapping[str, Any]] = self._find(ident)["datasets"]
         return found
 
+    def saves(self, dashboard_id: int) -> Sequence[Mapping[str, Any]]:
+        self.calls.append(("saves", str(dashboard_id)))
+        # D6 recordings predate saved contexts; no chart-list evidence is available.
+        return []
+
+    def chart(self, chart_id: int) -> Mapping[str, Any]:
+        raise AssertionError("an unsaved D6 chart must not fetch its detail")
+
+    def rendered(self, chart_id: int) -> tuple[int, Mapping[str, Any]]:
+        raise AssertionError("an unsaved D6 chart must not fetch rendered SQL")
+
+    def dataset_definition(self, dataset_id: int) -> tuple[int, Mapping[str, Any]]:
+        self.calls.append(("definition", str(dataset_id)))
+        return 404, {}  # The D6 recording contains no full dataset definitions.
+
 
 class Given:
     """One dashboard of the given charts and datasets."""
@@ -141,6 +156,18 @@ class Given:
 
     def datasets(self, ident: str) -> Sequence[Mapping[str, Any]]:
         return self._datasets
+
+    def saves(self, dashboard_id: int) -> Sequence[Mapping[str, Any]]:
+        return []
+
+    def chart(self, chart_id: int) -> Mapping[str, Any]:
+        raise AssertionError("a D6 chart without saved context must not fetch its detail")
+
+    def rendered(self, chart_id: int) -> tuple[int, Mapping[str, Any]]:
+        raise AssertionError("a D6 chart without saved context must not fetch rendered SQL")
+
+    def dataset_definition(self, dataset_id: int) -> tuple[int, Mapping[str, Any]]:
+        return 404, {}  # The D6 fixture contains only the trimmed dashboard answer.
 
 
 def _live_chart(chart_id: int) -> dict[str, Any]:
@@ -341,9 +368,21 @@ def test_the_live_dashboard_types_three_charts_and_reads_three_as_sql() -> None:
         "FROM dm.sales_daily\nGROUP BY week\n) AS virtual_table"
     )
     assert [chart.reasons for chart in read.record.charts[3:]] == [
-        ["form_data.metrics[0]: the saved metric 'count' is not AGG(column)"],
-        ["form_data carries a SQL expression"],
-        ["the dataset is virtual (its own SQL)"],
+        [
+            "form_data.metrics[0]: the saved metric 'count' is not AGG(column)",
+            "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
+        ],
+        [
+            "form_data carries a SQL expression",
+            "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
+        ],
+        [
+            "the dataset is virtual (its own SQL)",
+            "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
+        ],
     ]
     assert all(chart.title for chart in read.spec.charts)
     assert read.spec.title == "D6 live"
@@ -358,6 +397,9 @@ def test_every_chart_of_a_dashboard_is_asked_of_one_dashboard() -> None:
         ("dashboard", "d6-live"),
         ("charts", "d6-live"),
         ("datasets", "d6-live"),
+        ("saves", "12"),
+        ("definition", "25"),
+        ("definition", "26"),
     ]
 
 
@@ -687,7 +729,14 @@ def test_a_typed_chart_the_compiler_refuses_is_read_as_sql(monkeypatch: pytest.M
 
     form, reasons = _form(_read())
 
-    assert (form, reasons) == (ChartForm.READ_SQL, ["the spec does not compile: no builder for it"])
+    assert (form, reasons) == (
+        ChartForm.READ_SQL,
+        [
+            "the spec does not compile: no builder for it",
+            "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
+        ],
+    )
 
 
 # --- what each viz is typed as ----------------------------------------------------------------
@@ -1227,6 +1276,8 @@ def test_the_rest_source_reads_by_get_after_its_login() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append((request.method, request.url.raw_path.decode()))
         path = request.url.path
+        if path == "/api/v1/chart/":
+            return httpx.Response(200, json={"result": []})
         if path == "/api/v1/security/login":
             return httpx.Response(200, json={"access_token": "t"})
         if path == "/api/v1/security/csrf_token/":
@@ -1247,6 +1298,14 @@ def test_the_rest_source_reads_by_get_after_its_login() -> None:
         ("GET", "/api/v1/dashboard/d6%20live%2Fx"),
         ("GET", "/api/v1/dashboard/d6%20live%2Fx/charts"),
         ("GET", "/api/v1/dashboard/d6%20live%2Fx/datasets"),
+        (
+            "GET",
+            "/api/v1/chart/?q=%28columns%3A%21%28id%2Cchanged_on_utc%2Clast_saved_at%29"
+            "%2Cfilters%3A%21%28%28col%3Adashboards%2Copr%3Arel_m_m%2Cvalue%3A12%29%29"
+            "%2Cpage_size%3A12%29",
+        ),
+        ("GET", "/api/v1/dataset/25"),
+        ("GET", "/api/v1/dataset/26"),
     ]
 
 
@@ -1338,7 +1397,8 @@ def test_the_command_names_what_it_wrote_and_what_it_refused(
     out, err = capsys.readouterr()
     assert (code, err) == (3, "")
     assert out.splitlines() == [
-        "wrote    weekly_revenue@1.yaml  (d6-live: 3 typed, 3 read as SQL)",
+        "wrote    weekly_revenue@1.yaml  "
+        "(d6-live: 3 typed, 0 rendered SQL, 0 composite SQL, 3 read as SQL)",
         "refused  dashboard://big@1  (11)",
         f"  - the dashboard holds 21 charts; a spec holds {MAX_CHARTS}",
         f"report   {tmp_path / 'o' / INVENTORY_REPORT}",
@@ -1740,7 +1800,7 @@ def test_the_command_counts_and_escapes_a_written_dashboard(
     out, err = capsys.readouterr()
     assert (code, err) == (0, "")
     assert out.splitlines() == [
-        "wrote    w@1.yaml  (x\\x07: 1 typed, 0 read as SQL)",
+        "wrote    w@1.yaml  (x\\x07: 1 typed, 0 rendered SQL, 0 composite SQL, 0 read as SQL)",
         "report   " + str(output / INVENTORY_REPORT).replace("\x7f", "\\x7f"),
     ]
 
@@ -1923,7 +1983,14 @@ def test_a_chart_in_the_scope_of_a_native_filter_is_read_as_sql() -> None:
     read = _filtered(_native(scope={"rootPath": ["ROOT_ID"], "excluded": [LINE]}))
 
     assert _forms(read) == {
-        PIE: (ChartForm.READ_SQL, ["the dashboard's native filter 'Store' applies to it"]),
+        PIE: (
+            ChartForm.READ_SQL,
+            [
+                "the dashboard's native filter 'Store' applies to it",
+                "plain: a native dashboard filter applies to the chart",
+                "composite_sql: a native dashboard filter applies to the chart",
+            ],
+        ),
         LINE: (ChartForm.TYPED, []),
     }
 
@@ -1973,7 +2040,14 @@ def test_a_scope_names_a_chart_by_an_integer_only() -> None:
     )
 
     assert _forms(read) == {
-        1: (ChartForm.READ_SQL, ["the dashboard's native filter 'Store' applies to it"])
+        1: (
+            ChartForm.READ_SQL,
+            [
+                "the dashboard's native filter 'Store' applies to it",
+                "plain: a native dashboard filter applies to the chart",
+                "composite_sql: a native dashboard filter applies to the chart",
+            ],
+        )
     }
 
 
@@ -1986,7 +2060,11 @@ def test_a_native_filter_without_a_name_is_named_by_its_id(
 ) -> None:
     read = _filtered(_native(**changes))
 
-    assert _forms(read)[PIE][1] == [f"the dashboard's native filter {name!r} applies to it"]
+    assert _forms(read)[PIE][1] == [
+        f"the dashboard's native filter {name!r} applies to it",
+        "plain: a native dashboard filter applies to the chart",
+        "composite_sql: a native dashboard filter applies to the chart",
+    ]
 
 
 @pytest.mark.parametrize("metadata", ["", "{}", json.dumps({"color_scheme": "x"})])
@@ -3128,7 +3206,19 @@ def test_superset_is_reached_once_for_every_dashboard(tmp_path: Path) -> None:
     )
 
     assert len(made) == 1
-    assert [ident for _, ident in made[0].calls] == ["10", "10", "10", "12", "12", "12"]
+    # Dashboard 10's one chart is on a backend with no read dialect, so its chart list is not
+    # asked for; dashboard 12's charts qualify, and its list is asked for once.
+    assert [(name, ident) for name, ident in made[0].calls] == [
+        ("dashboard", "10"),
+        ("charts", "10"),
+        ("datasets", "10"),
+        ("dashboard", "12"),
+        ("charts", "12"),
+        ("datasets", "12"),
+        ("saves", "12"),
+        ("definition", "25"),
+        ("definition", "26"),
+    ]
 
 
 def test_the_chart_limit_is_the_one_of_the_ir() -> None:
@@ -3263,7 +3353,11 @@ def test_a_saved_metric_that_does_not_parse_alone_is_named_by_its_name() -> None
 
     assert _form(read) == (
         ChartForm.READ_SQL,
-        ["form_data.metric: the saved metric 'm' does not parse"],
+        [
+            "form_data.metric: the saved metric 'm' does not parse",
+            "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
+        ],
     )
 
 
@@ -3284,7 +3378,11 @@ def test_any_failure_of_the_parser_on_a_saved_metric_is_a_metric_that_does_not_p
     (chart,) = read.record.charts
     assert (chart.form, chart.reasons) == (
         ChartForm.READ_SQL,
-        ["form_data.metric: the saved metric 'm' does not parse"],
+        [
+            "form_data.metric: the saved metric 'm' does not parse",
+            "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
+        ],
     )
 
 
@@ -3300,7 +3398,9 @@ def test_a_key_that_is_no_name_is_quoted_in_its_reason(tmp_path: Path, key: str)
 
     report = json.loads((tmp_path / "out" / INVENTORY_REPORT).read_text(encoding="utf-8"))
     assert report["dashboards"][0]["charts"][0]["reasons"] == [
-        f"form_data[{key!r}] is not a key the typed form reads"
+        f"form_data[{key!r}] is not a key the typed form reads",
+        "saved: the last change is not a save within two seconds",
+        "composite_sql: the dataset definition is not readable",
     ]
 
 
@@ -3379,7 +3479,9 @@ def test_a_saved_metric_is_named_by_its_name_never_by_its_sql(tmp_path: Path) ->
     report = inventory(_request(tmp_path, [("dashboard://w@1", "7")], source=source))
 
     assert report.dashboards[0].charts[0].reasons == [
-        "form_data.metric: the saved metric 'm' is not AGG(column)"
+        "form_data.metric: the saved metric 'm' is not AGG(column)",
+        "saved: the last change is not a save within two seconds",
+        "composite_sql: the dataset definition is not readable",
     ]
     assert _SECRET not in report.model_dump_json()
     assert _SECRET not in (tmp_path / "out" / INVENTORY_REPORT).read_text(encoding="utf-8")
@@ -3419,7 +3521,9 @@ def test_of_a_saved_metric_sql_a_reason_names_only_the_column_it_aggregates(
 
     assert report.dashboards[0].charts[0].reasons == [
         "the spec does not validate: chart 'chart_122': unknown measure column 'no_such_column' "
-        "in dm.sales_daily"
+        "in dm.sales_daily",
+        "saved: the last change is not a save within two seconds",
+        "composite_sql: the dataset definition is not readable",
     ]
 
 

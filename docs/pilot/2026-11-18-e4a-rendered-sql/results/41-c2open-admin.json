@@ -1,0 +1,184 @@
+{
+ "run": "41-c2open-admin",
+ "counts": {},
+ "rows": [],
+ "sql_pairs": [],
+ "explore_open": {
+  "121": {
+   "had_qc": true,
+   "opened": false
+  },
+  "122": {
+   "had_qc": true,
+   "opened": false
+  },
+  "123": {
+   "had_qc": true,
+   "opened": false
+  },
+  "124": {
+   "had_qc": true,
+   "opened": false
+  },
+  "125": {
+   "had_qc": true,
+   "opened": false
+  },
+  "126": {
+   "had_qc": true,
+   "opened": false
+  },
+  "127": {
+   "had_qc": true,
+   "opened": false
+  },
+  "128": {
+   "had_qc": true,
+   "opened": false
+  },
+  "129": {
+   "had_qc": true,
+   "opened": false
+  },
+  "130": {
+   "had_qc": true,
+   "opened": false
+  },
+  "131": {
+   "had_qc": true,
+   "opened": false
+  },
+  "132": {
+   "had_qc": true,
+   "opened": false
+  },
+  "133": {
+   "had_qc": false,
+   "put": false
+  },
+  "134": {
+   "had_qc": true,
+   "opened": false
+  },
+  "135": {
+   "had_qc": true,
+   "opened": false
+  },
+  "136": {
+   "had_qc": true,
+   "opened": false
+  },
+  "137": {
+   "had_qc": true,
+   "opened": false
+  },
+  "138": {
+   "had_qc": true,
+   "opened": false
+  },
+  "139": {
+   "had_qc": true,
+   "opened": false
+  },
+  "140": {
+   "had_qc": true,
+   "opened": false
+  },
+  "141": {
+   "had_qc": true,
+   "opened": false
+  },
+  "142": {
+   "had_qc": true,
+   "opened": false
+  },
+  "143": {
+   "had_qc": true,
+   "opened": false
+  },
+  "144": {
+   "had_qc": true,
+   "opened": false
+  },
+  "145": {
+   "had_qc": true,
+   "opened": false
+  },
+  "146": {
+   "had_qc": true,
+   "opened": false
+  },
+  "147": {
+   "had_qc": true,
+   "opened": false
+  },
+  "148": {
+   "had_qc": true,
+   "opened": false
+  },
+  "149": {
+   "had_qc": true,
+   "opened": false
+  },
+  "150": {
+   "had_qc": true,
+   "opened": false
+  },
+  "151": {
+   "had_qc": true,
+   "opened": false
+  },
+  "152": {
+   "had_qc": true,
+   "opened": false
+  },
+  "153": {
+   "had_qc": true,
+   "opened": false
+  },
+  "154": {
+   "had_qc": true,
+   "opened": false
+  },
+  "155": {
+   "had_qc": true,
+   "opened": false
+  },
+  "156": {
+   "had_qc": true,
+   "opened": false
+  },
+  "157": {
+   "had_qc": true,
+   "opened": false
+  },
+  "158": {
+   "had_qc": true,
+   "opened": false
+  },
+  "159": {
+   "had_qc": true,
+   "opened": false
+  },
+  "160": {
+   "had_qc": true,
+   "opened": false
+  },
+  "161": {
+   "had_qc": true,
+   "opened": false
+  },
+  "162": {
+   "had_qc": true,
+   "opened": false
+  },
+  "163": {
+   "had_qc": true,
+   "opened": false
+  },
+  "164": {
+   "had_qc": true,
+   "opened": false
+  }
+ }
+}

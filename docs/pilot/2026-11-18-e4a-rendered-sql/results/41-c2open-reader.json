@@ -1,0 +1,184 @@
+{
+ "run": "41-c2open-reader",
+ "counts": {},
+ "rows": [],
+ "sql_pairs": [],
+ "explore_open": {
+  "121": {
+   "had_qc": false,
+   "status": 200
+  },
+  "122": {
+   "had_qc": false,
+   "status": 200
+  },
+  "123": {
+   "had_qc": false,
+   "status": 200
+  },
+  "124": {
+   "had_qc": false,
+   "status": 200
+  },
+  "125": {
+   "had_qc": false,
+   "status": 200
+  },
+  "126": {
+   "had_qc": false,
+   "status": 200
+  },
+  "127": {
+   "had_qc": false,
+   "status": 200
+  },
+  "128": {
+   "had_qc": false,
+   "status": 200
+  },
+  "129": {
+   "had_qc": false,
+   "status": 200
+  },
+  "130": {
+   "had_qc": false,
+   "status": 200
+  },
+  "131": {
+   "had_qc": false,
+   "status": 200
+  },
+  "132": {
+   "had_qc": false,
+   "status": 200
+  },
+  "133": {
+   "had_qc": false,
+   "put": false
+  },
+  "134": {
+   "had_qc": false,
+   "status": 200
+  },
+  "135": {
+   "had_qc": false,
+   "status": 200
+  },
+  "136": {
+   "had_qc": false,
+   "status": 200
+  },
+  "137": {
+   "had_qc": false,
+   "status": 200
+  },
+  "138": {
+   "had_qc": false,
+   "status": 200
+  },
+  "139": {
+   "had_qc": false,
+   "status": 200
+  },
+  "140": {
+   "had_qc": false,
+   "status": 200
+  },
+  "141": {
+   "had_qc": false,
+   "status": 200
+  },
+  "142": {
+   "had_qc": false,
+   "status": 200
+  },
+  "143": {
+   "had_qc": false,
+   "status": 200
+  },
+  "144": {
+   "had_qc": false,
+   "status": 200
+  },
+  "145": {
+   "had_qc": false,
+   "status": 200
+  },
+  "146": {
+   "had_qc": false,
+   "status": 200
+  },
+  "147": {
+   "had_qc": false,
+   "status": 200
+  },
+  "148": {
+   "had_qc": false,
+   "status": 200
+  },
+  "149": {
+   "had_qc": false,
+   "status": 200
+  },
+  "150": {
+   "had_qc": false,
+   "status": 200
+  },
+  "151": {
+   "had_qc": false,
+   "status": 200
+  },
+  "152": {
+   "had_qc": false,
+   "status": 200
+  },
+  "153": {
+   "had_qc": false,
+   "status": 200
+  },
+  "154": {
+   "had_qc": false,
+   "status": 200
+  },
+  "155": {
+   "had_qc": false,
+   "status": 200
+  },
+  "156": {
+   "had_qc": false,
+   "status": 200
+  },
+  "157": {
+   "had_qc": false,
+   "status": 200
+  },
+  "158": {
+   "had_qc": false,
+   "status": 200
+  },
+  "159": {
+   "had_qc": false,
+   "status": 200
+  },
+  "160": {
+   "had_qc": false,
+   "status": 200
+  },
+  "161": {
+   "had_qc": false,
+   "status": 200
+  },
+  "162": {
+   "had_qc": false,
+   "status": 200
+  },
+  "163": {
+   "had_qc": false,
+   "status": 200
+  },
+  "164": {
+   "had_qc": false,
+   "status": 200
+  }
+ }
+}

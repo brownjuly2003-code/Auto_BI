@@ -1,0 +1,59 @@
+{
+ "run": "41-c2url",
+ "counts": {
+  "charts": 1,
+  "equal": 0,
+  "equal_but_dates": 0,
+  "get_200": 1,
+  "get_all_ran": 0,
+  "get_all_ran_sqlglot": 0,
+  "get_ran_engine>0": 0,
+  "has_qc": 1,
+  "shown_all_ran": 1,
+  "shown_all_ran_sqlglot": 1
+ },
+ "rows": [
+  {
+   "dashboard": 16,
+   "chart": 155,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  }
+ ],
+ "sql_pairs": [
+  {
+   "chart": 155,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, `category` AS `category_c4ef35`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM (SELECT date, region, category, revenue, orders FROM dm.sales_wide WHERE region != 'admin' ) AS `virtual_table` GROUP BY `region_960db2`, `category_c4ef35` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ],
+   "dashboard": [
+    "SELECT `region` AS `region_960db2`, `category` AS `category_c4ef35`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM (SELECT date, region, category, revenue, orders FROM dm.sales_wide WHERE region != 'admin' AND region = 'СЗФО' ) AS `virtual_table` GROUP BY `region_960db2`, `category_c4ef35` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ]
+  }
+ ]
+}

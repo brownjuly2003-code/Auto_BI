@@ -1,0 +1,2339 @@
+{
+ "run": "41-c2w",
+ "counts": {
+  "charts": 44,
+  "equal": 34,
+  "equal_but_dates": 34,
+  "get_200": 44,
+  "get_all_ran": 35,
+  "get_all_ran_sqlglot": 35,
+  "get_ran_engine>0": 0,
+  "has_qc": 44,
+  "shown_all_ran": 42,
+  "shown_all_ran_sqlglot": 42
+ },
+ "rows": [
+  {
+   "dashboard": 12,
+   "chart": 121,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 122,
+   "viz": "pivot_table_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 123,
+   "viz": "big_number_total",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 124,
+   "viz": "big_number",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 125,
+   "viz": "pie",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 126,
+   "viz": "echarts_timeseries_line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 127,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 128,
+   "viz": "echarts_area",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 129,
+   "viz": "echarts_timeseries_scatter",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 130,
+   "viz": "echarts_timeseries_smooth",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 131,
+   "viz": "echarts_timeseries_step",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 132,
+   "viz": "mixed_timeseries",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 2,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 2,
+   "shown_ran": [
+    true,
+    true
+   ],
+   "get_ran": [
+    true,
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true,
+    true
+   ],
+   "get_ran_sqlglot": [
+    true,
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 133,
+   "viz": "heatmap_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 134,
+   "viz": "treemap_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 135,
+   "viz": "sunburst_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 136,
+   "viz": "word_cloud",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 137,
+   "viz": "histogram_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 138,
+   "viz": "box_plot",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 139,
+   "viz": "funnel",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 140,
+   "viz": "gauge_chart",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 141,
+   "viz": "radar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 142,
+   "viz": "sankey_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 143,
+   "viz": "graph_chart",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 144,
+   "viz": "waterfall",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [
+    400
+   ],
+   "shown_n": 0,
+   "shown_ran": [],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 145,
+   "viz": "bubble_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 14,
+   "chart": 146,
+   "viz": "chord",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 14,
+   "chart": 147,
+   "viz": "horizon",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 148,
+   "viz": "para",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 14,
+   "chart": 149,
+   "viz": "line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 150,
+   "viz": "area",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 151,
+   "viz": "dist_bar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 152,
+   "viz": "bubble",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 15,
+   "chart": 153,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 15,
+   "chart": 154,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 16,
+   "chart": 155,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 17,
+   "chart": 156,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 18,
+   "chart": 157,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 18,
+   "chart": 158,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 19,
+   "chart": 159,
+   "viz": "echarts_timeseries_line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [
+    400
+   ],
+   "shown_n": 0,
+   "shown_ran": [],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 19,
+   "chart": 160,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 2,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 2,
+   "shown_ran": [
+    true,
+    true
+   ],
+   "get_ran": [
+    true,
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true,
+    true
+   ],
+   "get_ran_sqlglot": [
+    true,
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 19,
+   "chart": 161,
+   "viz": "big_number",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 19,
+   "chart": 162,
+   "viz": "echarts_timeseries_line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 20,
+   "chart": 163,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 21,
+   "chart": 164,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  }
+ ],
+ "area": {
+  "confusion": {
+   "in&True": 4,
+   "in&missed_reads=False": 4,
+   "out&False": 8,
+   "out&None": 2,
+   "out&True": 30,
+   "out&missed_reads=False": 33,
+   "out&missed_reads=True": 5,
+   "out&reads_unmeasured": 2
+  },
+  "rows": [
+   {
+    "chart": 121,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 122,
+    "viz": "pivot_table_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 123,
+    "viz": "big_number_total",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 124,
+    "viz": "big_number",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 125,
+    "viz": "pie",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 126,
+    "viz": "echarts_timeseries_line",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 127,
+    "viz": "echarts_timeseries_bar",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 128,
+    "viz": "echarts_area",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 129,
+    "viz": "echarts_timeseries_scatter",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 130,
+    "viz": "echarts_timeseries_smooth",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 131,
+    "viz": "echarts_timeseries_step",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 132,
+    "viz": "mixed_timeseries",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": false,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 133,
+    "viz": "heatmap_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "rank"
+    ]
+   },
+   {
+    "chart": 134,
+    "viz": "treemap_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 135,
+    "viz": "sunburst_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 136,
+    "viz": "word_cloud",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 137,
+    "viz": "histogram_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "histogram"
+    ]
+   },
+   {
+    "chart": 138,
+    "viz": "box_plot",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "boxplot"
+    ]
+   },
+   {
+    "chart": 139,
+    "viz": "funnel",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 140,
+    "viz": "gauge_chart",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 141,
+    "viz": "radar",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 142,
+    "viz": "sankey_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 143,
+    "viz": "graph_chart",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 144,
+    "viz": "waterfall",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": null,
+    "missed_reads": null,
+    "extra_reads": null,
+    "post_processing": []
+   },
+   {
+    "chart": 145,
+    "viz": "bubble_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 146,
+    "viz": "chord",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 147,
+    "viz": "horizon",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [
+     "date"
+    ],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 148,
+    "viz": "para",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 149,
+    "viz": "line",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [
+     "date"
+    ],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 150,
+    "viz": "area",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [
+     "date"
+    ],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 151,
+    "viz": "dist_bar",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 152,
+    "viz": "bubble",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [
+     "city"
+    ],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 153,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": false,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 154,
+    "viz": "echarts_timeseries_bar",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": false,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 155,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": false,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 156,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 157,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 158,
+    "viz": "echarts_timeseries_bar",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 159,
+    "viz": "echarts_timeseries_line",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": false
+    },
+    "in_area": false,
+    "equal": null,
+    "missed_reads": null,
+    "extra_reads": null,
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 160,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 161,
+    "viz": "big_number",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 162,
+    "viz": "echarts_timeseries_line",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot",
+     "rolling"
+    ]
+   },
+   {
+    "chart": 163,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": false,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [
+     "category"
+    ],
+    "extra_reads": [
+     "region"
+    ],
+    "post_processing": []
+   },
+   {
+    "chart": 164,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   }
+  ]
+ },
+ "sql_pairs": [
+  {
+   "chart": 147,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT toMonday(toDateTime(`date`)) AS `__timestamp_ae6234`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2`, `__timestamp_ae6234` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000"
+   ]
+  },
+  {
+   "chart": 149,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT toMonday(toDateTime(`date`)) AS `__timestamp_ae6234`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2`, `__timestamp_ae6234` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 150,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT toMonday(toDateTime(`date`)) AS `__timestamp_ae6234`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2`, `__timestamp_ae6234` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000"
+   ]
+  },
+  {
+   "chart": 151,
+   "equal_but_dates": false,
+   "time_range": null,
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 100"
+   ],
+   "dashboard": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ]
+  },
+  {
+   "chart": 152,
+   "equal_but_dates": false,
+   "time_range": null,
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`orders`) AS `SUM(orders)_abcdf3`, sum(`items`) AS `SUM(items)_cd3b28`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT `city` AS `city_4ed5d2`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51`, sum(`orders`) AS `SUM(orders)_abcdf3`, sum(`items`) AS `SUM(items)_cd3b28` FROM `dm`.`sales_wide` GROUP BY `city_4ed5d2`, `region_960db2` LIMIT 100"
+   ]
+  },
+  {
+   "chart": 153,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ],
+   "dashboard": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` WHERE `region` IN ('ЦФО') GROUP BY `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ]
+  },
+  {
+   "chart": 154,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT toMonday(toDateTime(`date`)) AS `date_5fc732`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `date_5fc732`, `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000"
+   ],
+   "dashboard": [
+    "SELECT toMonday(toDateTime(`date`)) AS `date_5fc732`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` WHERE `region` IN ('ЦФО') GROUP BY `date_5fc732`, `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000"
+   ]
+  },
+  {
+   "chart": 163,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ],
+   "dashboard": [
+    "SELECT `category` AS `category_c4ef35`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `category_c4ef35` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ]
+  }
+ ]
+}

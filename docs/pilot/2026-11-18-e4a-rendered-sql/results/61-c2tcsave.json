@@ -1,0 +1,18 @@
+{
+ "run": "61-c2tcsave",
+ "counts": {},
+ "rows": [],
+ "sql_pairs": [],
+ "ui_save": {
+  "142": {
+   "attempts": 1,
+   "overwrite_checked": true,
+   "status": 200
+  }
+ },
+ "put": {
+  "chart": 142,
+  "time_range": "2025-07-01 : 2026-07-01",
+  "put_status": 200
+ }
+}

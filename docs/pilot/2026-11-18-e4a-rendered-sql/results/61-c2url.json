@@ -1,0 +1,87 @@
+{
+ "run": "61-c2url",
+ "counts": {
+  "charts": 1,
+  "equal": 0,
+  "equal_but_dates": 0,
+  "get_200": 1,
+  "get_all_ran": 0,
+  "get_all_ran_sqlglot": 0,
+  "get_ran_engine>0": 1,
+  "has_qc": 1,
+  "shown_all_ran": 0,
+  "shown_all_ran_sqlglot": 1
+ },
+ "rows": [
+  {
+   "dashboard": 14,
+   "chart": 138,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 4,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    false
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  }
+ ],
+ "area": {
+  "confusion": {
+   "out&False": 1,
+   "out&missed_reads=False": 1
+  },
+  "rows": [
+   {
+    "chart": 138,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": false,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   }
+  ]
+ },
+ "sql_pairs": [
+  {
+   "chart": 138,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region`, `category` AS `category`, sum(`revenue`) AS `SUM(revenue)` FROM (SELECT date, region, category, revenue, orders FROM dm.sales_wide WHERE region != 'admin' ) AS `virtual_table` GROUP BY `region`, `category` ORDER BY `SUM(revenue)` DESC LIMIT 100"
+   ],
+   "dashboard": [
+    "SELECT `region` AS `region`, `category` AS `category`, sum(`revenue`) AS `SUM(revenue)` FROM (SELECT date, region, category, revenue, orders FROM dm.sales_wide WHERE region != 'admin' AND region = 'СЗФО' ) AS `virtual_table` GROUP BY `region`, `category` ORDER BY `SUM(revenue)` DESC LIMIT 100"
+   ]
+  }
+ ]
+}
