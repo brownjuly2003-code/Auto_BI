@@ -1,0 +1,1874 @@
+{
+ "run": "41-c1rest",
+ "counts": {
+  "charts": 32,
+  "equal": 14,
+  "equal_but_dates": 17,
+  "get_200": 32,
+  "get_all_ran": 14,
+  "get_all_ran_sqlglot": 14,
+  "get_ran_engine>0": 0,
+  "has_qc": 32,
+  "shown_all_ran": 32,
+  "shown_all_ran_sqlglot": 32
+ },
+ "rows": [
+  {
+   "dashboard": 11,
+   "chart": 82,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 83,
+   "viz": "pie",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 84,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 85,
+   "viz": "world_map",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 86,
+   "viz": "pie",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 87,
+   "viz": "pie",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 88,
+   "viz": "box_plot",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 89,
+   "viz": "treemap_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 90,
+   "viz": "big_number_total",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 91,
+   "viz": "heatmap_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 92,
+   "viz": "histogram_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 93,
+   "viz": "big_number_total",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 94,
+   "viz": "sankey_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 95,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 96,
+   "viz": "histogram_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 97,
+   "viz": "histogram_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 98,
+   "viz": "sankey_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 99,
+   "viz": "treemap_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 11,
+   "chart": 100,
+   "viz": "pie",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 101,
+   "viz": "pie",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 102,
+   "viz": "world_map",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 11,
+   "viz": "big_number",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 2,
+   "chart": 12,
+   "viz": "pie",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 13,
+   "viz": "line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 14,
+   "viz": "dist_bar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 15,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 16,
+   "viz": "word_cloud",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 2,
+   "chart": 17,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 18,
+   "viz": "word_cloud",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 2,
+   "chart": 19,
+   "viz": "area",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 20,
+   "viz": "area",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 21,
+   "viz": "pivot_table_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  }
+ ],
+ "area": {
+  "confusion": {
+   "in&False": 8,
+   "in&missed_reads=False": 8,
+   "out&False": 7,
+   "out&True": 17,
+   "out&missed_reads=False": 22,
+   "out&missed_reads=True": 2
+  },
+  "rows": [
+   {
+    "chart": 82,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "contribution"
+    ]
+   },
+   {
+    "chart": 83,
+    "viz": "pie",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 84,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 85,
+    "viz": "world_map",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [
+     "country_citizen"
+    ],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 86,
+    "viz": "pie",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 87,
+    "viz": "pie",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 88,
+    "viz": "box_plot",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "boxplot"
+    ]
+   },
+   {
+    "chart": 89,
+    "viz": "treemap_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 90,
+    "viz": "big_number_total",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 91,
+    "viz": "heatmap_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "rank"
+    ]
+   },
+   {
+    "chart": 92,
+    "viz": "histogram_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "histogram"
+    ]
+   },
+   {
+    "chart": 93,
+    "viz": "big_number_total",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 94,
+    "viz": "sankey_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 95,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 96,
+    "viz": "histogram_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "histogram"
+    ]
+   },
+   {
+    "chart": 97,
+    "viz": "histogram_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "histogram"
+    ]
+   },
+   {
+    "chart": 98,
+    "viz": "sankey_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 99,
+    "viz": "treemap_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 100,
+    "viz": "pie",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 101,
+    "viz": "pie",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 102,
+    "viz": "world_map",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 11,
+    "viz": "big_number",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 12,
+    "viz": "pie",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 13,
+    "viz": "line",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 14,
+    "viz": "dist_bar",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 15,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 16,
+    "viz": "word_cloud",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 17,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": true,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 18,
+    "viz": "word_cloud",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 19,
+    "viz": "area",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 20,
+    "viz": "area",
+    "endpoint": [
+     "explore_json"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": false,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 21,
+    "viz": "pivot_table_v2",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": false,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [
+     "ds"
+    ],
+    "extra_reads": [],
+    "post_processing": []
+   }
+  ]
+ },
+ "sql_pairs": [
+  {
+   "chart": 83,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT CASE WHEN job_relocate = 0 THEN 'No: Not Willing to' WHEN job_relocate = 1 THEN 'Yes: Willing To' ELSE 'No Answer' END AS willing_to_relocate, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" WHERE is_software_dev = 0 GROUP BY CASE WHEN job_relocate = 0 THEN 'No: Not Willing to' WHEN job_relocate = 1 THEN 'Yes: Willing To' ELSE 'No Answer' END LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT CASE WHEN job_relocate = 0 THEN 'No: Not Willing to' WHEN job_relocate = 1 THEN 'Yes: Willing To' ELSE 'No Answer' END AS willing_to_relocate, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" WHERE is_software_dev = 0 GROUP BY CASE WHEN job_relocate = 0 THEN 'No: Not Willing to' WHEN job_relocate = 1 THEN 'Yes: Willing To' ELSE 'No Answer' END ORDER BY count DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 85,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT COUNT(*) AS count, count(country_live) AS \"COUNT(country_live)\" FROM public.\"FCC 2018 Survey\" LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT country_citizen AS country_citizen, COUNT(*) AS count, count(country_live) AS \"COUNT(country_live)\" FROM public.\"FCC 2018 Survey\" GROUP BY country_citizen LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 86,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT case when job_lctn_pref is Null then 'No Answer' when job_lctn_pref = 'from home' then 'From Home' when job_lctn_pref = 'no preference' then 'No Preference' when job_lctn_pref = 'in an office with other developers' then 'In an Office (with Other Developers)' else job_lctn_pref end AS job_location_preference, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" WHERE is_software_dev = 0 GROUP BY case when job_lctn_pref is Null then 'No Answer' when job_lctn_pref = 'from home' then 'From Home' when job_lctn_pref = 'no preference' then 'No Preference' when job_lctn_pref = 'in an office with other developers' then 'In an Office (with Other Developers)' else job_lctn_pref end LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT case when job_lctn_pref is Null then 'No Answer' when job_lctn_pref = 'from home' then 'From Home' when job_lctn_pref = 'no preference' then 'No Preference' when job_lctn_pref = 'in an office with other developers' then 'In an Office (with Other Developers)' else job_lctn_pref end AS job_location_preference, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" WHERE is_software_dev = 0 GROUP BY case when job_lctn_pref is Null then 'No Answer' when job_lctn_pref = 'from home' then 'From Home' when job_lctn_pref = 'no preference' then 'No Preference' when job_lctn_pref = 'in an office with other developers' then 'In an Office (with Other Developers)' else job_lctn_pref end ORDER BY count DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 87,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT CASE WHEN is_ethnic_minority = 0 THEN 'No, not an ethnic minority' WHEN is_ethnic_minority = 1 THEN 'Yes, an ethnic minority' ELSE 'No Answer' END AS ethnic_minority, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" GROUP BY CASE WHEN is_ethnic_minority = 0 THEN 'No, not an ethnic minority' WHEN is_ethnic_minority = 1 THEN 'Yes, an ethnic minority' ELSE 'No Answer' END LIMIT 10000"
+   ],
+   "dashboard": [
+    "SELECT CASE WHEN is_ethnic_minority = 0 THEN 'No, not an ethnic minority' WHEN is_ethnic_minority = 1 THEN 'Yes, an ethnic minority' ELSE 'No Answer' END AS ethnic_minority, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" GROUP BY CASE WHEN is_ethnic_minority = 0 THEN 'No, not an ethnic minority' WHEN is_ethnic_minority = 1 THEN 'Yes, an ethnic minority' ELSE 'No Answer' END ORDER BY count DESC LIMIT 10000"
+   ]
+  },
+  {
+   "chart": 100,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT CASE WHEN is_first_dev_job = 0 THEN 'No' WHEN is_first_dev_job = 1 THEN 'Yes' ELSE 'No Answer' END AS first_time_developer, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" WHERE CASE WHEN is_software_dev = 0 THEN 'Aspiring Developer' WHEN is_software_dev = 1 THEN 'Currently A Developer' END = 'Currently A Developer' GROUP BY CASE WHEN is_first_dev_job = 0 THEN 'No' WHEN is_first_dev_job = 1 THEN 'Yes' ELSE 'No Answer' END LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT CASE WHEN is_first_dev_job = 0 THEN 'No' WHEN is_first_dev_job = 1 THEN 'Yes' ELSE 'No Answer' END AS first_time_developer, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" WHERE CASE WHEN is_software_dev = 0 THEN 'Aspiring Developer' WHEN is_software_dev = 1 THEN 'Currently A Developer' END = 'Currently A Developer' GROUP BY CASE WHEN is_first_dev_job = 0 THEN 'No' WHEN is_first_dev_job = 1 THEN 'Yes' ELSE 'No Answer' END ORDER BY count DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 101,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT gender AS gender, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" GROUP BY gender LIMIT 10000"
+   ],
+   "dashboard": [
+    "SELECT gender AS gender, COUNT(*) AS count FROM public.\"FCC 2018 Survey\" GROUP BY gender ORDER BY count DESC LIMIT 10000"
+   ]
+  },
+  {
+   "chart": 102,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT COUNT(*) AS count, count(country_live) AS \"COUNT(country_live)\" FROM public.\"FCC 2018 Survey\" WHERE is_software_dev = 1 LIMIT 10000"
+   ],
+   "dashboard": [
+    "SELECT country_live AS country_live, COUNT(*) AS count, count(country_live) AS \"COUNT(country_live)\" FROM public.\"FCC 2018 Survey\" WHERE is_software_dev = 1 GROUP BY country_live LIMIT 10000"
+   ]
+  },
+  {
+   "chart": 11,
+   "equal_but_dates": true,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT ds AS __timestamp, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:22.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY ds LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT ds AS __timestamp, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:47.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY ds LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 12,
+   "equal_but_dates": false,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT gender AS gender, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:24.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY gender LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT gender AS gender, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:47.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY gender ORDER BY sum__num DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 13,
+   "equal_but_dates": false,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT name AS name, sum(num) AS \"Births\" FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:26.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY name LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT ds AS __timestamp, name AS name, sum(num) AS \"Births\" FROM public.birth_names JOIN (SELECT name AS name__, sum(num) AS mme_inner__ FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:47.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY name ORDER BY mme_inner__ DESC LIMIT 25) AS series_limit ON name = name__ WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:47.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY name, ds ORDER BY \"Births\" DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 14,
+   "equal_but_dates": false,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT state AS state, sum(num_boys) AS \"Boys\", sum(num_girls) AS \"Girls\" FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:29.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND (state NOT IN ('other')) GROUP BY state LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT state AS state, sum(num_boys) AS \"Boys\", sum(num_girls) AS \"Girls\" FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:47.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND (state NOT IN ('other')) GROUP BY state ORDER BY \"Boys\" DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 15,
+   "equal_but_dates": false,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:31.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'girl' GROUP BY name ORDER BY sum__num ASC LIMIT 50"
+   ],
+   "dashboard": [
+    "SELECT name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:47.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'girl' GROUP BY name ORDER BY sum__num DESC LIMIT 50"
+   ]
+  },
+  {
+   "chart": 16,
+   "equal_but_dates": true,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:33.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'girl' GROUP BY name LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:47.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'girl' GROUP BY name LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 17,
+   "equal_but_dates": false,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:35.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'boy' GROUP BY name ORDER BY sum__num ASC LIMIT 50"
+   ],
+   "dashboard": [
+    "SELECT name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:49.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'boy' GROUP BY name ORDER BY sum__num DESC LIMIT 50"
+   ]
+  },
+  {
+   "chart": 18,
+   "equal_but_dates": true,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:37.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'boy' GROUP BY name LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:49.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'boy' GROUP BY name LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 19,
+   "equal_but_dates": false,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT name AS name, sum(num) AS \"Births\" FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:39.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'girl' GROUP BY name LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT DATE_TRUNC('day', ds) AS __timestamp, name AS name, sum(num) AS \"Births\" FROM public.birth_names JOIN (SELECT name AS name__, sum(num) AS mme_inner__ FROM public.birth_names WHERE gender = 'girl' AND ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:49.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY name ORDER BY mme_inner__ DESC LIMIT 10) AS series_limit ON name = name__ WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:49.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'girl' GROUP BY name, DATE_TRUNC('day', ds) ORDER BY \"Births\" DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 20,
+   "equal_but_dates": false,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT name AS name, sum(num) AS \"Births\" FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:41.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'boy' GROUP BY name LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT DATE_TRUNC('day', ds) AS __timestamp, name AS name, sum(num) AS \"Births\" FROM public.birth_names JOIN (SELECT name AS name__, sum(num) AS mme_inner__ FROM public.birth_names WHERE gender = 'boy' AND ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:49.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY name ORDER BY mme_inner__ DESC LIMIT 10) AS series_limit ON name = name__ WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:49.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND gender = 'boy' GROUP BY name, DATE_TRUNC('day', ds) ORDER BY \"Births\" DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 21,
+   "equal_but_dates": false,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT name AS name, state AS state, SUM(num) AS sum__num FROM public.birth_names GROUP BY name, state LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT state AS state, name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 23:38:49.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY state, name ORDER BY sum__num DESC LIMIT 50000"
+   ]
+  }
+ ],
+ "rest_save": {
+  "12": {
+   "put_status": 200,
+   "put_answer": "",
+   "qc_before_present": true,
+   "qc_unchanged": true,
+   "params_unchanged": true
+  },
+  "15": {
+   "put_status": 200,
+   "put_answer": "",
+   "qc_before_present": true,
+   "qc_unchanged": true,
+   "params_unchanged": true
+  },
+  "17": {
+   "put_status": 200,
+   "put_answer": "",
+   "qc_before_present": true,
+   "qc_unchanged": true,
+   "params_unchanged": true
+  },
+  "83": {
+   "put_status": 200,
+   "put_answer": "",
+   "qc_before_present": true,
+   "qc_unchanged": true,
+   "params_unchanged": true
+  },
+  "86": {
+   "put_status": 200,
+   "put_answer": "",
+   "qc_before_present": true,
+   "qc_unchanged": true,
+   "params_unchanged": true
+  },
+  "87": {
+   "put_status": 200,
+   "put_answer": "",
+   "qc_before_present": true,
+   "qc_unchanged": true,
+   "params_unchanged": true
+  },
+  "100": {
+   "put_status": 200,
+   "put_answer": "",
+   "qc_before_present": true,
+   "qc_unchanged": true,
+   "params_unchanged": true
+  },
+  "101": {
+   "put_status": 200,
+   "put_answer": "",
+   "qc_before_present": true,
+   "qc_unchanged": true,
+   "params_unchanged": true
+  }
+ }
+}

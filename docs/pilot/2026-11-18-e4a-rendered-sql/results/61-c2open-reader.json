@@ -1,0 +1,176 @@
+{
+ "run": "61-c2open-reader",
+ "counts": {},
+ "rows": [],
+ "sql_pairs": [],
+ "explore_open": {
+  "104": {
+   "had_qc": false,
+   "status": 200
+  },
+  "105": {
+   "had_qc": false,
+   "status": 200
+  },
+  "106": {
+   "had_qc": false,
+   "status": 200
+  },
+  "107": {
+   "had_qc": false,
+   "status": 200
+  },
+  "108": {
+   "had_qc": false,
+   "status": 200
+  },
+  "109": {
+   "had_qc": false,
+   "status": 200
+  },
+  "110": {
+   "had_qc": false,
+   "status": 200
+  },
+  "111": {
+   "had_qc": false,
+   "status": 200
+  },
+  "112": {
+   "had_qc": false,
+   "status": 200
+  },
+  "113": {
+   "had_qc": false,
+   "status": 200
+  },
+  "114": {
+   "had_qc": false,
+   "status": 200
+  },
+  "115": {
+   "had_qc": false,
+   "status": 200
+  },
+  "116": {
+   "had_qc": false,
+   "status": 200
+  },
+  "117": {
+   "had_qc": false,
+   "status": 200
+  },
+  "118": {
+   "had_qc": false,
+   "status": 200
+  },
+  "119": {
+   "had_qc": false,
+   "status": 200
+  },
+  "120": {
+   "had_qc": false,
+   "status": 200
+  },
+  "121": {
+   "had_qc": false,
+   "status": 200
+  },
+  "122": {
+   "had_qc": false,
+   "status": 200
+  },
+  "123": {
+   "had_qc": false,
+   "status": 200
+  },
+  "124": {
+   "had_qc": false,
+   "status": 200
+  },
+  "125": {
+   "had_qc": false,
+   "status": 200
+  },
+  "126": {
+   "had_qc": false,
+   "status": 200
+  },
+  "127": {
+   "had_qc": false,
+   "status": 200
+  },
+  "128": {
+   "had_qc": false,
+   "status": 200
+  },
+  "129": {
+   "had_qc": false,
+   "status": 200
+  },
+  "130": {
+   "had_qc": false,
+   "status": 200
+  },
+  "131": {
+   "had_qc": false,
+   "status": 200
+  },
+  "132": {
+   "had_qc": false,
+   "status": 200
+  },
+  "133": {
+   "had_qc": false,
+   "status": 200
+  },
+  "134": {
+   "had_qc": false,
+   "status": 200
+  },
+  "135": {
+   "had_qc": false,
+   "status": 200
+  },
+  "136": {
+   "had_qc": false,
+   "status": 200
+  },
+  "137": {
+   "had_qc": false,
+   "status": 200
+  },
+  "138": {
+   "had_qc": false,
+   "status": 200
+  },
+  "139": {
+   "had_qc": false,
+   "status": 200
+  },
+  "140": {
+   "had_qc": false,
+   "status": 200
+  },
+  "141": {
+   "had_qc": false,
+   "status": 200
+  },
+  "142": {
+   "had_qc": false,
+   "status": 200
+  },
+  "143": {
+   "had_qc": false,
+   "status": 200
+  },
+  "144": {
+   "had_qc": false,
+   "status": 200
+  },
+  "145": {
+   "had_qc": false,
+   "status": 200
+  }
+ }
+}

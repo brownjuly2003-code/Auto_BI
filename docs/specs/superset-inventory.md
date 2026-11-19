@@ -356,8 +356,19 @@ printed escaped; the dashboard title appears only in `--json`, JSON-escaped.
   expressions of the trimmed dataset answer only: a calculated column a chart reads through
   `x_axis` or a pivot row or column alone is not among them (`SELECT *` still reads every column
   of the source).
-- The rendered SQL and the saved `query_context` are not read: `GET chart/{id}/data?type=query`
-  answered 400 for 109 of the 110 example charts on the stand (2026-11-14; backlog).
+- The rendered SQL and the saved `query_context` are not read. `GET chart/{id}/data?type=query`
+  answers 400 for a chart without `query_context`: 109 of the 110 example charts on 4.1.2, all
+  102 on 6.1.0; a chart created through the REST API has none until it is opened in Explore,
+  which writes it. E4a ([record](../pilot/2026-11-18-e4a-rendered-sql/README.md)) measured where
+  its SQL reads what the dashboard's SQL reads: the chart's last write is a save
+  (`last_saved_at`, from the UI or any REST `PUT`), its `query_context` agrees with `params` and
+  the chart's dataset, it is served by `/api/v1/chart/data`, without Jinja, a native filter in
+  its scope, a time comparison or an annotation layer — 4 of the 44 charts of its ClickHouse
+  corpus on each version, none of the examples as loaded. There the GET SQL named every column
+  the dashboard's SQL read and no other; its text matched for the 8 charts saved from the UI and
+  differed in its sort for 8 example charts saved through REST after Explore had written their
+  `query_context`, which the inventory cannot tell apart. Reading the set of columns there is
+  E4b.
 - A native dashboard filter is not mapped to the IR: a chart it applies to is read SQL (D6b).
 - Row-level security is not read: the three `GET`s do not show it, and it changes a tile's numbers
   per viewer.
@@ -379,7 +390,11 @@ printed escaped; the dashboard title appears only in `--json`, JSON-escaped.
   (Europe/Moscow), 1970-01-01, ClickHouse's default `Date`, falls into another day at `P1D`, and
   into the same week, month, quarter and year. The inventory reads neither the values nor the
   server's time zone, so this is not checked.
-- Superset 4.1.2 only; another version is an update of the pin with its own run.
+- Superset 4.1.2 only; another version is an update of the pin with its own run. On 6.1.0 (E4a,
+  [record](../pilot/2026-11-18-e4a-rendered-sql/README.md)) the reader wrote the same
+  dashboards of its ClickHouse corpus with no error in the answers' shape, and typed fewer
+  charts: a save from the 6.1 UI writes `form_data` keys outside the known set, which keep the
+  chart read as SQL.
 
 ## Usage
 

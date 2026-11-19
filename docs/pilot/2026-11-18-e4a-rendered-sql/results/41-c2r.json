@@ -1,0 +1,1417 @@
+{
+ "run": "41-c2r",
+ "counts": {
+  "charts": 44,
+  "equal": 30,
+  "equal_but_dates": 30,
+  "get_200": 43,
+  "get_400": 1,
+  "get_all_ran": 32,
+  "get_all_ran_sqlglot": 32,
+  "get_ran_engine>0": 0,
+  "has_qc": 43,
+  "shown_all_ran": 42,
+  "shown_all_ran_sqlglot": 42
+ },
+ "rows": [
+  {
+   "dashboard": 12,
+   "chart": 121,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 122,
+   "viz": "pivot_table_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 123,
+   "viz": "big_number_total",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 124,
+   "viz": "big_number",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 125,
+   "viz": "pie",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 12,
+   "chart": 126,
+   "viz": "echarts_timeseries_line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 127,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 128,
+   "viz": "echarts_area",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 129,
+   "viz": "echarts_timeseries_scatter",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 130,
+   "viz": "echarts_timeseries_smooth",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 131,
+   "viz": "echarts_timeseries_step",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 12,
+   "chart": 132,
+   "viz": "mixed_timeseries",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 2,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 2,
+   "shown_ran": [
+    true,
+    true
+   ],
+   "get_ran": [
+    true,
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true,
+    true
+   ],
+   "get_ran_sqlglot": [
+    true,
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 133,
+   "viz": "heatmap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 13,
+   "chart": 134,
+   "viz": "treemap_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 135,
+   "viz": "sunburst_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 136,
+   "viz": "word_cloud",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 137,
+   "viz": "histogram_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 138,
+   "viz": "box_plot",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 139,
+   "viz": "funnel",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 13,
+   "chart": 140,
+   "viz": "gauge_chart",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 141,
+   "viz": "radar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 142,
+   "viz": "sankey_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 143,
+   "viz": "graph_chart",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 13,
+   "chart": 144,
+   "viz": "waterfall",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [
+    400
+   ],
+   "shown_n": 0,
+   "shown_ran": [],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 145,
+   "viz": "bubble_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 146,
+   "viz": "chord",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 147,
+   "viz": "horizon",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 148,
+   "viz": "para",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 14,
+   "chart": 149,
+   "viz": "line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 150,
+   "viz": "area",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 151,
+   "viz": "dist_bar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 14,
+   "chart": 152,
+   "viz": "bubble",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 15,
+   "chart": 153,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 15,
+   "chart": 154,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 16,
+   "chart": 155,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 17,
+   "chart": 156,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 18,
+   "chart": 157,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 18,
+   "chart": 158,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 19,
+   "chart": 159,
+   "viz": "echarts_timeseries_line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [
+    400
+   ],
+   "shown_n": 0,
+   "shown_ran": [],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 19,
+   "chart": 160,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 2,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 2,
+   "shown_ran": [
+    true,
+    true
+   ],
+   "get_ran": [
+    true,
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true,
+    true
+   ],
+   "get_ran_sqlglot": [
+    true,
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 19,
+   "chart": 161,
+   "viz": "big_number",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 19,
+   "chart": 162,
+   "viz": "echarts_timeseries_line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 20,
+   "chart": 163,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 21,
+   "chart": 164,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  }
+ ],
+ "sql_pairs": [
+  {
+   "chart": 125,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `category` AS `category_c4ef35`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `category_c4ef35` LIMIT 100"
+   ],
+   "dashboard": [
+    "SELECT `category` AS `category_c4ef35`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `category_c4ef35` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ]
+  },
+  {
+   "chart": 139,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `format` AS `format_1ddcb9`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `format_1ddcb9` LIMIT 10"
+   ],
+   "dashboard": [
+    "SELECT `format` AS `format_1ddcb9`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `format_1ddcb9` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10"
+   ]
+  },
+  {
+   "chart": 145,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `city` AS `city_4ed5d2`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51`, sum(`orders`) AS `SUM(orders)_abcdf3`, sum(`items`) AS `SUM(items)_cd3b28` FROM `dm`.`sales_wide` GROUP BY `city_4ed5d2`, `region_960db2` LIMIT 1000"
+   ],
+   "dashboard": [
+    "SELECT `city` AS `city_4ed5d2`, `region` AS `region_960db2`, sum(`orders`) AS `SUM(orders)_abcdf3`, sum(`items`) AS `SUM(items)_cd3b28`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `city_4ed5d2`, `region_960db2` LIMIT 1000"
+   ]
+  },
+  {
+   "chart": 146,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `category` AS `category_c4ef35`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `category_c4ef35`, `region_960db2` LIMIT 1000"
+   ],
+   "dashboard": [
+    "SELECT `region` AS `region_960db2`, `category` AS `category_c4ef35`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2`, `category_c4ef35` LIMIT 1000"
+   ]
+  },
+  {
+   "chart": 147,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT toMonday(toDateTime(`date`)) AS `__timestamp_ae6234`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2`, `__timestamp_ae6234` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000"
+   ]
+  },
+  {
+   "chart": 149,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT toMonday(toDateTime(`date`)) AS `__timestamp_ae6234`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2`, `__timestamp_ae6234` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 50000"
+   ]
+  },
+  {
+   "chart": 150,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT toMonday(toDateTime(`date`)) AS `__timestamp_ae6234`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2`, `__timestamp_ae6234` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000"
+   ]
+  },
+  {
+   "chart": 151,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 100"
+   ],
+   "dashboard": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ]
+  },
+  {
+   "chart": 152,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51`, sum(`orders`) AS `SUM(orders)_abcdf3`, sum(`items`) AS `SUM(items)_cd3b28` FROM `dm`.`sales_wide` GROUP BY `region_960db2` LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT `city` AS `city_4ed5d2`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51`, sum(`orders`) AS `SUM(orders)_abcdf3`, sum(`items`) AS `SUM(items)_cd3b28` FROM `dm`.`sales_wide` GROUP BY `city_4ed5d2`, `region_960db2` LIMIT 100"
+   ]
+  },
+  {
+   "chart": 153,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ],
+   "dashboard": [
+    "SELECT `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` WHERE `region` IN ('ЦФО') GROUP BY `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 100"
+   ]
+  },
+  {
+   "chart": 154,
+   "equal_but_dates": false,
+   "time_range": "No filter",
+   "get": [
+    "SELECT toMonday(toDateTime(`date`)) AS `date_5fc732`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` GROUP BY `date_5fc732`, `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000"
+   ],
+   "dashboard": [
+    "SELECT toMonday(toDateTime(`date`)) AS `date_5fc732`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` WHERE `region` IN ('ЦФО') GROUP BY `date_5fc732`, `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000"
+   ]
+  }
+ ]
+}

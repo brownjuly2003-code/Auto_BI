@@ -1,0 +1,3720 @@
+{
+ "run": "41-c1",
+ "counts": {
+  "charts": 110,
+  "equal": 0,
+  "equal_but_dates": 0,
+  "get_200": 1,
+  "get_400": 109,
+  "get_all_ran": 0,
+  "get_all_ran_sqlglot": 0,
+  "get_ran_engine>0": 1,
+  "has_qc": 1,
+  "shown_all_ran": 110,
+  "shown_all_ran_sqlglot": 110
+ },
+ "rows": [
+  {
+   "dashboard": 1,
+   "chart": 1,
+   "viz": "big_number",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 1,
+   "chart": 2,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 1,
+   "chart": 3,
+   "viz": "line",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 1,
+   "chart": 4,
+   "viz": "world_map",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 1,
+   "chart": 5,
+   "viz": "bubble",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 1,
+   "chart": 6,
+   "viz": "sunburst_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 1,
+   "chart": 7,
+   "viz": "area",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 1,
+   "chart": 8,
+   "viz": "box_plot",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 1,
+   "chart": 9,
+   "viz": "treemap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 10,
+   "chart": 103,
+   "viz": "word_cloud",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 82,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 83,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 84,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 85,
+   "viz": "world_map",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 86,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 87,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 88,
+   "viz": "box_plot",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 89,
+   "viz": "treemap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 90,
+   "viz": "big_number_total",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 91,
+   "viz": "heatmap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 92,
+   "viz": "histogram_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 93,
+   "viz": "big_number_total",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 94,
+   "viz": "sankey_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 95,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 96,
+   "viz": "histogram_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 97,
+   "viz": "histogram_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 98,
+   "viz": "sankey_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 99,
+   "viz": "treemap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 100,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 101,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 11,
+   "chart": 102,
+   "viz": "world_map",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 11,
+   "viz": "big_number",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 12,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 13,
+   "viz": "line",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 14,
+   "viz": "dist_bar",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 15,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 16,
+   "viz": "word_cloud",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 17,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 18,
+   "viz": "word_cloud",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 19,
+   "viz": "area",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 20,
+   "viz": "area",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 2,
+   "chart": 21,
+   "viz": "pivot_table_v2",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    false
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    false
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 3,
+   "chart": 10,
+   "viz": "para",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 3,
+   "chart": 30,
+   "viz": "mapbox",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 3,
+   "chart": 31,
+   "viz": "country_map",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 4,
+   "chart": 32,
+   "viz": "deck_scatter",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 4,
+   "chart": 33,
+   "viz": "deck_screengrid",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 4,
+   "chart": 34,
+   "viz": "deck_hex",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 4,
+   "chart": 35,
+   "viz": "deck_grid",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 4,
+   "chart": 36,
+   "viz": "deck_polygon",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 4,
+   "chart": 37,
+   "viz": "deck_arc",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 4,
+   "chart": 38,
+   "viz": "deck_path",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 5,
+   "chart": 73,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 5,
+   "chart": 74,
+   "viz": "treemap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 5,
+   "chart": 75,
+   "viz": "big_number",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 5,
+   "chart": 76,
+   "viz": "big_number",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 5,
+   "chart": 77,
+   "viz": "chord",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 5,
+   "chart": 78,
+   "viz": "echarts_area",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 5,
+   "chart": 79,
+   "viz": "big_number_total",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 5,
+   "chart": 80,
+   "viz": "big_number",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 5,
+   "chart": 81,
+   "viz": "heatmap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 6,
+   "chart": 63,
+   "viz": "treemap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 6,
+   "chart": 65,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 6,
+   "chart": 66,
+   "viz": "heatmap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 6,
+   "chart": 67,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 6,
+   "chart": 68,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 6,
+   "chart": 69,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 6,
+   "chart": 70,
+   "viz": "treemap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 21,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 6,
+   "chart": 72,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 111,
+   "viz": "echarts_area",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 112,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 113,
+   "viz": "horizon",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 114,
+   "viz": "heatmap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 115,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 116,
+   "viz": "big_number_total",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 117,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 118,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 119,
+   "viz": "big_number_total",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 7,
+   "chart": 120,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 8,
+   "chart": 104,
+   "viz": "world_map",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 8,
+   "chart": 105,
+   "viz": "treemap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 8,
+   "chart": 106,
+   "viz": "heatmap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 8,
+   "chart": 107,
+   "viz": "sunburst_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 8,
+   "chart": 108,
+   "viz": "heatmap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 8,
+   "chart": 109,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 8,
+   "chart": 110,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 39,
+   "viz": "echarts_timeseries_bar",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 40,
+   "viz": "funnel",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 41,
+   "viz": "table",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 42,
+   "viz": "histogram_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 43,
+   "viz": "echarts_timeseries_line",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 44,
+   "viz": "pie",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 45,
+   "viz": "graph_chart",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 46,
+   "viz": "tree_chart",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 47,
+   "viz": "big_number",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 48,
+   "viz": "pivot_table_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 49,
+   "viz": "radar",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 50,
+   "viz": "big_number_total",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 51,
+   "viz": "heatmap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 52,
+   "viz": "gauge_chart",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 53,
+   "viz": "echarts_timeseries_scatter",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 54,
+   "viz": "sankey_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 55,
+   "viz": "echarts_area",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 56,
+   "viz": "word_cloud",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 57,
+   "viz": "box_plot",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 58,
+   "viz": "waterfall",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 59,
+   "viz": "mixed_timeseries",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 2,
+   "shown_ran": [
+    true,
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true,
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 60,
+   "viz": "sunburst_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 61,
+   "viz": "bubble_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 9,
+   "chart": 62,
+   "viz": "treemap_v2",
+   "has_qc": false,
+   "qc_fresh": null,
+   "get_status": 400,
+   "get_error": "{'message': 'Chart has no query context saved. Please save the chart again.'}",
+   "get_n": 0,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [],
+   "equal": false,
+   "equal_but_dates": false
+  }
+ ],
+ "sql_pairs": [
+  {
+   "chart": 21,
+   "equal_but_dates": false,
+   "time_range": "100 years ago : now",
+   "get": [
+    "SELECT name AS name, state AS state, SUM(num) AS sum__num FROM public.birth_names GROUP BY name, state LIMIT 50000"
+   ],
+   "dashboard": [
+    "SELECT state AS state, name AS name, SUM(num) AS sum__num FROM public.birth_names WHERE ds >= TO_TIMESTAMP('1926-11-18 00:00:00.000000', 'YYYY-MM-DD HH24:MI:SS.US') AND ds < TO_TIMESTAMP('2026-11-18 19:02:10.000000', 'YYYY-MM-DD HH24:MI:SS.US') GROUP BY state, name ORDER BY sum__num DESC LIMIT 50000"
+   ]
+  }
+ ],
+ "forms": {
+  "1": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 1,
+     "viz": "big_number",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'big_number' is outside the typed set"
+     ]
+    },
+    {
+     "id": 2,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.country_fieldtype is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 3,
+     "viz": "line",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'line' is outside the typed set"
+     ]
+    },
+    {
+     "id": 4,
+     "viz": "world_map",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'world_map' is outside the typed set"
+     ]
+    },
+    {
+     "id": 5,
+     "viz": "bubble",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'bubble' is outside the typed set"
+     ]
+    },
+    {
+     "id": 6,
+     "viz": "sunburst_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'sunburst_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 7,
+     "viz": "area",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'area' is outside the typed set"
+     ]
+    },
+    {
+     "id": 8,
+     "viz": "box_plot",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'box_plot' is outside the typed set"
+     ]
+    },
+    {
+     "id": 9,
+     "viz": "treemap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'treemap_v2' is outside the typed set"
+     ]
+    }
+   ]
+  },
+  "2": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 11,
+     "viz": "big_number",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'big_number' is outside the typed set"
+     ]
+    },
+    {
+     "id": 12,
+     "viz": "pie",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.limit is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 13,
+     "viz": "line",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'line' is outside the typed set"
+     ]
+    },
+    {
+     "id": 14,
+     "viz": "dist_bar",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'dist_bar' is outside the typed set"
+     ]
+    },
+    {
+     "id": 15,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.limit is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 16,
+     "viz": "word_cloud",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'word_cloud' is outside the typed set"
+     ]
+    },
+    {
+     "id": 17,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.limit is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 18,
+     "viz": "word_cloud",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'word_cloud' is outside the typed set"
+     ]
+    },
+    {
+     "id": 19,
+     "viz": "area",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'area' is outside the typed set"
+     ]
+    },
+    {
+     "id": 20,
+     "viz": "area",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'area' is outside the typed set"
+     ]
+    },
+    {
+     "id": 21,
+     "viz": "pivot_table_v2",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.limit is not a key the typed form reads"
+     ]
+    }
+   ]
+  },
+  "3": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 10,
+     "viz": "para",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'para' is outside the typed set"
+     ]
+    },
+    {
+     "id": 30,
+     "viz": "mapbox",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'mapbox' is outside the typed set"
+     ]
+    },
+    {
+     "id": 31,
+     "viz": "country_map",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'country_map' is outside the typed set"
+     ]
+    }
+   ]
+  },
+  "4": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 32,
+     "viz": "deck_scatter",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'deck_scatter' is outside the typed set"
+     ]
+    },
+    {
+     "id": 33,
+     "viz": "deck_screengrid",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'deck_screengrid' is outside the typed set"
+     ]
+    },
+    {
+     "id": 34,
+     "viz": "deck_hex",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'deck_hex' is outside the typed set"
+     ]
+    },
+    {
+     "id": 35,
+     "viz": "deck_grid",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'deck_grid' is outside the typed set"
+     ]
+    },
+    {
+     "id": 36,
+     "viz": "deck_polygon",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'deck_polygon' is outside the typed set"
+     ]
+    },
+    {
+     "id": 37,
+     "viz": "deck_arc",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'deck_arc' is outside the typed set"
+     ]
+    },
+    {
+     "id": 38,
+     "viz": "deck_path",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'deck_path' is outside the typed set"
+     ]
+    }
+   ]
+  },
+  "5": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 73,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metrics[0]: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 74,
+     "viz": "treemap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'treemap_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 75,
+     "viz": "big_number",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'big_number' is outside the typed set"
+     ]
+    },
+    {
+     "id": 76,
+     "viz": "big_number",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'big_number' is outside the typed set"
+     ]
+    },
+    {
+     "id": 77,
+     "viz": "chord",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'chord' is outside the typed set"
+     ]
+    },
+    {
+     "id": 78,
+     "viz": "echarts_area",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.limit is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 79,
+     "viz": "big_number_total",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 80,
+     "viz": "big_number",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'big_number' is outside the typed set"
+     ]
+    },
+    {
+     "id": 81,
+     "viz": "heatmap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "the dataset is virtual (its own SQL)"
+     ]
+    }
+   ]
+  },
+  "6": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 63,
+     "viz": "treemap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'treemap_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 65,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "the table lists raw rows, not aggregates"
+     ]
+    },
+    {
+     "id": 66,
+     "viz": "heatmap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 67,
+     "viz": "echarts_timeseries_bar",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 68,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.order_by_cols is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 69,
+     "viz": "pie",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.adhoc_filters[0] compares text Superset casts to the column's type"
+     ]
+    },
+    {
+     "id": 70,
+     "viz": "treemap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'treemap_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 72,
+     "viz": "echarts_timeseries_bar",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.contributionMode = 'row' post-processes the result"
+     ]
+    }
+   ]
+  },
+  "7": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 111,
+     "viz": "echarts_area",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.contributionMode = 'row' post-processes the result"
+     ]
+    },
+    {
+     "id": 112,
+     "viz": "pie",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 113,
+     "viz": "horizon",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'horizon' is outside the typed set"
+     ]
+    },
+    {
+     "id": 114,
+     "viz": "heatmap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 115,
+     "viz": "echarts_timeseries_bar",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.time_grain_sqla = 'P3M': Superset casts 'order_date', a column of TIMESTAMP WITHOUT TIME ZONE, to DateTime (1970 to 2106) first; a grain is typed on a Date or DateTime column only"
+     ]
+    },
+    {
+     "id": 116,
+     "viz": "big_number_total",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 117,
+     "viz": "echarts_timeseries_bar",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.adhoc_filters[0] limits time to '2003-01-01T00:00:00 : 2005-06-01T00:00:00'"
+     ]
+    },
+    {
+     "id": 118,
+     "viz": "echarts_timeseries_bar",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.time_grain_sqla = 'P3M': Superset casts 'order_date', a column of TIMESTAMP WITHOUT TIME ZONE, to DateTime (1970 to 2106) first; a grain is typed on a Date or DateTime column only"
+     ]
+    },
+    {
+     "id": 119,
+     "viz": "big_number_total",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 120,
+     "viz": "table",
+     "form": "typed",
+     "reasons": []
+    }
+   ]
+  },
+  "8": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 104,
+     "viz": "world_map",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'world_map' is outside the typed set"
+     ]
+    },
+    {
+     "id": 105,
+     "viz": "treemap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'treemap_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 106,
+     "viz": "heatmap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 107,
+     "viz": "sunburst_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'sunburst_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 108,
+     "viz": "heatmap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 109,
+     "viz": "echarts_timeseries_bar",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metrics[0]: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 110,
+     "viz": "pie",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    }
+   ]
+  },
+  "9": {
+   "written": false,
+   "refusals": [
+    "the dashboard holds 24 charts; a spec holds 12",
+    "chart_46: its read SQL is not one plain SELECT: it does not parse (line 8, column 12)"
+   ],
+   "charts": [
+    {
+     "id": 39,
+     "viz": "echarts_timeseries_bar",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metrics[0]: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 40,
+     "viz": "funnel",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'funnel' is outside the typed set"
+     ]
+    },
+    {
+     "id": 41,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "the table lists raw rows, not aggregates"
+     ]
+    },
+    {
+     "id": 42,
+     "viz": "histogram_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'histogram_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 43,
+     "viz": "echarts_timeseries_line",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metrics[0]: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 44,
+     "viz": "pie",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 45,
+     "viz": "graph_chart",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'graph_chart' is outside the typed set"
+     ]
+    },
+    {
+     "id": 47,
+     "viz": "big_number",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'big_number' is outside the typed set"
+     ]
+    },
+    {
+     "id": 48,
+     "viz": "pivot_table_v2",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.groupbyRows[1] names 'city', a column the dataset answer does not describe"
+     ]
+    },
+    {
+     "id": 49,
+     "viz": "radar",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'radar' is outside the typed set"
+     ]
+    },
+    {
+     "id": 50,
+     "viz": "big_number_total",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 51,
+     "viz": "heatmap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 52,
+     "viz": "gauge_chart",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'gauge_chart' is outside the typed set"
+     ]
+    },
+    {
+     "id": 53,
+     "viz": "echarts_timeseries_scatter",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'echarts_timeseries_scatter' is outside the typed set"
+     ]
+    },
+    {
+     "id": 54,
+     "viz": "sankey_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'sankey_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 55,
+     "viz": "echarts_area",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.time_grain_sqla = 'P1W': Superset casts 'order_date', a column of TIMESTAMP WITHOUT TIME ZONE, to DateTime (1970 to 2106) first; a grain is typed on a Date or DateTime column only"
+     ]
+    },
+    {
+     "id": 56,
+     "viz": "word_cloud",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'word_cloud' is outside the typed set"
+     ]
+    },
+    {
+     "id": 57,
+     "viz": "box_plot",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'box_plot' is outside the typed set"
+     ]
+    },
+    {
+     "id": 58,
+     "viz": "waterfall",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'waterfall' is outside the typed set"
+     ]
+    },
+    {
+     "id": 59,
+     "viz": "mixed_timeseries",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'mixed_timeseries' is outside the typed set"
+     ]
+    },
+    {
+     "id": 60,
+     "viz": "sunburst_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'sunburst_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 61,
+     "viz": "bubble_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'bubble_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 62,
+     "viz": "treemap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'treemap_v2' is outside the typed set"
+     ]
+    }
+   ]
+  },
+  "10": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 103,
+     "viz": "word_cloud",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'word_cloud' is outside the typed set"
+     ]
+    }
+   ]
+  },
+  "11": {
+   "written": false,
+   "refusals": [
+    "the dashboard holds 21 charts; a spec holds 12"
+   ],
+   "charts": [
+    {
+     "id": 82,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.percent_metrics is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 83,
+     "viz": "pie",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 84,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metrics[0]: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 85,
+     "viz": "world_map",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'world_map' is outside the typed set"
+     ]
+    },
+    {
+     "id": 86,
+     "viz": "pie",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 87,
+     "viz": "pie",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 88,
+     "viz": "box_plot",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'box_plot' is outside the typed set"
+     ]
+    },
+    {
+     "id": 89,
+     "viz": "treemap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'treemap_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 90,
+     "viz": "big_number_total",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 91,
+     "viz": "heatmap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 92,
+     "viz": "histogram_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'histogram_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 93,
+     "viz": "big_number_total",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.adhoc_filters[0].subject is the calculated column 'developer_type'"
+     ]
+    },
+    {
+     "id": 94,
+     "viz": "sankey_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'sankey_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 95,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metrics[0]: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 96,
+     "viz": "histogram_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'histogram_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 97,
+     "viz": "histogram_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'histogram_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 98,
+     "viz": "sankey_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'sankey_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 99,
+     "viz": "treemap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'treemap_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 100,
+     "viz": "pie",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 101,
+     "viz": "pie",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.metric: the saved metric 'count' is not AGG(column)"
+     ]
+    },
+    {
+     "id": 102,
+     "viz": "world_map",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'world_map' is outside the typed set"
+     ]
+    }
+   ]
+  }
+ }
+}

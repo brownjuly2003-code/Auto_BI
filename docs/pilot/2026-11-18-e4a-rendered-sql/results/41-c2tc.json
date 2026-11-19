@@ -1,0 +1,262 @@
+{
+ "run": "41-c2tc",
+ "counts": {
+  "charts": 4,
+  "equal": 3,
+  "equal_but_dates": 3,
+  "get_200": 4,
+  "get_all_ran": 4,
+  "get_all_ran_sqlglot": 4,
+  "get_ran_engine>0": 0,
+  "has_qc": 4,
+  "shown_all_ran": 3,
+  "shown_all_ran_sqlglot": 3
+ },
+ "rows": [
+  {
+   "dashboard": 19,
+   "chart": 159,
+   "viz": "echarts_timeseries_line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    false
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    false
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": false,
+   "equal_but_dates": false
+  },
+  {
+   "dashboard": 19,
+   "chart": 160,
+   "viz": "table",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 2,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 2,
+   "shown_ran": [
+    true,
+    true
+   ],
+   "get_ran": [
+    true,
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true,
+    true
+   ],
+   "get_ran_sqlglot": [
+    true,
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 19,
+   "chart": 161,
+   "viz": "big_number",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  },
+  {
+   "dashboard": 19,
+   "chart": 162,
+   "viz": "echarts_timeseries_line",
+   "has_qc": true,
+   "qc_fresh": false,
+   "get_status": 200,
+   "get_error": null,
+   "get_n": 1,
+   "get_ran_engine": 0,
+   "context": "dashboard",
+   "requests": 1,
+   "request_errors": [],
+   "shown_n": 1,
+   "shown_ran": [
+    true
+   ],
+   "get_ran": [
+    true
+   ],
+   "shown_ran_sqlglot": [
+    true
+   ],
+   "get_ran_sqlglot": [
+    true
+   ],
+   "equal": true,
+   "equal_but_dates": true
+  }
+ ],
+ "area": {
+  "confusion": {
+   "out&False": 1,
+   "out&True": 3,
+   "out&missed_reads=False": 4
+  },
+  "rows": [
+   {
+    "chart": 159,
+    "viz": "echarts_timeseries_line",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": true,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": false
+    },
+    "in_area": false,
+    "equal": false,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot",
+     "rename"
+    ]
+   },
+   {
+    "chart": 160,
+    "viz": "table",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": []
+   },
+   {
+    "chart": 161,
+    "viz": "big_number",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot"
+    ]
+   },
+   {
+    "chart": 162,
+    "viz": "echarts_timeseries_line",
+    "endpoint": [
+     "chart"
+    ],
+    "checks": {
+     "saved": false,
+     "fresh": true,
+     "api": true,
+     "plain": true,
+     "answer": true,
+     "single": true
+    },
+    "in_area": false,
+    "equal": true,
+    "missed_reads": [],
+    "extra_reads": [],
+    "post_processing": [
+     "flatten",
+     "pivot",
+     "rolling"
+    ]
+   }
+  ]
+ },
+ "sql_pairs": [
+  {
+   "chart": 159,
+   "equal_but_dates": false,
+   "time_range": null,
+   "get": [
+    "SELECT toMonday(toDateTime(`date`)) AS `date_5fc732`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` WHERE `date` >= toDate('2025-07-01') AND `date` < toDate('2026-07-01') GROUP BY `date_5fc732`, `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000"
+   ],
+   "dashboard": [
+    "SELECT toMonday(toDateTime(`date`)) AS `date_5fc732`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` WHERE `date` >= toDate('2025-07-01') AND `date` < toDate('2026-07-01') GROUP BY `date_5fc732`, `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 10000; SELECT toMonday(toDateTime(`date`)) AS `date_5fc732`, `region` AS `region_960db2`, sum(`revenue`) AS `SUM(revenue)_ba9a51` FROM `dm`.`sales_wide` WHERE `date` >= toDate('2024-07-01') AND `date` < toDate('2025-07-01') GROUP BY `date_5fc732`, `region_960db2` ORDER BY `SUM(revenue)_ba9a51` DESC LIMIT 50000"
+   ]
+  }
+ ],
+ "ui_save": {
+  "159": {
+   "attempts": 1,
+   "overwrite_checked": true,
+   "status": 200
+  }
+ },
+ "put": {
+  "chart": 159,
+  "time_range": "2025-07-01 : 2026-07-01",
+  "put_status": 200
+ }
+}

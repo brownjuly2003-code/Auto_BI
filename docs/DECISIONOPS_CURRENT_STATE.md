@@ -118,9 +118,9 @@ PEM вне checkout и evidence.
 Финиш [ADR 0010](adr/0010-finish-line.md) — 2026-11-10, `0.6.0`. D1–D6
 [ADR 0012](adr/0012-post-finish-development.md) и E1–E3
 [ADR 0013](adr/0013-entry-points-to-proven-path.md) — в `main`, `0.8.0`: основной путь
-закрыт, демо-PR прошёл на снимке инвентаря
-([запись E3](pilot/2026-11-18-e3-inventory-snapshot/README.md)). Дальше — E4a локально;
-E5–E7 и [бэклог](DECISIONOPS_BACKLOG.md) — потом.
+закрыт на снимке инвентаря ([E3](pilot/2026-11-18-e3-inventory-snapshot/README.md)).
+[E4a](pilot/2026-11-18-e4a-rendered-sql/README.md) — локально; дальше E4b, E5–E7,
+[бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:
 

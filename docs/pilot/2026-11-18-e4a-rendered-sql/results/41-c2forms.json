@@ -1,0 +1,394 @@
+{
+ "run": "41-c2forms",
+ "counts": {},
+ "rows": [],
+ "sql_pairs": [],
+ "forms": {
+  "12": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 121,
+     "viz": "table",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 122,
+     "viz": "pivot_table_v2",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 123,
+     "viz": "big_number_total",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 124,
+     "viz": "big_number",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'big_number' is outside the typed set"
+     ]
+    },
+    {
+     "id": 125,
+     "viz": "pie",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 126,
+     "viz": "echarts_timeseries_line",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.series_limit is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 127,
+     "viz": "echarts_timeseries_bar",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.series_limit is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 128,
+     "viz": "echarts_area",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.series_limit is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 129,
+     "viz": "echarts_timeseries_scatter",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'echarts_timeseries_scatter' is outside the typed set"
+     ]
+    },
+    {
+     "id": 130,
+     "viz": "echarts_timeseries_smooth",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'echarts_timeseries_smooth' is outside the typed set"
+     ]
+    },
+    {
+     "id": 131,
+     "viz": "echarts_timeseries_step",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'echarts_timeseries_step' is outside the typed set"
+     ]
+    },
+    {
+     "id": 132,
+     "viz": "mixed_timeseries",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'mixed_timeseries' is outside the typed set"
+     ]
+    }
+   ]
+  },
+  "13": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 133,
+     "viz": "heatmap_v2",
+     "form": "typed",
+     "reasons": []
+    },
+    {
+     "id": 134,
+     "viz": "treemap_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'treemap_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 135,
+     "viz": "sunburst_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'sunburst_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 136,
+     "viz": "word_cloud",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'word_cloud' is outside the typed set"
+     ]
+    },
+    {
+     "id": 137,
+     "viz": "histogram_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'histogram_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 138,
+     "viz": "box_plot",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'box_plot' is outside the typed set"
+     ]
+    },
+    {
+     "id": 139,
+     "viz": "funnel",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'funnel' is outside the typed set"
+     ]
+    },
+    {
+     "id": 140,
+     "viz": "gauge_chart",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'gauge_chart' is outside the typed set"
+     ]
+    },
+    {
+     "id": 141,
+     "viz": "radar",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'radar' is outside the typed set"
+     ]
+    },
+    {
+     "id": 142,
+     "viz": "sankey_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'sankey_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 143,
+     "viz": "graph_chart",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'graph_chart' is outside the typed set"
+     ]
+    },
+    {
+     "id": 144,
+     "viz": "waterfall",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'waterfall' is outside the typed set"
+     ]
+    }
+   ]
+  },
+  "14": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 145,
+     "viz": "bubble_v2",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'bubble_v2' is outside the typed set"
+     ]
+    },
+    {
+     "id": 146,
+     "viz": "chord",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'chord' is outside the typed set"
+     ]
+    },
+    {
+     "id": 147,
+     "viz": "horizon",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'horizon' is outside the typed set"
+     ]
+    },
+    {
+     "id": 148,
+     "viz": "para",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'para' is outside the typed set"
+     ]
+    },
+    {
+     "id": 149,
+     "viz": "line",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'line' is outside the typed set"
+     ]
+    },
+    {
+     "id": 150,
+     "viz": "area",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'area' is outside the typed set"
+     ]
+    },
+    {
+     "id": 151,
+     "viz": "dist_bar",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'dist_bar' is outside the typed set"
+     ]
+    },
+    {
+     "id": 152,
+     "viz": "bubble",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'bubble' is outside the typed set"
+     ]
+    }
+   ]
+  },
+  "15": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 153,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "the dashboard's native filter 'Регион' applies to it"
+     ]
+    },
+    {
+     "id": 154,
+     "viz": "echarts_timeseries_bar",
+     "form": "read_sql",
+     "reasons": [
+      "the dashboard's native filter 'Регион' applies to it"
+     ]
+    }
+   ]
+  },
+  "16": {
+   "written": false,
+   "refusals": [
+    "chart_155: its read SQL is not one plain SELECT: it does not parse (line 7, column 2)"
+   ],
+   "charts": []
+  },
+  "17": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 156,
+     "viz": "table",
+     "form": "typed",
+     "reasons": []
+    }
+   ]
+  },
+  "18": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 157,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.adhoc_filters[0] limits time to 'Last week'"
+     ]
+    },
+    {
+     "id": 158,
+     "viz": "echarts_timeseries_bar",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.series_limit is not a key the typed form reads"
+     ]
+    }
+   ]
+  },
+  "19": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 159,
+     "viz": "echarts_timeseries_line",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.showTooltipPercentage is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 160,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.show_totals is not a key the typed form reads"
+     ]
+    },
+    {
+     "id": 161,
+     "viz": "big_number",
+     "form": "read_sql",
+     "reasons": [
+      "viz_type 'big_number' is outside the typed set"
+     ]
+    },
+    {
+     "id": 162,
+     "viz": "echarts_timeseries_line",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.rolling_periods is not a key the typed form reads"
+     ]
+    }
+   ]
+  },
+  "20": {
+   "written": true,
+   "refusals": [],
+   "charts": [
+    {
+     "id": 163,
+     "viz": "table",
+     "form": "read_sql",
+     "reasons": [
+      "form_data.groupby[0] names 'category', a column the dataset answer does not describe"
+     ]
+    }
+   ]
+  },
+  "21": {
+   "written": false,
+   "refusals": [
+    "chart_164: the dataset names no schema, so its table could not be named"
+   ],
+   "charts": []
+  }
+ }
+}
