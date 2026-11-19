@@ -1,6 +1,6 @@
 [project]
 name = "autobi-agent"
-version = "0.8.0"
+version = "0.9.0"
 description = "Analytics Release & Evidence Gate (DecisionOps): checks that a semantic change keeps governed numbers, with content-addressed evidence"
 readme = "README.md"
 license = "MIT"

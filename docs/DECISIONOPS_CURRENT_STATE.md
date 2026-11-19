@@ -1,6 +1,6 @@
 # Auto_BI DecisionOps — текущее состояние
 
-**Обновлено:** 2026-11-18 · **Версии evidence:** `VERIFIER_VERSION=139`, `CHECK_VERSION=86`
+**Обновлено:** 2026-11-19 · **Версии evidence:** `VERIFIER_VERSION=139`, `CHECK_VERSION=86`
 (что меняла каждая — [spec](specs/evidence-format-versions.md))
 
 Здесь только то, что работает, что не реализовано и что дальше. Поведение описывают
@@ -12,7 +12,7 @@
 reviewed-запроса проверен на живых PostgreSQL и ClickHouse; evidence подписывается Ed25519
 (opt-in); offline investigation alpha разрешён. Закрыты этапы hardening, мутационного
 smoke и формул dbt (ADR 0008). Код — в `main` публичного репозитория
-baseline; в checkout — `autobi-agent` `0.8.0`, без публикации пакета и тега
+baseline; в checkout — `autobi-agent` `0.9.0`, без публикации пакета и тега
 ([ADR 0011](adr/0011-public-repository.md)).
 
 ## Коротко
@@ -74,7 +74,8 @@ investigation: четыре pure version-pinned skill над supplied canonical 
 - Chart-разрешение — не lineage: `computes_metric` для operator SQL не заявляется,
   неразобранный SQL — `chart.opaque_sql`; детектор скрытого чтения знает именованный набор
   конструкций, конструкция вне него — дыра детектора. Инвентарь Superset типизирует лишь
-  точные формы IR, прочее — завышающий SQL (`chart.sql_partial`); >12 чартов — отказ.
+  точные формы IR; прочие плитки читает SQL — целиком (E4b) или завышенно
+  (`chart.sql_partial`); >12 чартов — отказ.
 - Governance reviewed-запроса отвечает «объявлено ли поле», а не «откуда значение»; что нельзя
   приписать без догадки, — `asset.query_fields_unchecked`. Связывание с `WITH` и CTE
   консервативно там, где оно неоднозначно (ARCHITECTURE §7.5).
@@ -117,9 +118,9 @@ PEM вне checkout и evidence.
 
 Финиш [ADR 0010](adr/0010-finish-line.md) — 2026-11-10, `0.6.0`. D1–D6
 [ADR 0012](adr/0012-post-finish-development.md) и E1–E3
-[ADR 0013](adr/0013-entry-points-to-proven-path.md) — в `main`, `0.8.0`: основной путь
+[ADR 0013](adr/0013-entry-points-to-proven-path.md) — в `main`: основной путь
 закрыт на снимке инвентаря ([E3](pilot/2026-11-18-e3-inventory-snapshot/README.md)).
-[E4a](pilot/2026-11-18-e4a-rendered-sql/README.md) — локально; дальше E4b, E5–E7,
+[E4a](pilot/2026-11-18-e4a-rendered-sql/README.md) и E4b — `0.9.0`; дальше E5–E7,
 [бэклог](DECISIONOPS_BACKLOG.md).
 
 Не начинать без нового решения:

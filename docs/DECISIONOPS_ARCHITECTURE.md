@@ -48,7 +48,7 @@ untracked presentation artifact; они, `.env`, виртуальные окру
 | Tracked-файлы | 324 | Это зрелый fork, не greenfield rewrite |
 | Python source | 82 файла / 20 824 физических строки | Новый слой должен быть additive |
 | Python tests | 100 файлов / 27 960 физических строк | v1 regression suite остаётся обязательной |
-| Package | `autobi-agent` 0.5.0 (на bootstrap; теперь `0.8.0`, ADR 0013) | Имя пакета не меняется |
+| Package | `autobi-agent` 0.5.0 (на bootstrap; теперь `0.9.0`, ADR 0013) | Имя пакета не меняется |
 | Runtime | Python 3.12+, FastAPI, Pydantic, sqlglot, SQLite | Нового framework в MVP не требуется |
 | Primary path | ClickHouse + Superset | Первый live gate углубляет этот путь |
 | Secondary path | Greenplum + DataLens | Используется для cross-target contracts |

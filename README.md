@@ -7,7 +7,7 @@
 [архитектуре](docs/DECISIONOPS_ARCHITECTURE.md).
 
 > **Пакет DecisionOps не публикуется** ([ADR 0011](docs/adr/0011-public-repository.md)).
-> `pip install autobi-agent` устанавливает baseline v0.5.0. В этом checkout — `0.8.0`,
+> `pip install autobi-agent` устанавливает baseline v0.5.0. В этом checkout — `0.9.0`,
 > без тега ([ADR 0013](docs/adr/0013-entry-points-to-proven-path.md)); окружение готовится
 > через `uv sync`, CLI запускается через `uv run auto_bi`.
 
