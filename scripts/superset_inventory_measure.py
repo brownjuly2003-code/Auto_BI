@@ -245,6 +245,7 @@ def measure_run(run: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, 
                     "measured": ref_reads is not None,
                     "missed": missed,
                     "extra": extra,
+                    "reasons": list(forms[spec_chart.id].reasons),
                 }
             )
     summary = {

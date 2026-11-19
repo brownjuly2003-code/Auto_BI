@@ -5,10 +5,10 @@ answer the reader can get by `GET` and the reference — the SQL the dashboard s
 in a browser, checked against the engine log. `scripts/superset_inventory_measure.py` replays the
 answers to the reader and reads every tile of a written spec the way the gate reads it.
 
-The numbers below are the threshold of the reader 2, recorded with the reader 1 base before the
-reader 2 code (`docs/pilot/2026-11-19-e4b-inventory-reads/README.md`). Superset 4.1.2 — the pin —
-holds the threshold; Superset 6.1.0 is measured for information and only must not regress or
-miss a read.
+The numbers below are the thresholds of the reader 2 (E4b-1) and of composite SQL (E4b-2), each
+recorded with its base before its code (`docs/pilot/2026-11-19-e4b-inventory-reads/README.md`).
+Superset 4.1.2 — the pin — holds the thresholds; Superset 6.1.0 is measured for information and
+only must not regress or miss a read.
 """
 
 from __future__ import annotations
@@ -23,6 +23,8 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+
+from auto_bi.inventory import superset as reader
 
 REPO = Path(__file__).resolve().parents[1]
 CORPUS = REPO / "tests" / "fixtures" / "superset_inventory" / "e4a"
@@ -52,6 +54,19 @@ THRESHOLD = {
     "41-c2w": (frozenset({139, 145}), 8),
     "41-c1rest": (frozenset({12, 15, 17}), 3),
 }
+
+#: Reader 2 (E4b-1, `928e140`) on the corpus: tiles read whole.
+READER_2_WHOLE = {"41-c1w": 5, "41-c2w": 8, "41-c1rest": 3, "61-c1w": 1, "61-c2w": 8}
+
+#: E4b-2 candidates on 4.1.2, written before the code: tiles of written dashboards that reader 2
+#: leaves over-read, measured against the engine, of a viz in the 4.1.2 chart/data list of the
+#: E4a `api` check. Legacy viz (`viz.py`) are not candidates.
+CANDIDATES = {"41-c1w": 39, "41-c2w": 25, "41-c1rest": 4}
+
+#: Of the 68 candidates, at least this many are read whole from composite SQL.
+COMPOSITE_WHOLE = 60
+
+_E4B2 = pytest.mark.xfail(strict=True, reason="E4b-2: composite SQL is not implemented yet")
 
 
 @cache
@@ -108,10 +123,50 @@ def test_reader_2_reads_the_area_from_rendered_sql_on_the_pin(name: str) -> None
     summary, rows = _run(name)
     rendered, whole = THRESHOLD[name]
     assert {r["chart"] for r in rows if r["form"] == "rendered_sql"} == rendered
-    assert summary["counts"]["tiles_whole"] == whole
+    # Exact for reader 2; a later reader may only add to it.
+    assert summary["counts"]["tiles_whole"] >= whole
 
 
 @pytest.mark.parametrize("name", ["61-c1w", "61-c2w"])
 def test_superset_6_1_does_not_regress(name: str) -> None:
     summary, _ = _run(name)
-    assert summary["counts"]["tiles_whole"] >= BASE[name][3]
+    assert summary["counts"]["tiles_whole"] >= READER_2_WHOLE[name]
+
+
+def _candidate(row: dict[str, Any]) -> bool:
+    return row["measured"] and row["viz"] in reader._RENDERED_VIZ
+
+
+@pytest.mark.parametrize("name", sorted(CANDIDATES))
+def test_the_e4b2_candidates_are_the_recorded_ones(name: str) -> None:
+    _, rows = _run(name)
+    left = [r for r in rows if r["form"] in {"read_sql", "composite_sql"} and _candidate(r)]
+    assert len(left) == CANDIDATES[name]
+
+
+@_E4B2
+def test_composite_sql_reads_whole_at_least_60_of_the_68_candidates() -> None:
+    whole = sum(
+        r["whole"] for name in CANDIDATES for r in _run(name)[1] if r["form"] == "composite_sql"
+    )
+    assert whole >= COMPOSITE_WHOLE
+    assert sum(_run(name)[0]["counts"]["tiles_whole"] for name in CANDIDATES) >= 16 + whole
+
+
+@_E4B2
+@pytest.mark.parametrize("name", sorted(CANDIDATES))
+def test_a_candidate_left_over_read_names_why(name: str) -> None:
+    _, rows = _run(name)
+    for row in rows:
+        if row["form"] == "read_sql" and _candidate(row):
+            assert any(reason.startswith("composite_sql:") for reason in row["reasons"]), row
+
+
+@pytest.mark.parametrize("name", sorted(BASE))
+def test_composite_sql_is_only_for_modern_viz_and_legacy_viz_stay_over_read(name: str) -> None:
+    _, rows = _run(name)
+    for row in rows:
+        if row["viz"] not in reader._RENDERED_VIZ:
+            assert row["form"] in {"typed", "read_sql"}, row
+        if row["form"] == "composite_sql":
+            assert row["viz"] in reader._RENDERED_VIZ, row
