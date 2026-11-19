@@ -771,9 +771,11 @@ def _decision_inventory(args: argparse.Namespace) -> int:
                     _say_one_line(f"  - {refusal}")
                 continue
             typed = sum(chart.form is ChartForm.TYPED for chart in dashboard.charts)
+            rendered = sum(chart.form is ChartForm.RENDERED_SQL for chart in dashboard.charts)
             _say_one_line(
                 f"wrote    {dashboard.written}  ({dashboard.superset}: "
-                f"{typed} typed, {len(dashboard.charts) - typed} read as SQL)"
+                f"{typed} typed, {rendered} rendered SQL, "
+                f"{len(dashboard.charts) - typed - rendered} read as SQL)"
             )
         _say_one_line(f"report   {Path(args.output) / INVENTORY_REPORT}")
     return 3 if report.refused else 0

@@ -4,13 +4,16 @@
 each one by hand. This module reads what Superset 4.1 holds — the dashboard, its charts and
 their datasets, by `GET` only — and writes the spec the gate reads. It is a *read model*: what
 the spec must get right is what each tile reads and computes, because that is all the gate asks
-of it (chart impact, `bi.contract`). Two forms, and no third:
+of it (chart impact, `bi.contract`). Three forms, tried in this order:
 
 * **typed** — the chart is one the IR says exactly: a viz of the closed set, a physical dataset,
   aggregates `AGG(column)` over plain columns the dataset answer describes, plain dimensions,
   the time grain Superset groups them by, filters the IR has an operator for, no
   post-processing, every `form_data` key that holds a value one this module knows, and the spec
   validates against the semantic model. Only this form can be named `computes_metric`.
+* **rendered SQL** — saved, fresh charts in the E4a area: the SQL Superset renders for the
+  inventory account, read as ClickHouse with no change to its column reads. It is still
+  operator `raw_sql`, never `computes_metric`, including charts with post-processing.
 * **read SQL** — every other chart: operator `raw_sql` selecting `*` from the chart's source
   (the table, or the dataset's own SQL as `virtual_table`, as Superset wraps it) plus every SQL
   fragment the chart and its dataset answer carry. It is not what Superset runs; it reads at
@@ -33,6 +36,7 @@ import json
 import re
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
 from urllib.parse import quote
@@ -42,10 +46,10 @@ import sqlglot
 import yaml
 from pydantic import Field, ValidationError
 from sqlglot import expressions as exp
-from sqlglot.errors import ParseError, SqlglotError
+from sqlglot.errors import ErrorLevel, ParseError, SqlglotError
 
 from auto_bi.adapters.superset.client import SupersetAPIError, SupersetClient
-from auto_bi.agent.sql_guard import SQLGuardError, guard_sql
+from auto_bi.agent.sql_guard import SQLGuardError, extract_column_refs, guard_sql
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
@@ -65,8 +69,8 @@ from auto_bi.verification.bi_contract import SupersetContractCompiler
 #: The Superset the mapping below was read off (docker/superset/Dockerfile, CLAUDE.md inv. 7).
 SUPERSET_VERSION = "4.1.2"
 
-#: D6 is reader 1. Increment when the mapping of Superset answers to specs/reasons changes.
-READER_VERSION = 1
+#: D6 is reader 1; E4b-1 adds rendered reads. Increment on spec/form/reason mapping changes.
+READER_VERSION = 2
 
 #: `DashboardSpec.charts` holds at most this many tiles.
 MAX_CHARTS = 12
@@ -84,9 +88,18 @@ class SupersetSource(Protocol):
 
     def datasets(self, ident: str) -> Sequence[Mapping[str, Any]]: ...
 
+    def saves(self, dashboard_id: int) -> Sequence[Mapping[str, Any]]: ...
+
+    def chart(self, chart_id: int) -> Mapping[str, Any]: ...
+
+    def rendered(self, chart_id: int) -> tuple[int, Mapping[str, Any]]: ...
+
+    def dataset_definition(self, dataset_id: int) -> tuple[int, Mapping[str, Any]]: ...
+
 
 class ChartForm(StrEnum):
     TYPED = "typed"
+    RENDERED_SQL = "rendered_sql"
     READ_SQL = "read_sql"
 
 
@@ -96,7 +109,7 @@ class InventoriedChart(StrictModel):
     superset_id: int
     viz_type: str
     form: ChartForm
-    #: Why the chart is not typed; empty for a typed chart.
+    #: Why not typed, then the first rendered-area/representation failure for read SQL.
     reasons: list[str] = Field(default_factory=list)
     #: The Superset database of the chart's dataset — its id and engine, as Superset names
     #: them; `None` and empty when the answer names none.
@@ -157,15 +170,60 @@ class RestSupersetSource:
     def datasets(self, ident: str) -> Sequence[Mapping[str, Any]]:
         return self._objects(f"/api/v1/dashboard/{quote(ident, safe='')}/datasets", ident)
 
-    def _objects(self, path: str, ident: str) -> Sequence[Mapping[str, Any]]:
-        result = self._result(path)
+    def saves(self, dashboard_id: int) -> Sequence[Mapping[str, Any]]:
+        query = (
+            "(columns:!(id,changed_on_utc,last_saved_at),"
+            f"filters:!((col:dashboards,opr:rel_m_m,value:{dashboard_id})),"
+            f"page_size:{MAX_CHARTS})"
+        )
+        return self._objects("/api/v1/chart/", str(dashboard_id), params={"q": query})
+
+    def chart(self, chart_id: int) -> Mapping[str, Any]:
+        result = self._result(f"/api/v1/chart/{chart_id}")
+        if not isinstance(result, Mapping):
+            raise SupersetAnswerError(f"chart {chart_id}: the answer holds no object")
+        return result
+
+    def rendered(self, chart_id: int) -> tuple[int, Mapping[str, Any]]:
+        return self._get(
+            f"/api/v1/chart/{chart_id}/data/",
+            params={"type": "query", "format": "json"},
+            refusals=(400, 404),
+        )
+
+    def dataset_definition(self, dataset_id: int) -> tuple[int, Mapping[str, Any]]:
+        return self._get(f"/api/v1/dataset/{dataset_id}", refusals=(404,))
+
+    def _objects(
+        self, path: str, ident: str, *, params: dict[str, Any] | None = None
+    ) -> Sequence[Mapping[str, Any]]:
+        result = self._result(path, params=params)
         if not isinstance(result, list) or not all(isinstance(item, Mapping) for item in result):
             raise SupersetAnswerError(f"dashboard {ident!r}: {path} holds no list of objects")
         return result
 
-    def _result(self, path: str) -> Any:
+    def _result(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        return self._get(path, params=params)[1].get("result")
+
+    def _get(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        refusals: tuple[int, ...] = (),
+    ) -> tuple[int, Mapping[str, Any]]:
+        """The status and the JSON answer of a `GET`. A status in *refusals* is an answer too —
+        the caller reads it as a refusal of that one request; any other non-200 is an error."""
         try:
-            answer: Any = self._client.get(path)
+            status = 200
+            if refusals:
+                response = self._client.get_response(path, params=params)
+                status = response.status_code
+                if status != 200 and status not in refusals:
+                    raise SupersetSourceError(f"GET {path} -> HTTP {status}")
+                answer: Any = response.json()
+            else:
+                answer = self._client.get(path, params=params)
         except SupersetAPIError as error:
             raise SupersetSourceError(str(error)) from None
         except (httpx.HTTPError, httpx.InvalidURL) as error:
@@ -176,7 +234,7 @@ class RestSupersetSource:
             raise SupersetSourceError(f"GET {path}: the answer is not Superset's JSON") from None
         if not isinstance(answer, Mapping):
             raise SupersetSourceError(f"GET {path}: the answer is not Superset's JSON")
-        return answer.get("result")
+        return status, answer
 
 
 @dataclass(frozen=True)
@@ -428,6 +486,8 @@ def _read_dashboard(
     native_filters = _native_filters(dashboard)
     refusals: list[str] = []
     specs: list[ChartSpec] = []
+    saves: dict[int, Mapping[str, Any]] | None = None
+    definitions: dict[int, tuple[int, Mapping[str, Any]]] = {}
     if not charts:
         refusals.append("the dashboard holds no chart")
     if len(charts) > MAX_CHARTS:
@@ -478,7 +538,28 @@ def _read_dashboard(
                 )
             )
             continue
-        read, refusal = _read_sql_chart(chart_id, title, form_data, dataset)
+        rendered: ChartSpec | None = None
+        rendered_reason = _rendered_precheck(_int(chart, "id"), form_data, dataset, native_filters)
+        if not rendered_reason and len(charts) > MAX_CHARTS:
+            rendered_reason = "rendered_sql: the dashboard exceeds the chart limit"
+        if not rendered_reason:
+            if saves is None:
+                saves = {_int(row, "id"): row for row in source.saves(_int(dashboard, "id"))}
+            rendered, rendered_reason = _rendered_chart(
+                _int(chart, "id"),
+                title,
+                form_data,
+                dataset,
+                saves.get(_int(chart, "id"), {}),
+                source,
+                model,
+                definitions,
+            )
+        read, refusal = (
+            (rendered, "")
+            if rendered is not None
+            else _read_sql_chart(chart_id, title, form_data, dataset)
+        )
         if read is None:
             refusals.append(f"{chart_id}: {refusal}")
             continue
@@ -488,8 +569,8 @@ def _read_dashboard(
                 chart=chart_id,
                 superset_id=_int(chart, "id"),
                 viz_type=viz_type,
-                form=ChartForm.READ_SQL,
-                reasons=reasons,
+                form=ChartForm.RENDERED_SQL if rendered is not None else ChartForm.READ_SQL,
+                reasons=reasons if rendered is not None else [*reasons, rendered_reason],
                 database=on,
                 backend=backend,
             )
@@ -1096,6 +1177,234 @@ def _filter_value(value: Any, op: FilterOp) -> Any:
     if isinstance(value, bool) or not isinstance(value, (str, int, float)):
         return None
     return value
+
+
+# --- rendered SQL (E4a area) ------------------------------------------------------------------
+
+
+#: Positive chart-viz list, checked against Apache Superset tag 4.1.2, commit
+#: 72538bda06c0deef2140e0df65bf0a13bcddb16c (Apache-2.0):
+#: superset-frontend/src/visualizations/presets/MainPreset.js registrations and metadata in
+#: superset-frontend/plugins/{plugin-chart-echarts,plugin-chart-table,plugin-chart-pivot-table,
+#: plugin-chart-word-cloud,plugin-chart-handlebars}/src. None sets useLegacyApi; all legacy
+#: plugin/preset registrations and src/visualizations/TimeTable do. FilterPlugins are native
+#: filter controls, not chart-viz registrations. pop_kpi is the experimental ECharts plugin.
+_RENDERED_VIZ = frozenset(
+    {
+        "big_number",
+        "big_number_total",
+        "box_plot",
+        "bubble_v2",
+        "echarts_area",
+        "echarts_timeseries",
+        "echarts_timeseries_bar",
+        "echarts_timeseries_line",
+        "echarts_timeseries_scatter",
+        "echarts_timeseries_smooth",
+        "echarts_timeseries_step",
+        "funnel",
+        "gauge_chart",
+        "graph_chart",
+        "handlebars",
+        "heatmap_v2",
+        "histogram_v2",
+        "mixed_timeseries",
+        "pie",
+        "pivot_table_v2",
+        "pop_kpi",
+        "radar",
+        "sankey_v2",
+        "sunburst_v2",
+        "table",
+        "tree_chart",
+        "treemap_v2",
+        "waterfall",
+        "word_cloud",
+    }
+)
+
+_CONTEXT_IGNORED = frozenset(
+    {"slice_id", "datasource", "dashboards", "url_params", "force", "result_format", "result_type"}
+)
+_RENDERED_DIALECTS = {
+    "clickhouse": "clickhouse",
+    "clickhousedb": "clickhouse",
+    "postgresql": "postgres",
+}
+
+
+def _jinja(value: Any) -> bool:
+    text = json.dumps(value)
+    return "{{" in text or "{%" in text
+
+
+def _rendered_precheck(
+    chart_id: int,
+    form_data: Mapping[str, Any],
+    dataset: Mapping[str, Any],
+    native_filters: Sequence[_NativeFilter],
+) -> str:
+    """Fail before any additional GET when the three D6 answers already decide it."""
+    if str(form_data.get("viz_type")) not in _RENDERED_VIZ:
+        return "api: the viz is not in the Superset 4.1.2 chart/data list"
+    # The whole dataset answer, not only its SQL: Superset 4.1.2 renders a template in a
+    # calculated column's or a metric's expression too (`get_sqla_col`), at the GET below.
+    if _jinja(dataset) or _jinja(form_data):
+        return "plain: the dataset or chart carries Jinja"
+    # In scope unless `scope.excluded` names the chart (E4a: `chartsInScope` takes no chart out
+    # of a scope). A chart `chartsInScope` lists stays in it as well, as D6 reads it: saved
+    # metadata that names the chart both ways is not read as the narrower scope.
+    if any(native.applies_to(chart_id) for native in native_filters):
+        return "plain: a native dashboard filter applies to the chart"
+    if form_data.get("time_compare") or form_data.get("annotation_layers"):
+        return "single: the chart carries a time comparison or annotation layer"
+    if _table(dataset) is None:
+        return "rendered_sql: the dataset names no schema or table"
+    if _database(dataset)[1] not in _RENDERED_DIALECTS:
+        return "rendered_sql: the dataset backend has no known read dialect"
+    return ""
+
+
+def _saved_time(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _json_object(value: Any) -> Mapping[str, Any] | None:
+    """Saved params/context are JSON text. An absent or malformed context is not fresh."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, Mapping) else None
+
+
+def _rendered_chart(
+    chart_id: int,
+    title: str,
+    form_data: Mapping[str, Any],
+    dataset: Mapping[str, Any],
+    saved: Mapping[str, Any],
+    source: SupersetSource,
+    model: SemanticModel,
+    definitions: dict[int, tuple[int, Mapping[str, Any]]],
+) -> tuple[ChartSpec | None, str]:
+    changed = _saved_time(saved.get("changed_on_utc"))
+    when = _saved_time(saved.get("last_saved_at"))
+    if changed is None or when is None or abs((changed - when).total_seconds()) > 2:
+        return None, "saved: the last change is not a save within two seconds"
+    detail = source.chart(chart_id)
+    params = _json_object(detail.get("params"))
+    context = _json_object(detail.get("query_context"))
+    if params is None or context is None:
+        return None, "fresh: the chart has no readable params or query_context"
+    form = context.get("form_data")
+    datasource = context.get("datasource")
+    named = form_data.get("datasource")
+    if (
+        not isinstance(form, Mapping)
+        or not form
+        or not isinstance(datasource, Mapping)
+        or type(datasource.get("id")) is not int
+        or datasource.get("id") != _int(dataset, "id")
+        or datasource.get("type") != "table"
+        or named != f"{datasource.get('id')}__table"
+        or form.get("datasource", named) != named
+        or {k: v for k, v in form.items() if k not in _CONTEXT_IGNORED}
+        != {k: v for k, v in params.items() if k not in _CONTEXT_IGNORED}
+    ):
+        return None, "fresh: query_context differs from the chart params or dashboard dataset"
+    # The dashboard draws the viz of the chart's `viz_type` column (`Slice.form_data`); a REST
+    # save of that column alone keeps params and query_context of the viz before it.
+    viz = form_data.get("viz_type")
+    if detail.get("viz_type") != viz or params.get("viz_type") != viz:
+        return None, "fresh: the saved params are not of the viz the dashboard shows"
+    # The whole context: Superset renders the queries' own SQL text too (`extras.where`,
+    # `extras.having`, a `sqlExpression`), which the form_data alone need not carry.
+    if _jinja(params) or _jinja(context):
+        return None, "plain: the saved params or query_context carries Jinja"
+    queries = context.get("queries")
+    if (
+        not isinstance(queries, list)
+        or not all(isinstance(query, Mapping) for query in queries)
+        or any(query.get("time_offsets") or query.get("annotation_layers") for query in queries)
+        or params.get("time_compare")
+        or params.get("annotation_layers")
+    ):
+        return None, "single: query_context carries extra queries or cannot name them"
+    # The dashboard's dataset answer is trimmed to what its charts name in some keys
+    # (`data_for_slices`): a calculated column a chart reads only as its time column or its sort
+    # is not in it, and Superset renders that column's template too. Its whole definition is.
+    key = _int(dataset, "id")
+    if key not in definitions:
+        definitions[key] = source.dataset_definition(key)
+    status, answer = definitions[key]
+    whole = answer.get("result")
+    if status != 200 or not isinstance(whole, Mapping) or type(whole.get("id")) is not int:
+        return None, "plain: the dataset definition is not readable"
+    if whole["id"] != key:
+        return None, "plain: the dataset definition is not readable"
+    if _jinja(whole):
+        return None, "plain: the dataset definition carries Jinja"
+    status, answer = source.rendered(chart_id)
+    results = answer.get("result")
+    if (
+        status != 200
+        or not isinstance(results, list)
+        or not results
+        or not all(
+            isinstance(item, Mapping)
+            and isinstance(item.get("query"), str)
+            and item["query"].strip()
+            and not item.get("error")
+            for item in results
+        )
+    ):
+        return None, "answer: rendered data has no successful query in every result"
+    if len(results) != 1:
+        return None, "rendered_sql: multiple rendered queries are not combined"
+    raw_sql = results[0]["query"].strip().removesuffix(";").rstrip()
+    dialect = _RENDERED_DIALECTS[_database(dataset)[1]]
+    try:
+        guard_sql(raw_sql, dialect=dialect)
+        if dialect != READ_SQL_DIALECT:
+            before = extract_column_refs(raw_sql, dialect=dialect)
+            translated = sqlglot.transpile(
+                raw_sql,
+                read=dialect,
+                write=READ_SQL_DIALECT,
+                error_level=ErrorLevel.RAISE,
+                unsupported_level=ErrorLevel.RAISE,
+            )
+            if len(translated) != 1 or before != extract_column_refs(
+                translated[0], dialect=READ_SQL_DIALECT
+            ):
+                return None, "rendered_sql: translation changes column reads"
+            raw_sql = translated[0]
+        guard_sql(raw_sql, dialect=READ_SQL_DIALECT)
+        tile = ChartSpec(
+            id=f"chart_{chart_id}",
+            title=title,
+            viz=Viz.TABLE,
+            query=ChartQuery(
+                table=f"{_text(dataset, 'schema')}.{_text(dataset, 'table_name')}",
+                raw_sql=raw_sql,
+            ),
+        )
+        if gate_refusals(DashboardSpec(title=title, charts=[tile]), model):
+            return None, "rendered_sql: the rendered tile does not pass the gate contract"
+    except Exception:
+        # Parser, generator and contract exceptions can quote SQL or credentials. No body
+        # or expression belongs in the report; D6 still decides whether the fallback is safe.
+        return None, "rendered_sql: the SQL cannot be translated or pass the SQL guard"
+    return tile, ""
 
 
 # --- read SQL ---------------------------------------------------------------------------------

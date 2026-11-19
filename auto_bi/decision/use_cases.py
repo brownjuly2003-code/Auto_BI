@@ -485,7 +485,8 @@ class InventoryRequest:
 
 class InventoryReport(StrictModel):
     superset_version: str = SUPERSET_VERSION
-    reader_version: int = Field(default=READER_VERSION, ge=1, strict=True)
+    # Reports without the field predate E3; parsing them must continue to mean reader 1.
+    reader_version: int = Field(default=1, ge=1, strict=True)
     dashboards: list[InventoriedDashboard] = Field(default_factory=list)
 
     @property
@@ -589,7 +590,7 @@ def inventory(request: InventoryRequest) -> InventoryReport:
     model = _load_model(Path(request.semantic) / MODEL_FILE)
 
     source = request.source()
-    report = InventoryReport()
+    report = InventoryReport(reader_version=READER_VERSION)
     specs: dict[str, DashboardSpec] = {}
     for ref, ident in pairs:
         try:

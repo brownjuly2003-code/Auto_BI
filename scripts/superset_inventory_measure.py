@@ -55,6 +55,10 @@ class ReplaySource:
         self._chart_board = {
             int(chart): board for board, doc in self._boards.items() for chart in doc["chart"]
         }
+        #: `GET /api/v1/dataset/{id}` by dataset id, recorded for the 4.1.2 runs after the E4b-1
+        #: review r1 (`docs/pilot/2026-11-19-e4b-inventory-reads/README.md`). A run without it
+        #: answers 404: the reader then reads no tile of that dataset from rendered SQL.
+        self._definitions: Mapping[str, Any] = run.get("dataset", {})
         self.calls: Counter[str] = Counter()
 
     def _ok(self, pair: Sequence[Any], path: str) -> Any:
@@ -104,6 +108,14 @@ class ReplaySource:
         self.calls["rendered"] += 1
         board = self._boards[self._chart_board[chart_id]]
         status, body = board["chart"][str(chart_id)]["query"]
+        return int(status), body
+
+    def dataset_definition(self, dataset_id: int) -> tuple[int, Mapping[str, Any]]:
+        self.calls["definition"] += 1
+        pair = self._definitions.get(str(dataset_id))
+        if pair is None:
+            return 404, {"message": "Not found"}
+        status, body = pair
         return int(status), body
 
 

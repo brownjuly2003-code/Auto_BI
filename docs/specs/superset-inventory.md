@@ -12,7 +12,8 @@ gate asks of it (chart impact, `bi.contract`). It reads by `GET` only, after its
 BI and reaches no engine, and adds no verdict: the gate grades the specs it writes.
 
 The reader is `auto_bi/inventory/superset.py`; the use case is `inventory` in
-`auto_bi/decision/use_cases.py`. The Superset is the one pinned (4.1.2), reached through the
+`auto_bi/decision/use_cases.py`. The mapping is checked against the pinned Superset 4.1.2,
+including the E4b rendered-SQL area below; 6.1 answers are also replayed offline. It is reached through the
 settings `AUTO_BI_SUPERSET_URL`, `AUTO_BI_SUPERSET_USER` and `AUTO_BI_SUPERSET_PASSWORD`.
 
 ## Requirement: a repository snapshot is the PR run's inventory input (E3)
@@ -85,9 +86,11 @@ database mismatch returning exit 3.
 ## Requirement: the inventory asks Superset by GET after its login
 
 For each `--dashboard REF=ID_OR_SLUG` (REF is `dashboard://path@version`) the inventory SHALL read
-`GET /api/v1/dashboard/{id_or_slug}`, `.../charts` and `.../datasets`, and send no other request
-but the client's login — `POST /api/v1/security/login`, then `GET /api/v1/security/csrf_token/` —
-made before the first request and once more after an answer 401, which repeats that request once.
+`GET /api/v1/dashboard/{id_or_slug}`, `.../charts` and `.../datasets`. Reader 2 MAY then read
+the saved-chart list, chart detail and rendered SQL, in the order specified below. Content
+requests SHALL be GET only. The client's login — `POST /api/v1/security/login`, then
+`GET /api/v1/security/csrf_token/` — is made before the first request and once more after an
+answer 401, which repeats that request once.
 
 An answer that is not the shape Superset 4.1 gives where the inventory depends on it — not JSON,
 JSON nested deeper than the inventory reads, no `result`, no object or list of objects where one
@@ -98,20 +101,26 @@ or a `backend` that is missing or not text is read as empty (a chart is then tit
 `chart_<id>`, a dataset refused for naming no schema), `changed_on` as its text, and a dataset
 `database` that is not an object with an integer `id` as naming none.
 
-An HTTP error or a refused login SHALL be an error that names the request and the HTTP status
+Except for a JSON-object 400/404 from the rendered-data endpoint below, an HTTP error or a
+refused login SHALL be an error that names the request and the HTTP status
 (`login failed: HTTP 401`, `csrf fetch failed: HTTP 500`, `GET <path> -> HTTP 404`); a Superset
 not reached, or an answer that is not its JSON, SHALL name the `GET` it was making
 (`GET <path>: ConnectError`), a login made for it included; never a body or a credential.
 
-## Requirement: a chart is typed or read as SQL
+## Requirement: a chart is typed, rendered SQL or conservatively read as SQL
 
-Each chart of a dashboard SHALL be written in one of two forms, and in no third:
+Each chart SHALL use the first available form in this order:
 
 - **typed** — the exact IR `ChartSpec`. It is the only form the gate can name `computes_metric`;
   it SHALL be chosen only when the chart is one the IR says exactly, and the spec passes
   `validate_spec` against the model and the Superset contract compiler. A typed chart that fails
-  either is read SQL, not refused: a spec `bi.contract` refuses would block every run for a
+  either proceeds to rendered SQL and then read SQL: a spec `bi.contract` refuses would block every run for a
   reason no change made;
+- **rendered SQL** (`rendered_sql`) — a chart inside all six E4a checks below, with one rendered
+  query that can be read in the gate's ClickHouse dialect. It SHALL be viz `table`, with
+  `raw_sql` holding that query and `table` named as in the conservative form. It has no IR
+  measures and cannot be `computes_metric`, even with contribution, rank or other
+  post-processing. Its reads are those the gate extracts from the rendered query;
 - **read SQL** — every other chart: viz `table` with a `raw_sql` that is `SELECT *` plus every SQL
   fragment of the chart and every saved metric and calculated column of its dataset, each on its
   own lines, `FROM schema.table` or `FROM (<dataset sql>) AS virtual_table`, the dataset SQL
@@ -186,10 +195,99 @@ A chart SHALL be typed only when all of these hold:
   1000 for a table, 10000 for a line, bar, area, heatmap or pivot; a big number, which has no
   such control, and a `row_limit` saved null or empty read Superset's `ROW_LIMIT`, 50000.
 
+## Requirement: rendered SQL is read only inside the E4a area (E4b-1)
+
+All six checks SHALL hold:
+
+| Check | Evidence and boundary |
+| --- | --- |
+| `saved` | The chart-list row has `changed_on_utc` and `last_saved_at`; their absolute difference is **at most 2 seconds**, inclusive. A timestamp without a zone is UTC. |
+| `fresh` | `GET chart/{id}` has readable JSON `params` and `query_context`, with nonempty `form_data`. The two forms agree on the union of their keys, except `slice_id`, `datasource`, `dashboards`, `url_params`, `force`, `result_format`, `result_type`. Even an extra null-valued key is a difference. `query_context.datasource` names the chart's table dataset from the dashboard answers, and `form_data.datasource`, when present, names that same dataset. The chart's `viz_type` column (`GET chart/{id}`), the dashboard `form_data` and the saved params name the same viz: the dashboard draws the column's viz, and a REST save of that column alone keeps params and query_context of the viz before it. |
+| `api` | The viz is in the positive 4.1.2 chart/data list below; legacy and unknown viz fail. |
+| `plain` | Neither the dataset — its SQL and every calculated column's and metric's expression, which Superset 4.1.2 renders too — nor the chart's forms, params or the whole saved `query_context` (its queries' `extras.where`, `extras.having` and every `sqlExpression` included) contains `{{` or `{%`. The dataset is read twice: its dashboard answer first, then its whole definition, `GET /api/v1/dataset/{id}` — the dashboard answer is trimmed to what the charts name in some `form_data` keys (`data_for_slices`), so a calculated column a chart reads only as its time column or sort is not in it. The definition answers 200 with an object whose integer `id` is the dataset's. No native dashboard filter applies: it applies unless `scope.excluded` names the chart and `chartsInScope` does not. An empty `chartsInScope` takes no chart out of a scope; one that lists an excluded chart keeps it in, as D6 reads it. |
+| `answer` | Rendered data answered HTTP 200, with a nonempty `result`; every element has a nonempty text `query` and no nonempty `error`. |
+| `single` | No query in `query_context.queries` has nonempty `time_offsets` or `annotation_layers`; chart params have no nonempty `time_compare` or `annotation_layers`. |
+
+The positive list has 29 chart viz keys, checked against Apache Superset tag **4.1.2**, commit
+`72538bda06c0deef2140e0df65bf0a13bcddb16c` (Apache-2.0): registrations in
+`superset-frontend/src/visualizations/presets/MainPreset.js` and `useLegacyApi` metadata in
+`superset-frontend/plugins/*`. These plugins do not use the legacy API; native filter
+controls are not chart viz. `pop_kpi` is the experimental ECharts registration.
+
+```text
+big_number big_number_total box_plot bubble_v2 echarts_area
+echarts_timeseries echarts_timeseries_bar echarts_timeseries_line
+echarts_timeseries_scatter echarts_timeseries_smooth echarts_timeseries_step
+funnel gauge_chart graph_chart handlebars heatmap_v2 histogram_v2
+mixed_timeseries pie pivot_table_v2 pop_kpi radar sankey_v2 sunburst_v2
+table tree_chart treemap_v2 waterfall word_cloud
+```
+
+Typed charts SHALL cost no additional request. For other charts the inventory first checks
+everything available from the three D6 answers: `api`, Jinja in the dataset's dashboard answer
+and the dashboard `form_data`, native filters, and `single` keys in that form. A missing schema/table or an
+unknown SQL backend also prevents a rendered attempt. A dashboard over 12 charts SHALL make
+no new request. D6 typing and conservative SQL construction retain their existing rules.
+
+Only if a chart still qualifies, the reader SHALL lazily request **once per dashboard**:
+
+```text
+GET /api/v1/chart/
+q=(columns:!(id,changed_on_utc,last_saved_at),filters:!((col:dashboards,opr:rel_m_m,value:<dashboard id>)),page_size:12)
+```
+
+The id is the numeric id from the dashboard response, never its slug. After `saved` passes,
+`GET /api/v1/chart/{id}` supplies `fresh` and the saved forms' part of `plain` and `single`.
+Then `GET /api/v1/dataset/{id}` supplies the rest of `plain` — at most **once per dataset** of
+a dashboard, kept for its other charts. Only after those pass may
+`GET /api/v1/chart/{id}/data/?type=query&format=json` render SQL; a chart with Jinja SHALL never
+reach that GET. Thus, besides login, the request count is three D6 GETs, at most one list GET,
+at most two GETs per eligible non-typed chart and one per dataset of those charts. The inventory
+account reads charts and datasets as well as dashboards.
+
+A rendered-data HTTP **400 or 404 with a JSON object** SHALL fail `answer` and retain the
+conservative tile, so the dashboard can still be written. Transport failure, failed login
+or CSRF fetch, 401 after re-login, 403, 5xx, any other status (including 202/3xx), and a body
+that is not a JSON object SHALL raise `SupersetSourceError`. No body, SQL or credentials
+belong in these errors. Missing or malformed saved params/context fail `fresh`. The dataset
+definition follows the same policy, except that only an HTTP **404 with a JSON object** — no such
+dataset for this account — fails `plain` and keeps the conservative tile; a 400 or 403 is an
+error, as for the other GETs of the chart and the dashboard.
+
+Supported backends are `clickhousedb`, `clickhouse` and `postgresql`. ClickHouse SQL SHALL
+retain its text after trimming outer whitespace and a terminal semicolon. PostgreSQL SQL
+SHALL be parsed in sqlglot's `postgres` dialect and emitted as `READ_SQL_DIALECT`
+(`clickhouse`). The entire `extract_column_refs` result before and after translation SHALL
+agree, including table references and unresolved reads. Unsupported translation or a
+difference falls back to conservative SQL. Unknown backends also fall back.
+
+E4b-1 SHALL accept exactly **one** rendered query. Multiple results, such as totals or
+`mixed_timeseries`, fall back rather than selecting one query or combining them without a
+proved read-set contract. Source and translated SQL SHALL pass `guard_sql`; the rendered
+tile SHALL pass `gate_refusals`. A failure falls back, not by itself refusing the dashboard;
+the existing conservative form must still pass its own checks.
+
+For rendered SQL, `reasons` SHALL contain why D6 did not type the tile. For conservative SQL
+it SHALL additionally contain the **first** failed check, prefixed `saved:`, `fresh:`, `api:`,
+`plain:`, `answer:` or `single:`. Representation failures (backend, multiple queries,
+translation, guard or contract), and the dashboard limit, instead use `rendered_sql:`.
+No new report field is required; `form` gains the enum value `rendered_sql`.
+
+Offline contracts: `tests/test_superset_inventory_rendered.py` exercises each boundary,
+inclusive timestamps, asymmetric/null keys, ignored keys, the viz the dashboard draws, Jinja in
+the context's queries and in the definition outside the dashboard answer, filter scope, every
+positive viz, no-query ordering, lazy list and definition sharing, HTTP policy, dialect/read
+equality and both guards.
+`tests/test_superset_inventory_corpus.py` checks the fixed five-run corpus, including 6.1,
+unchanged typed/written/refused counts and zero missed reads. Snapshot compatibility is in
+`tests/test_inventory_snapshot.py`; CLI text and JSON forms are tested in the rendered suite.
+
+## Requirement: chart identity and reasons are recorded
+
 Each chart of the written spec SHALL be named `chart_<superset id>`, titled by its `slice_name`
 (by its name `chart_<id>` when it has none), in the order of the Superset ids. `inventory.json`
 SHALL list each chart it read — its form, the Superset `database` and `backend` of its dataset
-and, when it is read SQL, the reasons; a chart that refuses its dashboard is named in `refusals`
+and, when it is either SQL form, the reasons; a chart that refuses its dashboard is named in `refusals`
 only. A reason SHALL name a saved metric by its name, and quote a `form_data` key that is not a
 name (`form_data['my key']`), escapes and all. Of a saved metric's SQL, a reason names at most the
 one column an `AGG(column)` metric aggregates — the model's check names it when the model has no
@@ -282,9 +380,10 @@ They also cover unowned/malformed/missing snapshots, links and Windows open-file
 `reader_version` SHALL be a positive integer, initially **1** for the D6 reader. Increment it
 when the mapping from Superset answers and semantic model to specs, chart forms, reasons or
 refusals changes. Packaging, mapping-file input and transactional publication do not change
-that mapping: E3 writes version 1. `superset_version` remains `4.1.2`; `VERIFIER_VERSION` and
+that mapping: E3 writes version 1. E4b-1 changes the mapping and SHALL write **reader version 2**.
+`superset_version` remains `4.1.2`; `VERIFIER_VERSION` and
 `CHECK_VERSION` do not change. Replacement SHALL accept a D6 report without `reader_version`
-as reader 1; the new report explicitly writes the current reader version. A future positive
+as reader 1, and a report explicitly naming reader 1; the new report explicitly writes version 2. A future positive
 version is accepted if the rest of the report still satisfies the same ownership contract.
 Tests: `test_map_accepts_database_and_writes_reader_version`, `test_replace_whole_snapshot_including_d6`
 and the report-key contract in `tests/test_superset_inventory.py`.
@@ -308,7 +407,8 @@ is the id of the Superset database that model describes. It SHALL exit:
   what argparse refuses (missing/both `--map`/`--dashboard`, missing `--output`, a `--database` that is not an
   integer): it prints its usage and its own error line.
 
-The answer is, per dashboard, `wrote    <path>  (<superset>: <n> typed, <m> read as SQL)` or
+The answer is, per dashboard,
+`wrote    <path>  (<superset>: <n> typed, <r> rendered SQL, <m> read as SQL)` or
 `refused  <ref>  (<superset>)` followed by one `  - <reason>` line per refusal, then
 `report   <out>/inventory.json`; `<path>` is relative to the output and `<superset>` is the id or
 slug as named. `--json` prints the report instead. What is printed from the arguments and the
@@ -345,7 +445,7 @@ printed escaped; the dashboard title appears only in `--json`, JSON-escaped.
 
 ## Known boundaries
 
-- Measured on Superset's own `load-examples` corpus (11 dashboards, 110 charts): 9 dashboards
+- D6 measured on Superset's own `load-examples` corpus (11 dashboards, 110 charts): 9 dashboards
   written (5 charts typed, 60 read as SQL) and 2 refused (21 and 24 charts; the second also has
   dataset SQL with a bare `UNION`, which the SQL guard's ClickHouse dialect does not parse). Over
   all 110 charts: 6 typed, 103 read as SQL, 1 refused. The corpus is not the gate's own domain; a
@@ -356,22 +456,16 @@ printed escaped; the dashboard title appears only in `--json`, JSON-escaped.
   expressions of the trimmed dataset answer only: a calculated column a chart reads through
   `x_axis` or a pivot row or column alone is not among them (`SELECT *` still reads every column
   of the source).
-- The rendered SQL and the saved `query_context` are not read. `GET chart/{id}/data?type=query`
-  answers 400 for a chart without `query_context`: 109 of the 110 example charts on 4.1.2, all
-  102 on 6.1.0; a chart created through the REST API has none until it is opened in Explore,
-  which writes it. E4a ([record](../pilot/2026-11-18-e4a-rendered-sql/README.md)) measured where
-  its SQL reads what the dashboard's SQL reads: the chart's last write is a save
-  (`last_saved_at`, from the UI or any REST `PUT`), its `query_context` agrees with `params` and
-  the chart's dataset, it is served by `/api/v1/chart/data`, without Jinja, a native filter in
-  its scope, a time comparison or an annotation layer — 4 of the 44 charts of its ClickHouse
-  corpus on each version, none of the examples as loaded. There the GET SQL named every column
-  the dashboard's SQL read and no other; its text matched for the 8 charts saved from the UI and
-  differed in its sort for 8 example charts saved through REST after Explore had written their
-  `query_context`, which the inventory cannot tell apart. Reading the set of columns there is
-  E4b.
+- Rendered SQL is the SQL for the **inventory account at snapshot time**. Relative time is
+  rendered as dates at that instant, so spec text can change between snapshots of unchanged
+  saved forms. E4a proves column reads inside its area, not equality of result rows or sort.
+  Missing saved context stays conservative. The account/time-specific text and absence of
+  typed measures are exercised by `test_rendered_sql_is_the_account_and_time_specific_answer`.
 - A native dashboard filter is not mapped to the IR: a chart it applies to is read SQL (D6b).
-- Row-level security is not read: the three `GET`s do not show it, and it changes a tile's numbers
-  per viewer.
+- Row-level security and viewer selection are a shared boundary of this spec, **not** a
+  seventh area check. The reader neither inventories RLS policies nor chooses viewers.
+  Rendered SQL includes what Superset renders for the inventory account, which does not
+  establish another viewer's numbers.
 - `order_desc`, `sort_by_metric` and a heatmap's `sort_x_axis` and `sort_y_axis` are read as
   display: a typed tile over its row limit shows the rows they choose, each still the measure the
   IR names.
@@ -390,11 +484,10 @@ printed escaped; the dashboard title appears only in `--json`, JSON-escaped.
   (Europe/Moscow), 1970-01-01, ClickHouse's default `Date`, falls into another day at `P1D`, and
   into the same week, month, quarter and year. The inventory reads neither the values nor the
   server's time zone, so this is not checked.
-- Superset 4.1.2 only; another version is an update of the pin with its own run. On 6.1.0 (E4a,
-  [record](../pilot/2026-11-18-e4a-rendered-sql/README.md)) the reader wrote the same
-  dashboards of its ClickHouse corpus with no error in the answers' shape, and typed fewer
-  charts: a save from the 6.1 UI writes `form_data` keys outside the known set, which keep the
-  chart read as SQL.
+- Superset 6.1 answers are readable (the fixed corpus replays both versions), but the rendered
+  area and viz whitelist are verified against **4.1.2**. This is not a 6.1 compatibility
+  certification or a change to the Superset pin. A 6.1 UI save adds form keys outside D6's
+  known set and can keep a tile from being typed.
 
 ## Usage
 

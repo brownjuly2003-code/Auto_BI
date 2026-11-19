@@ -119,16 +119,7 @@ class SupersetClient:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        if self._access_token is None:
-            self.login()
-        response = self._http.request(
-            method, path, json=json, params=params, headers=self._auth_headers()
-        )
-        if response.status_code == 401:  # token expired -> one re-login
-            self.login()
-            response = self._http.request(
-                method, path, json=json, params=params, headers=self._auth_headers()
-            )
+        response = self._request_response(method, path, json=json, params=params)
         if response.status_code >= 400:
             logger.debug(
                 "superset %s %s failed HTTP %s body=%s",
@@ -142,6 +133,34 @@ class SupersetClient:
                 status_code=response.status_code,
             )
         return response.json() if response.content else {}
+
+    def _request_response(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        if self._access_token is None:
+            self.login()
+        response = self._http.request(
+            method, path, json=json, params=params, headers=self._auth_headers()
+        )
+        if response.status_code == 401:  # token expired -> one re-login
+            self.login()
+            response = self._http.request(
+                method, path, json=json, params=params, headers=self._auth_headers()
+            )
+        return response
+
+    def get_response(self, path: str, *, params: dict[str, Any] | None = None) -> httpx.Response:
+        """Authenticated GET preserving status and body for a caller's response policy.
+
+        Login/CSRF failures still raise; a request's 401 retries the same way as `get`.
+        The caller must check the final status and decode its JSON without logging the body.
+        """
+        return self._request_response("GET", path, params=params)
 
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.request("GET", path, params=params)

@@ -313,7 +313,7 @@ def test_map_accepts_database_and_writes_reader_version(
         == code
     )
     report = json.loads((out / "inventory.json").read_bytes())
-    assert report["reader_version"] == 1
+    assert report["reader_version"] == 2
     assert report["superset_version"] == "4.1.2"
     assert (out / "sales/weekly@1.yaml").exists() == (code == 0)
 
@@ -327,17 +327,19 @@ def test_replace_whole_snapshot_including_d6(
     ident: str,
 ) -> None:
     out = Path(snapshot.output)
+    path = out / "inventory.json"
+    report = json.loads(path.read_bytes())
     if legacy:
-        path = out / "inventory.json"
-        report = json.loads(path.read_bytes())
         report.pop("reader_version", None)
-        path.write_bytes(json.dumps(report).encode())
+    else:
+        report["reader_version"] = 1
+    path.write_bytes(json.dumps(report).encode())
     report = inventory(replace(snapshot, dashboards=[(REF, ident)], replace=True))
     assert bool(report.refused) == (ident == "11")
     expected = {"inventory.json", "sales/weekly@1.yaml"} if ident == "12" else {"inventory.json"}
     assert set(_files(out)) == expected
     assert sorted(p.name for p in tmp_path.iterdir()) == ["out", "semantic"]
-    assert json.loads((out / "inventory.json").read_bytes())["reader_version"] == 1
+    assert json.loads((out / "inventory.json").read_bytes())["reader_version"] == 2
 
 
 @pytest.mark.parametrize(
@@ -681,6 +683,8 @@ def test_rest_snapshot_refresh_to_pr_comment(
             return httpx.Response(200, json={"access_token": "offline"})
         if path.endswith("/csrf_token/"):
             return httpx.Response(200, json={"result": "offline"})
+        if path == "/api/v1/chart/":
+            return httpx.Response(200, json={"result": []})
         pieces = path.split("/")
         answers = _answers(pieces[4])
         key = pieces[5] if len(pieces) > 5 else "dashboard"
@@ -768,7 +772,7 @@ STAND = Path(__file__).parent / "fixtures/superset_inventory/example_weekly-marg
 
 
 class Stand:
-    """The example dashboard's three answers, recorded on the E3 stand by the read-only account."""
+    """E3 answers without saved-chart evidence; reader 2 retains the same fallback specs."""
 
     def __init__(self) -> None:
         self.answers: dict[str, Any] = json.loads(STAND.read_bytes())
@@ -786,15 +790,23 @@ class Stand:
         self.asked.append(ident)
         return self.answers["datasets"]
 
+    def saves(self, dashboard_id: int) -> list[dict[str, Any]]:
+        assert dashboard_id == self.answers["dashboard"]["id"]
+        return []
+
+    def chart(self, chart_id: int) -> dict[str, Any]:
+        raise AssertionError("the E3 recording has no saved-chart evidence")
+
+    def rendered(self, chart_id: int) -> tuple[int, dict[str, Any]]:
+        raise AssertionError("the E3 recording has no saved-chart evidence")
+
 
 def test_example_snapshot_is_the_inventory_of_the_stand_answers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The committed example is what the inventory writes from these answers, by the committed
-    # map and the README's command: a hand edit of the snapshot, the map, the command or the
-    # reader fails here. The command replaces the committed snapshot, so it must be one the
-    # inventory owns.
+    # The E3 snapshot remains reader 1 evidence. Reader 2 changes only report metadata for
+    # these answers; compare every spec byte and the exact, versioned reason additions.
     readme = (EXAMPLE / "README.md").read_text(encoding="utf-8")
     newline = chr(10)
     section = readme.split("## Снимок дашбордов", 1)[1]
@@ -807,9 +819,18 @@ def test_example_snapshot_is_the_inventory_of_the_stand_answers(
     stand = Stand()
     monkeypatch.setattr(reader, "RestSupersetSource", lambda client: stand)
     assert main(args[5:]) == 0
-    assert _files(root / "dashboards") == _files(EXAMPLE / "dashboards")
+    expected = _files(EXAMPLE / "dashboards")
+    report = json.loads(expected["inventory.json"])
+    assert report["reader_version"] == 1
+    report["reader_version"] = 2
+    for chart in report["dashboards"][0]["charts"][1:]:
+        chart["reasons"].append("saved: the last change is not a save within two seconds")
+    actual = _files(root / "dashboards")
+    assert json.loads(actual.pop("inventory.json")) == report
+    expected.pop("inventory.json")
+    assert actual == expected
     assert set(stand.asked) == {"weekly-margin"}
     fresh = [a for a in args[5:] if a != "--replace"]
     fresh[fresh.index("--output") + 1] = str(tmp_path / "fresh")
     assert "--replace" in args and main(fresh) == 0
-    assert _files(tmp_path / "fresh") == _files(EXAMPLE / "dashboards")
+    assert _files(tmp_path / "fresh") == _files(root / "dashboards")

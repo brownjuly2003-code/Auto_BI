@@ -29,11 +29,11 @@ CORPUS = REPO / "tests" / "fixtures" / "superset_inventory" / "e4a"
 
 #: The corpus is pinned: a changed answer is a new corpus, not a new number.
 DIGESTS = {
-    "41-c1rest": "f7f7ed7f26aebeec6c659b398635226f5e145ce922790bc145913cef1906cac6",
-    "41-c1w": "64bbe84e7e94c32aaeab788b7ca619dd521747efaa21f35ed68ea8e7f13a4ae4",
-    "41-c2w": "ce2ecc22d36d5f58898c15a2e916570f184da8f24e403e49795b6786d9a29ed9",
-    "61-c1w": "8062600bef17227953bd4bd51a905ca4403a09f09f24e0c4fa91e1b08a75544a",
-    "61-c2w": "62958898aa8202f0c4daa6b9b8b33fe65583084b99298520ba2e4dd94996ec0d",
+    "41-c1rest": "917382e3b83435560b975716303fb663fd277aa7c0aea7f38e6edbfca3e43545",
+    "41-c1w": "dc4d5eaddbb4aaa06a93b578bf9901bde58d34b2a47a45a13aff2e05757904ae",
+    "41-c2w": "5ff54a626b08c1765a32256a71beef8062fdf17ebf46b07a09e3f47c8b871b21",
+    "61-c1w": "aebc2e7676d26c2b9fb607d0310a9a9ab30f0715e5ad7659c2981e0562e4d629",
+    "61-c2w": "567aaa7d819c514b6c03350b6016c66aa4764bd0f120c7acf324559b256476dd",
 }
 
 #: Reader 1 on the corpus: dashboards written / refused, typed tiles, tiles read whole.
@@ -103,19 +103,7 @@ def test_dashboards_and_typed_tiles_stay_as_reader_1_had_them(name: str) -> None
     ) == (written, refused, typed)
 
 
-#: Recorded before the reader 2 code: reader 1 reads no tile from rendered SQL. The reader 2
-#: slice removes the marks.
-_BEFORE_READER_2 = pytest.mark.xfail(strict=True, reason="reader 2 not written yet")
-
-
-@pytest.mark.parametrize(
-    "name",
-    [
-        pytest.param("41-c1rest", marks=_BEFORE_READER_2),
-        "41-c1w",
-        pytest.param("41-c2w", marks=_BEFORE_READER_2),
-    ],
-)
+@pytest.mark.parametrize("name", sorted(THRESHOLD))
 def test_reader_2_reads_the_area_from_rendered_sql_on_the_pin(name: str) -> None:
     summary, rows = _run(name)
     rendered, whole = THRESHOLD[name]

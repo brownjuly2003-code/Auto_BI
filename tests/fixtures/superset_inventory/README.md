@@ -20,4 +20,8 @@ three GETs above, the chart list rows (`changed_on_utc`, `last_saved_at`), `GET 
 `dashboards` and `GET chart/{id}/data?type=query` — and the reference: the SQL the dashboard showed
 for each tile in a browser, with whether the engine ran each statement. User fields and result
 data are dropped. `scripts/superset_inventory_measure.py` reads it; the digests are pinned in
-`tests/test_superset_inventory_corpus.py`.
+`tests/test_superset_inventory_corpus.py`. The 4.1.2 and 6.1.0 runs also hold, under `dataset`,
+`GET /api/v1/dataset/{id}` of each dataset of the run, recorded on 2026-11-19 from the same
+stands after the E4b-1 review r1 (owners and `changed_by`/`created_by` dropped): no dataset, column
+or metric of them changed after the run was recorded (`changed_on`), so they are the definitions
+the run saw.
