@@ -4,7 +4,7 @@
 each one by hand. This module reads what Superset 4.1 holds — the dashboard, its charts and
 their datasets, by `GET` only — and writes the spec the gate reads. It is a *read model*: what
 the spec must get right is what each tile reads and computes, because that is all the gate asks
-of it (chart impact, `bi.contract`). Three forms, tried in this order:
+of it (chart impact, `bi.contract`). Four forms, tried in this order:
 
 * **typed** — the chart is one the IR says exactly: a viz of the closed set, a physical dataset,
   aggregates `AGG(column)` over plain columns the dataset answer describes, plain dimensions,
@@ -14,6 +14,8 @@ of it (chart impact, `bi.contract`). Three forms, tried in this order:
 * **rendered SQL** — saved, fresh charts in the E4a area: the SQL Superset renders for the
   inventory account, read as ClickHouse with no change to its column reads. It is still
   operator `raw_sql`, never `computes_metric`, including charts with post-processing.
+* **composite SQL** — the 4.1.2 query builder's column reads composed from form_data and the
+  full dataset definition. No outer star, no claim to compute a metric.
 * **read SQL** — every other chart: operator `raw_sql` selecting `*` from the chart's source
   (the table, or the dataset's own SQL as `virtual_table`, as Superset wraps it) plus every SQL
   fragment the chart and its dataset answer carry. It is not what Superset runs; it reads at
@@ -50,6 +52,7 @@ from sqlglot.errors import ErrorLevel, ParseError, SqlglotError
 
 from auto_bi.adapters.superset.client import SupersetAPIError, SupersetClient
 from auto_bi.agent.sql_guard import SQLGuardError, extract_column_refs, guard_sql
+from auto_bi.inventory.composite import CompositeRefusal, compose_sql
 from auto_bi.ir.spec import (
     ChartQuery,
     ChartSpec,
@@ -69,8 +72,8 @@ from auto_bi.verification.bi_contract import SupersetContractCompiler
 #: The Superset the mapping below was read off (docker/superset/Dockerfile, CLAUDE.md inv. 7).
 SUPERSET_VERSION = "4.1.2"
 
-#: D6 is reader 1; E4b-1 adds rendered reads. Increment on spec/form/reason mapping changes.
-READER_VERSION = 2
+#: D6 is reader 1; E4b-1 adds rendered reads; E4b-2 adds composite reads.
+READER_VERSION = 3
 
 #: `DashboardSpec.charts` holds at most this many tiles.
 MAX_CHARTS = 12
@@ -100,6 +103,7 @@ class SupersetSource(Protocol):
 class ChartForm(StrEnum):
     TYPED = "typed"
     RENDERED_SQL = "rendered_sql"
+    COMPOSITE_SQL = "composite_sql"
     READ_SQL = "read_sql"
 
 
@@ -109,7 +113,7 @@ class InventoriedChart(StrictModel):
     superset_id: int
     viz_type: str
     form: ChartForm
-    #: Why not typed, then the first rendered-area/representation failure for read SQL.
+    #: Why not typed, then the first failure of each preceding SQL form.
     reasons: list[str] = Field(default_factory=list)
     #: The Superset database of the chart's dataset — its id and engine, as Superset names
     #: them; `None` and empty when the answer names none.
@@ -555,11 +559,26 @@ def _read_dashboard(
                 model,
                 definitions,
             )
-        read, refusal = (
-            (rendered, "")
-            if rendered is not None
-            else _read_sql_chart(chart_id, title, form_data, dataset)
-        )
+        read = rendered
+        form = ChartForm.RENDERED_SQL
+        if read is None:
+            reasons = [*reasons, rendered_reason]
+            read, composite_reason = _composite_chart(
+                _int(chart, "id"),
+                title,
+                form_data,
+                dataset,
+                native_filters,
+                len(charts),
+                source,
+                model,
+                definitions,
+            )
+            form = ChartForm.COMPOSITE_SQL
+            if read is None:
+                reasons.append(composite_reason)
+                read, refusal = _read_sql_chart(chart_id, title, form_data, dataset)
+                form = ChartForm.READ_SQL
         if read is None:
             refusals.append(f"{chart_id}: {refusal}")
             continue
@@ -569,8 +588,8 @@ def _read_dashboard(
                 chart=chart_id,
                 superset_id=_int(chart, "id"),
                 viz_type=viz_type,
-                form=ChartForm.RENDERED_SQL if rendered is not None else ChartForm.READ_SQL,
-                reasons=reasons if rendered is not None else [*reasons, rendered_reason],
+                form=form,
+                reasons=reasons,
                 database=on,
                 backend=backend,
             )
@@ -1226,11 +1245,32 @@ _RENDERED_VIZ = frozenset(
 _CONTEXT_IGNORED = frozenset(
     {"slice_id", "datasource", "dashboards", "url_params", "force", "result_format", "result_type"}
 )
-_RENDERED_DIALECTS = {
+#: The sqlglot dialect of each backend whose SQL the reader translates for the gate (E4b).
+_READ_DIALECTS = {
     "clickhouse": "clickhouse",
     "clickhousedb": "clickhouse",
     "postgresql": "postgres",
 }
+
+
+def _in_read_dialect(raw_sql: str, dialect: str) -> str | None:
+    """The SQL in `READ_SQL_DIALECT`, or `None` when translating it changes its column reads."""
+    guard_sql(raw_sql, dialect=dialect)
+    if dialect == READ_SQL_DIALECT:
+        return raw_sql
+    before = extract_column_refs(raw_sql, dialect=dialect)
+    translated = sqlglot.transpile(
+        raw_sql,
+        read=dialect,
+        write=READ_SQL_DIALECT,
+        error_level=ErrorLevel.RAISE,
+        unsupported_level=ErrorLevel.RAISE,
+    )
+    if len(translated) != 1 or before != extract_column_refs(
+        translated[0], dialect=READ_SQL_DIALECT
+    ):
+        return None
+    return translated[0]
 
 
 def _jinja(value: Any) -> bool:
@@ -1260,7 +1300,7 @@ def _rendered_precheck(
         return "single: the chart carries a time comparison or annotation layer"
     if _table(dataset) is None:
         return "rendered_sql: the dataset names no schema or table"
-    if _database(dataset)[1] not in _RENDERED_DIALECTS:
+    if _database(dataset)[1] not in _READ_DIALECTS:
         return "rendered_sql: the dataset backend has no known read dialect"
     return ""
 
@@ -1371,23 +1411,12 @@ def _rendered_chart(
     if len(results) != 1:
         return None, "rendered_sql: multiple rendered queries are not combined"
     raw_sql = results[0]["query"].strip().removesuffix(";").rstrip()
-    dialect = _RENDERED_DIALECTS[_database(dataset)[1]]
+    dialect = _READ_DIALECTS[_database(dataset)[1]]
     try:
-        guard_sql(raw_sql, dialect=dialect)
-        if dialect != READ_SQL_DIALECT:
-            before = extract_column_refs(raw_sql, dialect=dialect)
-            translated = sqlglot.transpile(
-                raw_sql,
-                read=dialect,
-                write=READ_SQL_DIALECT,
-                error_level=ErrorLevel.RAISE,
-                unsupported_level=ErrorLevel.RAISE,
-            )
-            if len(translated) != 1 or before != extract_column_refs(
-                translated[0], dialect=READ_SQL_DIALECT
-            ):
-                return None, "rendered_sql: translation changes column reads"
-            raw_sql = translated[0]
+        translated = _in_read_dialect(raw_sql, dialect)
+        if translated is None:
+            return None, "rendered_sql: translation changes column reads"
+        raw_sql = translated
         guard_sql(raw_sql, dialect=READ_SQL_DIALECT)
         tile = ChartSpec(
             id=f"chart_{chart_id}",
@@ -1404,6 +1433,76 @@ def _rendered_chart(
         # Parser, generator and contract exceptions can quote SQL or credentials. No body
         # or expression belongs in the report; D6 still decides whether the fallback is safe.
         return None, "rendered_sql: the SQL cannot be translated or pass the SQL guard"
+    return tile, ""
+
+
+# --- composite SQL ---------------------------------------------------------------------------
+
+
+def _composite_chart(
+    chart_id: int,
+    title: str,
+    form_data: Mapping[str, Any],
+    dataset: Mapping[str, Any],
+    native_filters: Sequence[_NativeFilter],
+    chart_count: int,
+    source: SupersetSource,
+    model: SemanticModel,
+    definitions: dict[int, tuple[int, Mapping[str, Any]]],
+) -> tuple[ChartSpec | None, str]:
+    reason = ""
+    if str(form_data.get("viz_type")) not in _RENDERED_VIZ:
+        reason = "the viz is not in the Superset 4.1.2 chart/data list"
+    elif chart_count > MAX_CHARTS:
+        reason = "the dashboard exceeds the chart limit"
+    elif any(native.applies_to(chart_id) for native in native_filters):
+        reason = "a native dashboard filter applies to the chart"
+    elif _jinja(form_data) or _jinja(dataset.get("sql")):
+        reason = "form_data or dataset SQL carries Jinja"
+    elif form_data.get("annotation_layers"):
+        reason = "form_data['annotation_layers'] can query another source"
+    elif _table(dataset) is None:
+        reason = "the dataset names no schema or table"
+    elif _database(dataset)[1] not in _READ_DIALECTS:
+        reason = "the dataset backend has no known read dialect"
+    if reason:
+        return None, f"composite_sql: {reason}"
+    key = _int(dataset, "id")
+    if key not in definitions:
+        definitions[key] = source.dataset_definition(key)
+    status, answer = definitions[key]
+    whole = answer.get("result")
+    if (
+        status != 200
+        or not isinstance(whole, Mapping)
+        or type(whole.get("id")) is not int
+        or whole["id"] != key
+    ):
+        return None, "composite_sql: the dataset definition is not readable"
+    try:
+        translated = _in_read_dialect(
+            compose_sql(form_data, dataset, whole), _READ_DIALECTS[_database(dataset)[1]]
+        )
+        if translated is None:
+            return None, "composite_sql: translation changes column reads"
+        raw_sql = translated
+        guard_sql(raw_sql, dialect=READ_SQL_DIALECT)
+        tile = ChartSpec(
+            id=f"chart_{chart_id}",
+            title=title,
+            viz=Viz.TABLE,
+            query=ChartQuery(
+                table=f"{_text(dataset, 'schema')}.{_text(dataset, 'table_name')}",
+                raw_sql=raw_sql,
+            ),
+        )
+        if gate_refusals(DashboardSpec(title=title, charts=[tile]), model):
+            return None, "composite_sql: the composed tile does not pass the gate contract"
+    except CompositeRefusal as error:
+        return None, f"composite_sql: {error}"
+    except Exception:
+        # Guard/contract exceptions can quote SQL; never copy their text to the report.
+        return None, "composite_sql: the SQL cannot pass the SQL guard or gate contract"
     return tile, ""
 
 

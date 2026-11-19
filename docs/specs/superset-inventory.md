@@ -107,20 +107,25 @@ refused login SHALL be an error that names the request and the HTTP status
 not reached, or an answer that is not its JSON, SHALL name the `GET` it was making
 (`GET <path>: ConnectError`), a login made for it included; never a body or a credential.
 
-## Requirement: a chart is typed, rendered SQL or conservatively read as SQL
+## Requirement: a chart is typed, rendered SQL, composite SQL or conservatively read as SQL
 
 Each chart SHALL use the first available form in this order:
 
 - **typed** — the exact IR `ChartSpec`. It is the only form the gate can name `computes_metric`;
   it SHALL be chosen only when the chart is one the IR says exactly, and the spec passes
   `validate_spec` against the model and the Superset contract compiler. A typed chart that fails
-  either proceeds to rendered SQL and then read SQL: a spec `bi.contract` refuses would block every run for a
+  either proceeds to rendered SQL, composite SQL and then read SQL: a spec `bi.contract` refuses would block every run for a
   reason no change made;
 - **rendered SQL** (`rendered_sql`) — a chart inside all six E4a checks below, with one rendered
   query that can be read in the gate's ClickHouse dialect. It SHALL be viz `table`, with
   `raw_sql` holding that query and `table` named as in the conservative form. It has no IR
   measures and cannot be `computes_metric`, even with contribution, rank or other
   post-processing. Its reads are those the gate extracts from the rendered query;
+- **composite SQL** (`composite_sql`) — the union of column reads of a supported 4.1.2
+  plugin's query, composed from `form_data` and the full dataset definition as specified
+  below. Like rendered SQL it is viz `table`, has `raw_sql` and no measures, and never
+  claims `computes_metric`. It adds no outer `*`; a star inside virtual dataset SQL can
+  still make the gate name `chart.sql_partial`;
 - **read SQL** — every other chart: viz `table` with a `raw_sql` that is `SELECT *` plus every SQL
   fragment of the chart and every saved metric and calculated column of its dataset, each on its
   own lines, `FROM schema.table` or `FROM (<dataset sql>) AS virtual_table`, the dataset SQL
@@ -246,12 +251,12 @@ at most two GETs per eligible non-typed chart and one per dataset of those chart
 account reads charts and datasets as well as dashboards.
 
 A rendered-data HTTP **400 or 404 with a JSON object** SHALL fail `answer` and retain the
-conservative tile, so the dashboard can still be written. Transport failure, failed login
+next SQL form, so the dashboard can still be written. Transport failure, failed login
 or CSRF fetch, 401 after re-login, 403, 5xx, any other status (including 202/3xx), and a body
 that is not a JSON object SHALL raise `SupersetSourceError`. No body, SQL or credentials
 belong in these errors. Missing or malformed saved params/context fail `fresh`. The dataset
 definition follows the same policy, except that only an HTTP **404 with a JSON object** — no such
-dataset for this account — fails `plain` and keeps the conservative tile; a 400 or 403 is an
+dataset for this account — fails `plain` and prevents composition too; a 400 or 403 is an
 error, as for the other GETs of the chart and the dashboard.
 
 Supported backends are `clickhousedb`, `clickhouse` and `postgresql`. ClickHouse SQL SHALL
@@ -259,7 +264,7 @@ retain its text after trimming outer whitespace and a terminal semicolon. Postgr
 SHALL be parsed in sqlglot's `postgres` dialect and emitted as `READ_SQL_DIALECT`
 (`clickhouse`). The entire `extract_column_refs` result before and after translation SHALL
 agree, including table references and unresolved reads. Unsupported translation or a
-difference falls back to conservative SQL. Unknown backends also fall back.
+difference falls through to composite SQL. Unknown backends also fall through.
 
 E4b-1 SHALL accept exactly **one** rendered query. Multiple results, such as totals or
 `mixed_timeseries`, fall back rather than selecting one query or combining them without a
@@ -267,8 +272,8 @@ proved read-set contract. Source and translated SQL SHALL pass `guard_sql`; the 
 tile SHALL pass `gate_refusals`. A failure falls back, not by itself refusing the dashboard;
 the existing conservative form must still pass its own checks.
 
-For rendered SQL, `reasons` SHALL contain why D6 did not type the tile. For conservative SQL
-it SHALL additionally contain the **first** failed check, prefixed `saved:`, `fresh:`, `api:`,
+For rendered SQL, `reasons` SHALL contain why D6 did not type the tile. For either later SQL
+form it SHALL additionally contain the **first** failed check, prefixed `saved:`, `fresh:`, `api:`,
 `plain:`, `answer:` or `single:`. Representation failures (backend, multiple queries,
 translation, guard or contract), and the dashboard limit, instead use `rendered_sql:`.
 No new report field is required; `form` gains the enum value `rendered_sql`.
@@ -282,12 +287,153 @@ equality and both guards.
 unchanged typed/written/refused counts and zero missed reads. Snapshot compatibility is in
 `tests/test_inventory_snapshot.py`; CLI text and JSON forms are tested in the rendered suite.
 
+## Requirement: composite SQL follows the 4.1.2 query builders (E4b-2)
+
+Composition SHALL follow a failed rendered attempt, before conservative SQL. Its candidates
+are exactly the 29 modern viz listed above; legacy `viz.py` charts SHALL retain conservative
+SQL. D6 typing and E4b-1 rendered selection SHALL remain unchanged. A native filter applying
+under D6 `applies_to`, Jinja (`{{` or `{%`) anywhere in `form_data` or dataset SQL, a nonempty
+`annotation_layers`, an unreadable definition, a missing schema/table, or a backend outside
+the E4b-1 dialect map prevents composition; that check comes before the definition `GET`.
+Jinja in an expression actually used by composition also prevents it; unused saved expressions
+are not read by this form. Composition itself also takes a Jinja comment (`{#`), which the
+template step drops, for Jinja in `form_data`, dataset SQL and used expressions. Unknown nonempty keys fail closed. Null, empty and false values
+carry no additional query input.
+
+`auto_bi/inventory/composite.py` records the whitelist in `COMMON_KEYS`, `FIELD_ALIASES`,
+`VIZ_RULES`, `POSTPROCESS_KEYS` and `IGNORED_KEYS`. The source pin is Apache Superset **4.1.2**,
+commit `72538bda06c0deef2140e0df65bf0a13bcddb16c`, Apache-2.0. Common rules are traced through
+`superset-frontend/packages/superset-ui-core/src/query/`: `buildQueryObject.ts`,
+`extractQueryFields.ts`, `extractExtras.ts`, `processFilters.ts`, `buildQueryContext.ts`,
+`getXAxis.ts` and `normalizeTimeColumn.ts`. The following builder paths are relative to
+`superset-frontend/plugins/` and end in `/buildQuery.ts`. Every row also uses the common rules.
+
+| Viz | Builder | Additional read inputs or overrides |
+| --- | --- | --- |
+| `big_number_total` | `plugin-chart-echarts/src/BigNumber/BigNumberTotal` | Base metrics |
+| `big_number` | `plugin-chart-echarts/src/BigNumber/BigNumberWithTrendline` | `x_axis`, otherwise legacy time column |
+| `echarts_area`, `echarts_timeseries`, `echarts_timeseries_bar`, `echarts_timeseries_line`, `echarts_timeseries_scatter`, `echarts_timeseries_smooth`, `echarts_timeseries_step` | `plugin-chart-echarts/src/Timeseries` | `x_axis`, `groupby`, series sort metric, time offsets |
+| `mixed_timeseries` | `plugin-chart-echarts/src/MixedTimeseries` | Both queries: `_b` overrides of metrics, groups, filters and time controls; original `x_axis` in both |
+| `box_plot` | `plugin-chart-echarts/src/BoxPlot` | `columns` or `granularity_sqla`, plus `groupby`; temporal lookup changes grain only |
+| `bubble_v2` | `plugin-chart-echarts/src/Bubble` | `entity`, `series`; metric aliases `x`, `y`, `size` |
+| `graph_chart` | `plugin-chart-echarts/src/Graph` | `source`, `target`, `source_category`, `target_category` via builder `queryFields` |
+| `tree_chart` | `plugin-chart-echarts/src/Tree` | `id`, `parent`, `name` via builder `queryFields` |
+| `heatmap_v2` | `plugin-chart-echarts/src/Heatmap` | `x_axis`, `groupby`, otherwise legacy time column; normalization and sorting keep reads |
+| `histogram_v2` | `plugin-chart-echarts/src/Histogram` | `column`, `groupby`; removes base metrics |
+| `pivot_table_v2` | `plugin-chart-pivot-table/src/plugin` | `groupbyRows`, `groupbyColumns`; temporal lookup changes grain only |
+| `pop_kpi` | `plugin-chart-echarts/src/BigNumber/BigNumberPeriodOverPeriod` | `cols`, time comparison |
+| `sankey_v2` | `plugin-chart-echarts/src/Sankey` | `source`, `target`, `sort_by_metric` |
+| `table` | `plugin-chart-table/src` | Aggregate `percent_metrics`; raw/aggregate mode, time comparison, temporal lookup; totals and pagination retain reads |
+| `waterfall` | `plugin-chart-echarts/src/Waterfall` | `x_axis` or `granularity_sqla`, `groupby`; orders by those columns |
+| `funnel`, `gauge_chart`, `pie`, `sunburst_v2`, `treemap_v2` | `plugin-chart-echarts/src/{Funnel,Gauge,Pie,Sunburst,Treemap}` respectively | Base groups and metrics, `sort_by_metric` |
+| `word_cloud` | `plugin-chart-word-cloud/src/plugin` | Base groups and metrics, `sort_by_metric` |
+| `radar` | `plugin-chart-echarts/src/Radar` | Base groups and metrics |
+| `handlebars` | `plugin-chart-handlebars/src/plugin` | Base query |
+
+Common field aliases SHALL be resolved: `metric`, `metric_2`, `secondary_metric`, `x`, `y`
+and `size` to metrics; `all_columns` to columns; `series` to groupby; `order_by_cols` to
+orderby, including JSON-encoded pairs. `query_mode=aggregate` drops base columns;
+`query_mode=raw` drops base groupby and metrics. Builder overrides above are then applied.
+Both `series_limit_metric` and `timeseries_limit_metric` are included conservatively, even
+when the series limit is zero: plugin sorting can use them independently. `series_columns`
+are read too; the series-limit subquery uses the same groups and filters. `limit`, row/series
+limits, offsets and order direction change no column reads. An order mapping must be a
+SIMPLE or SQL adhoc metric; an unknown shape fails with the order key named.
+
+Saved metric names SHALL resolve to `expression` in the **full** dataset definition;
+SIMPLE metrics resolve their column, SQL metrics retain their literal expression. A column
+with an expression uses that expression rather than its name. A column object is an expression
+only with both `sqlExpression` and `label` (`utils.is_adhoc_column`); another object fails. A
+nonempty `x_axis` SHALL be what superset-ui-core `isQueryFormColumn` takes — a string, or an
+object with `sqlExpression` and `label` and no `expressionType` other than `SQL`; another axis
+is not set for `isXAxisSet` — the time-series, big number and heatmap builders read a time
+column in its place, waterfall passes the object on (`x_axis || granularity_sqla`) — and it
+fails with `form_data['x_axis']` in the reason, stricter than waterfall. A dataset with a
+column named `__timestamp` (`DTTM_ALIAS`) is not composed: Superset reads that column where
+it is an axis or the filter subject of a query that is not a time series, and the time
+column where `__timestamp` stands for it. Nor is a chart that names `__timestamp` as a column —
+axis, group, column or pivot row: `normalizeTimeColumn` and the temporal column lookups of
+table, box plot and pivot table make such a string an expression, and with no such column in
+the metadata Superset writes it as literal SQL — a table column the definition does not list.
+`adhoc_column_to_sqla` processes an expression before it looks up a column of that name — the
+template step (Jinja under `ENABLE_TEMPLATE_PROCESSING` makes CR a line feed and cuts one
+trailing line feed), `sanitize_clause` (a line feed after a trailing comment). So a dataset
+with a column name holding `--`, `/*`, `#`, CR or a line feed is not composed, used or not;
+nor is an adhoc column whose expression the template step turns into a dataset column name.
+A carriage return in an expression composition reads, or in the dataset SQL, prevents it:
+the template step makes it a line feed inside a quoted name too.
+Missing referenced columns
+or metrics fail; the trimmed dashboard answer is not proof of their definitions. SIMPLE
+filters read their subject; SQL filters, `where` and `having` each contribute their own SQL
+fragment. `filters` and `extra_filters` are included. Nonempty `extra_form_data` and
+`custom_params` are consumed by core query construction but their overrides are not composed:
+they fail with `form_data['<key>']` in the reason.
+
+The time column follows `extractExtras`: `extra_filters.__time_col`, then `granularity`,
+then `granularity_sqla`; `__granularity` does not override that result. A non-temporal
+granularity uses `main_dttm_col` as `superset/models/helpers.py:get_sqla_query` does. Time
+ranges, temporal filters and legacy timeseries include their time column. The context
+factory's temporal-axis replacement includes `granularity` even with `No filter`.
+`always_filter_main_dttm` adds the dataset main time column when a range applies.
+`query_context_processor.py:processing_time_offsets` clones the query for `time_compare`:
+composition includes the time column and possible BASE_AXIS **label** resolution against
+dataset metadata, plus the main time column. Comparison changes dates, not the other reads.
+This read set comes from the 4.1.2 sources only: no time comparison tile of the pinned corpus
+was measured against the engine (`docs/pilot/2026-11-19-e4b-inventory-reads/README.md`).
+Rolling, resampling, contribution, cumulative and forecast operations process the returned
+dataframe; their column reads stay the same. Series sorting's extra metric is included.
+
+A key is ignored only when the pinned builders and their query helpers do not read it, or
+when it changes presentation/dataframe operations without adding source reads. Spreading
+`formData` into `context.form_data` alone is not query consumption. This includes explicit
+display controls, `compare_lag`, `markup_type` and `form_data.queryFields` (distinct from the
+builder's `options.queryFields`). Inputs specific to another builder have no effect unless
+the common rules consume them. A key whose effect is unknown SHALL fail, not be inferred
+from its spelling. Mixed queries apply the same check after stripping `_b`.
+
+The composed tile SHALL be `SELECT` of deduplicated identifiers and SQL fragments, with
+each fragment parenthesized on separate lines, `FROM schema.table` or
+`FROM (\n<full dataset SQL>\n) AS virtual_table`. Physical identifiers are quoted. Dataset SQL
+has the same outer whitespace/semicolon trimming as conservative SQL; its inner `*` is
+preserved. The composed SQL takes the E4b-1 dialect step: ClickHouse as is; PostgreSQL parsed
+as `postgres` and emitted as ClickHouse only when the `extract_column_refs` result is the same
+before and after, otherwise the conservative tile with `composite_sql: translation changes
+column reads`. `ChartQuery.table` retains the conservative form's `schema.table`. `guard_sql`
+and `gate_refusals` must accept the result. Their failure retains the conservative tile,
+without exposing SQL or exception text. A composed SQL read set does not assert that the
+original viz query executes successfully.
+
+Only `GET /api/v1/dataset/{id}` may be added by composition, using the same per-dashboard
+`definitions` cache as E4b-1. If rendering already fetched it, composition reuses it even
+after a rendered-data refusal; otherwise it fetches it after the local composition
+prechecks. There is at most one definition GET per dataset per dashboard. Typed charts,
+legacy/unknown viz, and dashboards over 12 charts add none. HTTP 404 with a JSON object
+means an unreadable definition and conservative SQL; all other source failures follow the
+E4b-1 error policy. Across both forms the bound is three D6 GETs, at most one save-list GET,
+at most two GETs per eligible rendered chart, and one definition GET per dataset needed by
+either form. Composition does not request chart detail or rendered data on its own.
+
+A composite tile retains the D6 reasons and the first rendered refusal. A conservative
+tile additionally records the first composition failure with prefix `composite_sql:`.
+Keys from input are quoted/escaped; expressions, response bodies and credentials are never
+included. CLI text SHALL count composite tiles separately; `--json` uses the report's
+`form` enum, without a separate count schema.
+
+Offline contracts in `tests/test_superset_inventory_composite.py` exercise aliases, mode
+exclusion, plugin fields, expression resolution, all filter classes, sorting, time/offset
+substitution, mixed queries, ignored and unsupported keys, Jinja, native scope, shared GETs,
+HTTP policy, guard/contract fallback, virtual stars and CLI text/JSON. The rendered suite
+retains typed/rendered priority, legacy and chart-limit request checks. Snapshot replacement
+tests include reader 2; the pinned corpus remains the independent acceptance measure. Its one
+amendment after the code counts a tile Superset refused to the dashboard (every request 4xx,
+nothing run) as refused rather than unmeasured: such a tile reads nothing.
+
 ## Requirement: chart identity and reasons are recorded
 
 Each chart of the written spec SHALL be named `chart_<superset id>`, titled by its `slice_name`
 (by its name `chart_<id>` when it has none), in the order of the Superset ids. `inventory.json`
 SHALL list each chart it read — its form, the Superset `database` and `backend` of its dataset
-and, when it is either SQL form, the reasons; a chart that refuses its dashboard is named in `refusals`
+and, when it is any SQL form, the reasons; a chart that refuses its dashboard is named in `refusals`
 only. A reason SHALL name a saved metric by its name, and quote a `form_data` key that is not a
 name (`form_data['my key']`), escapes and all. Of a saved metric's SQL, a reason names at most the
 one column an `AGG(column)` metric aggregates — the model's check names it when the model has no
@@ -380,10 +526,11 @@ They also cover unowned/malformed/missing snapshots, links and Windows open-file
 `reader_version` SHALL be a positive integer, initially **1** for the D6 reader. Increment it
 when the mapping from Superset answers and semantic model to specs, chart forms, reasons or
 refusals changes. Packaging, mapping-file input and transactional publication do not change
-that mapping: E3 writes version 1. E4b-1 changes the mapping and SHALL write **reader version 2**.
+that mapping: E3 writes version 1, E4b-1 writes version 2, and E4b-2 SHALL write
+**reader version 3** for composite SQL.
 `superset_version` remains `4.1.2`; `VERIFIER_VERSION` and
 `CHECK_VERSION` do not change. Replacement SHALL accept a D6 report without `reader_version`
-as reader 1, and a report explicitly naming reader 1; the new report explicitly writes version 2. A future positive
+as reader 1, and reports explicitly naming reader 1 or 2; the new report explicitly writes version 3. A future positive
 version is accepted if the rest of the report still satisfies the same ownership contract.
 Tests: `test_map_accepts_database_and_writes_reader_version`, `test_replace_whole_snapshot_including_d6`
 and the report-key contract in `tests/test_superset_inventory.py`.
@@ -408,7 +555,7 @@ is the id of the Superset database that model describes. It SHALL exit:
   integer): it prints its usage and its own error line.
 
 The answer is, per dashboard,
-`wrote    <path>  (<superset>: <n> typed, <r> rendered SQL, <m> read as SQL)` or
+`wrote    <path>  (<superset>: <n> typed, <r> rendered SQL, <c> composite SQL, <m> read as SQL)` or
 `refused  <ref>  (<superset>)` followed by one `  - <reason>` line per refusal, then
 `report   <out>/inventory.json`; `<path>` is relative to the output and `<superset>` is the id or
 slug as named. `--json` prints the report instead. What is printed from the arguments and the
@@ -459,7 +606,7 @@ printed escaped; the dashboard title appears only in `--json`, JSON-escaped.
 - Rendered SQL is the SQL for the **inventory account at snapshot time**. Relative time is
   rendered as dates at that instant, so spec text can change between snapshots of unchanged
   saved forms. E4a proves column reads inside its area, not equality of result rows or sort.
-  Missing saved context stays conservative. The account/time-specific text and absence of
+  Missing saved context proceeds to composition. The account/time-specific text and absence of
   typed measures are exercised by `test_rendered_sql_is_the_account_and_time_specific_answer`.
 - A native dashboard filter is not mapped to the IR: a chart it applies to is read SQL (D6b).
 - Row-level security and viewer selection are a shared boundary of this spec, **not** a

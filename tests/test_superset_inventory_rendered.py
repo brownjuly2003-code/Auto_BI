@@ -72,11 +72,13 @@ class Rendered(Given):
         return reader.inventory_dashboard("dashboard://rendered@1", "a-slug", self, MODEL)
 
 
-def fallback(source: Rendered, check: str) -> reader.DashboardRead:
+def fallback(
+    source: Rendered, check: str, form: reader.ChartForm = reader.ChartForm.COMPOSITE_SQL
+) -> reader.DashboardRead:
     read = source.read()
     assert read.spec is not None, read.record.refusals
     chart = read.record.charts[0]
-    assert chart.form is reader.ChartForm.READ_SQL
+    assert chart.form is form
     assert chart.reasons[0].startswith("form_data.")
     assert any(reason.startswith(f"{check}:") for reason in chart.reasons[1:]), chart.reasons
     return read
@@ -121,7 +123,7 @@ def test_saved_two_seconds_is_inclusive(delta: str) -> None:
         assert source.read().record.charts[0].form.value == "rendered_sql"
     else:
         fallback(source, "saved")
-        assert source.calls == [("saves", 7)]
+        assert source.calls == [("saves", 7), ("definition", source.dataset["id"])]
 
 
 @pytest.mark.parametrize("field", ["changed_on_utc", "last_saved_at"])
@@ -274,7 +276,7 @@ def test_cli_reports_rendered_sql_as_a_separate_form(
     if as_json:
         assert json.loads(out) == report.model_dump(mode="json")
     else:
-        assert "0 typed, 1 rendered SQL, 0 read as SQL" in out
+        assert "0 typed, 1 rendered SQL, 0 composite SQL, 0 read as SQL" in out
 
 
 @pytest.mark.parametrize("where", ["dataset", "column", "metric", "form", "params", "context"])
@@ -295,9 +297,17 @@ def test_plain_jinja_is_checked_before_data(where: str, marker: str) -> None:
         source.params["nested"] = marker
         source.context["form_data"]["nested"] = marker
     # The string literal lets the conservative D6 SQL pass its guard.
-    fallback(source, "plain")
+    fallback(
+        source,
+        "plain",
+        (
+            reader.ChartForm.READ_SQL
+            if where in {"dataset", "form"}
+            else reader.ChartForm.COMPOSITE_SQL
+        ),
+    )
     assert ("rendered", PIE) not in source.calls
-    if where in {"dataset", "column", "metric", "form"}:
+    if where in {"dataset", "form"}:
         assert source.calls == []
 
 
@@ -344,9 +354,17 @@ def test_single_checks_every_place_before_rendering(where: str, key: str) -> Non
         source.context["queries"].append(
             {"time_offsets" if key == "time_compare" else key: ["extra"]}
         )
-    fallback(source, "single")
+    fallback(
+        source,
+        "single",
+        (
+            reader.ChartForm.READ_SQL
+            if where == "form" and key == "annotation_layers"
+            else reader.ChartForm.COMPOSITE_SQL
+        ),
+    )
     assert ("rendered", PIE) not in source.calls
-    if where == "form":
+    if where == "form" and key == "annotation_layers":
         assert source.calls == []
 
 
@@ -411,14 +429,20 @@ def test_translation_that_changes_reads_falls_back(monkeypatch: pytest.MonkeyPat
     source = Rendered()
     source.dataset["database"]["backend"] = "postgresql"
     monkeypatch.setattr(reader.sqlglot, "transpile", lambda *a, **kw: ["SELECT 1"])
-    fallback(source, "rendered_sql")
+    # The same translation step guards composite SQL, so the chart is read conservatively.
+    read = fallback(source, "rendered_sql", reader.ChartForm.READ_SQL)
+    assert read.record.charts[0].reasons[-1] == "composite_sql: translation changes column reads"
 
 
 @pytest.mark.parametrize("backend", ["", "unknown"])
 def test_unknown_backend_is_conservative(backend: str) -> None:
     source = Rendered()
     source.dataset["database"]["backend"] = backend
-    fallback(source, "rendered_sql")
+    read = fallback(source, "rendered_sql", reader.ChartForm.READ_SQL)
+    assert read.record.charts[0].reasons[-1] == (
+        "composite_sql: the dataset backend has no known read dialect"
+    )
+    assert ("definition", source.dataset["id"]) not in source.calls
 
 
 def test_multiple_queries_are_not_silently_truncated() -> None:
@@ -469,12 +493,14 @@ def test_fresh_requires_the_saved_params_of_the_viz_the_dashboard_shows(where: s
     read = source.read()
     assert read.spec is not None
     chart = read.record.charts[0]
-    assert chart.form is reader.ChartForm.READ_SQL
+    assert chart.form is (
+        reader.ChartForm.READ_SQL if where == "column" else reader.ChartForm.COMPOSITE_SQL
+    )
     assert "fresh: the saved params are not of the viz the dashboard shows" in chart.reasons
-    assert ("definition", source.dataset["id"]) not in source.calls
+    assert ("definition", source.dataset["id"]) in source.calls
     assert ("rendered", PIE) not in source.calls
-    # The read SQL selects `*`: the gate does not call the tile untouched by `orders`; it
-    # names the tile read in part.
+    # Missing metadata for the histogram's orders column keeps the star; other cases
+    # compose the dashboard form independently of the stale saved context.
     tile = read.spec.charts[0]
     resolver = _ChartResolver([], {}, [])
     resolver._match_raw(
@@ -485,9 +511,9 @@ def test_fresh_requires_the_saved_params_of_the_viz_the_dashboard_shows(where: s
         {"dm.sales_daily.orders"},
         reaches_product=True,
     )
-    assert [(g.code, g.subject) for g in resolver.gaps()] == [
-        ("chart.sql_partial", f"dashboard://rendered@1#{tile.id}")
-    ]
+    assert [(g.code, g.subject) for g in resolver.gaps()] == (
+        [("chart.sql_partial", f"dashboard://rendered@1#{tile.id}")] if where == "column" else []
+    )
 
 
 def test_a_rendered_tile_is_read_as_its_sql_reads_and_a_star_keeps_sql_partial() -> None:
@@ -532,7 +558,7 @@ def test_plain_checks_the_queries_of_the_context_too(where: str) -> None:
     else:
         query["extras"] = {where: "1 = {{ 1 }}"}
     fallback(source, "plain")
-    assert ("definition", source.dataset["id"]) not in source.calls
+    assert ("definition", source.dataset["id"]) in source.calls
     assert ("rendered", PIE) not in source.calls
 
 
@@ -563,7 +589,7 @@ def test_an_unreadable_dataset_definition_falls_back(kind: str) -> None:
     else:
         # Equal to the id in Python, yet not Superset's integer id.
         source.definition["id"] = float(source.dataset["id"])
-    fallback(source, "plain")
+    fallback(source, "plain", reader.ChartForm.READ_SQL)
     assert ("rendered", PIE) not in source.calls
 
 
@@ -614,7 +640,9 @@ def test_rest_uses_numeric_dashboard_id_and_query_errors_keep_the_dashboard(stat
     response = httpx.Response(status, json=source.body if status == 200 else {"error": "secret"})
     read = reader.inventory_dashboard("dashboard://rest@1", "a-slug", rest(source, response), MODEL)
     assert read.spec is not None
-    assert read.record.charts[0].form.value == ("rendered_sql" if status == 200 else "read_sql")
+    assert read.record.charts[0].form.value == (
+        "rendered_sql" if status == 200 else "composite_sql"
+    )
     if status != 200:
         assert any(r.startswith("answer:") for r in read.record.charts[0].reasons)
     assert "secret" not in str(read.record)

@@ -131,7 +131,8 @@ class Recorded:
         raise AssertionError("an unsaved D6 chart must not fetch rendered SQL")
 
     def dataset_definition(self, dataset_id: int) -> tuple[int, Mapping[str, Any]]:
-        raise AssertionError("an unsaved D6 chart must not fetch its dataset definition")
+        self.calls.append(("definition", str(dataset_id)))
+        return 404, {}  # The D6 recording contains no full dataset definitions.
 
 
 class Given:
@@ -166,7 +167,7 @@ class Given:
         raise AssertionError("a D6 chart without saved context must not fetch rendered SQL")
 
     def dataset_definition(self, dataset_id: int) -> tuple[int, Mapping[str, Any]]:
-        raise AssertionError("a D6 chart without saved context must not fetch its definition")
+        return 404, {}  # The D6 fixture contains only the trimmed dashboard answer.
 
 
 def _live_chart(chart_id: int) -> dict[str, Any]:
@@ -370,14 +371,17 @@ def test_the_live_dashboard_types_three_charts_and_reads_three_as_sql() -> None:
         [
             "form_data.metrics[0]: the saved metric 'count' is not AGG(column)",
             "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
         ],
         [
             "form_data carries a SQL expression",
             "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
         ],
         [
             "the dataset is virtual (its own SQL)",
             "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
         ],
     ]
     assert all(chart.title for chart in read.spec.charts)
@@ -394,6 +398,8 @@ def test_every_chart_of_a_dashboard_is_asked_of_one_dashboard() -> None:
         ("charts", "d6-live"),
         ("datasets", "d6-live"),
         ("saves", "12"),
+        ("definition", "25"),
+        ("definition", "26"),
     ]
 
 
@@ -728,6 +734,7 @@ def test_a_typed_chart_the_compiler_refuses_is_read_as_sql(monkeypatch: pytest.M
         [
             "the spec does not compile: no builder for it",
             "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
         ],
     )
 
@@ -1297,6 +1304,8 @@ def test_the_rest_source_reads_by_get_after_its_login() -> None:
             "%2Cfilters%3A%21%28%28col%3Adashboards%2Copr%3Arel_m_m%2Cvalue%3A12%29%29"
             "%2Cpage_size%3A12%29",
         ),
+        ("GET", "/api/v1/dataset/25"),
+        ("GET", "/api/v1/dataset/26"),
     ]
 
 
@@ -1388,7 +1397,8 @@ def test_the_command_names_what_it_wrote_and_what_it_refused(
     out, err = capsys.readouterr()
     assert (code, err) == (3, "")
     assert out.splitlines() == [
-        "wrote    weekly_revenue@1.yaml  (d6-live: 3 typed, 0 rendered SQL, 3 read as SQL)",
+        "wrote    weekly_revenue@1.yaml  "
+        "(d6-live: 3 typed, 0 rendered SQL, 0 composite SQL, 3 read as SQL)",
         "refused  dashboard://big@1  (11)",
         f"  - the dashboard holds 21 charts; a spec holds {MAX_CHARTS}",
         f"report   {tmp_path / 'o' / INVENTORY_REPORT}",
@@ -1790,7 +1800,7 @@ def test_the_command_counts_and_escapes_a_written_dashboard(
     out, err = capsys.readouterr()
     assert (code, err) == (0, "")
     assert out.splitlines() == [
-        "wrote    w@1.yaml  (x\\x07: 1 typed, 0 rendered SQL, 0 read as SQL)",
+        "wrote    w@1.yaml  (x\\x07: 1 typed, 0 rendered SQL, 0 composite SQL, 0 read as SQL)",
         "report   " + str(output / INVENTORY_REPORT).replace("\x7f", "\\x7f"),
     ]
 
@@ -1978,6 +1988,7 @@ def test_a_chart_in_the_scope_of_a_native_filter_is_read_as_sql() -> None:
             [
                 "the dashboard's native filter 'Store' applies to it",
                 "plain: a native dashboard filter applies to the chart",
+                "composite_sql: a native dashboard filter applies to the chart",
             ],
         ),
         LINE: (ChartForm.TYPED, []),
@@ -2034,6 +2045,7 @@ def test_a_scope_names_a_chart_by_an_integer_only() -> None:
             [
                 "the dashboard's native filter 'Store' applies to it",
                 "plain: a native dashboard filter applies to the chart",
+                "composite_sql: a native dashboard filter applies to the chart",
             ],
         )
     }
@@ -2051,6 +2063,7 @@ def test_a_native_filter_without_a_name_is_named_by_its_id(
     assert _forms(read)[PIE][1] == [
         f"the dashboard's native filter {name!r} applies to it",
         "plain: a native dashboard filter applies to the chart",
+        "composite_sql: a native dashboard filter applies to the chart",
     ]
 
 
@@ -3203,6 +3216,8 @@ def test_superset_is_reached_once_for_every_dashboard(tmp_path: Path) -> None:
         ("charts", "12"),
         ("datasets", "12"),
         ("saves", "12"),
+        ("definition", "25"),
+        ("definition", "26"),
     ]
 
 
@@ -3341,6 +3356,7 @@ def test_a_saved_metric_that_does_not_parse_alone_is_named_by_its_name() -> None
         [
             "form_data.metric: the saved metric 'm' does not parse",
             "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
         ],
     )
 
@@ -3365,6 +3381,7 @@ def test_any_failure_of_the_parser_on_a_saved_metric_is_a_metric_that_does_not_p
         [
             "form_data.metric: the saved metric 'm' does not parse",
             "saved: the last change is not a save within two seconds",
+            "composite_sql: the dataset definition is not readable",
         ],
     )
 
@@ -3383,6 +3400,7 @@ def test_a_key_that_is_no_name_is_quoted_in_its_reason(tmp_path: Path, key: str)
     assert report["dashboards"][0]["charts"][0]["reasons"] == [
         f"form_data[{key!r}] is not a key the typed form reads",
         "saved: the last change is not a save within two seconds",
+        "composite_sql: the dataset definition is not readable",
     ]
 
 
@@ -3463,6 +3481,7 @@ def test_a_saved_metric_is_named_by_its_name_never_by_its_sql(tmp_path: Path) ->
     assert report.dashboards[0].charts[0].reasons == [
         "form_data.metric: the saved metric 'm' is not AGG(column)",
         "saved: the last change is not a save within two seconds",
+        "composite_sql: the dataset definition is not readable",
     ]
     assert _SECRET not in report.model_dump_json()
     assert _SECRET not in (tmp_path / "out" / INVENTORY_REPORT).read_text(encoding="utf-8")
@@ -3504,6 +3523,7 @@ def test_of_a_saved_metric_sql_a_reason_names_only_the_column_it_aggregates(
         "the spec does not validate: chart 'chart_122': unknown measure column 'no_such_column' "
         "in dm.sales_daily",
         "saved: the last change is not a save within two seconds",
+        "composite_sql: the dataset definition is not readable",
     ]
 
 

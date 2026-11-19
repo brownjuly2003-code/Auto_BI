@@ -8,7 +8,9 @@ answers to the reader and reads every tile of a written spec the way the gate re
 The numbers below are the thresholds of the reader 2 (E4b-1) and of composite SQL (E4b-2), each
 recorded with its base before its code (`docs/pilot/2026-11-19-e4b-inventory-reads/README.md`).
 Superset 4.1.2 — the pin — holds the thresholds; Superset 6.1.0 is measured for information and
-only must not regress or miss a read.
+only must not regress or miss a read. One amendment came after the E4b-2 code, with its reason in
+the record: a tile Superset refused to the dashboard reads nothing and counts as refused, not as
+unmeasured (`REFUSED`).
 """
 
 from __future__ import annotations
@@ -66,7 +68,10 @@ CANDIDATES = {"41-c1w": 39, "41-c2w": 25, "41-c1rest": 4}
 #: Of the 68 candidates, at least this many are read whole from composite SQL.
 COMPOSITE_WHOLE = 60
 
-_E4B2 = pytest.mark.xfail(strict=True, reason="E4b-2: composite SQL is not implemented yet")
+#: Tiles of written dashboards whose every request the dashboard made was answered 4xx by
+#: Superset, with nothing run by the engine — a property of the corpus, not of a reader. Added
+#: after the E4b-2 code: no reader can see such a refusal, and the tile reads nothing.
+REFUSED = {"41-c2w": frozenset({144, 159}), "61-c2w": frozenset({132, 134})}
 
 
 @cache
@@ -100,10 +105,19 @@ def test_no_tile_read_whole_misses_a_read_of_the_dashboard(name: str) -> None:
     summary, rows = _run(name)
     counts = summary["counts"]
     assert counts["tiles_whole_missed"] == 0, [r for r in rows if r["missed"]]
-    # Every tile read whole is measured: the claim is checked against the engine, not assumed.
-    assert counts["tiles_whole_measured"] == counts["tiles_whole"], [
-        r for r in rows if r["whole"] and not r["measured"]
+    # Every tile read whole is measured: the claim is checked against the engine, not assumed —
+    # or Superset refused the tile to the dashboard, and then the engine read nothing for it.
+    whole = counts["tiles_whole_measured"] + counts["tiles_whole_refused"]
+    assert whole == counts["tiles_whole"], [
+        r for r in rows if r["whole"] and not r["measured"] and not r["refused"]
     ]
+
+
+@pytest.mark.parametrize("name", sorted(BASE))
+def test_the_tiles_superset_refused_are_the_recorded_ones(name: str) -> None:
+    _, rows = _run(name)
+    assert {r["chart"] for r in rows if r["refused"]} == REFUSED.get(name, frozenset())
+    assert not any(r["refused"] and r["measured"] for r in rows)
 
 
 @pytest.mark.parametrize("name", sorted(BASE))
@@ -144,16 +158,18 @@ def test_the_e4b2_candidates_are_the_recorded_ones(name: str) -> None:
     assert len(left) == CANDIDATES[name]
 
 
-@_E4B2
 def test_composite_sql_reads_whole_at_least_60_of_the_68_candidates() -> None:
+    # Only candidates count: a tile Superset refused is composite SQL read whole, not a candidate.
     whole = sum(
-        r["whole"] for name in CANDIDATES for r in _run(name)[1] if r["form"] == "composite_sql"
+        r["whole"]
+        for name in CANDIDATES
+        for r in _run(name)[1]
+        if r["form"] == "composite_sql" and _candidate(r)
     )
     assert whole >= COMPOSITE_WHOLE
     assert sum(_run(name)[0]["counts"]["tiles_whole"] for name in CANDIDATES) >= 16 + whole
 
 
-@_E4B2
 @pytest.mark.parametrize("name", sorted(CANDIDATES))
 def test_a_candidate_left_over_read_names_why(name: str) -> None:
     _, rows = _run(name)

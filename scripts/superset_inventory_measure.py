@@ -14,7 +14,9 @@ of the answers; each tile of a written spec is then read the way the gate reads 
 Against the reference: a *missed* read is a column the dashboard's SQL reads that a tile read
 whole does not name — a false "tile not affected"; an *extra* read is the other way. Names are
 compared without their table, lower-cased, as in E4a. A tile is *measured* when the dashboard
-showed SQL for it and the engine ran every statement of it.
+showed SQL for it and the engine ran every statement of it. A tile is *refused* when Superset
+answered every request of the dashboard for it with a 4xx and the engine ran nothing for it: the
+tile reads nothing, so a read named for it can only be extra (added in E4b-2, after its code).
 
 Usage: uv run python scripts/superset_inventory_measure.py RUN.json [RUN.json ...] [--rows OUT]
 """
@@ -224,6 +226,13 @@ def measure_run(run: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, 
                 }
             ref = doc["reference"].get(str(superset_id), {})
             measured = bool(ref.get("sql")) and all(ref.get("ran") or [False])
+            statuses = ref.get("statuses") or []
+            refused = (
+                not ref.get("sql")
+                and not any(ref.get("ran") or [])
+                and bool(statuses)
+                and all(400 <= status < 500 for status in statuses)
+            )
             ref_reads = (
                 reference_reads(ref.get("sql") or [], _dialect(backend)) if measured else None
             )
@@ -233,6 +242,7 @@ def measure_run(run: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, 
             counts[f"tiles_{form}"] += 1
             counts["tiles_whole"] += whole
             counts["tiles_whole_measured"] += whole and ref_reads is not None
+            counts["tiles_whole_refused"] += whole and refused
             counts["tiles_whole_missed"] += bool(missed)
             counts["tiles_whole_extra"] += bool(extra)
             rows.append(
@@ -243,6 +253,7 @@ def measure_run(run: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, 
                     "form": form,
                     "whole": whole,
                     "measured": ref_reads is not None,
+                    "refused": refused,
                     "missed": missed,
                     "extra": extra,
                     "reasons": list(forms[spec_chart.id].reasons),
